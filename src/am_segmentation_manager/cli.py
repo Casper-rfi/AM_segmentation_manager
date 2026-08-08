@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from .filtering import iter_matching_records
+from .io.path import make_path_relative
 from .operations.predictions import convert_record_predictions
 from .reporting import print_project_summary
 from .scanner import Scanner
@@ -26,9 +27,12 @@ logger = logging.getLogger(__name__)
 # Argument helpers
 # ---------------------------------------------------------------------------
 
-def _add_scope_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_scope_arguments(
+    parser: argparse.ArgumentParser,
+    default_modality: str | None = None,
+) -> None:
     """Add the common scope-selection arguments to *parser*."""
-    parser.add_argument("paths", nargs="*", help="Explicit image paths")
+    parser.add_argument("paths", nargs="*", help="Explicit image paths or scan directory")
     parser.add_argument("--start-path", default=".", help="Directory to start scanning from")
     parser.add_argument(
         "--project", action="append", default=[],
@@ -46,23 +50,41 @@ def _add_scope_arguments(parser: argparse.ArgumentParser) -> None:
         "--image", action="append", default=[],
         help="Image name/number; use 'all' explicitly",
     )
-    parser.add_argument(
-        "--modality", choices=["SEM", "FIB", "all"], required=True,
-        help="Image modality to operate on; specify 'all' for both SEM and FIB",
-    )
+    if default_modality is not None:
+        parser.add_argument(
+            "--modality", choices=["SEM", "FIB", "all"], default=default_modality,
+            help=f"Image modality to operate on (default: {default_modality})",
+        )
+    else:
+        parser.add_argument(
+            "--modality", choices=["SEM", "FIB", "all"], required=True,
+            help="Image modality to operate on; specify 'all' for both SEM and FIB",
+        )
 
 
-def _resolve_records(args: argparse.Namespace) -> list:
-    """Resolve the target records from *args*, using paths or indexed scope.
+def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
+    """Resolve target records and scan start_path from CLI arguments.
 
-    Returns the list of matching :class:`ImageRecord` objects.  Logs an
-    error and returns an empty list when scope arguments are incomplete.
+    Returns a tuple of `(records, start_path)`.
     """
     from .operations.selection import record_from_image_path
 
-    if args.paths and not any([args.project, args.lamella, args.stage, args.image]):
-        records = [record_from_image_path(Path(path)) for path in args.paths]
-        return [r for r in records if args.modality == "all" or r.modality == args.modality]
+    state = getattr(args, "state", "all")
+    start_path = Path(args.start_path)
+    file_paths: list[Path] = []
+
+    for item in args.paths:
+        p = Path(item)
+        if p.is_dir():
+            if args.start_path == ".":
+                start_path = p
+        else:
+            file_paths.append(p)
+
+    if file_paths and not any([args.project, args.lamella, args.stage, args.image]):
+        records = [record_from_image_path(p) for p in file_paths]
+        matching = [r for r in records if args.modality == "all" or r.modality == args.modality]
+        return matching, start_path
 
     missing_scopes = [
         flag
@@ -80,10 +102,10 @@ def _resolve_records(args: argparse.Namespace) -> list:
             "Use 'all' where appropriate (missing: %s).",
             ", ".join(missing_scopes),
         )
-        return []
+        return [], start_path
 
-    index = Scanner(Path(args.start_path)).build_index()
-    return list(
+    index = Scanner(start_path).build_index()
+    records = list(
         iter_matching_records(
             index,
             project_selectors=args.project,
@@ -91,8 +113,10 @@ def _resolve_records(args: argparse.Namespace) -> list:
             stage_selectors=args.stage,
             image_selectors=args.image,
             modality=args.modality,
+            state=state,
         )
     )
+    return records, start_path
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +165,42 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             help="Confirm moving artifacts out of the corrected state",
         )
 
+    # -- create-training-csv -----------------------------------------------
+    create_training_csv = sub.add_parser(
+        "create-training-csv",
+        help="Export dataset image and label pairs to CSV files for ML model training",
+        description="Filter project images/labels and export training and validation CSV files",
+    )
+    _add_scope_arguments(create_training_csv, default_modality="all")
+    create_training_csv.add_argument(
+        "--state",
+        choices=["corrected", "selected", "deselected", "all"],
+        required=True,
+        help="Workflow state of images/labels to export (required: 'corrected', 'selected', 'deselected', or 'all')",
+    )
+    create_training_csv.add_argument(
+        "-o", "--output-dir",
+        default=".",
+        help="Directory to save generated CSV files (default: current directory)",
+    )
+    create_training_csv.add_argument(
+        "--output-prefix",
+        default="dataset",
+        help="Prefix for generated CSV filenames (default: 'dataset')",
+    )
+    create_training_csv.add_argument(
+        "--split",
+        type=float,
+        default=0.8,
+        help="Ratio of data assigned to training set vs validation set (default: 0.8)",
+    )
+    create_training_csv.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible train/validation split (default: 42)",
+    )
+
     args = parser.parse_args(argv)
 
     # -- configure logging --------------------------------------------------
@@ -161,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 0
 
     if args.command == "convert-predictions":
-        records = _resolve_records(args)
+        records, start_path = _resolve_records(args)
         if not records:
             logger.info("No matching images found to convert")
             return 2
@@ -176,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             select_records,
         )
 
-        records = _resolve_records(args)
+        records, start_path = _resolve_records(args)
         if not records:
             logger.info("No matching images found to %s", args.command)
             return 2
@@ -192,6 +252,28 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             logger.error("Could not %s matching images: %s", args.command, exc)
             return 2
         logger.info("Total %s: %d", args.command, changed)
+        return 0
+
+    if args.command == "create-training-csv":
+        from .operations.csv import export_training_csv
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.info("No matching images found to export CSV")
+            return 2
+
+        output_dir = Path(args.output_dir)
+        train_csv, val_csv = export_training_csv(
+            records=records,
+            start_path=start_path,
+            output_dir=output_dir,
+            prefix=args.output_prefix,
+            train_ratio=args.split,
+            seed=args.seed,
+        )
+        logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
+        if val_csv:
+            logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
         return 0
 
     parser.print_help()

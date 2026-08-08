@@ -15,6 +15,7 @@ from datetime import datetime
 
 from .models import Project, Lamella, AdaptiveMillingStage, ImageRecord
 from .io.yaml import read_yaml
+from .io.path import make_path_relative
 from .metadata import merge_metadata
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,8 @@ class ProjectIndex:
     Provides lookup utilities that other components can depend on.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, start_path: Path | None = None) -> None:
+        self.start_path = start_path
         self.projects: Dict[str, Project] = {}
 
     def add(self, project: Project) -> None:
@@ -37,6 +39,12 @@ class ProjectIndex:
 
     def find_by_name(self, name: str) -> Project:
         return self.projects[name]
+
+    def relative_path(self, path: Path) -> str:
+        """Return a string path relative to the scan start_path."""
+        if self.start_path is None:
+            return str(path)
+        return make_path_relative(path, self.start_path)
 
 
 class Scanner:
@@ -80,7 +88,7 @@ class Scanner:
         - for each stage, indexes images in sem/ and fib/ (including deselected subfolders)
         - matches predictions and labels by filename when possible
         """
-        index = ProjectIndex()
+        index = ProjectIndex(start_path=self.start_path)
 
         for project_index, experiment_path in enumerate(sorted(self.find_experiment_files()), start=1):
             project_root = experiment_path.parent

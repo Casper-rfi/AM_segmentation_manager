@@ -153,6 +153,26 @@ def record_matches_paths(record, supplied_paths: list[str] | None) -> bool:
     return False
 
 
+def matches_state(record: ImageRecord, state: str) -> bool:
+    """Return whether *record* matches the requested workflow state.
+
+    States:
+    * ``"corrected"``: record was marked corrected
+    * ``"selected"``: record is selected and not corrected
+    * ``"deselected"``: record is deselected and not corrected
+    * ``"all"``: matches any workflow state
+    """
+    if state == "all":
+        return True
+    if state == "corrected":
+        return record.corrected
+    if state == "selected":
+        return record.selected and not record.corrected
+    if state == "deselected":
+        return not record.selected and not record.corrected
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Compound iterator
 # ---------------------------------------------------------------------------
@@ -165,13 +185,15 @@ def iter_matching_records(
     image_selectors: list[str] | None = None,
     paths: list[str] | None = None,
     modality: str = "all",
+    state: str = "all",
 ) -> Iterator[ImageRecord]:
     """Yield every :class:`ImageRecord` that passes the supplied filters.
 
     All scope selectors default to ``None`` (match everything).  When a
     selector list is provided, only records that satisfy the selector are
     yielded.  Setting *modality* to ``"SEM"`` or ``"FIB"`` restricts the
-    results to a single imaging modality.
+    results to a single imaging modality.  Setting *state* restricts to
+    a specific workflow state (``"corrected"``, ``"selected"``, ``"deselected"``).
     """
     for project in index.all_projects():
         if project_selectors is not None and not matches_project(project, project_selectors):
@@ -184,6 +206,8 @@ def iter_matching_records(
                     continue
                 for record in stage.images:
                     if modality != "all" and record.modality != modality:
+                        continue
+                    if state != "all" and not matches_state(record, state):
                         continue
                     if image_selectors is not None and not matches_image(record, image_selectors):
                         continue
