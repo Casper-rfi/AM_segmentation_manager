@@ -26,6 +26,9 @@ all = [
   "opencv-python",
 ]
 
+[project.scripts]
+am-seg = "am_segmentation_manager.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

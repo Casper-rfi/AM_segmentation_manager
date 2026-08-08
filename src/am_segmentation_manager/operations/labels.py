@@ -42,9 +42,10 @@ def move_to_deselected(path: Path) -> Path:
 
 
 def move_to_selected(path: Path, *, allow_move_from_corrected: bool = False) -> Path:
-    """Move a deselected or corrected file into the normal state directory."""
-    if path.parent.name not in {"deselected", "corrected"}:
-        raise ValueError("Path is not inside a workflow state folder: %s" % path)
+    """Move a file into the normal selected state directory.
+
+    Files already in the selected state are returned unchanged.
+    """
     return move_to_state(path, "selected", allow_move_from_corrected=allow_move_from_corrected)
 
 

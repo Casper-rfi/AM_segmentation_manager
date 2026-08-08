@@ -6,6 +6,7 @@ higher-level code works with dataclasses and merged dictionaries.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Dict
 import logging
 
@@ -26,3 +27,23 @@ def merge_metadata(base: Dict, override: Dict) -> Dict:
     merged.update(override)
     logger.debug("Merged metadata keys: %s", list(merged.keys()))
     return merged
+
+
+def parse_created_at(value: float | int | str | None) -> datetime | None:
+    """Convert an Autolamella ``created_at`` Unix timestamp to a datetime.
+
+    The *experiment.yaml* file stores creation time as a Unix timestamp
+    (e.g. ``1785231172.267575``).  This helper converts the value to a
+    timezone-aware UTC datetime.
+
+    Args:
+        value: Unix timestamp as a float, int, or numeric string.
+            Returns ``None`` when *value* is ``None`` or cannot be parsed.
+    """
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        logger.warning("Could not parse created_at timestamp: %r", value)
+        return None

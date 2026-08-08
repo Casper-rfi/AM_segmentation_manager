@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Iterable
 import logging
-from pathlib import Path
 
 from ..models import ImageRecord
 
@@ -35,6 +34,8 @@ def records_to_dataframe(records: Iterable[ImageRecord]):
             "stage": r.stage,
             "modality": r.modality,
             "selected": bool(r.selected),
+            "corrected": bool(r.corrected),
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
         })
 
     df = pd.DataFrame(rows)
