@@ -1,0 +1,7 @@
+metadata:
+    description: Description of the experiment
+    organisation: Organisation who acquired the data
+    project: Name of project
+    user: Name of of who acquired the data
+    sample: cell type or organism
+    lamella type: cells-on-grid/waffle/lift-out/other

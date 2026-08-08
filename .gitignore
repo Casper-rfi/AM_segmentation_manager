@@ -1,0 +1,59 @@
+# ==============================================================================
+# .gitignore for AM_segmentation_manager
+# ==============================================================================
+
+# --- Operating System Files ---
+# macOS system files (stores folder view options, metadata, icons)
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows system files
+Thumbs.db
+Desktop.ini
+
+# --- Large Datasets & Raw Experimental Data ---
+# Raw FIB/SEM images and segmentation data folders (authoritative data on disk)
+20260728_CB_AM_bitmap_overnight/
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.mrc
+
+# --- Agentic AI / Project Spec Scratch Files ---
+# Scratch files, prompt logs, instructions, and build files generated for local agentic dev
+implementation_suggestion.txt
+project_instructions.txt
+Makefile
+.agents/
+.gemini/
+
+# --- Python Build & Distribution Artifacts ---
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# --- Python Bytecode & Cache Directories ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Testing & Code Quality Caches ---
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
+env/

@@ -1,0 +1,14 @@
+name: am_segmentation_manager
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pyyaml
+  - pandas
+  - pytest
+  # optional image-processing dependencies (recommended for full functionality)
+  - numpy
+  - tifffile
+  - imagecodecs
+  - opencv
