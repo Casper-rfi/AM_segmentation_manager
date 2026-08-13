@@ -408,6 +408,7 @@ class CurationWindow(QMainWindow):
         self.image_panel.set_status(self._status_text())
 
         if self.controller.mode == "plot":
+            self._match_plot_size_to_pane()
             if frame.plot_path is None:
                 self.image_panel.show_plot(None)
             elif self.controller.cache.cached_plot(self.controller.frame_position) is None:
@@ -427,6 +428,20 @@ class CurationWindow(QMainWindow):
             self.image_panel.show_loading()
         else:
             self.image_panel.show_image(cached, self.controller.show_overlay)
+
+    def _match_plot_size_to_pane(self) -> None:
+        """Prepare plots at the size they are actually shown at.
+
+        A plot rendered larger than the pane is resampled again by the view,
+        which softens the small text in these figures. Telling the cache the
+        pane size keeps that second resample out of the way.
+        """
+        viewport = self.image_panel.plot_view.viewport().rect()
+        if viewport.isEmpty():
+            return
+        if self.controller.cache.set_plot_max_edge(max(viewport.width(), viewport.height())):
+            # The prepared plots were the wrong size and have been discarded.
+            self._schedule_loads()
 
     def _status_text(self) -> str:
         frame = self.controller.frame

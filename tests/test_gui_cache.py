@@ -337,3 +337,61 @@ def test_ensure_performs_the_requested_work():
     assert cache.cached_plot(1) is not None
     assert len(image_loader.calls) == 1
     assert len(plot_loader.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Plot sizing and whole-lamella preparation
+# ---------------------------------------------------------------------------
+
+def test_plot_size_change_discards_prepared_plots():
+    """A plot prepared at the wrong size would be resampled again by the view."""
+    cache, _, plot_loader = make_cache(3)
+    cache.plot_max_edge = 1600
+    cache.plot(0)
+    assert cache.cached_plot(0) is not None
+
+    assert cache.set_plot_max_edge(1070) is True
+    assert cache.cached_plot(0) is None
+
+
+def test_small_plot_size_changes_are_ignored():
+    """Dragging a window edge must not keep throwing the lamella away."""
+    cache, _, _ = make_cache(3)
+    cache.plot_max_edge = 1000
+    cache.plot(0)
+
+    assert cache.set_plot_max_edge(1050) is False
+    assert cache.cached_plot(0) is not None
+
+
+def test_plot_size_is_passed_to_the_real_loader(tmp_path):
+    import pytest
+
+    pytest.importorskip("cv2")
+    import cv2
+    import numpy as np
+
+    from am_segmentation_manager.frames import LamellaFrame
+
+    plot_path = tmp_path / "img_000_plot.png"
+    cv2.imwrite(str(plot_path), np.zeros((900, 1200, 3), dtype=np.uint8))
+
+    cache = FrameCache()
+    cache.set_frames([
+        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0,
+                     plot_path=plot_path)
+    ])
+    cache.set_plot_max_edge(600)
+
+    assert max(cache.plot(0).plot.shape[:2]) == 600
+
+
+def test_whole_lamella_of_plots_can_be_held():
+    """Holding an arrow key outruns any per-plot loading, so all are kept."""
+    cache, _, _ = make_cache(40)
+
+    for index in range(40):
+        cache.plot(index)
+
+    assert cache.cached_plot(0) is not None
+    assert cache.cached_plot(39) is not None

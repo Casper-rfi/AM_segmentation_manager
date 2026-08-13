@@ -562,3 +562,37 @@ def test_the_target_starts_on_the_modality_first_shown():
 
     assert controller.mode == "sem"
     assert controller.target == "SEM"
+
+
+# ---------------------------------------------------------------------------
+# Plot navigation keeps up
+# ---------------------------------------------------------------------------
+
+def test_plot_view_prepares_the_whole_lamella():
+    """Plots decode slower than a held-down arrow key, so all are prepared."""
+    controller = make_controller()
+    controller.set_mode("plot")
+
+    plot_requests = [r for r in controller.pending_loads() if r.modality is None]
+
+    assert len(plot_requests) == len(controller.frames)
+
+
+def test_plot_preparation_reaches_the_far_end_of_the_lamella():
+    controller = make_controller()
+    controller.set_mode("plot")
+    controller.select_frame(0)
+
+    indices = {r.frame_index for r in controller.pending_loads() if r.modality is None}
+
+    assert max(indices) == len(controller.frames) - 1
+
+
+def test_acquisitions_still_use_the_narrow_radius():
+    """Images are fast enough that preparing the neighbourhood is enough."""
+    controller = make_controller()
+    controller.set_mode("sem")
+
+    indices = {r.frame_index for r in controller.pending_loads(radius=1)}
+
+    assert indices == {0, 1}

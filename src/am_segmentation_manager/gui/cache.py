@@ -23,7 +23,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Generic, Iterable, Sequence, TypeVar
 
-from ..display import DisplayImage, prepare_display_image, prepare_plot
+from ..display import (
+    DEFAULT_PLOT_MAX_EDGE,
+    DisplayImage,
+    prepare_display_image,
+    prepare_plot,
+)
 from ..frames import LamellaFrame
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -39,14 +44,20 @@ V = TypeVar("V")
 #: neighbourhood of the current frame for an unusually long one.
 DEFAULT_IMAGE_LIMIT = 120
 
-#: Prepared plots to keep. Still several times more costly per entry than an
-#: image (~5 MB, ~200 ms), so bounded well below the image limit, but generous
-#: enough that moving back and forth through a lamella in the plot view does
-#: not keep re-reading the same figures.
-DEFAULT_PLOT_LIMIT = 16
+#: Prepared plots to keep. Large enough to hold a whole lamella: a plot takes
+#: ~200 ms to decode, which no amount of prefetching can hide from someone
+#: holding down an arrow key, so the only way to navigate plots smoothly is to
+#: have the whole lamella already in memory. At display size a plot is ~2.3 MB,
+#: so a typical 25-frame lamella costs ~60 MB.
+DEFAULT_PLOT_LIMIT = 64
 
 #: How far either side of the current frame to prepare ahead.
 DEFAULT_RADIUS = 3
+
+#: Radius used for plots while the plot view is on: the whole lamella. Plots
+#: are otherwise not prepared at all, so this costs nothing when they are not
+#: being looked at.
+PLOT_RADIUS = None
 
 #: Loads one acquisition and its label into display form.
 ImageLoader = Callable[[Path, "Path | None"], DisplayImage]
@@ -208,11 +219,39 @@ class FrameCache:
             plot_limit: Maximum prepared plots to keep.
         """
         self._load_image: ImageLoader = load_image or prepare_display_image
-        self._load_plot: PlotLoader = load_plot or prepare_plot
+        self._load_plot: PlotLoader = load_plot or self._prepare_plot_at_display_size
+        self.plot_max_edge = DEFAULT_PLOT_MAX_EDGE
         self._frames: tuple[LamellaFrame, ...] = ()
         self._images: BoundedCache[tuple[int, str], FrameImage] = BoundedCache(image_limit)
         self._plots: BoundedCache[int, FramePlot] = BoundedCache(plot_limit)
         self._generation = 0
+
+    def _prepare_plot_at_display_size(self, path: Path) -> "np.ndarray":
+        """Read a plot at whatever size it is currently being displayed."""
+        return prepare_plot(path, max_edge=self.plot_max_edge)
+
+    def set_plot_max_edge(self, max_edge: int, *, tolerance: float = 0.2) -> bool:
+        """Set the size plots are prepared at, discarding any prepared larger.
+
+        A plot rendered at a different size than it is shown at has to be
+        resampled a second time by the view, which softens small text. Tracking
+        the display size keeps that second resample out of the picture.
+
+        Changes smaller than *tolerance* are ignored, so that dragging a window
+        edge does not throw away the whole lamella repeatedly.
+
+        Returns:
+            Whether the size changed and prepared plots were discarded.
+        """
+        if max_edge <= 0:
+            return False
+        change = abs(max_edge - self.plot_max_edge) / self.plot_max_edge
+        if change < tolerance:
+            return False
+        logger.debug("Plot display size %d -> %d", self.plot_max_edge, max_edge)
+        self.plot_max_edge = max_edge
+        self._plots.clear()
+        return True
 
     @property
     def frames(self) -> tuple[LamellaFrame, ...]:

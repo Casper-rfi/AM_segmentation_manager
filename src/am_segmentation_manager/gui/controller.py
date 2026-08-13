@@ -19,7 +19,14 @@ from ..frames import LamellaFrame, build_lamella_frames
 from ..models import Lamella, Project
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
-from .cache import DEFAULT_RADIUS, FrameCache, FrameImage, FramePlot, LoadRequest
+from .cache import (
+    DEFAULT_RADIUS,
+    PLOT_RADIUS,
+    FrameCache,
+    FrameImage,
+    FramePlot,
+    LoadRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -255,11 +262,16 @@ class CurationController:
         """
         modality = MODE_MODALITIES.get(self.mode)
         ordered = [modality, *(m for m in ("SEM", "FIB") if m != modality)] if modality else ["SEM", "FIB"]
+        showing_plots = self.mode == "plot"
         return self.cache.pending(
             self._frame_position,
             [m for m in ordered if m is not None],
-            radius=radius,
-            include_plots=self.mode == "plot",
+            # A plot takes ~200 ms to decode, which is slower than a held-down
+            # arrow key. Preparing only the immediate neighbours guarantees the
+            # user outruns the loader, so in the plot view the whole lamella is
+            # prepared instead, working outwards from where they are.
+            radius=PLOT_RADIUS if showing_plots else radius,
+            include_plots=showing_plots,
         )
 
     # -- workflow state ----------------------------------------------------

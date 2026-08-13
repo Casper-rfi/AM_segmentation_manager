@@ -426,3 +426,64 @@ def test_default_max_edge_is_applied(tmp_path):
     prepared = prepare_display_image(image_path)
 
     assert max(prepared.image.shape) == DEFAULT_MAX_EDGE
+
+
+# ---------------------------------------------------------------------------
+# Detail-preserving downscaling (used for rendered figures)
+# ---------------------------------------------------------------------------
+
+def _fine_detail_image(size: int = 800) -> "np.ndarray":
+    """A high-contrast pattern standing in for small rendered text."""
+    image = np.full((size, size), 255, dtype=np.uint8)
+    image[:, ::4] = 0
+    image[::4, :] = 0
+    return image
+
+
+def test_downscale_for_detail_hits_the_target_size():
+    from am_segmentation_manager.display import downscale_for_detail
+
+    result = downscale_for_detail(np.zeros((3000, 4500, 3), dtype=np.uint8), 1070)
+
+    assert max(result.shape[:2]) == 1070
+    assert result.shape[2] == 3
+
+
+def test_downscale_for_detail_never_upscales():
+    from am_segmentation_manager.display import downscale_for_detail
+
+    small = np.zeros((100, 200), dtype=np.uint8)
+
+    assert downscale_for_detail(small, 1070) is small
+
+
+def test_downscale_for_detail_keeps_more_contrast_than_area_averaging():
+    """Area averaging is correct but soft; figures need the detail kept."""
+    from am_segmentation_manager.display import downscale_for_detail
+
+    source = _fine_detail_image()
+    detailed = downscale_for_detail(source, 200)
+    averaged = downscale_to_fit(source, 200)
+
+    assert detailed.std() > averaged.std()
+
+
+def test_small_reductions_use_a_single_pass():
+    """Below a factor of two there is nothing for the second pass to improve."""
+    from am_segmentation_manager.display import downscale_for_detail
+
+    source = _fine_detail_image(300)
+
+    assert np.array_equal(
+        downscale_for_detail(source, 250), downscale_to_fit(source, 250)
+    )
+
+
+def test_prepare_plot_honours_the_requested_size(tmp_path):
+    import cv2
+
+    plot_path = tmp_path / "plot.png"
+    cv2.imwrite(str(plot_path), np.zeros((1500, 2250, 3), dtype=np.uint8))
+
+    assert max(prepare_plot(plot_path, max_edge=1070).shape[:2]) == 1070
+    assert max(prepare_plot(plot_path, max_edge=600).shape[:2]) == 600

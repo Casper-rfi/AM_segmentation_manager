@@ -169,6 +169,38 @@ def downscale_to_fit(
     return cv2.resize(array, target, interpolation=interpolation)
 
 
+def downscale_for_detail(array: "np.ndarray", max_edge: int) -> "np.ndarray":
+    """Reduce *array* preserving fine detail such as rendered text.
+
+    Plain area averaging is correct but soft, which is fine for photographic
+    data and poor for the axis labels and annotations in a rendered figure.
+    This decimates most of the way with area averaging -- which is what stops
+    the result aliasing -- and takes the last factor of two with a sharp
+    filter, giving noticeably crisper small text at a modest extra cost.
+
+    Used for summary plots. Acquisitions keep plain area averaging: a sharp
+    filter can ring around hard edges, and inventing halos in scientific image
+    data to make it look crisper is not a trade worth making.
+    """
+    import cv2
+
+    height, width = array.shape[:2]
+    longest = max(height, width)
+    if max_edge <= 0 or longest <= max_edge:
+        return array
+
+    scale = max_edge / longest
+    target = (max(1, round(width * scale)), max(1, round(height * scale)))
+
+    # Only worth two passes when there is a real reduction to make.
+    if scale > 0.5:
+        return cv2.resize(array, target, interpolation=cv2.INTER_AREA)
+
+    intermediate = (min(width, target[0] * 2), min(height, target[1] * 2))
+    reduced = cv2.resize(array, intermediate, interpolation=cv2.INTER_AREA)
+    return cv2.resize(reduced, target, interpolation=cv2.INTER_LANCZOS4)
+
+
 def resize_label_to(label: "np.ndarray", shape: tuple[int, ...]) -> "np.ndarray":
     """Resample a label array to *shape* using nearest-neighbour.
 
@@ -390,6 +422,12 @@ def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "
     so the alpha channel carries nothing, and compositing it away afterwards
     cost more than the decode itself -- see :func:`read_color_array`.
 
+    *max_edge* should be the size the plot will actually be displayed at.
+    Rendering larger and letting the view shrink it means resampling twice,
+    the second time with the view's own filter, which visibly softens small
+    text. Rendering at display size resamples once, with a filter chosen for
+    the job -- see :func:`downscale_for_detail`.
+
     Args:
         plot_path: The plot PNG to read.
         max_edge: Longest edge to reduce the plot to.
@@ -403,4 +441,4 @@ def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "
         OSError: If the plot exists but cannot be decoded.
     """
     require_image_stack("Displaying plots")
-    return downscale_to_fit(to_rgb(read_color_array(plot_path)), max_edge)
+    return downscale_for_detail(to_rgb(read_color_array(plot_path)), max_edge)

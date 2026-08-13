@@ -75,7 +75,10 @@ def project(tmp_path: Path) -> Path:
             label[:20] = 2
             tifffile.imwrite(str(_ensure(stage / "labels" / f"{lamella}_AP_img_{number:03d}_SEM.tif")), label)
 
-            plot = np.full((40, 60, 3), 200, dtype=np.uint8)
+            # Larger than any test pane, as the real 3000x4500 figures are:
+            # a plot smaller than the pane would be scaled *up* for display,
+            # which exercises the opposite path from the one that matters.
+            plot = np.full((1400, 2100, 3), 200, dtype=np.uint8)
             cv2.imwrite(str(_ensure(stage / "plots" / f"{lamella}_AP_img_{number:03d}_plot.png")), plot)
     return root
 
@@ -507,3 +510,43 @@ def test_frame_scope_is_not_confirmed(window, monkeypatch):
     window.apply_state("deselected")
 
     assert window.controller.combined_state() == "deselected"
+
+
+# ---------------------------------------------------------------------------
+# Plots are prepared at the size they are shown at
+# ---------------------------------------------------------------------------
+
+def test_plot_view_sets_the_cache_to_the_pane_size(qt_app, window):
+    window._set_mode("plot")
+    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+
+    pane = window.image_panel.plot_view.viewport().rect()
+    assert window.controller.cache.plot_max_edge == max(pane.width(), pane.height())
+
+
+def test_plot_is_not_resampled_again_by_the_view(qt_app, window):
+    """The whole point of matching the pane: the view scales by about 1.0."""
+    window._set_mode("plot")
+    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+
+    assert window.image_panel.plot_view.transform().m11() == pytest.approx(1.0, abs=0.05)
+
+
+def test_stepping_through_plots_finds_them_ready(qt_app, window):
+    """The behaviour that was stuttering: holding an arrow key through plots."""
+    window._set_mode("plot")
+    _settle(
+        qt_app,
+        lambda: all(
+            window.controller.cache.cached_plot(i) is not None
+            for i in range(len(window.controller.frames))
+        ),
+    )
+
+    missing = 0
+    for _ in range(len(window.controller.frames) - 1):
+        window._step_frame(1)
+        if window.controller.cache.cached_plot(window.controller.frame_position) is None:
+            missing += 1
+
+    assert missing == 0

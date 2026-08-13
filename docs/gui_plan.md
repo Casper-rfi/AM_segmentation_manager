@@ -833,3 +833,67 @@ breakdown by modality before proceeding.
 
 Scopes read records straight from the scanned stages rather than building
 frames, since the frame grouping only matters for display.
+
+---
+
+## 15. Plot navigation and plot sharpness
+
+Compared against a separate single-purpose tkinter viewer
+(`20260813_Adaptive_Polishing_viewer/adaptive_polishing_viewer.py`) that shows
+the same plots without either problem.
+
+### Stutter when stepping quickly
+
+*Cause:* plots were prepared with the same narrow prefetch used for
+acquisitions -- the current frame plus three either side. A plot takes ~200 ms
+to decode, and a held-down arrow key repeats far faster than that, so the user
+simply outran the seven-frame window and kept arriving at frames that had not
+been prepared.
+
+The tkinter viewer does not have this problem because it does something
+simpler: on selecting a lamella it decodes **every** plot in that lamella into
+memory, once, in a background thread. After that, navigation is a dictionary
+lookup.
+
+*Fix:* the same approach, ordered better. In the plot view the whole lamella is
+now prepared, working outwards from the current frame, and the plot cache is
+large enough to hold it (64 entries). Plots are still not prepared at all
+unless the plot view is on, so this costs nothing the rest of the time.
+
+No amount of prefetching *radius* could have fixed this. At 200 ms a plot, the
+only way to be ready for a key held down at 30 ms intervals is to have the data
+already in memory.
+
+Measured after the change: all 25 plots of a lamella prepared in the
+background, then 24 rapid steps with no waiting at all, in 79 ms total.
+
+### Blurred text and plots
+
+*Cause:* two lossy resamples, where the tkinter viewer does one.
+
+1. Plots were prepared at a fixed 1600 px long edge, then the graphics view
+   scaled that again to fit the pane -- about 0.67x, with the view's own
+   bilinear filter. Bilinear downscaling samples 2x2 pixels and is a poor
+   choice for small text.
+2. Even the first step used plain area averaging, which is correct but soft.
+   The tkinter viewer uses PIL's LANCZOS, which is properly antialiased *and*
+   sharp.
+
+*Fix, both parts:*
+
+* Plots are prepared at the size they are actually displayed at. The cache is
+  told the pane's dimensions, and re-prepares if they change by more than 20%
+  -- enough to ignore a window being dragged. The view now scales by 0.996
+  instead of 0.667, so the second resample is gone.
+* `downscale_for_detail` decimates most of the way with area averaging (which
+  is what prevents aliasing) and takes the final factor of two with a sharp
+  filter, approximating what PIL's LANCZOS does in one step. It costs ~19 ms
+  more per plot.
+
+Acquisitions deliberately keep plain area averaging. A sharp filter can ring
+around hard edges, and adding halos to scientific image data to make it look
+crisper is not a trade worth making. The change is confined to rendered
+figures, where the detail being preserved is text.
+
+A side benefit: at pane size a prepared plot is 2.3 MB rather than 5.1 MB,
+which is what makes holding a whole lamella of them reasonable.
