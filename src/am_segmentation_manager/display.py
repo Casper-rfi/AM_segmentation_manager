@@ -169,6 +169,29 @@ def downscale_to_fit(
     return cv2.resize(array, target, interpolation=interpolation)
 
 
+def fit_within(array: "np.ndarray", size: tuple[int, int]) -> "np.ndarray":
+    """Reduce *array* to fit inside ``(width, height)``, preserving detail.
+
+    Fitting a box rather than a single edge matters when the result is to be
+    shown without any further scaling: constraining only the longer edge can
+    still leave the other one overflowing a pane that is not the same shape.
+
+    Never upscales -- enlarging cannot add detail, and a viewer showing the
+    result larger than life is better off doing that itself.
+    """
+    max_width, max_height = size
+    height, width = array.shape[:2]
+    if max_width <= 0 or max_height <= 0:
+        return array
+
+    scale = min(max_width / width, max_height / height)
+    if scale >= 1.0:
+        return array
+    return _resize_preserving_detail(
+        array, max(1, round(width * scale)), max(1, round(height * scale))
+    )
+
+
 def downscale_for_detail(array: "np.ndarray", max_edge: int) -> "np.ndarray":
     """Reduce *array* preserving fine detail such as rendered text.
 
@@ -182,23 +205,37 @@ def downscale_for_detail(array: "np.ndarray", max_edge: int) -> "np.ndarray":
     filter can ring around hard edges, and inventing halos in scientific image
     data to make it look crisper is not a trade worth making.
     """
-    import cv2
-
     height, width = array.shape[:2]
     longest = max(height, width)
     if max_edge <= 0 or longest <= max_edge:
         return array
 
     scale = max_edge / longest
-    target = (max(1, round(width * scale)), max(1, round(height * scale)))
+    return _resize_preserving_detail(
+        array, max(1, round(width * scale)), max(1, round(height * scale))
+    )
+
+
+def _resize_preserving_detail(
+    array: "np.ndarray", target_width: int, target_height: int
+) -> "np.ndarray":
+    """Resize to an exact size, keeping fine detail as sharp as possible."""
+    import cv2
+
+    height, width = array.shape[:2]
+    scale = min(target_width / width, target_height / height)
 
     # Only worth two passes when there is a real reduction to make.
     if scale > 0.5:
-        return cv2.resize(array, target, interpolation=cv2.INTER_AREA)
+        return cv2.resize(
+            array, (target_width, target_height), interpolation=cv2.INTER_AREA
+        )
 
-    intermediate = (min(width, target[0] * 2), min(height, target[1] * 2))
+    intermediate = (min(width, target_width * 2), min(height, target_height * 2))
     reduced = cv2.resize(array, intermediate, interpolation=cv2.INTER_AREA)
-    return cv2.resize(reduced, target, interpolation=cv2.INTER_LANCZOS4)
+    return cv2.resize(
+        reduced, (target_width, target_height), interpolation=cv2.INTER_LANCZOS4
+    )
 
 
 def resize_label_to(label: "np.ndarray", shape: tuple[int, ...]) -> "np.ndarray":
@@ -411,7 +448,11 @@ def prepare_display_image(
     )
 
 
-def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "np.ndarray":
+def prepare_plot(
+    plot_path: Path,
+    *,
+    max_size: tuple[int, int] = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE),
+) -> "np.ndarray":
     """Read a summary plot as an RGB array, reduced to display size.
 
     Plots are rendered at high resolution (several thousand pixels across) and
@@ -422,15 +463,20 @@ def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "
     so the alpha channel carries nothing, and compositing it away afterwards
     cost more than the decode itself -- see :func:`read_color_array`.
 
-    *max_edge* should be the size the plot will actually be displayed at.
-    Rendering larger and letting the view shrink it means resampling twice,
-    the second time with the view's own filter, which visibly softens small
-    text. Rendering at display size resamples once, with a filter chosen for
-    the job -- see :func:`downscale_for_detail`.
+    *max_size* should be the size in **physical screen pixels** that the plot
+    will occupy. Two things follow from getting this right, and both matter for
+    small text:
+
+    * Rendering larger and letting the view shrink it resamples twice, the
+      second time with the view's own filter. Rendering at display size
+      resamples once, with a filter chosen for the job.
+    * On a high-resolution display one logical pixel is two physical ones, so a
+      plot prepared to the pane's *logical* size is then magnified to fill it.
+      Passing physical pixels is what avoids that.
 
     Args:
         plot_path: The plot PNG to read.
-        max_edge: Longest edge to reduce the plot to.
+        max_size: ``(width, height)`` in physical pixels to fit within.
 
     Returns:
         An ``(H, W, 3)`` uint8 RGB array.
@@ -441,4 +487,4 @@ def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "
         OSError: If the plot exists but cannot be decoded.
     """
     require_image_stack("Displaying plots")
-    return downscale_for_detail(to_rgb(read_color_array(plot_path)), max_edge)
+    return fit_within(to_rgb(read_color_array(plot_path)), max_size)

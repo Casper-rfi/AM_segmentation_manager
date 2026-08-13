@@ -520,8 +520,12 @@ def test_plot_view_sets_the_cache_to_the_pane_size(qt_app, window):
     window._set_mode("plot")
     _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
 
-    pane = window.image_panel.plot_view.viewport().rect()
-    assert window.controller.cache.plot_max_edge == max(pane.width(), pane.height())
+    view = window.image_panel.plot_view
+    pane = view.viewport().rect()
+    ratio = view.devicePixelRatioF()
+    assert window.controller.cache.plot_max_size == (
+        round(pane.width() * ratio), round(pane.height() * ratio),
+    )
 
 
 def test_plot_is_not_resampled_again_by_the_view(qt_app, window):

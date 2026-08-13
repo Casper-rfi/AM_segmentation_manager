@@ -897,3 +897,70 @@ figures, where the detail being preserved is text.
 
 A side benefit: at pane size a prepared plot is 2.3 MB rather than 5.1 MB,
 which is what makes holding a whole lamella of them reasonable.
+
+---
+
+## 16. Removing the last resampling of the plots
+
+Plots were still softer than the same PNGs in the tkinter viewer after §15.
+Comparing the two pipelines end to end found two remaining resamples, neither
+of which was needed.
+
+### The display is not one pixel per pixel
+
+**This was the dominant cause.** Qt reports widget sizes in *logical* pixels.
+On a high-resolution display one logical pixel is two physical ones, so the
+plot pane measured 1068 logical pixels and occupied 2136 real ones. §15
+prepared plots to the logical size, and the display then **magnified them 2x**
+to fill the pane.
+
+That is a 2x upscale of an already-downsampled image, and no choice of
+downsampling filter can recover from it. It also explains why the problem
+looked worse on the 4K monitor than on the 1080p one.
+
+*Fix:* the pane size is now reported in physical pixels
+(`viewport * devicePixelRatioF()`), plots are prepared at that size, and the
+pixmap is tagged with the same device pixel ratio so Qt maps it one array pixel
+to one physical pixel.
+
+Measured: on a 2x display the plot is now prepared at 2136x1424 rather than
+1068x712 -- four times the pixels, all of them real.
+
+### A 0.996 scale is still a full resample
+
+The view was fitting the plot to the pane, which produced a scale of 0.9963
+rather than 1.0: `fitInView` leaves a small margin for the frame. Any transform
+that is not the identity makes Qt filter every pixel, so being *almost* right
+cost as much as being wrong.
+
+*Fix:* plots are prepared to fit the pane in both dimensions
+(:func:`fit_within`, rather than a single long edge, which could still overflow
+a differently shaped pane), and the view is then set to the identity transform
+instead of fitting. Qt blits rather than resamples. Zoom still works, and is
+preserved between frames as before.
+
+The net effect is that a plot is now resampled exactly **once**, from the
+original PNG straight to the number of physical pixels it will occupy -- which
+is what the tkinter viewer does in its single `thumbnail()` call.
+
+### Memory
+
+Preparing at physical resolution costs four times as much on a 2x display:
+9.1 MB a plot rather than 2.3 MB. The plot cache limit is therefore derived
+from a memory budget instead of being a fixed count, so a normal lamella stays
+entirely cached either way -- 64 entries at 1x, 31 at 2x, ~230 MB in both
+cases.
+
+### Remaining
+
+The sharp final filter from §15 is still in use, but it now has much less to
+do: at native resolution the reduction from a 4500 px source to a 2136 px pane
+is a factor of two rather than four. If the two-stage filter is ever
+unwanted, plots would still be markedly better than before this section
+purely from the two fixes above.
+
+Acquisitions are still prepared to a fixed 1024 px and fitted to their panes,
+so they are resampled twice as plots used to be. That is far less noticeable on
+photographic data than on rendered text, and it is what allows the two panes to
+share a zoom. Worth revisiting only if image sharpness is ever raised as a
+problem in its own right.

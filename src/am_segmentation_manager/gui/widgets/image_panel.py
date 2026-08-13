@@ -193,7 +193,13 @@ class ImagePanel(QWidget):
             self.plot_view.clear()
             self._set_badges([(f"could not read plot: {frame_plot.error}", "error")])
             return
-        self.plot_view.set_array(frame_plot.plot)
+        # Prepared to the pane's physical pixel size, so show it one pixel per
+        # physical pixel rather than letting the view rescale it.
+        self.plot_view.set_array(
+            frame_plot.plot,
+            device_pixel_ratio=self.plot_view.devicePixelRatioF(),
+            native=True,
+        )
         self._set_badges([])
 
     def show_loading(self) -> None:

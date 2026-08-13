@@ -1,14 +1,16 @@
 """Display data held in memory for the lamella currently being reviewed.
 
-Reading an acquisition from disk takes ~200 ms cold, and a summary plot ~575 ms,
-so navigating a lamella is only smooth if frames are already in memory by the
-time they are asked for. This module holds what has been prepared and decides
-what to prepare next; it does not know how work is scheduled, so the same object
-serves synchronous tests and a background worker thread.
+Reading an acquisition from disk takes ~200 ms cold and a summary plot about
+the same, so navigating a lamella is only smooth if frames are already in memory
+by the time they are asked for. This module holds what has been prepared and
+decides what to prepare next; it does not know how work is scheduled, so the
+same object serves synchronous tests and a background worker thread.
 
-Sizing follows measurements on real data: a prepared acquisition and its label
-cost ~1.4 MB, so a lamella's images fit comfortably in memory, while a prepared
-plot costs ~5 MB and only a few are worth keeping.
+Sizing follows measurements on real data. A prepared acquisition and its label
+cost ~1.4 MB, so a lamella's images fit comfortably in memory. Plots are
+prepared at the display's physical resolution -- which is what keeps their text
+crisp -- so they cost between 2.3 MB and 9 MB each depending on the screen, and
+their limit is derived from a memory budget rather than fixed.
 
 Loading is delegated to injected callables. Tests supply fakes and never touch
 the filesystem; the GUI supplies the real readers from
@@ -44,11 +46,11 @@ V = TypeVar("V")
 #: neighbourhood of the current frame for an unusually long one.
 DEFAULT_IMAGE_LIMIT = 120
 
-#: Prepared plots to keep. Large enough to hold a whole lamella: a plot takes
-#: ~200 ms to decode, which no amount of prefetching can hide from someone
-#: holding down an arrow key, so the only way to navigate plots smoothly is to
-#: have the whole lamella already in memory. At display size a plot is ~2.3 MB,
-#: so a typical 25-frame lamella costs ~60 MB.
+#: Starting number of prepared plots to keep, before a display size is known.
+#: Large enough to hold a whole lamella: a plot takes ~200 ms to decode, which
+#: no amount of prefetching can hide from someone holding down an arrow key, so
+#: the only way to navigate plots smoothly is to have the lamella already in
+#: memory. Replaced by :func:`_plot_limit_for` once the pane size is known.
 DEFAULT_PLOT_LIMIT = 64
 
 #: How far either side of the current frame to prepare ahead.
@@ -58,6 +60,17 @@ DEFAULT_RADIUS = 3
 #: are otherwise not prepared at all, so this costs nothing when they are not
 #: being looked at.
 PLOT_RADIUS = None
+
+#: Roughly how much memory prepared plots may occupy. A plot is prepared at the
+#: display's physical resolution, so its cost varies fourfold between a normal
+#: and a high-resolution screen; the entry limit is derived from this budget
+#: rather than fixed, so a typical lamella stays cached on either.
+PLOT_MEMORY_BUDGET_BYTES = 320 * 1024 * 1024
+
+#: Bounds on the derived plot limit: enough to navigate comfortably at the
+#: bottom, and never so many that an unusually long lamella exhausts memory.
+MIN_PLOT_LIMIT = 8
+MAX_PLOT_LIMIT = 64
 
 #: Loads one acquisition and its label into display form.
 ImageLoader = Callable[[Path, "Path | None"], DisplayImage]
@@ -164,6 +177,19 @@ class BoundedCache(Generic[K, V]):
             return len(self._entries)
 
 
+def _plot_limit_for(width: int, height: int) -> int:
+    """Return how many plots of this size fit within the memory budget.
+
+    Prepared plots are three bytes a pixel, and their size follows the screen:
+    the same pane costs four times as much on a high-resolution display. A
+    fixed entry count would therefore mean either wasting memory on an ordinary
+    screen or exhausting it on a good one.
+    """
+    per_plot = max(1, width * height * 3)
+    limit = PLOT_MEMORY_BUDGET_BYTES // per_plot
+    return int(max(MIN_PLOT_LIMIT, min(limit, MAX_PLOT_LIMIT)))
+
+
 def prefetch_order(current: int, total: int, radius: int | None = None) -> list[int]:
     """Return frame indices to prepare, nearest to *current* first.
 
@@ -220,7 +246,7 @@ class FrameCache:
         """
         self._load_image: ImageLoader = load_image or prepare_display_image
         self._load_plot: PlotLoader = load_plot or self._prepare_plot_at_display_size
-        self.plot_max_edge = DEFAULT_PLOT_MAX_EDGE
+        self.plot_max_size = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE)
         self._frames: tuple[LamellaFrame, ...] = ()
         self._images: BoundedCache[tuple[int, str], FrameImage] = BoundedCache(image_limit)
         self._plots: BoundedCache[int, FramePlot] = BoundedCache(plot_limit)
@@ -228,28 +254,34 @@ class FrameCache:
 
     def _prepare_plot_at_display_size(self, path: Path) -> "np.ndarray":
         """Read a plot at whatever size it is currently being displayed."""
-        return prepare_plot(path, max_edge=self.plot_max_edge)
+        return prepare_plot(path, max_size=self.plot_max_size)
 
-    def set_plot_max_edge(self, max_edge: int, *, tolerance: float = 0.2) -> bool:
-        """Set the size plots are prepared at, discarding any prepared larger.
+    def set_plot_max_size(self, size: tuple[int, int], *, tolerance: float = 0.2) -> bool:
+        """Set the size plots are prepared at, discarding any prepared otherwise.
 
-        A plot rendered at a different size than it is shown at has to be
-        resampled a second time by the view, which softens small text. Tracking
-        the display size keeps that second resample out of the picture.
+        *size* is in physical screen pixels. A plot prepared at any other size
+        has to be resampled again when it is drawn, which softens the small text
+        these figures are full of.
 
         Changes smaller than *tolerance* are ignored, so that dragging a window
-        edge does not throw away the whole lamella repeatedly.
+        edge does not throw the whole lamella away repeatedly.
 
         Returns:
             Whether the size changed and prepared plots were discarded.
         """
-        if max_edge <= 0:
+        width, height = size
+        if width <= 0 or height <= 0:
             return False
-        change = abs(max_edge - self.plot_max_edge) / self.plot_max_edge
+        current_width, current_height = self.plot_max_size
+        change = max(
+            abs(width - current_width) / current_width,
+            abs(height - current_height) / current_height,
+        )
         if change < tolerance:
             return False
-        logger.debug("Plot display size %d -> %d", self.plot_max_edge, max_edge)
-        self.plot_max_edge = max_edge
+        logger.debug("Plot display size %s -> %s", self.plot_max_size, size)
+        self.plot_max_size = (width, height)
+        self._plots.max_entries = _plot_limit_for(width, height)
         self._plots.clear()
         return True
 

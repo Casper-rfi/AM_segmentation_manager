@@ -346,21 +346,21 @@ def test_ensure_performs_the_requested_work():
 def test_plot_size_change_discards_prepared_plots():
     """A plot prepared at the wrong size would be resampled again by the view."""
     cache, _, plot_loader = make_cache(3)
-    cache.plot_max_edge = 1600
+    cache.plot_max_size = (1600, 1600)
     cache.plot(0)
     assert cache.cached_plot(0) is not None
 
-    assert cache.set_plot_max_edge(1070) is True
+    assert cache.set_plot_max_size((1070, 800)) is True
     assert cache.cached_plot(0) is None
 
 
 def test_small_plot_size_changes_are_ignored():
     """Dragging a window edge must not keep throwing the lamella away."""
     cache, _, _ = make_cache(3)
-    cache.plot_max_edge = 1000
+    cache.plot_max_size = (1000, 1000)
     cache.plot(0)
 
-    assert cache.set_plot_max_edge(1050) is False
+    assert cache.set_plot_max_size((1050, 1020)) is False
     assert cache.cached_plot(0) is not None
 
 
@@ -381,7 +381,7 @@ def test_plot_size_is_passed_to_the_real_loader(tmp_path):
         LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0,
                      plot_path=plot_path)
     ])
-    cache.set_plot_max_edge(600)
+    cache.set_plot_max_size((600, 600))
 
     assert max(cache.plot(0).plot.shape[:2]) == 600
 
@@ -395,3 +395,34 @@ def test_whole_lamella_of_plots_can_be_held():
 
     assert cache.cached_plot(0) is not None
     assert cache.cached_plot(39) is not None
+
+
+def test_plot_limit_follows_the_memory_budget():
+    """A plot costs four times as much on a high-resolution display."""
+    from am_segmentation_manager.gui.cache import (
+        MAX_PLOT_LIMIT,
+        MIN_PLOT_LIMIT,
+        _plot_limit_for,
+    )
+
+    ordinary = _plot_limit_for(1068, 836)
+    high_resolution = _plot_limit_for(2136, 1672)
+
+    assert high_resolution < ordinary
+    # Still enough to hold a normal lamella at either resolution.
+    assert high_resolution >= 25
+    assert MIN_PLOT_LIMIT <= high_resolution <= MAX_PLOT_LIMIT
+
+
+def test_plot_limit_is_applied_when_the_size_changes():
+    cache, _, _ = make_cache(3)
+
+    cache.set_plot_max_size((2136, 1672))
+
+    assert cache._plots.max_entries == _plot_limit()
+
+
+def _plot_limit():
+    from am_segmentation_manager.gui.cache import _plot_limit_for
+
+    return _plot_limit_for(2136, 1672)

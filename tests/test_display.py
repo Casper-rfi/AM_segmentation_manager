@@ -485,5 +485,34 @@ def test_prepare_plot_honours_the_requested_size(tmp_path):
     plot_path = tmp_path / "plot.png"
     cv2.imwrite(str(plot_path), np.zeros((1500, 2250, 3), dtype=np.uint8))
 
-    assert max(prepare_plot(plot_path, max_edge=1070).shape[:2]) == 1070
-    assert max(prepare_plot(plot_path, max_edge=600).shape[:2]) == 600
+    assert prepare_plot(plot_path, max_size=(1070, 1070)).shape[:2] == (713, 1070)
+    assert prepare_plot(plot_path, max_size=(600, 600)).shape[:2] == (400, 600)
+
+
+def test_prepare_plot_fits_both_dimensions_of_the_box(tmp_path):
+    """Constraining only the long edge can still overflow a differently
+    shaped pane, which would force the view to rescale it again."""
+    import cv2
+
+    plot_path = tmp_path / "plot.png"
+    cv2.imwrite(str(plot_path), np.zeros((1500, 2250, 3), dtype=np.uint8))
+
+    result = prepare_plot(plot_path, max_size=(1000, 400))
+
+    assert result.shape[0] <= 400 and result.shape[1] <= 1000
+
+
+def test_fit_within_never_upscales():
+    from am_segmentation_manager.display import fit_within
+
+    small = np.zeros((50, 80, 3), dtype=np.uint8)
+
+    assert fit_within(small, (1000, 1000)) is small
+
+
+def test_fit_within_uses_the_limiting_dimension():
+    from am_segmentation_manager.display import fit_within
+
+    array = np.zeros((1000, 1000, 3), dtype=np.uint8)
+
+    assert fit_within(array, (500, 200)).shape[:2] == (200, 200)

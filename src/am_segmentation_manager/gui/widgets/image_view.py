@@ -75,19 +75,44 @@ class ImageView(QGraphicsView):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._shape: tuple[int, int] | None = None
 
-    def set_array(self, array: "np.ndarray") -> None:
+    def set_array(
+        self,
+        array: "np.ndarray",
+        *,
+        device_pixel_ratio: float = 1.0,
+        native: bool = False,
+    ) -> None:
         """Show *array*, fitting the view when the image dimensions change.
 
         The zoom is otherwise kept, so stepping through a lamella holds position
         on the same region instead of resetting on every frame.
+
+        Args:
+            array: The image to show.
+            device_pixel_ratio: How many physical pixels the array has per
+                logical pixel. Telling Qt this stops it magnifying an array
+                that was already prepared at the screen's real resolution.
+            native: Show at exactly one array pixel per physical pixel instead
+                of scaling to fit. Only correct when the array was prepared to
+                fit the pane; it is what removes the last resampling step for
+                content whose sharpness matters, such as rendered text.
         """
         shape = array.shape[:2]
         pixmap = QPixmap.fromImage(to_qimage(array))
+        if device_pixel_ratio and device_pixel_ratio != 1.0:
+            pixmap.setDevicePixelRatio(device_pixel_ratio)
         self._item.setPixmap(pixmap)
         self._scene.setSceneRect(self._item.boundingRect())
         if shape != self._shape:
             self._shape = shape
-            self.fit()
+            if native:
+                # An identity transform means Qt blits the pixmap rather than
+                # resampling it; any other scale, even 0.996, filters every
+                # pixel.
+                self.resetTransform()
+                self.zoomed.emit()
+            else:
+                self.fit()
 
     def clear(self) -> None:
         """Show nothing."""
