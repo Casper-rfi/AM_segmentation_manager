@@ -51,6 +51,8 @@ class StatePanel(QWidget):
     editing_toggled = Signal(bool)
     #: Emitted with the new edit target: 'SEM', 'FIB' or 'both'.
     target_changed = Signal(str)
+    #: Emitted with the new edit scope: 'frame', 'lamella' or 'project'.
+    scope_changed = Signal(str)
     #: Emitted with the state the user asked for.
     state_requested = Signal(str)
 
@@ -91,8 +93,33 @@ class StatePanel(QWidget):
             target_group.addButton(button)
             target_layout.addWidget(button)
             self.target_buttons[target] = button
-        self.target_buttons["both"].setChecked(True)
+        self.target_buttons["SEM"].setChecked(True)
         layout.addWidget(self.target_box)
+
+        # -- scope ---------------------------------------------------------
+        self.scope_box = QGroupBox("Across")
+        scope_layout = QVBoxLayout(self.scope_box)
+        self.scope_box.setToolTip(
+            "How many images a state change covers. Anything wider than the "
+            "current frame is confirmed before any file is moved."
+        )
+        self.scope_buttons: dict[str, QRadioButton] = {}
+        scope_group = QButtonGroup(self)
+        for scope, caption, hint in (
+            ("frame", "This frame", "Only the frame on screen"),
+            ("lamella", "This lamella", "Every frame of the current lamella"),
+            ("project", "This project", "Every frame of every lamella in the project"),
+        ):
+            button = QRadioButton(caption)
+            button.setToolTip(hint)
+            button.toggled.connect(
+                lambda checked, s=scope: checked and self.scope_changed.emit(s)
+            )
+            scope_group.addButton(button)
+            scope_layout.addWidget(button)
+            self.scope_buttons[scope] = button
+        self.scope_buttons["frame"].setChecked(True)
+        layout.addWidget(self.scope_box)
 
         # -- state ---------------------------------------------------------
         self.state_box = QGroupBox("State")
@@ -135,6 +162,7 @@ class StatePanel(QWidget):
     def set_editing_enabled(self, enabled: bool) -> None:
         """Lock or unlock the controls that change data on disk."""
         self.target_box.setEnabled(enabled)
+        self.scope_box.setEnabled(enabled)
         self.state_box.setEnabled(enabled)
         if self.enable_check.isChecked() != enabled:
             self.enable_check.blockSignals(True)
@@ -163,6 +191,13 @@ class StatePanel(QWidget):
     def set_target(self, target: str) -> None:
         """Reflect the current edit target without re-emitting a change."""
         button = self.target_buttons[target]
+        button.blockSignals(True)
+        button.setChecked(True)
+        button.blockSignals(False)
+
+    def set_scope(self, scope: str) -> None:
+        """Reflect the current edit scope without re-emitting a change."""
+        button = self.scope_buttons[scope]
         button.blockSignals(True)
         button.setChecked(True)
         button.blockSignals(False)

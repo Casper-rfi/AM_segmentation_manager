@@ -7,6 +7,7 @@ tells the controller what the user did.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from pathlib import Path
 
 from qtpy.QtCore import QSettings, Qt, Signal
@@ -20,7 +21,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...operations.selection import RecordState
+from ...operations.selection import RecordState, current_state
 from ..controller import CurationController, EditingDisabled
 from ..loader import BackgroundLoader
 from .frame_strip import FrameTimeline
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 SETTINGS_ORGANISATION = "am_segmentation_manager"
 SETTINGS_APPLICATION = "curation"
 SETTING_SCAN_ROOT = "scan_root"
+
+#: How many filenames a confirmation lists before summarising the rest.
+MAX_LISTED_FILES = 12
 
 try:  # Qt 6 moved QShortcut out of QtWidgets.
     from qtpy.QtGui import QKeySequence, QShortcut
@@ -128,6 +132,7 @@ class CurationWindow(QMainWindow):
 
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.target_changed.connect(self._set_target)
+        self.state_panel.scope_changed.connect(self.controller.set_scope)
         self.state_panel.state_requested.connect(self.apply_state)
 
     def _add_shortcuts(self) -> None:
@@ -218,6 +223,8 @@ class CurationWindow(QMainWindow):
             return
         self.controller.set_mode(mode)
         self.image_panel.set_mode(mode)
+        # set_mode may have pointed the edit target at the new modality.
+        self.state_panel.set_target(self.controller.target)
         self.refresh()
 
     def _set_overlay(self, show: bool) -> None:
@@ -232,7 +239,15 @@ class CurationWindow(QMainWindow):
         self._refresh_state_panel()
 
     def apply_state(self, state: RecordState) -> None:
-        """Move the targeted records into *state*, confirming where required."""
+        """Move the targeted records into *state*, confirming where required.
+
+        Two confirmations can apply, and they are asked in order of how much is
+        at stake: first whether the user really means to change more than the
+        current frame, then whether proofread work may be moved.
+        """
+        if self.controller.editing_enabled and self.controller.scope != "frame":
+            if not self._confirm_bulk(state):
+                return
         try:
             changed = self.controller.apply_state(state)
         except EditingDisabled:
@@ -257,21 +272,64 @@ class CurationWindow(QMainWindow):
         if changed:
             frame = self.controller.frame
             name = frame.display_name if frame is not None else "frame"
+            where = name if self.controller.scope == "frame" else f"this {self.controller.scope}"
             self.state_panel.append_log(
-                f"{name}: {changed} file set -> {state} ({self.controller.target})"
+                f"{where}: {changed} file(s) -> {state} ({self.controller.target})"
             )
         self.refresh()
 
-    def _confirm_corrected(self, state: str) -> bool:
-        """Ask before moving proofread data out of the corrected state."""
-        files = "\n".join(
-            str(record.image_path.name) for record in self.controller.target_records()
+    def _confirm_bulk(self, state: str) -> bool:
+        """Ask before changing more than the frame on screen."""
+        records = self.controller.scoped_records()
+        if not records:
+            return True
+
+        where = {
+            "lamella": f"lamella {self.controller.lamella.display_name}"
+            if self.controller.lamella is not None else "this lamella",
+            "project": f"project {self.controller.project.display_name}"
+            if self.controller.project is not None else "this project",
+        }[self.controller.scope]
+
+        counts = Counter(record.modality for record in records)
+        breakdown = ", ".join(f"{count} {modality}" for modality, count in sorted(counts.items()))
+        unchanged = sum(1 for r in records if current_state(r) == state)
+
+        message = (
+            f"Set <b>{len(records)}</b> images ({breakdown}) in {where} "
+            f"to <b>{state}</b>?"
         )
+        if unchanged:
+            message += f"<p>{unchanged} of them are already {state}.</p>"
+
+        answer = QMessageBox.warning(
+            self, "Change many images?", message,
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        return answer == QMessageBox.Yes
+
+    def _confirm_corrected(self, state: str) -> bool:
+        """Ask before moving proofread data out of the corrected state.
+
+        Only the files actually holding proofread work are named. Listing
+        everything targeted would misreport which data is at risk -- a frame
+        whose SEM is corrected and whose FIB is merely deselected puts only the
+        SEM at stake.
+        """
+        corrected = self.controller.corrected_records()
+        if not corrected:
+            return True
+
+        names = [record.image_path.name for record in corrected]
+        shown = "\n".join(names[:MAX_LISTED_FILES])
+        if len(names) > MAX_LISTED_FILES:
+            shown += f"\n... and {len(names) - MAX_LISTED_FILES} more"
+
         answer = QMessageBox.warning(
             self,
             "Move corrected data?",
-            "These files are in the corrected state, which holds manually "
-            f"proofread work:\n\n{files}\n\nMove them to '{state}'?",
+            f"{len(names)} of these files are in the corrected state, which "
+            f"holds manually proofread work:\n\n{shown}\n\nMove them to '{state}'?",
             QMessageBox.Yes | QMessageBox.Cancel,
             QMessageBox.Cancel,
         )

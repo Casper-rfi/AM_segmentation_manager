@@ -376,6 +376,7 @@ def test_enabling_editing_allows_changes(tmp_path):
 def test_applying_to_both_moves_both_modalities(tmp_path):
     controller = make_controller()
     controller.set_editing_enabled(True)
+    controller.set_target("both")
     _place_on_disk(tmp_path, controller.frame)
 
     changed = controller.apply_state("deselected")
@@ -387,6 +388,7 @@ def test_applying_to_both_moves_both_modalities(tmp_path):
 def test_moving_out_of_corrected_still_needs_confirmation(tmp_path):
     controller = make_controller()
     controller.set_editing_enabled(True)
+    controller.set_target("both")
     _place_on_disk(tmp_path, controller.frame)
     controller.apply_state("corrected")
 
@@ -420,3 +422,143 @@ def _place_on_disk(tmp_path: Path, frame) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("image")
         record.image_path = path
+
+
+# ---------------------------------------------------------------------------
+# The edit target follows the view
+# ---------------------------------------------------------------------------
+
+def test_target_follows_the_view_mode():
+    """Changing the state of the image you cannot see is almost always a slip."""
+    controller = make_controller()
+
+    controller.set_mode("fib")
+    assert controller.target == "FIB"
+
+    controller.set_mode("sem")
+    assert controller.target == "SEM"
+
+
+def test_plot_view_leaves_the_target_alone():
+    controller = make_controller()
+    controller.set_target("both")
+
+    controller.set_mode("plot")
+
+    assert controller.target == "both"
+
+
+def test_following_can_be_switched_off():
+    controller = make_controller()
+    controller.follow_mode = False
+    controller.set_target("both")
+
+    controller.set_mode("fib")
+
+    assert controller.target == "both"
+
+
+def test_target_can_still_be_set_explicitly_after_a_mode_change():
+    controller = make_controller()
+    controller.set_mode("sem")
+
+    controller.set_target("both")
+
+    assert controller.target == "both"
+
+
+# ---------------------------------------------------------------------------
+# Edit scope
+# ---------------------------------------------------------------------------
+
+def test_frame_scope_covers_only_the_current_frame():
+    controller = make_controller()
+    controller.set_target("both")
+
+    assert len(controller.scoped_records()) == 2
+
+
+def test_lamella_scope_covers_every_frame_of_the_lamella():
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_scope("lamella")
+
+    # 4 frames x 2 modalities
+    assert len(controller.scoped_records()) == 8
+
+
+def test_project_scope_covers_every_lamella():
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_scope("project")
+
+    # (4 + 2) frames x 2 modalities
+    assert len(controller.scoped_records()) == 12
+
+
+def test_scope_respects_the_modality_target():
+    controller = make_controller()
+    controller.set_scope("lamella")
+    controller.set_target("SEM")
+
+    records = controller.scoped_records()
+
+    assert len(records) == 4
+    assert {record.modality for record in records} == {"SEM"}
+
+
+def test_unknown_scope_raises():
+    controller = make_controller()
+
+    with pytest.raises(ValueError):
+        controller.set_scope("everything")
+
+
+def test_bulk_change_applies_across_the_lamella(tmp_path):
+    controller = make_controller()
+    controller.set_editing_enabled(True)
+    controller.set_target("both")
+    controller.set_scope("lamella")
+    for frame in controller.frames:
+        _place_on_disk(tmp_path, frame)
+
+    changed = controller.apply_state("deselected")
+
+    assert changed == 8
+    assert all(state == "deselected" for state in controller.frame_states())
+
+
+# ---------------------------------------------------------------------------
+# Which records actually hold proofread work
+# ---------------------------------------------------------------------------
+
+def test_corrected_records_lists_only_corrected_ones(tmp_path):
+    """A frame with a corrected SEM and a deselected FIB risks only the SEM."""
+    controller = make_controller()
+    controller.set_editing_enabled(True)
+    frame = controller.frame
+    _place_on_disk(tmp_path, frame)
+
+    controller.set_target("SEM")
+    controller.apply_state("corrected")
+    controller.set_target("FIB")
+    controller.apply_state("deselected")
+
+    controller.set_target("both")
+    corrected = controller.corrected_records()
+
+    assert [record.modality for record in corrected] == ["SEM"]
+
+
+def test_corrected_records_is_empty_when_nothing_is_corrected():
+    controller = make_controller()
+
+    assert controller.corrected_records() == []
+
+
+def test_the_target_starts_on_the_modality_first_shown():
+    """The window opens in SEM view, so SEM is what a state change means."""
+    controller = make_controller()
+
+    assert controller.mode == "sem"
+    assert controller.target == "SEM"

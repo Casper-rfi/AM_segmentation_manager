@@ -112,22 +112,30 @@ class ImageView(QGraphicsView):
         """Scale the view by *factor*, within limits, and report the change.
 
         Zooming out stops once the image fits the pane: shrinking it further
-        only strands it in a corner of an empty view.
+        only strands it in a corner of an empty view. Zooming *in* is limited
+        only by :data:`MAX_SCALE`.
+
+        The fit limit deliberately applies to one direction only. Applying it to
+        both blocks zooming in whenever the current scale happens to sit below
+        the fit scale -- which it does after every :meth:`fit`, because
+        ``fitInView`` leaves room for the frame -- and the view then refuses to
+        zoom at all.
 
         Separate from :meth:`wheelEvent` so the limits can be exercised without
         synthesising wheel events.
         """
         current = self.transform().m11()
         target = current * factor
-        minimum = max(MIN_SCALE, self.fit_scale())
 
-        if target < minimum:
-            # Already at (or within rounding of) the fit scale: nothing to do.
-            if current <= minimum * 1.001:
+        if factor < 1.0:
+            minimum = max(MIN_SCALE, self.fit_scale())
+            if target < minimum:
+                # Snap to fit rather than overshooting past it; if already
+                # there, there is nothing left to do.
+                if current > minimum:
+                    self.fit()
                 return
-            self.fit()
-            return
-        if target > MAX_SCALE:
+        elif target > MAX_SCALE:
             return
 
         self.scale(factor, factor)

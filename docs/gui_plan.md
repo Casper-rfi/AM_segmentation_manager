@@ -772,3 +772,64 @@ are the panes letterboxing landscape acquisitions, not margin. Stacking the two
 panes vertically would use the space better, but that changes the side-by-side
 arrangement the tool was specified around, so it is left as an open question
 rather than assumed.
+
+---
+
+## 14. Second round of testing
+
+### Defect: zooming stopped working in the image panes
+
+Zoom was refused entirely in the SEM and FIB panes, while the plot view behaved
+correctly.
+
+*Cause:* the fit clamp added in §7a was applied to **both** directions. Zooming
+in computes `target = current * 1.25`; when `current` sits below `fit_scale` by
+more than one zoom step, that target is still below the minimum, and the guard
+returned without doing anything — in either direction.
+
+`current` is *always* slightly below `fit_scale` after a fit, because
+`fitInView` leaves room for the frame. On the development machine the gap was
+1%, far under the 20% needed to trigger it; on another display it exceeded a
+zoom step and zoom died completely. The plot view escaped because its fit gap
+was smaller relative to its scale.
+
+*Fix:* the fit limit now constrains zooming **out** only. Zooming in is bounded
+by `MAX_SCALE` alone. Tested from 20%, 50%, 75%, 85% and 99% of the fit scale.
+
+The lesson worth keeping: a limit that exists to stop one direction must be
+applied to that direction, not to the magnitude of the result.
+
+### The edit target follows the view
+
+Changing the state of the modality you are *not* looking at is far more likely
+to be a slip than an intention. Switching to the SEM or FIB view now points the
+edit target at that modality, and the target starts on SEM to match the opening
+view. "Both" remains available by choosing it explicitly, and the plot view
+leaves the target alone since it shows neither modality in particular.
+
+`CurationController.follow_mode` turns this off for anyone who prefers the old
+behaviour.
+
+### Defect: the corrected-data warning named the wrong files
+
+With a corrected SEM and a deselected FIB, confirming a change listed *both*
+files as holding proofread work. `_confirm_corrected` listed everything
+targeted rather than what was actually corrected. It now lists only records in
+the corrected state, and caps the list at 12 names with a count for the rest —
+which matters now that a change can cover a whole project.
+
+### Bulk state changes
+
+A new "Across" control applies a state change to the current frame (default),
+the whole lamella, or the whole project, combined with the existing SEM / FIB /
+Both target.
+
+Safety comes from three existing properties rather than anything new:
+`transition_records` validates the entire batch before moving a single file, so
+a bulk change either fully succeeds or changes nothing; corrected data still
+requires its own confirmation; and the editing guard still applies. On top of
+those, any scope wider than one frame is confirmed with a count and a
+breakdown by modality before proceeding.
+
+Scopes read records straight from the scanned stages rather than building
+frames, since the frame grouping only matters for display.

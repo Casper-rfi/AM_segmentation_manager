@@ -236,6 +236,7 @@ def test_the_change_is_logged(window):
 
 def test_timeline_reflects_the_lamella(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
@@ -391,3 +392,118 @@ def test_every_shortcut_is_documented(window):
     assert len(documented) == len(window._shortcuts)
     assert documented["F1"] == "Show this list"
     assert all(description for description in documented.values())
+
+
+# ---------------------------------------------------------------------------
+# Zoom (regression: zooming in was refused whenever the current scale sat
+# below the fit scale, which it does after every fit)
+# ---------------------------------------------------------------------------
+
+def test_zoom_in_works_from_the_fitted_scale(window):
+    view = window.image_panel.pair.left
+    view.fit()
+    before = view.transform().m11()
+
+    view.zoom_by(1.25)
+
+    assert view.transform().m11() > before
+
+
+def test_zoom_in_works_even_when_well_below_the_fit_scale(window):
+    """The fit limit constrains zooming out; it must not block zooming in."""
+    from qtpy.QtGui import QTransform
+
+    view = window.image_panel.pair.left
+    fit = view.fit_scale()
+    view.setTransform(QTransform.fromScale(fit * 0.5, fit * 0.5))
+
+    view.zoom_by(1.25)
+
+    assert view.transform().m11() > fit * 0.5
+
+
+def test_repeated_zoom_in_keeps_working(window):
+    view = window.image_panel.pair.left
+    scales = []
+    for _ in range(4):
+        view.zoom_by(1.25)
+        scales.append(view.transform().m11())
+
+    assert scales == sorted(scales)
+    assert scales[-1] > scales[0]
+
+
+# ---------------------------------------------------------------------------
+# The edit target follows the view
+# ---------------------------------------------------------------------------
+
+def test_switching_view_points_the_target_at_that_modality(window):
+    window._set_mode("fib")
+
+    assert window.controller.target == "FIB"
+    assert window.state_panel.target_buttons["FIB"].isChecked()
+
+    window._set_mode("sem")
+    assert window.controller.target == "SEM"
+    assert window.state_panel.target_buttons["SEM"].isChecked()
+
+
+# ---------------------------------------------------------------------------
+# Confirmations
+# ---------------------------------------------------------------------------
+
+def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
+    """With a corrected SEM and a deselected FIB, only the SEM is at risk."""
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.apply_state("corrected")
+    window.state_panel.target_buttons["FIB"].setChecked(True)
+    window.apply_state("deselected")
+    _settle(qt_app, lambda: window.controller.state_of("FIB") == "deselected")
+
+    window.state_panel.target_buttons["both"].setChecked(True)
+    at_risk = window.controller.corrected_records()
+
+    assert [record.modality for record in at_risk] == ["SEM"]
+
+
+def test_scope_control_drives_the_controller(window):
+    window.state_panel.scope_buttons["lamella"].setChecked(True)
+
+    assert window.controller.scope == "lamella"
+
+
+def test_bulk_scope_is_confirmed_before_anything_moves(qt_app, window, monkeypatch):
+    """A wider scope must not move a single file without an explicit yes."""
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.scope_buttons["lamella"].setChecked(True)
+    asked = []
+    monkeypatch.setattr(window, "_confirm_bulk", lambda state: asked.append(state) or False)
+
+    window.apply_state("deselected")
+
+    assert asked == ["deselected"]
+    assert all(state == "selected" for state in window.controller.frame_states())
+
+
+def test_confirmed_bulk_change_applies_to_the_whole_lamella(qt_app, window, monkeypatch):
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.scope_buttons["lamella"].setChecked(True)
+    monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
+
+    window.apply_state("deselected")
+    _settle(qt_app, lambda: window.controller.frame_states()[0] == "deselected")
+
+    assert all(state == "deselected" for state in window.controller.frame_states())
+    assert "deselected" in window.state_panel.log.toPlainText()
+
+
+def test_frame_scope_is_not_confirmed(window, monkeypatch):
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
+    monkeypatch.setattr(window, "_confirm_bulk", lambda state: pytest.fail("should not ask"))
+
+    window.apply_state("deselected")
+
+    assert window.controller.combined_state() == "deselected"

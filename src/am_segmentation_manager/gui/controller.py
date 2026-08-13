@@ -29,6 +29,10 @@ DisplayMode = Literal["sem", "fib", "plot"]
 #: What a state change applies to.
 EditTarget = Literal["SEM", "FIB", "both"]
 
+#: How far a state change reaches. "frame" is the default: the wider scopes
+#: move many files at once and the window confirms them before proceeding.
+EditScope = Literal["frame", "lamella", "project"]
+
 #: The state of a frame whose two acquisitions disagree.
 MIXED = "mixed"
 
@@ -87,7 +91,12 @@ class CurationController:
         self.mode: DisplayMode = "sem"
         self.show_overlay = True
         self.editing_enabled = False
-        self.target: EditTarget = "both"
+        # Starts matching the initial view, for the same reason the target
+        # follows the view thereafter: the modality on screen is the one a
+        # state change is meant for.
+        self.target: EditTarget = "SEM"
+        self.scope: EditScope = "frame"
+        self.follow_mode = True
 
     # -- scanning ----------------------------------------------------------
 
@@ -189,10 +198,21 @@ class CurationController:
     # -- display -----------------------------------------------------------
 
     def set_mode(self, mode: DisplayMode) -> None:
-        """Switch between the SEM, FIB and plot views."""
+        """Switch between the SEM, FIB and plot views.
+
+        Unless :attr:`follow_mode` is off, switching to a single-modality view
+        also points the edit target at that modality. Changing the state of the
+        image you are *not* looking at is far more likely to be a mistake than
+        an intention, so the target follows the eye. The plot view leaves the
+        target alone, since it shows both modalities' context at once.
+        """
         if mode not in ("sem", "fib", "plot"):
             raise ValueError(f"Unknown display mode: {mode}")
         self.mode = mode
+        if self.follow_mode:
+            modality = MODE_MODALITIES.get(mode)
+            if modality is not None:
+                self.target = modality
 
     def available_modes(self, frame: LamellaFrame | None = None) -> list[DisplayMode]:
         """Return the views that have something to show for a frame.
@@ -304,8 +324,14 @@ class CurationController:
             raise ValueError(f"Unknown edit target: {target}")
         self.target = target
 
+    def set_scope(self, scope: EditScope) -> None:
+        """Choose whether a state change covers one frame, a lamella, or all."""
+        if scope not in ("frame", "lamella", "project"):
+            raise ValueError(f"Unknown edit scope: {scope}")
+        self.scope = scope
+
     def target_records(self, frame: LamellaFrame | None = None) -> list:
-        """Return the image records a state change would apply to."""
+        """Return the image records a state change would apply to in one frame."""
         frame = frame if frame is not None else self.frame
         if frame is None:
             return []
@@ -313,6 +339,35 @@ class CurationController:
             return frame.records
         record = frame.record(self.target)
         return [record] if record is not None else []
+
+    def scoped_records(self) -> list:
+        """Return every record a state change would apply to, honouring scope.
+
+        Wider scopes read the records straight from the scanned stages rather
+        than building frames, since the frame grouping only matters for display.
+        """
+        if self.scope == "frame":
+            return self.target_records()
+
+        lamellae = [self.lamella] if self.scope == "lamella" else self._lamellae
+        modalities = ("SEM", "FIB") if self.target == "both" else (self.target,)
+        return [
+            record
+            for lamella in lamellae
+            if lamella is not None
+            for stage in lamella.stages
+            for record in stage.images
+            if record.modality in modalities
+        ]
+
+    def corrected_records(self, records: list | None = None) -> list:
+        """Return those records currently in the corrected state.
+
+        The window needs this to name only the files that actually hold
+        proofread work when it asks for confirmation.
+        """
+        candidates = records if records is not None else self.scoped_records()
+        return [record for record in candidates if current_state(record) == "corrected"]
 
     def apply_state(self, state: RecordState, *, confirm_corrected: bool = False) -> int:
         """Move the current frame's targeted records into *state*.
@@ -341,18 +396,15 @@ class CurationController:
             raise EditingDisabled(
                 "Switch on editing before changing the state of any image"
             )
-        records = self.target_records()
+        records = self.scoped_records()
         if not records:
-            logger.info("Nothing to change: no %s image in this frame", self.target)
+            logger.info("Nothing to change: no %s image in this %s", self.target, self.scope)
             return 0
 
         changed = transition_records(
             records, state, allow_move_from_corrected=confirm_corrected
         )
-        logger.info(
-            "Moved %d record(s) to %s for %s", changed, state, self.frame.display_name
-            if self.frame is not None else "(no frame)",
-        )
+        logger.info("Moved %d record(s) to %s across this %s", changed, state, self.scope)
         return changed
 
     def set_editing_enabled(self, enabled: bool) -> None:
