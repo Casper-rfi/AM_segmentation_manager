@@ -58,6 +58,8 @@ class Scanner:
 
     EXPERIMENT_FILENAME = "experiment.yaml"
     AM_METADATA_FILENAME = "AM_metadata.yaml"
+    PLOTS_DIRNAME = "plots"
+    PLOT_EXTENSIONS = {".png"}
 
     def __init__(self, start_path: Path) -> None:
         self.start_path = start_path
@@ -149,10 +151,30 @@ class Scanner:
             stage = AdaptiveMillingStage(name=p.name, path=p)
             stage.number = f"{index:02d}"
             stage.images = self._discover_images_in_stage(p, project_name=project_name, lamella_name=lamella_name)
+            stage.plots = self._discover_plots(p)
             stages.append(stage)
-            logger.debug("Discovered stage %s with %d images", p, len(stage.images))
+            logger.debug(
+                "Discovered stage %s with %d images and %d plots",
+                p, len(stage.images), len(stage.plots),
+            )
 
         return stages
+
+    @classmethod
+    def _discover_plots(cls, stage_path: Path) -> List[Path]:
+        """Return the summary plot images written for a stage.
+
+        Plots are rendered during lamella preparation and combine an image with
+        its measurement plots. They are informational only: a stage may have no
+        plots folder, and stages routinely contain fewer plots than images.
+        """
+        plots_directory = stage_path / cls.PLOTS_DIRNAME
+        if not plots_directory.exists():
+            return []
+        return [
+            p for p in sorted(plots_directory.iterdir())
+            if p.is_file() and p.suffix.lower() in cls.PLOT_EXTENSIONS
+        ]
 
     @classmethod
     def _stage_sort_key(cls, stage_path: Path) -> tuple[bool, datetime, str]:
@@ -166,17 +188,46 @@ class Scanner:
 
     @staticmethod
     def _timestamp_from_filename(filename: str) -> datetime | None:
-        """Extract a common Autolamella timestamp from a folder name."""
+        """Extract a common Autolamella timestamp from a folder name.
+
+        Handles both 24-hour folder names (``..._2026-08-07-15-30-00``) and the
+        12-hour names Autolamella writes for adaptive milling stages
+        (``adaptive_polish_2026-07-28-02-43-32PM``). A trailing AM/PM suffix is
+        applied to the hour, so an afternoon stage sorts after a morning one.
+        """
         match = re.search(
-            r"(\d{4})[-_]?([01]\d)[-_]?([0-3]\d)[T _-]?([0-2]\d)[-_:]?([0-5]\d)[-_:]?([0-5]\d)",
+            r"(\d{4})[-_]?([01]\d)[-_]?([0-3]\d)[T _-]?([0-2]\d)[-_:]?([0-5]\d)[-_:]?([0-5]\d)"
+            r"\s*([AaPp][Mm])?",
             filename,
         )
         if match is None:
             return None
+        year, month, day, hour, minute, second = (int(value) for value in match.groups()[:6])
+        hour = Scanner._apply_meridiem(hour, match.group(7), filename)
         try:
-            return datetime(*(int(value) for value in match.groups()))
+            return datetime(year, month, day, hour, minute, second)
         except ValueError:
             return None
+
+    @staticmethod
+    def _apply_meridiem(hour: int, meridiem: str | None, filename: str) -> int:
+        """Convert a 12-hour clock *hour* to 24-hour form.
+
+        Returns *hour* unchanged when there is no AM/PM suffix, or when the
+        suffix contradicts the hour (for example ``13-00-00PM``), which would
+        otherwise turn an already-24-hour timestamp into an invalid one.
+        """
+        if meridiem is None:
+            return hour
+        if not 1 <= hour <= 12:
+            logger.warning(
+                "Ignoring '%s' suffix on 24-hour timestamp in %s", meridiem, filename
+            )
+            return hour
+        is_pm = meridiem.lower() == "pm"
+        if hour == 12:
+            return 12 if is_pm else 0
+        return hour + 12 if is_pm else hour
 
     @staticmethod
     def _parse_numeric_prefix(value: str) -> str | None:

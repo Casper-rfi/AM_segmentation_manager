@@ -14,6 +14,7 @@ import shutil
 from typing import Iterable
 
 from .label_io import has_image_stack_support, save_label_image
+from ..io.image import to_2d
 from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
@@ -73,21 +74,6 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
         return
 
     # handle multi-page or channel dimensions: reduce to 2D if necessary
-    def to_2d(arr: np.ndarray) -> np.ndarray:
-        if arr.ndim == 2:
-            return arr
-        # if e.g. (channels, H, W) or (H, W, channels) pick the first channel
-        if arr.ndim == 3:
-            # common shapes: (H, W, C) or (C, H, W)
-            if arr.shape[0] <= 4 and arr.shape[0] != arr.shape[1]:
-                # treat as (C, H, W)
-                return arr[0]
-            else:
-                # treat as (H, W, C)
-                return arr[..., 0]
-        # fallback: squeeze
-        return np.squeeze(arr)
-
     pred2 = to_2d(pred).astype(np.uint8)
     target2 = to_2d(target)
 

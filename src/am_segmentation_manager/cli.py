@@ -153,6 +153,25 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     )
     list_projects.add_argument("start_path", nargs="?", default=".", help="Directory to start scanning from")
 
+    # -- gui ----------------------------------------------------------------
+    gui_cmd = sub.add_parser(
+        "gui",
+        help="Open the curation window to review images and set their state",
+        description=(
+            "Open a window for reviewing SEM and FIB images against their "
+            "labels, and for setting images to selected, deselected or "
+            "corrected. Requires the optional GUI dependencies."
+        ),
+    )
+    gui_cmd.add_argument(
+        "start_path", nargs="?", default=None,
+        help="Directory to scan on startup (optional; can be chosen in the window)",
+    )
+    gui_cmd.add_argument(
+        "--config", default=None,
+        help="Segmentation config file defining class names and colours",
+    )
+
     # -- convert-predictions ------------------------------------------------
     convert_predictions = sub.add_parser(
         "convert-predictions",
@@ -287,6 +306,20 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         for project in index.all_projects():
             print_project_summary(project)
         return 0
+
+    if args.command == "gui":
+        # Imported here so a missing Qt binding cannot break the other
+        # commands, or `--help`.
+        from .gui.app import run
+
+        try:
+            return run(
+                start_path=Path(args.start_path) if args.start_path else None,
+                config_path=Path(args.config) if args.config else None,
+            )
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 2
 
     if args.command == "convert-predictions":
         records, start_path = _resolve_records(args)

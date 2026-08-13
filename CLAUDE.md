@@ -40,6 +40,20 @@ Prefer simple, readable code over clever code.
 
 ---
 
+# expected workflow
+1. Adding, curating and proofreading data:
+	1. New data gets added to the database manually (not done by this software)
+	2. The scan function is used to retrieve the Autolamella project numbers, number of lamella, images etc.
+	3. This is used to create pseudo-labels from the prediction using: 
+		- converting raw or cleaned predictions to labels (resized to image pixel dimensions if needed, and copied to labels folder)
+2. data curation and proofreading
+	1. Images that should not be proofread are deselected
+	2. The remaining selected images are manually proofread (not done by this software)
+	3. Datasets finished proofreading are set to corrected
+	4. Compress label storage size
+3. create data lists for ML model training
+	1. Create .csv files of SEM or FIB images, using the filter options
+
 # Development Style
 
 Build the package incrementally.

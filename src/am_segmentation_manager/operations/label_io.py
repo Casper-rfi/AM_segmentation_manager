@@ -10,22 +10,16 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from ..io.image import has_image_stack_support
+
 logger = logging.getLogger(__name__)
 
 # OpenCV TIFF compression codes (see opencv2/imgcodecs.hpp).
 _TIFF_COMPRESSION_NONE = 1
 _TIFF_COMPRESSION_LZW = 5
 
-
-def has_image_stack_support() -> bool:
-    """Return whether the optional tifffile/numpy/cv2 stack is installed."""
-    try:
-        import cv2  # noqa: F401
-        import numpy  # noqa: F401
-        import tifffile  # noqa: F401
-        return True
-    except Exception:
-        return False
+# Re-exported so existing callers keep importing the dependency check from here.
+__all__ = ["has_image_stack_support", "has_compression_support", "save_label_image"]
 
 
 def has_compression_support() -> bool:

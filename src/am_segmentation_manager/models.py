@@ -54,12 +54,15 @@ class AdaptiveMillingStage:
         path: filesystem path to the stage folder
         images: list of ImageRecord objects discovered in this stage
         number: zero-padded sequential stage number within the lamella
+        plots: summary plot images written during lamella preparation, one per
+            acquisition. Fewer plots than images is normal.
     """
 
     name: str
     path: Path
     images: List[ImageRecord] = field(default_factory=list)
     number: Optional[str] = None
+    plots: List[Path] = field(default_factory=list)
 
     @property
     def display_name(self) -> str:
