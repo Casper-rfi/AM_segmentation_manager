@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from .config import BACKGROUND_CLASS, SegmentationConfig
-from .io.image import read_array, require_image_stack, to_2d
+from .io.image import read_array, read_color_array, require_image_stack, to_2d
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -386,6 +386,10 @@ def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "
     cost far more memory decoded than an acquisition does, so reducing them on
     read matters more here than for the images.
 
+    The plot is decoded straight to three channels. These figures are opaque,
+    so the alpha channel carries nothing, and compositing it away afterwards
+    cost more than the decode itself -- see :func:`read_color_array`.
+
     Args:
         plot_path: The plot PNG to read.
         max_edge: Longest edge to reduce the plot to.
@@ -399,4 +403,4 @@ def prepare_plot(plot_path: Path, *, max_edge: int = DEFAULT_PLOT_MAX_EDGE) -> "
         OSError: If the plot exists but cannot be decoded.
     """
     require_image_stack("Displaying plots")
-    return downscale_to_fit(to_rgb(read_array(plot_path)), max_edge)
+    return downscale_to_fit(to_rgb(read_color_array(plot_path)), max_edge)

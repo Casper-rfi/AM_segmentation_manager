@@ -1,13 +1,19 @@
 # Design plan: data curation GUI
 
-Status: **proposal — not yet implemented.**
+Status: **phases 1–7 built and working.** Phase 7 was rewritten after a first
+round of testing and then implemented — see [§13](#13-phase-7-revised-after-testing).
+
 Target: a desktop viewer for reviewing Autolamella adaptive-milling images against
 their labels, and setting each image's workflow state (selected / deselected /
 corrected) without leaving the viewer.
 
-This document explains *what* will be built, *why* each choice was made, and the
-order in which it will be built. Nothing here is implemented yet; each phase in
-[Phased implementation](#8-phased-implementation) leaves the package working.
+This document explains *what* was built and *why* each choice was made. Sections
+1–12 are the original design, with measured numbers substituted for the initial
+estimates where testing produced them. Section 13 supersedes the phase 7 row in
+[Phased implementation](#8-phased-implementation).
+
+Two decisions recorded in §1 have since been overtaken by §13: the lamella
+slider is to be removed, and the frame slider merged into the state strip.
 
 ---
 
@@ -511,7 +517,7 @@ headless.
 | 4 | ~~**Display pipeline**~~ **DONE** | `io/image.py` (shared reading); `display.py`: downscale, bit-depth conversion, `compose_overlay` | synthetic arrays: class 0 hidden, alpha blend, shape mismatch resize, empty-label detection, 8-bit passthrough, 16-bit → 8-bit |
 | 5 | ~~**Controller + cache**~~ **DONE** | `gui/controller.py`, `gui/cache.py` (no Qt; injected loaders) | navigation clamping; lamella switch evicts; prefetch order; "both" target resolution; edit guard blocks transitions; **layering guard** (brought forward from phase 6) |
 | 6 | ~~**Qt shell**~~ **DONE** | `app.py`, `loader.py`, `widgets/*`; `am-seg gui` | offscreen window tests driving real widgets against a synthetic project (skipped without Qt) |
-| 7 | **Polish** | Keyboard shortcuts, state strip, legend, log pane, remembered scan root, README section | shortcut→controller mapping (headless) |
+| 7 | ~~**Revised after testing**~~ **DONE** | See [§13](#13-phase-7-revised-after-testing) — rewritten from real usage findings, then implemented | zoom linkage, timeline rows, list filtering, state ordering, shortcut coverage |
 
 Phase 1 alone is worth doing regardless of the GUI: the config file is currently
 untracked and unread by any code.
@@ -565,3 +571,204 @@ Answers change the work, so worth settling before phase 2:
 * **Scope creep into label editing.** The moment the viewer is good, editing
   labels in it will look tempting. Resist: it duplicates the external tool and
   puts corrected data — the most valuable data in the project — at risk.
+
+---
+
+## 13. Phase 7, revised after testing
+
+Phase 7 was originally a guess at what polish would be needed. This section
+replaces it with what a real session on real data actually showed.
+
+**Confirmed working, no action:** display scaling on both 4K and 1080p; SEM and
+FIB navigation is fast and responsive.
+
+Work is grouped by kind and ordered so that the two genuine defects land first.
+
+### 7a. Defects
+
+**A1 — Zoom sync stops working when an image fits the pane.**
+Zooming out in one pane stops moving the other once the image is fully visible;
+zooming back in eventually re-couples them.
+
+*Cause, confirmed in the code:* `LinkedImageViews._link` mirrors the panes by
+listening to **scrollbar** `valueChanged`, and copies the transform as a side
+effect of that. When an image fits its pane there are no scrollbars to move, so
+nothing fires and the transform never propagates. The zoom was never actually
+synchronised — it was riding on scroll events that happen to accompany it.
+
+*Fix:* give `ImageView` a `zoomed` signal emitted from `wheelEvent`, and have
+`LinkedImageViews` copy the transform on that signal directly, independently of
+scrolling. Then also clamp zoom-out at fit-to-pane, as suggested: below that the
+image only shrinks into a corner, which is never useful.
+
+**A2 — The state strip conflates "mixed" with the individual states.**
+Reported as "deselected and corrected are both orange".
+
+*Cause, confirmed against the data:* they are not. `deselected` is grey and
+`corrected` is blue; the orange is `mixed`. In `01-ruling-ibex` one frame has
+SEM deselected and another has SEM corrected, with **both FIBs still selected**,
+so `combined_state` collapses both frames to `mixed` and paints them the same
+colour. The strip cannot show what is actually going on, which is precisely the
+gap behind the per-modality question below.
+
+*Fix:* covered by C1 — showing each modality on its own row removes `mixed`
+from the strip entirely.
+
+### 7b. Plot responsiveness
+
+**B1 — Plot preparation is 2.6x slower than it needs to be.**
+Measured breakdown of the 470 ms per plot:
+
+| Stage | Cost |
+| --- | --- |
+| PNG decode (`IMREAD_UNCHANGED`, 3000x4500 RGBA) | 170 ms |
+| Compositing the alpha channel over white | **275 ms** |
+| Downscale to 1600 px | 21 ms |
+
+The alpha compositing dominates, and it is entirely wasted work: these plots are
+opaque, so the channel carries no information. Decoding with
+`cv2.IMREAD_REDUCED_COLOR_2` returns 3-channel data at 1500x2250 directly,
+skipping both the composite and most of the downscale:
+
+**470 ms -> 183 ms, at identical output resolution (1067x1600) and identical
+memory (5.1 MB).**
+
+Reduced-decode flags do *not* speed up the decode itself (libpng expands the
+full image regardless: 189 ms vs 172 ms) — the whole gain is in avoiding the
+RGBA path. Keep `to_rgb` for the general case; just stop routing these plots
+through it.
+
+**B2 — Prefetch plots as aggressively as images.**
+Plots currently use `radius=3` and a cache of 8. With B1 making each plot a
+third of the cost, raise the plot cache to ~16 entries (~82 MB) and prefetch
+them at the same radius as images while the plot view is on.
+
+**B3 — Only if B1+B2 prove insufficient:** decode at `IMREAD_REDUCED_COLOR_4`
+(750x1125, 2.5 MB) for a first paint and refine to full size when idle. This
+adds real complexity for a second-order gain, so it stays out unless measured to
+be needed.
+
+### 7c. The frame timeline
+
+**C1 — Merge the slider and the state strip, and show both modalities.**
+The strip is wider than the slider because the slider row carries "Frame" and a
+"5 / 26" label, so the two never line up. Rather than padding them into
+alignment, merge them: one `FrameTimeline` widget that *is* the slider.
+
+Since arrow keys already handle stepping, the QSlider handle adds little. The
+timeline paints:
+
+* **two stacked rows** — SEM on top, FIB below — each showing that modality's own
+  state. This answers the per-modality question and removes `mixed` (A2). Rows
+  are preferable to a mode-dependent single row, because a state change can
+  target one modality while you are looking at the other.
+* **tick marks** between frames, drawn only when there is room (skip below ~4 px
+  per frame, otherwise they become noise).
+* a **position cursor**, with click and drag to seek.
+
+Alignment stops being a problem because there is only one widget. The "5 / 26"
+counter moves inline to its right, or into the status line.
+
+**C2 — Remove the lamella slider.** Agreed: the Lamellae list plus Up/Down
+covers it. Keep the lamella position visible in the status line so the count is
+not lost.
+
+**C3 — Reclaim margins.** Two specific sources:
+`LinkedImageViews` nests a `QWidget`+`QVBoxLayout` inside another
+`QVBoxLayout` for no reason, each contributing default margins; and the
+`QSplitter` panels use default spacing. Flatten that nesting, set explicit
+`setContentsMargins(0,0,0,0)` and a small `setSpacing` between the panes, and
+narrow the splitter handles.
+
+### 7d. Colour scheme — a decision for you
+
+With per-modality rows (C1), `mixed` disappears and the palette needs only three
+states plus "not present". Two candidates:
+
+| | Option 1 — semantic (your proposal) | Option 2 — progress ramp (recommended) |
+| --- | --- | --- |
+| deselected | red | grey |
+| selected | yellow / orange | blue |
+| corrected | green | deep teal |
+
+Your own concern about Option 1 is well founded, and stronger than it looks: the
+class palette is **orange (GIS), green (lamella), red (crack/hole), yellow
+(vacuum)** — Option 1 collides with all four, and the legend sits directly above
+the timeline. Option 1 also puts red and green in opposition, the pairing that
+red-green colour deficiency (~8% of men) cannot separate; for a tool you intend
+to open-source that is worth avoiding.
+
+Option 2 uses a hue family the labels never use, reads as progress (inert ->
+active -> done), and stays distinguishable under the common colour
+deficiencies.
+
+Either way, **D1 below makes the mapping self-documenting**, which removes most
+of the need for the colours to be guessable on their own.
+
+### 7e. Controls and discoverability
+
+**D1 — State selector: swatches and order.** Put the workflow colour beside each
+option, and reorder to `deselected / selected / corrected` so the control reads
+in workflow order and matches the timeline's row ordering.
+
+**D2 — Tooltips throughout, including hotkeys.** Every control gets a tooltip
+naming both what it does and its key: view radios (`1` / `2` / `3`), overlay
+(`Space`), state buttons (`S` / `D` / `C`), fit (`F`), the lists, the opacity
+slider, the timeline, and the editing guard.
+
+**D3 — A keyboard shortcut reference**, on `F1` and from a Help menu. Tooltips
+only help when you already know where to hover.
+
+### 7f. Scale
+
+**E1 — Long project and lamella lists.** Currently plain `QListWidget`s: they
+scroll, but finding one project among many means hunting. Add a filter box above
+each list, make the left panel a vertical `QSplitter` so the two lists can be
+resized against each other, and show counts in the group titles
+("Projects (37)"). Worth doing before the tool meets an archive rather than a
+two-project test set.
+
+### 7g. Carried over from the original phase 7
+
+* Remember the scan root between sessions (`QSettings`, in the user config
+  directory — never inside the data folders).
+* README section covering installation, `am-seg gui`, and the shortcuts.
+
+### Suggested order
+
+1. **7a** — defects, smallest and highest value.
+2. **7b** (B1, B2) — one-line decode change for the biggest single speedup.
+3. **7c** + **7d** + **7e** (D1) — the timeline rewrite and the controls that
+   explain it; these interlock and are best done together.
+4. **7e** (D2, D3), **7f**, **7g**.
+
+Each remains independently shippable, and 7a/7b are worth doing on their own
+even if the timeline rewrite is deferred.
+
+
+### Outcome
+
+All of §13 is implemented. Measured results:
+
+* Plot preparation **470 ms -> 198 ms**. Plot navigation now keeps up completely
+  when stepping at 250 ms per frame (8/8 ready on arrival, against 5/8 at
+  120 ms). At ~198 ms per plot on one loader thread, stepping faster than that
+  cannot keep up by construction, so this is now bounded by decode rather than
+  by avoidable work.
+* The zoom linkage defect is fixed and covered by a regression test that
+  reproduces the original condition (zooming out past the point where the image
+  fits its pane).
+* The timeline shows SEM and FIB on separate rows; `mixed` no longer appears in
+  it. The lamella summary is likewise reported per modality, since a combined
+  count would have had the same defect.
+
+Colour scheme: **Option 2** (grey -> blue -> teal) is in place, as recommended.
+It lives in `STATE_COLOURS` in `gui/widgets/frame_strip.py`; changing those three
+values also updates the swatches in the state panel, which read from the same
+mapping.
+
+Not carried out, and deliberately: the black bands above and below the images
+are the panes letterboxing landscape acquisitions, not margin. Stacking the two
+panes vertically would use the space better, but that changes the side-by-side
+arrangement the tool was specified around, so it is left as an open question
+rather than assumed.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -17,6 +17,7 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -34,7 +35,13 @@ class ProjectPanel(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._emitting = False
+        self._project_labels: list[str] = []
+        self._lamella_labels: list[str] = []
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 2, 4)
+        layout.setSpacing(4)
 
         # -- scan root -----------------------------------------------------
         root_box = QGroupBox("Scan root")
@@ -42,40 +49,74 @@ class ProjectPanel(QWidget):
         row = QHBoxLayout()
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Folder to scan for Autolamella projects")
+        self.path_edit.setToolTip(
+            "Folder searched recursively for Autolamella projects "
+            "(any folder containing an experiment.yaml)"
+        )
+        self.path_edit.returnPressed.connect(
+            lambda: self.scan_requested.emit(self.path_edit.text())
+        )
         browse = QPushButton("Browse...")
+        browse.setToolTip("Choose a folder to scan")
         browse.clicked.connect(self._browse)
         row.addWidget(self.path_edit)
         row.addWidget(browse)
         root_layout.addLayout(row)
 
         self.scan_button = QPushButton("Scan")
+        self.scan_button.setToolTip(
+            "Re-read the folder from disk. Use this after changing files "
+            "outside the window."
+        )
         self.scan_button.clicked.connect(
             lambda: self.scan_requested.emit(self.path_edit.text())
         )
         root_layout.addWidget(self.scan_button)
         layout.addWidget(root_box)
 
-        # -- projects ------------------------------------------------------
-        project_box = QGroupBox("Projects")
-        project_layout = QVBoxLayout(project_box)
-        self.project_list = QListWidget()
-        self.project_list.currentRowChanged.connect(self._project_changed)
-        project_layout.addWidget(self.project_list)
-        layout.addWidget(project_box)
+        # -- projects and lamellae -----------------------------------------
+        # In a splitter so that an archive with many projects but few lamellae
+        # (or the reverse) can be given the space where it is needed.
+        self.project_box, self.project_filter, self.project_list = self._build_list(
+            "Projects", "Filter projects", self._project_changed,
+        )
+        self.project_filter.textChanged.connect(
+            lambda text: self._apply_filter(self.project_list, self._project_labels, text)
+        )
+        self.lamella_box, self.lamella_filter, self.lamella_list = self._build_list(
+            "Lamellae", "Filter lamellae", self._lamella_changed,
+        )
+        self.lamella_filter.textChanged.connect(
+            lambda text: self._apply_filter(self.lamella_list, self._lamella_labels, text)
+        )
 
-        # -- lamellae ------------------------------------------------------
-        lamella_box = QGroupBox("Lamellae")
-        lamella_layout = QVBoxLayout(lamella_box)
-        self.lamella_list = QListWidget()
-        self.lamella_list.currentRowChanged.connect(self._lamella_changed)
-        lamella_layout.addWidget(self.lamella_list)
-        layout.addWidget(lamella_box)
+        lists = QSplitter(Qt.Vertical)
+        lists.addWidget(self.project_box)
+        lists.addWidget(self.lamella_box)
+        lists.setSizes([200, 300])
+        layout.addWidget(lists, stretch=1)
 
         self.summary = QLabel("No project loaded")
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
 
-        self._emitting = False
+    def _build_list(self, title: str, placeholder: str, on_change):
+        """Build a titled, filterable list box."""
+        box = QGroupBox(title)
+        box_layout = QVBoxLayout(box)
+        box_layout.setContentsMargins(6, 4, 6, 6)
+        box_layout.setSpacing(3)
+
+        filter_edit = QLineEdit()
+        filter_edit.setPlaceholderText(placeholder)
+        filter_edit.setClearButtonEnabled(True)
+        filter_edit.setToolTip("Show only entries whose name contains this text")
+        box_layout.addWidget(filter_edit)
+
+        list_widget = QListWidget()
+        list_widget.currentRowChanged.connect(on_change)
+        box_layout.addWidget(list_widget)
+        return box, filter_edit, list_widget
 
     def _browse(self) -> None:
         directory = QFileDialog.getExistingDirectory(
@@ -99,11 +140,17 @@ class ProjectPanel(QWidget):
 
     def show_projects(self, labels: list[str], current: int) -> None:
         """List the discovered projects, selecting the one at *current*."""
+        self._project_labels = list(labels)
         self._set_items(self.project_list, labels, current)
+        self.project_box.setTitle(f"Projects ({len(labels)})" if labels else "Projects")
+        self._apply_filter(self.project_list, self._project_labels, self.project_filter.text())
 
     def show_lamellae(self, labels: list[str], current: int) -> None:
         """List the selected project's lamellae."""
+        self._lamella_labels = list(labels)
         self._set_items(self.lamella_list, labels, current)
+        self.lamella_box.setTitle(f"Lamellae ({len(labels)})" if labels else "Lamellae")
+        self._apply_filter(self.lamella_list, self._lamella_labels, self.lamella_filter.text())
 
     def show_summary(self, text: str) -> None:
         """Show a short description of what is loaded."""
@@ -119,3 +166,16 @@ class ProjectPanel(QWidget):
                 widget.setCurrentRow(max(0, min(current, len(labels) - 1)))
         finally:
             self._emitting = False
+
+    def _apply_filter(self, widget: QListWidget, labels: list[str], text: str) -> None:
+        """Hide entries that do not match *text*.
+
+        Entries are hidden rather than removed so that a row number still means
+        the same project or lamella whether or not a filter is active; rebuilding
+        the list would require mapping filtered rows back to real indices.
+        """
+        needle = text.strip().lower()
+        for row in range(widget.count()):
+            item = widget.item(row)
+            label = labels[row] if row < len(labels) else item.text()
+            item.setHidden(bool(needle) and needle not in label.lower())

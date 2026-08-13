@@ -1,6 +1,6 @@
 """The curation window: layout, wiring and keyboard shortcuts.
 
-This module connects the three panels and the two sliders to the controller.
+This module connects the three panels and the frame timeline to the controller.
 It makes no decisions of its own -- it asks the controller what to show, and
 tells the controller what the user did.
 """
@@ -9,13 +9,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QSettings, Qt, Signal
 from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
-    QSlider,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -24,12 +23,18 @@ from qtpy.QtWidgets import (
 from ...operations.selection import RecordState
 from ..controller import CurationController, EditingDisabled
 from ..loader import BackgroundLoader
-from .frame_strip import FrameStateStrip
+from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
 from .project_panel import ProjectPanel
 from .state_panel import StatePanel
 
 logger = logging.getLogger(__name__)
+
+#: Where the window's own preferences live. QSettings writes to the platform's
+#: user configuration area, never into the data folders being reviewed.
+SETTINGS_ORGANISATION = "am_segmentation_manager"
+SETTINGS_APPLICATION = "curation"
+SETTING_SCAN_ROOT = "scan_root"
 
 try:  # Qt 6 moved QShortcut out of QtWidgets.
     from qtpy.QtGui import QKeySequence, QShortcut
@@ -50,6 +55,7 @@ class CurationWindow(QMainWindow):
         self.setWindowTitle("Adaptive milling segmentation curation")
         self.resize(1600, 950)
 
+        self.settings = QSettings(SETTINGS_ORGANISATION, SETTINGS_APPLICATION)
         self.project_panel = ProjectPanel()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
@@ -62,6 +68,10 @@ class CurationWindow(QMainWindow):
         self.request_load.connect(self.loader.worker.load_batch)
         self.loader.worker.loaded.connect(self._on_loaded)
 
+        remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
+        if remembered:
+            self.project_panel.set_path(remembered)
+
         self.refresh()
 
     # -- construction ------------------------------------------------------
@@ -69,45 +79,43 @@ class CurationWindow(QMainWindow):
     def _build_layout(self) -> None:
         centre = QWidget()
         centre_layout = QVBoxLayout(centre)
+        centre_layout.setContentsMargins(0, 0, 0, 2)
+        centre_layout.setSpacing(3)
         centre_layout.addWidget(self.image_panel, stretch=1)
-        centre_layout.addLayout(self._build_sliders())
+        centre_layout.addLayout(self._build_timeline())
 
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(3)
         splitter.addWidget(self.project_panel)
         splitter.addWidget(centre)
         splitter.addWidget(self.state_panel)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([280, 1040, 280])
+        splitter.setSizes([270, 1080, 250])
         self.setCentralWidget(splitter)
 
-    def _build_sliders(self) -> QVBoxLayout:
-        layout = QVBoxLayout()
+    def _build_timeline(self) -> QHBoxLayout:
+        """Build the frame timeline row.
 
-        frame_row = QHBoxLayout()
-        frame_row.addWidget(QLabel("Frame"))
-        self.frame_slider = QSlider(Qt.Horizontal)
-        self.frame_slider.valueChanged.connect(self._frame_slider_moved)
-        frame_row.addWidget(self.frame_slider, stretch=1)
+        One widget carries both the position and the per-modality curation
+        states, so the two cannot drift out of alignment. There is no lamella
+        slider: the Lamellae list and Up/Down cover that, and the slider only
+        took space from the images.
+        """
+        row = QHBoxLayout()
+        row.setContentsMargins(2, 0, 2, 0)
+        row.setSpacing(6)
+
+        self.timeline = FrameTimeline()
+        self.timeline.frame_selected.connect(self._seek_frame)
+        row.addWidget(self.timeline, stretch=1)
+
         self.frame_label = QLabel("0 / 0")
-        self.frame_label.setMinimumWidth(90)
-        frame_row.addWidget(self.frame_label)
-        layout.addLayout(frame_row)
+        self.frame_label.setMinimumWidth(70)
+        self.frame_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.frame_label.setToolTip("Frame position within this lamella")
+        row.addWidget(self.frame_label)
 
-        self.strip = FrameStateStrip()
-        self.strip.frame_clicked.connect(self._frame_slider_moved)
-        layout.addWidget(self.strip)
-
-        lamella_row = QHBoxLayout()
-        lamella_row.addWidget(QLabel("Lamella"))
-        self.lamella_slider = QSlider(Qt.Horizontal)
-        self.lamella_slider.valueChanged.connect(self._lamella_slider_moved)
-        lamella_row.addWidget(self.lamella_slider, stretch=1)
-        self.lamella_label = QLabel("0 / 0")
-        self.lamella_label.setMinimumWidth(90)
-        lamella_row.addWidget(self.lamella_label)
-        layout.addLayout(lamella_row)
-
-        return layout
+        return row
 
     def _connect(self) -> None:
         self.project_panel.scan_requested.connect(self.scan)
@@ -125,22 +133,44 @@ class CurationWindow(QMainWindow):
     def _add_shortcuts(self) -> None:
         """Bind the keys that make curating a long lamella bearable."""
         bindings = (
-            ("Right", lambda: self._step_frame(1)),
-            ("Left", lambda: self._step_frame(-1)),
-            ("Down", lambda: self._step_lamella(1)),
-            ("Up", lambda: self._step_lamella(-1)),
-            ("1", lambda: self._set_mode("sem", from_user=True)),
-            ("2", lambda: self._set_mode("fib", from_user=True)),
-            ("3", lambda: self._set_mode("plot", from_user=True)),
-            ("Space", self._toggle_overlay),
-            ("S", lambda: self.apply_state("selected")),
-            ("D", lambda: self.apply_state("deselected")),
-            ("C", lambda: self.apply_state("corrected")),
-            ("F", self.image_panel.pair.fit),
+            ("Right", "Next frame", lambda: self._step_frame(1)),
+            ("Left", "Previous frame", lambda: self._step_frame(-1)),
+            ("Down", "Next lamella", lambda: self._step_lamella(1)),
+            ("Up", "Previous lamella", lambda: self._step_lamella(-1)),
+            ("1", "SEM view", lambda: self._set_mode("sem", from_user=True)),
+            ("2", "FIB view", lambda: self._set_mode("fib", from_user=True)),
+            ("3", "Plot view", lambda: self._set_mode("plot", from_user=True)),
+            ("Space", "Show / hide the label overlay", self._toggle_overlay),
+            ("D", "Set state: deselected", lambda: self.apply_state("deselected")),
+            ("S", "Set state: selected", lambda: self.apply_state("selected")),
+            ("C", "Set state: corrected", lambda: self.apply_state("corrected")),
+            ("F", "Fit the images to the panes", self.image_panel.pair.fit),
+            ("F1", "Show this list", self.show_shortcuts),
         )
+        self._bindings = [(key, description) for key, description, _ in bindings]
         self._shortcuts = [
-            QShortcut(QKeySequence(key), self, activated=action) for key, action in bindings
+            QShortcut(QKeySequence(key), self, activated=action)
+            for key, _, action in bindings
         ]
+
+    def show_shortcuts(self) -> None:
+        """List the keyboard shortcuts.
+
+        Tooltips only help someone who already suspects a control exists; this
+        is the one place that answers "what can I press?".
+        """
+        rows = "".join(
+            f"<tr><td style='padding-right: 14px;'><b>{key}</b></td>"
+            f"<td>{description}</td></tr>"
+            for key, description in self._bindings
+        )
+        QMessageBox.information(
+            self,
+            "Keyboard shortcuts",
+            f"<table>{rows}</table>"
+            "<p style='margin-top: 10px;'>State changes need <i>Enable editing</i> "
+            "switched on.</p>",
+        )
 
     # -- user actions ------------------------------------------------------
 
@@ -159,6 +189,7 @@ class CurationWindow(QMainWindow):
             QMessageBox.critical(self, "Scan failed", str(exc))
             return
         self.project_panel.set_path(str(directory))
+        self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
         self.refresh(reload_lists=True)
 
     def _select_project(self, row: int) -> None:
@@ -169,15 +200,10 @@ class CurationWindow(QMainWindow):
         self.controller.select_lamella(row)
         self.refresh()
 
-    def _frame_slider_moved(self, value: int) -> None:
+    def _seek_frame(self, value: int) -> None:
         if value != self.controller.frame_position:
             self.controller.select_frame(value)
             self.refresh()
-
-    def _lamella_slider_moved(self, value: int) -> None:
-        if value != self.controller.lamella_position:
-            self.controller.select_lamella(value)
-            self.refresh(reload_lists=True)
 
     def _step_frame(self, delta: int) -> None:
         self.controller.step_frame(delta)
@@ -261,7 +287,7 @@ class CurationWindow(QMainWindow):
         """Bring the whole window back in step with the controller."""
         if reload_lists:
             self._refresh_lists()
-        self._refresh_sliders()
+        self._refresh_timeline()
         self._render()
         self._refresh_state_panel()
         self._schedule_loads()
@@ -278,35 +304,40 @@ class CurationWindow(QMainWindow):
         self.project_panel.show_summary(self._summary_text())
 
     def _summary_text(self) -> str:
+        """Describe the lamella's curation progress, per modality.
+
+        Counted per modality to match the timeline. A combined count would have
+        to report frames whose modalities differ as "mixed", which says nothing
+        about how much work is left in either.
+        """
         if self.controller.project is None:
             return "No project loaded"
-        counts: dict[str, int] = {}
-        for state in self.controller.frame_states():
-            counts[str(state)] = counts.get(str(state), 0) + 1
-        breakdown = ", ".join(f"{count} {state}" for state, count in sorted(counts.items()))
-        return f"{len(self.controller.frames)} frames\n{breakdown}"
 
-    def _refresh_sliders(self) -> None:
-        self._set_slider(
-            self.frame_slider, self.frame_label,
-            self.controller.frame_position, len(self.controller.frames),
-        )
-        self._set_slider(
-            self.lamella_slider, self.lamella_label,
-            self.controller.lamella_position, len(self.controller.lamellae),
-        )
-        self.strip.set_states(
-            self.controller.frame_states(), self.controller.frame_position
-        )
+        lines = [f"{len(self.controller.frames)} frames"]
+        for modality, states in self.controller.modality_states().items():
+            counts: dict[str, int] = {}
+            for state in states:
+                if state is not None:
+                    counts[state] = counts.get(state, 0) + 1
+            if not counts:
+                lines.append(f"{modality}: none")
+                continue
+            breakdown = ", ".join(
+                f"{counts[state]} {state}"
+                for state in ("deselected", "selected", "corrected")
+                if state in counts
+            )
+            lines.append(f"{modality}: {breakdown}")
+        return "\n".join(lines)
 
-    @staticmethod
-    def _set_slider(slider: QSlider, label: QLabel, position: int, total: int) -> None:
-        slider.blockSignals(True)
-        slider.setEnabled(total > 1)
-        slider.setMaximum(max(0, total - 1))
-        slider.setValue(position)
-        slider.blockSignals(False)
-        label.setText(f"{position + 1} / {total}" if total else "0 / 0")
+    def _refresh_timeline(self) -> None:
+        total = len(self.controller.frames)
+        self.timeline.set_states(
+            self.controller.modality_states(), self.controller.frame_position
+        )
+        self.frame_label.setText(
+            f"{self.controller.frame_position + 1} / {total}" if total else "0 / 0"
+        )
 
     def _render(self) -> None:
         """Draw the current frame, or say why it cannot be drawn yet."""
@@ -345,9 +376,12 @@ class CurationWindow(QMainWindow):
         lamella = self.controller.lamella
         if frame is None or project is None or lamella is None:
             return ""
+        lamella_position = (
+            f"{self.controller.lamella_position + 1}/{len(self.controller.lamellae)}"
+        )
         return (
-            f"{project.display_name}  |  {lamella.display_name}  |  "
-            f"{frame.display_name}  |  {frame.stage}"
+            f"{project.display_name}  |  {lamella.display_name} "
+            f"({lamella_position})  |  {frame.display_name}  |  {frame.stage}"
         )
 
     def _refresh_state_panel(self) -> None:

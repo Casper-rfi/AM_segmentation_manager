@@ -1,9 +1,16 @@
-"""A strip showing the workflow state of every frame in a lamella.
+"""The frame timeline: position and curation progress in one widget.
 
-Curation is a sweep through a lamella, and the question that matters between
-sessions is "how far did I get?". Scrubbing the slider to find out is tedious,
-so the state of every frame is drawn at once, under the slider that moves
-through them.
+This replaces a slider sitting above a separate state strip. Those two could
+never line up, because the slider row carried labels the strip did not, and
+keeping them aligned by padding would have been a permanent maintenance
+irritation. Merging them makes alignment structural rather than something to get
+right: there is one widget, and the position marker is drawn on the same pixels
+as the states.
+
+Each modality gets its own row. A curation step often targets one modality --
+deselecting a SEM while leaving its FIB selected is routine -- and a single
+combined row can only report "these disagree", which is exactly the state that
+proved unreadable in testing.
 """
 from __future__ import annotations
 
@@ -11,67 +18,117 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QPainter
 from qtpy.QtWidgets import QSizePolicy, QWidget
 
-from ..controller import MIXED
-
-#: Colours for each workflow state. Deliberately distinct in hue rather than
-#: only in brightness, so the strip is readable at a glance.
+#: Workflow state colours.
+#:
+#: A progress ramp -- inert, active, done -- rather than a semantic red/amber/
+#: green. Two reasons: the class palette already uses saturated orange, green,
+#: red and yellow, and its legend sits directly above this widget, so a
+#: red/green workflow scale would collide with the label colours it is drawn
+#: next to; and red against green is the pairing red-green colour deficiency
+#: cannot separate.
+#:
+#: To switch to a semantic scale, change these three values and the matching
+#: swatches in the state panel follow automatically.
 STATE_COLOURS = {
-    "selected": QColor("#4c8f4c"),
     "deselected": QColor("#6b6b6b"),
-    "corrected": QColor("#3b6ea5"),
-    MIXED: QColor("#c08a34"),
+    "selected": QColor("#4c78c8"),
+    "corrected": QColor("#1a7f6e"),
     None: QColor("#2b2b2b"),
 }
 
-CURRENT_MARKER = QColor("#f0f0f0")
+BACKGROUND = QColor("#232323")
+TICK = QColor("#1a1a1a")
+CURSOR = QColor("#f5f5f5")
+
+#: Row order, top to bottom. Matches the order of the view mode buttons.
+ROW_MODALITIES = ("SEM", "FIB")
+
+ROW_HEIGHT = 11
+ROW_GAP = 2
+CURSOR_WIDTH = 2
+
+#: Ticks are only drawn when frames are at least this wide, below which they
+#: would occupy more of the bar than the states they separate.
+MIN_TICK_SPACING = 5
 
 
-class FrameStateStrip(QWidget):
-    """Draws one tick per frame, coloured by workflow state.
+class FrameTimeline(QWidget):
+    """Position within a lamella, and each modality's state across it.
 
-    Clicking a tick jumps to that frame.
+    Click or drag anywhere on the widget to move to that frame.
     """
 
-    #: Emitted with the frame index when the user clicks the strip.
-    frame_clicked = Signal(int)
+    #: Emitted with a frame index when the user clicks or drags.
+    frame_selected = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
-        self._states: list = []
+        self._rows: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
+        self._count = 0
         self._current = 0
-        self.setFixedHeight(14)
+        self.setFixedHeight(len(ROW_MODALITIES) * ROW_HEIGHT + ROW_GAP)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setToolTip("Workflow state of each frame; click to jump")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(
+            "Curation progress across the lamella: SEM on the top row, FIB "
+            "below.\nClick or drag to jump to a frame; Left/Right arrow keys "
+            "step one frame."
+        )
 
-    def set_states(self, states: list, current: int) -> None:
-        """Show *states*, highlighting the frame at *current*."""
-        self._states = list(states)
+    def set_states(self, rows: dict[str, list], current: int) -> None:
+        """Show per-modality states and the current position.
+
+        Args:
+            rows: Workflow state per frame, keyed by modality. A None entry
+                means that modality has no image in that frame.
+            current: Index of the frame being viewed.
+        """
+        self._rows = {modality: list(rows.get(modality, [])) for modality in ROW_MODALITIES}
+        self._count = max((len(states) for states in self._rows.values()), default=0)
         self._current = current
         self.update()
 
+    def _frame_width(self) -> float:
+        return self.width() / self._count if self._count else 0.0
+
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)
-        painter.fillRect(self.rect(), STATE_COLOURS[None])
-        if not self._states:
+        painter.fillRect(self.rect(), BACKGROUND)
+        if not self._count:
             return
 
-        width = self.width() / len(self._states)
-        for index, state in enumerate(self._states):
-            colour = STATE_COLOURS.get(state, STATE_COLOURS[None])
-            left = index * width
-            painter.fillRect(
-                int(left), 0, max(1, int(width) + 1), self.height(), colour
-            )
+        width = self._frame_width()
+        draw_ticks = width >= MIN_TICK_SPACING
 
-        # Mark where the user is, so the strip doubles as a position indicator.
-        marker_left = int(self._current * width)
-        painter.fillRect(marker_left, 0, max(2, int(width)), 3, CURRENT_MARKER)
-        painter.fillRect(
-            marker_left, self.height() - 3, max(2, int(width)), 3, CURRENT_MARKER
-        )
+        for row, modality in enumerate(ROW_MODALITIES):
+            states = self._rows[modality]
+            top = row * (ROW_HEIGHT + ROW_GAP)
+            for index in range(self._count):
+                state = states[index] if index < len(states) else None
+                colour = STATE_COLOURS.get(state, STATE_COLOURS[None])
+                left = index * width
+                painter.fillRect(
+                    int(left), top, max(1, int(width) + 1), ROW_HEIGHT - 1, colour
+                )
+                if draw_ticks and index:
+                    painter.fillRect(int(left), top, 1, ROW_HEIGHT - 1, TICK)
+
+        # The position marker spans both rows, so it reads as one cursor rather
+        # than two independent marks.
+        cursor_left = int(self._current * width + width / 2) - CURSOR_WIDTH // 2
+        painter.fillRect(cursor_left, 0, CURSOR_WIDTH, self.height(), CURSOR)
+
+    def _frame_at(self, x: int) -> int:
+        width = self._frame_width()
+        if not width:
+            return 0
+        return max(0, min(int(x / width), self._count - 1))
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        if not self._states or event.button() != Qt.LeftButton:
-            return
-        index = int(event.pos().x() / (self.width() / len(self._states)))
-        self.frame_clicked.emit(max(0, min(index, len(self._states) - 1)))
+        if self._count and event.button() == Qt.LeftButton:
+            self.frame_selected.emit(self._frame_at(event.pos().x()))
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Scrub while the button is held."""
+        if self._count and event.buttons() & Qt.LeftButton:
+            self.frame_selected.emit(self._frame_at(event.pos().x()))

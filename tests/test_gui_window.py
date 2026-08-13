@@ -118,10 +118,10 @@ def _settle(app, condition=None, timeout: float = 10.0) -> None:
 
 def test_scanning_populates_the_window(window):
     assert window.controller.project.name == "test-project"
-    assert [w.text() for w in [window.frame_label]] == ["1 / 4"]
-    assert window.lamella_label.text() == "1 / 2"
+    assert window.frame_label.text() == "1 / 4"
     assert window.project_panel.project_list.count() == 1
     assert window.project_panel.lamella_list.count() == 2
+    assert "(1/2)" in window.image_panel.status.text()
 
 
 def test_both_panes_are_drawn(window):
@@ -141,7 +141,7 @@ def test_stepping_frames_updates_the_view(qt_app, window):
     _settle(qt_app, lambda: window.frame_label.text() == "2 / 4")
 
     assert window.controller.frame_position == 1
-    assert window.frame_slider.value() == 1
+    assert window.timeline._current == 1
 
 
 def test_frame_navigation_stops_at_the_end(window):
@@ -153,10 +153,10 @@ def test_frame_navigation_stops_at_the_end(window):
 def test_changing_lamella_resets_to_its_first_frame(qt_app, window):
     window._step_frame(2)
     window._step_lamella(1)
-    _settle(qt_app, lambda: window.lamella_label.text() == "2 / 2")
+    _settle(qt_app, lambda: window.controller.lamella.name == "02-beta")
 
     assert window.frame_label.text() == "1 / 2"
-    assert window.controller.lamella.name == "02-beta"
+    assert "(2/2)" in window.image_panel.status.text()
 
 
 def test_missing_fib_label_is_reported_not_hidden(qt_app, window):
@@ -234,13 +234,14 @@ def test_the_change_is_logged(window):
     assert "deselected" in window.state_panel.log.toPlainText()
 
 
-def test_state_strip_reflects_the_lamella(qt_app, window):
+def test_timeline_reflects_the_lamella(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
-    assert window.strip._states[0] == "deselected"
-    assert window.strip._states[1] == "selected"
+    assert window.timeline._rows["SEM"][0] == "deselected"
+    assert window.timeline._rows["FIB"][0] == "deselected"
+    assert window.timeline._rows["SEM"][1] == "selected"
 
 
 def test_mixed_state_shows_no_option_selected(qt_app, window):
@@ -257,3 +258,136 @@ def test_mixed_state_shows_no_option_selected(qt_app, window):
         button.isChecked() for button in window.state_panel.state_buttons.values()
     )
     assert "modalities differ" in window.state_panel.readout.text()
+
+
+# ---------------------------------------------------------------------------
+# Linked zoom (regression: the panes stopped following each other once an
+# image fitted its pane, because zoom rode on scrollbar signals)
+# ---------------------------------------------------------------------------
+
+def test_zoom_is_mirrored_to_the_other_pane(window):
+    pair = window.image_panel.pair
+    pair.left.zoom_by(2.0)
+
+    assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
+
+
+def test_zoom_stays_linked_when_the_image_fits_its_pane(window):
+    """The case that used to desynchronise: no scrollbars, so no scroll events."""
+    pair = window.image_panel.pair
+    pair.left.zoom_by(4.0)
+    assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
+
+    # Zoom back out past the point where the image fits.
+    for _ in range(8):
+        pair.left.zoom_by(0.5)
+
+    assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
+
+
+def test_zoom_out_stops_at_fit(window):
+    view = window.image_panel.pair.left
+    for _ in range(10):
+        view.zoom_by(0.5)
+
+    assert view.transform().m11() == pytest.approx(view.fit_scale(), rel=0.02)
+
+
+# ---------------------------------------------------------------------------
+# Timeline
+# ---------------------------------------------------------------------------
+
+def test_timeline_shows_each_modality_separately(qt_app, window):
+    """A frame with one modality changed must not read as an unlabelled 'mixed'."""
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.apply_state("deselected")
+    _settle(qt_app, lambda: window.timeline._rows["SEM"][0] == "deselected")
+
+    assert window.timeline._rows["SEM"][0] == "deselected"
+    assert window.timeline._rows["FIB"][0] == "selected"
+
+
+def test_clicking_the_timeline_seeks(window):
+    window.timeline.resize(400, 24)
+    window.timeline.set_states(window.controller.modality_states(), 0)
+
+    window.timeline.frame_selected.emit(2)
+
+    assert window.controller.frame_position == 2
+
+
+def test_timeline_handles_an_empty_lamella(window):
+    window.timeline.set_states({"SEM": [], "FIB": []}, 0)
+
+    assert window.timeline._count == 0
+
+
+# ---------------------------------------------------------------------------
+# State panel
+# ---------------------------------------------------------------------------
+
+def test_state_options_are_in_workflow_order(window):
+    order = list(window.state_panel.state_buttons)
+
+    assert order == ["deselected", "selected", "corrected"]
+
+
+def test_state_options_carry_a_colour_swatch(window):
+    for button in window.state_panel.state_buttons.values():
+        assert not button.icon().isNull()
+
+
+def test_state_tooltips_name_their_shortcut(window):
+    assert "D" in window.state_panel.state_buttons["deselected"].toolTip()
+    assert "C" in window.state_panel.state_buttons["corrected"].toolTip()
+
+
+# ---------------------------------------------------------------------------
+# Long lists
+# ---------------------------------------------------------------------------
+
+def test_filtering_hides_non_matching_lamellae(window):
+    window.project_panel.lamella_filter.setText("beta")
+
+    hidden = [
+        window.project_panel.lamella_list.item(row).isHidden()
+        for row in range(window.project_panel.lamella_list.count())
+    ]
+    assert hidden == [True, False]
+
+
+def test_filtering_keeps_row_numbers_aligned_with_lamellae(window):
+    """Rows must still map to real indices, or selection would target the wrong one."""
+    window.project_panel.lamella_filter.setText("beta")
+    window._select_lamella(1)
+
+    assert window.controller.lamella.name == "02-beta"
+
+
+def test_clearing_the_filter_restores_everything(window):
+    window.project_panel.lamella_filter.setText("beta")
+    window.project_panel.lamella_filter.setText("")
+
+    hidden = [
+        window.project_panel.lamella_list.item(row).isHidden()
+        for row in range(window.project_panel.lamella_list.count())
+    ]
+    assert hidden == [False, False]
+
+
+def test_list_titles_show_counts(window):
+    assert "(1)" in window.project_panel.project_box.title()
+    assert "(2)" in window.project_panel.lamella_box.title()
+
+
+# ---------------------------------------------------------------------------
+# Shortcut reference
+# ---------------------------------------------------------------------------
+
+def test_every_shortcut_is_documented(window):
+    documented = dict(window._bindings)
+
+    assert len(documented) == len(window._shortcuts)
+    assert documented["F1"] == "Show this list"
+    assert all(description for description in documented.values())

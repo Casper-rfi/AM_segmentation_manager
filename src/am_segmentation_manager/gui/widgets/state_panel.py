@@ -10,7 +10,8 @@ a frame's two acquisitions disagree, no option is shown as chosen.
 """
 from __future__ import annotations
 
-from qtpy.QtCore import Signal
+from qtpy.QtCore import QSize, Qt, Signal
+from qtpy.QtGui import QIcon, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
     QGroupBox,
@@ -23,8 +24,24 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState
 from ..controller import MIXED
+from .frame_strip import STATE_COLOURS
 
-STATES: tuple[RecordState, ...] = ("selected", "deselected", "corrected")
+#: Workflow order, which is also the order of the rows in the timeline: data is
+#: excluded, or queued for proofreading, or finished.
+STATES: tuple[RecordState, ...] = ("deselected", "selected", "corrected")
+
+#: Key that applies each state, shown in its tooltip.
+STATE_KEYS = {"deselected": "D", "selected": "S", "corrected": "C"}
+
+STATE_HELP = {
+    "deselected": "Exclude from proofreading. Moves files into deselected/, "
+                  "which stops the segmentation software generating labels for them.",
+    "selected": "Queue for proofreading. Files sit in the normal folder.",
+    "corrected": "Mark proofreading finished. Moves files into corrected/; "
+                 "moving them back out asks for confirmation.",
+}
+
+SWATCH_SIZE = 12
 
 
 class StatePanel(QWidget):
@@ -55,10 +72,19 @@ class StatePanel(QWidget):
         # -- target --------------------------------------------------------
         self.target_box = QGroupBox("Apply to")
         target_layout = QVBoxLayout(self.target_box)
+        self.target_box.setToolTip(
+            "Which images a state change moves. The two modalities can be in "
+            "different states."
+        )
         self.target_buttons: dict[str, QRadioButton] = {}
         target_group = QButtonGroup(self)
-        for target, caption in (("SEM", "SEM"), ("FIB", "FIB"), ("both", "Both")):
+        for target, caption, hint in (
+            ("SEM", "SEM", "Change the SEM image only"),
+            ("FIB", "FIB", "Change the FIB image only"),
+            ("both", "Both", "Change both images of this frame together"),
+        ):
             button = QRadioButton(caption)
+            button.setToolTip(hint)
             button.toggled.connect(
                 lambda checked, t=target: checked and self.target_changed.emit(t)
             )
@@ -73,9 +99,14 @@ class StatePanel(QWidget):
         state_layout = QVBoxLayout(self.state_box)
         self.state_buttons: dict[str, QRadioButton] = {}
         self.state_group = QButtonGroup(self)
+        # Not exclusive: a frame whose SEM and FIB differ must be able to show
+        # no option chosen, which an exclusive group cannot represent.
         self.state_group.setExclusive(False)
         for state in STATES:
             button = QRadioButton(state)
+            button.setIcon(_swatch(state))
+            button.setIconSize(QSize(SWATCH_SIZE, SWATCH_SIZE))
+            button.setToolTip(f"{STATE_HELP[state]}\nShortcut: {STATE_KEYS[state]}")
             button.clicked.connect(lambda _checked, s=state: self.state_requested.emit(s))
             self.state_group.addButton(button)
             state_layout.addWidget(button)
@@ -139,3 +170,14 @@ class StatePanel(QWidget):
     def append_log(self, message: str) -> None:
         """Record a change, so what happened stays visible."""
         self.log.appendPlainText(message)
+
+
+def _swatch(state: str) -> QIcon:
+    """Return a solid colour chip matching the timeline's colour for *state*.
+
+    Putting the colour next to the control that sets it is what makes the
+    timeline readable without a separate key.
+    """
+    pixmap = QPixmap(SWATCH_SIZE, SWATCH_SIZE)
+    pixmap.fill(STATE_COLOURS.get(state, Qt.transparent))
+    return QIcon(pixmap)

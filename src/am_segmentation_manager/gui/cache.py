@@ -39,9 +39,11 @@ V = TypeVar("V")
 #: neighbourhood of the current frame for an unusually long one.
 DEFAULT_IMAGE_LIMIT = 120
 
-#: Prepared plots to keep. Far more expensive per entry than images, and only
-#: needed while the plot view is on.
-DEFAULT_PLOT_LIMIT = 8
+#: Prepared plots to keep. Still several times more costly per entry than an
+#: image (~5 MB, ~200 ms), so bounded well below the image limit, but generous
+#: enough that moving back and forth through a lamella in the plot view does
+#: not keep re-reading the same figures.
+DEFAULT_PLOT_LIMIT = 16
 
 #: How far either side of the current frame to prepare ahead.
 DEFAULT_RADIUS = 3

@@ -285,6 +285,19 @@ class CurationController:
         """
         return [self.combined_state(frame) for frame in self._frames]
 
+    def modality_states(self) -> dict[str, list[RecordState | None]]:
+        """Return each modality's state for every frame in the lamella.
+
+        Reported per modality rather than combined because a state change
+        commonly targets one of them: a frame with its SEM deselected and its
+        FIB still selected is a normal intermediate step, and collapsing that
+        to "mixed" hides which modality is in which state.
+        """
+        return {
+            modality: [self.state_of(modality, frame) for frame in self._frames]
+            for modality in ("SEM", "FIB")
+        }
+
     def set_target(self, target: EditTarget) -> None:
         """Choose whether state changes apply to SEM, FIB, or both."""
         if target not in ("SEM", "FIB", "both"):

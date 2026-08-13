@@ -9,12 +9,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QImage, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QVBoxLayout,
@@ -55,6 +56,11 @@ def to_qimage(array: "np.ndarray") -> QImage:
 class ImageView(QGraphicsView):
     """A single pane showing one image, with wheel zoom and drag panning."""
 
+    #: Emitted after the view is zoomed, so a linked view can follow.
+    #: Zoom must be reported explicitly: an image that fits its pane has no
+    #: scrollbars, so scroll signals alone cannot carry it.
+    zoomed = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
@@ -92,17 +98,52 @@ class ImageView(QGraphicsView):
         """Scale so the whole image is visible."""
         if not self._item.pixmap().isNull():
             self.fitInView(self._item, Qt.KeepAspectRatio)
+            self.zoomed.emit()
+
+    def fit_scale(self) -> float:
+        """Return the scale at which the image exactly fills the pane."""
+        rect = self._item.boundingRect()
+        if rect.isEmpty():
+            return MIN_SCALE
+        viewport = self.viewport().rect()
+        return min(viewport.width() / rect.width(), viewport.height() / rect.height())
+
+    def zoom_by(self, factor: float) -> None:
+        """Scale the view by *factor*, within limits, and report the change.
+
+        Zooming out stops once the image fits the pane: shrinking it further
+        only strands it in a corner of an empty view.
+
+        Separate from :meth:`wheelEvent` so the limits can be exercised without
+        synthesising wheel events.
+        """
+        current = self.transform().m11()
+        target = current * factor
+        minimum = max(MIN_SCALE, self.fit_scale())
+
+        if target < minimum:
+            # Already at (or within rounding of) the fit scale: nothing to do.
+            if current <= minimum * 1.001:
+                return
+            self.fit()
+            return
+        if target > MAX_SCALE:
+            return
+
+        self.scale(factor, factor)
+        self.zoomed.emit()
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Zoom about the cursor, within sane limits."""
-        factor = ZOOM_STEP if event.angleDelta().y() > 0 else 1 / ZOOM_STEP
-        scale = self.transform().m11() * factor
-        if MIN_SCALE <= scale <= MAX_SCALE:
-            self.scale(factor, factor)
+        """Zoom about the cursor."""
+        self.zoom_by(ZOOM_STEP if event.angleDelta().y() > 0 else 1 / ZOOM_STEP)
 
 
 class LinkedImageViews(QWidget):
     """Two captioned panes kept at the same zoom and scroll position."""
+
+    #: Gap between the two panes. Deliberately tight: the panes are the point of
+    #: the window, and every pixel of margin is taken from the image.
+    PANE_SPACING = 4
 
     def __init__(self, left_caption: str, right_caption: str) -> None:
         super().__init__()
@@ -110,49 +151,58 @@ class LinkedImageViews(QWidget):
         self.right = ImageView()
         self._syncing = False
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        panes = QWidget()
-        panes_layout = QVBoxLayout(panes)
-        panes_layout.setContentsMargins(0, 0, 0, 0)
-
-        from qtpy.QtWidgets import QHBoxLayout
-
-        row = QHBoxLayout()
+        row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(self.PANE_SPACING)
+
         for view, caption in ((self.left, left_caption), (self.right, right_caption)):
             column = QVBoxLayout()
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(2)
             label = QLabel(caption)
             label.setAlignment(Qt.AlignCenter)
             column.addWidget(label)
             column.addWidget(view)
-            container = QWidget()
-            container.setLayout(column)
-            row.addWidget(container)
-        panes_layout.addLayout(row)
-        layout.addWidget(panes)
+            row.addLayout(column)
 
         self._link(self.left, self.right)
         self._link(self.right, self.left)
 
     def _link(self, source: ImageView, target: ImageView) -> None:
-        """Mirror *source*'s scroll position onto *target*."""
+        """Mirror *source*'s zoom and scroll position onto *target*.
+
+        Zoom is mirrored from its own signal rather than inferred from scroll
+        events. An image that fits its pane has no scrollbars to move, so a
+        scroll-only link silently stops synchronising at exactly the point the
+        user zooms out far enough to see the whole frame.
+        """
+        source.zoomed.connect(lambda: self._mirror_zoom(source, target))
         source.horizontalScrollBar().valueChanged.connect(
-            lambda value: self._mirror(target.horizontalScrollBar(), value, source, target)
+            lambda value: self._mirror_scroll(target.horizontalScrollBar(), value)
         )
         source.verticalScrollBar().valueChanged.connect(
-            lambda value: self._mirror(target.verticalScrollBar(), value, source, target)
+            lambda value: self._mirror_scroll(target.verticalScrollBar(), value)
         )
 
-    def _mirror(self, scrollbar, value: int, source: ImageView, target: ImageView) -> None:
-        """Copy zoom and scroll from *source* to *target*, without recursing."""
+    def _mirror_zoom(self, source: ImageView, target: ImageView) -> None:
+        """Copy *source*'s transform onto *target*, without recursing."""
         if self._syncing:
             return
         self._syncing = True
         try:
             if target.transform() != source.transform():
                 target.setTransform(source.transform())
+            target.horizontalScrollBar().setValue(source.horizontalScrollBar().value())
+            target.verticalScrollBar().setValue(source.verticalScrollBar().value())
+        finally:
+            self._syncing = False
+
+    def _mirror_scroll(self, scrollbar, value: int) -> None:
+        """Copy a scroll position across, without recursing."""
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
             scrollbar.setValue(value)
         finally:
             self._syncing = False

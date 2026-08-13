@@ -63,13 +63,18 @@ class ImagePanel(QWidget):
         self._alpha = DEFAULT_ALPHA
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 4, 2, 2)
+        layout.setSpacing(3)
 
         # -- view controls -------------------------------------------------
         controls = QHBoxLayout()
         self.mode_buttons: dict[str, QRadioButton] = {}
         group = QButtonGroup(self)
-        for mode, caption in (("sem", "SEM"), ("fib", "FIB"), ("plot", "Plots")):
+        for mode, caption, key in (
+            ("sem", "SEM", "1"), ("fib", "FIB", "2"), ("plot", "Plots", "3"),
+        ):
             button = QRadioButton(caption)
+            button.setToolTip(f"Show the {caption} view\nShortcut: {key}")
             button.toggled.connect(
                 lambda checked, m=mode: checked and self.mode_changed.emit(m)
             )
@@ -81,14 +86,20 @@ class ImagePanel(QWidget):
         controls.addSpacing(20)
         self.overlay_check = QCheckBox("Show label")
         self.overlay_check.setChecked(True)
+        self.overlay_check.setToolTip(
+            "Draw the label over the right-hand image\nShortcut: Space"
+        )
         self.overlay_check.toggled.connect(self.overlay_toggled.emit)
         controls.addWidget(self.overlay_check)
 
-        controls.addWidget(QLabel("Opacity"))
+        opacity_label = QLabel("Opacity")
+        controls.addWidget(opacity_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
         self.alpha_slider.setFixedWidth(120)
+        self.alpha_slider.setToolTip("How strongly the label colour is drawn over the image")
+        opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
         controls.addWidget(self.alpha_slider)
         controls.addStretch()
