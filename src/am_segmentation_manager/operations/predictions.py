@@ -13,19 +13,10 @@ import logging
 import shutil
 from typing import Iterable
 
+from .label_io import has_image_stack_support, save_label_image
 from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
-
-
-def _has_image_stack_support() -> bool:
-    try:
-        import tifffile  # type: ignore
-        import numpy  # type: ignore
-        import cv2  # type: ignore
-        return True
-    except Exception:
-        return False
 
 
 def prediction_to_label(prediction_path: Path, label_path: Path, target_image_path: Path | None = None) -> None:
@@ -58,7 +49,7 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
         logger.info("Copied prediction %s -> %s (no target provided)", prediction_path, label_path)
         return
 
-    if not _has_image_stack_support():
+    if not has_image_stack_support():
         logger.warning("Image processing libs (tifffile/numpy/cv2) not available; copying prediction without resizing")
         shutil.copy2(str(prediction_path), str(label_path))
         return
@@ -102,7 +93,7 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
 
     if pred2.shape == target2.shape:
         # shapes already match; write prediction directly
-        tifffile.imwrite(str(label_path), pred2)
+        save_label_image(pred2, label_path, pred2.dtype)
         logger.info("Wrote label %s (shapes matched)", label_path)
         return
 
@@ -113,7 +104,7 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
     if not np.issubdtype(resized.dtype, np.integer):
         resized = resized.astype(np.uint8)
 
-    tifffile.imwrite(str(label_path), resized)
+    save_label_image(resized, label_path, resized.dtype)
     logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, resized.shape)
 
 

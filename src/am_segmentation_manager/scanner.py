@@ -197,10 +197,10 @@ class Scanner:
         - labels/
         - labels_fib/
 
-        Only common image file extensions are considered.
+        Only .tif and .tiff file extensions are considered.
         """
         image_records: List[ImageRecord] = []
-        image_exts = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+        image_exts = {".tif", ".tiff"}
 
         def collect_files(folder: Path) -> List[Path]:
             if not folder.exists():

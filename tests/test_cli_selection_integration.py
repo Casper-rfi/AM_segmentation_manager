@@ -144,3 +144,37 @@ def test_cli_selection_changes_only_the_explicit_modality(tmp_path: Path) -> Non
     assert result == 0
     assert sem_image.exists()
     assert (stage / "fib" / "deselected" / fib_image.name).exists()
+
+
+def test_cli_deselect_state_filter_skips_already_corrected(tmp_path: Path) -> None:
+    """--state restricts the shared scope filter to a single workflow state.
+
+    A corrected image should be left untouched when --state selected is
+    given, since it no longer counts as "selected".
+    """
+    project = tmp_path / "projX"
+    stage = project / "01-lamella" / "stage"
+    (project / "experiment.yaml").parent.mkdir(parents=True)
+    (project / "experiment.yaml").write_text("name: projX")
+
+    selected_image = stage / "sem" / "selected.tif"
+    corrected_image = stage / "sem" / "corrected" / "corrected.tif"
+    corrected_label = stage / "labels" / "corrected" / "corrected.tif"
+    selected_image.parent.mkdir(parents=True)
+    corrected_image.parent.mkdir(parents=True)
+    corrected_label.parent.mkdir(parents=True)
+    selected_image.write_text("sem")
+    corrected_image.write_text("sem")
+    corrected_label.write_text("lbl")
+
+    result = main([
+        "deselect", "--start-path", str(tmp_path), "--project", "projX",
+        "--lamella", "01", "--stage", "01", "--image", "all",
+        "--modality", "SEM", "--state", "selected",
+    ])
+
+    assert result == 0
+    # Only the selected image moved; the corrected image/label are untouched.
+    assert (stage / "sem" / "deselected" / "selected.tif").exists()
+    assert corrected_image.exists()
+    assert corrected_label.exists()

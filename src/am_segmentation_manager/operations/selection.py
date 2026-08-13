@@ -21,15 +21,21 @@ class _Move:
     destination: Path
 
 
-def _base_path(path: Path) -> Path:
+def base_path(path: Path) -> Path:
+    """Return *path* with any state subfolder (deselected/corrected) stripped.
+
+    For example ``sem/deselected/img.tif`` and ``sem/img.tif`` both resolve
+    to ``sem/img.tif`` — the shared identity used to look up a file's other
+    possible state locations.
+    """
     if path.parent.name in _STATE_FOLDERS:
         return path.parent.parent / path.name
     return path
 
 
-def _existing_variant(path: Path) -> Path | None:
+def existing_variant(path: Path) -> Path | None:
     """Find a file's sole on-disk state variant, rejecting ambiguous copies."""
-    base = _base_path(path)
+    base = base_path(path)
     variants = [base, *(base.parent / folder / base.name for folder in _STATE_FOLDERS)]
     existing = [candidate for candidate in variants if candidate.exists()]
     if len(existing) > 1:
@@ -38,7 +44,7 @@ def _existing_variant(path: Path) -> Path | None:
 
 
 def _destination(path: Path, state: RecordState) -> Path:
-    base = _base_path(path)
+    base = base_path(path)
     folder = STATE_DIRECTORIES[state]
     return base if folder is None else base.parent / folder / base.name
 
@@ -46,7 +52,7 @@ def _destination(path: Path, state: RecordState) -> Path:
 def _plan_record_transition(record: ImageRecord, state: RecordState) -> list[_Move]:
     moves: list[_Move] = []
     for index, path in enumerate([record.image_path, *record.labels]):
-        source = _existing_variant(path)
+        source = existing_variant(path)
         if source is None:
             if index == 0:
                 raise FileNotFoundError(path)
@@ -124,13 +130,13 @@ def mark_corrected_records(
 
 def record_from_image_path(path: Path) -> ImageRecord:
     """Build a record for direct-path use, including an associated label."""
-    image_path = _base_path(path)
+    image_path = base_path(path)
     modality_directory = next((parent for parent in image_path.parents if parent.name in {"sem", "fib"}), None)
     labels: list[Path] = []
     if modality_directory is not None:
         label_directory = modality_directory.parent / ("labels" if modality_directory.name == "sem" else "labels_fib")
         label_path = label_directory / image_path.name
-        if _existing_variant(label_path) is not None:
+        if existing_variant(label_path) is not None:
             labels.append(label_path)
     modality = modality_directory.name.upper() if modality_directory is not None else None
     return ImageRecord(image_path=image_path, labels=labels, modality=modality)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# The four mutually exclusive workflow states plus an "all" total.
+# The three mutually exclusive workflow states plus an "all" total.
 _STATUS_ORDER = ("deselected", "selected", "corrected", "all")
 
 

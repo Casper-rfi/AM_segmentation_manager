@@ -30,8 +30,13 @@ logger = logging.getLogger(__name__)
 def _add_scope_arguments(
     parser: argparse.ArgumentParser,
     default_modality: str | None = None,
+    include_state: bool = True,
 ) -> None:
-    """Add the common scope-selection arguments to *parser*."""
+    """Add the common scope-selection arguments to *parser*.
+
+    Set *include_state* to False when the caller registers its own
+    ``--state`` argument (for example to make it required).
+    """
     parser.add_argument("paths", nargs="*", help="Explicit image paths or scan directory")
     parser.add_argument("--start-path", default=".", help="Directory to start scanning from")
     parser.add_argument(
@@ -50,6 +55,13 @@ def _add_scope_arguments(
         "--image", action="append", default=[],
         help="Image name/number; use 'all' explicitly",
     )
+    if include_state:
+        parser.add_argument(
+            "--state",
+            choices=["corrected", "selected", "deselected", "all"],
+            default="all",
+            help="Restrict to images currently in this workflow state (default: 'all')",
+        )
     if default_modality is not None:
         parser.add_argument(
             "--modality", choices=["SEM", "FIB", "all"], default=default_modality,
@@ -171,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         help="Export dataset image and label pairs to CSV files for ML model training",
         description="Filter project images/labels and export training and validation CSV files",
     )
-    _add_scope_arguments(create_training_csv, default_modality="all")
+    _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
     create_training_csv.add_argument(
         "--state",
         choices=["corrected", "selected", "deselected", "all"],
@@ -192,13 +204,69 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         "--split",
         type=float,
         default=0.8,
-        help="Ratio of data assigned to training set vs validation set (default: 0.8)",
+        help="Ratio of data assigned to training, with the rest set to validation (default: 0.8)",
     )
     create_training_csv.add_argument(
         "--seed",
         type=int,
         default=42,
         help="Random seed for reproducible train/validation split (default: 42)",
+    )
+
+    # -- check-training-csv --------------------------------------------------
+    check_training_csv = sub.add_parser(
+        "check-training-csv",
+        help="Check that image/label paths recorded in a training CSV still exist",
+        description=(
+            "Re-check every image/label path in a CSV exported by "
+            "create-training-csv against the current filesystem state, and "
+            "optionally write a corrected copy."
+        ),
+    )
+    check_training_csv.add_argument("csv_path", help="Path to the CSV file to check")
+    check_training_csv.add_argument(
+        "--start-path", default=".",
+        help="Scan directory the CSV paths are relative to (default: current directory)",
+    )
+    check_training_csv.add_argument(
+        "--fix", action="store_true",
+        help="Write a corrected CSV with updated paths for files that moved between states",
+    )
+    check_training_csv.add_argument(
+        "-o", "--output", default=None,
+        help="Output path for the fixed CSV (default: '<name>_checked.csv'); requires --fix",
+    )
+    check_training_csv.add_argument(
+        "--in-place", action="store_true",
+        help="Overwrite the original CSV instead of writing a new file; requires --fix",
+    )
+    check_training_csv.add_argument(
+        "--drop-missing", action="store_true",
+        help="With --fix, omit rows whose image or label cannot be found in any workflow state",
+    )
+    check_training_csv.add_argument(
+        "--keep-missing", action="store_true",
+        help="With --fix, keep rows with unresolved paths unchanged instead of aborting",
+    )
+
+    # -- compress-labels ------------------------------------------------------
+    compress_labels_cmd = sub.add_parser(
+        "compress-labels",
+        help="Recompress on-disk label files to reduce storage size",
+        description=(
+            "Re-encode label TIFFs discovered by the scanner using a compact "
+            "encoding, shrinking file size on disk without changing pixel "
+            "dimensions or label values."
+        ),
+    )
+    _add_scope_arguments(compress_labels_cmd, default_modality="all")
+    compress_labels_cmd.add_argument(
+        "--confirm-corrected", action="store_true",
+        help="Allow recompressing labels that live in a corrected/ folder",
+    )
+    compress_labels_cmd.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview compression savings without modifying any files",
     )
 
     args = parser.parse_args(argv)
@@ -274,6 +342,82 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
         if val_csv:
             logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
+        return 0
+
+    if args.command == "check-training-csv":
+        from .operations.csv_check import check_csv_paths, summarize_results, write_fixed_csv
+
+        if args.in_place and args.output:
+            logger.error("--in-place and --output are mutually exclusive")
+            return 2
+        if args.drop_missing and args.keep_missing:
+            logger.error("--drop-missing and --keep-missing are mutually exclusive")
+            return 2
+        if not args.fix and (args.output or args.in_place or args.drop_missing or args.keep_missing):
+            logger.error("--output/--in-place/--drop-missing/--keep-missing require --fix")
+            return 2
+
+        start_path = Path(args.start_path)
+        csv_path = Path(args.csv_path)
+        results = check_csv_paths(csv_path, start_path)
+        lines, problem_count = summarize_results(results, start_path)
+        for line in lines:
+            logger.info(line)
+
+        if not args.fix:
+            return 0 if problem_count == 0 else 1
+
+        if args.in_place:
+            output_path = csv_path
+        elif args.output:
+            output_path = Path(args.output)
+        else:
+            output_path = csv_path.with_name(f"{csv_path.stem}_checked{csv_path.suffix}")
+        missing_policy = "drop" if args.drop_missing else "keep" if args.keep_missing else "abort"
+
+        try:
+            written_path = write_fixed_csv(results, start_path, output_path, missing_policy=missing_policy)
+        except ValueError as exc:
+            logger.error(str(exc))
+            return 2
+        logger.info("Wrote fixed CSV: %s", written_path)
+        return 0
+
+    if args.command == "compress-labels":
+        from .operations.label_compression import compress_labels
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.info("No matching images found to compress labels for")
+            return 2
+
+        try:
+            results = compress_labels(
+                records,
+                allow_corrected=args.confirm_corrected,
+                dry_run=args.dry_run,
+            )
+        except (PermissionError, RuntimeError) as exc:
+            logger.error("Could not compress labels: %s", exc)
+            return 2
+
+        for result in results:
+            rel = make_path_relative(result.label_path, start_path)
+            if args.dry_run:
+                logger.info("Would compress %s: %d -> %d bytes", rel, result.original_size, result.new_size)
+            elif result.applied:
+                logger.info("Compressed %s: %d -> %d bytes", rel, result.original_size, result.new_size)
+            else:
+                logger.info("No savings for %s (%d bytes), left unchanged", rel, result.original_size)
+
+        applied_count = sum(1 for r in results if r.applied or args.dry_run and r.new_size < r.original_size)
+        total_before = sum(r.original_size for r in results)
+        total_after = sum(r.new_size if (r.applied or args.dry_run) else r.original_size for r in results)
+        logger.info(
+            "Total: %d label(s) checked, %d %s, %d -> %d bytes",
+            len(results), applied_count, "would compress" if args.dry_run else "compressed",
+            total_before, total_after,
+        )
         return 0
 
     parser.print_help()

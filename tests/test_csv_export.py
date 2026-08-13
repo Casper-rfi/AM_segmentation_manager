@@ -183,6 +183,7 @@ def test_cli_create_training_csv_positional_scan_dir(tmp_path: Path):
     labels_corr = stage / "labels" / "corrected"
     sem_corr.mkdir(parents=True)
     labels_corr.mkdir(parents=True)
+    (project / "experiment.yaml").write_text("name: AutoLamella-2026-07-28-10-31")
 
     img = sem_corr / "01-ruling-ibex_AP_img_013_SEM.tif"
     lbl = labels_corr / "01-ruling-ibex_AP_img_013_SEM.tif"
