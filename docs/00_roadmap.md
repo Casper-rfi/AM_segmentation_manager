@@ -18,8 +18,6 @@ This file is the entry point for picking the work up fresh.
 
 **Suite: 906 passed, 8 skipped, ~40 s.** `ruff check` clean. Confirmed on both
 PyQt5 (development machine) and PySide6 (the user's), and under `de_DE.UTF-8`.
-The 47 tests added for §8 have only been run on PyQt5 so far, though they touch
-no Qt.
 
 Built across phases 0–7:
 
@@ -52,9 +50,11 @@ What is left is smaller, and in no particular order:
 * `01_refactor_plan.md` §4.1 — run the suite under the other Qt binding and
   another locale. This has caught three real bugs and is the highest-value
   habit here.
-* `03_metadata_plan.md` §9 — four open questions, the first being whether
-  data-repository deposition is still a goal. `CLAUDE.md` lists it as a main
-  function of the package and nothing implements it.
+* `03_metadata_plan.md` §9 — two open questions, both needing a decision rather
+  than an investigation. The first is whether data-repository deposition is
+  still a goal: `CLAUDE.md` lists it as a main function of the package and
+  nothing implements it. The other two questions were settled against the
+  collection on 2026-08-14 and cost no code (§9.1).
 
 ---
 
@@ -87,6 +87,13 @@ fields, including the fallback search, to the beam that fired.
 from, rescaled by the ratio of their widths, because a label converted from a
 prediction need not share its image's pixel dimensions. `label_measure` returns
 no areas at all rather than assuming 1:1 — see `03_metadata_plan.md` §8.3.
+
+**Most TIFFs in the collection have no acquisition header, and should not.**
+Of 8503 files, 483 carry none: predictions, labels and autofocus frames are not
+acquisitions. Only indexed *images* are expected to have one, and on this
+archive all 2670 of them do. A count of "unreadable headers" taken over
+`rglob("*.tif")` is measuring the wrong population — see `03_metadata_plan.md`
+§9.1.
 
 **A missing measurement is never a default.** The single exception is the
 integration counts, where absence means "not enabled", which is one pass — that

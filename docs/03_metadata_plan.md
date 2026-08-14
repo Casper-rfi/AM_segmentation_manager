@@ -766,7 +766,8 @@ separate piece of design.
 
 ## 9. Open questions
 
-Ordered by how much they would change the plan.
+Two remain. Both need a decision rather than an investigation, which is why
+neither is settled here.
 
 1. **Is data-repository deposition still a goal?** `CLAUDE.md` lists it as a
    main function; nothing implements it and your notes do not mention it. If it
@@ -778,15 +779,33 @@ Ordered by how much they would change the plan.
    given `CLAUDE.md`'s warning that lamellae in one *directory* may be — then
    `sample` is on the wrong object, and finding that out after building the
    editor is expensive.
-3. **Does a header disagreeing with its directory ever happen in real data?**
-   §3.2 reads `beam_type`; if disagreements exist, the question is whether they
-   are miscopied files (a finding) or something legitimate. The §1.4 census read
-   `beam_type` but did not cross-check it against the directory — a five-line
-   script would settle it before §3 is built.
-4. **What are the 12 unreadable images in §1.4?** Truncated files, a third
-   dialect, or something benign. Worth identifying: if they are truncated, that
-   is a data-integrity finding `inspect-layout` should probably report, which is
-   a different outcome from "the reader needs to be more tolerant".
+
+### 9.1 Answered 2026-08-14, against the collection
+
+**Does a header ever disagree with its directory? No.** Zero disagreements
+across all 2670 indexed images, every one of which had a readable header.
+`modality_disagreements()` stays as the cross-check it was written to be, but
+it has nothing to report on this archive.
+
+**The images with no readable header are benign.** Of 8503 TIFFs on disk, 483
+carry no acquisition header, and 477 of those are explained by what they are:
+282 predictions, 103 labels and 92 autofocus frames. None of those is an
+acquisition, so having no acquisition header is correct rather than a fault.
+
+The remaining six are ImageJ-written binary masks — 99 px wide, a few dozen
+rows tall, a single tapered shape — sitting at two project roots and named
+after sibling lamella directories (`03-cool-cod.tif` beside `03-cool-cod/`).
+They are not indexed, which is right: a project root is not an image directory.
+Their origin was not known and they are being deleted as irrelevant.
+
+So both outcomes this question anticipated are ruled out. Nothing is truncated,
+so there is no data-integrity finding for `inspect-layout` to report, and there
+is no third dialect, so the reader does not need to be more tolerant. **No code
+change follows from this.**
+
+The §1.4 figure of "12 unreadable of 2680" did not reproduce; the index holds
+2670 images and all of them read. Rather than guess at what that census walked,
+the counts above are the ones that are reproducible today.
 
 *(The earlier draft's fourth question — how many microscopes are in the archive
 — is answered in §1.4: three.)*
