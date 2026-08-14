@@ -185,6 +185,20 @@ class FrameTimeline(QWidget):
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)
+        try:
+            self._paint(painter)
+        finally:
+            # Always, even if painting raised. A QPainter that outlives its
+            # paint device crashes the process rather than reporting an error,
+            # and under PySide6 the painter is not destroyed promptly when the
+            # frame goes out of scope -- an exception here captures it in the
+            # traceback, and the segfault then lands somewhere unrelated, in
+            # whatever next triggers garbage collection.
+            painter.end()
+
+    def _paint(self, painter: QPainter) -> None:
+        """Draw the timeline. Called with an active painter, which the caller
+        is responsible for ending."""
         painter.fillRect(self.rect(), BACKGROUND)
         if not self._count:
             return

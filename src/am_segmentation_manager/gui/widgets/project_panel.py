@@ -306,10 +306,14 @@ def _status_icon(status: CurationStatus) -> QIcon:
     pixmap = QPixmap(SWATCH_WIDTH * 2 + 2, SWATCH_HEIGHT)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
-    for index, modality in enumerate(("SEM", "FIB")):
-        left = index * (SWATCH_WIDTH + 2)
-        _paint_status(painter, left, status.of(modality))
-    painter.end()
+    try:
+        for index, modality in enumerate(("SEM", "FIB")):
+            left = index * (SWATCH_WIDTH + 2)
+            _paint_status(painter, left, status.of(modality))
+    finally:
+        # status.of() raises on an unexpected modality, and a painter left
+        # alive past its pixmap crashes the process instead of reporting it.
+        painter.end()
     return QIcon(pixmap)
 
 
