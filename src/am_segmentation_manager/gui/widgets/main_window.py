@@ -10,8 +10,8 @@ import logging
 from collections import Counter
 from pathlib import Path
 
-from qtpy.QtCore import QSettings, Qt, QUrl, Signal
-from qtpy.QtGui import QDesktopServices
+from qtpy.QtCore import QRect, QSettings, Qt, QUrl, Signal
+from qtpy.QtGui import QCursor, QDesktopServices
 from qtpy.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -104,11 +105,6 @@ class CurationWindow(QMainWindow):
         splitter.setSizes([270, 1080, 250])
         self.setCentralWidget(splitter)
 
-        # Created up front rather than on first use. QMainWindow.statusBar()
-        # builds one lazily, so leaving it implicit would make the bar appear --
-        # and shift everything above it -- the first time a path was copied.
-        self.statusBar().showMessage("Ready", 2000)
-
     def _build_timeline(self) -> QHBoxLayout:
         """Build the frame timeline row.
 
@@ -175,13 +171,24 @@ class CurationWindow(QMainWindow):
         return self.controller.current_image_path()
 
     def _copy_path(self, path: Path | None, noun: str) -> None:
-        """Put *path* on the clipboard and say so in the status bar."""
+        """Put *path* on the clipboard and confirm it beside the cursor.
+
+        Confirmed with a transient tooltip rather than a status bar. A status
+        bar costs ~25px of window height permanently, and the image panes are
+        downscaled to fit whatever is left -- so permanent chrome added for
+        occasional feedback changes the resampling of every image on screen.
+        Vertical space is the scarce resource in this window.
+        """
         if path is None:
-            self.statusBar().showMessage(f"No {noun.lower()} to copy a path for", 4000)
+            self._flash(f"No {noun.lower()} to copy a path for")
             return
         QApplication.clipboard().setText(str(path))
-        self.statusBar().showMessage(f"{noun} path copied: {path}", 6000)
+        self._flash(f"{noun} path copied")
         logger.info("Copied %s path to clipboard: %s", noun.lower(), path)
+
+    def _flash(self, message: str, milliseconds: int = 2000) -> None:
+        """Show a short confirmation at the pointer, taking no layout space."""
+        QToolTip.showText(QCursor.pos(), message, self, QRect(), milliseconds)
 
     def _reveal_path(self, path: Path | None) -> None:
         """Open *path*'s folder in the desktop file manager.
@@ -191,7 +198,7 @@ class CurationWindow(QMainWindow):
         which is not what "reveal" means.
         """
         if path is None:
-            self.statusBar().showMessage("Nothing to reveal", 4000)
+            self._flash("Nothing to reveal")
             return
         folder = path if path.is_dir() else path.parent
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
