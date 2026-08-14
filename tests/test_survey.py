@@ -18,18 +18,6 @@ from am_segmentation_manager.survey import (
 )
 from conftest import build_dataset
 
-#: What each era should be found to contain. The pre-Autolamella collapsed
-#: datasets really do have no FIB images -- see docs/reference_layouts.md
-#: sections 4 and 5 -- so "both modalities" is not a universal expectation and
-#: is stated per era instead.
-EXPECTED_MODALITIES: dict[str, set[str]] = {
-    "v2026_nested": {"SEM", "FIB"},
-    "v2025_timestamped": {"SEM", "FIB"},
-    "v2024_untimed": {"SEM", "FIB"},
-    "legacy_variants": {"SEM", "FIB"},
-    "legacy_collapsed": {"SEM"},
-}
-
 
 def _write_image(directory: Path, name: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
@@ -56,9 +44,6 @@ def make_project(root: Path, era: str, name: str = "project") -> Path:
         name=name,
         acquisitions=2,
         label_naming="convention" if not era.startswith("legacy") else None,
-        # The collapsed pre-Autolamella datasets really do have only SEM;
-        # see docs/reference_layouts.md sections 4 and 5.
-        modalities=("SEM",) if era == "legacy_collapsed" else ("SEM", "FIB"),
         sem_variants=("SEM_8_fi_1", "SEM_8_fi_4") if era == "legacy_variants" else (),
         # Autolamella writes alignment and rough-milling images that are
         # explicitly out of scope; a survey must not index them.
@@ -77,18 +62,27 @@ def test_every_era_yields_exactly_one_project(tmp_path: Path, era: str):
     assert len(survey.projects) == 1
 
 
-def test_every_era_finds_exactly_its_modalities(tmp_path: Path, era: str):
-    """Each era must yield the modalities it actually has -- no more, no less.
-
-    Stated per era rather than skipping the one that has only SEM. Skipping
-    asserted nothing for that era, which is the layout least like the others and
-    so the one most worth pinning: this now also catches a FIB image set being
-    *invented* for a dataset that has none.
-    """
+def test_every_era_finds_both_modalities(tmp_path: Path, era: str):
     make_project(tmp_path, era)
     survey = survey_collection(tmp_path)
     modalities = {entry.image_set.modality for entry in survey.projects[0].image_sets}
-    assert modalities == EXPECTED_MODALITIES[era]
+    assert modalities == {"SEM", "FIB"}
+
+
+def test_a_dataset_lacking_a_modality_does_not_have_one_invented(tmp_path: Path, era: str):
+    """Whether a dataset has FIB is independent of which layout it uses.
+
+    Two documented pre-Autolamella datasets have SEM only
+    (``docs/reference_layouts.md`` sections 4 and 5), but that is a property of
+    those datasets rather than of the collapsed layout -- every lamella of the
+    oldest dataset in the current collection has FIB. So this is asserted for
+    every era: a survey must report the modality that is absent as absent, and
+    never synthesise an image set for it.
+    """
+    build_dataset(tmp_path, era=era, modalities=("SEM",))
+    survey = survey_collection(tmp_path)
+    modalities = {entry.image_set.modality for entry in survey.projects[0].image_sets}
+    assert modalities == {"SEM"}
 
 
 def test_every_era_pairs_every_image_with_a_label(tmp_path: Path, era: str):

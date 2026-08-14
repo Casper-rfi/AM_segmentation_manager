@@ -1,9 +1,38 @@
 # Reference: real dataset layouts
 
-Ground-truth path examples across five layout generations, collected from real
-data. This is a **reference**, not a plan: it is what future layout work gets
-checked against, and it is the evidence behind the conventions implemented in
+Ground-truth path examples collected from real data. This is a **reference**,
+not a plan: it is what future layout work gets checked against, and it is the
+evidence behind the conventions implemented in
 [`layout.py`](../src/am_segmentation_manager/layout.py).
+
+> **These are representative examples, not a definitive taxonomy.**
+>
+> The sections below are datasets that happen to have been looked at. They are
+> not an exhaustive classification of what Adaptive Milling can produce, and the
+> numbering is for reference within this document — there is no guarantee that a
+> new dataset falls into one of these groups, or into exactly one.
+>
+> What actually varies is a set of **independent axes**:
+>
+> | Axis | Values seen |
+> |---|---|
+> | Lamella level | present, or absent with the project standing in |
+> | Stage level | present, or absent with the lamella standing in |
+> | Stage nesting | direct child, or under `Milling/Polishing/` |
+> | Stage naming | `adaptive_polish`, or with a timestamp appended |
+> | Image directory naming | `sem`/`fib`, `SEM`/`FIB`, `SEM_8` |
+> | Label directory naming | `labels`/`labels_fib`, `labels_FIB`, `<image-dir>_labels` |
+> | Imaging-condition variants | absent, or several sharing one label |
+> | Modalities present | both, or SEM only |
+>
+> **These combine freely.** Modality presence in particular is a property of a
+> *dataset*, not of its layout: §4 and §5 below have no FIB, but §6 — an older
+> layout than either — has FIB throughout, and every lamella of the oldest
+> dataset in the current working collection has FIB images.
+>
+> Tests should therefore vary the axis a behaviour depends on, rather than
+> reaching for the example that happens to exhibit it. `tests/conftest.py`
+> builds datasets that way, with these examples as named starting points.
 
 Moved from `data_structures.txt` (repository root) on 2026-08-14 and converted
 to Markdown. The observations are unchanged; the resolutions that had been
@@ -11,6 +40,9 @@ annotated into the original are separated out into [§7](#7-resolutions).
 
 All paths are relative to the Autolamella project, and show an example SEM and
 FIB image with its corresponding label.
+
+Note that §4 and §5 are **not** in the current working collection at
+`20260807_lamella_segmentations_new`; they are recorded here from elsewhere.
 
 ---
 
@@ -69,7 +101,9 @@ label AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-
 
 ## 4. Pre-Autolamella data — no lamella or stage directory
 
-These have neither `experiment.yaml` nor `protocol.yaml`. No FIB images.
+These have neither `experiment.yaml` nor `protocol.yaml`. This particular
+dataset has no FIB images — a property of *it*, not of the collapsed layout;
+compare §6, which is older still and has FIB throughout.
 
 ```
 SEM   20231102/SEM/SEM_1.tif
@@ -78,7 +112,7 @@ label 20231102/labels/SEM_1.tif
 
 ## 5. Pre-Autolamella data — lamella directory, no stage directory
 
-No FIB images.
+No FIB images in this dataset. See the note in §4.
 
 ```
 SEM   20240223_adaptive_milling_ai/lamella_01/SEM/lamella01_09.tif
@@ -149,6 +183,12 @@ newest layout.
 
 `<modality>_labels` therefore acts as the *shared* label directory for that
 modality, which is what makes §6 work.
+
+Resolution is **most-specific-first**: `sem_fi1/` takes `sem_fi1_labels/` when
+that directory exists, and falls back to the shared `sem_labels/` when it does
+not. So conditions share a label by default, and a condition-specific label is
+created by making the directory. `label_shared` on each record reports which
+happened. `sem/` is not special: its private and shared names coincide.
 
 ### 7.4 Imaging-condition variants
 

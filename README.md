@@ -13,6 +13,8 @@ identified by their path relative to the scan root, not by name: names are not
 unique, and neither is anything inside `experiment.yaml`.
 
 Layouts back to 2023 are supported, including ones that collapse the hierarchy.
+The examples below are ones that have been observed, not an exhaustive list:
+the properties vary independently and can combine in ways none of them shows.
 Where a dataset has no lamella or stage directory, the parent stands in and the
 level is reported as synthetic rather than invented:
 
@@ -28,6 +30,13 @@ therefore acts as the **shared** label directory for that modality, and
 `<modality>_<variant>_labels` is private to one variant. The pre-convention
 names `labels`, `labels_fib` and `labels_FIB` are read indefinitely;
 `migrate-layout` renames them.
+
+**Resolution is most-specific-first.** An image directory takes its own
+`<image-directory>_labels` when that directory exists, and otherwise falls back
+to the modality's shared `<modality>_labels` (then to the pre-convention names).
+So several conditions share a label *by default*, and giving one its own label
+is done by creating the directory -- `sem_fi1_labels/` -- not by configuring
+anything. `sem/` is not a special case: its private and shared names coincide.
 
 An image directory named `<modality>_<variant>` holds one **imaging condition**
 of an acquisition -- `sem_5kv`, `sem_lowmag`, `SEM_8_fi_16`. The variant string
@@ -173,7 +182,7 @@ Project layout
   - 02_gui_improvements_plan.md : planned curation window changes
   - 03_metadata_plan.md      : metadata reading, editing, export and statistics
   - 04_future_work.md        : sketches, not designs
-  - reference_layouts.md     : real path examples across five layout generations
+  - reference_layouts.md     : real path examples, and the axes they vary along
   - design_record_gui.md     : why the curation window is built as it is
   - design_record_layouts.md : why legacy layouts are supported as they are
 

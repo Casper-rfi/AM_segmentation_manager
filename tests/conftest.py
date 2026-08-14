@@ -26,20 +26,41 @@ when you are editing it anyway. See ``docs/01_refactor_plan.md`` section 5.1.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
 
-#: The layout eras seen in the real collection, newest first. Each is a branch
-#: in :func:`build_dataset` and a row in ``docs/reference_layouts.md``.
-ERAS: tuple[str, ...] = (
-    "v2026_nested",
-    "v2025_timestamped",
-    "v2024_untimed",
-    "legacy_variants",
-    "legacy_collapsed",
+#: Sentinel for "this axis was not overridden", since None is a real value for
+#: lamella_name and stage_parts (it means "this level is absent").
+_KEEP = object()
+
+#: Named sample layouts, drawn from real datasets.
+#:
+#: **These are representative examples, not a definitive taxonomy.** The real
+#: variation is a set of independent axes -- whether there is a lamella level,
+#: whether there is a stage level, how deeply the stage is nested, how image and
+#: label directories are named, which modalities are present, whether there are
+#: imaging-condition variants. The samples below are points in that space that
+#: happen to have been observed; they are not its boundaries, and the next
+#: dataset in the wild may well combine axes in a way none of them shows.
+#:
+#: So: a suite that passes across all of these does **not** demonstrate that
+#: every layout is supported. It demonstrates that these samples work. When
+#: testing a behaviour that depends on one axis, vary that axis directly with
+#: the ``build_dataset`` arguments rather than reaching for the sample that
+#: happens to exhibit it -- that way the test says which property it needs, and
+#: keeps working when the samples are revised.
+SAMPLE_LAYOUTS: tuple[str, ...] = (
+    "nested_stage",
+    "timestamped_stage",
+    "untimed_stage",
+    "no_stage_level",
+    "no_lamella_level",
 )
+
+#: Kept so existing callers and any external references keep working.
+ERAS = SAMPLE_LAYOUTS
 
 #: Label directory naming schemes, oldest first. ``convention`` is what
 #: ``migrate-layout`` produces; the other two are read indefinitely.
@@ -143,60 +164,112 @@ def write_label(path: Path, content: str) -> Path:
     return path
 
 
-#: Per-era lamella name, stage path under the lamella, and Autolamella
-#: ``method``. All transcribed from real datasets rather than invented: the
-#: names appear in assertions and in ``docs/reference_layouts.md``, and a
-#: fixture that looks like the data is easier to reason about than one that
-#: does not. ``None`` for a stage means the era has no stage directory.
-_ERA_SHAPE: dict[str, tuple[str, tuple[str, ...] | None, str | None]] = {
-    "v2026_nested": (
-        "01-neat-ape",
-        ("Milling", "Polishing", "adaptive_polish_2026-07-09-11-23-46AM"),
-        "AutoLamella-OnGrid",
-    ),
-    "v2025_timestamped": (
-        "01-full-gannet", ("adaptive_polish_2025-04-15-02-48-15AM",), "AutoLamella-OnGrid",
-    ),
-    # The 2024-08 grid projects really were lift-out.
-    "v2024_untimed": ("07-known-mutt", ("adaptive_polish",), "AutoLiftout"),
-    "legacy_variants": ("lam_010", None, None),
-    "legacy_collapsed": ("", None, None),
-}
+@dataclass(frozen=True)
+class LayoutAxes:
+    """The independent properties that make one dataset layout differ.
 
+    A sample layout is just a preset filling these in. Any of them can be
+    overridden on a call to :func:`build_dataset`, so a test can build a
+    combination no observed dataset happens to show -- which is the point, since
+    the observed datasets are examples rather than an exhaustive classification.
 
-def _stage_for(project: Path, era: str, number: int) -> tuple[Path, Path]:
-    """Return the ``(lamella, stage)`` directories for an era.
-
-    Where an era has no lamella or stage level, the parent stands in -- which is
-    what the scanner then has to synthesise in memory. Additional lamellae are
-    suffixed, so the first keeps the real name its assertions use.
+    Attributes:
+        lamella_name: Directory name for a lamella, or None where the layout has
+            no lamella level and the project directory stands in for one.
+        stage_parts: Path parts from the lamella down to the stage, or None
+            where there is no stage level. A tuple longer than one models a
+            stage nested under intermediate directories.
+        image_dirs: Image directory name per modality.
+        label_naming: A key of :data:`LABEL_NAMING`.
+        marker: Which file marks the project -- ``experiment`` or
+            ``am_metadata``.
+        method: Autolamella's ``method`` value, or None where absent.
     """
-    base_name, stage_parts, _ = _ERA_SHAPE[era]
-    if not base_name:
-        return project, project  # neither a lamella nor a stage directory
-    name = base_name if number == 1 else f"{base_name}-{number:02d}"
-    lamella = project / name
-    if stage_parts is None:
-        return lamella, lamella  # a lamella, but no stage directory
-    return lamella, lamella.joinpath(*stage_parts)
+
+    lamella_name: str | None
+    stage_parts: tuple[str, ...] | None
+    image_dirs: dict[str, str]
+    label_naming: str
+    marker: str
+    method: str | None
 
 
-#: Image directory names per era, keyed by modality. The legacy eras use
-#: uppercase names and no unsuffixed SEM directory at all, which is why "the
-#: base directory" is not a usable way to find the primary condition.
-_IMAGE_DIRS: dict[str, dict[str, str]] = {
-    "v2026_nested": {"SEM": "sem", "FIB": "fib"},
-    "v2025_timestamped": {"SEM": "sem", "FIB": "fib"},
-    "v2024_untimed": {"SEM": "sem", "FIB": "fib"},
-    "legacy_variants": {"SEM": "SEM_8", "FIB": "FIB"},
-    "legacy_collapsed": {"SEM": "SEM", "FIB": "FIB"},
+#: The samples, as axis values. Names, stage timestamps and methods are
+#: transcribed from real datasets so a fixture resembles the data -- but see
+#: :data:`SAMPLE_LAYOUTS`: these are points observed, not a classification.
+_SAMPLES: dict[str, LayoutAxes] = {
+    "nested_stage": LayoutAxes(
+        lamella_name="01-neat-ape",
+        stage_parts=("Milling", "Polishing", "adaptive_polish_2026-07-09-11-23-46AM"),
+        image_dirs={"SEM": "sem", "FIB": "fib"},
+        label_naming="legacy", marker="experiment", method="AutoLamella-OnGrid",
+    ),
+    "timestamped_stage": LayoutAxes(
+        lamella_name="01-full-gannet",
+        stage_parts=("adaptive_polish_2025-04-15-02-48-15AM",),
+        image_dirs={"SEM": "sem", "FIB": "fib"},
+        label_naming="legacy", marker="experiment", method="AutoLamella-OnGrid",
+    ),
+    "untimed_stage": LayoutAxes(
+        lamella_name="07-known-mutt",
+        stage_parts=("adaptive_polish",),
+        image_dirs={"SEM": "sem", "FIB": "fib"},
+        # The 2024-08 grid projects really were lift-out.
+        label_naming="legacy", marker="experiment", method="AutoLiftout",
+    ),
+    "no_stage_level": LayoutAxes(
+        lamella_name="lam_010",
+        stage_parts=None,
+        image_dirs={"SEM": "SEM_8", "FIB": "FIB"},
+        label_naming="legacy_upper", marker="am_metadata", method=None,
+    ),
+    "no_lamella_level": LayoutAxes(
+        lamella_name=None,
+        stage_parts=None,
+        image_dirs={"SEM": "SEM", "FIB": "FIB"},
+        label_naming="legacy_upper", marker="am_metadata", method=None,
+    ),
 }
+
+#: Older names for the samples, so existing tests keep reading.
+_ALIASES = {
+    "v2026_nested": "nested_stage",
+    "v2025_timestamped": "timestamped_stage",
+    "v2024_untimed": "untimed_stage",
+    "legacy_variants": "no_stage_level",
+    "legacy_collapsed": "no_lamella_level",
+}
+
+
+def layout_axes(layout: str) -> LayoutAxes:
+    """Return the axis values for a named sample layout."""
+    resolved = _ALIASES.get(layout, layout)
+    if resolved not in _SAMPLES:
+        raise ValueError(f"Unknown layout era: {layout}")
+    return _SAMPLES[resolved]
+
+
+def _directories_for(project: Path, axes: LayoutAxes, number: int) -> tuple[Path, Path]:
+    """Return the ``(lamella, stage)`` directories for a layout.
+
+    Where a layout has no lamella or stage level, the parent stands in -- which
+    is what the scanner then has to synthesise in memory. Additional lamellae
+    are suffixed, so the first keeps the name its assertions use.
+    """
+    if axes.lamella_name is None:
+        return project, project
+    name = axes.lamella_name if number == 1 else f"{axes.lamella_name}-{number:02d}"
+    lamella = project / name
+    if axes.stage_parts is None:
+        return lamella, lamella
+    return lamella, lamella.joinpath(*axes.stage_parts)
 
 
 def build_dataset(
     root: Path,
     *,
-    era: str = "v2025_timestamped",
+    layout: str = "timestamped_stage",
+    era: str | None = None,
     name: str = "project",
     lamellae: int = 1,
     acquisitions: int = 2,
@@ -205,29 +278,45 @@ def build_dataset(
     labels: str = "present",
     label_naming: str | None = None,
     marker: str | None = None,
+    lamella_name: str | None | object = _KEEP,
+    stage_parts: tuple[str, ...] | None | object = _KEEP,
+    image_dirs: dict[str, str] | None = None,
     plots: bool = False,
     predictions: bool = False,
     out_of_scope: bool = False,
 ) -> Dataset:
-    """Build one project of the given layout era under *root*.
+    """Build one project under *root*.
+
+    Starts from a named sample layout and lets any axis be overridden, because
+    the samples are examples rather than a classification -- see
+    :data:`SAMPLE_LAYOUTS`. A test that needs "a stage nested two levels down"
+    should say so with *stage_parts* rather than picking the sample that
+    currently happens to nest.
 
     Args:
         root: Scan root to build under.
-        era: One of :data:`ERAS`.
+        layout: A name from :data:`SAMPLE_LAYOUTS` to start from.
+        era: Deprecated alias for *layout*.
+        lamella_name: Override the lamella directory name; ``None`` removes the
+            lamella level so the project directory stands in for one.
+        stage_parts: Override the path from lamella to stage; ``None`` removes
+            the stage level. A longer tuple nests the stage more deeply.
+        image_dirs: Override image directory names per modality.
         name: Project directory name.
         lamellae: How many lamellae to build. The returned :class:`Dataset`
             points at the first; the others exist to be scanned.
         acquisitions: Images per modality per lamella.
-        modalities: Which modalities to write. Passing only ``("SEM",)``
-            reproduces the pre-Autolamella datasets, which have no FIB at all.
+        modalities: Which modalities to write. Independent of *era*: whether a
+            dataset has FIB is a property of the dataset, not of its layout.
+            Two documented pre-Autolamella datasets have SEM only, but every
+            lamella of the oldest dataset in the current collection has FIB.
         sem_variants: Extra SEM imaging conditions, e.g. ``("SEM_8_fi_1",)``.
             These share the modality's label directory, which is what makes
-            them one scene.
+            them one scene. Independent of *layout*.
         labels: ``"present"``, ``"annotated"``, ``"empty"`` or ``"none"``.
-        label_naming: A key of :data:`LABEL_NAMING`. Defaults to the naming the
-            era actually used.
-        marker: ``"experiment"`` or ``"am_metadata"``. Defaults to what the era
-            actually had -- the legacy eras predate ``experiment.yaml``.
+        label_naming: A key of :data:`LABEL_NAMING`. Defaults to the sample's.
+        marker: ``"experiment"`` or ``"am_metadata"``. Defaults to the
+            sample's -- the oldest datasets predate ``experiment.yaml``.
         plots: Write a summary plot per acquisition.
         predictions: Write ``predictions/raw`` and ``predictions/clean``.
         out_of_scope: Write the alignment and rough-milling images that real
@@ -238,38 +327,48 @@ def build_dataset(
     Returns:
         Where everything landed.
     """
-    if era not in ERAS:
-        raise ValueError(f"Unknown layout era: {era}")
+    axes = layout_axes(era if era is not None else layout)
+    if lamella_name is not _KEEP:
+        axes = replace(axes, lamella_name=lamella_name)
+    if stage_parts is not _KEEP:
+        axes = replace(axes, stage_parts=stage_parts)
+    if image_dirs is not None:
+        axes = replace(axes, image_dirs=image_dirs)
+    if label_naming is not None:
+        axes = replace(axes, label_naming=label_naming)
+    if marker is not None:
+        axes = replace(axes, marker=marker)
 
-    legacy = era.startswith("legacy")
-    marker = marker or ("am_metadata" if legacy else "experiment")
-    label_naming = label_naming or ("legacy_upper" if legacy else "legacy")
-    sem_label_name, fib_label_name = LABEL_NAMING[label_naming]
+    sem_label_name, fib_label_name = LABEL_NAMING[axes.label_naming]
+    # Filenames carry the modality only where the images themselves do. The
+    # oldest datasets name an acquisition once and share it across modalities.
+    shared_filenames = axes.marker == "am_metadata"
 
     project = root / name
-    write_marker(project, marker, name=name, method=_ERA_SHAPE[era][2])
+    write_marker(project, axes.marker, name=name, method=axes.method)
 
     # Legacy datasets name an acquisition once and share it across modalities;
     # the modern ones carry the modality in the filename.
     filenames = {
         modality: tuple(
-            f"img_{index:03d}.tif" if legacy else f"img_{index:03d}_{modality}.tif"
+            f"img_{index:03d}.tif" if shared_filenames
+            else f"img_{index:03d}_{modality}.tif"
             for index in range(acquisitions)
         )
         for modality in ("SEM", "FIB")
     }
 
-    image_dirs: dict[tuple[str, str | None], Path] = {}
+    built_image_dirs: dict[tuple[str, str | None], Path] = {}
     label_dirs: dict[tuple[str, str | None], Path] = {}
     first: tuple[Path, Path] | None = None
 
     for number in range(1, lamellae + 1):
-        lamella, stage = _stage_for(project, era, number)
+        lamella, stage = _directories_for(project, axes, number)
         if first is None:
             first = (lamella, stage)
 
         for modality in modalities:
-            base_name = _IMAGE_DIRS[era][modality]
+            base_name = axes.image_dirs[modality]
             label_name = sem_label_name if modality == "SEM" else fib_label_name
             variants: tuple[str | None, ...] = (None,)
             if modality == "SEM" and sem_variants:
@@ -281,7 +380,7 @@ def build_dataset(
                 for filename in filenames[modality]:
                     (directory / filename).write_bytes(b"")
                 if first == (lamella, stage):
-                    image_dirs[(modality, variant)] = directory
+                    built_image_dirs[(modality, variant)] = directory
                     label_dirs[(modality, variant)] = stage / label_name
 
             if labels != "none":
@@ -315,20 +414,31 @@ def build_dataset(
         project=project,
         lamella=first[0],
         stage=first[1],
-        era=era,
-        image_dirs=image_dirs,
+        era=era if era is not None else layout,
+        image_dirs=built_image_dirs,
         label_dirs=label_dirs,
         filenames=filenames,
     )
 
 
-@pytest.fixture(params=ERAS)
+@pytest.fixture(params=SAMPLE_LAYOUTS)
+def sample_layout(request) -> str:
+    """Run a test against every sample layout.
+
+    Useful for behaviour that should hold regardless of layout. It is *not* a
+    claim of exhaustive coverage -- see :data:`SAMPLE_LAYOUTS`. Where a
+    behaviour depends on a specific property, vary that property directly.
+    """
+    return request.param
+
+
+@pytest.fixture(params=SAMPLE_LAYOUTS)
 def era(request) -> str:
-    """Run a test against every known layout era."""
+    """Deprecated alias for :func:`sample_layout`."""
     return request.param
 
 
 @pytest.fixture
 def dataset(tmp_path: Path) -> Dataset:
-    """A plain two-acquisition project in the most common layout."""
+    """A plain two-acquisition project in one of the commoner layouts."""
     return build_dataset(tmp_path)

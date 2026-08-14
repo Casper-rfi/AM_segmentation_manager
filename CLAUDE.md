@@ -226,6 +226,11 @@ Each stage may contain:
   and several image directories resolving to it means several conditions of
   one scene share one label. The pre-convention names `labels`, `labels_fib`
   and `labels_FIB` are still read.
+  Resolution is **most-specific-first**: an image directory takes its own
+  `<image-directory>_labels` when that exists, and otherwise falls back to the
+  shared `<modality>_labels`, then to the pre-convention names. Conditions
+  therefore share a label by default, and giving one its own is done by
+  creating `sem_fi1_labels/` rather than by configuring anything.
 * predictions, in `predictions/` with optional `raw/` and `clean/`
 * `deselected/` and `corrected/` subdirectories of any image or label
   directory, which is where workflow state lives

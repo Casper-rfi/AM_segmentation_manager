@@ -92,9 +92,15 @@ def test_sem_variants_share_one_label(tmp_path: Path):
     assert all(r.label_shared for r in sem_records)
 
 
-def test_a_dataset_can_have_no_fib_at_all(tmp_path: Path):
-    """The pre-Autolamella datasets really do have only SEM."""
-    build_dataset(tmp_path, era="legacy_collapsed", modalities=("SEM",))
+@pytest.mark.parametrize("era", ERAS)
+def test_a_dataset_can_lack_a_modality_in_any_era(tmp_path: Path, era: str):
+    """Modality presence is independent of layout era.
+
+    Two documented pre-Autolamella datasets have SEM only, but that is about
+    those datasets, not their layout -- every lamella of the oldest dataset in
+    the current collection has FIB.
+    """
+    build_dataset(tmp_path, era=era, modalities=("SEM",))
 
     assert {r.modality for r in records_of(tmp_path)} == {"SEM"}
 
@@ -148,3 +154,74 @@ def test_marker_defaults_match_the_era(tmp_path: Path):
 def test_an_unknown_era_is_rejected_rather_than_silently_building_nothing(tmp_path: Path):
     with pytest.raises(ValueError, match="Unknown layout era"):
         build_dataset(tmp_path, era="v2027_speculative")
+
+
+# ---------------------------------------------------------------------------
+# Axes, varied independently of any sample
+#
+# The reason build_dataset takes axes rather than only preset names: the sample
+# layouts are datasets that happen to have been observed, not a classification
+# of what is possible. A test needing "a stage nested three levels down" should
+# be able to say that, instead of hunting for the sample that currently nests.
+# ---------------------------------------------------------------------------
+
+def test_a_stage_can_be_nested_more_deeply_than_any_sample(tmp_path: Path):
+    build_dataset(
+        tmp_path,
+        stage_parts=("Milling", "Polishing", "Fine", "adaptive_polish_2027-01-01-00-00-00AM"),
+    )
+    records = records_of(tmp_path)
+
+    assert records
+    assert all(record.labels for record in records)
+
+
+def test_the_lamella_level_can_be_removed_from_any_sample(tmp_path: Path):
+    """Absent levels are an axis, not a property of the oldest datasets."""
+    build_dataset(tmp_path, layout="timestamped_stage", lamella_name=None)
+    project = scanned(tmp_path)
+
+    assert project.lamellae[0].synthetic is True
+
+
+def test_the_stage_level_can_be_removed_from_any_sample(tmp_path: Path):
+    build_dataset(tmp_path, layout="timestamped_stage", stage_parts=None)
+    project = scanned(tmp_path)
+
+    assert project.lamellae[0].synthetic is False
+    assert project.lamellae[0].stages[0].synthetic is True
+
+
+def test_label_naming_is_independent_of_layout(tmp_path: Path):
+    """A collapsed dataset migrated to the current convention is a combination
+    no observed dataset shows, and must still index."""
+    build_dataset(
+        tmp_path, layout="no_lamella_level", label_naming="convention",
+        image_dirs={"SEM": "sem", "FIB": "fib"},
+    )
+
+    for record in records_of(tmp_path):
+        assert record.labels
+
+
+def test_variants_are_independent_of_layout(tmp_path: Path):
+    """Imaging conditions happen to appear only in one observed dataset; nothing
+    says a newer layout cannot have them."""
+    build_dataset(
+        tmp_path, layout="timestamped_stage", sem_variants=("sem_5kv",),
+        modalities=("SEM",), acquisitions=1,
+    )
+    sem = [r for r in records_of(tmp_path) if r.modality == "SEM"]
+
+    assert {r.variant for r in sem} == {None, "5kv"}
+    # One acquisition, two conditions, one label between them.
+    assert len(sem) == 2
+    assert len({str(r.labels[0]) for r in sem}) == 1
+
+
+def test_the_old_era_names_still_resolve(tmp_path: Path):
+    """Renaming the samples must not silently change what a caller builds."""
+    old = build_dataset(tmp_path / "old", era="v2025_timestamped")
+    new = build_dataset(tmp_path / "new", layout="timestamped_stage")
+
+    assert old.stage.relative_to(old.root) == new.stage.relative_to(new.root)

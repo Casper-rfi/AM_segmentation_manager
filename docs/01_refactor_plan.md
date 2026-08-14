@@ -261,7 +261,7 @@ in `CLAUDE.md`.
 ### 3.3 `data_structures.txt` — keep, but move and re-title
 
 Unlike the above this is still valuable: it is the ground-truth catalogue of
-real path examples across five layout generations, and it is what future layout
+real path examples and the axes they vary along, and it is what future layout
 work will be checked against. Two problems: it sits in the repository root as a
 loose `.txt`, and it has answers annotated into it (`--> RESOLVED: ...`), so it
 reads as a half-finished question list rather than a reference.
