@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QColor, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -22,6 +23,9 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ..controller import CurationStatus
+from .frame_strip import MISMATCH, STATE_COLOURS
 
 
 class ProjectPanel(QWidget):
@@ -54,17 +58,16 @@ class ProjectPanel(QWidget):
         layout.setSpacing(4)
 
         # -- scan root -----------------------------------------------------
-        # One row, no group box. A "Scan root" title said the same thing as the
-        # field's placeholder and the Scan button beside it -- three statements
-        # of one fact across two rows. The placeholder carries the explanation
-        # where it is useful (visible while the field is empty, gone once a path
-        # is in it), and the tooltips carry what neither a label nor a button
-        # caption can say.
-        # The path gets a row to itself. Putting it beside both buttons was
-        # tried and left roughly 140px for the field in a 270px panel, which
-        # showed the tail of a path and nothing else -- and reading the path is
-        # the entire reason the field is there. The buttons share a second row,
-        # right-aligned so they read as actions on the field above.
+        # No group box. A "Scan root" title said the same thing as the field's
+        # placeholder and the Scan button beside it -- one fact stated three
+        # times. The placeholder carries the explanation where it is useful
+        # (visible while the field is empty, gone once a path is in it), and the
+        # tooltips carry what neither a label nor a button caption can say.
+        #
+        # The path keeps a row to itself. Putting it beside both buttons was
+        # tried and left roughly 140px for the field in a 270px panel, showing
+        # the tail of a path and nothing else -- and reading the path is the
+        # entire reason the field is there.
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Folder to scan for Autolamella projects")
         self.path_edit.setToolTip(
@@ -199,17 +202,25 @@ class ProjectPanel(QWidget):
         """Show *path* as the scan root."""
         self.path_edit.setText(path)
 
-    def show_projects(self, labels: list[str], current: int) -> None:
-        """List the discovered projects, selecting the one at *current*."""
+    def show_projects(
+        self, labels: list[str], current: int, statuses: list[CurationStatus] | None = None
+    ) -> None:
+        """List the discovered projects, selecting the one at *current*.
+
+        *statuses* adds a curation-progress chip to each row; omitting it lists
+        the projects with no chips, which is what happens before a scan.
+        """
         self._project_labels = list(labels)
-        self._set_items(self.project_list, labels, current)
+        self._set_items(self.project_list, labels, current, statuses)
         self.project_box.setTitle(f"Projects ({len(labels)})" if labels else "Projects")
         self._apply_filter(self.project_list, self._project_labels, self.project_filter.text())
 
-    def show_lamellae(self, labels: list[str], current: int) -> None:
-        """List the selected project's lamellae."""
+    def show_lamellae(
+        self, labels: list[str], current: int, statuses: list[CurationStatus] | None = None
+    ) -> None:
+        """List the selected project's lamellae, with their curation progress."""
         self._lamella_labels = list(labels)
-        self._set_items(self.lamella_list, labels, current)
+        self._set_items(self.lamella_list, labels, current, statuses)
         self.lamella_box.setTitle(f"Lamellae ({len(labels)})" if labels else "Lamellae")
         self._apply_filter(self.lamella_list, self._lamella_labels, self.lamella_filter.text())
 
@@ -217,12 +228,27 @@ class ProjectPanel(QWidget):
         """Show a short description of what is loaded."""
         self.summary.setText(text)
 
-    def _set_items(self, widget: QListWidget, labels: list[str], current: int) -> None:
+    def _set_items(
+        self,
+        widget: QListWidget,
+        labels: list[str],
+        current: int,
+        statuses: list[CurationStatus] | None = None,
+    ) -> None:
         """Replace a list's contents without echoing selection signals back."""
         self._emitting = True
         try:
             widget.clear()
             widget.addItems(labels)
+            for row, status in enumerate(statuses or []):
+                item = widget.item(row)
+                if item is None:
+                    break
+                item.setIcon(_status_icon(status))
+                # The chip cannot carry the whole meaning on its own, so the
+                # long form goes in the tooltip rather than into the row text,
+                # which is already carrying a path.
+                item.setToolTip(f"{item.text()}\n{status.summary}")
             if labels:
                 widget.setCurrentRow(max(0, min(current, len(labels) - 1)))
         finally:
@@ -240,3 +266,69 @@ class ProjectPanel(QWidget):
             item = widget.item(row)
             label = labels[row] if row < len(labels) else item.text()
             item.setHidden(bool(needle) and needle not in label.lower())
+
+
+#: A curation status mapped to the colour that represents it.
+#:
+#: Reuses the timeline's progress ramp rather than inventing a third colour
+#: vocabulary for the same idea: a status here is exactly the states in that
+#: row, summarised. "not started" is the selected blue because that is what an
+#: untouched image is; "done" is the corrected teal; "in progress" is drawn as
+#: a split of the two rather than given a colour of its own.
+STATUS_COLOURS = {
+    "not started": STATE_COLOURS["selected"],
+    "done": STATE_COLOURS["corrected"],
+    "needs repair": MISMATCH,
+}
+
+#: Nothing is drawn for a modality with no images. An absent modality should
+#: read as absent rather than as a state, and many older datasets have no FIB.
+STATUS_EMPTY = "empty"
+
+#: Every chip gets a dark outline. Without one the "not started" blue is nearly
+#: the same colour as a list row's selection highlight, so the chip on the row
+#: you are looking at -- the one you most want to read -- disappeared. An
+#: outline makes a chip legible on any background rather than tuning the fill
+#: against one particular theme's highlight colour.
+SWATCH_OUTLINE = QColor("#1a1a1a")
+
+SWATCH_WIDTH = 14
+SWATCH_HEIGHT = 10
+
+
+def _status_icon(status: CurationStatus) -> QIcon:
+    """Return a two-part chip: SEM on the left, FIB on the right.
+
+    One icon rather than two so a list row stays one line, and split rather
+    than combined because a lamella whose SEM work is finished and whose FIB has
+    not started is a normal situation that one mark cannot express.
+    """
+    pixmap = QPixmap(SWATCH_WIDTH * 2 + 2, SWATCH_HEIGHT)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    for index, modality in enumerate(("SEM", "FIB")):
+        left = index * (SWATCH_WIDTH + 2)
+        _paint_status(painter, left, status.of(modality))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _paint_status(painter: QPainter, left: int, status: str) -> None:
+    """Paint one modality's chip at *left*, outlined so it reads anywhere."""
+    if status == STATUS_EMPTY:
+        return
+    if status == "in progress":
+        # Half started, half finished -- reads as "between the two" without
+        # needing a fourth colour explained anywhere.
+        half = SWATCH_WIDTH // 2
+        painter.fillRect(left, 0, half, SWATCH_HEIGHT, STATUS_COLOURS["not started"])
+        painter.fillRect(
+            left + half, 0, SWATCH_WIDTH - half, SWATCH_HEIGHT, STATUS_COLOURS["done"]
+        )
+    else:
+        painter.fillRect(
+            left, 0, SWATCH_WIDTH, SWATCH_HEIGHT,
+            STATUS_COLOURS.get(status, QColor(Qt.transparent)),
+        )
+    painter.setPen(SWATCH_OUTLINE)
+    painter.drawRect(left, 0, SWATCH_WIDTH - 1, SWATCH_HEIGHT - 1)

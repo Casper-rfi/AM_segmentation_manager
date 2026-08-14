@@ -54,6 +54,119 @@ MODE_MODALITIES: dict[DisplayMode, str] = {"sem": "SEM", "fib": "FIB"}
 ProjectScanner = Callable[[Path], ProjectIndex]
 
 
+#: How far curation has progressed for one modality, in one lamella or project.
+#:
+#: Derived from the records every time it is asked for; nothing is stored. A
+#: stored "reviewed" flag would be a second source of truth that could disagree
+#: with the files, and this cannot: it *is* the per-image states, summarised.
+CurationState = Literal["empty", "not started", "in progress", "done", "needs repair"]
+
+#: A modality with no images at all. Kept distinct from "not started": many
+#: older datasets have no FIB whatsoever, and showing those as 0% complete
+#: forever would be wrong.
+EMPTY: CurationState = "empty"
+
+#: Images disagree with the label they share. Overrides every other status,
+#: because until ``am-seg repair-state`` runs, the state shown for the group is
+#: the image's rather than the label's -- so "done" would be a claim the files
+#: do not support.
+NEEDS_REPAIR: CurationState = "needs repair"
+
+
+@dataclass(frozen=True)
+class CurationStatus:
+    """How far curation has progressed, reported per modality.
+
+    SEM and FIB are separate because finishing one and not having started the
+    other is a normal and important situation that a single combined mark
+    cannot express.
+    """
+
+    sem: CurationState
+    fib: CurationState
+
+    def of(self, modality: str) -> CurationState:
+        """Return the status for ``'SEM'`` or ``'FIB'``."""
+        normalised = modality.upper()
+        if normalised == "SEM":
+            return self.sem
+        if normalised == "FIB":
+            return self.fib
+        raise ValueError(f"Unknown modality: {modality}")
+
+    @property
+    def summary(self) -> str:
+        """Return the long form shown as a tooltip."""
+        return f"SEM: {self.sem} · FIB: {self.fib}"
+
+
+def _modality_status(records: list) -> CurationState:
+    """Return the curation status of one modality's records.
+
+    Every record is considered, not just the base image of each scene. Variants
+    share a label and so should share its state; where they do not, the group is
+    inconsistent and reported as needing repair rather than resolved silently.
+    """
+    if not records:
+        return EMPTY
+    if any(not group.is_consistent for group in build_groups(records)):
+        return NEEDS_REPAIR
+    states = {current_state(record) for record in records}
+    if states <= {"deselected", "corrected"}:
+        return "done"
+    if states == {"selected"}:
+        return "not started"
+    return "in progress"
+
+
+def lamella_status(lamella: Lamella) -> CurationStatus:
+    """Return how far curation has progressed in *lamella*, per modality.
+
+    Reads the records directly rather than building frames: the chronological
+    pairing that :func:`~am_segmentation_manager.frames.build_lamella_frames`
+    does is not needed to count states, and skipping it keeps this cheap enough
+    to compute for every lamella of a project on demand.
+    """
+    by_modality: dict[str, list] = {modality: [] for modality in MODALITIES}
+    for stage in lamella.stages:
+        for record in stage.images:
+            if record.modality in by_modality:
+                by_modality[record.modality].append(record)
+    return CurationStatus(
+        sem=_modality_status(by_modality["SEM"]),
+        fib=_modality_status(by_modality["FIB"]),
+    )
+
+
+def _combine(statuses: list[CurationState]) -> CurationState:
+    """Return the status of a whole from its parts, for one modality.
+
+    The weakest wins rather than an average: "90% done" is not something you can
+    act on, whereas "one lamella left" is. Lamellae with no images of the
+    modality contribute nothing -- a project is not part-finished because half
+    its lamellae never had a FIB image.
+    """
+    if NEEDS_REPAIR in statuses:
+        return NEEDS_REPAIR
+    present = [status for status in statuses if status != EMPTY]
+    if not present:
+        return EMPTY
+    if len(set(present)) == 1:
+        return present[0]
+    return "in progress"
+
+
+def project_status(project: Project) -> CurationStatus:
+    """Return how far curation has progressed across *project*, per modality."""
+    statuses = [lamella_status(lamella) for lamella in project.lamellae]
+    if not statuses:
+        return CurationStatus(sem=EMPTY, fib=EMPTY)
+    return CurationStatus(
+        sem=_combine([status.sem for status in statuses]),
+        fib=_combine([status.fib for status in statuses]),
+    )
+
+
 @dataclass(frozen=True)
 class StateChangeReach:
     """How much a state change would move, counted before it is made.
@@ -322,6 +435,16 @@ class CurationController:
         if target is None:
             return None
         return self.variant.get(target)
+
+    # -- curation progress, for the project and lamella lists --------------
+
+    def project_statuses(self) -> list[CurationStatus]:
+        """Return each discovered project's curation status, in list order."""
+        return [project_status(project) for project in self._projects]
+
+    def lamella_statuses(self) -> list[CurationStatus]:
+        """Return each lamella's curation status for the selected project."""
+        return [lamella_status(lamella) for lamella in self._lamellae]
 
     # -- paths, for copying out of the window ------------------------------
     #

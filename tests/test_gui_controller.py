@@ -17,6 +17,8 @@ from am_segmentation_manager.gui.controller import (
     MIXED,
     CurationController,
     EditingDisabled,
+    lamella_status,
+    project_status,
 )
 from am_segmentation_manager.models import (
     AdaptiveMillingStage,
@@ -677,3 +679,183 @@ def test_current_image_path_is_none_in_plot_mode():
 
     assert controller.current_image_path() is None
     assert controller.current_plot_path() is not None
+
+
+# ---------------------------------------------------------------------------
+# Curation status, for the project and lamella lists
+# ---------------------------------------------------------------------------
+
+def status_lamella(name: str, records: list[ImageRecord]) -> Lamella:
+    """A one-stage lamella holding exactly the given records."""
+    return Lamella(
+        name=name,
+        path=Path(name),
+        number="01",
+        stages=[AdaptiveMillingStage(name="stage", path=Path(name) / "stage", images=records)],
+    )
+
+
+def image(state: str, modality: str = "SEM", *, name: str = "img_000") -> ImageRecord:
+    """A record whose on-disk location puts it in *state*."""
+    suffix = "" if state == "selected" else f"/{state}"
+    directory = "sem" if modality == "SEM" else "fib"
+    labels = "sem_labels" if modality == "SEM" else "fib_labels"
+    return ImageRecord(
+        image_path=Path(f"lam/stage/{directory}{suffix}/{name}.tif"),
+        labels=[Path(f"lam/stage/{labels}{suffix}/{name}.tif")],
+        modality=modality,
+    )
+
+
+def test_a_modality_with_no_images_is_empty_not_done():
+    """The regression most likely to slip through: "nothing left awaiting a
+    decision" is vacuously true for a modality that has no images at all, and
+    many older datasets have no FIB whatsoever."""
+    status = lamella_status(status_lamella("lam", [image("corrected", "SEM")]))
+
+    assert status.sem == "done"
+    assert status.fib == "empty"
+
+
+def test_all_selected_is_not_started():
+    status = lamella_status(status_lamella("lam", [image("selected"), image("selected", name="b")]))
+    assert status.sem == "not started"
+
+
+def test_deselected_and_corrected_together_count_as_done():
+    """Done means nothing is left awaiting a decision, not that all were kept."""
+    records = [image("deselected"), image("corrected", name="b")]
+    assert lamella_status(status_lamella("lam", records)).sem == "done"
+
+
+def test_a_mix_of_decided_and_undecided_is_in_progress():
+    records = [image("corrected"), image("selected", name="b")]
+    assert lamella_status(status_lamella("lam", records)).sem == "in progress"
+
+
+def test_modalities_are_reported_separately():
+    records = [image("corrected", "SEM"), image("selected", "FIB")]
+    status = lamella_status(status_lamella("lam", records))
+
+    assert status.sem == "done"
+    assert status.fib == "not started"
+    assert status.summary == "SEM: done · FIB: not started"
+
+
+def test_a_project_is_only_done_when_every_lamella_is():
+    project = Project(
+        name="p",
+        path=Path("p"),
+        lamellae=[
+            status_lamella("a", [image("corrected")]),
+            status_lamella("b", [image("selected")]),
+        ],
+    )
+
+    assert project_status(project).sem == "in progress"
+
+
+def test_a_project_of_finished_lamellae_is_done():
+    project = Project(
+        name="p",
+        path=Path("p"),
+        lamellae=[
+            status_lamella("a", [image("corrected")]),
+            status_lamella("b", [image("deselected")]),
+        ],
+    )
+
+    assert project_status(project).sem == "done"
+
+
+def test_lamellae_without_a_modality_do_not_drag_a_project_down():
+    """A project is not part-finished because half its lamellae never had FIB."""
+    project = Project(
+        name="p",
+        path=Path("p"),
+        lamellae=[
+            status_lamella("a", [image("corrected", "FIB")]),
+            status_lamella("b", [image("corrected", "SEM")]),
+        ],
+    )
+
+    assert project_status(project).fib == "done"
+
+
+def test_a_project_with_no_lamellae_is_empty():
+    project = Project(name="p", path=Path("p"), lamellae=[])
+    status = project_status(project)
+
+    assert status.sem == "empty"
+    assert status.fib == "empty"
+
+
+def test_inconsistent_images_need_repair_rather_than_reading_as_done(tmp_path: Path):
+    """A group whose images disagree with their shared label cannot read as done.
+
+    Until repair-state runs, the state shown for the group is the image's rather
+    than the label's, so any other answer would be a claim the files do not
+    support.
+
+    Built on disk because build_group finds an image's siblings by scanning the
+    stage directory -- a record pointed at a file that does not exist forms a
+    group of one, and a group of one is always consistent.
+    """
+    stage = tmp_path / "lam" / "stage"
+    shared_label = stage / "sem_labels" / "corrected" / "img_000.tif"
+    # sem/ moved into corrected/ with the label; sem_5kv/ was left behind. There
+    # is no sem_5kv_labels/, so both image sets resolve to the shared sem_labels.
+    for path in (shared_label, stage / "sem" / "corrected" / "img_000.tif",
+                 stage / "sem_5kv" / "img_000.tif"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")
+
+    records = [
+        ImageRecord(
+            image_path=stage / "sem" / "corrected" / "img_000.tif",
+            labels=[shared_label], modality="SEM", variant=None,
+        ),
+        ImageRecord(
+            image_path=stage / "sem_5kv" / "img_000.tif",
+            labels=[shared_label], modality="SEM", variant="5kv",
+        ),
+    ]
+    lamella = Lamella(
+        name="lam", path=stage.parent, number="01",
+        stages=[AdaptiveMillingStage(name="stage", path=stage, images=records)],
+    )
+
+    assert lamella_status(lamella).sem == "needs repair"
+
+
+def test_needs_repair_overrides_done_for_the_whole_project(tmp_path: Path):
+    """One unrepaired lamella must not be averaged away by finished ones."""
+    stage = tmp_path / "lam" / "stage"
+    shared_label = stage / "sem_labels" / "corrected" / "img_000.tif"
+    for path in (shared_label, stage / "sem" / "corrected" / "img_000.tif",
+                 stage / "sem_5kv" / "img_000.tif"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")
+
+    broken = Lamella(
+        name="lam", path=stage.parent, number="01",
+        stages=[AdaptiveMillingStage(name="stage", path=stage, images=[
+            ImageRecord(image_path=stage / "sem" / "corrected" / "img_000.tif",
+                        labels=[shared_label], modality="SEM"),
+            ImageRecord(image_path=stage / "sem_5kv" / "img_000.tif",
+                        labels=[shared_label], modality="SEM", variant="5kv"),
+        ])],
+    )
+    project = Project(
+        name="p", path=tmp_path,
+        lamellae=[status_lamella("done-one", [image("corrected")]), broken],
+    )
+
+    assert project_status(project).sem == "needs repair"
+
+
+def test_statuses_line_up_with_the_lists_they_annotate():
+    controller = make_controller()
+
+    assert len(controller.project_statuses()) == len(controller.projects)
+    assert len(controller.lamella_statuses()) == len(controller.lamellae)

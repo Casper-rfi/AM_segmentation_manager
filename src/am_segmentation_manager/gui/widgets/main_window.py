@@ -352,7 +352,12 @@ class CurationWindow(QMainWindow):
             self.state_panel.append_log(
                 f"{where}: {changed} file(s) -> {state} ({self.controller.target})"
             )
-        self.refresh()
+        # Rebuild the lists too: a state change is exactly what moves a lamella
+        # or project between "not started", "in progress" and "done", so leaving
+        # the status chips alone here would leave them stale at the one moment
+        # they are meant to report on. Recomputing every status costs ~60ms on a
+        # 21-project collection, against a change that has just moved files.
+        self.refresh(reload_lists=True)
 
     def _confirm_bulk(self, state: str) -> bool:
         """Ask before changing more than the frame on screen.
@@ -442,10 +447,12 @@ class CurationWindow(QMainWindow):
         self.project_panel.show_projects(
             [project.display_name for project in self.controller.projects],
             self.controller.project_position,
+            self.controller.project_statuses(),
         )
         self.project_panel.show_lamellae(
             [lamella.display_name for lamella in self.controller.lamellae],
             self.controller.lamella_position,
+            self.controller.lamella_statuses(),
         )
         self.project_panel.show_summary(self._summary_text())
 

@@ -554,3 +554,26 @@ def test_stepping_through_plots_finds_them_ready(qt_app, window):
             missing += 1
 
     assert missing == 0
+
+
+def test_changing_a_state_updates_the_status_chips(window, monkeypatch):
+    """The chips exist to report curation progress, so the moment progress is
+    made is exactly when they must not go stale.
+
+    Regression: apply_state ended with refresh() rather than
+    refresh(reload_lists=True), so the timeline updated and the chips did not.
+    """
+    controller = window.controller
+    position = controller.lamella_position
+    assert controller.lamella_statuses()[position].sem == "not started"
+
+    monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
+    controller.set_editing_enabled(True)
+    controller.set_target("SEM")
+    controller.set_scope("lamella")
+    window.apply_state("corrected")
+
+    assert controller.lamella_statuses()[position].sem == "done"
+    # The widget, not just the controller, reflects it.
+    item = window.project_panel.lamella_list.item(position)
+    assert "SEM: done" in item.toolTip()
