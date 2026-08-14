@@ -18,7 +18,10 @@ SEM, label: AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_20
 FIB, label: AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-22-12-54-52AM/fib/08-happy-shrimp_AP_img_000_SEM.tif, AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-22-12-54-52AM/labels_fib/08-happy-shrimp_AP_img_000_SEM.tif
 
 Older data, before using Autolamella (which don't have protocol.yaml file):
---> Need to to be able to recognise these as project . Add empty protocol.yaml file in every directory, or some minimal metadata only?
+--> RESOLVED: recognised by adding AM_metadata.yaml, which is both the project
+    marker and the metadata file. Write it with 'am-seg init-project'.
+    Note protocol.yaml turned out NOT to distinguish these: some genuine
+    Autolamella projects have experiment.yaml but no protocol.yaml.
 
 SEM, label: 20231102/SEM/SEM_1.tif, 20231102/labels/SEM_1.tif
 (no FIB images)

@@ -123,6 +123,68 @@ def holds_images(directory: Path) -> bool:
     return any(image_files(image_set.directory) for image_set in build_image_sets(directory))
 
 
+def find_dataset_candidates(
+    root: Path, max_depth: int = DEFAULT_MAX_DEPTH
+) -> list[Path]:
+    """Return directories that hold images but are not yet projects.
+
+    A dataset predating Autolamella has no ``experiment.yaml``, so
+    :func:`find_project_roots` cannot see it -- which leaves the datasets that
+    most need a marker file invisible to the command that writes one. This
+    answers the other question: not "where are the projects" but "what looks
+    like a dataset and is not one yet".
+
+    A directory qualifies when it has no marker of its own, holds image
+    directories somewhere beneath it, and contains **no marked project** in its
+    subtree. That last condition is what separates a dataset from a collection
+    directory: ``20240806_auNP/`` also holds images beneath it, but it holds
+    them inside three real projects, so it is a container and its children are
+    the datasets.
+
+    Matching stops at the **outermost** directory that qualifies. Descending
+    further would propose a marker inside each *lamella*, splitting one dataset
+    into several projects -- the opposite of the intended effect, and
+    destructive of the hierarchy the marker is meant to establish.
+
+    A directory that already has a marker yields nothing, including when it is
+    the directory searched: its contents belong to that project.
+
+    **Known limitation.** Which level is "the project" is not decidable from
+    structure alone: ``collection/dataset/lamella/`` and
+    ``dataset/lamella/stage/`` look identical without a marker to anchor them.
+    Stopping at the outermost qualifying directory is therefore a choice, and
+    it is the right one wherever a collection holds at least one *marked*
+    project -- the marked ones anchor the level, which is the case in practice.
+    A directory holding nothing but a single unmarked dataset is the ambiguous
+    case: this proposes that directory rather than the dataset inside it. The
+    proposal names the directory, and ``--dry-run`` shows it before anything is
+    written, so the guess is visible rather than silent.
+    """
+    if max_depth < 0:
+        return []
+    if project_markers(root):
+        return []
+    if not _contains_marked_project(root, max_depth) and _contains_images(root, max_depth):
+        return [root]
+
+    candidates: list[Path] = []
+    for child in subdirectories_by_name(root).values():
+        candidates.extend(find_dataset_candidates(child, max_depth - 1))
+    return candidates
+
+
+def _contains_marked_project(directory: Path, max_depth: int) -> bool:
+    """Return whether any project marker exists below *directory*."""
+    return bool(find_project_roots(directory, max_depth=max_depth))
+
+
+def _contains_images(directory: Path, max_depth: int) -> bool:
+    """Return whether any stage holding images exists at or below *directory*."""
+    return any(
+        holds_images(stage) for stage in find_stage_directories(directory, max_depth=max_depth)
+    )
+
+
 def find_nested_project_roots(
     project_root: Path, max_depth: int = DEFAULT_MAX_DEPTH
 ) -> list[Path]:

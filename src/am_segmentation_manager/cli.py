@@ -246,7 +246,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     )
     init_project_cmd.add_argument(
         "--recursive", action="store_true",
-        help="Write a template into every project found under the directory",
+        help=(
+            "Write a template into every project found under the directory, and "
+            "into any directory that holds images but is not a project yet"
+        ),
     )
     init_project_cmd.add_argument(
         "--defaults", default=None,
@@ -520,14 +523,28 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 0
 
     if args.command == "init-project":
-        from .discovery import find_project_roots, project_markers
+        from .discovery import (
+            find_dataset_candidates,
+            find_project_roots,
+            project_markers,
+        )
         from .operations.init_project import init_projects, read_defaults
 
         start_path = Path(args.start_path)
         if args.recursive:
-            roots = find_project_roots(start_path)
+            existing = find_project_roots(start_path)
+            # Datasets predating Autolamella have no marker, so project
+            # discovery cannot see them -- which would leave the ones that most
+            # need a marker out of the command that writes one.
+            candidates = find_dataset_candidates(start_path)
+            for candidate in candidates:
+                logger.info(
+                    "%s holds images but is not a project yet; a metadata file "
+                    "makes it one", make_path_relative(candidate, start_path),
+                )
+            roots = [*existing, *candidates]
             if not roots:
-                logger.error("No projects found under %s", start_path)
+                logger.error("No projects or unindexed datasets found under %s", start_path)
                 return 2
         else:
             if not start_path.is_dir():

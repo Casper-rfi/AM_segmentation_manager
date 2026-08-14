@@ -652,6 +652,16 @@ lamellae, 226 images, 226 labels, with synthetic stages and the shared `labels/`
 directory resolved. `lamella_type` derives for **16 of 20** projects; the four
 2026 ones need it by hand, as §2.2(f) predicted.
 
+*A gap found later, after the phase was reported done.* `init-project
+--recursive` used project discovery, which requires the very marker file the
+command writes -- so it could only find datasets that were already projects,
+never the ones needing one. `discovery.find_dataset_candidates` answers the
+other question: what holds images and is not a project yet. It stops at the
+outermost qualifying directory, since descending further would propose a marker
+inside each *lamella* and split one dataset into several projects. Which level
+is "the project" is not decidable from structure alone where nothing is marked;
+that limitation is documented on the function and pinned by a test.
+
 *Scan cost solved differently than planned.* §8.4 proposed extracting only the
 keys we use. Measurement showed 4.1 s of the 4.5 s scan was YAML parsing, and
 that PyYAML's libyaml loader is ~7x faster with identical results — so
