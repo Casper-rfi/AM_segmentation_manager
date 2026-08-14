@@ -1,6 +1,13 @@
 name: am_segmentation_manager
 channels:
   - conda-forge
+  # Excludes Anaconda's `defaults`/`main` channel even when a local .condarc
+  # appends it. Without this the solver mixes the two, and mixing them is not
+  # cosmetic: it produced an environment whose opencv came from `main` and
+  # whose libprotobuf came from conda-forge, so cv2 failed to load with a
+  # missing protobuf symbol. Builds from the two channels are compiled against
+  # different ABIs and are not interchangeable.
+  - nodefaults
 dependencies:
   - python=3.11
   - pip
@@ -10,12 +17,12 @@ dependencies:
   # `ruff check` should report nothing, so anything it does report is worth
   # acting on.
   - ruff
-  # Image processing. These are conda builds, and they are what the optional
-  # [all] extra installs from PyPI -- so in THIS environment do not also run
-  # `pip install -e '.[all]'`. conda's `opencv` and pip's `opencv-python` both
-  # provide `cv2`; installing both leaves an import that fails, which the
-  # package then reports as a missing dependency. Same hazard as two Qt
-  # bindings, below.
+  # Image processing. These are conda builds and are what the optional [all]
+  # extra installs from PyPI, so in THIS environment do not also run
+  # `pip install -e '.[all]'`: conda's `opencv` and pip's `opencv-python` both
+  # provide `cv2`. Same hazard as two Qt bindings, below -- and see the
+  # `nodefaults` note above for the channel-mixing version of it, which is
+  # what actually broke a real environment.
   - numpy
   - tifffile
   - imagecodecs

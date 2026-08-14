@@ -149,6 +149,12 @@ Developer setup
 Creates the conda environment from `environment.yml`, installs the package in
 editable mode, and checks that the optional dependencies actually import.
 
+The environment file pins the channel list to conda-forge and `nodefaults`.
+That is load-bearing: with Anaconda's `defaults` channel also in play the
+solver will happily mix the two, and builds from them are compiled against
+different ABIs. One such environment ended up with `opencv` from `main` and
+`libprotobuf` from conda-forge, and `cv2` would not load at all.
+
 **In a conda environment, do not also run `pip install -e '.[all]'`.** The
 environment file already provides those packages as conda builds. conda's
 `opencv` and pip's `opencv-python` both provide `cv2`, and installing both
