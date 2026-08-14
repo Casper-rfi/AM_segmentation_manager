@@ -77,7 +77,7 @@ Commands by purpose:
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `select` / `deselect` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |
-| Count images by one or two properties | `stats` |
+| Count images by one or two properties, and chart them | `stats` |
 | Export per-image metadata | `export-metadata-csv` |
 | Export per-project metadata | `export-projects-csv` |
 | Export training lists | `create-training-csv` / `check-training-csv` |
@@ -166,6 +166,7 @@ Project layout
   - frames.py        : per-lamella chronological view pairing SEM with FIB
   - filtering.py     : matching records against CLI selectors and metadata filters
   - aggregate.py     : counting records by one or two properties
+  - plots.py         : bar charts of those counts (optional matplotlib)
   - reporting.py     : human-readable summaries of projects and surveys
   - config.py        : segmentation class names and colours
   - colors.py        : CSS colour name to RGB

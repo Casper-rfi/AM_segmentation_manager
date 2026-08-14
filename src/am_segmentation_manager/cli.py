@@ -356,6 +356,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         "-o", "--output", default=None,
         help="Write the table to a CSV file as well as printing it",
     )
+    stats_cmd.add_argument(
+        "--plot", default=None, metavar="FILE",
+        help=(
+            "Draw the breakdown as a bar chart. The suffix chooses the format: "
+            ".png to look at, .svg for a figure. Needs the optional matplotlib "
+            "extra"
+        ),
+    )
 
     # -- show-metadata / edit-metadata ---------------------------------------
     show_metadata = sub.add_parser(
@@ -830,6 +838,23 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
                 print(line)
             rows = [(str(a), str(b), count) for (a, b), count in table.items()]
             header = [chosen[0], chosen[1], "images"]
+
+        if args.plot:
+            from .plots import plot_counts, plot_cross_tabulation
+
+            try:
+                if len(keys) == 1:
+                    plot_counts(
+                        counts, f"Images per {chosen[0]}", Path(args.plot),
+                        xlabel=chosen[0],
+                    )
+                else:
+                    plot_cross_tabulation(table, chosen[0], chosen[1], Path(args.plot))
+            except RuntimeError as exc:
+                # The counts have already been printed, so a missing optional
+                # dependency should not lose them.
+                logger.error("%s", exc)
+                return 2
 
         if args.output:
             output = Path(args.output)

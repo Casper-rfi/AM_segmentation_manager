@@ -37,6 +37,11 @@ all = [
   "imagecodecs",
   "opencv-python",
 ]
+# Bar charts of the `stats` breakdowns. Optional: every statistics command
+# works without it and declines to plot.
+plots = [
+  "matplotlib",
+]
 # The curation window. qtpy adapts to whichever Qt binding is present, so an
 # environment that already has PyQt5 (for example via napari) needs qtpy only:
 # installing a second binding alongside the first causes import-time crashes.

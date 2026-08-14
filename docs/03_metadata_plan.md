@@ -1,6 +1,6 @@
 # Metadata: reading, editing, exporting and summarising
 
-Status: **§3-§6 built** (phases 4-6); §7 and §8 proposed.
+Status: **§3-§6 built** (phases 4-6, including plots); §7 and §8 proposed.
 Written 2026-08-14.
 
 Built so far: `image_metadata.py` reads acquisition settings from both header
@@ -9,8 +9,9 @@ dialects, validated field-for-field against the standalone script it replaces;
 project metadata from the command line; `aggregate.py` counts records, driving
 `stats`, and `operations/metadata_csv.py` drives `export-metadata-csv` and
 `export-projects-csv`. Metadata filters apply to `create-training-csv`, which
-was the point of building them. The GUI tab (§4.3, §7) and plots (§6.5) are
-deliberately still waiting -- the tab on the CLI being used against real data.
+was the point of building them. `plots.py` draws the breakdowns as bar charts behind `stats --plot`.
+The GUI tab (§4.3, §7) is deliberately still waiting on the CLI being used
+against real data.
 
 **§5.3 was not done as written.** That section said to move
 `reporting.summarize_lamella` and the GUI status indicators onto `aggregate`.
