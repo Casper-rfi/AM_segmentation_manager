@@ -31,6 +31,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# For a pip-only installation. In the conda environment from environment.yml
+# these are already provided by conda, and installing them again from PyPI
+# gives you two cv2 installations -- conda's `opencv` and pip's
+# `opencv-python` -- which breaks the import.
 all = [
   "numpy",
   "tifffile",

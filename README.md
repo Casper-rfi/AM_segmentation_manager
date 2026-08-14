@@ -144,13 +144,21 @@ in the scan folder and falling back to the copy bundled with the package. Pass
 
 Developer setup
 ---------------
-The repository includes an environment file and a small setup script for
-development.
+    ./scripts/setup_dev.sh
 
-- Create a conda environment from `environment.yml`.
-- Install the package in editable mode with `pip install -e .`.
-- The helper script `./scripts/setup_dev.sh` can automate these steps on
-  macOS/Linux.
+Creates the conda environment from `environment.yml`, installs the package in
+editable mode, and checks that the optional dependencies actually import.
+
+**In a conda environment, do not also run `pip install -e '.[all]'`.** The
+environment file already provides those packages as conda builds. conda's
+`opencv` and pip's `opencv-python` both provide `cv2`, and installing both
+leaves an import that fails -- which the package can only report as a broken
+dependency. The pip extras (`[all]`, `[gui]`, `[plots]`) are for a pip-only
+installation. This is the same hazard as two Qt bindings, described above.
+
+To check an environment at any time:
+
+    python -c "from am_segmentation_manager.io.image import image_stack_problems; print(image_stack_problems() or 'image stack OK')"
 
 Running tests
 -------------

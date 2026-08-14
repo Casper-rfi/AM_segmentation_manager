@@ -10,7 +10,12 @@ dependencies:
   # `ruff check` should report nothing, so anything it does report is worth
   # acting on.
   - ruff
-  # optional image-processing dependencies (recommended for full functionality)
+  # Image processing. These are conda builds, and they are what the optional
+  # [all] extra installs from PyPI -- so in THIS environment do not also run
+  # `pip install -e '.[all]'`. conda's `opencv` and pip's `opencv-python` both
+  # provide `cv2`; installing both leaves an import that fails, which the
+  # package then reports as a missing dependency. Same hazard as two Qt
+  # bindings, below.
   - numpy
   - tifffile
   - imagecodecs

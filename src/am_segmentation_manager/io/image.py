@@ -26,20 +26,44 @@ logger = logging.getLogger(__name__)
 TIFF_SUFFIXES = {".tif", ".tiff"}
 
 INSTALL_HINT = (
-    "Install the optional image dependencies with: "
+    "In a conda environment install them with conda "
+    "(numpy tifffile imagecodecs opencv), and do not also pip install "
+    "'am_segmentation_manager[all]' -- conda's opencv and pip's opencv-python "
+    "both provide cv2, and installing both breaks the import. Outside conda: "
     "pip install 'am_segmentation_manager[all]'"
 )
 
+#: The modules that must import for any image to be read, and the distribution
+#: each comes from. cv2 is listed by import name because that is what fails.
+IMAGE_STACK_MODULES = (("numpy", "numpy"), ("tifffile", "tifffile"), ("cv2", "opencv"))
+
+
+def image_stack_problems() -> list[tuple[str, str]]:
+    """Return ``(module, reason)`` for each dependency that will not import.
+
+    Reporting *why* each one failed matters more than it looks. An earlier
+    version caught every exception and said "not installed", which is wrong and
+    misleading whenever a package is installed but broken -- the usual cause
+    being two installations of cv2, one from conda's ``opencv`` and one from
+    pip's ``opencv-python``. That reads as a missing dependency and sends you
+    to install it again, which makes it worse.
+    """
+    problems: list[tuple[str, str]] = []
+    for module, distribution in IMAGE_STACK_MODULES:
+        try:
+            __import__(module)
+        except ImportError as error:
+            problems.append((distribution, f"not installed ({error})"))
+        except Exception as error:  # noqa: BLE001 - reported, not swallowed
+            problems.append(
+                (distribution, f"installed but failed to import: {error!r}")
+            )
+    return problems
+
 
 def has_image_stack_support() -> bool:
-    """Return whether the optional tifffile/numpy/cv2 stack is installed."""
-    try:
-        import cv2  # noqa: F401
-        import numpy  # noqa: F401
-        import tifffile  # noqa: F401
-        return True
-    except Exception:
-        return False
+    """Return whether the optional tifffile/numpy/cv2 stack is usable."""
+    return not image_stack_problems()
 
 
 def require_image_stack(operation: str) -> None:
@@ -49,12 +73,15 @@ def require_image_stack(operation: str) -> None:
         operation: What the caller was trying to do, used in the message.
 
     Raises:
-        RuntimeError: If numpy, tifffile or cv2 is not installed.
+        RuntimeError: If numpy, tifffile or cv2 cannot be imported, naming
+            which ones and why.
     """
-    if not has_image_stack_support():
-        raise RuntimeError(
-            f"{operation} requires numpy, tifffile and opencv-python. {INSTALL_HINT}"
-        )
+    problems = image_stack_problems()
+    if not problems:
+        return
+    detail = "; ".join(f"{name}: {reason}" for name, reason in problems)
+    logger.warning("%s unavailable -- %s", operation, detail)
+    raise RuntimeError(f"{operation} needs {detail}. {INSTALL_HINT}")
 
 
 def to_2d(array: np.ndarray) -> np.ndarray:
