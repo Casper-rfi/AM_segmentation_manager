@@ -28,6 +28,18 @@ LAYOUT_ERAS = (
     "legacy_collapsed",
 )
 
+#: What each era should be found to contain. The pre-Autolamella collapsed
+#: datasets really do have no FIB images -- see docs/reference_layouts.md
+#: sections 4 and 5 -- so "both modalities" is not a universal expectation and
+#: is stated per era instead.
+EXPECTED_MODALITIES: dict[str, set[str]] = {
+    "v2026_nested": {"SEM", "FIB"},
+    "v2025_timestamped": {"SEM", "FIB"},
+    "v2024_untimed": {"SEM", "FIB"},
+    "legacy_variants": {"SEM", "FIB"},
+    "legacy_collapsed": {"SEM"},
+}
+
 
 def _write_image(directory: Path, name: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
@@ -114,13 +126,18 @@ def test_every_era_yields_exactly_one_project(tmp_path: Path, era: str):
     assert len(survey.projects) == 1
 
 
-def test_every_era_finds_both_modalities(tmp_path: Path, era: str):
-    if era == "legacy_collapsed":
-        pytest.skip("this era has no FIB images")
+def test_every_era_finds_exactly_its_modalities(tmp_path: Path, era: str):
+    """Each era must yield the modalities it actually has -- no more, no less.
+
+    Stated per era rather than skipping the one that has only SEM. Skipping
+    asserted nothing for that era, which is the layout least like the others and
+    so the one most worth pinning: this now also catches a FIB image set being
+    *invented* for a dataset that has none.
+    """
     make_project(tmp_path, era)
     survey = survey_collection(tmp_path)
     modalities = {entry.image_set.modality for entry in survey.projects[0].image_sets}
-    assert modalities == {"SEM", "FIB"}
+    assert modalities == EXPECTED_MODALITIES[era]
 
 
 def test_every_era_pairs_every_image_with_a_label(tmp_path: Path, era: str):
