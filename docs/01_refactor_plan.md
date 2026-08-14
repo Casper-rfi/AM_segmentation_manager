@@ -80,18 +80,30 @@ commit c494f49 ("Track the segmentation config at the repository root") which
 the packaging change superseded. Two copies of the same fact, and nothing keeps
 them in step.
 
-- [ ] Delete the repo-root copy. Confirm `config.py`'s fallback resolves to the
-      packaged one and that `tests/test_config.py` still passes.
+- [x] Delete the repo-root copy. **Done 2026-08-14.** `config.py`'s
+      `default_config_path()` resolves to the packaged file, the five classes
+      load from it, and the suite is unchanged at 667 passed / 1 skipped.
 
 ### 1.3 Files that are gitignored yet tracked
 
-`.gitignore` lists `implementation_suggestion.txt` and `Makefile`, but
-`implementation_suggestion.txt` is tracked (`git ls-files` confirms). A tracked
-file is not ignored — the ignore rule does nothing and misleads whoever reads
-it. See §3.2 for what to do with the file itself.
+**No action needed — this section was written on a misreading.**
 
-- [ ] Resolve each: either untrack it or remove the ignore rule, so the two
-      agree.
+The claim was that `.gitignore` lists `implementation_suggestion.txt` and
+`Makefile` while `implementation_suggestion.txt` is tracked. It is not:
+
+```
+implementation_suggestion.txt    tracked=no exists=yes ignored=yes
+Makefile                         tracked=no exists=yes ignored=yes
+```
+
+Both are ignored and untracked, which is consistent. There is no contradiction
+to resolve and nothing to change.
+
+Retained rather than deleted so the claim is not re-derived from the original
+notes later. §3.2 still applies to the *content* of
+`implementation_suggestion.txt` — it is superseded and now misleading — but
+since it is untracked, "deleting" it is a local file operation with no bearing
+on the repository.
 
 ---
 
@@ -231,8 +243,11 @@ Anyone reading it as guidance would build the wrong thing. It has served its
 purpose: everything in it that was right is now either implemented or recorded
 in `CLAUDE.md`.
 
-- [ ] Delete it (the history keeps it), and reconcile the `.gitignore` entry
-      per §1.3.
+- [ ] Delete the local file. **Note it is untracked (§1.3), so git holds no
+      copy** — unlike every other deletion in this document, this one is not
+      recoverable from history. Read it once more before removing it, or move
+      it outside the repository instead. There is no `.gitignore` change to
+      make.
 
 ### 3.3 `data_structures.txt` — keep, but move and re-title
 
