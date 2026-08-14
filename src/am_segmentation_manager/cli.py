@@ -14,7 +14,8 @@ import logging
 import sys
 from pathlib import Path
 
-from .filtering import iter_matching_records
+from .aggregate import BREAKDOWNS, NEEDS_METADATA
+from .filtering import METADATA_FILTERS, filter_by_metadata, iter_matching_records
 from .io.path import make_path_relative
 from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
 from .operations.predictions import convert_record_predictions
@@ -83,6 +84,32 @@ def _add_scope_arguments(
             "--modality", choices=["SEM", "FIB", "all"], required=True,
             help="Image modality to operate on; specify 'all' for both SEM and FIB",
         )
+
+
+
+def _add_metadata_filters(parser: argparse.ArgumentParser) -> None:
+    """Add the per-image metadata filters to *parser*.
+
+    These read image headers, so they are applied after the structural
+    selectors: only what those keep is ever opened.
+    """
+    for name in sorted(METADATA_FILTERS):
+        parser.add_argument(
+            f"--{name}", action="append", default=None, metavar="VALUE",
+            help=(
+                f"Keep only images whose {METADATA_FILTERS[name].replace('_', ' ')} "
+                f"matches; repeatable for alternatives"
+            ),
+        )
+
+
+def _metadata_selectors(args: argparse.Namespace) -> dict[str, list[str]]:
+    """Return the metadata filters the user asked for, if any."""
+    return {
+        name: values
+        for name in METADATA_FILTERS
+        if (values := getattr(args, name.replace("-", "_"), None))
+    }
 
 
 def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
@@ -266,6 +293,70 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         help="Report which files would be written without creating anything",
     )
 
+    # -- metadata exports ----------------------------------------------------
+    export_metadata = sub.add_parser(
+        "export-metadata-csv",
+        help="Write one CSV row per image, with acquisition and project metadata",
+        description=(
+            "Export the selected images with everything known about each: where "
+            "it sits, its workflow and label state, the acquisition settings "
+            "read from its header, and its project's metadata. One file, no "
+            "join needed. Read-only."
+        ),
+    )
+    _add_scope_arguments(export_metadata, default_modality="all")
+    _add_metadata_filters(export_metadata)
+    export_metadata.add_argument("-o", "--output", required=True, help="CSV file to write")
+    export_metadata.add_argument(
+        "--no-headers", action="store_true",
+        help=(
+            "Skip reading image headers, leaving the acquisition columns empty. "
+            "Faster for a purely structural listing"
+        ),
+    )
+
+    export_projects = sub.add_parser(
+        "export-projects-csv",
+        help="Write one CSV row per project, with its metadata and counts",
+        description=(
+            "Export each project's descriptive metadata, which file supplied "
+            "each value, the fields still marked TODO, and how many lamellae, "
+            "stages and images it holds. Read-only."
+        ),
+    )
+    export_projects.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    export_projects.add_argument("-o", "--output", required=True, help="CSV file to write")
+
+    # -- stats ---------------------------------------------------------------
+    stats_cmd = sub.add_parser(
+        "stats",
+        help="Count images by one or two properties",
+        description=(
+            "Break the selected images down by a property -- microscope, "
+            "accelerating voltage, sample, workflow state and so on. Pass --by "
+            "twice for a cross-tabulation, which is usually the question worth "
+            "asking: not how many Arctis images there are, but how many "
+            "corrected FIB images at 30 kV are on each instrument. Read-only. "
+            "Breakdowns marked (header) read each image's header, which costs "
+            "about half a millisecond per image."
+        ),
+    )
+    _add_scope_arguments(stats_cmd, default_modality="all")
+    stats_cmd.add_argument(
+        "--by", action="append", default=[], metavar="PROPERTY",
+        help=(
+            "Property to count by; pass twice to cross-tabulate. Choices: "
+            + ", ".join(
+                f"{name}{' (header)' if name in NEEDS_METADATA else ''}"
+                for name in sorted(BREAKDOWNS)
+            )
+        ),
+    )
+    stats_cmd.add_argument(
+        "-o", "--output", default=None,
+        help="Write the table to a CSV file as well as printing it",
+    )
+
     # -- show-metadata / edit-metadata ---------------------------------------
     show_metadata = sub.add_parser(
         "show-metadata",
@@ -415,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         description="Filter project images/labels and export training and validation CSV files",
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
+    _add_metadata_filters(create_training_csv)
     create_training_csv.add_argument(
         "--conditions",
         choices=["primary", "all"],
@@ -648,6 +740,106 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         )
         return 0
 
+    if args.command == "export-projects-csv":
+        from .operations.metadata_csv import export_project_metadata_csv
+
+        start_path = Path(args.start_path)
+        projects = Scanner(start_path).build_index().all_projects()
+        if not projects:
+            logger.warning("No projects found under %s", start_path)
+        export_project_metadata_csv(projects, start_path, Path(args.output))
+        return 0
+
+    if args.command == "export-metadata-csv":
+        from .aggregate import project_lookup
+        from .image_metadata import read_records_metadata
+        from .operations.metadata_csv import export_image_metadata_csv
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.warning("No images matched")
+            return 0
+
+        selectors = _metadata_selectors(args)
+        if selectors and args.no_headers:
+            logger.error("Metadata filters need headers; drop --no-headers")
+            return 2
+        if selectors:
+            metadata = read_records_metadata(records)
+            records = filter_by_metadata(records, metadata, selectors)
+            if not records:
+                logger.warning("No images matched the metadata filters")
+                return 0
+
+        projects = project_lookup(Scanner(start_path).build_index().all_projects())
+        export_image_metadata_csv(
+            records, start_path, Path(args.output),
+            include_headers=not args.no_headers, projects=projects,
+        )
+        return 0
+
+    if args.command == "stats":
+        import csv as csv_module
+
+        # NEEDS_METADATA and BREAKDOWNS are imported at module level; naming
+        # them here too would shadow them for the whole of main(), including
+        # the parser construction above.
+        from .aggregate import (
+            count_by,
+            cross_tabulate,
+            project_lookup,
+            resolve_breakdown,
+        )
+        from .reporting import format_counts, format_cross_tabulation
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.warning("No images matched")
+            return 0
+
+        chosen = args.by or ["modality"]
+        if len(chosen) > 2:
+            logger.error("--by takes at most two properties, got %d", len(chosen))
+            return 2
+
+        # Headers are only read when a chosen breakdown needs them, so a purely
+        # structural question stays a filesystem walk.
+        metadata: dict = {}
+        if any(name in NEEDS_METADATA for name in chosen):
+            from .image_metadata import read_records_metadata
+
+            logger.info("Reading headers for %d image(s)", len(records))
+            metadata = read_records_metadata(records)
+
+        lookup = project_lookup(Scanner(start_path).build_index().all_projects())
+        try:
+            keys = [resolve_breakdown(name, metadata, lookup) for name in chosen]
+        except ValueError as exc:
+            logger.error("%s", exc)
+            return 2
+
+        if len(keys) == 1:
+            counts = count_by(records, keys[0])
+            for line in format_counts(counts, f"Images per {chosen[0]}"):
+                print(line)
+            rows = [(str(key), count) for key, count in counts.items()]
+            header = [chosen[0], "images"]
+        else:
+            table = cross_tabulate(records, keys[0], keys[1])
+            for line in format_cross_tabulation(table, chosen[0], chosen[1]):
+                print(line)
+            rows = [(str(a), str(b), count) for (a, b), count in table.items()]
+            header = [chosen[0], chosen[1], "images"]
+
+        if args.output:
+            output = Path(args.output)
+            with output.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv_module.writer(handle)
+                writer.writerow(header)
+                writer.writerows(rows)
+            logger.info("Wrote %d row(s) to %s", len(rows), output)
+        return 0
+
     if args.command in {"show-metadata", "edit-metadata"}:
         from .filtering import matches_project
         from .metadata import DESCRIPTIVE_FIELDS as FIELDS
@@ -847,6 +1039,17 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         if not records:
             logger.info("No matching images found to export CSV")
             return 2
+
+        # Metadata filters run after the structural ones, so headers are read
+        # only for images that already survived project/lamella/state selection.
+        selectors = _metadata_selectors(args)
+        if selectors:
+            from .image_metadata import read_records_metadata
+
+            records = filter_by_metadata(records, read_records_metadata(records), selectors)
+            if not records:
+                logger.info("No images matched the metadata filters")
+                return 2
 
         output_dir = Path(args.output_dir)
         train_csv, val_csv = export_training_csv(

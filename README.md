@@ -77,6 +77,9 @@ Commands by purpose:
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `select` / `deselect` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |
+| Count images by one or two properties | `stats` |
+| Export per-image metadata | `export-metadata-csv` |
+| Export per-project metadata | `export-projects-csv` |
 | Export training lists | `create-training-csv` / `check-training-csv` |
 | Shrink label files on disk | `compress-labels` |
 
@@ -161,7 +164,8 @@ Project layout
   - metadata.py      : typed project metadata, resolved from the two YAML files
   - image_metadata.py: acquisition settings read from image headers
   - frames.py        : per-lamella chronological view pairing SEM with FIB
-  - filtering.py     : matching records against CLI selectors
+  - filtering.py     : matching records against CLI selectors and metadata filters
+  - aggregate.py     : counting records by one or two properties
   - reporting.py     : human-readable summaries of projects and surveys
   - config.py        : segmentation class names and colours
   - colors.py        : CSS colour name to RGB
@@ -175,6 +179,7 @@ Project layout
     - csv.py, csv_check.py : training list export and re-checking
     - label_compression.py : shrinking labels on disk
     - init_project.py    : AM_metadata.yaml templates
+    - metadata_csv.py    : per-image and per-project metadata export
     - metadata_edit.py   : editing AM_metadata.yaml in place
     - migrate.py         : renaming pre-convention label directories
   - gui/             : curation window (only gui/widgets/ imports Qt)

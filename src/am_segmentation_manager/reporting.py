@@ -261,3 +261,66 @@ def print_survey(
     """Print a layout survey through the module logger."""
     for line in format_survey(survey, detail=detail, min_severity=min_severity):
         logger.info("%s", line)
+
+
+# ---------------------------------------------------------------------------
+# Statistics tables
+#
+# aggregate.py counts; this turns counts into something readable. Kept here
+# rather than there so the counting stays free of presentation.
+# ---------------------------------------------------------------------------
+
+def format_counts(
+    counts: dict, title: str, *, total: int | None = None
+) -> list[str]:
+    """Return a one-dimensional breakdown as aligned lines.
+
+    A percentage column is included because the question these tables answer is
+    usually about balance, and "2386" only answers it next to the total.
+    """
+    if not counts:
+        return [f"{title}: nothing to count"]
+
+    total = sum(counts.values()) if total is None else total
+    width = max(len(str(key)) for key in counts)
+    lines = [f"{title}  ({total} image(s))"]
+    for key, count in counts.items():
+        share = f"{100 * count / total:5.1f}%" if total else "    -"
+        lines.append(f"  {str(key):<{width}}  {count:>7}  {share}")
+    return lines
+
+
+def format_cross_tabulation(
+    table: dict, row_title: str, column_title: str
+) -> list[str]:
+    """Return a two-dimensional breakdown as an aligned grid, with margins."""
+    from .aggregate import totals
+
+    if not table:
+        return [f"{row_title} x {column_title}: nothing to count"]
+
+    rows, columns = totals(table)
+    row_width = max([len(str(row)) for row in rows] + [len(row_title)])
+    column_widths = {
+        column: max(len(str(column)), 7) for column in columns
+    }
+
+    header = f"{row_title:<{row_width}} " + " ".join(
+        f"{str(column):>{column_widths[column]}}" for column in columns
+    )
+    lines = [f"{row_title} x {column_title}", header, "-" * len(header)]
+
+    for row in rows:
+        cells = " ".join(
+            f"{table.get((row, column), 0):>{column_widths[column]}}" for column in columns
+        )
+        row_total = sum(count for (r, _), count in table.items() if r == row)
+        lines.append(f"{str(row):<{row_width}} {cells}   = {row_total}")
+
+    footer = " ".join(
+        f"{sum(count for (_, c), count in table.items() if c == column):>{column_widths[column]}}"
+        for column in columns
+    )
+    lines.append("-" * len(header))
+    lines.append(f"{'total':<{row_width}} {footer}   = {sum(table.values())}")
+    return lines

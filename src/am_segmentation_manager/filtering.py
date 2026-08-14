@@ -247,3 +247,91 @@ def iter_matching_records(
                         continue
                     if record_matches_paths(record, paths):
                         yield record
+
+
+# ---------------------------------------------------------------------------
+# Metadata filters
+#
+# Applied *after* the structural selectors above, deliberately. Filtering by
+# project and lamella first means headers are read only for what survives, so
+# the cost of a metadata query stays proportional to what it asks about rather
+# than to the size of the archive.
+# ---------------------------------------------------------------------------
+
+#: Metadata filters, mapped to the ImageMetadata attribute they test. Keeping
+#: this a table rather than a chain of if-statements means a new filter is a
+#: row, matching how image_metadata.FIELDS declares where values come from.
+METADATA_FILTERS: dict[str, str] = {
+    "microscope": "microscope_model",
+    "serial": "microscope_serial",
+    "voltage": "acceleration_voltage_v",
+    "current": "beam_current_pa",
+    "dwell": "dwell_time_ns",
+    "pixel-size": "pixel_size_nm",
+    "beam-source": "beam_source",
+    "detector": "detector_type",
+}
+
+
+def _matches_value(actual, wanted: str) -> bool:
+    """Compare a metadata value to a requested one, tolerantly.
+
+    Numbers are compared numerically where both sides parse, so ``30000``
+    matches a stored ``30000.0``; otherwise the comparison is a
+    case-insensitive string match, so ``arctis`` finds ``Arctis``.
+    """
+    if actual is None:
+        return False
+    try:
+        return abs(float(actual) - float(wanted)) < 1e-9
+    except (TypeError, ValueError):
+        return str(actual).strip().lower() == wanted.strip().lower()
+
+
+def matches_metadata(metadata, selectors: dict[str, list[str]] | None) -> bool:
+    """Return whether one image's metadata satisfies every filter.
+
+    Filters combine with AND across properties and OR within one, so
+    ``--voltage 2000 --voltage 2500 --microscope Arctis`` means "either voltage,
+    on that microscope".
+
+    An image whose header could not be read matches nothing once a metadata
+    filter is in play. That is deliberate: including it would put images of
+    unknown provenance into a set defined by provenance.
+    """
+    if not selectors:
+        return True
+    if metadata is None:
+        return False
+    for name, wanted in selectors.items():
+        attribute = METADATA_FILTERS[name]
+        actual = getattr(metadata, attribute, None)
+        if not any(_matches_value(actual, value) for value in wanted):
+            return False
+    return True
+
+
+def filter_by_metadata(
+    records: list,
+    metadata: dict,
+    selectors: dict[str, list[str]] | None,
+) -> list:
+    """Return the records whose metadata satisfies *selectors*.
+
+    Args:
+        records: Records already narrowed by the structural selectors.
+        metadata: Image path to :class:`~am_segmentation_manager.image_metadata.ImageMetadata`.
+        selectors: Filter name to accepted values, from
+            :data:`METADATA_FILTERS`.
+    """
+    if not selectors:
+        return records
+    kept = [
+        record for record in records
+        if matches_metadata(metadata.get(record.image_path), selectors)
+    ]
+    if len(kept) < len(records):
+        logger.info(
+            "Metadata filters kept %d of %d image(s)", len(kept), len(records)
+        )
+    return kept
