@@ -551,7 +551,7 @@ without it and simply decline to plot.
 
 ### 7.1 This reverses a recorded decision — record the reversal
 
-`docs/gui_plan.md` §1 states:
+`docs/design_record_gui.md` §1 states:
 
 > Prediction→label conversion, CSV export, compression. Those stay CLI-only for
 > now; the GUI is a curation tool, not a second front-end for everything.

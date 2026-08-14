@@ -1,19 +1,26 @@
-# Plan: retrograde support for older datasets
+# Design record: retrograde support for older datasets
 
-Design proposal for indexing pre-2026 Autolamella projects and pre-Autolamella
-datasets, and for supporting multiple imaging conditions per modality with
-shared labels.
+> **Status: as built.** This was written as a forward-looking plan and the work
+> is done — legacy layouts, imaging-condition variants and shared labels all
+> shipped (commits 059ddf3, 917350f). It is retained for the *reasoning*, not
+> as a description of outstanding work. Where it says "will" or "should",
+> read "does".
+>
+> Renamed from `retrograde_support_plan.md` on 2026-08-14.
+
+How pre-2026 Autolamella projects and pre-Autolamella datasets came to be
+indexed, and how multiple imaging conditions per modality with shared labels
+were supported.
 
 Revision 4 — survey of the expanded test collection, plus corrections on
-metadata scope, label import and indexing scope. Conventions in §4 are settled
-(D1–D5 answered) and nothing in §10 is blocking, so this is ready to implement
-from Phase 0.
+metadata scope, label import and indexing scope.
 
 ---
 
 ## 1. What this is based on
 
-- `data_structures.txt` (path examples across five layout generations)
+- `data_structures.txt`, now `docs/reference_layouts.md`
+  (path examples across five layout generations)
 - `extended_metadata_example.yaml`
 - The expanded test collection in
   `<collection>/`
@@ -748,7 +755,7 @@ moves the *images* to follow the label — never the reverse, since the label
 holds the proofreading work.
 
 **Phase 5 — GUI. ✅ Done.** Built as designed. Full design in
-[`gui_plan.md` §17](gui_plan.md). The short version, because the design turned
+[`design_record_gui.md` §17](design_record_gui.md). The short version, because the design turned
 out smaller than this plan assumed:
 
 *The variant is not a fourth edit axis.* Since §6 made state changes follow the

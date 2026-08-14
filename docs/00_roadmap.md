@@ -25,7 +25,7 @@ Splitting is worth it here for one reason: **these have different lifetimes.**
   sitting and is easier to hold in one file than scattered through a larger doc.
 * The metadata plan is a multi-month design that will be revised as it is
   built. It needs room to record decisions and their reasons, the way
-  `gui_plan.md` and `retrograde_support_plan.md` did.
+  `design_record_gui.md` and `design_record_layouts.md` did.
 * Future work is a holding area for things deliberately *not* being designed
   yet. Keeping it separate stops speculative detail leaking into the metadata
   plan and inflating its scope.
@@ -57,7 +57,7 @@ and the two design docs that are no longer true.
 **Do this before the metadata work, not after.** `CLAUDE.md` is the instruction
 set the metadata work will be built against; building against stale
 instructions produces code that then has to be re-argued. In particular
-`gui_plan.md` currently says CSV export stays out of the GUI, and the metadata
+`design_record_gui.md` said CSV export stays out of the GUI, and the metadata
 plan reverses that — the reversal should be recorded deliberately rather than
 discovered as a contradiction halfway through.
 

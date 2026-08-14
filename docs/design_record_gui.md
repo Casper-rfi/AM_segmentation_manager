@@ -1,7 +1,14 @@
-# Design plan: data curation GUI
+# Design record: data curation GUI
 
-Status: **phases 1–7 built and working.** Phase 7 was rewritten after a first
-round of testing and then implemented — see [§13](#13-phase-7-revised-after-testing).
+> **Status: as built.** Phases 1–7 are built and working; phase 7 was rewritten
+> after a first round of testing and then implemented — see
+> [§13](#13-phase-7-revised-after-testing). Retained for the reasoning rather
+> than as a description of outstanding work.
+>
+> **Two scope statements in §1 are no longer true.** Both are annotated in
+> place, and the CSV-export reversal is explained in [§19](#19-scope-reversal-the-gui-grows-tabs).
+>
+> Renamed from `gui_plan.md` on 2026-08-14.
 
 Target: a desktop viewer for reviewing Autolamella adaptive-milling images against
 their labels, and setting each image's workflow state (selected / deselected /
@@ -35,11 +42,18 @@ Explicitly out of scope (call these out now so the design does not quietly grow)
 
 * Any label *editing*. Proofreading stays in the external segmentation software.
   This tool decides *which* images get proofread and records when they are done.
-* Prediction→label conversion, CSV export, compression. Those stay CLI-only for
-  now; the GUI is a curation tool, not a second front-end for everything.
-* The pre-Autolamella legacy layouts in `data_structures.txt` (`SEM_8_fi_1/`,
+* ~~Prediction→label conversion, CSV export, compression. Those stay CLI-only
+  for now; the GUI is a curation tool, not a second front-end for everything.~~
+  **Partly reversed — see [§19](#19-scope-reversal-the-gui-grows-tabs).** CSV
+  export and metadata editing are moving into the window;
+  prediction conversion and compression are staying out.
+* ~~The pre-Autolamella legacy layouts in `data_structures.txt` (`SEM_8_fi_1/`,
   `lamella_01/SEM/`). The scanner does not discover them today, so the GUI will
-  not show them either. Handling them is a scanner change, tracked separately.
+  not show them either. Handling them is a scanner change, tracked separately.~~
+  **Done.** The scanner discovers them (see
+  [`design_record_layouts.md`](design_record_layouts.md)) and the GUI shows
+  them. `data_structures.txt` is now
+  [`reference_layouts.md`](reference_layouts.md).
 
 ---
 
@@ -970,7 +984,7 @@ problem in its own right.
 ## 17. Imaging-condition variants and shared labels
 
 Status: **built.** This is phase 5 of
-[the retrograde support plan](retrograde_support_plan.md). Sections 1–16
+[the layouts design record](design_record_layouts.md). Sections 1–16
 describe a GUI where a frame has at most one SEM and one FIB image; that is no
 longer true.
 
@@ -1207,3 +1221,63 @@ frame".
 The timeline asks for a label state per frame per modality, so results are
 cached by path on the controller. Navigating back and forth across a lamella
 re-reads nothing, and a typical 10-20 frame lamella costs 50-100 ms once.
+
+---
+
+## 19. Scope reversal: the GUI grows tabs
+
+Added 2026-08-14, superseding the CSV-export line in [§1](#1-scope).
+
+§1 said prediction→label conversion, CSV export and compression stay CLI-only,
+because "the GUI is a curation tool, not a second front-end for everything".
+That reasoning was sound and it kept this window focused through seven phases.
+It is now **partly** reversed: `docs/03_metadata_plan.md` §7 adds a *Metadata*
+tab and an *Export* tab alongside the existing curation view.
+
+### What changed
+
+The original decision assumed CSV export is a batch operation — set the
+options, run it, read the log. That is true of the export itself, but not of
+the step before it. Once export gains metadata filters (microscope, lamella
+type, accelerating voltage, sample), **choosing** a training set becomes
+iterative: apply a filter, look at how many images survive and how they are
+distributed, adjust. A command line that re-scans and re-reads on every attempt
+makes that loop slow enough that you stop exploring, which defeats the point of
+having the filters.
+
+Two figures make the case concrete. `keep_one_condition_per_scene` and the
+empty-label exclusion both drop images silently today, reported only in the
+log. A live count — *"1,204 images · 402 corrected · 31 empty labels excluded ·
+712 after one-per-scene"* — is the single most useful thing the tab can show,
+and it cannot exist in a batch command.
+
+### The replacement boundary
+
+"Not a second front-end for everything" still stands; it just needs a sharper
+test than "CLI-only". The rule that replaces it:
+
+> **The GUI hosts operations that are iterative or exploratory. Batch
+> operations stay in the CLI.**
+
+By that test:
+
+| Operation | Where | Why |
+|---|---|---|
+| Curation (state changes) | GUI *and* CLI | Per-image in the window; en masse from the CLI |
+| CSV export filtering | **GUI** (new) | Iterative — the filter is chosen by looking at results |
+| Metadata editing | **GUI** (new) | Field-at-a-time, benefits from seeing resolved values and their sources |
+| `convert-predictions` | CLI | Run once per stage, read the log |
+| `compress-labels` | CLI | Run once, read the log |
+| `migrate-layout` | CLI | Run once, irreversible enough to want a dry run and a transcript |
+
+### What does not change
+
+* **No label editing.** The first line of §1's out-of-scope list is untouched
+  and is not up for revision. Proofreading stays in the external segmentation
+  software; this tool decides *which* images get proofread and records when
+  they are done.
+* **The controller stays free of Qt.** Each new tab gets its own controller in
+  `gui/`, testable without a display, exactly as `CurationController` is. Adding
+  tabs is not a reason to bend the one structural rule of this UI.
+* **The curation view is unchanged.** It becomes the first tab and keeps its
+  current behaviour; the tab container goes above it.

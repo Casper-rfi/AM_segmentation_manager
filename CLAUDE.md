@@ -11,6 +11,11 @@ The main functions are to:
 2) prepare labels from prediction for manual proofreading and curate data to annotate
 3) prepare filtered data lists for ML model training
 4) export metadata file lists and prepare data for deposition in scientific data repositories
+   **— not implemented, and not yet designed.** Metadata export is planned in
+   `docs/03_metadata_plan.md` §6; deposition is not. It needs a target
+   repository before anything can be designed, since the required directory
+   structure and metadata schema come from the target. Treat this as an
+   aspiration rather than a description until that decision is made.
 
 The package will initially be used only by me, but I intend to make it open source in the future. Therefore, code quality, maintainability and extensibility are important.
 
@@ -55,6 +60,12 @@ Prefer simple, readable code over clever code.
 	2. The remaining selected images are manually proofread (not done by this software)
 	3. Datasets finished proofreading are set to corrected
 	4. Compress label storage size
+
+	Steps 2.1 and 2.3 are normally done in the **curation window** (`am-seg gui`),
+	which shows one lamella at a time as a chronological stack of frames and sets
+	each image's state without leaving the viewer. The CLI equivalents
+	(`select` / `deselect` / `correct`) remain, and are the way to change many
+	images at once. See the Curation window section of README.md.
 3. create data lists for ML model training
 	1. Create .csv files of SEM or FIB images, using the filter options
 	2. By default one image per scene is exported, empty labels are excluded, and the train/validation split keeps images sharing a label on the same side
@@ -81,7 +92,7 @@ For every new feature:
 
 Filesystem structure and naming conventions should be centralised rather than duplicated throughout the package. Scanning, path resolution and filesystem operations should use shared abstractions rather than hardcoding paths independently.
 
-This is implemented as four layers, each depending only on the ones below it:
+The **core** is four layers, each depending only on the ones below it:
 
     layout.py      what things are called (the only module holding directory names)
     discovery.py   where they are (locating projects, lamellae, stages)
@@ -89,6 +100,29 @@ This is implemented as four layers, each depending only on the ones below it:
     operations/    what you can do to them
 
 Keep it that way. The conventions were previously hardcoded in some 200 places across 18 modules, which is what made each newly discovered layout expensive to support.
+
+The rest of the package sits around that core and obeys the same direction of
+dependency — nothing below reaches upward:
+
+    io/            reading and writing files (yaml, images, path relativising)
+                   sits *below* layout.py; knows nothing of the model
+    models.py      the dataclasses the scanner builds
+    metadata.py    typed project metadata, resolved from the two YAML files
+    config.py      segmentation class names and colours
+    colors.py      CSS colour name to RGB
+
+    filtering.py   selecting records from the index by CLI selectors
+    frames.py      per-lamella chronological view, pairing SEM with FIB
+    survey.py      read-only inspection and findings (`inspect-layout`)
+    reporting.py   human-readable summaries
+    display.py     downscaling, bit depth and label overlay composition
+
+    gui/           the curation window. gui/controller.py holds the view model
+                   and must stay free of Qt; only gui/widgets/ imports it
+    cli.py         the entrypoint
+
+Code outside `scanner.py` and `survey.py` should operate on the ProjectIndex and
+the dataclasses rather than re-traversing the filesystem.
 
 Do not introduce architectural abstractions, databases, frameworks or dependencies unless there is a concrete requirement for them. Prefer the simplest architecture that preserves future extensibility.
 

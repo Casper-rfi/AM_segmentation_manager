@@ -1,13 +1,17 @@
 # Refactor and cleanup plan
 
-Status: **proposed, not started.** Written 2026-08-14 against `main` at c9c05e2.
+Status: **§1–§3 done (phases 0–1). §4 and §5 outstanding.**
+Written 2026-08-14 against `main` at c9c05e2.
 
 A consumable checklist. When every box is ticked this document should be
-deleted — it has no value as a record.
+deleted — it has no value as a record. The two remaining sections are §4
+(packaging and tooling gaps: licence, author metadata, ruff, CI) and §5 (test
+fixture consolidation, which the roadmap deliberately schedules as
+opportunistic rather than as a single pass).
 
 Baseline: `pytest -q` gives **667 passed, 1 skipped in 39 s**. Nothing below is
 a bug fix; the package works. This is removal of things that stopped being true
-and of code nothing calls.
+and of code nothing calls. The suite has stayed at 667 throughout.
 
 ---
 
@@ -122,7 +126,7 @@ Zero importers. `ProjectIndex` is already re-exported from
 `am_segmentation_manager/__init__.py`, so the shim is not even the convenient
 path. Compatibility with what, is no longer answerable.
 
-- [ ] Delete `src/am_segmentation_manager/index.py`.
+- [x] Delete `src/am_segmentation_manager/index.py`. **Done** (e598b28).
 
 ### 2.2 `records_to_dataframe` — dead, and the sole reason for a hard dependency
 
@@ -134,10 +138,10 @@ This matters more than a normal dead function: a required dependency is
 something every user must install, and pandas is not small. `CLAUDE.md` asks for
 minimal dependencies, and this one currently buys nothing.
 
-- [ ] Delete `records_to_dataframe`.
-- [ ] Remove `pandas>=1.0` from `[project].dependencies`, leaving `PyYAML` as
-      the only required runtime dependency.
-- [ ] Remove `pandas` from `environment.yml`'s core list.
+- [x] Delete `records_to_dataframe`. **Done** (e598b28).
+- [x] Remove `pandas>=1.0` from `[project].dependencies`, leaving `PyYAML` as
+      the only required runtime dependency. **Done** (e598b28).
+- [x] Remove `pandas` from `environment.yml`'s core list. **Done** (e598b28).
 
 **Caveat, and the reason to do this now rather than "leave it, we'll need it":**
 `03_metadata_plan.md` may reintroduce pandas for the statistics work. Adding it
@@ -157,19 +161,22 @@ production path for state changes is `operations/selection.py`, which calls
 This is a small thing, but it is a test asserting the behaviour of an API that
 nothing else uses — which means the test passes forever and protects nothing.
 
-- [ ] Either delete the three wrappers and rewrite that test against
-      `move_to_state`, **or** keep them and document them as the intended
-      low-level public API. Recommendation: delete. `move_to_state(path, "deselected")`
-      is no harder to read than `move_to_deselected(path)`, and one function
-      with a validated state argument is less surface than four.
+- [x] **Done** (e598b28) — the wrappers are deleted and the test now calls
+      `move_to_state`. The alternative was to keep them and document them as the
+      intended low-level public API; deleting won because
+      `move_to_state(path, "deselected")` is no harder to read than
+      `move_to_deselected(path)`, and one function with a validated state
+      argument is less surface than four.
 
 ### 2.4 Sweep for others
 
 The three above were found by hand. Before declaring this section done:
 
-- [ ] Run a dead-code pass (`vulture src/` or `ruff --select F401,F841`) and
-      triage what it finds. Expect false positives on Qt slots and on
-      `__all__` re-exports — do not delete on the tool's word alone.
+- [x] Run a dead-code pass. **Done** (441df03) — neither ruff nor vulture is
+      installed, so pyflakes was used: 18 findings, 13 real, 5 false positives
+      left alone (noqa-marked availability probes and a TYPE_CHECKING import).
+      It also turned up a real gap: the CLI compress-labels test never asserted
+      the file shrank.
 
 ---
 
@@ -195,14 +202,16 @@ package. The diagram is a genuinely good statement of the *core dependency
 rule* and should stay, but it should say it is describing the core, with the
 peripheral modules named and placed relative to it.
 
-- [ ] Extend the diagram, or label it as "the core rule" and add the rest.
+- [x] Extend the diagram, or label it as "the core rule" and add the rest.
+      **Done** — the four layers are now labelled the core, with the remaining
+      modules listed around them.
 
 **(b) The GUI is absent from the workflow section.** The "expected workflow"
 walks through steps 0–3 entirely in CLI terms, and never mentions that curation
 step 2 is now normally done in the curation window. Someone reading `CLAUDE.md`
 to learn what the package does would not learn that it has a GUI.
 
-- [ ] Add the GUI to the workflow at step 2.
+- [x] Add the GUI to the workflow at step 2. **Done.**
 
 **(c) The per-image metadata line will go stale imminently.**
 
@@ -257,8 +266,9 @@ work will be checked against. Two problems: it sits in the repository root as a
 loose `.txt`, and it has answers annotated into it (`--> RESOLVED: ...`), so it
 reads as a half-finished question list rather than a reference.
 
-- [ ] Move to `docs/reference_layouts.md`, convert to Markdown, and separate
-      the observed paths from the resolutions.
+- [x] Move to `docs/reference_layouts.md`, convert to Markdown, and separate
+      the observed paths from the resolutions. **Done** — observations are
+      §1–§6, resolutions are §7.
 
 ### 3.4 `docs/gui_plan.md` (1209 lines) and `docs/retrograde_support_plan.md` (956 lines)
 
@@ -277,11 +287,13 @@ statements in `gui_plan.md` §1:
 * "The pre-Autolamella legacy layouts … The scanner does not discover them
   today, so the GUI will not show them either." **Now implemented.**
 
-- [ ] Rename both to `docs/design_record_gui.md` and
+- [x] Rename both to `docs/design_record_gui.md` and
       `docs/design_record_layouts.md`, add a status header saying "as built,
       retained for the reasoning", and strike or annotate the two statements
-      above.
-- [ ] In `design_record_gui.md`, record the scope reversal explicitly: the GUI
+      above. **Done** — both statements are struck through in place.
+- [x] In `design_record_gui.md`, record the scope reversal explicitly (now
+      its §19, with the replacement boundary "the GUI hosts operations that are
+      iterative or exploratory; batch operations stay in the CLI"): the GUI
       *is* now growing a second front-end for CSV export and metadata, this was
       a considered change of mind, and the reason is that the metadata filters
       that drive CSV generation are only usable interactively. Silently
@@ -292,12 +304,13 @@ statements in `gui_plan.md` §1:
 
 Accurate. Two small things:
 
-- [ ] The "previously hardcoded in some 200 places across 18 modules" paragraph
+- [x] The "previously hardcoded in some 200 places across 18 modules" paragraph
       is duplicated verbatim from `CLAUDE.md`. Keep it in one place — `CLAUDE.md`
       is the instruction set, so it belongs there; the README can point at it.
-- [ ] Add the `am-seg` console script to the CLI section. `pyproject.toml`
+      **Done.**
+- [x] Add the `am-seg` console script to the CLI section. `pyproject.toml`
       defines it but the README only documents
-      `python -m am_segmentation_manager.cli`.
+      `python -m am_segmentation_manager.cli`. **Done.**
 
 ---
 

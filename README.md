@@ -41,15 +41,19 @@ treat a label as finished work look inside it.
 
 CLI
 ---
-Use the built-in CLI help to discover available commands and options.
+Installing the package provides an `am-seg` command. Everything below can also
+be run as `python -m am_segmentation_manager.cli`, which needs no installation
+and is the form to use when working from a source checkout.
+
+Use the built-in help to discover available commands and options.
 
 Top-level help:
 
-  python -m am_segmentation_manager.cli --help
+  am-seg --help
 
 Command-specific help:
 
-  python -m am_segmentation_manager.cli <command> --help
+  am-seg <command> --help
 
 Commands by purpose:
 
@@ -163,16 +167,22 @@ Project layout
   - gui/             : curation window (only gui/widgets/ imports Qt)
   - cli.py           : CLI entrypoint
 - tests/             : pytest tests using tmp_path fixtures
-- docs/gui_plan.md   : design notes for the curation window
-- docs/retrograde_support_plan.md : design notes for legacy layout support
+- docs/
+  - 00_roadmap.md            : planning index and phase order
+  - 01_refactor_plan.md      : cleanup checklist (consumable)
+  - 02_gui_improvements_plan.md : planned curation window changes
+  - 03_metadata_plan.md      : metadata reading, editing, export and statistics
+  - 04_future_work.md        : sketches, not designs
+  - reference_layouts.md     : real path examples across five layout generations
+  - design_record_gui.md     : why the curation window is built as it is
+  - design_record_layouts.md : why legacy layouts are supported as they are
 
 Notes for developers
 --------------------
 **`layout.py` is the single source of truth for filesystem conventions.**
 Nothing else should embed a directory name. Supporting a new layout should be a
 change there, not a change spread across the modules that happen to touch
-files. The conventions were previously hardcoded in some 200 places across 18
-modules, which is what made each new layout expensive.
+files. See the Package Philosophy section of CLAUDE.md for why.
 
 The layers are:
 
