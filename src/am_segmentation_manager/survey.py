@@ -21,7 +21,7 @@ twenty projects is useless if one bad directory aborts it.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Literal
 
@@ -560,8 +560,8 @@ def _survey_image_set(
                 category="shared-labels",
                 path=image_set.labels_directory,
                 message=(
-                    f"Labels are shared with other image sets in this stage; a state "
-                    f"change to one will apply to all of them"
+                    "Labels are shared with other image sets in this stage; a state "
+                    "change to one will apply to all of them"
                 ),
             )
         )

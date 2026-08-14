@@ -6,7 +6,6 @@ skipped so the test suite can run in CI without the large dataset.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 import pytest

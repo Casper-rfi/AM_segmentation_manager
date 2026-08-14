@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable
 
 from ..layout import (
     RecordState,

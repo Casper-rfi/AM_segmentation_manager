@@ -126,6 +126,8 @@ def test_cli_compress_labels_integration(tmp_path: Path):
 
     assert rc == 0
     assert np.array_equal(tifffile.imread(str(labels / "img1.tif")), _sparse_label())
+    # The point of the command: the file is smaller and still reads back intact.
+    assert (labels / "img1.tif").stat().st_size < original_size
 
 
 def test_cli_compress_labels_dry_run_leaves_file_untouched(tmp_path: Path):

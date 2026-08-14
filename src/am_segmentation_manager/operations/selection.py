@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Iterable
 
 from .label_groups import (
     LabelGroup,
