@@ -7,7 +7,7 @@ This file is the entry point for picking the work up fresh.
 |---|---|---|
 | [`01_refactor_plan.md`](01_refactor_plan.md) | Cleanup checklist | §1–§4 done; §4.1 and §5 open |
 | [`02_gui_improvements_plan.md`](02_gui_improvements_plan.md) | The four GUI changes | Done |
-| [`03_metadata_plan.md`](03_metadata_plan.md) | Metadata: read, edit, aggregate, export, present | §3–§7 done; §8 measurement core built, commands open |
+| [`03_metadata_plan.md`](03_metadata_plan.md) | Metadata: read, edit, aggregate, export, present | §3–§8 done |
 | [`04_future_work.md`](04_future_work.md) | Segmentation launch, ML inference, deposition | Sketches only |
 | [`reference_layouts.md`](reference_layouts.md) | Real dataset layouts, and the axes they vary along | Reference |
 | [`design_record_gui.md`](design_record_gui.md), [`design_record_layouts.md`](design_record_layouts.md) | Why the window and legacy-layout support are as they are | As built |
@@ -16,10 +16,10 @@ This file is the entry point for picking the work up fresh.
 
 ## Where the work stands
 
-**Suite: 889 passed, 8 skipped, ~40 s.** `ruff check` clean. Confirmed on both
+**Suite: 906 passed, 8 skipped, ~40 s.** `ruff check` clean. Confirmed on both
 PyQt5 (development machine) and PySide6 (the user's), and under `de_DE.UTF-8`.
-The 30 tests added for §8's measurement core have only been run on PyQt5 so
-far, though they touch no Qt.
+The 47 tests added for §8 have only been run on PyQt5 so far, though they touch
+no Qt.
 
 Built across phases 0–7:
 
@@ -38,16 +38,14 @@ Built across phases 0–7:
   charts and exports, behind `stats`, `export-metadata-csv` and
   `export-projects-csv`, plus metadata filters on `create-training-csv`.
 * **GUI tabs** — Curate, Metadata and Export, each with a Qt-free controller.
+* **`operations/label_measure.py`, `quantify-labels`** — per-class areas and
+  cracks in µm², rolled up per lamella, with `stats --by has-crack` for the
+  cross-tabulations. Validated against hand calculation on the collection.
 
 ## What to pick up next
 
-**`03_metadata_plan.md` §8, label quantification — the commands.** The
-measurement core is built (`operations/label_measure.py`); every decision is
-settled and recorded in §8.1 and §8.2. What remains is wiring it up: measure a
-record's label group, aggregate per lamella, and expose it as a command and a
-CSV export.
-
-Then, in no particular order:
+**The metadata plan is finished.** §8 was the last substantial feature in it.
+What is left is smaller, and in no particular order:
 
 * `01_refactor_plan.md` §5 — test fixture consolidation, deliberately
   opportunistic: convert a file when editing it anyway, never in a sweep.

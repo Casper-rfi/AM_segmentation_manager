@@ -32,11 +32,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..config import SegmentationConfig
+from ..config import BACKGROUND_CLASS, SegmentationConfig
 from ..io.image import has_image_stack_support
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from collections.abc import Iterable, Mapping
+
     from ..image_metadata import ImageMetadata
+    from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,8 @@ __all__ = [
     "clear_cache",
     "label_pixel_size_nm",
     "measure_label",
+    "measure_records",
+    "measurement_status",
     "read_label_pixels",
 ]
 
@@ -94,6 +99,18 @@ class LabelPixels:
         """Return the label's total area in pixels."""
         return self.width * self.height
 
+    @property
+    def is_empty(self) -> bool:
+        """Return whether the label holds nothing but background.
+
+        The segmentation software writes an empty label for every image it is
+        pointed at, so this is not the same as "nothing was found": it is the
+        difference between a proofread label with no cracks in it and a
+        placeholder nobody ever annotated. Averaging the two together would
+        understate how much of the archive holds real annotation.
+        """
+        return not set(self.class_pixels) - {BACKGROUND_CLASS}
+
 
 @dataclass(frozen=True)
 class LabelMeasurement:
@@ -134,6 +151,33 @@ class LabelMeasurement:
         Check :attr:`crack_count` for ``None`` where the difference matters.
         """
         return bool(self.crack_count)
+
+
+#: The states a label's measurement can be in. Kept as one vocabulary because
+#: three callers need it -- the CSV export writes it as a column, the
+#: breakdowns group by it, and the roll-up counts each separately -- and they
+#: must not drift. Each is a different finding: an archive with no labels, one
+#: full of placeholders the segmentation software wrote, and one this package
+#: cannot put a scale on are three different problems.
+MEASURED = "measured"
+EMPTY = "empty"
+NO_PIXEL_SIZE = "no-pixel-size"
+NO_LABEL = "no-label"
+
+
+def measurement_status(measurement: LabelMeasurement | None) -> str:
+    """Return which of the four states a label's measurement is in.
+
+    ``None`` stands for a record whose label does not exist, which is why this
+    is a function rather than a property.
+    """
+    if measurement is None:
+        return NO_LABEL
+    if measurement.pixels.is_empty:
+        return EMPTY
+    if measurement.crack_count is None:
+        return NO_PIXEL_SIZE
+    return MEASURED
 
 
 def clear_cache() -> None:
@@ -354,3 +398,110 @@ def measure_label(
         crack_areas_um2=crack_areas,
         min_crack_area_um2=threshold,
     )
+
+
+# ---------------------------------------------------------------------------
+# Measuring a set of records
+#
+# The label is the unit, not the image: several imaging conditions of one
+# acquisition share a single label, because they are a single segmentation.
+# Measuring per image would read that label once per condition and, worse,
+# count one crack several times in any total.
+# ---------------------------------------------------------------------------
+
+def measure_records(
+    records: Iterable[ImageRecord],
+    config: SegmentationConfig,
+    metadata: Mapping[Path, ImageMetadata] | None = None,
+    *,
+    min_crack_area_um2: float | None = None,
+    use_cache: bool = True,
+) -> dict[Path, LabelMeasurement]:
+    """Measure the label of every record, once per label.
+
+    Keyed by image path, mirroring
+    :func:`~am_segmentation_manager.image_metadata.read_records_metadata`, so
+    :mod:`am_segmentation_manager.aggregate` can close over it the same way and
+    never open a file itself. Records sharing a label map to the *same*
+    measurement object, which is how a caller deduplicates: group by
+    :attr:`LabelMeasurement.path`, or compare by identity.
+
+    A record whose label does not exist is absent from the mapping. That is
+    distinct from a label that could not be read, which is present with no
+    areas -- "never annotated" and "unreadable" are different findings.
+
+    Args:
+        records: The images to measure, already filtered.
+        config: Supplies the crack class and the default threshold.
+        metadata: Image path to header, from ``read_records_metadata``. Read
+            here for the images that need it when not supplied.
+        min_crack_area_um2: Overrides the configured threshold.
+        use_cache: Whether to consult and populate the module cache.
+
+    Returns:
+        Image path to the measurement of that image's label.
+    """
+    from .csv import find_matching_label
+    from .label_groups import group_key, primary_record
+
+    records = list(records)
+    groups: dict[str, list[ImageRecord]] = {}
+    for record in records:
+        groups.setdefault(group_key(record), []).append(record)
+
+    if metadata is None:
+        from ..image_metadata import read_records_metadata
+
+        # Only the primary of each group is ever consulted for scale, so only
+        # those headers are read. On a collection with five conditions per
+        # scene that is a fifth of the reads.
+        primaries = [primary_record(members) for members in groups.values()]
+        metadata = read_records_metadata(primaries)
+
+    measurements: dict[Path, LabelMeasurement] = {}
+    for members in groups.values():
+        primary = primary_record(members)
+        label = find_matching_label(primary)
+        if label is None:
+            continue
+
+        _warn_on_inconsistent_scale(members, metadata)
+        measured = measure_label(
+            label,
+            metadata.get(primary.image_path),
+            config,
+            min_crack_area_um2=min_crack_area_um2,
+            use_cache=use_cache,
+        )
+        if measured is None:
+            continue
+        for record in members:
+            measurements[record.image_path] = measured
+
+    return measurements
+
+
+def _warn_on_inconsistent_scale(
+    members: list[ImageRecord], metadata: Mapping[Path, ImageMetadata]
+) -> None:
+    """Warn when images sharing a label disagree about their pixel size.
+
+    They are conditions of one acquisition, so they should agree, and the
+    measurement takes the primary's. A disagreement means the group's areas are
+    right for one condition and wrong for the others -- worth saying out loud
+    rather than resolving silently, since which one is correct is a question
+    about the data, not about this code.
+    """
+    sizes = {
+        metadata[record.image_path].pixel_size_nm
+        for record in members
+        if record.image_path in metadata
+        and metadata[record.image_path].pixel_size_nm is not None
+    }
+    if len(sizes) > 1:
+        logger.warning(
+            "Images sharing one label disagree about pixel size (%s nm); "
+            "measuring at the primary condition's scale: %s",
+            ", ".join(f"{size:g}" for size in sorted(sizes)),
+            members[0].image_path.parent.parent,
+        )

@@ -324,3 +324,97 @@ def format_cross_tabulation(
     lines.append("-" * len(header))
     lines.append(f"{'total':<{row_width}} {footer}   = {sum(table.values())}")
     return lines
+
+
+def format_label_quantification(
+    summaries: list, config, *, detail: bool = True
+) -> list[str]:
+    """Return the label-quantification report as lines.
+
+    The headline is per lamella, because that is the level the question is
+    asked at: one crack seen in three frames of a milling sequence is one
+    crack, not three. Per-label counts follow, and the per-image rows go to the
+    CSV rather than here.
+
+    Args:
+        summaries: :class:`~am_segmentation_manager.aggregate.LamellaQuantification`
+            entries, one per lamella.
+        config: The segmentation config, for class names.
+        detail: Include the per-lamella table as well as the totals.
+    """
+    if not summaries:
+        return ["Nothing to measure"]
+
+    measurable = [summary for summary in summaries if summary.measured]
+    cracked = [summary for summary in measurable if summary.has_crack]
+    labels = sum(summary.labels for summary in summaries)
+    measured = sum(summary.measured for summary in summaries)
+    empty = sum(summary.empty for summary in summaries)
+    unmeasurable = sum(summary.unmeasurable for summary in summaries)
+    cracked_labels = sum(summary.cracked for summary in summaries)
+    cracks = sum(summary.cracks for summary in summaries)
+
+    lines: list[str] = ["Label quantification"]
+    if measurable:
+        share = 100 * len(cracked) / len(measurable)
+        lines.append(
+            f"  {len(cracked)} of {len(measurable)} lamellae have a crack  ({share:.1f}%)"
+        )
+    else:
+        lines.append("  No lamella could be measured")
+
+    lines.append(
+        f"  {cracked_labels} of {measured} measured label(s) hold {cracks} crack(s)"
+    )
+
+    # Said plainly rather than folded into the totals: an empty label is a
+    # placeholder the segmentation software wrote, not a proofread label with
+    # nothing in it, and counting the two together would overstate the archive.
+    skipped = []
+    if empty:
+        skipped.append(f"{empty} empty")
+    if unmeasurable:
+        skipped.append(f"{unmeasurable} with no pixel size")
+    if skipped:
+        lines.append(f"  Excluded from the above: {', '.join(skipped)} of {labels} label(s)")
+
+    areas = _total_areas(summaries)
+    if areas:
+        lines.append("  Total area by class:")
+        width = max(len(config.name(index)) for index in areas)
+        for index in sorted(areas):
+            lines.append(f"    {config.name(index):<{width}}  {areas[index]:12.2f} um^2")
+
+    if detail and summaries:
+        lines.append("")
+        lines.extend(_quantification_table(summaries))
+    return lines
+
+
+def _total_areas(summaries: list) -> dict[int, float]:
+    """Sum each class's area across every lamella."""
+    totals: dict[int, float] = {}
+    for summary in summaries:
+        for index, area in summary.areas_um2.items():
+            totals[index] = totals.get(index, 0.0) + area
+    return totals
+
+
+def _quantification_table(summaries: list) -> list[str]:
+    """Return one aligned row per lamella."""
+    name_width = max(
+        [len(f"{summary.project}/{summary.lamella}") for summary in summaries] + [8]
+    )
+    header = (
+        f"{'lamella':<{name_width}}  {'labels':>6}  {'measured':>8}  "
+        f"{'cracked':>7}  {'cracks':>6}  {'crack um^2':>10}  {'largest':>9}"
+    )
+    lines = [header, "-" * len(header)]
+    for summary in summaries:
+        name = f"{summary.project}/{summary.lamella}"
+        lines.append(
+            f"{name:<{name_width}}  {summary.labels:>6}  {summary.measured:>8}  "
+            f"{summary.cracked:>7}  {summary.cracks:>6}  "
+            f"{summary.crack_area_um2:>10.2f}  {summary.largest_crack_um2:>9.2f}"
+        )
+    return lines

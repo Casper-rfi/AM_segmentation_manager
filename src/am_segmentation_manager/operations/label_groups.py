@@ -181,6 +181,28 @@ def build_groups(records: Iterable[ImageRecord]) -> list[LabelGroup]:
     return list(groups.values())
 
 
+def condition_sort_key(record: ImageRecord) -> tuple[bool, str]:
+    """Order the unsuffixed image directory first, then variants by name."""
+    return (record.variant is not None, (record.variant or "").lower())
+
+
+def primary_record(records: Iterable[ImageRecord]) -> ImageRecord:
+    """Return the record standing for a scene: its *primary* imaging condition.
+
+    The unsuffixed image directory where there is one, otherwise the
+    first-sorting variant -- the same image the curation window displays, and
+    the one a training export keeps. Choosing it this way rather than filtering
+    for the unsuffixed directory matters for the oldest layouts, which have no
+    unsuffixed directory at all: their SEM sets are ``SEM_8``, ``SEM_8_fi_1``
+    and so on.
+
+    Defined here, beside the grouping it belongs to, because two callers now
+    need it: the training export picks one condition per scene, and label
+    measurement takes a shared label's scale from its primary image.
+    """
+    return min(records, key=condition_sort_key)
+
+
 def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
     """Return the given records plus every image sharing a label with them.
 

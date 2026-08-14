@@ -14,7 +14,7 @@ import logging
 import sys
 from pathlib import Path
 
-from .aggregate import BREAKDOWNS, NEEDS_METADATA
+from .aggregate import BREAKDOWNS, NEEDS_MEASUREMENTS, NEEDS_METADATA
 from .filtering import METADATA_FILTERS, filter_by_metadata, iter_matching_records
 from .io.path import make_path_relative
 from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
@@ -338,7 +338,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             "asking: not how many Arctis images there are, but how many "
             "corrected FIB images at 30 kV are on each instrument. Read-only. "
             "Breakdowns marked (header) read each image's header, which costs "
-            "about half a millisecond per image."
+            "about half a millisecond per image; those marked (reads labels) "
+            "open every label, which is far slower. Every count here is a "
+            "count of images, so the crack breakdowns count one crack once per "
+            "imaging condition sharing the label -- use quantify-labels for "
+            "the per-lamella view."
         ),
     )
     _add_scope_arguments(stats_cmd, default_modality="all")
@@ -347,7 +351,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         help=(
             "Property to count by; pass twice to cross-tabulate. Choices: "
             + ", ".join(
-                f"{name}{' (header)' if name in NEEDS_METADATA else ''}"
+                f"{name}"
+                f"{' (header)' if name in NEEDS_METADATA else ''}"
+                f"{' (reads labels)' if name in NEEDS_MEASUREMENTS else ''}"
                 for name in sorted(BREAKDOWNS)
             )
         ),
@@ -363,6 +369,62 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             ".png to look at, .svg for a figure. Needs the optional matplotlib "
             "extra"
         ),
+    )
+
+    # -- quantify-labels -----------------------------------------------------
+    quantify = sub.add_parser(
+        "quantify-labels",
+        help="Measure what the labels contain, in physical units",
+        description=(
+            "Measure the area of each segmentation class and the cracks in "
+            "every selected label, in um^2. The headline is per lamella, "
+            "because that is the level the question is asked at: a crack "
+            "visible in three frames of a milling sequence is one crack. "
+            "Defaults to corrected labels only -- a label derived from a "
+            "prediction measures the model rather than the sample -- so pass "
+            "--state to widen it. Empty labels are counted separately and "
+            "excluded from the totals, since the segmentation software writes "
+            "one for every image. Read-only, but it reads every label, which "
+            "is far slower than reading headers."
+        ),
+    )
+    _add_scope_arguments(quantify, default_modality="all", include_state=False)
+    quantify.add_argument(
+        "--state",
+        choices=["corrected", "selected", "deselected", "all"],
+        default="corrected",
+        help=(
+            "Workflow state to measure (default: 'corrected'). Widening this "
+            "mixes proofread labels with prediction-derived ones"
+        ),
+    )
+    _add_metadata_filters(quantify)
+    quantify.add_argument(
+        "--min-crack-area", type=float, default=None, metavar="UM2",
+        help=(
+            "Smallest connected component counted as a crack, in um^2. "
+            "Overrides MEASUREMENT.min_crack_area_um2 in the segmentation config"
+        ),
+    )
+    quantify.add_argument(
+        "--config", default=None,
+        help="Segmentation config file naming the classes and the crack threshold",
+    )
+    quantify.add_argument(
+        "-o", "--output", default=None,
+        help=(
+            "Write one CSV row per measured image; images with no label are "
+            "left out. A shared label appears once per imaging condition, so "
+            "deduplicate on the 'label' column before totalling anything"
+        ),
+    )
+    quantify.add_argument(
+        "--lamella-output", default=None, metavar="FILE",
+        help="Write one CSV row per lamella, matching the printed table",
+    )
+    quantify.add_argument(
+        "--no-detail", action="store_true",
+        help="Print only the totals, not the per-lamella table",
     )
 
     # -- show-metadata / edit-metadata ---------------------------------------
@@ -811,17 +873,31 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             return 2
 
         # Headers are only read when a chosen breakdown needs them, so a purely
-        # structural question stays a filesystem walk.
+        # structural question stays a filesystem walk. Measuring needs them
+        # too, for the scale.
+        measuring = any(name in NEEDS_MEASUREMENTS for name in chosen)
         metadata: dict = {}
-        if any(name in NEEDS_METADATA for name in chosen):
+        if measuring or any(name in NEEDS_METADATA for name in chosen):
             from .image_metadata import read_records_metadata
 
             logger.info("Reading headers for %d image(s)", len(records))
             metadata = read_records_metadata(records)
 
+        measurements: dict = {}
+        if measuring:
+            from .config import load_segmentation_config
+            from .operations.label_measure import measure_records
+
+            logger.info("Measuring labels for %d image(s)", len(records))
+            measurements = measure_records(
+                records, load_segmentation_config(start_path=start_path), metadata
+            )
+
         lookup = project_lookup(Scanner(start_path).build_index().all_projects())
         try:
-            keys = [resolve_breakdown(name, metadata, lookup) for name in chosen]
+            keys = [
+                resolve_breakdown(name, metadata, lookup, measurements) for name in chosen
+            ]
         except ValueError as exc:
             logger.error("%s", exc)
             return 2
@@ -863,6 +939,74 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
                 writer.writerow(header)
                 writer.writerows(rows)
             logger.info("Wrote %d row(s) to %s", len(rows), output)
+        return 0
+
+    if args.command == "quantify-labels":
+        from .aggregate import project_lookup, summarise_lamellae
+        from .config import load_segmentation_config
+        from .image_metadata import read_records_metadata
+        from .operations.label_measure import measure_records
+        from .operations.metadata_csv import (
+            export_label_measurements_csv,
+            export_lamella_quantification_csv,
+        )
+        from .reporting import format_label_quantification
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.warning("No images matched")
+            return 0
+
+        try:
+            config = load_segmentation_config(
+                explicit_path=Path(args.config) if args.config else None,
+                start_path=start_path,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            logger.error("%s", exc)
+            return 2
+
+        if config.crack_class is None:
+            logger.error(
+                "No crack class configured. Add MEASUREMENT.crack_class to %s, "
+                "or name a class 'crack/hole'",
+                config.source,
+            )
+            return 2
+
+        # Headers first: they carry the scale, and the metadata filters work on
+        # them. Only then is anything as expensive as a label opened.
+        metadata = read_records_metadata(records)
+        selectors = _metadata_selectors(args)
+        if selectors:
+            records = filter_by_metadata(records, metadata, selectors)
+            if not records:
+                logger.warning("No images matched the metadata filters")
+                return 0
+
+        logger.info("Measuring labels for %d image(s)", len(records))
+        measurements = measure_records(
+            records, config, metadata, min_crack_area_um2=args.min_crack_area
+        )
+        if not measurements:
+            logger.warning("None of the matched images has a label to measure")
+            return 0
+
+        lookup = project_lookup(Scanner(start_path).build_index().all_projects())
+        summaries = summarise_lamellae(records, measurements, lookup)
+        for line in format_label_quantification(
+            summaries, config, detail=not args.no_detail
+        ):
+            print(line)
+
+        if args.output:
+            export_label_measurements_csv(
+                records, measurements, config, start_path, Path(args.output), lookup
+            )
+        if args.lamella_output:
+            export_lamella_quantification_csv(
+                summaries, config, Path(args.lamella_output)
+            )
         return 0
 
     if args.command in {"show-metadata", "edit-metadata"}:

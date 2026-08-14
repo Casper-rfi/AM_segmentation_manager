@@ -716,19 +716,51 @@ hardest kind of error to notice in a distribution.
 `LabelMeasurement` also keeps the `LabelPixels` it came from, so an
 unmeasurable label still reports what it holds in pixels.
 
-**Still to build:** the aggregation and the commands. Feed measurements into
-`aggregate.py` as further key functions, so the breakdowns, the CSV export and
-the charts work on them without new machinery.
+### 8.4 The aggregation and commands — built
 
-### 8.4 Where to stop
+`measure_records()` measures one label per *group*, keyed by image path so it
+mirrors `read_records_metadata` and `aggregate.py` can close over it without
+opening a file. Images sharing a label map to the same measurement object,
+which is what makes deduplication possible downstream.
 
-Per-class area, crack count, and crack size distribution. That answers "what
+`aggregate.py` gains `by_has_crack` and `by_crack_count` — so `stats --by
+has-crack --by microscope` works with no new machinery — and
+`summarise_lamellae()`, which deduplicates by label file before counting.
+Everything in `stats` counts *images*, so the crack breakdowns there count one
+crack once per condition; `quantify-labels` is the per-lamella view.
+
+The four label states (`measured`, `empty`, `no-pixel-size`, `no-label`) are
+one vocabulary in `label_measure.py`, because three callers need it — the CSV
+column, the breakdowns, and the roll-up — and they must not drift.
+
+`quantify-labels` prints the per-lamella headline and writes two CSVs:
+`-o` per measured image, `--lamella-output` per lamella. Images without a label
+are left out of the measurement CSV; on a full-archive run they were 91% of the
+rows, and `export-metadata-csv` already answers which images lack labels.
+
+**Validated against the reference collection.** A full-archive run measures
+103 labels in 6.6 s and finds 5 of 9 lamellae cracked. All ten distinct cracked
+labels were checked against an independent hand calculation — reading the TIFF
+tags directly, scaling by hand, and running `connectedComponentsWithStats`
+separately — and all ten match, including one where two components were
+correctly discarded below the threshold. Every label in the archive had a
+derivable pixel size, so the strict "no scale, no areas" rule cost nothing.
+
+### 8.5 Where it stops
+
+Per-class area, crack count, and crack size distribution — the last of these
+as a `crack_areas_um2` column holding every qualifying component, so the
+distribution survives into the file a script will read. That answers "what
 proportion have a crack" and "how big are they", which is what was asked for.
 
 Shape descriptors, morphology, per-class co-occurrence, anything about
 position: those are analysis, and analysis belongs in a script reading the CSV
 from §6.1. If this section starts growing an image-analysis library, it has
 gone past its purpose.
+
+Nothing was added to the GUI. The Export tab is where it would go if wanted,
+but measuring is slow enough that it needs a progress story, and that is a
+separate piece of design.
 
 ---
 

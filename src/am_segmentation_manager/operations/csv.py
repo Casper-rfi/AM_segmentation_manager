@@ -14,6 +14,7 @@ from pathlib import Path
 from ..io.path import make_path_relative
 from ..layout import base_path, state_of_path
 from ..models import ImageRecord
+from .label_groups import condition_sort_key
 from .label_io import is_label_file_empty
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
             continue
         key = str(base_path(record.labels[0]))
         current = primary.get(key)
-        if current is None or _condition_sort_key(record) < _condition_sort_key(current):
+        if current is None or condition_sort_key(record) < condition_sort_key(current):
             primary[key] = record
 
     chosen = {id(record) for record in primary.values()}
@@ -80,11 +81,6 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
             len(kept), len(candidates),
         )
     return kept
-
-
-def _condition_sort_key(record: ImageRecord) -> tuple[bool, str]:
-    """Order the unsuffixed image directory first, then variants by name."""
-    return (record.variant is not None, (record.variant or "").lower())
 
 
 def split_pairs(

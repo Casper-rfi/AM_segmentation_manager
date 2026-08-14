@@ -78,6 +78,7 @@ Commands by purpose:
 | Choose what gets proofread | `select` / `deselect` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |
 | Count images by one or two properties, and chart them | `stats` |
+| Measure what the labels contain, in um^2 | `quantify-labels` |
 | Export per-image metadata | `export-metadata-csv` |
 | Export per-project metadata | `export-projects-csv` |
 | Export training lists | `create-training-csv` / `check-training-csv` |
@@ -86,6 +87,35 @@ Commands by purpose:
 `inspect-layout` is read-only and the place to start on unfamiliar data.
 Anything that moves or renames files takes a preview flag -- `--dry-run`, or
 `--apply` for `migrate-layout`, which previews unless told otherwise.
+
+Measuring labels
+----------------
+`quantify-labels` reports the area of each segmentation class and the cracks
+found, in physical units, so figures are comparable between images taken at
+different magnifications.
+
+  am-seg quantify-labels --project all --lamella all --stage all --image all \
+      -o measurements.csv
+
+Three things about the numbers are worth knowing:
+
+* **It measures corrected labels by default.** A label derived from a
+  prediction measures the model rather than the sample, and mixing the two
+  makes a model-quality figure look like a sample statistic. `--state all`
+  widens it deliberately.
+* **The headline is per lamella.** A crack visible in three frames of a
+  milling sequence is one crack, and a lamella counts as cracked as soon as any
+  one of its labels holds a crack over the threshold. The CSV keeps a row per
+  image so a number can be traced back to its frame; deduplicate on the `label`
+  column before totalling it, since imaging conditions share a label.
+* **Empty labels are excluded and counted separately.** The segmentation
+  software writes one for every image it is pointed at, so averaging them in
+  would understate the archive.
+
+A crack is a connected region of the crack class of at least 0.1 um^2 by
+default. That threshold is a setting, not a constant: change it in the
+`MEASUREMENT` section of `segmentation_config_AM.yaml`, or per run with
+`--min-crack-area`.
 
 Desktop window
 --------------
