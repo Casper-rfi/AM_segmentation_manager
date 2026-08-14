@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from am_segmentation_manager.reporting import format_survey
 from am_segmentation_manager.survey import (
     find_project_roots,
@@ -18,15 +16,7 @@ from am_segmentation_manager.survey import (
     survey_collection,
     survey_project,
 )
-
-#: The layout eras seen in the real collection, newest first.
-LAYOUT_ERAS = (
-    "v2026_nested",
-    "v2025_timestamped",
-    "v2024_untimed",
-    "legacy_variants",
-    "legacy_collapsed",
-)
+from conftest import build_dataset
 
 #: What each era should be found to contain. The pre-Autolamella collapsed
 #: datasets really do have no FIB images -- see docs/reference_layouts.md
@@ -48,72 +38,33 @@ def _write_image(directory: Path, name: str) -> Path:
     return path
 
 
-def _write_experiment(project: Path, name: str, method: str = "AutoLamella-OnGrid") -> None:
-    project.mkdir(parents=True, exist_ok=True)
-    (project / "experiment.yaml").write_text(
-        f"created_at: 1753107713.652424\nmethod: {method}\nname: {name}\n"
-        "positions:\n  - name: nested\n    method: should-not-be-read\n",
-        encoding="utf-8",
-    )
-
-
 def make_project(root: Path, era: str, name: str = "project") -> Path:
     """Build a project of the given layout era under *root*.
 
-    Returns the project root. Every era gets one lamella with one stage holding
-    two images per modality, so counts are comparable across eras.
+    A thin adapter over the shared builder in ``conftest``, which is where the
+    era definitions live now -- having both know how to build five eras meant
+    two places to edit when a sixth turns up.
+
+    ``convention`` label naming is requested explicitly: the survey's findings
+    are largely *about* label directory names, so these tests want the current
+    convention rather than the pre-convention names the real data of each era
+    happened to use.
     """
-    project = root / name
-    if era == "v2026_nested":
-        _write_experiment(project, name)
-        stage = project / "01-neat-ape" / "Milling" / "Polishing" / "adaptive_polish_2026-07-09-11-23-46AM"
-        # Autolamella writes alignment images that are explicitly out of scope.
-        _write_image(project / "01-neat-ape" / "Alignment" / "Fine 1-11-01-38", "ref.tif")
-        _write_image(project / "01-neat-ape" / "Milling" / "Rough-Milling", "ignored.tif")
-    elif era == "v2025_timestamped":
-        _write_experiment(project, name)
-        stage = project / "01-full-gannet" / "adaptive_polish_2025-04-15-02-48-15AM"
-    elif era == "v2024_untimed":
-        _write_experiment(project, name, method="AutoLiftout")
-        stage = project / "01-real-marmot" / "adaptive_polish"
-    elif era == "legacy_variants":
-        (project).mkdir(parents=True, exist_ok=True)
-        (project / "AM_metadata.yaml").write_text("metadata:\n  sample: HeLa\n", encoding="utf-8")
-        stage = project / "lam_010"
-        for variant in ("SEM_8_fi_1", "SEM_8_fi_4"):
-            for index in (0, 1):
-                _write_image(stage / variant, f"img_000{index}.tif")
-        for index in (0, 1):
-            _write_image(stage / "labels", f"img_000{index}.tif")
-            _write_image(stage / "labels_FIB", f"img_000{index}.tif")
-        for index in (0, 1):
-            _write_image(stage / "SEM_8", f"img_000{index}.tif")
-            _write_image(stage / "FIB", f"img_000{index}.tif")
-        return project
-    elif era == "legacy_collapsed":
-        project.mkdir(parents=True, exist_ok=True)
-        (project / "AM_metadata.yaml").write_text("metadata:\n  sample: HeLa\n", encoding="utf-8")
-        for index in (0, 1):
-            _write_image(project / "SEM", f"SEM_{index}.tif")
-            _write_image(project / "labels", f"SEM_{index}.tif")
-        return project
-    else:  # pragma: no cover - guard against a typo in a parameter list
-        raise ValueError(f"Unknown layout era: {era}")
-
-    for index in (0, 1):
-        _write_image(stage / "sem", f"img_00{index}_SEM.tif")
-        _write_image(stage / "fib", f"img_00{index}_FIB.tif")
-        _write_image(stage / "sem_labels", f"img_00{index}_SEM.tif")
-        _write_image(stage / "fib_labels", f"img_00{index}_FIB.tif")
-    _write_image(stage / "plots", "img_000.png")
-    (stage / "predictions" / "clean").mkdir(parents=True)
-    return project
-
-
-@pytest.fixture(params=LAYOUT_ERAS)
-def era(request) -> str:
-    """Run a test against every known layout era."""
-    return request.param
+    data = build_dataset(
+        root,
+        era=era,
+        name=name,
+        acquisitions=2,
+        label_naming="convention" if not era.startswith("legacy") else None,
+        # The collapsed pre-Autolamella datasets really do have only SEM;
+        # see docs/reference_layouts.md sections 4 and 5.
+        modalities=("SEM",) if era == "legacy_collapsed" else ("SEM", "FIB"),
+        sem_variants=("SEM_8_fi_1", "SEM_8_fi_4") if era == "legacy_variants" else (),
+        # Autolamella writes alignment and rough-milling images that are
+        # explicitly out of scope; a survey must not index them.
+        out_of_scope=(era == "v2026_nested"),
+    )
+    return data.project
 
 
 # ---------------------------------------------------------------------------
