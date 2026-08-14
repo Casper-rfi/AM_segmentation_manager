@@ -127,12 +127,13 @@ class CurationWindow(QMainWindow):
         self.project_panel.lamella_selected.connect(self._select_lamella)
 
         self.image_panel.mode_changed.connect(self._set_mode)
+        self.image_panel.variant_changed.connect(self._set_variant)
         self.image_panel.overlay_toggled.connect(self._set_overlay)
         self.image_panel.alpha_changed.connect(lambda _alpha: self._render())
 
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.target_changed.connect(self._set_target)
-        self.state_panel.scope_changed.connect(self.controller.set_scope)
+        self.state_panel.scope_changed.connect(self._set_scope)
         self.state_panel.state_requested.connect(self.apply_state)
 
     def _add_shortcuts(self) -> None:
@@ -238,6 +239,20 @@ class CurationWindow(QMainWindow):
         self.controller.set_target(target)
         self._refresh_state_panel()
 
+    def _set_scope(self, scope: str) -> None:
+        """Change how far a state change reaches, and re-count it."""
+        self.controller.set_scope(scope)
+        self._refresh_state_panel()
+
+    def _set_variant(self, variant: str) -> None:
+        """Show a different imaging condition.
+
+        A view change only: which condition is on screen never decides what a
+        state change moves, because the change follows the label.
+        """
+        self.controller.set_variant(variant or None)
+        self.refresh()
+
     def apply_state(self, state: RecordState) -> None:
         """Move the targeted records into *state*, confirming where required.
 
@@ -279,10 +294,17 @@ class CurationWindow(QMainWindow):
         self.refresh()
 
     def _confirm_bulk(self, state: str) -> bool:
-        """Ask before changing more than the frame on screen."""
-        records = self.controller.scoped_records()
-        if not records:
+        """Ask before changing more than the frame on screen.
+
+        Counts the *expanded* set, not the scope: images sharing a label move
+        with it, so counting the scope alone would promise to move fewer files
+        than the operation actually does.
+        """
+        scoped = self.controller.scoped_records()
+        if not scoped:
             return True
+        records = self.controller.expanded_records(scoped)
+        shared = len(records) - len(scoped)
 
         where = {
             "lamella": f"lamella {self.controller.lamella.display_name}"
@@ -299,6 +321,11 @@ class CurationWindow(QMainWindow):
             f"Set <b>{len(records)}</b> images ({breakdown}) in {where} "
             f"to <b>{state}</b>?"
         )
+        if shared:
+            message += (
+                f"<p>{shared} of them share a label with your selection and move "
+                f"with it.</p>"
+            )
         if unchanged:
             message += f"<p>{unchanged} of them are already {state}.</p>"
 
@@ -391,7 +418,9 @@ class CurationWindow(QMainWindow):
     def _refresh_timeline(self) -> None:
         total = len(self.controller.frames)
         self.timeline.set_states(
-            self.controller.modality_states(), self.controller.frame_position
+            self.controller.modality_states(),
+            self.controller.frame_position,
+            self.controller.mismatched_frames(),
         )
         self.frame_label.setText(
             f"{self.controller.frame_position + 1} / {total}" if total else "0 / 0"
@@ -405,6 +434,11 @@ class CurationWindow(QMainWindow):
             return
 
         self.image_panel.set_available_modes(self.controller.available_modes())
+        self.image_panel.set_variants(
+            self.controller.available_variants(),
+            self.controller.current_variant(),
+            self._variant_descriptions(),
+        )
         self.image_panel.set_status(self._status_text())
 
         if self.controller.mode == "plot":
@@ -418,16 +452,32 @@ class CurationWindow(QMainWindow):
             return
 
         modality = "SEM" if self.controller.mode == "sem" else "FIB"
-        if frame.record(modality) is None:
+        variant = self.controller.current_variant(modality)
+        if frame.record(modality, variant) is None and frame.record(modality) is None:
             self.image_panel.show_image(None, self.controller.show_overlay)
             return
         # Only read what is already prepared: a miss means the loader is still
         # working, and blocking here would freeze the window on a slow read.
-        cached = self.controller.cache.cached_image(self.controller.frame_position, modality)
+        cached = self.controller.cache.cached_image(
+            self.controller.frame_position, modality, variant
+        )
         if cached is None:
             self.image_panel.show_loading()
         else:
             self.image_panel.show_image(cached, self.controller.show_overlay)
+
+    def _variant_descriptions(self) -> dict[str, str]:
+        """Return human-readable names for the project's imaging conditions.
+
+        A variant is an opaque string taken from a directory name, so ``5kv``
+        is all the filesystem offers. A project may name them in its
+        ``AM_metadata.yaml``; where it does not, the raw name is shown.
+        """
+        project = self.controller.project
+        metadata = getattr(project, "experiment_metadata", None) if project else None
+        if metadata is None:
+            return {}
+        return dict(metadata.variants)
 
     def _match_plot_size_to_pane(self) -> None:
         """Prepare plots at the size they are actually shown at.
@@ -467,6 +517,8 @@ class CurationWindow(QMainWindow):
             self.controller.state_of("SEM"),
             self.controller.state_of("FIB"),
         )
+        reach = self.controller.reach()
+        self.state_panel.show_reach(reach.summary(), reach.shared_note())
         self.state_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 

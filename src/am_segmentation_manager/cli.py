@@ -17,8 +17,10 @@ from pathlib import Path
 from .filtering import iter_matching_records
 from .io.path import make_path_relative
 from .operations.predictions import convert_record_predictions
-from .reporting import print_project_summary
+from .reporting import print_project_summary, print_survey
 from .scanner import Scanner
+from .survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
+from .survey import survey_collection
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,14 @@ def _add_scope_arguments(
     parser.add_argument(
         "--image", action="append", default=[],
         help="Image name/number; use 'all' explicitly",
+    )
+    parser.add_argument(
+        "--variant", action="append", default=[],
+        help=(
+            "Imaging-condition variant, from the image directory name "
+            "(sem_5kv -> 5kv); 'base' means the unsuffixed directory. "
+            "Defaults to every variant"
+        ),
     )
     if include_state:
         parser.add_argument(
@@ -126,6 +136,7 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
             image_selectors=args.image,
             modality=args.modality,
             state=state,
+            variant_selectors=getattr(args, "variant", None),
         )
     )
     return records, start_path
@@ -152,6 +163,74 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         description="Recursively scan for Autolamella projects and print a project summary",
     )
     list_projects.add_argument("start_path", nargs="?", default=".", help="Directory to start scanning from")
+
+    # -- inspect-layout -----------------------------------------------------
+    inspect_layout = sub.add_parser(
+        "inspect-layout",
+        help="Report how a directory tree is interpreted, without changing anything",
+        description=(
+            "Survey a collection of datasets and report the projects found, how "
+            "their lamella and stage hierarchy was interpreted, which image sets "
+            "exist, where each one's labels resolve to and whether they are "
+            "shared, plus anything that does not fit the naming conventions. "
+            "Read-only: nothing is created, moved or modified. Use it to survey "
+            "older datasets, to check bulk filesystem work such as reorganising "
+            "labels, and to debug how a directory is being read."
+        ),
+    )
+    inspect_layout.add_argument(
+        "start_path", nargs="?", default=".", help="Directory to survey (default: current directory)",
+    )
+    inspect_layout.add_argument(
+        "--detail", action="store_true",
+        help="Show the full lamella/stage/image-set tree instead of per-project totals",
+    )
+    inspect_layout.add_argument(
+        "--max-depth", type=int, default=SURVEY_MAX_DEPTH,
+        help=(
+            "How deep to search for projects and stages "
+            f"(default: {SURVEY_MAX_DEPTH}); raise it only for unusually nested trees"
+        ),
+    )
+    inspect_layout.add_argument(
+        "--severity", choices=["error", "warning", "info"], default="info",
+        help="Lowest finding severity to report (default: info, meaning all)",
+    )
+
+    # -- init-project -------------------------------------------------------
+    init_project_cmd = sub.add_parser(
+        "init-project",
+        help="Write an AM_metadata.yaml template into a project",
+        description=(
+            "Create an AM_metadata.yaml template holding the descriptive "
+            "metadata Autolamella does not record (sample, user, organisation "
+            "and so on). Values that can be derived are filled in; the rest are "
+            "written as TODO placeholders for you to complete. A dataset with no "
+            "experiment.yaml also becomes indexable, because AM_metadata.yaml is "
+            "itself a project marker. Existing files are never overwritten."
+        ),
+    )
+    init_project_cmd.add_argument(
+        "start_path", nargs="?", default=".",
+        help="Project directory, or a directory to search with --recursive",
+    )
+    init_project_cmd.add_argument(
+        "--recursive", action="store_true",
+        help="Write a template into every project found under the directory",
+    )
+    init_project_cmd.add_argument(
+        "--defaults", default=None,
+        help=(
+            "YAML file of field values shared by these projects (for example "
+            "organisation and user), copied into each generated file. Fields "
+            "that vary between projects, such as sample and description, are "
+            "never defaulted and stay as placeholders"
+        ),
+    )
+    init_project_cmd.add_argument(
+        "--dry-run", action="store_true",
+        help="Report which files would be written without creating anything",
+    )
 
     # -- gui ----------------------------------------------------------------
     gui_cmd = sub.add_parser(
@@ -189,12 +268,47 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         ("select", "Move images and labels into the selected state"),
         ("correct", "Move images and labels into the corrected state"),
     ):
-        cmd = sub.add_parser(name, help=help_text)
+        cmd = sub.add_parser(
+            name,
+            help=help_text,
+            description=(
+                f"{help_text}. Images sharing a label move together: the label "
+                "is the unit of proofreading, so the change applies to every "
+                "image of the same scene. Use --dry-run to see exactly which "
+                "files would move first."
+            ),
+        )
         _add_scope_arguments(cmd)
         cmd.add_argument(
             "--confirm-corrected", action="store_true",
             help="Confirm moving artifacts out of the corrected state",
         )
+        cmd.add_argument(
+            "--dry-run", action="store_true",
+            help="Show the files that would move without changing anything",
+        )
+
+    # -- repair-state -------------------------------------------------------
+    repair_state = sub.add_parser(
+        "repair-state",
+        help="Move images to agree with the state of the label they share",
+        description=(
+            "Find images whose workflow state disagrees with the label they "
+            "share, and move the images to match. The label is authoritative "
+            "because it holds the proofreading work. Groups become inconsistent "
+            "when files are moved outside this package, or when an operation is "
+            "interrupted partway."
+        ),
+    )
+    _add_scope_arguments(repair_state, default_modality="all")
+    repair_state.add_argument(
+        "--confirm-corrected", action="store_true",
+        help="Confirm moving images out of a corrected folder to match their label",
+    )
+    repair_state.add_argument(
+        "--dry-run", action="store_true",
+        help="Show the files that would move without changing anything",
+    )
 
     # -- create-training-csv -----------------------------------------------
     create_training_csv = sub.add_parser(
@@ -307,6 +421,60 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             print_project_summary(project)
         return 0
 
+    if args.command == "inspect-layout":
+        survey = survey_collection(Path(args.start_path), max_depth=args.max_depth)
+        print_survey(survey, detail=args.detail, min_severity=args.severity)
+        # A non-zero exit lets the command be used as a check in a script,
+        # without making warnings -- which are expected on legacy data -- fail.
+        return 1 if survey.finding_counts()["error"] else 0
+
+    if args.command == "init-project":
+        from .discovery import find_project_roots, project_markers
+        from .operations.init_project import init_projects, read_defaults
+
+        start_path = Path(args.start_path)
+        if args.recursive:
+            roots = find_project_roots(start_path)
+            if not roots:
+                logger.error("No projects found under %s", start_path)
+                return 2
+        else:
+            if not start_path.is_dir():
+                logger.error("Not a directory: %s", start_path)
+                return 2
+            roots = [start_path]
+            if not project_markers(start_path):
+                logger.info(
+                    "%s has no project marker yet; writing one makes it a project",
+                    start_path,
+                )
+
+        try:
+            defaults = read_defaults(Path(args.defaults)) if args.defaults else None
+        except (FileNotFoundError, ValueError) as exc:
+            logger.error("%s", exc)
+            return 2
+
+        results = init_projects(roots, defaults=defaults, dry_run=args.dry_run)
+        for result in results:
+            location = make_path_relative(result.path, start_path)
+            if result.skipped_existing:
+                logger.info("Kept existing %s", location)
+            elif args.dry_run:
+                logger.info("Would write %s (%d field(s) to fill in)", location, len(result.todo))
+            else:
+                logger.info("Wrote %s (%d field(s) to fill in)", location, len(result.todo))
+
+        written = sum(1 for result in results if result.written)
+        skipped = sum(1 for result in results if result.skipped_existing)
+        remaining = sum(len(result.todo) for result in results if not result.skipped_existing)
+        logger.info(
+            "Total: %d project(s), %d %s, %d already had one, %d field(s) to fill in",
+            len(results), written or (len(results) - skipped if args.dry_run else 0),
+            "would be written" if args.dry_run else "written", skipped, remaining,
+        )
+        return 0
+
     if args.command == "gui":
         # Imported here so a missing Qt binding cannot break the other
         # commands, or `--help`.
@@ -331,28 +499,84 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 0
 
     if args.command in {"deselect", "select", "correct"}:
-        from .operations.selection import (
-            deselect_records,
-            mark_corrected_records,
-            select_records,
-        )
+        from .operations.selection import plan_transition, transition_records
 
         records, start_path = _resolve_records(args)
         if not records:
             logger.info("No matching images found to %s", args.command)
             return 2
 
-        operation = {
-            "deselect": deselect_records,
-            "select": select_records,
-            "correct": mark_corrected_records,
-        }[args.command]
+        state = {"deselect": "deselected", "select": "selected", "correct": "corrected"}[
+            args.command
+        ]
         try:
-            changed = operation(records, allow_move_from_corrected=args.confirm_corrected)
+            plan = plan_transition(
+                records, state, allow_move_from_corrected=args.confirm_corrected
+            )
+        except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
+            logger.error("Could not %s matching images: %s", args.command, exc)
+            return 2
+
+        # A shared label makes a state change reach further than the selectors
+        # asked for, which the user must be able to see.
+        if plan.reaches_beyond_request:
+            logger.info(
+                "%d further image(s) share a label with your selection and will "
+                "also be moved:", len(plan.added),
+            )
+            for record in plan.added:
+                logger.info("  %s", make_path_relative(record.image_path, start_path))
+
+        if args.dry_run:
+            for line in plan.describe():
+                logger.info("Would move %s", line)
+            logger.info(
+                "Dry run: %d file(s) would move, affecting %d image(s)",
+                len(plan.moves), len(plan.records),
+            )
+            return 0
+
+        try:
+            changed = transition_records(
+                records, state, allow_move_from_corrected=args.confirm_corrected
+            )
         except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
             logger.error("Could not %s matching images: %s", args.command, exc)
             return 2
         logger.info("Total %s: %d", args.command, changed)
+        return 0
+
+    if args.command == "repair-state":
+        from .operations.selection import repair_group_states
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.info("No matching images found to check")
+            return 2
+
+        try:
+            repaired = repair_group_states(
+                records,
+                allow_move_from_corrected=args.confirm_corrected,
+                dry_run=args.dry_run,
+            )
+        except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
+            logger.error("Could not repair state: %s", exc)
+            return 2
+
+        if not repaired:
+            logger.info("Every image agrees with the label it shares; nothing to repair")
+            return 0
+        for group, moved in repaired:
+            logger.info(
+                "%s: %d image(s) moved to %s",
+                make_path_relative(group.label_path, start_path) if group.label_path else "(no label)",
+                moved, group.state(),
+            )
+        logger.info(
+            "%s: %d group(s)",
+            "Would repair" if args.dry_run else "Repaired", len(repaired),
+        )
         return 0
 
     if args.command == "create-training-csv":

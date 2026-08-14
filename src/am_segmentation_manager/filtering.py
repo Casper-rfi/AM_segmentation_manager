@@ -74,10 +74,18 @@ def parse_selector_values(values: list[str] | None) -> tuple[set[int], set[str]]
 def matches_project(project, selectors: list[str] | None) -> bool:
     """Return whether *project* matches the user-supplied selectors.
 
-    Matches by project name or zero-padded folder-number prefix.
+    Matches by relative path, project name, or zero-padded scan-order number.
+    The relative path is the project's identity, and is the only selector that
+    can distinguish two projects sharing a name; the scan-order number is the
+    convenient equivalent.
     """
     numeric_values, name_values = parse_selector_values(selectors)
-    if "all" in name_values or project.name in name_values:
+    if "all" in name_values:
+        return True
+    identifiers = {project.name}
+    if getattr(project, "relative_path", None):
+        identifiers.add(project.relative_path)
+    if identifiers & name_values:
         return True
     project_number = parse_scope_number(project.number)
     return project_number is not None and int(project_number) in numeric_values
@@ -153,6 +161,28 @@ def record_matches_paths(record, supplied_paths: list[str] | None) -> bool:
     return False
 
 
+#: Selector meaning "the unsuffixed image directory of each modality".
+BASE_VARIANT = "base"
+
+
+def matches_variant(record: ImageRecord, selectors: list[str] | None) -> bool:
+    """Return whether *record* matches the requested imaging-condition variants.
+
+    Selectors are matched against the variant string exactly, since a variant
+    is opaque to this package. ``"base"`` selects the unsuffixed image
+    directory, and ``"all"`` selects everything. ``None`` matches everything,
+    so callers that do not care about variants are unaffected.
+    """
+    if not selectors:
+        return True
+    values = {value.strip() for raw in selectors for value in raw.split(",") if value.strip()}
+    if not values or "all" in values:
+        return True
+    if record.variant is None:
+        return BASE_VARIANT in values
+    return record.variant in values
+
+
 def matches_state(record: ImageRecord, state: str) -> bool:
     """Return whether *record* matches the requested workflow state.
 
@@ -186,6 +216,7 @@ def iter_matching_records(
     paths: list[str] | None = None,
     modality: str = "all",
     state: str = "all",
+    variant_selectors: list[str] | None = None,
 ) -> Iterator[ImageRecord]:
     """Yield every :class:`ImageRecord` that passes the supplied filters.
 
@@ -194,6 +225,8 @@ def iter_matching_records(
     yielded.  Setting *modality* to ``"SEM"`` or ``"FIB"`` restricts the
     results to a single imaging modality.  Setting *state* restricts to
     a specific workflow state (``"corrected"``, ``"selected"``, ``"deselected"``).
+    *variant_selectors* restricts to named imaging-condition variants, where
+    ``"base"`` means the unsuffixed image directory.
     """
     for project in index.all_projects():
         if project_selectors is not None and not matches_project(project, project_selectors):
@@ -206,6 +239,8 @@ def iter_matching_records(
                     continue
                 for record in stage.images:
                     if modality != "all" and record.modality != modality:
+                        continue
+                    if not matches_variant(record, variant_selectors):
                         continue
                     if state != "all" and not matches_state(record, state):
                         continue

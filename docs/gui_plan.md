@@ -964,3 +964,164 @@ so they are resampled twice as plots used to be. That is far less noticeable on
 photographic data than on rendered text, and it is what allows the two panes to
 share a zoom. Worth revisiting only if image sharpness is ever raised as a
 problem in its own right.
+
+---
+
+## 17. Imaging-condition variants and shared labels
+
+Status: **built.** This is phase 5 of
+[the retrograde support plan](retrograde_support_plan.md). Sections 1–16
+describe a GUI where a frame has at most one SEM and one FIB image; that is no
+longer true.
+
+Two things changed underneath the GUI:
+
+* A frame's `sem` and `fib` are now **tuples**, because one acquisition can be
+  captured under several imaging conditions — five SEM images of one scene at
+  different frame-integration settings. `frame.record(modality)` returns the
+  base image and has the old meaning; `base_records` is the pair a
+  single-image view shows.
+* A state change **follows the label**, not the image. Images sharing a label
+  move together, because the label is the unit of proofreading.
+
+### 17.1 Variant is not a fourth edit axis
+
+The obvious design — a "Variant" selector beside "Apply to" and "Across" —
+is wrong, and the reason is worth recording because it is what keeps the panel
+from growing a fourth control.
+
+State changes follow the label. So:
+
+* variants that **share** a label: choosing one to edit is meaningless, since
+  all of them move regardless;
+* variants with **private** labels: each is its own group, and the one on
+  screen is the one meant.
+
+Either way the edit target is implied by what is being viewed. There is no
+state decision left for a variant selector to make, and offering one would
+present a control that silently does something wider than it claims.
+
+So the variant is a **view** control, and it lives with the other view controls
+in the image panel. The state panel gains no selector — it gains an honest
+readout of how far a change reaches.
+
+This is the same rule as `follow_mode` (§8): the modality on screen is the one
+a state change is meant for, extended one axis.
+
+### 17.2 Image panel: the variant control
+
+```
+( ) SEM   (•) FIB   ( ) Plot      Variant [ base ▾ ]      [x] Overlay   Opacity [====----]
+```
+
+A dropdown rather than segmented buttons: it stays narrow with five conditions,
+and variant names run long (`8_fi_16`). It is **hidden entirely** when the
+current modality has one variant, which is every Autolamella project in the
+reference collection — the common case gains nothing to look at.
+
+The overlay needs no special handling: each record carries its own label, so
+variants sharing a label show the same overlay and variants with private labels
+show their own, automatically.
+
+### 17.3 State panel: a reach line, not a selector
+
+```
+┌────────────────────────────────┐
+│ [x] Enable editing             │
+│ ┌ Apply to ──────────────────┐ │
+│ │ (•) SEM   ( ) FIB  ( ) Both│ │
+│ └────────────────────────────┘ │
+│ ┌ Across ────────────────────┐ │
+│ │ (•) This frame             │ │
+│ │ ( ) This lamella           │ │
+│ │ ( ) This project           │ │
+│ └────────────────────────────┘ │
+│                                │
+│  Moves 4 images + 1 label      │  <- new
+│  3 share a label with this one │  <- new, only when shared
+│                                │
+│ ┌ State ─────────────────────┐ │
+│ │ ( ) # deselected           │ │
+│ │ (•) # selected             │ │
+│ │ ( ) # corrected            │ │
+│ └────────────────────────────┘ │
+│ SEM: selected                  │
+│ FIB: selected                  │
+│ ┌ Changes ───────────────────┐ │
+└────────────────────────────────┘
+```
+
+The reach line sits **above** the State buttons, because it describes what is
+about to happen; below them it would read as a report of what already did.
+
+It is **always shown**, even when it says "Moves 1 image + 1 label". A line that
+appears only sometimes is a line nobody has learned to read, and its absence
+would have to be interpreted rather than simply seen. It also surfaces a missing
+label without a separate indicator.
+
+Counts come from `plan_transition`, so the number shown is the number of files
+that will actually move — the same validated plan the operation performs, not a
+second estimate that could drift from it.
+
+### 17.4 Confirmation: confirm what is invisible
+
+Two dialogs already exist (bulk scope, corrected data). A third would teach the
+habit of dismissing dialogs unread, so shared labels get none:
+
+| situation | how it is confirmed |
+|---|---|
+| frame scope, shared label | the reach line — on screen before the click |
+| lamella / project scope | the existing bulk dialog |
+| corrected data | the existing dialog, unchanged |
+
+One fix is needed rather than one addition: `_confirm_bulk` counts
+`scoped_records()`, which does not include images pulled in by a shared label.
+It must count the expanded set from `plan_transition`, or it under-reports how
+much it is about to move.
+
+### 17.5 Timeline: report mismatches, do not fix them
+
+A frame whose images disagree with their label gets a marker and a tooltip
+naming the mismatch. The state drawn stays the base variant's, which equals the
+group state whenever things are consistent — so the marker means precisely
+"this frame is not telling you the truth".
+
+Repair stays **CLI-only** (`am-seg repair-state`, with `--dry-run`). Moving
+files from a tooltip is a long way from a previewed batch operation, and a
+mismatch is rare enough that reaching for the command line is proportionate.
+
+### 17.6 Rejected alternatives
+
+**A "Variant" radio group in the state panel.** Implies per-variant editing
+that the group semantics forbid, and is permanently visible while being empty
+for every current project.
+
+**Replacing "Apply to" with a checkbox list of the frame's images.** Honest
+about what exists, but invites unchecking one member of a shared group — the
+one operation that must not be possible — and grows unbounded with variants.
+
+### 17.7 What this touches
+
+* `image_panel.py`: variant dropdown, shown only when there is a choice
+* `controller.py`: viewed variant as display state; `shared_label_records`
+  (already written) feeds the reach line
+* `cache.py`: prepared images keyed by variant as well as modality
+* `state_panel.py`: the reach line
+* `main_window.py`: `_confirm_bulk` counting the expanded set
+* `frame_strip.py`: the mismatch marker
+
+### 17.8 Built
+
+All of the above, with three notes from the build:
+
+* **`_confirm_bulk` was fixed first, separately.** It counted the scope rather
+  than the expanded set, so at lamella or project scope on data with shared
+  labels it promised to move fewer files than it would. It now counts
+  `controller.expanded_records()` and reports how many were pulled in.
+* **Cache entries are keyed by `(frame, modality, variant)`.** Switching
+  between two conditions to compare them therefore evicts neither, which is
+  the thing this data invites. A frame lacking the viewed condition falls back
+  to its base image rather than blanking the pane.
+* **The variant dropdown is populated with descriptions from
+  `AM_metadata.yaml`** where the project supplies them (`8_fi_1` shows as
+  "frame integration 1"), and with the raw suffix where it does not.

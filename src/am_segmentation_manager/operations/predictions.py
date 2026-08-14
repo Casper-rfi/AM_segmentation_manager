@@ -15,6 +15,14 @@ from typing import Iterable
 
 from .label_io import has_image_stack_support, save_label_image
 from ..io.image import to_2d
+from ..layout import (
+    MODALITIES,
+    base_path,
+    resolve_labels_directory,
+    state_of_path,
+    state_path,
+    subdirectories_by_name,
+)
 from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
@@ -202,7 +210,7 @@ def convert_record_predictions(records: Iterable[ImageRecord], prediction_kind: 
     """
     converted = 0
     for record in records:
-        if record.modality not in {"SEM", "FIB"}:
+        if record.modality not in MODALITIES:
             continue
         matching_predictions = [
             prediction
@@ -216,12 +224,14 @@ def convert_record_predictions(records: Iterable[ImageRecord], prediction_kind: 
             logger.warning("Skipping %s: a label already exists", record.image_path)
             continue
 
-        image_directory = record.image_path.parent
-        state_directory = image_directory.name if image_directory.name in {"deselected", "corrected"} else None
-        modality_directory = image_directory.parent if state_directory else image_directory
-        labels_directory = modality_directory.parent / ("labels" if record.modality == "SEM" else "labels_fib")
-        destination_directory = labels_directory / state_directory if state_directory else labels_directory
-        destination = destination_directory / record.image_path.name
+        image_directory = base_path(record.image_path).parent
+        labels_directory, _, _ = resolve_labels_directory(
+            image_directory, record.modality, subdirectories_by_name(image_directory.parent)
+        )
+        # The generated label follows the image's own workflow state.
+        destination = state_path(
+            labels_directory / record.image_path.name, state_of_path(record.image_path)
+        )
         if destination.exists():
             logger.warning("Skipping %s: refusing to overwrite %s", record.image_path, destination)
             continue

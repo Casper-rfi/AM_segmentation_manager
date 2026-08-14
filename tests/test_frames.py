@@ -52,8 +52,8 @@ def test_sem_and_fib_of_one_acquisition_share_a_frame():
     frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].sem.image_path.name == "lam_AP_img_000_SEM.tif"
-    assert frames[0].fib.image_path.name == "lam_AP_img_000_FIB.tif"
+    assert frames[0].record("SEM").image_path.name == "lam_AP_img_000_SEM.tif"
+    assert frames[0].record("FIB").image_path.name == "lam_AP_img_000_FIB.tif"
     assert frames[0].image_number == 0
 
 
@@ -67,8 +67,8 @@ def test_pairing_uses_image_number_not_filename():
     frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].sem is not None
-    assert frames[0].fib is not None
+    assert frames[0].record("SEM") is not None
+    assert frames[0].record("FIB") is not None
 
 
 def test_frame_with_only_one_modality():
@@ -79,7 +79,7 @@ def test_frame_with_only_one_modality():
 
     frames = build_lamella_frames(make_lamella([stage]))
 
-    assert [(f.image_number, f.sem is None, f.fib is None) for f in frames] == [
+    assert [(f.image_number, f.record("SEM") is None, f.record("FIB") is None) for f in frames] == [
         (0, False, True),
         (1, True, False),
     ]
@@ -101,19 +101,20 @@ def test_modalities_in_different_states_still_share_a_frame():
     frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].sem.selected is False
-    assert frames[0].fib.selected is True
+    assert frames[0].record("SEM").selected is False
+    assert frames[0].record("FIB").selected is True
 
 
 def test_records_property_lists_present_modalities():
+    record = make_record("img_000_SEM.tif", "SEM")
     frame = LamellaFrame(
         lamella="01", stage="s", stage_number="01", image_number=0,
-        sem=make_record("img_000_SEM.tif", "SEM"),
+        sem=(record,),
     )
 
     assert len(frame.records) == 1
     assert frame.record("FIB") is None
-    assert frame.record("sem") is frame.sem
+    assert frame.record("sem") is record
 
 
 def test_record_rejects_unknown_modality():
@@ -163,7 +164,7 @@ def test_unnumbered_images_come_last_ordered_by_name():
     frames = build_lamella_frames(make_lamella([stage]))
 
     assert [f.image_number for f in frames] == [3, None, None]
-    assert [f.sem.image_path.name for f in frames[1:]] == [
+    assert [f.record("SEM").image_path.name for f in frames[1:]] == [
         "aaa_reference_SEM.tif",
         "zzz_reference_SEM.tif",
     ]
@@ -178,7 +179,7 @@ def test_unnumbered_sem_and_fib_pair_by_filename_stem():
     frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].sem is not None and frames[0].fib is not None
+    assert frames[0].record("SEM") is not None and frames[0].record("FIB") is not None
 
 
 # ---------------------------------------------------------------------------
@@ -230,19 +231,82 @@ def test_plot_without_an_image_is_ignored():
 # Edge cases
 # ---------------------------------------------------------------------------
 
-def test_duplicate_modality_keeps_the_first_and_warns(caplog):
-    """Legacy multi-condition layouts must not silently lose an acquisition."""
+def make_variant_record(name: str, modality: str, variant: str | None) -> ImageRecord:
+    """Build a record in a variant image directory."""
+    folder = f"{modality.lower()}_{variant}" if variant else modality.lower()
+    return ImageRecord(image_path=Path(folder) / name, modality=modality, variant=variant)
+
+
+def test_every_imaging_condition_of_one_acquisition_is_kept():
+    """One acquisition captured under several conditions is one frame.
+
+    Earlier this kept only the first record and warned about the rest, which
+    lost four of the five SEM images in the legacy multi-condition layout.
+    """
     stage = make_stage("adaptive_polish_1", "01", [
-        make_record("cond_a_img_000_SEM.tif", "SEM"),
-        make_record("cond_b_img_000_SEM.tif", "SEM"),
+        make_variant_record("img_0004.tif", "SEM", "8_fi_1"),
+        make_variant_record("img_0004.tif", "SEM", None),
+        make_variant_record("img_0004.tif", "SEM", "8_fi_16"),
+        make_variant_record("img_0004.tif", "FIB", None),
     ])
 
-    with caplog.at_level("WARNING"):
-        frames = build_lamella_frames(make_lamella([stage]))
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].sem.image_path.name == "cond_a_img_000_SEM.tif"
-    assert "cond_b_img_000_SEM.tif" in caplog.text
+    assert len(frames[0].sem) == 3
+    assert len(frames[0].records) == 4
+
+
+def test_the_base_image_comes_first_and_variants_follow_in_name_order():
+    stage = make_stage("adaptive_polish_1", "01", [
+        make_variant_record("img_0004.tif", "SEM", "fi_16"),
+        make_variant_record("img_0004.tif", "SEM", "fi_1"),
+        make_variant_record("img_0004.tif", "SEM", None),
+    ])
+
+    frames = build_lamella_frames(make_lamella([stage]))
+
+    assert frames[0].variants("SEM") == [None, "fi_1", "fi_16"]
+    assert frames[0].record("SEM").variant is None
+
+
+def test_a_named_variant_can_be_requested():
+    stage = make_stage("adaptive_polish_1", "01", [
+        make_variant_record("img_0004.tif", "SEM", None),
+        make_variant_record("img_0004.tif", "SEM", "5kv"),
+    ])
+
+    frames = build_lamella_frames(make_lamella([stage]))
+
+    assert frames[0].record("SEM", "5kv").image_path.parent.name == "sem_5kv"
+    assert frames[0].record("SEM", "nonexistent") is None
+
+
+def test_base_records_returns_one_image_per_modality():
+    """What a single-image view shows, regardless of how many variants exist."""
+    stage = make_stage("adaptive_polish_1", "01", [
+        make_variant_record("img_0004.tif", "SEM", None),
+        make_variant_record("img_0004.tif", "SEM", "5kv"),
+        make_variant_record("img_0004.tif", "FIB", None),
+    ])
+
+    frames = build_lamella_frames(make_lamella([stage]))
+
+    assert [record.modality for record in frames[0].base_records] == ["SEM", "FIB"]
+    assert all(record.variant is None for record in frames[0].base_records)
+
+
+def test_a_frame_of_only_variants_still_has_a_primary_image():
+    """The legacy layout has no unsuffixed directory: every set is a variant."""
+    stage = make_stage("adaptive_polish_1", "01", [
+        make_variant_record("img_0004.tif", "SEM", "8_fi_4"),
+        make_variant_record("img_0004.tif", "SEM", "8"),
+    ])
+
+    frames = build_lamella_frames(make_lamella([stage]))
+
+    assert frames[0].record("SEM").variant == "8"
+    assert len(frames[0].base_records) == 1
 
 
 def test_record_with_unknown_modality_is_skipped(caplog):
@@ -255,7 +319,7 @@ def test_record_with_unknown_modality_is_skipped(caplog):
         frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].sem is not None
+    assert frames[0].record("SEM") is not None
 
 
 def test_lamella_with_no_stages_yields_no_frames():

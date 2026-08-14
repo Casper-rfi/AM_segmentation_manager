@@ -14,6 +14,7 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QRadioButton,
@@ -56,6 +57,8 @@ class ImagePanel(QWidget):
     overlay_toggled = Signal(bool)
     #: Emitted with the new label opacity, 0.0-1.0.
     alpha_changed = Signal(float)
+    #: Emitted with the imaging condition to display; empty string means base.
+    variant_changed = Signal(str)
 
     def __init__(self, config: SegmentationConfig) -> None:
         super().__init__()
@@ -82,6 +85,25 @@ class ImagePanel(QWidget):
             controls.addWidget(button)
             self.mode_buttons[mode] = button
         self.mode_buttons["sem"].setChecked(True)
+
+        # -- imaging condition ---------------------------------------------
+        # A dropdown rather than buttons: variant names run long
+        # (``8_fi_16``) and a stage can hold five of them. Hidden entirely
+        # unless the current modality has a choice, which is the usual case.
+        controls.addSpacing(16)
+        self.variant_label = QLabel("Variant")
+        self.variant_combo = QComboBox()
+        self.variant_combo.setMinimumWidth(110)
+        self.variant_combo.setToolTip(
+            "Which imaging condition to display. This is a view choice only: a "
+            "state change follows the label, so images sharing a label always "
+            "move together whichever one you are looking at."
+        )
+        self.variant_label.setToolTip(self.variant_combo.toolTip())
+        self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
+        controls.addWidget(self.variant_label)
+        controls.addWidget(self.variant_combo)
+        self._show_variant_controls(False)
 
         controls.addSpacing(20)
         self.overlay_check = QCheckBox("Show label")
@@ -145,6 +167,55 @@ class ImagePanel(QWidget):
         """Disable the views this frame has nothing to show for."""
         for mode, button in self.mode_buttons.items():
             button.setEnabled(mode in modes)
+
+    # -- imaging conditions ------------------------------------------------
+
+    def _variant_chosen(self, index: int) -> None:
+        """Emit the chosen condition, using an empty string for the base."""
+        if index < 0:
+            return
+        value = self.variant_combo.itemData(index)
+        self.variant_changed.emit(value or "")
+
+    def _show_variant_controls(self, visible: bool) -> None:
+        self.variant_label.setVisible(visible)
+        self.variant_combo.setVisible(visible)
+
+    def set_variants(
+        self,
+        variants: list[str | None],
+        current: str | None = None,
+        descriptions: dict[str, str] | None = None,
+    ) -> None:
+        """Offer the imaging conditions available for the current view.
+
+        The control is hidden unless there is a genuine choice, so a project
+        with one condition per modality -- every Autolamella project so far --
+        shows nothing extra.
+
+        Args:
+            variants: Conditions present, base first. ``None`` is the base.
+            current: The condition on screen.
+            descriptions: Human-readable names from the project metadata, keyed
+                by variant. A variant with no description shows its raw name.
+        """
+        if len(variants) < 2:
+            self._show_variant_controls(False)
+            return
+
+        described = descriptions or {}
+        self.variant_combo.blockSignals(True)
+        self.variant_combo.clear()
+        for variant in variants:
+            if variant is None:
+                caption = "base"
+            else:
+                caption = described.get(variant, variant)
+            self.variant_combo.addItem(caption, variant)
+        position = variants.index(current) if current in variants else 0
+        self.variant_combo.setCurrentIndex(position)
+        self.variant_combo.blockSignals(False)
+        self._show_variant_controls(True)
 
     def _build_legend(self) -> None:
         """Render a colour swatch and name for each foreground class."""

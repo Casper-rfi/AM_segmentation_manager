@@ -39,10 +39,10 @@ def make_frame(number: int, *, sem=True, fib=True, plot=True) -> LamellaFrame:
         stage="adaptive_polish_1",
         stage_number="01",
         image_number=number,
-        sem=ImageRecord(image_path=Path(f"sem/img_{number:03d}_SEM.tif"), modality="SEM")
-        if sem else None,
-        fib=ImageRecord(image_path=Path(f"fib/img_{number:03d}_FIB.tif"), modality="FIB")
-        if fib else None,
+        sem=(ImageRecord(image_path=Path(f"sem/img_{number:03d}_SEM.tif"), modality="SEM"),)
+        if sem else (),
+        fib=(ImageRecord(image_path=Path(f"fib/img_{number:03d}_FIB.tif"), modality="FIB"),)
+        if fib else (),
         plot_path=Path(f"plots/img_{number:03d}_plot.png") if plot else None,
     )
 
@@ -152,7 +152,7 @@ def test_label_path_is_passed_to_the_loader():
         modality="SEM",
     )
     cache.set_frames([
-        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0, sem=record)
+        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0, sem=(record,))
     ])
 
     cache.image(0, "SEM")

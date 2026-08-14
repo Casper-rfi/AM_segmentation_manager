@@ -11,12 +11,15 @@ render and forward events; decisions live here.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal, Sequence
 
 from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import LamellaFrame, build_lamella_frames
 from ..models import Lamella, Project
+from ..layout import MODALITIES, base_path
+from ..operations.label_groups import build_groups, expand_to_groups
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
 from .cache import (
@@ -47,6 +50,44 @@ MODE_MODALITIES: dict[DisplayMode, str] = {"sem": "SEM", "fib": "FIB"}
 
 #: Scans a directory and returns the projects found in it.
 ProjectScanner = Callable[[Path], ProjectIndex]
+
+
+@dataclass(frozen=True)
+class StateChangeReach:
+    """How much a state change would move, counted before it is made.
+
+    Attributes:
+        images: Images that would move, after expanding across shared labels.
+        labels: Distinct label files that would move with them.
+        shared: How many of *images* were pulled in by a shared label rather
+            than named by the current scope.
+    """
+
+    images: int
+    labels: int
+    shared: int
+
+    def summary(self) -> str:
+        """Return the one-line description shown above the state controls."""
+        if not self.images:
+            return "Nothing selected"
+        label_part = (
+            f"{self.labels} label" if self.labels == 1 else f"{self.labels} labels"
+        )
+        image_part = (
+            f"{self.images} image" if self.images == 1 else f"{self.images} images"
+        )
+        if not self.labels:
+            return f"Moves {image_part}, no label yet"
+        return f"Moves {image_part} + {label_part}"
+
+    def shared_note(self) -> str:
+        """Return the second line, or an empty string when nothing is shared."""
+        if not self.shared:
+            return ""
+        if self.shared == 1:
+            return "1 more shares a label with this one"
+        return f"{self.shared} more share a label with this one"
 
 
 class EditingDisabled(RuntimeError):
@@ -97,6 +138,11 @@ class CurationController:
 
         self.mode: DisplayMode = "sem"
         self.show_overlay = True
+        #: Which imaging condition is on screen for each modality. None means
+        #: the base image. This is display state only: a state change follows
+        #: the label, so which condition is being viewed never decides what
+        #: moves.
+        self.variant: dict[str, str | None] = {modality: None for modality in MODALITIES}
         self.editing_enabled = False
         # Starts matching the initial view, for the same reason the target
         # follows the view thereafter: the modality on screen is the one a
@@ -231,13 +277,44 @@ class CurationController:
         if frame is None:
             return []
         modes: list[DisplayMode] = []
-        if frame.sem is not None:
+        if frame.sem:
             modes.append("sem")
-        if frame.fib is not None:
+        if frame.fib:
             modes.append("fib")
         if frame.plot_path is not None:
             modes.append("plot")
         return modes
+
+    def available_variants(self, modality: str | None = None) -> list[str | None]:
+        """Return the imaging conditions the current frame has for a modality.
+
+        Base first. A list of one -- the usual case -- means there is nothing
+        to choose between, and the window hides the control.
+        """
+        frame = self.frame
+        target = modality or MODE_MODALITIES.get(self.mode)
+        if frame is None or target is None:
+            return []
+        return frame.variants(target)
+
+    def set_variant(self, variant: str | None, modality: str | None = None) -> None:
+        """Choose which imaging condition to display for a modality.
+
+        Purely a view choice. State changes follow the label, so the condition
+        on screen never decides what a state change moves.
+        """
+        target = modality or MODE_MODALITIES.get(self.mode)
+        if target is None:
+            return
+        self.variant[target] = variant
+        logger.debug("Viewing %s variant %s", target, variant or "base")
+
+    def current_variant(self, modality: str | None = None) -> str | None:
+        """Return the imaging condition on screen for a modality."""
+        target = modality or MODE_MODALITIES.get(self.mode)
+        if target is None:
+            return None
+        return self.variant.get(target)
 
     def current_image(self) -> FrameImage | None:
         """Return the prepared acquisition for the current mode and frame.
@@ -247,7 +324,7 @@ class CurationController:
         modality = MODE_MODALITIES.get(self.mode)
         if modality is None:
             return None
-        return self.cache.image(self._frame_position, modality)
+        return self.cache.image(self._frame_position, modality, self.variant.get(modality))
 
     def current_plot(self) -> FramePlot | None:
         """Return the prepared plot for the current frame, if it has one."""
@@ -266,6 +343,7 @@ class CurationController:
         return self.cache.pending(
             self._frame_position,
             [m for m in ordered if m is not None],
+            variants=dict(self.variant),
             # A plot takes ~200 ms to decode, which is slower than a held-down
             # arrow key. Preparing only the immediate neighbours guarantees the
             # user outruns the loader, so in the plot view the whole lamella is
@@ -292,11 +370,15 @@ class CurationController:
         Returns :data:`MIXED` when the two acquisitions are in different states,
         which the window shows as no selection rather than picking a side. This
         is a normal situation: curation deselects one modality at a time.
+
+        Read from the base image of each modality, which is what the window
+        displays. Variants are not consulted here; once state changes expand
+        across shared labels, a variant's state will follow its group.
         """
         frame = frame if frame is not None else self.frame
         if frame is None:
             return None
-        states = {current_state(record) for record in frame.records}
+        states = {current_state(record) for record in frame.base_records}
         if not states:
             return None
         if len(states) > 1:
@@ -330,6 +412,23 @@ class CurationController:
             for modality in ("SEM", "FIB")
         }
 
+    def mismatched_frames(self) -> set[int]:
+        """Return frames whose images disagree with the label they share.
+
+        The timeline draws the base image's state, so a frame with a
+        disagreement is showing something that is not the whole truth. Marking
+        it is all the GUI does: repair happens through ``am-seg repair-state``,
+        which previews the moves before making them.
+        """
+        mismatched: set[int] = set()
+        for position, frame in enumerate(self._frames):
+            records = frame.records
+            if not records:
+                continue
+            if any(not group.is_consistent for group in build_groups(records)):
+                mismatched.add(position)
+        return mismatched
+
     def set_target(self, target: EditTarget) -> None:
         """Choose whether state changes apply to SEM, FIB, or both."""
         if target not in ("SEM", "FIB", "both"):
@@ -343,12 +442,17 @@ class CurationController:
         self.scope = scope
 
     def target_records(self, frame: LamellaFrame | None = None) -> list:
-        """Return the image records a state change would apply to in one frame."""
+        """Return the image records a state change would apply to in one frame.
+
+        The base image of each targeted modality. A frame with several imaging
+        conditions reaches its variants through their shared label rather than
+        through this list.
+        """
         frame = frame if frame is not None else self.frame
         if frame is None:
             return []
         if self.target == "both":
-            return frame.records
+            return frame.base_records
         record = frame.record(self.target)
         return [record] if record is not None else []
 
@@ -380,6 +484,56 @@ class CurationController:
         """
         candidates = records if records is not None else self.scoped_records()
         return [record for record in candidates if current_state(record) == "corrected"]
+
+    def expanded_records(self, records: list | None = None) -> list:
+        """Return every record a state change would actually move.
+
+        Wider than :meth:`scoped_records` whenever a label is shared: a scene
+        captured under several imaging conditions shares one label, and the
+        change follows the label to every image of that scene. Anything
+        reporting how much is about to move must count *this*, not the scope.
+        """
+        candidates = records if records is not None else self.scoped_records()
+        if not candidates:
+            return []
+        return expand_to_groups(candidates)
+
+    def shared_label_records(self, records: list | None = None) -> list:
+        """Return images a state change would reach through a shared label.
+
+        These are not in the current selection, so the window must be able to
+        say how far the change actually goes before making it. Empty in the
+        common case where nothing is shared.
+        """
+        candidates = records if records is not None else self.scoped_records()
+        if not candidates:
+            return []
+        requested = {str(base_path(record.image_path)) for record in candidates}
+        return [
+            record for record in self.expanded_records(candidates)
+            if str(base_path(record.image_path)) not in requested
+        ]
+
+    def reach(self) -> "StateChangeReach":
+        """Return how far a state change would go, for display before it is made.
+
+        Counted from the same expansion the operation performs, so the number
+        shown cannot drift from the number of files moved.
+        """
+        scoped = self.scoped_records()
+        if not scoped:
+            return StateChangeReach(images=0, labels=0, shared=0)
+        expanded = self.expanded_records(scoped)
+        labels = {
+            str(base_path(label))
+            for record in expanded
+            for label in record.labels
+        }
+        return StateChangeReach(
+            images=len(expanded),
+            labels=len(labels),
+            shared=len(expanded) - len(scoped),
+        )
 
     def apply_state(self, state: RecordState, *, confirm_corrected: bool = False) -> int:
         """Move the current frame's targeted records into *state*.

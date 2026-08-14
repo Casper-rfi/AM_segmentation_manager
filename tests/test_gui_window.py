@@ -204,7 +204,7 @@ def test_enabling_editing_unlocks_the_controls(window):
 def test_state_change_moves_files_and_updates_the_readout(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
     window.state_panel.target_buttons["SEM"].setChecked(True)
-    record = window.controller.frame.sem
+    record = window.controller.frame.record("SEM")
     original = record.image_path
     assert original.exists()
 

@@ -114,11 +114,13 @@ class LoadRequest:
     """A single unit of preparation work.
 
     ``modality`` names the acquisition to prepare, or is None to request the
-    frame's summary plot.
+    frame's summary plot. ``variant`` names the imaging condition, or is None
+    for the frame's base image of that modality.
     """
 
     frame_index: int
     modality: str | None = None
+    variant: str | None = None
 
 
 class BoundedCache(Generic[K, V]):
@@ -248,7 +250,7 @@ class FrameCache:
         self._load_plot: PlotLoader = load_plot or self._prepare_plot_at_display_size
         self.plot_max_size = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE)
         self._frames: tuple[LamellaFrame, ...] = ()
-        self._images: BoundedCache[tuple[int, str], FrameImage] = BoundedCache(image_limit)
+        self._images: BoundedCache[tuple[int, str, str | None], FrameImage] = BoundedCache(image_limit)
         self._plots: BoundedCache[int, FramePlot] = BoundedCache(plot_limit)
         self._generation = 0
 
@@ -313,17 +315,23 @@ class FrameCache:
         self._images.clear()
         self._plots.clear()
 
-    def image(self, frame_index: int, modality: str) -> FrameImage | None:
+    def image(
+        self, frame_index: int, modality: str, variant: str | None = None
+    ) -> FrameImage | None:
         """Return the prepared acquisition, reading it if not already held.
 
-        Returns None when the frame has no image for *modality*, which is a
-        normal outcome rather than a failure -- not every acquisition has both.
+        Returns None when the frame has no image for *modality* and *variant*,
+        which is a normal outcome rather than a failure -- not every
+        acquisition has both modalities, and not every one has every condition.
+
+        Entries are keyed by variant as well as modality, so switching between
+        two imaging conditions to compare them does not evict either.
         """
-        record = self._record(frame_index, modality)
+        record = self._record(frame_index, modality, variant)
         if record is None:
             return None
 
-        key = (frame_index, modality)
+        key = (frame_index, modality, variant)
         cached = self._images.get(key)
         if cached is not None:
             return cached
@@ -363,13 +371,15 @@ class FrameCache:
             self._plots.put(frame_index, prepared)
         return prepared
 
-    def cached_image(self, frame_index: int, modality: str) -> FrameImage | None:
+    def cached_image(
+        self, frame_index: int, modality: str, variant: str | None = None
+    ) -> FrameImage | None:
         """Return a prepared acquisition only if it is already held.
 
         Lets a caller distinguish "not ready yet" from "nothing to show", so a
         view can say *loading* rather than blocking on a slow read.
         """
-        return self._images.get((frame_index, modality))
+        return self._images.get((frame_index, modality, variant))
 
     def cached_plot(self, frame_index: int) -> FramePlot | None:
         """Return a prepared plot only if it is already held."""
@@ -380,7 +390,7 @@ class FrameCache:
         if request.modality is None:
             self.plot(request.frame_index)
         else:
-            self.image(request.frame_index, request.modality)
+            self.image(request.frame_index, request.modality, request.variant)
 
     def pending(
         self,
@@ -389,6 +399,7 @@ class FrameCache:
         *,
         radius: int | None = DEFAULT_RADIUS,
         include_plots: bool = False,
+        variants: dict[str, str | None] | None = None,
     ) -> list[LoadRequest]:
         """Return outstanding work, in the order it should be done.
 
@@ -402,19 +413,25 @@ class FrameCache:
             include_plots: Also prepare summary plots. Off by default: plots
                 cost several times more than images and are only worth
                 preparing while the plot view is on.
+            variants: The imaging condition being viewed for each modality.
+                Only the viewed condition is prepared ahead -- preparing every
+                condition would multiply the read-ahead cost by however many a
+                stage happens to have.
 
         Returns:
             Requests for data that is not yet held.
         """
         wanted = list(modalities)
+        chosen = variants or {}
         requests: list[LoadRequest] = []
         for frame_index in prefetch_order(current, len(self._frames), radius):
             for modality in wanted:
-                if self._record(frame_index, modality) is None:
+                variant = chosen.get(modality)
+                if self._record(frame_index, modality, variant) is None:
                     continue
-                if (frame_index, modality) in self._images:
+                if (frame_index, modality, variant) in self._images:
                     continue
-                requests.append(LoadRequest(frame_index, modality))
+                requests.append(LoadRequest(frame_index, modality, variant))
             if include_plots:
                 frame = self._frame(frame_index)
                 if frame is not None and frame.plot_path is not None:
@@ -428,9 +445,18 @@ class FrameCache:
             return self._frames[frame_index]
         return None
 
-    def _record(self, frame_index: int, modality: str):
-        """Return the image record for a frame and modality, if it exists."""
+    def _record(self, frame_index: int, modality: str, variant: str | None = None):
+        """Return the image record for a frame, modality and variant, if any.
+
+        Falls back to the frame's base image when the requested variant is not
+        present: navigating through a lamella where only some acquisitions were
+        captured under a given condition should keep showing something rather
+        than blanking the pane.
+        """
         frame = self._frame(frame_index)
         if frame is None:
             return None
-        return frame.record(modality)
+        record = frame.record(modality, variant)
+        if record is None and variant is not None:
+            return frame.record(modality)
+        return record

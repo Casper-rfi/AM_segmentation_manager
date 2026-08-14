@@ -40,6 +40,14 @@ BACKGROUND = QColor("#232323")
 TICK = QColor("#1a1a1a")
 CURSOR = QColor("#f5f5f5")
 
+#: Drawn over a frame whose images disagree with the label they share. Warning
+#: amber rather than another workflow colour: this is not a fourth state, it is
+#: a sign that the state shown cannot be trusted.
+MISMATCH = QColor("#d08c00")
+
+#: Height of the mismatch stripe along the bottom of a frame's cell.
+MISMATCH_HEIGHT = 3
+
 #: Row order, top to bottom. Matches the order of the view mode buttons.
 ROW_MODALITIES = ("SEM", "FIB")
 
@@ -64,6 +72,7 @@ class FrameTimeline(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._rows: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
+        self._mismatched: set[int] = set()
         self._count = 0
         self._current = 0
         self.setFixedHeight(len(ROW_MODALITIES) * ROW_HEIGHT + ROW_GAP)
@@ -75,15 +84,25 @@ class FrameTimeline(QWidget):
             "step one frame."
         )
 
-    def set_states(self, rows: dict[str, list], current: int) -> None:
+    def set_states(
+        self,
+        rows: dict[str, list],
+        current: int,
+        mismatched: set[int] | None = None,
+    ) -> None:
         """Show per-modality states and the current position.
 
         Args:
             rows: Workflow state per frame, keyed by modality. A None entry
                 means that modality has no image in that frame.
             current: Index of the frame being viewed.
+            mismatched: Frames whose images disagree with the label they share.
+                Marked because the state drawn for them is the base image's,
+                which is not the whole truth until the disagreement is
+                resolved with ``am-seg repair-state``.
         """
         self._rows = {modality: list(rows.get(modality, [])) for modality in ROW_MODALITIES}
+        self._mismatched = set(mismatched or ())
         self._count = max((len(states) for states in self._rows.values()), default=0)
         self._current = current
         self.update()
@@ -112,6 +131,21 @@ class FrameTimeline(QWidget):
                 )
                 if draw_ticks and index:
                     painter.fillRect(int(left), top, 1, ROW_HEIGHT - 1, TICK)
+
+        # Mismatches are drawn after the states, as a stripe spanning the full
+        # height, so a frame whose state cannot be trusted is visible without
+        # having to compare the two rows against each other.
+        for index in sorted(self._mismatched):
+            if index >= self._count:
+                continue
+            left = index * width
+            painter.fillRect(
+                int(left),
+                self.height() - MISMATCH_HEIGHT,
+                max(1, int(width) + 1),
+                MISMATCH_HEIGHT,
+                MISMATCH,
+            )
 
         # The position marker spans both rows, so it reads as one cursor rather
         # than two independent marks.

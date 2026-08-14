@@ -14,9 +14,29 @@ import re
 from datetime import datetime
 
 from .models import Project, Lamella, AdaptiveMillingStage, ImageRecord
+from .discovery import (
+    DiscoveredStage,
+    discover_stages,
+    find_project_roots,
+    group_stages_by_lamella,
+)
 from .io.yaml import read_yaml
 from .io.path import make_path_relative
-from .metadata import merge_metadata
+from .layout import (
+    PREDICTION_KINDS,
+    build_image_sets,
+    candidate_predictions_directory_names,
+    image_files,
+    image_files_by_name,
+    state_of_path,
+    subdirectories_by_name,
+)
+from .metadata import (
+    AM_METADATA_FILENAME,
+    EXPERIMENT_FILENAME,
+    build_experiment_metadata,
+    merge_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +44,11 @@ logger = logging.getLogger(__name__)
 class ProjectIndex:
     """Container for discovered projects.
 
-    Provides lookup utilities that other components can depend on.
+    Projects are keyed by their path relative to the scan root, not by name.
+    Names are not unique -- a project copied to a second directory keeps its
+    name, and so do its ``created_at`` and recorded ``path`` in
+    ``experiment.yaml``, leaving the filesystem path as the only thing that
+    distinguishes the two. Keying by name silently dropped one of them.
     """
 
     def __init__(self, start_path: Path | None = None) -> None:
@@ -32,13 +56,41 @@ class ProjectIndex:
         self.projects: Dict[str, Project] = {}
 
     def add(self, project: Project) -> None:
-        self.projects[project.name] = project
+        """Add a project, keyed by its identity.
+
+        A second project with the same identity replaces the first, which can
+        only happen if the same directory is added twice.
+        """
+        if project.key in self.projects:
+            logger.warning("Replacing already-indexed project %s", project.key)
+        self.projects[project.key] = project
 
     def all_projects(self) -> List[Project]:
         return list(self.projects.values())
 
+    def find_by_key(self, key: str) -> Project:
+        """Return the project with the given identity (its relative path)."""
+        return self.projects[key]
+
     def find_by_name(self, name: str) -> Project:
-        return self.projects[name]
+        """Return the single project called *name*.
+
+        Raises:
+            KeyError: If no project has that name.
+            ValueError: If several do, since the caller's intent is then
+                genuinely ambiguous and picking one would be a guess. Use
+                :meth:`find_by_key` with a relative path instead.
+        """
+        matches = [project for project in self.projects.values() if project.name == name]
+        if not matches:
+            raise KeyError(name)
+        if len(matches) > 1:
+            locations = ", ".join(project.key for project in matches)
+            raise ValueError(
+                f"{len(matches)} projects are named {name!r} ({locations}); "
+                f"identify the one you mean by its path"
+            )
+        return matches[0]
 
     def relative_path(self, path: Path) -> str:
         """Return a string path relative to the scan start_path."""
@@ -56,23 +108,38 @@ class Scanner:
     and adds it to a ProjectIndex.
     """
 
-    EXPERIMENT_FILENAME = "experiment.yaml"
-    AM_METADATA_FILENAME = "AM_metadata.yaml"
+    EXPERIMENT_FILENAME = EXPERIMENT_FILENAME
+    AM_METADATA_FILENAME = AM_METADATA_FILENAME
     PLOTS_DIRNAME = "plots"
     PLOT_EXTENSIONS = {".png"}
 
     def __init__(self, start_path: Path) -> None:
         self.start_path = start_path
 
-    def find_experiment_files(self) -> Iterator[Path]:
-        """Yield paths to experiment.yaml files under start_path.
+    def find_project_roots(self) -> list[Path]:
+        """Return the project roots under start_path.
 
-        Uses rglob so nested projects are supported.
+        A project is a directory holding ``experiment.yaml`` or
+        ``AM_metadata.yaml``; see :data:`discovery.PROJECT_MARKERS`. Discovery
+        stops at a project root, so a marker inside a lamella cannot create a
+        phantom nested project.
         """
-        logger.info("Scanning for %s under %s", self.EXPERIMENT_FILENAME, self.start_path)
-        for p in self.start_path.rglob(self.EXPERIMENT_FILENAME):
-            logger.debug("Found experiment file: %s", p)
-            yield p
+        logger.info("Scanning for projects under %s", self.start_path)
+        roots = find_project_roots(self.start_path)
+        logger.debug("Found %d project root(s)", len(roots))
+        return roots
+
+    def find_experiment_files(self) -> Iterator[Path]:
+        """Yield the experiment.yaml path of every discovered project.
+
+        Retained for callers that want the marker files themselves. Projects
+        marked only by ``AM_metadata.yaml`` have no experiment file and are
+        skipped here; use :meth:`find_project_roots` to see every project.
+        """
+        for root in self.find_project_roots():
+            candidate = root / self.EXPERIMENT_FILENAME
+            if candidate.is_file():
+                yield candidate
 
     def build_index(self) -> ProjectIndex:
         """Scan and build a ProjectIndex for discovered projects.
@@ -92,72 +159,94 @@ class Scanner:
         """
         index = ProjectIndex(start_path=self.start_path)
 
-        for project_index, experiment_path in enumerate(sorted(self.find_experiment_files()), start=1):
-            project_root = experiment_path.parent
-            project_folder_name = project_root.name
-
-            experiment_meta = read_yaml(experiment_path)
-            am_meta_path = project_root / self.AM_METADATA_FILENAME
-            am_meta = read_yaml(am_meta_path) if am_meta_path.exists() else {}
-            merged_meta = merge_metadata(experiment_meta, am_meta)
-
-            metadata_name = merged_meta.get("name")
-            project_name = metadata_name if isinstance(metadata_name, str) and metadata_name else project_folder_name
-            project = Project(name=project_name, path=project_root, metadata=merged_meta)
-            # Project numbers are scan-order identifiers, independent of the
-            # project folder name, so users can select projects as 001, 002…
-            project.number = f"{project_index:03d}"
-
-            # Discover lamella folders under the project root.
-            # A lamella is any top-level directory that contains one or more
-            # Adaptive Milling stages. This avoids hardcoding numeric prefixes.
-            for child in sorted(project_root.iterdir()):
-                if not child.is_dir():
-                    continue
-
-                stages = self._discover_stages(child, project_name=project_name, lamella_name=child.name)
-                if not stages:
-                    continue
-
-                lam = Lamella(name=child.name, path=child)
-                lam.number = self._parse_numeric_prefix(child.name)
-                lam.stages = stages
-                project.lamellae.append(lam)
-
+        for project_index, project_root in enumerate(sorted(self.find_project_roots()), start=1):
+            project = self._build_project(project_root, project_index)
             index.add(project)
-            logger.info("Indexed project %s with %d lamellae", project_name, len(project.lamellae))
+            logger.info("Indexed project %s with %d lamellae", project.key, len(project.lamellae))
 
         return index
 
-    def _discover_stages(self, lamella_path: Path, project_name: str, lamella_name: str) -> List[AdaptiveMillingStage]:
-        """Discover Adaptive Milling stages inside a lamella folder.
-        
-        Heuristic: any directory under lamella_path that contains a 'sem' or 'fib'
-        subdirectory is considered a stage folder. This covers Adaptive_polish_*
-        and other similarly structured stage directories.
+    def _build_project(self, project_root: Path, project_index: int) -> Project:
+        """Build one project's model from its directory."""
+        experiment_path = project_root / self.EXPERIMENT_FILENAME
+        am_meta_path = project_root / self.AM_METADATA_FILENAME
+        experiment_meta = read_yaml(experiment_path) if experiment_path.exists() else {}
+        am_meta = read_yaml(am_meta_path) if am_meta_path.exists() else {}
+        merged_meta = merge_metadata(experiment_meta, am_meta)
+
+        metadata_name = merged_meta.get("name")
+        project_name = (
+            metadata_name if isinstance(metadata_name, str) and metadata_name else project_root.name
+        )
+        project = Project(
+            name=project_name,
+            path=project_root,
+            relative_path=make_path_relative(project_root, self.start_path),
+            metadata=merged_meta,
+            experiment_metadata=build_experiment_metadata(
+                experiment_meta,
+                am_meta,
+                experiment_path=experiment_path if experiment_path.exists() else None,
+                am_metadata_path=am_meta_path if am_meta_path.exists() else None,
+            ),
+        )
+        # Project numbers are scan-order identifiers, independent of the
+        # project folder name, so users can select projects as 001, 002…
+        project.number = f"{project_index:03d}"
+        project.lamellae = self._build_lamellae(project_root, project_name)
+        return project
+
+    def _build_lamellae(self, project_root: Path, project_name: str) -> List[Lamella]:
+        """Build the lamellae of a project, synthesising absent levels.
+
+        Older datasets collapse the hierarchy: some have no stage directory
+        below the lamella, and the oldest have neither. Discovery reports which
+        levels are absent, and the parent directory stands in for each one, so
+        those datasets index without their files having to be reorganised.
         """
+        grouped = group_stages_by_lamella(discover_stages(project_root))
+
+        lamellae: List[Lamella] = []
+        for lamella_path in sorted(grouped):
+            discovered = grouped[lamella_path]
+            synthetic = discovered[0].lamella_is_synthetic
+            lamella = Lamella(
+                name=lamella_path.name,
+                path=lamella_path,
+                synthetic=synthetic,
+            )
+            # A synthesised lamella is the project's only one, so numbering it
+            # 01 keeps `--lamella 1` working across every layout.
+            lamella.number = "01" if synthetic else self._parse_numeric_prefix(lamella_path.name)
+            lamella.stages = self._build_stages(
+                discovered, project_name=project_name, lamella_name=lamella_path.name
+            )
+            lamellae.append(lamella)
+        return lamellae
+
+    def _build_stages(
+        self, discovered: List[DiscoveredStage], project_name: str, lamella_name: str
+    ) -> List[AdaptiveMillingStage]:
+        """Build the stages of one lamella, ordered by acquisition time."""
+        ordered = sorted(discovered, key=lambda item: self._stage_sort_key(item.path))
         stages: List[AdaptiveMillingStage] = []
-
-        candidate_paths = []
-        for p in lamella_path.rglob("*"):
-            if not p.is_dir():
-                continue
-            sem_dir = p / "sem"
-            fib_dir = p / "fib"
-            if sem_dir.exists() or fib_dir.exists():
-                candidate_paths.append(p)
-
-        for index, p in enumerate(sorted(candidate_paths, key=self._stage_sort_key), start=1):
-            stage = AdaptiveMillingStage(name=p.name, path=p)
+        for index, item in enumerate(ordered, start=1):
+            stage = AdaptiveMillingStage(
+                name=item.path.name,
+                path=item.path,
+                synthetic=item.stage_is_synthetic,
+            )
             stage.number = f"{index:02d}"
-            stage.images = self._discover_images_in_stage(p, project_name=project_name, lamella_name=lamella_name)
-            stage.plots = self._discover_plots(p)
+            stage.image_sets = build_image_sets(item.path)
+            stage.images = self._discover_images_in_stage(
+                item.path, project_name=project_name, lamella_name=lamella_name
+            )
+            stage.plots = self._discover_plots(item.path)
             stages.append(stage)
             logger.debug(
                 "Discovered stage %s with %d images and %d plots",
-                p, len(stage.images), len(stage.plots),
+                item.path, len(stage.images), len(stage.plots),
             )
-
         return stages
 
     @classmethod
@@ -231,90 +320,92 @@ class Scanner:
 
     @staticmethod
     def _parse_numeric_prefix(value: str) -> str | None:
-        """Return a zero-padded numeric prefix from a folder name when present."""
+        """Return a folder name's lamella number, zero-padded, when it has one.
+
+        Autolamella names lamellae with a leading number (``01-neat-ape``).
+        Older datasets put it at the end instead (``lam_010``, ``lamella_01``),
+        so a trailing number after a separator is accepted too, which keeps
+        ``--lamella 10`` working across layouts.
+
+        Only those two positions are read. A number elsewhere in a name is far
+        more likely to be part of a date or a condition than a lamella number.
+        """
         match = re.match(r"^0*(\d+)", value)
-        if not match:
+        if match is None:
+            match = re.search(r"[_-]0*(\d+)$", value)
+        if match is None:
             return None
         return f"{int(match.group(1)):02d}"
 
     def _discover_images_in_stage(self, stage_path: Path, project_name: str, lamella_name: str) -> List[ImageRecord]:
         """Discover image files, predictions and labels inside a stage folder.
 
-        The function searches for sem/ and fib/ image files (including any
-        'deselected' subfolders). Predictions and labels are matched by
-        filename when possible from the standard locations:
-        - predictions/ (with optional subfolders raw/ and clean/)
-        - predictions_fib/
-        - labels/
-        - labels_fib/
+        Directory names are resolved through :mod:`am_segmentation_manager.layout`,
+        so labels are found under the current ``<image-dir>_labels`` convention
+        or any legacy name it recognises, and images in ``deselected/`` and
+        ``corrected/`` subfolders are included.
 
-        Only .tif and .tiff file extensions are considered.
+        Labels and predictions are matched by filename **within an image set**
+        rather than across the whole stage: several image directories in one
+        stage can hold the same filename, so a stage-wide filename map would be
+        ambiguous.
+
+        Every image set is indexed, including variant directories capturing one
+        acquisition under different imaging conditions. Variants sharing a label
+        directory each reference the same label file, which is why a record
+        records whether its label is shared.
         """
         image_records: List[ImageRecord] = []
-        image_exts = {".tif", ".tiff"}
 
-        def collect_files(folder: Path) -> List[Path]:
-            if not folder.exists():
-                return []
-            return [p for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in image_exts]
+        for image_set in build_image_sets(stage_path):
+            labels_map = image_files_by_name(image_set.labels_directory)
+            predictions_map = self._collect_predictions(stage_path, image_set)
 
-        # build maps of predictions and labels by filename for quick lookup
-        def collect_by_name(base: Path) -> dict:
-            files = {}
-            if not base.exists():
-                return files
-            for p in base.rglob("*"):
-                if p.is_file() and p.suffix.lower() in image_exts:
-                    files.setdefault(p.name, []).append(p)
-            return files
-
-        predictions_map = collect_by_name(stage_path / "predictions")
-        predictions_map.update(collect_by_name(stage_path / "predictions" / "raw"))
-        predictions_map.update(collect_by_name(stage_path / "predictions" / "clean"))
-        predictions_fib_map = collect_by_name(stage_path / "predictions_fib")
-        predictions_fib_map.update(collect_by_name(stage_path / "predictions_fib" / "raw"))
-        predictions_fib_map.update(collect_by_name(stage_path / "predictions_fib" / "clean"))
-
-        labels_map = collect_by_name(stage_path / "labels")
-        labels_map.update(collect_by_name(stage_path / "labels" / "deselected"))
-        labels_map.update(collect_by_name(stage_path / "labels" / "corrected"))
-        labels_fib_map = collect_by_name(stage_path / "labels_fib")
-        labels_fib_map.update(collect_by_name(stage_path / "labels_fib" / "deselected"))
-        labels_fib_map.update(collect_by_name(stage_path / "labels_fib" / "corrected"))
-
-        # discover SEM images (include corrected and deselected folders)
-        for sem_folder in [stage_path / "sem", stage_path / "sem" / "deselected", stage_path / "sem" / "corrected"]:
-            for img in collect_files(sem_folder):
-                rec = ImageRecord(
-                    image_path=img,
+            for name, image_path in sorted(image_files_by_name(image_set.directory).items()):
+                record = ImageRecord(
+                    image_path=image_path,
                     project=project_name,
                     lamella=lamella_name,
                     stage=stage_path.name,
-                    modality="SEM",
+                    modality=image_set.modality,
+                    variant=image_set.variant,
+                    label_shared=image_set.labels_are_shared,
                 )
-                # attach matching predictions and labels
-                rec.predictions = predictions_map.get(img.name, [])
-                rec.labels = labels_map.get(img.name, [])
-                rec.corrected = ("corrected" in str(img.parent)) or any(("corrected" in str(p.parent)) for p in rec.labels)
+                prediction = predictions_map.get(name)
+                record.predictions = list(prediction) if prediction else []
+                label = labels_map.get(name)
+                record.labels = [label] if label is not None else []
+                record.corrected = state_of_path(image_path) == "corrected" or any(
+                    state_of_path(path) == "corrected" for path in record.labels
+                )
                 # States are mutually exclusive: corrected records are not
                 # also reported as selected.
-                rec.selected = not rec.corrected and ("deselected" not in str(img.parent))
-                image_records.append(rec)
-  
-        # discover FIB images (include corrected and deselected folders)
-        for fib_folder in [stage_path / "fib", stage_path / "fib" / "deselected", stage_path / "fib" / "corrected"]:
-            for img in collect_files(fib_folder):
-                rec = ImageRecord(
-                    image_path=img,
-                    project=project_name,
-                    lamella=lamella_name,
-                    stage=stage_path.name,
-                    modality="FIB",
-                )
-                rec.predictions = predictions_fib_map.get(img.name, [])
-                rec.labels = labels_fib_map.get(img.name, [])
-                rec.corrected = ("corrected" in str(img.parent)) or any(("corrected" in str(p.parent)) for p in rec.labels)
-                rec.selected = not rec.corrected and ("deselected" not in str(img.parent))
-                image_records.append(rec)
+                record.selected = not record.corrected and state_of_path(image_path) == "selected"
+                image_records.append(record)
 
         return image_records
+
+    @staticmethod
+    def _collect_predictions(stage_path: Path, image_set) -> dict[str, List[Path]]:
+        """Return prediction files for an image set, keyed by filename.
+
+        Predictions live in a directory resolved by the layout conventions,
+        optionally split into ``raw/`` and ``clean/`` subdirectories. A filename
+        may appear in more than one of those, so every match is kept and the
+        caller chooses by kind.
+        """
+        siblings = subdirectories_by_name(stage_path)
+        directory: Path | None = None
+        for name in candidate_predictions_directory_names(image_set.name, image_set.modality):
+            found = siblings.get(name.lower())
+            if found is not None:
+                directory = found
+                break
+        if directory is None:
+            return {}
+
+        collected: dict[str, List[Path]] = {}
+        for candidate in [directory, *(directory / kind for kind in PREDICTION_KINDS)]:
+            for path in image_files(candidate):
+                collected.setdefault(path.name, []).append(path)
+        return collected

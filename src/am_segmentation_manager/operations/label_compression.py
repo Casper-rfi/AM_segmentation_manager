@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .label_io import has_image_stack_support, save_label_image
+from ..layout import state_of_path
 from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ def compress_labels(
 
     labels = _existing_labels(records)
     if not allow_corrected:
-        corrected = [label for label in labels if label.parent.name == "corrected"]
+        corrected = [label for label in labels if state_of_path(label) == "corrected"]
         if corrected:
             raise PermissionError(
                 "Refusing to recompress corrected labels without explicit "

@@ -182,12 +182,12 @@ def test_curating_a_frame_from_a_scanned_project(tmp_path: Path):
 
     lamella = Scanner(tmp_path).build_index().all_projects()[0].lamellae[0]
     frame = build_lamella_frames(lamella)[0]
-    assert frame.sem is not None and frame.fib is not None
+    assert frame.record("SEM") is not None and frame.record("FIB") is not None
 
     # Deselect only the SEM side, as the "apply to: SEM" control will.
-    deselect_records([frame.sem])
-    assert current_state(frame.sem) == "deselected"
-    assert current_state(frame.fib) == "selected"
+    deselect_records([frame.record("SEM")])
+    assert current_state(frame.record("SEM")) == "deselected"
+    assert current_state(frame.record("FIB")) == "selected"
 
     # Mark both corrected afterwards, reusing the same records.
     mark_corrected_records(frame.records)

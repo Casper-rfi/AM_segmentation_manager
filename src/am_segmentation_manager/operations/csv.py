@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..io.path import make_path_relative
+from ..layout import state_of_path
 from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
@@ -49,31 +50,21 @@ def records_to_dataframe(records: Iterable[ImageRecord]):
 def find_matching_label(record: ImageRecord) -> Path | None:
     """Find the matching label file path for an ImageRecord.
 
-    Checks the record's associated label paths and prioritises the label file
-    matching the record's current workflow state (corrected, selected, or
-    deselected). Returns None if no existing label is found.
+    Prefers the label whose workflow state matches the record's own, so an
+    export reflects the state the record is actually in. Falls back to any
+    label that exists. Returns None if none do.
     """
     if not record.labels:
         return None
 
-    # Priority 1: Match label in state directory corresponding to record state
-    if record.corrected:
-        for lbl in record.labels:
-            if lbl.parent.name == "corrected" and lbl.exists():
-                return lbl
-    elif not record.selected:  # deselected
-        for lbl in record.labels:
-            if lbl.parent.name == "deselected" and lbl.exists():
-                return lbl
-    else:  # selected
-        for lbl in record.labels:
-            if lbl.parent.name in {"labels", "labels_fib"} and lbl.exists():
-                return lbl
+    wanted = "corrected" if record.corrected else "selected" if record.selected else "deselected"
+    for label in record.labels:
+        if state_of_path(label) == wanted and label.exists():
+            return label
 
-    # Priority 2: Fallback to any existing label in record.labels
-    for lbl in record.labels:
-        if lbl.exists():
-            return lbl
+    for label in record.labels:
+        if label.exists():
+            return label
 
     return None
 

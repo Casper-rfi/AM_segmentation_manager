@@ -43,6 +43,10 @@ STATE_HELP = {
 
 SWATCH_SIZE = 12
 
+#: The shared-label note is the one thing here that reports a consequence the
+#: user did not ask for, so it is set apart rather than reading as body text.
+SHARED_NOTE_STYLE = "color: #b36b00;"
+
 
 class StatePanel(QWidget):
     """The editing guard, the edit target, and the state controls."""
@@ -121,6 +125,25 @@ class StatePanel(QWidget):
         self.scope_buttons["frame"].setChecked(True)
         layout.addWidget(self.scope_box)
 
+        # -- reach -----------------------------------------------------------
+        # Above the state controls, because it describes what is about to
+        # happen; below them it would read as a report of what already did.
+        # Always shown, even when it says "Moves 1 image + 1 label": a line
+        # that appears only sometimes is a line nobody has learned to read.
+        self.reach = QLabel("")
+        self.reach.setWordWrap(True)
+        self.reach.setToolTip(
+            "How much this state change moves. Images that share a label move "
+            "together, so this can be more than the images you selected."
+        )
+        layout.addWidget(self.reach)
+
+        self.reach_shared = QLabel("")
+        self.reach_shared.setWordWrap(True)
+        self.reach_shared.setStyleSheet(SHARED_NOTE_STYLE)
+        self.reach_shared.setToolTip(self.reach.toolTip())
+        layout.addWidget(self.reach_shared)
+
         # -- state ---------------------------------------------------------
         self.state_box = QGroupBox("State")
         state_layout = QVBoxLayout(self.state_box)
@@ -187,6 +210,18 @@ class StatePanel(QWidget):
         if target_state == MIXED:
             parts.append("(modalities differ)")
         self.readout.setText("\n".join(parts))
+
+    def show_reach(self, summary: str, shared_note: str = "") -> None:
+        """Show how much the next state change would move.
+
+        Args:
+            summary: The always-present line, e.g. ``"Moves 4 images + 1 label"``.
+            shared_note: The extra line naming images pulled in by a shared
+                label, or empty when nothing is shared.
+        """
+        self.reach.setText(summary)
+        self.reach_shared.setText(shared_note)
+        self.reach_shared.setVisible(bool(shared_note))
 
     def set_target(self, target: str) -> None:
         """Reflect the current edit target without re-emitting a change."""

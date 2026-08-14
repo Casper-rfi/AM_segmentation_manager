@@ -5,9 +5,17 @@ import logging
 import shutil
 from pathlib import Path
 
+from ..layout import STATE_DIRECTORIES, state_of_path, state_path
+
 logger = logging.getLogger(__name__)
 
-STATE_DIRECTORIES = {"selected": None, "deselected": "deselected", "corrected": "corrected"}
+__all__ = [
+    "STATE_DIRECTORIES",
+    "move_to_state",
+    "move_to_deselected",
+    "move_to_selected",
+    "move_to_corrected",
+]
 
 
 def move_to_state(path: Path, state: str, *, allow_move_from_corrected: bool = False) -> Path:
@@ -19,13 +27,11 @@ def move_to_state(path: Path, state: str, *, allow_move_from_corrected: bool = F
     """
     if state not in STATE_DIRECTORIES:
         raise ValueError(f"Unknown workflow state: {state}")
-    if path.parent.name == "corrected" and state != "corrected" and not allow_move_from_corrected:
+    if state_of_path(path) == "corrected" and state != "corrected" and not allow_move_from_corrected:
         raise PermissionError(
             f"Refusing to move corrected artifact without explicit confirmation: {path}"
         )
-    base_directory = path.parent.parent if path.parent.name in {"deselected", "corrected"} else path.parent
-    folder = STATE_DIRECTORIES[state]
-    destination = base_directory / path.name if folder is None else base_directory / folder / path.name
+    destination = state_path(path, state)
     if destination == path:
         return destination
     if destination.exists():

@@ -280,7 +280,7 @@ def test_state_of_each_modality():
 def test_mixed_state_is_reported_rather_than_picking_a_side():
     """Curation deselects one modality at a time, so this is a normal state."""
     controller = make_controller()
-    controller.frame.sem.image_path = Path("sem/deselected/img_000_SEM.tif")
+    controller.frame.record("SEM").image_path = Path("sem/deselected/img_000_SEM.tif")
 
     assert controller.state_of("SEM") == "deselected"
     assert controller.combined_state() == MIXED
@@ -288,7 +288,7 @@ def test_mixed_state_is_reported_rather_than_picking_a_side():
 
 def test_target_state_follows_the_target():
     controller = make_controller()
-    controller.frame.sem.image_path = Path("sem/corrected/img_000_SEM.tif")
+    controller.frame.record("SEM").image_path = Path("sem/corrected/img_000_SEM.tif")
 
     controller.set_target("SEM")
     assert controller.target_state() == "corrected"
@@ -302,8 +302,8 @@ def test_target_state_follows_the_target():
 
 def test_frame_states_cover_the_whole_lamella():
     controller = make_controller()
-    controller.frames[2].sem.image_path = Path("sem/deselected/img_002_SEM.tif")
-    controller.frames[2].fib.image_path = Path("fib/deselected/img_002_FIB.tif")
+    controller.frames[2].record("SEM").image_path = Path("sem/deselected/img_002_SEM.tif")
+    controller.frames[2].record("FIB").image_path = Path("fib/deselected/img_002_FIB.tif")
 
     assert controller.frame_states() == ["selected", "selected", "deselected", "selected"]
 
