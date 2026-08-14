@@ -17,6 +17,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QRadioButton,
     QSlider,
     QStackedWidget,
@@ -59,6 +60,11 @@ class ImagePanel(QWidget):
     alpha_changed = Signal(float)
     #: Emitted with the imaging condition to display; empty string means base.
     variant_changed = Signal(str)
+    #: Emitted when the user asks for the displayed file's path, or to open its
+    #: folder. The panel does not know which file it is showing -- it is handed
+    #: a prepared image -- so the window answers these from the controller.
+    path_requested = Signal()
+    reveal_requested = Signal()
 
     def __init__(self, config: SegmentationConfig) -> None:
         super().__init__()
@@ -68,6 +74,9 @@ class ImagePanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
         layout.setSpacing(3)
+
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_path_menu)
 
         # -- view controls -------------------------------------------------
         controls = QHBoxLayout()
@@ -150,6 +159,21 @@ class ImagePanel(QWidget):
         layout.addWidget(self.status)
 
     # -- controls ----------------------------------------------------------
+
+    def _show_path_menu(self, point) -> None:
+        """Offer the displayed file's path on right-click.
+
+        Which file that is depends on the mode and the variant dropdown, so the
+        panel only reports that it was asked; the window resolves it.
+        """
+        menu = QMenu(self)
+        copy = menu.addAction("Copy image path")
+        reveal = menu.addAction("Reveal image in file manager")
+        chosen = menu.exec_(self.mapToGlobal(point))
+        if chosen is copy:
+            self.path_requested.emit()
+        elif chosen is reveal:
+            self.reveal_requested.emit()
 
     def _alpha_moved(self, value: int) -> None:
         self._alpha = value / 100.0

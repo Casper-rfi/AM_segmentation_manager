@@ -323,6 +323,52 @@ class CurationController:
             return None
         return self.variant.get(target)
 
+    # -- paths, for copying out of the window ------------------------------
+    #
+    # Absolute paths throughout. The relative path is a project's identity
+    # within an index, but a path pasted into a terminal or a file manager has
+    # to be absolute to be any use, and that is the whole point of copying one.
+
+    def project_path(self, position: int | None = None) -> Path | None:
+        """Return the absolute path of a project, or of the selected one."""
+        project = self._at(
+            self._projects, self._project_position if position is None else position
+        )
+        return project.path.resolve() if project is not None else None
+
+    def lamella_path(self, position: int | None = None) -> Path | None:
+        """Return the absolute path of a lamella, or of the selected one.
+
+        A synthetic lamella -- one the dataset has no directory for, where the
+        project directory stands in -- returns the directory that stood in, so
+        the path always names something that exists on disk.
+        """
+        lamella = self._at(
+            self._lamellae, self._lamella_position if position is None else position
+        )
+        return lamella.path.resolve() if lamella is not None else None
+
+    def current_image_path(self) -> Path | None:
+        """Return the absolute path of the image currently on screen.
+
+        Follows the mode and the variant dropdown, so this is the file the user
+        is actually looking at rather than the frame's base image. Returns None
+        in plot mode, which has no single acquisition behind it.
+        """
+        modality = MODE_MODALITIES.get(self.mode)
+        frame = self.frame
+        if modality is None or frame is None:
+            return None
+        record = frame.record(modality, self.variant.get(modality))
+        return record.image_path.resolve() if record is not None else None
+
+    def current_plot_path(self) -> Path | None:
+        """Return the absolute path of the summary plot on screen, if any."""
+        frame = self.frame
+        if frame is None or frame.plot_path is None:
+            return None
+        return frame.plot_path.resolve()
+
     def current_image(self) -> FrameImage | None:
         """Return the prepared acquisition for the current mode and frame.
 

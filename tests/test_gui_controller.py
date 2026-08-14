@@ -595,3 +595,85 @@ def test_acquisitions_still_use_the_narrow_radius():
     indices = {r.frame_index for r in controller.pending_loads(radius=1)}
 
     assert indices == {0, 1}
+
+
+# ---------------------------------------------------------------------------
+# Paths, for copying out of the window
+# ---------------------------------------------------------------------------
+
+def test_project_and_lamella_paths_are_absolute():
+    """Copied paths must be pasteable into a terminal, so never relative."""
+    controller = make_controller()
+
+    project = controller.project_path()
+    lamella = controller.lamella_path()
+
+    assert project is not None and project.is_absolute()
+    assert lamella is not None and lamella.is_absolute()
+    assert project.name == "project-a"
+    assert lamella.name == "01-alpha"
+
+
+def test_paths_can_be_asked_for_by_row_rather_than_selection():
+    """The right-click menu acts on the row under the cursor, not the selected
+    one, so the accessors take a position."""
+    controller = make_controller()
+
+    assert controller.project_path(1).name == "project-b"
+    assert controller.lamella_path(1).name == "02-beta"
+    # The selection is unchanged by asking about another row.
+    assert controller.project_position == 0
+    assert controller.lamella_position == 0
+
+
+def test_paths_are_none_when_the_position_does_not_exist():
+    controller = make_controller()
+
+    assert controller.project_path(99) is None
+    assert controller.lamella_path(99) is None
+    assert controller.project_path(-1) is None
+
+
+def test_paths_are_none_before_anything_is_scanned():
+    cache = FrameCache(lambda image, label=None: "", lambda plot: "")
+    controller = CurationController(
+        cache=cache, config=CONFIG, scan=lambda path: ProjectIndex(start_path=path)
+    )
+
+    assert controller.project_path() is None
+    assert controller.lamella_path() is None
+    assert controller.current_image_path() is None
+
+
+def test_current_image_path_follows_the_mode():
+    controller = make_controller()
+
+    controller.set_mode("sem")
+    sem = controller.current_image_path()
+    controller.set_mode("fib")
+    fib = controller.current_image_path()
+
+    assert sem is not None and sem.name.endswith("_SEM.tif")
+    assert fib is not None and fib.name.endswith("_FIB.tif")
+
+
+def test_current_image_path_follows_the_frame():
+    controller = make_controller()
+
+    controller.set_mode("sem")
+    first = controller.current_image_path()
+    controller.step_frame(1)
+    second = controller.current_image_path()
+
+    assert first != second
+    assert second.name == "img_001_SEM.tif"
+
+
+def test_current_image_path_is_none_in_plot_mode():
+    """Plot mode has no single acquisition behind it."""
+    controller = make_controller()
+
+    controller.set_mode("plot")
+
+    assert controller.current_image_path() is None
+    assert controller.current_plot_path() is not None

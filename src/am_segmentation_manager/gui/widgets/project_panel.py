@@ -16,6 +16,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMenu,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -32,6 +33,15 @@ class ProjectPanel(QWidget):
     project_selected = Signal(int)
     #: Emitted with the index of the lamella the user picked.
     lamella_selected = Signal(int)
+    #: Emitted with the row the user right-clicked, to have its path copied.
+    #: The panel holds display strings, not model objects, so it asks for the
+    #: path by row rather than resolving one itself -- that stays the window's
+    #: job, via the controller.
+    project_path_requested = Signal(int)
+    lamella_path_requested = Signal(int)
+    #: As above, but to open the folder in the desktop file manager.
+    project_reveal_requested = Signal(int)
+    lamella_reveal_requested = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -50,10 +60,11 @@ class ProjectPanel(QWidget):
         # where it is useful (visible while the field is empty, gone once a path
         # is in it), and the tooltips carry what neither a label nor a button
         # caption can say.
-        row = QHBoxLayout()
-        row.setContentsMargins(2, 0, 2, 0)
-        row.setSpacing(4)
-
+        # The path gets a row to itself. Putting it beside both buttons was
+        # tried and left roughly 140px for the field in a 270px panel, which
+        # showed the tail of a path and nothing else -- and reading the path is
+        # the entire reason the field is there. The buttons share a second row,
+        # right-aligned so they read as actions on the field above.
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Folder to scan for Autolamella projects")
         self.path_edit.setToolTip(
@@ -63,15 +74,20 @@ class ProjectPanel(QWidget):
         self.path_edit.returnPressed.connect(
             lambda: self.scan_requested.emit(self.path_edit.text())
         )
-        row.addWidget(self.path_edit, stretch=1)
+        layout.addWidget(self.path_edit)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        row.addStretch(1)
 
         browse = QPushButton("Browse...")
         browse.setToolTip("Choose a folder to scan")
         browse.clicked.connect(self._browse)
         row.addWidget(browse)
 
-        # Not full width any more: Scan is not the primary action of the window,
-        # and a full-width button implied that it was.
+        # Not full width any more: Scan is not the window's primary action, and
+        # a full-width button implied that it was.
         self.scan_button = QPushButton("Scan")
         self.scan_button.setToolTip(
             "Re-read the folder from disk. Use this after changing files "
@@ -93,11 +109,19 @@ class ProjectPanel(QWidget):
         self.project_filter.textChanged.connect(
             lambda text: self._apply_filter(self.project_list, self._project_labels, text)
         )
+        self._add_path_menu(
+            self.project_list, "project",
+            self.project_path_requested, self.project_reveal_requested,
+        )
         self.lamella_box, self.lamella_filter, self.lamella_list = self._build_list(
             "Lamellae", "Filter lamellae", self._lamella_changed,
         )
         self.lamella_filter.textChanged.connect(
             lambda text: self._apply_filter(self.lamella_list, self._lamella_labels, text)
+        )
+        self._add_path_menu(
+            self.lamella_list, "lamella",
+            self.lamella_path_requested, self.lamella_reveal_requested,
         )
 
         lists = QSplitter(Qt.Vertical)
@@ -127,6 +151,33 @@ class ProjectPanel(QWidget):
         list_widget.currentRowChanged.connect(on_change)
         box_layout.addWidget(list_widget)
         return box, filter_edit, list_widget
+
+    def _add_path_menu(
+        self, widget: QListWidget, noun: str, copy_signal, reveal_signal
+    ) -> None:
+        """Give a list a right-click menu for the row's filesystem path.
+
+        The row under the cursor is used, not the selected row: right-clicking
+        an entry and acting on a different one would be a surprising way to lose
+        track of which path you copied.
+        """
+        widget.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        def show_menu(point) -> None:
+            item = widget.itemAt(point)
+            if item is None:
+                return
+            row = widget.row(item)
+            menu = QMenu(widget)
+            copy = menu.addAction(f"Copy {noun} path")
+            reveal = menu.addAction(f"Reveal {noun} in file manager")
+            chosen = menu.exec_(widget.viewport().mapToGlobal(point))
+            if chosen is copy:
+                copy_signal.emit(row)
+            elif chosen is reveal:
+                reveal_signal.emit(row)
+
+        widget.customContextMenuRequested.connect(show_menu)
 
     def _browse(self) -> None:
         directory = QFileDialog.getExistingDirectory(

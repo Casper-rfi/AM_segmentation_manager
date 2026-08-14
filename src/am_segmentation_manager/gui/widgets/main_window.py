@@ -10,8 +10,10 @@ import logging
 from collections import Counter
 from pathlib import Path
 
-from qtpy.QtCore import QSettings, Qt, Signal
+from qtpy.QtCore import QSettings, Qt, QUrl, Signal
+from qtpy.QtGui import QDesktopServices
 from qtpy.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -102,6 +104,11 @@ class CurationWindow(QMainWindow):
         splitter.setSizes([270, 1080, 250])
         self.setCentralWidget(splitter)
 
+        # Created up front rather than on first use. QMainWindow.statusBar()
+        # builds one lazily, so leaving it implicit would make the bar appear --
+        # and shift everything above it -- the first time a path was copied.
+        self.statusBar().showMessage("Ready", 2000)
+
     def _build_timeline(self) -> QHBoxLayout:
         """Build the frame timeline row.
 
@@ -130,16 +137,65 @@ class CurationWindow(QMainWindow):
         self.project_panel.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
         self.project_panel.lamella_selected.connect(self._select_lamella)
+        self.project_panel.project_path_requested.connect(
+            lambda row: self._copy_path(self.controller.project_path(row), "Project")
+        )
+        self.project_panel.lamella_path_requested.connect(
+            lambda row: self._copy_path(self.controller.lamella_path(row), "Lamella")
+        )
+        self.project_panel.project_reveal_requested.connect(
+            lambda row: self._reveal_path(self.controller.project_path(row))
+        )
+        self.project_panel.lamella_reveal_requested.connect(
+            lambda row: self._reveal_path(self.controller.lamella_path(row))
+        )
 
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
         self.image_panel.overlay_toggled.connect(self._set_overlay)
         self.image_panel.alpha_changed.connect(lambda _alpha: self._render())
+        self.image_panel.path_requested.connect(
+            lambda: self._copy_path(self._displayed_path(), "Image")
+        )
+        self.image_panel.reveal_requested.connect(
+            lambda: self._reveal_path(self._displayed_path())
+        )
 
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.target_changed.connect(self._set_target)
         self.state_panel.scope_changed.connect(self._set_scope)
         self.state_panel.state_requested.connect(self.apply_state)
+
+    # -- copying paths out of the window -----------------------------------
+
+    def _displayed_path(self) -> Path | None:
+        """Return the file currently on screen, image or plot."""
+        if self.controller.mode == "plot":
+            return self.controller.current_plot_path()
+        return self.controller.current_image_path()
+
+    def _copy_path(self, path: Path | None, noun: str) -> None:
+        """Put *path* on the clipboard and say so in the status bar."""
+        if path is None:
+            self.statusBar().showMessage(f"No {noun.lower()} to copy a path for", 4000)
+            return
+        QApplication.clipboard().setText(str(path))
+        self.statusBar().showMessage(f"{noun} path copied: {path}", 6000)
+        logger.info("Copied %s path to clipboard: %s", noun.lower(), path)
+
+    def _reveal_path(self, path: Path | None) -> None:
+        """Open *path*'s folder in the desktop file manager.
+
+        The containing directory is opened rather than the file itself: opening
+        a .tif would hand it to whatever application claims that extension,
+        which is not what "reveal" means.
+        """
+        if path is None:
+            self.statusBar().showMessage("Nothing to reveal", 4000)
+            return
+        folder = path if path.is_dir() else path.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        logger.info("Revealed %s", folder)
 
     def _add_shortcuts(self) -> None:
         """Bind the keys that make curating a long lamella bearable."""
