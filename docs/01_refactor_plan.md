@@ -1,13 +1,16 @@
 # Refactor and cleanup plan
 
-Status: **§1–§4 done (phases 0–1). §5 outstanding.**
+Status: **§1–§4 done (phases 0–1), except the environment-coverage items
+added as §4.1. §5 outstanding.**
 Written 2026-08-14 against `main` at c9c05e2.
 
 A consumable checklist. When every box is ticked this document should be
 deleted — it has no value as a record. What remains is §5 (test fixture
 consolidation, which the roadmap deliberately schedules as opportunistic rather
-than as a single pass), plus three items parked by decision rather than
-oversight: the git remote (§1.1), the licence (§4) and CI (§4).
+than as a single pass), §4.1 (running the suite in more than one environment,
+added after three bugs escaped that only appear in environments other than the
+development one), plus three items parked by decision rather than oversight:
+the git remote (§1.1), the licence (§4) and CI (§4).
 
 Baseline: `pytest -q` gives **667 passed, 1 skipped in 39 s**. Nothing below is
 a bug fix; the package works. This is removal of things that stopped being true
@@ -354,9 +357,52 @@ for the stated goal of open-sourcing, and all are cheap now and annoying later.
       carried a copy. Verified by uninstalling the package and confirming all
       667 tests still pass. `test_gui_layering.py` keeps its `SRC` constant: it
       uses it to build a subprocess environment, not for imports.
-- [ ] **No CI.** A single GitHub Actions workflow running `pytest` on push
-      would catch the class of breakage that a 667-test suite exists to catch
-      but only when someone remembers to run it. Do this once the remote exists.
+### 4.1 The suite only ever runs in one environment
+
+Three bugs were found by the user hitting them, one at a time, in the days
+after they were written. None could have been caught here, and they share a
+cause worth naming:
+
+| Bug | Why it was invisible |
+|---|---|
+| `QPainter` nesting crashed under PySide6 | Developed against PyQt5 5.15.2 |
+| `strptime('%p')` returned None under a non-English locale | Developed under a C locale |
+| conda-forge and Anaconda `defaults` mixed in one environment | Developed in an environment built earlier, by hand |
+
+**The package supports two Qt bindings and only one is ever exercised.** The
+same is true of locale, and of a freshly-solved environment. A 859-test suite
+that runs in exactly one configuration says nothing about the other
+configurations it claims to support, and each of the three above was silent
+rather than loud -- an unparsed timestamp is simply absent, and a nested
+painter crashes somewhere unrelated.
+
+- [ ] **Run the GUI tests against the other Qt binding before publishing.**
+      This is the cheap 80%, available now with no remote, because the suite
+      takes 40 seconds:
+
+      pytest -q tests/test_gui_window.py tests/test_frame_strip_labels.py \
+             tests/test_gui_variant_widgets.py tests/test_gui_variants.py
+
+      in an environment with whichever binding you do not normally use. That
+      alone would have caught the painter crash. Worth doing after any change
+      under `gui/widgets/`, since that is where the binding differences live.
+
+- [ ] **Check a locale other than the default**, most cheaply by running the
+      suite with `LC_ALL=de_DE.UTF-8`. Anything parsing or formatting a date,
+      a number or a case-folded string is a candidate; `image_metadata` now has
+      tests for this but nothing stops the next one.
+
+- [ ] **No CI.** A GitHub Actions workflow running `pytest` on push, across a
+      matrix of `{pyqt5, pyside6}` and two operating systems, is what makes the
+      two items above happen without anyone remembering. It would have caught
+      the painter crash outright and the locale bug with `LC_ALL` in the
+      matrix; it would **not** have caught the conda channel mix, which is a
+      property of a local environment rather than of the repository.
+
+      Deferred with the remote (§1.1), since Actions runs on GitHub. That is
+      the concrete cost of deferring the remote rather than an argument to
+      reverse it -- but do it before the package is published, when other
+      people's environments stop being hypothetical.
 - [ ] **No `CHANGELOG.md`.** Optional at this stage; becomes necessary the
       moment a second person uses the package.
 

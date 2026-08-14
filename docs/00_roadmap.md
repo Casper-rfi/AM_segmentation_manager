@@ -69,6 +69,14 @@ the controller already has. None of it depends on the metadata work, and doing
 it now means the tool is more pleasant to use during the months the metadata
 work takes.
 
+### Ongoing — Run the suite somewhere other than here
+
+`01_refactor_plan.md` §4.1, added 2026-08-14. Three bugs reached the user that
+could not have failed on the development machine: a Qt binding difference, a
+locale difference, and a freshly-solved conda environment. The suite is fast
+enough that a second run under the other Qt binding is cheap insurance, and it
+is the one item here with a track record of catching real defects.
+
 ### Phase 3 — Test fixture consolidation (opportunistic, not a big bang)
 
 `01_refactor_plan.md` §5. 32 of 45 test files build directory trees by hand and
