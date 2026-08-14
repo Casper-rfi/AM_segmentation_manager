@@ -641,40 +641,88 @@ them is arguably the single most useful thing in the tab.
 
 ## 8. Phase 8 — Label quantification
 
-Deliberately last, and fenced.
+Still last, still fenced, but no longer blocked: the three questions this
+section opened with were answered on 2026-08-14 and are recorded below.
 
-Your examples: proportion of lamellae with a crack or hole; size distributions.
-Genuinely useful, and genuinely a different kind of work from everything above —
-it reads **pixel data**, not headers, so it is orders of magnitude more
-expensive and it needs decisions the rest of this document does not.
+### 8.1 What was decided
 
-Before building it, three questions need answers that only you have:
+**Classes that matter: `GIS` (1), `lamella` (2), `crack/hole` (3).**
+`background` (0) and `vacuum` (4) are context and are not measured. Class
+indices come from `segmentation_config_AM.yaml` via `config.py`; read them from
+there rather than hardcoding, since a project may ship its own config.
 
-1. **What counts as a crack?** A connected component of the crack class above
-   some pixel area? Per image, or per lamella (a crack visible in one frame of
-   twenty)? This is a scientific definition, not an implementation detail, and
-   it must be written down before code, because everything downstream inherits
-   it.
-2. **Measured on which label?** Only `corrected` ones, presumably — a
-   prediction-derived label would measure the model, not the sample. Say so
-   explicitly.
-3. **In pixels or in nanometres?** Nanometres needs the pixel size from §3, and
-   is the only version comparable across images. Almost certainly nm, which
-   makes this depend on phase 4.
+**Measurements in physical units, not pixels.** Areas in µm², lengths in nm.
+A pixel count is not comparable between two images at different magnifications,
+and comparing across the archive is the entire point. The conversion needs
+`pixel_size_nm` from `image_metadata`, which makes this the first thing to
+depend on both a label's pixels and its image's header.
 
-Implementation sketch, once those are settled: extend
-`operations/label_io.py`, which already opens label files for
-`is_label_file_empty`, with per-class pixel counts and connected-component
-sizes. Feed the result into `aggregate.py` as another key function. Cache
-per-label results keyed by path and mtime — **here** a cache is justified,
-because reading and labelling components in a 3072×2048 image is milliseconds
-to seconds, not 0.5 ms.
+**A crack is a connected component of class 3 with an area of at least
+0.1 µm², and the threshold is a setting.** The default is a sensible starting
+value rather than a physical constant, so it belongs in the config file beside
+the class definitions, and on the command line as an override. Anything smaller
+is treated as noise -- at a 13 nm pixel, 0.1 µm² is about 590 pixels, so this
+discards specks without discarding real defects.
 
-**Where to stop.** Per-class area, component count, component size distribution.
-That is enough to answer "what proportion have a crack" and "how big are they".
-Shape descriptors, morphology, per-class co-occurrence matrices: those are
-analysis, and analysis belongs in a script reading the CSV. If phase 8 starts
-growing an image-analysis library, it has gone past its purpose.
+### 8.2 Still to decide
+
+**Which labels are measured.** "GIS, lamella and crack" answered which
+*classes*; it did not settle which *workflow state*. The recommendation is
+**corrected labels only, by default, with a flag to widen it**: a label derived
+from a prediction measures the model rather than the sample, so mixing the two
+would quietly make a model-quality figure look like a sample statistic. Not a
+blocker -- `--state` already exists on every command that selects images -- but
+the default matters and should be deliberate.
+
+**Per image or per lamella.** "The proportion of lamellae with a crack" is a
+question about lamellae, and a crack visible in three frames of a milling
+sequence is one crack, not three. Counting per image answers a different and
+less useful question. Suggest reporting both, with the per-lamella figure as
+the headline, and defining a lamella as cracked if any of its corrected labels
+holds a crack above the threshold.
+
+### 8.3 Implementation sketch
+
+Extend `operations/label_io.py`, which already opens label files for
+`is_label_file_empty`, rather than adding a second reader:
+
+```python
+@dataclass(frozen=True)
+class LabelMeasurement:
+    """What one label holds, in physical units."""
+    areas_um2: dict[int, float]          # per class index
+    crack_count: int                     # components >= the threshold
+    crack_areas_um2: tuple[float, ...]   # each qualifying component
+    pixel_size_nm: float | None          # None when the header was unreadable
+```
+
+Components come from `cv2.connectedComponentsWithStats` on the class-3 mask,
+which is already a dependency. Feed the result into `aggregate.py` as further
+key functions, so the breakdowns, the CSV export and the charts all work on it
+without new machinery.
+
+**Cache per label, keyed by path and mtime.** Unlike header reading at 0.5 ms,
+labelling components in a 3072x2048 image is milliseconds to seconds, and every
+command that groups by a crack statistic would otherwise re-read the archive.
+This is the one place in the package where a cache is justified; §1.5 explains
+why it is not justified for headers.
+
+**Watch the resized-label case.** A label converted from a prediction may not
+share its image's pixel dimensions -- `ImageRecord` already carries
+`label_resized` for exactly this. The pixel size that converts a label's area
+to µm² is the *image's*, scaled by the ratio between their dimensions. Getting
+this wrong produces areas that are silently wrong by a constant factor, which
+is the hardest kind of error to notice in a distribution.
+
+### 8.4 Where to stop
+
+Per-class area, crack count, and crack size distribution. That answers "what
+proportion have a crack" and "how big are they", which is what was asked for.
+
+Shape descriptors, morphology, per-class co-occurrence, anything about
+position: those are analysis, and analysis belongs in a script reading the CSV
+from §6.1. If this section starts growing an image-analysis library, it has
+gone past its purpose.
 
 ---
 

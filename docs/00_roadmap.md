@@ -1,150 +1,146 @@
 # Roadmap and planning index
 
-Written 2026-08-14, against `main` at c9c05e2 (667 tests passing, 1 skipped).
+Planning written 2026-08-14 against `main` at c9c05e2. **Phases 0–7 are built.**
+This file is the entry point for picking the work up fresh.
 
-This is the entry point to the planning documents. It answers *what order* and
-*why that order*, and records the state of the repository at the point the plan
-was made.
-
-| Doc | Covers | Size |
+| Doc | Covers | State |
 |---|---|---|
-| [`01_refactor_plan.md`](01_refactor_plan.md) | Alignment audit, dead code, doc truth, test suite, tooling gaps, branches | Small, mostly deletions |
-| [`02_gui_improvements_plan.md`](02_gui_improvements_plan.md) | The four requested GUI changes | Small |
-| [`03_metadata_plan.md`](03_metadata_plan.md) | Reading, editing, exporting and summarising metadata | Large — the main body of new work |
-| [`04_future_work.md`](04_future_work.md) | Launching the segmentation software, ML inference | Sketch only |
+| [`01_refactor_plan.md`](01_refactor_plan.md) | Cleanup checklist | §1–§4 done; §4.1 and §5 open |
+| [`02_gui_improvements_plan.md`](02_gui_improvements_plan.md) | The four GUI changes | Done |
+| [`03_metadata_plan.md`](03_metadata_plan.md) | Metadata: read, edit, aggregate, export, present | §3–§7 done; §8 specified, not built |
+| [`04_future_work.md`](04_future_work.md) | Segmentation launch, ML inference, deposition | Sketches only |
+| [`reference_layouts.md`](reference_layouts.md) | Real dataset layouts, and the axes they vary along | Reference |
+| [`design_record_gui.md`](design_record_gui.md), [`design_record_layouts.md`](design_record_layouts.md) | Why the window and legacy-layout support are as they are | As built |
 
 ---
 
-## Why four documents and not one
+## Where the work stands
 
-Splitting is worth it here for one reason: **these have different lifetimes.**
+**Suite: 859 passed, 8 skipped, ~40 s.** `ruff check` clean. Confirmed on both
+PyQt5 (development machine) and PySide6 (the user's), and under `de_DE.UTF-8`.
 
-* The refactor plan is a checklist that gets consumed and deleted. When every
-  box is ticked it has no further value.
-* The GUI plan is a small, self-contained change set — it will be done in one
-  sitting and is easier to hold in one file than scattered through a larger doc.
-* The metadata plan is a multi-month design that will be revised as it is
-  built. It needs room to record decisions and their reasons, the way
-  `design_record_gui.md` and `design_record_layouts.md` did.
-* Future work is a holding area for things deliberately *not* being designed
-  yet. Keeping it separate stops speculative detail leaking into the metadata
-  plan and inflating its scope.
+Built across phases 0–7:
 
-The failure mode of one big doc is that the consumable checklist and the
-long-lived design get edited at the same time, and neither reads cleanly. The
-failure mode of too many docs is that nobody knows which is current — which is
-why this index exists and why each doc carries a status line at the top.
+* **Cleanup** — dead code removed, `pandas` dropped as a requirement, stale
+  documentation corrected, `ruff` and `pytest` configured, version
+  single-sourced.
+* **GUI** — timeline margin, right-click copy path and reveal, scan-root row
+  collapsed, per-lamella and per-project curation status chips.
+* **Test infrastructure** — shared dataset builders in `conftest.py`, tested in
+  their own right, plus an opt-in smoke test against the real collection.
+* **`image_metadata.py`** — acquisition settings from both header dialects,
+  validated 1080/1080 field values against the standalone script it replaced.
+* **`operations/metadata_edit.py`** — editing `AM_metadata.yaml` in place,
+  behind `show-metadata` and `edit-metadata`.
+* **`aggregate.py`, `plots.py`, `operations/metadata_csv.py`** — counting,
+  charts and exports, behind `stats`, `export-metadata-csv` and
+  `export-projects-csv`, plus metadata filters on `create-training-csv`.
+* **GUI tabs** — Curate, Metadata and Export, each with a Qt-free controller.
 
----
+## What to pick up next
 
-## Recommended order
+**`03_metadata_plan.md` §8, label quantification.** Specified and unblocked:
+the classes, units and crack threshold were settled on 2026-08-14 and are
+written into §8.1. Two smaller decisions remain in §8.2, each with a
+recommendation. This is the last substantial feature in the plan.
 
-The ordering principle: **do the things that make later work cheaper first, and
-do them only if they actually make later work cheaper.** Cleanup for its own
-sake can wait indefinitely; cleanup that removes an obstacle cannot.
+Then, in no particular order:
 
-### Phase 0 — Branches and repo hygiene (minutes)
-
-`01_refactor_plan.md` §1. Delete merged branches, remove the duplicated config
-file. Zero risk, and it clears noise before anything else.
-
-### Phase 1 — Dead code and documentation truth (half a day)
-
-`01_refactor_plan.md` §2–§4. Removes ~unused code, drops `pandas` from the
-required dependencies, and corrects the statements in `CLAUDE.md`, `README.md`
-and the two design docs that are no longer true.
-
-**Do this before the metadata work, not after.** `CLAUDE.md` is the instruction
-set the metadata work will be built against; building against stale
-instructions produces code that then has to be re-argued. In particular
-`design_record_gui.md` said CSV export stays out of the GUI, and the metadata
-plan reverses that — the reversal should be recorded deliberately rather than
-discovered as a contradiction halfway through.
-
-### Phase 2 — GUI improvements (one to two days)
-
-`02_gui_improvements_plan.md`. Three of the four are cosmetic and independent of
-everything else. The fourth (lamella/project status indicators) needs only data
-the controller already has. None of it depends on the metadata work, and doing
-it now means the tool is more pleasant to use during the months the metadata
-work takes.
-
-### Ongoing — Run the suite somewhere other than here
-
-`01_refactor_plan.md` §4.1, added 2026-08-14. Three bugs reached the user that
-could not have failed on the development machine: a Qt binding difference, a
-locale difference, and a freshly-solved conda environment. The suite is fast
-enough that a second run under the other Qt binding is cheap insurance, and it
-is the one item here with a track record of catching real defects.
-
-### Phase 3 — Test fixture consolidation (opportunistic, not a big bang)
-
-`01_refactor_plan.md` §5. 32 of 45 test files build directory trees by hand and
-`conftest.py` holds no fixtures. This is the largest maintenance liability in
-the repository, but it is **not urgent**, because the metadata work does not
-change directory layouts. Add the shared builders now; migrate tests to them as
-you touch each file, not in one sweep.
-
-### Phase 4 — Reading per-image metadata
-
-`03_metadata_plan.md` §3. The foundation for everything else in that document.
-Absorbs and then retires `read_sem_tiff_header_csv.py`.
-
-### Phase 5 — Editing project metadata (API → CLI → GUI)
-
-`03_metadata_plan.md` §4. Independent of phase 4 and could be swapped with it.
-Phase 4 first is recommended only because it is the harder unknown, and finding
-out early that FIB headers differ from SEM headers is better than finding out
-late.
-
-### Phase 6 — Aggregation, statistics and filtered CSV export
-
-`03_metadata_plan.md` §5–§6. Depends on phase 4.
-
-### Phase 7 — GUI tabs for CSV export and metadata
-
-`03_metadata_plan.md` §7. Depends on phases 5 and 6, and on the deliberate
-scope reversal recorded in phase 1.
-
-### Phase 8 — Label quantification (crack/hole proportions, size distributions)
-
-`03_metadata_plan.md` §8. Deliberately last, and deliberately fenced. This is
-where feature creep is most likely, and the plan says where to stop.
-
-### Later — Future work
-
-`04_future_work.md`. Not scheduled.
+* `01_refactor_plan.md` §5 — test fixture consolidation, deliberately
+  opportunistic: convert a file when editing it anyway, never in a sweep.
+* `01_refactor_plan.md` §4.1 — run the suite under the other Qt binding and
+  another locale. This has caught three real bugs and is the highest-value
+  habit here.
+* `03_metadata_plan.md` §9 — four open questions, the first being whether
+  data-repository deposition is still a goal. `CLAUDE.md` lists it as a main
+  function of the package and nothing implements it.
 
 ---
 
-## How often should a package this size be refactored?
+## Things a fresh context should know
 
-Since you asked directly: there is no schedule, and treating refactoring as a
-scheduled activity is generally a mistake. The practice that works is two
-layered habits.
+Facts that cost time to rediscover, each learned the hard way.
+
+**The reference collection is at
+`<collection>/`** — 21 projects,
+2670 indexed images, 40 GB, three microscopes. Treat it as read-only. Point the
+smoke test at it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
+
+**The sample layouts are examples, not a taxonomy.** `conftest.build_dataset`
+takes layout *axes* — lamella level, stage nesting, naming, modalities,
+variants — and the named samples are presets over them. A suite passing across
+all five does not show that every layout works. Vary the axis a behaviour
+actually depends on.
+
+**Modality presence is a property of a dataset, not of its layout.** Two
+documented datasets have SEM only; the oldest dataset in the collection has FIB
+throughout.
+
+**Every image header carries settings for both beams.** `microscope_state.*`
+describes the beam that took the image; `system.*` holds both beams' configured
+defaults. Reading `system.ion.voltage` from an SEM image yields the FIB's
+30 kV — plausible and wrong. `image_metadata.FIELDS` confines beam-specific
+fields, including the fallback search, to the beam that fired.
+
+**A missing measurement is never a default.** The single exception is the
+integration counts, where absence means "not enabled", which is one pass — that
+is decoding the field rather than defaulting it, and it is the only field with
+a floor.
+
+**`downscale_to_fit` uses `min(width_ratio, height_ratio)`.** The images are
+landscape in a portrait pane, so **width binds**, and window chrome does not
+change how they render. An earlier claim to the contrary was wrong; do not
+repeat it.
+
+**Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a
+process-global side effect, and `test_gui_*` sorts before most other tests.
+That is how a locale-dependent `strptime('%p')` bug appeared only in full runs,
+only on a machine with a non-English locale. `LC_ALL=… pytest` does **not**
+test this; `AM_SEG_TEST_LOCALE=… pytest` does.
+
+**The development and user environments differ** — PyQt5 here, PySide6 there.
+Three bugs reached the user because of it. See `01_refactor_plan.md` §4.1.
+
+**Never mix conda-forge with Anaconda `defaults`.** `environment.yml` pins
+`nodefaults` for this reason: a mixed environment paired Anaconda's OpenCV with
+conda-forge's protobuf and `cv2` would not load at all.
+
+---
+
+## Why these documents are split
+
+They have different lifetimes. The refactor plan is a checklist that gets
+consumed and deleted. The GUI plan was a small change set. The metadata plan is
+a long-lived design that records decisions and their reasons. Future work is a
+holding area for things deliberately *not* being designed yet, kept separate so
+speculative detail does not leak into the metadata plan and inflate its scope.
+
+The failure mode of one big document is that the consumable checklist and the
+long-lived design get edited together and neither reads cleanly. The failure
+mode of too many is that nobody knows which is current — hence this index, and
+the status line at the top of each.
+
+---
+
+## How often to refactor a package this size
+
+There is no schedule, and treating refactoring as scheduled is usually a
+mistake. Two habits work.
 
 **Continuous, inside feature work.** Every feature leaves the code slightly
-better arranged than it found it. This is the bulk of it and it never appears
-as a task in its own right. Your commit history already shows this happening.
+better arranged than it found it. This is the bulk of it and never appears as a
+task in its own right.
 
-**Deliberate consolidation at boundaries.** Occasionally you learn something
-about the problem that invalidates the existing arrangement, and no amount of
-small tidying will fix it. That is what the `layout.py` centralisation was: the
-directory conventions were duplicated in ~200 places, and the fix was not
-incremental. These are rare — for a package this size, expect one or two a
-year, triggered by a discovery rather than a date.
+**Deliberate consolidation at boundaries**, when something learned about the
+problem invalidates the current arrangement and no amount of tidying will fix
+it. The `layout.py` centralisation was one. Expect one or two a year, triggered
+by a discovery rather than a date.
 
-**The signal that one is overdue**, and the only heuristic worth memorising: you
-find yourself changing the same fact in more than two places. One place is
-right. Two is tolerable. Three means the fact has no home and needs one.
+**The signal that one is overdue**, and the only heuristic worth memorising:
+you find yourself changing the same fact in more than two places. One is right,
+two is tolerable, three means the fact has no home and needs one.
 
-By that measure the current package is in good shape. The `layout.py` discipline
-is holding — the last two features (legacy layouts, empty labels) were absorbed
-without spreading. What is proposed in `01_refactor_plan.md` is not a structural
-refactor at all; it is deletion of things that stopped being true, which is a
-much smaller and safer category of work. Roughly a day, not a week.
-
-The one genuine structural risk ahead is described in
-`03_metadata_plan.md` §5: three modules currently walk the index independently,
-and the statistics work would make it four. That is the "same fact in more than
-two places" signal firing, and the plan addresses it rather than adding to it.
+That signal fired once here — `filtering`, `survey` and `reporting` each walked
+the project tree, and statistics would have been a fourth. `aggregate.py` is
+the answer, and it counts records the filter already yields rather than walking
+anything itself.
