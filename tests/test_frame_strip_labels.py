@@ -18,7 +18,7 @@ HAS_QT = importlib.util.find_spec("qtpy") is not None
 pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
-    from qtpy.QtGui import QImage, QPainter
+    from qtpy.QtGui import QImage
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.gui.widgets.frame_strip import (
@@ -45,12 +45,26 @@ def timeline(qt_app):
 
 
 def _render(widget) -> QImage:
-    """Paint the widget into an image so its pixels can be asserted on."""
-    image = QImage(widget.width(), widget.height(), QImage.Format_ARGB32)
-    image.fill(0)
-    painter = QPainter(image)
-    widget.render(painter)
-    painter.end()
+    """Capture the widget's pixels so they can be asserted on.
+
+    Uses ``QWidget.grab()`` rather than creating a QPainter and calling
+    ``render()`` into it. That older approach relies on painter redirection:
+    ``paintEvent`` opens its own QPainter on the widget while the external one
+    is still active. Qt5 tolerated the nesting; Qt6 does not, and under PySide6
+    it produced "QPaintDevice: Cannot destroy paint device that is being
+    painted" and then a segmentation fault during garbage collection --
+    reported from pytest's traceback formatting, far from the cause.
+
+    grab() is the supported way to capture a widget and works on both bindings.
+    """
+    pixmap = widget.grab()
+    image = pixmap.toImage()
+    # On a HiDPI screen grab() returns more device pixels than the widget has
+    # logical ones. The assertions below are in widget coordinates, so bring
+    # the image back to that scale rather than doubling every expected x and y.
+    if image.width() != widget.width() or image.height() != widget.height():
+        image = image.scaled(widget.width(), widget.height())
+    image.setDevicePixelRatio(1.0)
     return image
 
 
