@@ -70,6 +70,8 @@ Commands by purpose:
 | --- | --- |
 | See how a directory tree is interpreted, and what does not fit | `inspect-layout` |
 | Make a pre-Autolamella dataset indexable, and record metadata | `init-project` |
+| See each project's metadata and where each value came from | `show-metadata` |
+| Set or clear metadata fields | `edit-metadata` |
 | Rename pre-convention label directories | `migrate-layout` |
 | List discovered projects and their counts | `list-projects` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
@@ -157,6 +159,7 @@ Project layout
   - survey.py        : read-only inspection and findings (`inspect-layout`)
   - models.py        : dataclasses for Project, Lamella, AdaptiveMillingStage, ImageRecord
   - metadata.py      : typed project metadata, resolved from the two YAML files
+  - image_metadata.py: acquisition settings read from image headers
   - frames.py        : per-lamella chronological view pairing SEM with FIB
   - filtering.py     : matching records against CLI selectors
   - reporting.py     : human-readable summaries of projects and surveys
@@ -172,6 +175,7 @@ Project layout
     - csv.py, csv_check.py : training list export and re-checking
     - label_compression.py : shrinking labels on disk
     - init_project.py    : AM_metadata.yaml templates
+    - metadata_edit.py   : editing AM_metadata.yaml in place
     - migrate.py         : renaming pre-convention label directories
   - gui/             : curation window (only gui/widgets/ imports Qt)
   - cli.py           : CLI entrypoint

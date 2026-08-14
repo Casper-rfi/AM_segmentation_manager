@@ -1,6 +1,13 @@
 # Metadata: reading, editing, exporting and summarising
 
-Status: **proposed, not started.** Written 2026-08-14.
+Status: **§3 and §4 built** (phases 4 and 5); §5-§8 proposed.
+Written 2026-08-14.
+
+Built so far: `image_metadata.py` reads acquisition settings from both header
+dialects, validated field-for-field against the standalone script it replaces;
+`operations/metadata_edit.py` plus `show-metadata` and `edit-metadata` edit
+project metadata from the command line. The GUI tab (§4.3, §7) is deliberately
+still waiting on the CLI being used against real data.
 
 The main body of new work. Four capabilities, built in order, each usable on its
 own:
@@ -368,7 +375,7 @@ am-seg show-metadata <project-selector>
 * `show-metadata` prints each resolved value with its source file — the data is
   already in `ExperimentMetadata.sources` and nothing surfaces it today.
 
-### 4.3 GUI
+### 4.3 GUI -- still deferred
 
 A *Metadata* tab, per §7. Build it after the CLI has been used on real data:
 the CLI is where you find out which fields you actually edit and which

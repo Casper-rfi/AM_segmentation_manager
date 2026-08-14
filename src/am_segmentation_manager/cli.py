@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .filtering import iter_matching_records
 from .io.path import make_path_relative
+from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
 from .operations.predictions import convert_record_predictions
 from .reporting import print_project_summary, print_survey
 from .scanner import Scanner
@@ -263,6 +264,70 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     init_project_cmd.add_argument(
         "--dry-run", action="store_true",
         help="Report which files would be written without creating anything",
+    )
+
+    # -- show-metadata / edit-metadata ---------------------------------------
+    show_metadata = sub.add_parser(
+        "show-metadata",
+        help="Show each project's resolved metadata, and where each value came from",
+        description=(
+            "Print the descriptive metadata in effect for each project, with the "
+            "file that supplied each value. Values in AM_metadata.yaml override "
+            "experiment.yaml per key, so a surprising value is easiest to "
+            "explain by seeing which file it came from. Read-only."
+        ),
+    )
+    show_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    show_metadata.add_argument(
+        "--project", action="append", default=None,
+        help="Project name, relative path or scan number; repeatable. Default: all",
+    )
+
+    edit_metadata = sub.add_parser(
+        "edit-metadata",
+        help="Set or clear fields in a project's AM_metadata.yaml",
+        description=(
+            "Edit the descriptive metadata of one or more projects. Only "
+            "AM_metadata.yaml is written; experiment.yaml belongs to Autolamella "
+            "and is never touched. The file is edited in place, so comments, key "
+            "order and any keys this package does not model are preserved. "
+            "Nothing is written unless every requested edit is valid."
+        ),
+    )
+    edit_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    edit_metadata.add_argument(
+        "--project", action="append", default=None,
+        help="Project name, relative path or scan number; repeatable",
+    )
+    edit_metadata.add_argument(
+        "--all", action="store_true",
+        help=(
+            "Apply to every project found. Values are copied into each file "
+            "rather than resolved from a shared one, because nothing is "
+            "inherited from parent directories"
+        ),
+    )
+    edit_metadata.add_argument(
+        "--set", action="append", default=[], metavar="FIELD=VALUE",
+        help=f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}",
+    )
+    edit_metadata.add_argument(
+        "--clear", action="append", default=[], metavar="FIELD",
+        help=(
+            "Remove a field from AM_metadata.yaml, so experiment.yaml's value "
+            "applies again; repeatable"
+        ),
+    )
+    edit_metadata.add_argument(
+        "--todo", action="append", default=[], metavar="FIELD",
+        help=(
+            "Mark a field as outstanding work. Different from --clear: an "
+            "unfilled placeholder is reported by inspect-layout"
+        ),
+    )
+    edit_metadata.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would change without writing anything",
     )
 
     # -- gui ----------------------------------------------------------------
@@ -581,6 +646,94 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             len(results), written or (len(results) - skipped if args.dry_run else 0),
             "would be written" if args.dry_run else "written", skipped, remaining,
         )
+        return 0
+
+    if args.command in {"show-metadata", "edit-metadata"}:
+        from .filtering import matches_project
+        from .metadata import DESCRIPTIVE_FIELDS as FIELDS
+        from .operations.metadata_edit import (
+            MetadataValidationError,
+            update_project_metadata,
+        )
+
+        start_path = Path(args.start_path)
+        projects = Scanner(start_path).build_index().all_projects()
+        selectors = args.project
+        if selectors is not None:
+            projects = [p for p in projects if matches_project(p, selectors)]
+        if not projects:
+            logger.error("No projects matched under %s", start_path)
+            return 2
+
+        if args.command == "show-metadata":
+            for project in projects:
+                resolved = project.experiment_metadata
+                print(f"{project.display_name}")
+                if resolved is None:
+                    print("    (no metadata)")
+                    continue
+                for field in FIELDS:
+                    value = getattr(resolved, field)
+                    source = resolved.sources.get(field)
+                    origin = f"  [{source.name}]" if source else ""
+                    if value is None:
+                        state = "TODO" if field in resolved.todo_fields else "-"
+                        print(f"    {field:14} {state}")
+                    else:
+                        print(f"    {field:14} {value}{origin}")
+            return 0
+
+        if args.project is None and not args.all:
+            logger.error("Choose projects with --project, or all of them with --all")
+            return 2
+
+        values: dict[str, str | None] = {}
+        for item in args.set:
+            if "=" not in item:
+                logger.error("--set expects FIELD=VALUE, got %r", item)
+                return 2
+            field, value = item.split("=", 1)
+            values[field.strip()] = value.strip()
+        for field in args.clear:
+            values[field.strip()] = None
+        for field in args.todo:
+            values[field.strip()] = TODO_MARKER
+        if not values:
+            logger.error("Nothing to do: pass --set, --clear or --todo")
+            return 2
+
+        # Validate against every project before writing to any of them, so a
+        # bad field name cannot leave half the collection edited.
+        try:
+            planned = [
+                update_project_metadata(
+                    project.path, values, dry_run=True, project_name=project.display_name
+                )
+                for project in projects
+            ]
+        except MetadataValidationError as exc:
+            for problem in exc.problems:
+                logger.error("%s", problem)
+            return 2
+
+        changed = [change for change in planned if not change.is_empty]
+        for change in planned:
+            for line in change.describe():
+                print(line)
+        if not changed:
+            logger.info("Nothing to change across %d project(s)", len(projects))
+            return 0
+        if args.dry_run:
+            logger.info(
+                "Dry run: %d of %d project(s) would change", len(changed), len(projects)
+            )
+            return 0
+
+        for project in projects:
+            update_project_metadata(
+                project.path, values, project_name=project.display_name
+            )
+        logger.info("Updated %d of %d project(s)", len(changed), len(projects))
         return 0
 
     if args.command == "gui":
