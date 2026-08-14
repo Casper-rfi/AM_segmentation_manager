@@ -10,12 +10,25 @@ The main functions are to:
 1) manage the state of the data, segmentations and metadata 
 2) prepare labels from prediction for manual proofreading and curate data to annotate
 3) prepare filtered data lists for ML model training
-4) export metadata file lists and prepare data for deposition in scientific data repositories
-   **— not implemented, and not yet designed.** Metadata export is planned in
-   `docs/03_metadata_plan.md` §6; deposition is not. It needs a target
-   repository before anything can be designed, since the required directory
-   structure and metadata schema come from the target. Treat this as an
-   aspiration rather than a description until that decision is made.
+4) quantify the data, through its metadata and through measurements on the labels
+5) export metadata file lists and prepare data for deposition in scientific data repositories
+
+Steps 1–4 are implemented. **Deposition is not implemented**, and is the one
+main function that is not. Treat step 5 as an aspiration rather than a
+description.
+
+The end state the package builds toward is a labelled, curated dataset
+deposited on Zenodo, accompanied by three CSVs: metadata, label
+quantifications, and the model-training lists. Those three exports exist
+already (`export-metadata-csv`, `quantify-labels`, `create-training-csv`).
+
+**The data is deposited in the layout it already has.** There is no plan to
+re-format anything after labelling, and no repository-mandated structure to
+conform to. Consumers will either use this package to interpret the data or
+take the training CSVs. So deposition is a packaging and verification step, not
+a migration — do not design a restructuring pass for it. The one thing that
+must be added is `segmentation_config_AM.yaml`, without which the label class
+indices are meaningless. See `docs/04_future_work.md` §3.
 
 The package will initially be used only by me, but I intend to make it open source in the future. Therefore, code quality, maintainability and extensibility are important.
 
@@ -257,6 +270,8 @@ AM_metadata.yaml
 AM_metadata.yaml should override values from experiment.yaml where both contain the same information. Resolution is **per key**, so a project can override one field without restating the rest, and each resolved value records which file supplied it.
 
 Nothing is inherited from parent directories. Collection directories group projects by session or storage convenience, not by sample, and lamellae in one directory may be prepared on different samples — so resolving a field from a parent risks attributing the wrong sample to a project, an error that would be invisible in the output. Values shared between projects are copied into each file when `init-project` generates it, not resolved at scan time.
+
+**The project is the right level for this metadata, because all lamellae in one Autolamella project come from one sample** (confirmed 2026-08-14). Per-lamella metadata was considered and rejected on that basis. Note the distinction from the paragraph above: lamellae in one *directory* may be different samples, because a directory can hold several projects; lamellae in one *project* may not.
 
 Fields that vary between projects are never guessed. `init-project` writes them as `TODO` placeholders, and an unfilled placeholder is reported by `inspect-layout` rather than silently treated as a value.
 

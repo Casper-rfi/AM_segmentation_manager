@@ -235,10 +235,14 @@ Metadata CSV export (metadata plan §6) is adjacent but is not the same thing �
 deposition to something like EMPIAR needs a specified directory structure and a
 specified metadata schema, which nobody has written down.
 
-- [ ] Decide: is deposition still a goal? If yes, it needs its own plan and
-      `CLAUDE.md` should say it is unimplemented. If no, remove the claim.
-      Either is fine; leaving an unimplemented headline function stated as a
-      main function is what should not persist.
+- [x] Decide: is deposition still a goal? **Yes** (2026-08-14). It is the
+      package's end state: a labelled, curated dataset on a public repository
+      with metadata, quantification and training CSVs beside it. `CLAUDE.md`
+      now states the goal *and* that it is the one main function not
+      implemented, so the headline claim no longer reads as a description of
+      something that exists. The data goes to Zenodo in its current layout,
+      so this is a packaging step rather than a migration — see
+      `03_metadata_plan.md` §9.0 and `04_future_work.md` §3.
 
 ### 3.2 `implementation_suggestion.txt` — superseded and now actively wrong
 

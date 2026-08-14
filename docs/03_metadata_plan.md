@@ -764,21 +764,30 @@ separate piece of design.
 
 ---
 
-## 9. Open questions
+## 9. Open questions — all answered
 
-Two remain. Both need a decision rather than an investigation, which is why
-neither is settled here.
+### 9.0 Answered 2026-08-14, by decision
 
-1. **Is data-repository deposition still a goal?** `CLAUDE.md` lists it as a
-   main function; nothing implements it and your notes do not mention it. If it
-   is live, it needs its own plan (target repository, required schema,
-   directory layout) and it would substantially reuse §6. If not, remove the
-   claim. See `01_refactor_plan.md` §3.1(d).
-2. **Should `AM_metadata.yaml` record per-lamella metadata?** Today metadata is
-   per project. If lamellae in one project can be different samples — plausible
-   given `CLAUDE.md`'s warning that lamellae in one *directory* may be — then
-   `sample` is on the wrong object, and finding that out after building the
-   editor is expensive.
+**Deposition is still a goal, and it is the package's end state.** The chain is:
+view and curate the data, support label creation and proofreading, export
+training lists, quantify through metadata and label measurements, and finally
+deposit the labelled curated dataset on a public repository with three CSVs
+beside it — metadata, label quantifications, and model training. All three
+exports exist. What does not exist is the deposition step itself.
+
+**The data goes up in the layout it already has**, to Zenodo, with no
+re-formatting after labelling and no schema to conform to. What remains is
+packaging and verification, not migration — chiefly that
+`segmentation_config_AM.yaml` must travel with the data, since without it the
+label class indices mean nothing. `CLAUDE.md` has been updated to state the
+goal and its unimplemented status; `01_refactor_plan.md` §3.1(d) is resolved by
+that, and `04_future_work.md` §3 holds the detail.
+
+**Metadata stays per project.** All lamellae in one Autolamella project come
+from one sample, so `sample` is on the right object and per-lamella metadata
+would be a level of detail the data does not have. This does not contradict the
+warning that lamellae in one *directory* may differ: a directory can hold
+several projects, and it is the project that pins the sample.
 
 ### 9.1 Answered 2026-08-14, against the collection
 

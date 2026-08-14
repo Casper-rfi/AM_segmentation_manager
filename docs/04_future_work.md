@@ -111,14 +111,41 @@ selectable.
 
 ## 3. Deposition to scientific data repositories
 
-Listed in `CLAUDE.md` as a main function of the package. Nothing implements it,
-and it appears nowhere in your notes.
+**Confirmed as a goal on 2026-08-14, and it is the package's end state** — not
+a nice-to-have at the edge of it. The whole chain leads here: curate the data,
+proofread the labels, export training lists, quantify, and then deposit the
+labelled curated dataset publicly with three CSVs beside it (metadata, label
+quantifications, model training). All three of those exports are built.
 
-Flagged in `01_refactor_plan.md` §3.1(d) as a decision to make: either it is
-still a goal, in which case it needs a plan of its own and would substantially
-reuse the metadata export in `03_metadata_plan.md` §6, or it is not, and the
-claim should come out of `CLAUDE.md`.
+**The data is deposited in the layout it already has.** Target: Zenodo. There
+is no plan to re-format anything after labelling, and no repository-mandated
+directory structure or metadata schema to conform to — Zenodo takes files plus
+a record of title, authors, licence and description. Consumers will either use
+this package to interpret the data or take the training CSVs and ignore the
+rest.
 
-If it is still a goal, the first question is which repository (EMPIAR is the
-obvious candidate for FIB/SEM), because the required directory structure and
-metadata schema come from the target and nothing can be designed without them.
+*An earlier draft of this section claimed deposition was blocked on choosing a
+repository, "since the required directory structure and metadata schema come
+from the target". That was wrong, and wrong in an expensive direction: it would
+have justified building a restructuring step nobody wants. Recorded here
+because the reasoning looked sound and was not.*
+
+So the remaining work is small, and is about making the deposit
+*interpretable* rather than about moving files:
+
+* **`segmentation_config_AM.yaml` must travel with the data.** This is the one
+  real dependency. A label is a TIFF of small integers; without the file saying
+  3 means crack/hole it is uninterpretable, and the class definitions live in
+  the package rather than in the data. Everything else needed is already inside
+  the tree — `experiment.yaml` and `AM_metadata.yaml` sit in each project.
+* **A completeness check before depositing** — no `TODO` metadata placeholders,
+  no empty labels among the selected images, no images disagreeing with their
+  shared label. `inspect-layout` already reports all three; what is missing is
+  a single "is this ready to deposit" verdict over them.
+* **A manifest with checksums**, so a 40 GB transfer can be verified.
+* **The three CSVs**, included as they are.
+
+Practical constraint worth knowing before the first deposit: Zenodo's default
+ceiling is 50 GB per record. The reference collection is 40 GB, which fits, but
+not with much room — a larger collection would need either a request to Zenodo
+or splitting across records.

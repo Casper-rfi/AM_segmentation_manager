@@ -50,11 +50,15 @@ What is left is smaller, and in no particular order:
 * `01_refactor_plan.md` §4.1 — run the suite under the other Qt binding and
   another locale. This has caught three real bugs and is the highest-value
   habit here.
-* `03_metadata_plan.md` §9 — two open questions, both needing a decision rather
-  than an investigation. The first is whether data-repository deposition is
-  still a goal: `CLAUDE.md` lists it as a main function of the package and
-  nothing implements it. The other two questions were settled against the
-  collection on 2026-08-14 and cost no code (§9.1).
+* **Deposition** — confirmed on 2026-08-14 as a goal and as the package's end
+  state, and now the only main function not implemented. Zenodo, in the layout
+  the data already has: a packaging and verification step, **not** a
+  restructuring one. Smaller than it sounds — the three CSVs exist, and the
+  substantive gap is that `segmentation_config_AM.yaml` must travel with the
+  data or the label indices mean nothing. See `04_future_work.md` §3.
+
+`03_metadata_plan.md` §9 is now closed: all four questions answered, two by
+decision (§9.0) and two against the collection (§9.1).
 
 ---
 
