@@ -319,10 +319,21 @@ Accurate. Two small things:
 These are not code quality problems today, but every one of them is a blocker
 for the stated goal of open-sourcing, and all are cheap now and annoying later.
 
-- [ ] **`pyproject.toml` metadata is placeholder.** `authors = [{ name = "Your
-      Name", email = "you@example.com" }]`. Fill it in.
-- [ ] **`license = { text = "MIT" }` but there is no `LICENSE` file.** A
-      declared licence with no licence text is not a licence. Add `LICENSE`.
+- [x] **`pyproject.toml` metadata is placeholder.** **Done** — now
+      `Casper Berger <casper.berger@rfi.ac.uk>`, the work address, matching the
+      identity git already uses for every commit.
+- [x] **`license = { text = "MIT" }` but there is no `LICENSE` file.**
+      **Resolved by removing the declaration, 2026-08-14.** The MIT claim was
+      never a decision that had been made, and a licence grant nobody chose is
+      worse than none: undeclared defaults to all rights reserved, which is the
+      accurate state. A `Private :: Do Not Upload` classifier now also blocks an
+      accidental PyPI upload.
+
+- [ ] *(deferred)* Choose a licence and add a `LICENSE` file. Open until the
+      package is published. The question is not only which licence but **who
+      the copyright holder is** — the author or the Rosalind Franklin Institute
+      — which is likely an institutional decision rather than a personal one,
+      and worth asking before the code goes anywhere.
 - [ ] **Version is stated twice** — `pyproject.toml` `version = "0.0.0"` and
       `__init__.py` `__version__ = "0.0.0"`. They will drift. Pick one source:
       simplest is to keep it in `pyproject.toml` and read it in `__init__.py`

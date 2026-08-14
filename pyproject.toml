@@ -7,10 +7,23 @@ name = "am_segmentation_manager"
 version = "0.0.0"
 description = "Manage Autolamella FIB/SEM segmentation projects: indexing, metadata and label management."
 readme = "README.md"
-authors = [ { name = "Your Name", email = "you@example.com" } ]
-license = { text = "MIT" }
+authors = [ { name = "Casper Berger", email = "casper.berger@rfi.ac.uk" } ]
 keywords = ["FIB-SEM", "segmentation", "autolamella", "microscopy"]
-classifiers = ["Programming Language :: Python :: 3"]
+
+# No license field. The package previously declared MIT with no LICENSE file,
+# which is a licence grant that was never actually decided on. Undeclared means
+# the default -- all rights reserved -- which is the accurate state while the
+# question is open. Choosing a licence (and whether the copyright holder is the
+# author or the Rosalind Franklin Institute) is deferred; see
+# docs/01_refactor_plan.md section 4.
+#
+# "Private :: Do Not Upload" is not a real classifier to PyPI: it rejects any
+# upload carrying it. That is deliberate belt-and-braces against an accidental
+# `twine upload` while the package is unlicensed and unpublished.
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Private :: Do Not Upload",
+]
 
 # Minimal runtime dependencies. Heavy image-processing deps are optional extras.
 dependencies = [
