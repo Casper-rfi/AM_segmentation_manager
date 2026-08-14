@@ -260,7 +260,18 @@ Nothing is inherited from parent directories. Collection directories group proje
 
 Fields that vary between projects are never guessed. `init-project` writes them as `TODO` placeholders, and an unfilled placeholder is reported by `inspect-layout` rather than silently treated as a value.
 
-Per-image metadata should be directly extracted from the image headers. *(Not yet implemented.)*
+Per-image metadata is extracted directly from the image headers by
+`image_metadata.py`. Two dialects are read: the fibsem JSON in TIFF tag 270,
+and the older FEI tag 34682. Where each value lives is declared once, in a
+field table -- that module is to header keys what `layout.py` is to directory
+names.
+
+**Every image header carries settings for both beams.** Only the beam the
+instrument reports as having taken the image is ever read; `system.*` holds
+both beams' configured defaults and is not a source of measurements.
+
+Headers are never read during scanning. Metadata is a mapping keyed by image
+path, built by the commands that need it, so a scan stays a filesystem walk.
 
 Metadata should be represented internally using dataclasses instead of raw dictionaries whenever practical.
 

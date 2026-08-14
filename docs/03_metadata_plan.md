@@ -59,26 +59,34 @@ a **cross-check**, not a replacement — the directory is still what organises t
 data, but a header disagreeing with its directory is a finding
 `inspect-layout` should report.
 
-### 1.3 Integrations exist only in the legacy dialect — and the reference script gets this wrong
+### 1.3 Integrations: the header is sparse, but absence has a meaning
 
-`read_sem_tiff_header_csv.py:120–130` defaults `image_integrations` and
-`line_integrations` to `1` when the header does not mention them.
+**Corrected 2026-08-14.** An earlier draft of this section claimed the fibsem
+schema has no integration fields at all, and that the reference script's default
+of `1` was therefore an invented value. Both halves were wrong, and comparing
+against `read_sem_tiff_header_csv.py` on real data is what found it.
 
-For dialect B that is harmless — the fields are always present
-(`Scan.Integrate: 16`, `EScan.LineIntegration: 1`). For dialect A they are
-**absent entirely**: the Autolamella schema has no integration fields at all. So
-the script's default would report "1 integration" for every modern image, which
-is a *claim about the acquisition* invented by the reader.
+**The fields do exist in fibsem**, as `image.frame_integration` and
+`image.line_integration`. The 2024 headers populate them (`frame_integration: 8`);
+later ones often write an explicit `null`. The claim came from generalising a
+single 2025 sample that omitted them.
 
-**Carry the extraction logic over; do not carry that default over.** Absent must
-map to `None` / empty, never to a plausible-looking number. This is the same
-principle already in `metadata.py`, where a `TODO` placeholder resolves to
-`None` rather than to a value, and the same principle as "an empty label is not
-evidence of annotation". A missing measurement is not a measurement.
+**And a null there is not "unknown".** It means integration was not enabled,
+and not enabled is a single pass — if an image exists, the probe crossed each
+line at least once. Resolving it to `1` is decoding the field, not defaulting
+it, and the reference script was right to do so.
 
-Expect, and design for, `image_integrations` being empty for all Autolamella-era
-data. If that turns out to matter scientifically, the fix is to record it in
-`AM_metadata.yaml` by hand, not to guess it in the reader.
+This is the *only* field with such a floor, and the distinction is worth
+holding onto: absence has a defined physical meaning here and nowhere else. A
+missing voltage stays `None`, because there is no floor to a voltage and a
+plausible number is worse than an admitted gap. The floor also does not apply
+to a header that described no acquisition at all — there is then no acquisition
+to infer one pass of.
+
+**Where the reader must still not guess:** `system.*` holds *both* beams'
+configured defaults in every image, so reading `system.ion.voltage` from an SEM
+image yields 30 kV — the FIB's setting, correct-looking and wrong. Only
+`microscope_state.*` describes the beam that took the image. See §3.2.
 
 ### 1.4 The archive spans three microscopes, and is heavily imbalanced
 
@@ -206,9 +214,9 @@ Derived from real headers of both dialects. This is the table to implement.
 | `image_width` | px | `shape[1]` / `image.resolution[0]` | `Image.ResolutionX` |
 | `image_height` | px | `shape[0]` / `image.resolution[1]` | `Image.ResolutionY` |
 | `pixel_size_nm` | nm | `pixel_size.x`, `.y` (m) | `Scan.PixelWidth`, `.PixelHeight` (m) |
-| `dwell_time_ns` | ns | `microscope_state.<beam>.dwell_time` (s) | `Scan.Dwelltime` / `EScan.Dwell` (s) |
-| `image_integrations` | count | **absent** → `None` | `Scan.Integrate` |
-| `line_integrations` | count | **absent** → `None` | `EScan.LineIntegration` |
+| `dwell_time_ns` | ns | `image.dwell_time`, then `microscope_state.<beam>.dwell_time` (s) | `Scan.Dwelltime` / `{Scan}.Dwell` (s) |
+| `image_integrations` | count | `image.frame_integration`, null → 1 | `Scan.Integrate` |
+| `line_integrations` | count | `image.line_integration`, null → 1 | `{Scan}.LineIntegration` |
 | `microscope_model` | — | `system.info.model` (`"Arctis"`) | `System.SystemType` (`"Arctis"`) |
 | `microscope_serial` | — | `system.info.serial_number` (`"9952468"`) | `System.Dnumber` (`9952468`) |
 | `acceleration_voltage_v` | V | `microscope_state.<beam>.voltage` | `Beam.HV` / `EBeam.HV` |
@@ -234,7 +242,7 @@ parse) and directly serve goals you stated:
 |---|---|
 | `microscope_serial` | Distinguishes instruments sharing a model — needed for "fine-tune for one microscope" |
 | `detector_type` / `detector_mode` (`ETD` / `SecondaryElectrons`) | Changes image appearance markedly; a plausible source of dataset imbalance |
-| `plasma_gas` (`Argon`) | Arctis FIB; affects milled-surface appearance |
+| `beam_source` (`Argon`, `FEG`) | The ion source for a FIB, the emitter for an SEM. Read per beam: the FEI `Source` key is `FEG` on the electron column and the gas on the ion column |
 | `hfw_um` (horizontal field width) | With pixel size, pins down magnification — the obvious thing to check a training set is balanced over |
 
 **Where to stop.** Dialect B alone has ~30 sections including hot-stage
