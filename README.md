@@ -87,10 +87,15 @@ Commands by purpose:
 Anything that moves or renames files takes a preview flag -- `--dry-run`, or
 `--apply` for `migrate-layout`, which previews unless told otherwise.
 
-Curation window
----------------
-A desktop window for reviewing SEM and FIB images against their labels and
-setting each image's workflow state:
+Desktop window
+--------------
+Three tabs: **Curate** for reviewing images against their labels and setting
+their workflow state, **Metadata** for seeing and editing each project's
+descriptive fields, and **Export** for choosing a subset and writing it out.
+
+The Export tab shows what the current filters would export *before* writing --
+including the images that one-condition-per-scene and the empty-label rule
+would drop, which the command line reports only afterwards, in the log.
 
   python -m am_segmentation_manager.cli gui [START_PATH]
 
@@ -183,7 +188,8 @@ Project layout
     - metadata_csv.py    : per-image and per-project metadata export
     - metadata_edit.py   : editing AM_metadata.yaml in place
     - migrate.py         : renaming pre-convention label directories
-  - gui/             : curation window (only gui/widgets/ imports Qt)
+  - gui/             : the desktop window (only gui/widgets/ imports Qt)
+    - controller.py, export_controller.py, metadata_controller.py : view models
   - cli.py           : CLI entrypoint
 - tests/             : pytest tests using tmp_path fixtures
 - docs/

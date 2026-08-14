@@ -1,6 +1,6 @@
 # Metadata: reading, editing, exporting and summarising
 
-Status: **§3-§6 built** (phases 4-6, including plots); §7 and §8 proposed.
+Status: **§3-§7 built** (phases 4-7); §8 proposed and still fenced.
 Written 2026-08-14.
 
 Built so far: `image_metadata.py` reads acquisition settings from both header
@@ -10,8 +10,14 @@ project metadata from the command line; `aggregate.py` counts records, driving
 `stats`, and `operations/metadata_csv.py` drives `export-metadata-csv` and
 `export-projects-csv`. Metadata filters apply to `create-training-csv`, which
 was the point of building them. `plots.py` draws the breakdowns as bar charts behind `stats --plot`.
-The GUI tab (§4.3, §7) is deliberately still waiting on the CLI being used
-against real data.
+The window now has Metadata and Export tabs (§4.3, §7), each with its own
+Qt-free controller.
+
+One correction to §7.1: it justified the tabs partly against a claim that
+window chrome resamples the images. That claim was wrong. `downscale_to_fit`
+uses `min(width_ratio, height_ratio)`, and a landscape image in a portrait pane
+is bound by width, so a 36px tab bar changes the scale not at all -- measured
+identical at 0.17285 with and without.
 
 **§5.3 was not done as written.** That section said to move
 `reporting.summarize_lamella` and the GUI status indicators onto `aggregate`.

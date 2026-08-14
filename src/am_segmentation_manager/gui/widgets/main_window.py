@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QTabWidget,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -26,9 +27,13 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState, current_state
 from ..controller import CurationController, EditingDisabled
+from ..export_controller import ExportController
 from ..loader import BackgroundLoader
+from ..metadata_controller import MetadataController
+from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
+from .metadata_panel import MetadataPanel
 from .project_panel import ProjectPanel
 from .state_panel import StatePanel
 
@@ -67,6 +72,14 @@ class CurationWindow(QMainWindow):
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
 
+        # The other tabs get their own Qt-free controllers, and are handed the
+        # projects from the curation scan rather than scanning again: a second
+        # scan would double the slowest thing the application does.
+        self.export_controller = ExportController()
+        self.metadata_controller = MetadataController()
+        self.export_panel = ExportPanel(self.export_controller)
+        self.metadata_panel = MetadataPanel(self.metadata_controller)
+
         self._build_layout()
         self._connect()
         self._add_shortcuts()
@@ -103,7 +116,15 @@ class CurationWindow(QMainWindow):
         splitter.addWidget(self.state_panel)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([270, 1080, 250])
-        self.setCentralWidget(splitter)
+
+        # The curation view becomes the first tab, its contents untouched: the
+        # splitter above is exactly what used to be the central widget.
+        self.tabs = QTabWidget()
+        self.tabs.addTab(splitter, "Curate")
+        self.tabs.addTab(self.metadata_panel, "Metadata")
+        self.tabs.addTab(self.export_panel, "Export")
+        self.tabs.currentChanged.connect(self._tab_changed)
+        self.setCentralWidget(self.tabs)
 
     def _build_timeline(self) -> QHBoxLayout:
         """Build the frame timeline row.
@@ -161,6 +182,93 @@ class CurationWindow(QMainWindow):
         self.state_panel.target_changed.connect(self._set_target)
         self.state_panel.scope_changed.connect(self._set_scope)
         self.state_panel.state_requested.connect(self.apply_state)
+
+        self.export_panel.training_export_requested.connect(self._export_training)
+        self.export_panel.image_metadata_export_requested.connect(self._export_image_metadata)
+        self.export_panel.project_metadata_export_requested.connect(self._export_project_metadata)
+        # Editing metadata changes what the export view groups by, so it has to
+        # be told rather than left showing the previous sample name.
+        self.metadata_panel.metadata_changed.connect(self.export_panel.refresh)
+
+    # -- the other tabs ----------------------------------------------------
+
+    def _tab_changed(self, index: int) -> None:
+        """Refresh a tab when it comes forward.
+
+        Refreshing only on the way in keeps the cost off the curation view,
+        which is where the keyboard-driven work happens.
+        """
+        widget = self.tabs.widget(index)
+        if widget is self.export_panel:
+            self.export_panel.refresh()
+        elif widget is self.metadata_panel:
+            self.metadata_panel.refresh()
+
+    def _share_scan(self) -> None:
+        """Hand the scanned projects to the other tabs."""
+        projects = self.controller.projects
+        self.export_controller.set_projects(projects, self.controller.start_path)
+        self.metadata_controller.set_projects(projects)
+        self.metadata_panel.set_projects(
+            [project.display_name for project in projects]
+        )
+
+    def _export_training(self, directory: str) -> None:
+        from ...operations.csv import export_training_csv
+
+        records = self.export_controller.selected_records()
+        if not records:
+            self._flash("Nothing matches these filters")
+            return
+        filters = self.export_controller.filters
+        try:
+            train, validation = export_training_csv(
+                records=records,
+                start_path=self.controller.start_path or Path(directory),
+                output_dir=Path(directory),
+                include_empty_labels=filters.include_empty_labels,
+                conditions=filters.conditions,
+            )
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Export failed", str(error))
+            return
+        written = ", ".join(str(path.name) for path in (train, validation) if path)
+        self._flash(f"Wrote {written}", 4000)
+        logger.info("Exported training CSV to %s", directory)
+
+    def _export_image_metadata(self, path: str) -> None:
+        from ...aggregate import project_lookup
+        from ...operations.metadata_csv import export_image_metadata_csv
+
+        records = self.export_controller.selected_records()
+        if not records:
+            self._flash("Nothing matches these filters")
+            return
+        try:
+            export_image_metadata_csv(
+                records,
+                self.controller.start_path or Path(path).parent,
+                Path(path),
+                projects=project_lookup(self.export_controller.projects),
+            )
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Export failed", str(error))
+            return
+        self._flash(f"Wrote {Path(path).name}", 4000)
+
+    def _export_project_metadata(self, path: str) -> None:
+        from ...operations.metadata_csv import export_project_metadata_csv
+
+        try:
+            export_project_metadata_csv(
+                self.export_controller.projects,
+                self.controller.start_path or Path(path).parent,
+                Path(path),
+            )
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Export failed", str(error))
+            return
+        self._flash(f"Wrote {Path(path).name}", 4000)
 
     # -- copying paths out of the window -----------------------------------
 
@@ -264,6 +372,7 @@ class CurationWindow(QMainWindow):
             return
         self.project_panel.set_path(str(directory))
         self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
+        self._share_scan()
         self.refresh(reload_lists=True)
 
     def _select_project(self, row: int) -> None:
