@@ -487,11 +487,47 @@ def _acquired_at(document: Mapping[str, Any], dialect: str) -> datetime | None:
     time = _text(_walk(document, ("User", "Time")))
     if not date or not time:
         return None
-    for pattern in ("%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S"):
+    return _parse_datetime(date, time)
+
+
+#: How the FEI dialect writes a date, most likely first. US ordering, because
+#: that is what the instrument software writes regardless of where it is.
+_DATE_TIME_PATTERNS = ("%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S")
+
+
+def _parse_datetime(date: str, time: str) -> datetime | None:
+    """Parse a date and a possibly 12-hour time, independently of the locale.
+
+    The AM/PM marker is stripped and applied by hand rather than parsed with
+    ``%p``. ``%p`` matches whatever the *current locale* calls the two halves
+    of the day, so it reads "PM" under a C or English locale and fails under a
+    German or French one -- while the header always says "PM" whatever machine
+    it was written on. That made acquisition times parse on one developer's
+    machine and silently come back as None on another's.
+    """
+    text = f"{date} {time}".strip()
+    hour_offset = 0
+    upper = text.upper()
+    for marker, offset in (("AM", 0), ("PM", 12)):
+        if upper.endswith(marker):
+            text = text[: -len(marker)].strip()
+            hour_offset = offset
+            break
+    else:
+        marker = None
+
+    for pattern in _DATE_TIME_PATTERNS:
         try:
-            return datetime.strptime(f"{date} {time}", pattern)
+            parsed = datetime.strptime(text, pattern)
         except ValueError:
             continue
+        if marker is None:
+            return parsed
+        # 12 AM is midnight and 12 PM is noon, so the hour wraps rather than
+        # simply gaining twelve.
+        hour = parsed.hour % 12 + hour_offset
+        return parsed.replace(hour=hour)
+
     logger.debug("Unparsed acquisition time: %r %r", date, time)
     return None
 

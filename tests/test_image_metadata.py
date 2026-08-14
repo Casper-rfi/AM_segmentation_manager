@@ -304,6 +304,50 @@ def test_the_instrument_is_identified_the_same_way_in_both_dialects():
     assert modern.microscope_serial == legacy.microscope_serial == "9952468"
 
 
+@pytest.mark.parametrize("loc", ["C", "de_DE.UTF-8", "fr_FR.UTF-8", "ja_JP.UTF-8"])
+def test_acquisition_time_does_not_depend_on_the_locale(loc):
+    """The header says "PM" whatever machine it was written on.
+
+    strptime's %p matches whatever the *current locale* calls the halves of the
+    day, so parsing with it read the time on one developer's machine and
+    returned None on another's -- silently, since an unparsed time is simply
+    absent. The marker is now stripped and applied by hand.
+    """
+    import locale
+
+    previous = locale.setlocale(locale.LC_TIME)
+    try:
+        try:
+            locale.setlocale(locale.LC_TIME, loc)
+        except locale.Error:
+            pytest.skip(f"locale {loc} not available here")
+        assert extract_metadata(fei_header(), "fei").acquired_at == datetime(
+            2024, 1, 28, 14, 53, 8
+        )
+    finally:
+        locale.setlocale(locale.LC_TIME, previous)
+
+
+@pytest.mark.parametrize(
+    "time, expected_hour",
+    [("12:30:00 AM", 0), ("01:30:00 AM", 1), ("12:30:00 PM", 12), ("11:30:00 PM", 23)],
+)
+def test_midnight_and_noon_are_the_awkward_cases(time: str, expected_hour: int):
+    """12 AM is midnight and 12 PM is noon, so the hour wraps rather than
+    simply gaining twelve."""
+    document = fei_header()
+    document["User"]["Time"] = time
+
+    assert extract_metadata(document, "fei").acquired_at.hour == expected_hour
+
+
+def test_a_24_hour_time_without_a_marker_still_parses():
+    document = fei_header()
+    document["User"]["Time"] = "14:53:08"
+
+    assert extract_metadata(document, "fei").acquired_at == datetime(2024, 1, 28, 14, 53, 8)
+
+
 def test_acquisition_time_is_parsed_from_both_dialects():
     assert extract_metadata(fibsem_header(), "fibsem").acquired_at == datetime(2025, 4, 15, 5, 1, 10)
     assert extract_metadata(fei_header(), "fei").acquired_at == datetime(2024, 1, 28, 14, 53, 8)
