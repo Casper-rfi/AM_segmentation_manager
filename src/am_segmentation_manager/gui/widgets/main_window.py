@@ -83,7 +83,12 @@ class CurationWindow(QMainWindow):
     def _build_layout(self) -> None:
         centre = QWidget()
         centre_layout = QVBoxLayout(centre)
-        centre_layout.setContentsMargins(0, 0, 0, 2)
+        # The bottom margin has to clear the timeline's FIB label line, which is
+        # the widget's bottom-most 3px by design: the SEM band is
+        # label-line-then-row and the FIB band is row-then-label-line, so the two
+        # label lines sit on the outside edges. Two pixels left that line almost
+        # touching the window edge and hard to see.
+        centre_layout.setContentsMargins(0, 0, 0, 8)
         centre_layout.setSpacing(3)
         centre_layout.addWidget(self.image_panel, stretch=1)
         centre_layout.addLayout(self._build_timeline())

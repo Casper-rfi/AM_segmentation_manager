@@ -44,25 +44,34 @@ class ProjectPanel(QWidget):
         layout.setSpacing(4)
 
         # -- scan root -----------------------------------------------------
-        root_box = QGroupBox("Scan root")
-        root_layout = QVBoxLayout(root_box)
+        # One row, no group box. A "Scan root" title said the same thing as the
+        # field's placeholder and the Scan button beside it -- three statements
+        # of one fact across two rows. The placeholder carries the explanation
+        # where it is useful (visible while the field is empty, gone once a path
+        # is in it), and the tooltips carry what neither a label nor a button
+        # caption can say.
         row = QHBoxLayout()
+        row.setContentsMargins(2, 0, 2, 0)
+        row.setSpacing(4)
+
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Folder to scan for Autolamella projects")
         self.path_edit.setToolTip(
             "Folder searched recursively for Autolamella projects "
-            "(any folder containing an experiment.yaml)"
+            "(any folder containing an experiment.yaml or AM_metadata.yaml)"
         )
         self.path_edit.returnPressed.connect(
             lambda: self.scan_requested.emit(self.path_edit.text())
         )
+        row.addWidget(self.path_edit, stretch=1)
+
         browse = QPushButton("Browse...")
         browse.setToolTip("Choose a folder to scan")
         browse.clicked.connect(self._browse)
-        row.addWidget(self.path_edit)
         row.addWidget(browse)
-        root_layout.addLayout(row)
 
+        # Not full width any more: Scan is not the primary action of the window,
+        # and a full-width button implied that it was.
         self.scan_button = QPushButton("Scan")
         self.scan_button.setToolTip(
             "Re-read the folder from disk. Use this after changing files "
@@ -71,8 +80,9 @@ class ProjectPanel(QWidget):
         self.scan_button.clicked.connect(
             lambda: self.scan_requested.emit(self.path_edit.text())
         )
-        root_layout.addWidget(self.scan_button)
-        layout.addWidget(root_box)
+        row.addWidget(self.scan_button)
+
+        layout.addLayout(row)
 
         # -- projects and lamellae -----------------------------------------
         # In a splitter so that an archive with many projects but few lamellae
