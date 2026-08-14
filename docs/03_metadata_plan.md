@@ -664,55 +664,61 @@ the class definitions, and on the command line as an override. Anything smaller
 is treated as noise -- at a 13 nm pixel, 0.1 µm² is about 590 pixels, so this
 discards specks without discarding real defects.
 
-### 8.2 Still to decide
+### 8.2 Decided 2026-08-14
 
-**Which labels are measured.** "GIS, lamella and crack" answered which
-*classes*; it did not settle which *workflow state*. The recommendation is
-**corrected labels only, by default, with a flag to widen it**: a label derived
-from a prediction measures the model rather than the sample, so mixing the two
-would quietly make a model-quality figure look like a sample statistic. Not a
-blocker -- `--state` already exists on every command that selects images -- but
-the default matters and should be deliberate.
+Both recommendations were taken.
 
-**Per image or per lamella.** "The proportion of lamellae with a crack" is a
-question about lamellae, and a crack visible in three frames of a milling
-sequence is one crack, not three. Counting per image answers a different and
-less useful question. Suggest reporting both, with the per-lamella figure as
-the headline, and defining a lamella as cracked if any of its corrected labels
-holds a crack above the threshold.
+**Corrected labels only, by default, with `--state` to widen it.** A label
+derived from a prediction measures the model rather than the sample, so mixing
+the two would quietly make a model-quality figure look like a sample statistic.
 
-### 8.3 Implementation sketch
+**Both levels, with the per-lamella figure as the headline.** A crack visible in
+three frames of a milling sequence is one crack, not three, so "the proportion
+of lamellae with a crack" is a question about lamellae. Per-image rows still go
+to the CSV, so a measurement can be traced back to the frame it came from. A
+lamella counts as cracked when any of its measured labels holds a crack above
+the threshold.
 
-Extend `operations/label_io.py`, which already opens label files for
-`is_label_file_empty`, rather than adding a second reader:
+### 8.3 The measurement core — built
 
-```python
-@dataclass(frozen=True)
-class LabelMeasurement:
-    """What one label holds, in physical units."""
-    areas_um2: dict[int, float]          # per class index
-    crack_count: int                     # components >= the threshold
-    crack_areas_um2: tuple[float, ...]   # each qualifying component
-    pixel_size_nm: float | None          # None when the header was unreadable
-```
+`operations/label_measure.py`, with the threshold and the crack class read from
+an optional `MEASUREMENT` section of `segmentation_config_AM.yaml`. Four
+departures from the sketch above, each for a reason:
 
-Components come from `cv2.connectedComponentsWithStats` on the class-3 mask,
-which is already a dependency. Feed the result into `aggregate.py` as further
-key functions, so the breakdowns, the CSV export and the charts all work on it
-without new machinery.
+**A new module, not an extension of `label_io.py`.** That module writes labels
+and says whether one is empty; measurement adds connected components, unit
+conversion and a cache. Bolting 300 lines of analysis onto a 110-line I/O
+helper would make it two things.
 
-**Cache per label, keyed by path and mtime.** Unlike header reading at 0.5 ms,
-labelling components in a 3072x2048 image is milliseconds to seconds, and every
-command that groups by a crack statistic would otherwise re-read the archive.
-This is the one place in the package where a cache is justified; §1.5 explains
-why it is not justified for headers.
+**Pixel counting is separated from physical units.** `read_label_pixels()`
+returns a unit-free `LabelPixels` — class pixel counts and component sizes —
+and `measure_label()` converts it and applies the threshold. Only the first
+half is cached, so `--min-crack-area` invalidates nothing and the threshold
+stays arithmetic over numbers already computed.
 
-**Watch the resized-label case.** A label converted from a prediction may not
-share its image's pixel dimensions -- `ImageRecord` already carries
-`label_resized` for exactly this. The pixel size that converts a label's area
-to µm² is the *image's*, scaled by the ratio between their dimensions. Getting
-this wrong produces areas that are silently wrong by a constant factor, which
-is the hardest kind of error to notice in a distribution.
+**The cache is in memory only**, keyed by path, mtime and size. A cache on disk
+would be the hidden persistent state `CLAUDE.md` rules out, and for repeated
+analysis the answer is to export once and work from the CSV. The mtime is in
+the key because proofreading can change a label while the process is running.
+
+**The label's scale is derived, not assumed.** The sketch's claim that
+`ImageRecord` carries `label_resized` was wrong — that flag is on
+`display.PreparedDisplay`, and labels carry no header of their own. So
+`label_pixel_size_nm()` takes it from the image's header and rescales:
+`pixel_size_nm × (image_width / label_width)`, falling back to
+`hfw_um × 1000 / label_width` when the header records a field width but no
+image width. When neither is readable the measurement comes back with
+`pixel_size_nm=None`, no areas and `crack_count=None` — the threshold is
+physical and cannot be applied to pixels. Assuming a label matches its image
+would scale every area by a constant factor whenever it does not, which is the
+hardest kind of error to notice in a distribution.
+
+`LabelMeasurement` also keeps the `LabelPixels` it came from, so an
+unmeasurable label still reports what it holds in pixels.
+
+**Still to build:** the aggregation and the commands. Feed measurements into
+`aggregate.py` as further key functions, so the breakdowns, the CSV export and
+the charts work on them without new machinery.
 
 ### 8.4 Where to stop
 

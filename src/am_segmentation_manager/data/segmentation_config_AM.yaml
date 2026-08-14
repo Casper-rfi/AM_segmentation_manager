@@ -43,3 +43,13 @@ CLASS_LABELS: # adaptive_milling
   2: "lamella"
   3: "crack/hole"
   4: "vacuum"
+
+# Settings for label quantification. Classes 0 (background) and 4 (vacuum) are
+# context rather than measurements, so they are not listed. The crack threshold
+# is a sensible starting value, not a physical constant: at a 13 nm pixel,
+# 0.1 um^2 is about 590 pixels, which discards specks without discarding real
+# defects. Override it per run with --min-crack-area.
+MEASUREMENT:
+  measured_classes: [1, 2, 3]
+  crack_class: 3
+  min_crack_area_um2: 0.1
