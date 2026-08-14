@@ -15,7 +15,7 @@ and of code nothing calls.
 
 ### 1.1 Branches
 
-You have four local branches and **no remote**:
+At the time of the audit there were four local branches and **no remote**:
 
 ```
   empty-labels-and-migration   917350f
@@ -29,7 +29,7 @@ fully contained in `main`.** The history is linear — each branch tip is simply
 an older commit on `main`'s first-parent line. They are labels on the past, not
 divergent work.
 
-- [ ] Delete all three:
+- [x] Delete all three. **Done 2026-08-14.**
 
 ```bash
 git branch -d empty-labels-and-migration feature/curation-gui retrograde-layout-support
@@ -43,15 +43,30 @@ The commits stay in history and the messages remain findable with `git log`.
 Nothing is lost. Branch names are for work in progress; keeping them after a
 merge means `git branch` stops telling you what is actually in flight.
 
-**A more important observation: there is no remote.** For a package intended to
-become open source, and for data-management code whose loss would be expensive,
-a single unbacked copy inside a OneDrive folder is the real risk here — OneDrive
-syncs files, but it does not preserve git history in a way you can rely on for
-recovery. Pushing to a private GitHub repository now, and making it public
-later, costs nothing and is reversible.
+**There is also no remote.** For a package intended to become open source, and
+for data-management code whose loss would be expensive, a single copy inside a
+OneDrive folder carries a specific risk: `.git` is thousands of small files, and
+sync services occasionally resolve concurrent writes by writing "conflicted
+copy" duplicates. Git cannot read those, so a conflict inside `.git/objects` or
+`.git/refs` can leave a repository that will not open — and per-file version
+history is an awkward thing to rebuild a repository from.
 
-- [ ] Create a private remote and push `main`. (Not a refactor task, but it is
-      the highest-value item in this document.)
+**Deferred, 2026-08-14.** The repository is backed up via OneDrive and a remote
+is not wanted yet. Recorded here so this reads as a decision rather than an
+outstanding task; revisit when the package is published, since a remote is
+needed then anyway.
+
+The cheap mitigation in the meantime, which covers the case OneDrive is worst
+at and involves no hosting:
+
+```bash
+git bundle create ~/am_seg_manager_$(date +%Y%m%d).bundle --all
+```
+
+One file, entire history, all branches, restorable with `git clone`. Keep it
+outside the synced folder.
+
+- [ ] *(deferred)* Create a private remote and push `main`.
 
 ### 1.2 Duplicated configuration file
 
