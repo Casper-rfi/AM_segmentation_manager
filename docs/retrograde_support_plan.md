@@ -780,12 +780,41 @@ that was never shown is never visible, so that assertion would have passed
 whether or not the control was hidden. They now use `isHidden()`, which reflects
 the explicit state.
 
-**Phase 6 — migration and downstream operations.** `migrate-layout --dry-run`
-renames the 14 legacy label directories. CSV export gains `--variants
-base|all|<name>` (`all` is genuinely useful: five imaging conditions of one scene
-sharing a label are five valid training pairs). Label compression deduplicates by
-label path so a shared label is not processed five times.
-`check-training-csv` learns the new state locations.
+**Phase 6 — migration and downstream operations. ✅ Done.**
+
+`am-seg migrate-layout` renames pre-convention label directories
+(`labels` → `sem_labels`, `labels_fib`/`labels_FIB` → `fib_labels`). It
+**previews by default** and needs `--apply` to act: other commands take
+`--dry-run` as opt-in, but this one renames directories holding proofread work
+and is run once, so the safe reading of a bare command is the right default.
+The whole batch is validated first and any collision aborts all of it — a
+partly migrated collection is harder to reason about than an unmigrated one.
+Verified on the legacy dataset: 14 renames, 226 images and 226 label references
+identical afterwards, idempotent on a second run.
+
+*Two of this phase's four items turned out to be already done*, from the phase 1
+refactor. Label compression already deduplicates by path, and
+`check-training-csv` already resolves state locations through `layout`. Rather
+than rewrite them, they now have tests proving it on shared-label data — a
+shared label is compressed once, not once per image referencing it, and a CSV
+row naming any member of a moved group still resolves.
+
+*Decision D5 was wrong, and the fix matters.* The plan said the training export
+should default to the `base` variant. The oldest layout — the one this whole
+exercise exists to support — has **no unsuffixed image directory at all**: its
+SEM sets are `SEM_8`, `SEM_8_fi_1`, `SEM_8_fi_16`, `SEM_8_fi_4`. Defaulting to
+`base` would have silently exported zero SEM images from it. The default is
+therefore *one condition per scene* (`--conditions primary`), which selects the
+unsuffixed directory where one exists and the first-sorting variant where none
+does. `--conditions all` exports every condition.
+
+*A train/validation leak, found while implementing that.* The split shuffled
+rows, so several conditions of one scene could land on opposite sides — putting
+near-identical images in both sets and scoring the model on scenes it had
+effectively already trained on. `split_pairs` now groups by label and splits
+whole groups. With one image per label, which is every project without
+variants, the behaviour is unchanged. Measured on the legacy dataset: 226 pairs
+as 91 label groups, 181/45, zero scenes shared across the split.
 
 **Deferred — label import (§7).** Promoted to a phase once the source label
 structures are known.

@@ -46,6 +46,7 @@ from .layout import (
     state_of_path,
     subdirectories_by_name,
 )
+from .operations.label_io import is_label_file_empty
 from .metadata import (
     AM_METADATA_FILENAME,
     EXPERIMENT_FILENAME,
@@ -112,6 +113,8 @@ class ImageSetSurvey:
         label_count: Labels found, across all workflow states.
         images_without_labels: Images with no label of the same filename.
         labels_without_images: Labels with no image of the same filename.
+        empty_labels: Labels containing nothing but background, which are not
+            annotations. None when labels were not inspected.
     """
 
     image_set: ImageSet
@@ -119,6 +122,14 @@ class ImageSetSurvey:
     label_count: int
     images_without_labels: int
     labels_without_images: int
+    empty_labels: int | None = None
+
+    @property
+    def annotated_labels(self) -> int | None:
+        """Return labels that actually hold an annotation, if known."""
+        if self.empty_labels is None:
+            return None
+        return self.label_count - self.empty_labels
 
 
 @dataclass(frozen=True)
@@ -254,12 +265,17 @@ class CollectionSurvey:
 # Survey construction
 # ---------------------------------------------------------------------------
 
-def survey_collection(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> CollectionSurvey:
+def survey_collection(
+    root: Path, max_depth: int = DEFAULT_MAX_DEPTH, check_labels: bool = True
+) -> CollectionSurvey:
     """Survey every project at or below *root*.
 
     Args:
         root: The directory to scan.
         max_depth: How deep to search for projects and for stages.
+        check_labels: Read each label to tell an annotation from an empty
+            placeholder. Costs roughly 2.5 ms a label; turn it off for a
+            structure-only survey of a very large collection.
 
     Returns:
         A :class:`CollectionSurvey` describing what was found, including
@@ -268,7 +284,10 @@ def survey_collection(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> Collect
     roots = find_project_roots(root, max_depth=max_depth)
     projects = tuple(
         sorted(
-            (survey_project(path, root, max_depth=max_depth) for path in roots),
+            (
+                survey_project(path, root, max_depth=max_depth, check_labels=check_labels)
+                for path in roots
+            ),
             key=lambda project: project.relative_path,
         )
     )
@@ -278,7 +297,10 @@ def survey_collection(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> Collect
 
 
 def survey_project(
-    project_root: Path, scan_root: Path | None = None, max_depth: int = DEFAULT_MAX_DEPTH
+    project_root: Path,
+    scan_root: Path | None = None,
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    check_labels: bool = True,
 ) -> ProjectSurvey:
     """Survey one project.
 
@@ -287,6 +309,8 @@ def survey_project(
         scan_root: The directory paths should be reported relative to. Defaults
             to *project_root*'s parent.
         max_depth: How deep to search for stages.
+        check_labels: Read each label to tell an annotation from an empty
+            placeholder.
     """
     base = scan_root if scan_root is not None else project_root.parent
     grouped = group_stages_by_lamella(discover_stages(project_root, max_depth=max_depth))
@@ -296,7 +320,7 @@ def survey_project(
     for lamella_path in sorted(grouped):
         discovered = grouped[lamella_path]
         stages = tuple(
-            _survey_stage(item.path, item.stage_is_synthetic, findings)
+            _survey_stage(item.path, item.stage_is_synthetic, findings, check_labels)
             for item in sorted(discovered, key=lambda item: item.path)
         )
         lamellae.append(
@@ -424,7 +448,7 @@ def _metadata_findings(project_root: Path, metadata: ExperimentMetadata) -> list
 
 
 def _survey_stage(
-    stage_path: Path, synthetic: bool, findings: list[Finding]
+    stage_path: Path, synthetic: bool, findings: list[Finding], check_labels: bool = True
 ) -> StageSurvey:
     """Survey one stage, appending any findings to *findings*."""
     if not stage_path.name.lower().startswith(EXPECTED_STAGE_PREFIX):
@@ -452,7 +476,8 @@ def _survey_stage(
             )
 
     image_sets = tuple(
-        _survey_image_set(image_set, findings) for image_set in build_image_sets(stage_path)
+        _survey_image_set(image_set, findings, check_labels)
+        for image_set in build_image_sets(stage_path)
     )
     return StageSurvey(
         path=stage_path,
@@ -461,7 +486,9 @@ def _survey_stage(
     )
 
 
-def _survey_image_set(image_set: ImageSet, findings: list[Finding]) -> ImageSetSurvey:
+def _survey_image_set(
+    image_set: ImageSet, findings: list[Finding], check_labels: bool = True
+) -> ImageSetSurvey:
     """Survey one image set, appending any findings to *findings*."""
     images = image_files_by_name(image_set.directory)
     labels = image_files_by_name(image_set.labels_directory) if image_set.labels_exist else {}
@@ -541,13 +568,39 @@ def _survey_image_set(image_set: ImageSet, findings: list[Finding]) -> ImageSetS
 
     findings.extend(_state_findings(image_set, images, labels))
 
+    empty_labels = _count_empty_labels(labels) if check_labels else None
+    if empty_labels:
+        findings.append(
+            Finding(
+                severity="warning",
+                category="empty-labels",
+                path=image_set.labels_directory,
+                message=(
+                    f"{empty_labels} of {len(labels)} label(s) contain only background "
+                    f"and are not annotations; the segmentation software writes one "
+                    f"for every image it is pointed at"
+                ),
+            )
+        )
+
     return ImageSetSurvey(
         image_set=image_set,
         image_count=len(images),
         label_count=len(labels),
         images_without_labels=len(unlabelled),
         labels_without_images=len(orphaned),
+        empty_labels=empty_labels,
     )
+
+
+def _count_empty_labels(labels: dict[str, Path]) -> int:
+    """Return how many of *labels* hold nothing but background.
+
+    Labels that cannot be inspected -- an unreadable file, or a missing image
+    stack -- are not counted as empty: reporting "not annotated" for a label
+    nobody could read would be a guess presented as a fact.
+    """
+    return sum(1 for path in labels.values() if is_label_file_empty(path) is True)
 
 
 def _collection_findings(projects: Iterable[ProjectSurvey]) -> list[Finding]:

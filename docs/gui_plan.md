@@ -1125,3 +1125,85 @@ All of the above, with three notes from the build:
 * **The variant dropdown is populated with descriptions from
   `AM_metadata.yaml`** where the project supplies them (`8_fi_1` shows as
   "frame integration 1"), and with the raw suffix where it does not.
+
+---
+
+## 18. Empty labels, and label progress on the timeline
+
+The external segmentation software writes a label for every image in its input
+folder, so **a label file existing is not evidence that anything was
+annotated**. This surfaced from a real report: labels appeared for SEM but not
+FIB, and the FIB label turned out to be 2048x3072 pixels of class 0. The
+overlay was correct -- background is never drawn -- but nothing else
+distinguished that file from finished work.
+
+`display.is_empty_label()` already existed and the image panel already badged
+`"empty label - not yet annotated"`. The gap was that only the *display* layer
+knew: the survey counted the file as a label, and a training export would have
+paired the image with a blank mask, which actively teaches a model that the
+structure is background.
+
+### 18.1 Where the check now runs
+
+`operations.label_io.is_label_file_empty()` returns True, False, or **None when
+it cannot tell** -- no image stack, unreadable file. None is deliberately
+distinct from True: reporting "not annotated" for a label nobody could read
+would be a guess presented as a fact.
+
+* `inspect-layout` reports an `empty-labels` warning and counts annotated
+  labels separately. On by default, since a survey that hides this is the
+  reason the problem went unnoticed; `--no-label-check` skips it. Measured cost
+  is ~2.5 ms a label.
+* `create-training-csv` excludes them by default and says so, with
+  `--include-empty-labels` for deliberately building negative examples.
+* The curation window badges them, as it already did.
+
+### 18.2 Label lines on the timeline
+
+The timeline now answers two questions at once, so they are drawn as two
+different kinds of mark:
+
+```
+ ---------------  SEM labels     (thin line, above)
+ ===============  SEM state      (thick row)
+ ===============  FIB state      (thick row)
+ ---------------  FIB labels     (thin line, below)
+```
+
+Each modality's label line sits on the **outside** of its state row, so the two
+state rows stay adjacent in the middle where they are easiest to compare, and
+neither label line can be misread as the other modality's state.
+
+The line is 3 px against the rows' 11 px: it should read as a rule, not as a
+third and fourth state bar.
+
+Violet (`#a78bfa`) marks an annotation, because the workflow states use
+grey/blue/teal and the class legend directly above uses orange, green, red and
+yellow; a separate hue says "this line is about labels, not workflow state".
+
+An empty placeholder is **grey (`#8a8a8a`), not a dim violet**. The first
+attempt used a dark violet on the reasoning that brightness could carry the
+meaning within one hue, and it failed on sight: against a near black background
+a dark colour is nearly indistinguishable from nothing drawn at all, which
+collapses "placeholder" into "no label" -- precisely the distinction this line
+exists to make. Grey is unmistakably lighter than the background and
+unmistakably not the annotation colour. It is lighter than the deselected state
+grey too, and sits on the thin line rather than in a state row, so the two do
+not read as the same mark.
+
+A test asserts the lightness ordering (background < empty < annotated) so a
+future palette change cannot quietly reintroduce the problem.
+
+### 18.3 The mismatch marker moved
+
+§17.5's mismatch stripe was drawn along the bottom edge, which the FIB label
+line now occupies. Rather than squeezing it elsewhere, it became a translucent
+amber wash over the frame's whole column. That reads better anyway: the stripes
+are each "a fact about this row", whereas a mismatch means "do not trust this
+frame".
+
+### 18.4 Cost
+
+The timeline asks for a label state per frame per modality, so results are
+cached by path on the controller. Navigating back and forth across a lamella
+re-reads nothing, and a typical 10-20 frame lamella costs 50-100 ms once.

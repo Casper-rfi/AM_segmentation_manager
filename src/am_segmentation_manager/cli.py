@@ -61,8 +61,8 @@ def _add_scope_arguments(
         "--variant", action="append", default=[],
         help=(
             "Imaging-condition variant, from the image directory name "
-            "(sem_5kv -> 5kv); 'base' means the unsuffixed directory. "
-            "Defaults to every variant"
+            "(sem_5kv -> 5kv); 'base' means the unsuffixed directory and 'all' "
+            "every condition. Defaults to every variant"
         ),
     )
     if include_state:
@@ -136,7 +136,7 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
             image_selectors=args.image,
             modality=args.modality,
             state=state,
-            variant_selectors=getattr(args, "variant", None),
+            variant_selectors=getattr(args, "variant", None) or None,
         )
     )
     return records, start_path
@@ -195,6 +195,36 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     inspect_layout.add_argument(
         "--severity", choices=["error", "warning", "info"], default="info",
         help="Lowest finding severity to report (default: info, meaning all)",
+    )
+    inspect_layout.add_argument(
+        "--no-label-check", action="store_true",
+        help=(
+            "Skip reading labels to tell an annotation from an empty "
+            "placeholder. The check costs about 2.5 ms a label; skipping it "
+            "makes a survey of a very large collection structure-only"
+        ),
+    )
+
+    # -- migrate-layout -----------------------------------------------------
+    migrate_layout = sub.add_parser(
+        "migrate-layout",
+        help="Rename pre-convention label directories to the current naming",
+        description=(
+            "Rename 'labels' to 'sem_labels' and 'labels_fib' to 'fib_labels', "
+            "the current convention of naming a label directory after the image "
+            "directory it belongs to. Both names are read indefinitely, so this "
+            "is optional; it is offered because newly written labels already use "
+            "the current name, and a project otherwise ends up with both. "
+            "Previews by default -- pass --apply to make the changes. Only "
+            "directories are renamed: no file is read, copied or deleted."
+        ),
+    )
+    migrate_layout.add_argument(
+        "start_path", nargs="?", default=".", help="Directory to migrate (default: current directory)",
+    )
+    migrate_layout.add_argument(
+        "--apply", action="store_true",
+        help="Perform the renames. Without this, they are only listed",
     )
 
     # -- init-project -------------------------------------------------------
@@ -318,6 +348,17 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
     create_training_csv.add_argument(
+        "--conditions",
+        choices=["primary", "all"],
+        default="primary",
+        help=(
+            "How many imaging conditions of each scene to export. 'primary' "
+            "(default) exports one image per scene; 'all' exports every "
+            "condition, which are valid but near-identical training pairs "
+            "sharing one label"
+        ),
+    )
+    create_training_csv.add_argument(
         "--state",
         choices=["corrected", "selected", "deselected", "all"],
         required=True,
@@ -344,6 +385,16 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         type=int,
         default=42,
         help="Random seed for reproducible train/validation split (default: 42)",
+    )
+    create_training_csv.add_argument(
+        "--include-empty-labels",
+        action="store_true",
+        help=(
+            "Export images whose label holds only background. Excluded by "
+            "default: the segmentation software writes an empty label for every "
+            "image it is pointed at, so exporting one pairs an image with a "
+            "blank mask"
+        ),
     )
 
     # -- check-training-csv --------------------------------------------------
@@ -422,11 +473,51 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 0
 
     if args.command == "inspect-layout":
-        survey = survey_collection(Path(args.start_path), max_depth=args.max_depth)
+        survey = survey_collection(
+            Path(args.start_path),
+            max_depth=args.max_depth,
+            check_labels=not args.no_label_check,
+        )
         print_survey(survey, detail=args.detail, min_severity=args.severity)
         # A non-zero exit lets the command be used as a check in a script,
         # without making warnings -- which are expected on legacy data -- fail.
         return 1 if survey.finding_counts()["error"] else 0
+
+    if args.command == "migrate-layout":
+        from .operations.migrate import (
+            MigrationConflict,
+            apply_label_migration,
+            plan_label_migration,
+        )
+
+        start_path = Path(args.start_path)
+        try:
+            renames = plan_label_migration(start_path)
+        except MigrationConflict as exc:
+            for conflict in exc.conflicts:
+                logger.error("%s", conflict)
+            logger.error("Nothing was renamed.")
+            return 2
+
+        if not renames:
+            logger.info("No pre-convention label directories found under %s", start_path)
+            return 0
+
+        for rename in renames:
+            logger.info(
+                "%s %s", "Renaming" if args.apply else "Would rename",
+                rename.describe(start_path),
+            )
+        if not args.apply:
+            logger.info(
+                "%d directory rename(s) to make. Re-run with --apply to perform them.",
+                len(renames),
+            )
+            return 0
+
+        changed = apply_label_migration(renames)
+        logger.info("Renamed %d label directory(ies)", changed)
+        return 0
 
     if args.command == "init-project":
         from .discovery import find_project_roots, project_markers
@@ -595,6 +686,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             prefix=args.output_prefix,
             train_ratio=args.split,
             seed=args.seed,
+            include_empty_labels=args.include_empty_labels,
+            conditions=args.conditions,
         )
         logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
         if val_csv:

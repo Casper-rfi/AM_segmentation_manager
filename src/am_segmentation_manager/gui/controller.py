@@ -20,6 +20,7 @@ from ..frames import LamellaFrame, build_lamella_frames
 from ..models import Lamella, Project
 from ..layout import MODALITIES, base_path
 from ..operations.label_groups import build_groups, expand_to_groups
+from ..operations.label_io import is_label_file_empty
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
 from .cache import (
@@ -131,6 +132,11 @@ class CurationController:
         self._projects: list[Project] = []
         self._lamellae: list[Lamella] = []
         self._frames: list[LamellaFrame] = []
+
+        #: Whether each label path holds only background, keyed by path.
+        #: None means it could not be determined. Cached because reading a
+        #: label costs a few milliseconds and the timeline asks per frame.
+        self._label_emptiness: dict[str, bool | None] = {}
 
         self._project_position = 0
         self._lamella_position = 0
@@ -411,6 +417,46 @@ class CurationController:
             modality: [self.state_of(modality, frame) for frame in self._frames]
             for modality in ("SEM", "FIB")
         }
+
+    def label_states(self) -> dict[str, list[str | None]]:
+        """Return each modality's label state for every frame in the lamella.
+
+        One of ``"missing"``, ``"empty"``, ``"present"``, or None when the
+        frame has no image of that modality at all.
+
+        The distinction that matters is ``"empty"``: the segmentation software
+        writes a label for every image it is pointed at, so a label file is not
+        evidence of annotation, and progress read from file existence alone
+        would overstate how much work is done.
+
+        Reading a label costs a few milliseconds, so results are cached by path
+        for as long as the controller lives -- navigating back and forth across
+        a lamella re-reads nothing.
+        """
+        return {
+            modality: [
+                self._label_state(frame.record(modality)) for frame in self._frames
+            ]
+            for modality in MODALITIES
+        }
+
+    def _label_state(self, record) -> str | None:
+        """Return one record's label state, reading the file at most once."""
+        if record is None:
+            return None
+        if not record.labels:
+            return "missing"
+        path = record.labels[0]
+        key = str(path)
+        cached = self._label_emptiness.get(key)
+        if cached is None:
+            cached = is_label_file_empty(path)
+            self._label_emptiness[key] = cached
+        if cached is None:
+            # Unreadable, or no image stack installed. Reporting "annotated"
+            # would be a guess; the label does exist, so say that much.
+            return "present"
+        return "empty" if cached else "present"
 
     def mismatched_frames(self) -> set[int]:
         """Return frames whose images disagree with the label they share.

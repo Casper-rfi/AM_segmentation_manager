@@ -421,6 +421,7 @@ class CurationWindow(QMainWindow):
             self.controller.modality_states(),
             self.controller.frame_position,
             self.controller.mismatched_frames(),
+            self.controller.label_states(),
         )
         self.frame_label.setText(
             f"{self.controller.frame_position + 1} / {total}" if total else "0 / 0"

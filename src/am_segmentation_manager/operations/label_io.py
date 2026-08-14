@@ -19,7 +19,44 @@ _TIFF_COMPRESSION_NONE = 1
 _TIFF_COMPRESSION_LZW = 5
 
 # Re-exported so existing callers keep importing the dependency check from here.
-__all__ = ["has_image_stack_support", "has_compression_support", "save_label_image"]
+__all__ = [
+    "has_image_stack_support",
+    "has_compression_support",
+    "is_label_file_empty",
+    "save_label_image",
+]
+
+
+def is_label_file_empty(path: Path) -> bool | None:
+    """Return whether a label file contains nothing but background.
+
+    The external segmentation software writes an empty label for every image
+    in its input folder, so the *existence* of a label file is not evidence
+    that an image has been annotated. Anything that treats a label as finished
+    work -- a training export, a progress display -- has to look inside.
+
+    Returns:
+        True if the file holds only background, False if it holds any
+        annotation, and None when the answer cannot be determined: the image
+        stack is not installed, the file is missing, or it could not be read.
+        None is deliberately distinct from True so that an unreadable label is
+        never mistaken for an empty one.
+    """
+    if not has_image_stack_support():
+        logger.debug("Cannot inspect %s: tifffile/numpy/cv2 not installed", path)
+        return None
+
+    import tifffile
+
+    from ..display import is_empty_label
+    from ..io.image import to_2d
+
+    try:
+        array = tifffile.imread(str(path))
+    except Exception as exc:  # noqa: BLE001 - an unreadable label must not raise here
+        logger.warning("Could not read label %s: %s", path, exc)
+        return None
+    return is_empty_label(to_2d(array))
 
 
 def has_compression_support() -> bool:
