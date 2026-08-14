@@ -387,10 +387,34 @@ painter crashes somewhere unrelated.
       alone would have caught the painter crash. Worth doing after any change
       under `gui/widgets/`, since that is where the binding differences live.
 
-- [ ] **Check a locale other than the default**, most cheaply by running the
-      suite with `LC_ALL=de_DE.UTF-8`. Anything parsing or formatting a date,
-      a number or a case-folded string is a candidate; `image_metadata` now has
-      tests for this but nothing stops the next one.
+- [x] **Check a locale other than the default.** **Done 2026-08-14** — and the
+      obvious way to do it does not work:
+
+      # Proves nothing. CPython starts in the "C" locale and only adopts the
+      # environment when something calls setlocale(), which a plain test run
+      # never does.
+      LC_ALL=de_DE.UTF-8 pytest -q
+
+      There is now a hook for it, which fails loudly if the locale is missing
+      rather than quietly running under "C":
+
+      AM_SEG_TEST_LOCALE=de_DE.UTF-8 pytest -q
+
+      859 passed under `de_DE.UTF-8`. Verified to be a real check by restoring
+      the `%p` parse: 9 failures with the sweep, against 4 with `LC_ALL` alone.
+
+      **How the bug actually reached the user is worth keeping.** Constructing
+      a `QApplication` calls `setlocale(LC_ALL, "")`, a process-global side
+      effect. `test_gui_*` sorts before `test_image_metadata`, so by the time
+      the metadata tests ran, Qt had switched the process to the system locale
+      and `strptime('%p')` stopped matching "PM". It was a test-order
+      dependency created by a library, which is why it appeared in a full run
+      on one machine and never in isolation on another.
+
+      That side effect is not worth suppressing: it makes the suite exercise
+      the locale the user actually has, which is how this was found at all.
+      What it needs is to be known about, which is what the note in
+      `tests/conftest.py` is for.
 
 - [ ] **No CI.** A GitHub Actions workflow running `pytest` on push, across a
       matrix of `{pyqt5, pyside6}` and two operating systems, is what makes the

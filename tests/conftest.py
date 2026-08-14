@@ -26,10 +26,48 @@ when you are editing it anyway. See ``docs/01_refactor_plan.md`` section 5.1.
 """
 from __future__ import annotations
 
+import locale
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+
+#: Set this to a locale name to run the whole suite under it, e.g.
+#: ``AM_SEG_TEST_LOCALE=de_DE.UTF-8 pytest -q``.
+#:
+#: Setting ``LC_ALL`` alone does **not** work, which is worth knowing before
+#: trusting such a run: CPython starts in the "C" locale and only adopts the
+#: environment when something calls ``setlocale``. Nothing in a plain test run
+#: does -- so ``LC_ALL=de_DE.UTF-8 pytest`` passes while proving nothing.
+#:
+#: Constructing a ``QApplication`` *does* call ``setlocale(LC_ALL, "")``. That
+#: is how a locale-dependent bug reached a user: the GUI tests run before
+#: ``test_image_metadata`` alphabetically, so by the time it ran, Qt had
+#: switched the process to the system locale and ``strptime('%p')`` no longer
+#: matched "PM". Tests that care now set the locale explicitly themselves; this
+#: hook is for sweeping the rest of the suite.
+LOCALE_ENV_VAR = "AM_SEG_TEST_LOCALE"
+
+
+def pytest_configure(config) -> None:
+    """Apply the requested locale, loudly failing if it is unavailable.
+
+    Failing rather than skipping is deliberate: a locale sweep that silently
+    ran under "C" would report a clean result for a check that never happened.
+    """
+    requested = os.environ.get(LOCALE_ENV_VAR)
+    if not requested:
+        return
+    try:
+        locale.setlocale(locale.LC_ALL, requested)
+    except locale.Error as error:
+        raise pytest.UsageError(
+            f"{LOCALE_ENV_VAR}={requested!r} is not available on this machine "
+            f"({error}). Install it, or choose one from `locale -a`."
+        ) from error
+    config.addinivalue_line("markers", "locale: run under a non-default locale")
+    print(f"\nRunning under locale {locale.setlocale(locale.LC_TIME)}")
 
 #: Sentinel for "this axis was not overridden", since None is a real value for
 #: lamella_name and stage_parts (it means "this level is absent").
