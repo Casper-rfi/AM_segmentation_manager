@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-import shutil
 
-import pytest
 
 # Ensure src/ is on sys.path when running tests from the repository root
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +17,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from am_segmentation_manager.scanner import Scanner
-from am_segmentation_manager.operations.labels import move_to_deselected, move_to_selected
+from am_segmentation_manager.operations.labels import move_to_state
 
 
 def _write_file(p: Path, content: bytes = b"x") -> None:
@@ -180,10 +178,10 @@ def test_move_to_deselected_and_back(tmp_path: Path):
     f = folder / "test.tif"
     f.write_bytes(b"data")
 
-    dest = move_to_deselected(f)
+    dest = move_to_state(f, "deselected")
     assert dest.exists()
     assert not f.exists()
     # move back
-    back = move_to_selected(dest)
+    back = move_to_state(dest, "selected")
     assert back.exists()
     assert not dest.exists()

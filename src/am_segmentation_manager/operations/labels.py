@@ -12,9 +12,6 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "STATE_DIRECTORIES",
     "move_to_state",
-    "move_to_deselected",
-    "move_to_selected",
-    "move_to_corrected",
 ]
 
 
@@ -40,21 +37,3 @@ def move_to_state(path: Path, state: str, *, allow_move_from_corrected: bool = F
     shutil.move(str(path), str(destination))
     logger.info("Moved %s -> %s", path, destination)
     return destination
-
-
-def move_to_deselected(path: Path) -> Path:
-    """Move a file into its deselected state directory."""
-    return move_to_state(path, "deselected")
-
-
-def move_to_selected(path: Path, *, allow_move_from_corrected: bool = False) -> Path:
-    """Move a file into the normal selected state directory.
-
-    Files already in the selected state are returned unchanged.
-    """
-    return move_to_state(path, "selected", allow_move_from_corrected=allow_move_from_corrected)
-
-
-def move_to_corrected(path: Path) -> Path:
-    """Move a file into its corrected state directory."""
-    return move_to_state(path, "corrected")

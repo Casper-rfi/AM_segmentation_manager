@@ -15,7 +15,6 @@ classifiers = ["Programming Language :: Python :: 3"]
 # Minimal runtime dependencies. Heavy image-processing deps are optional extras.
 dependencies = [
   "PyYAML>=5.4",
-  "pandas>=1.0"
 ]
 
 [project.optional-dependencies]

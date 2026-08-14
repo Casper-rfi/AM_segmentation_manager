@@ -5,7 +5,6 @@ dependencies:
   - python=3.11
   - pip
   - pyyaml
-  - pandas
   - pytest
   # optional image-processing dependencies (recommended for full functionality)
   - numpy
