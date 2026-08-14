@@ -21,18 +21,19 @@ twenty projects is useless if one bad directory aborts it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Literal
+from typing import Literal
 
 from .discovery import (
     DEFAULT_MAX_DEPTH,
     PROJECT_MARKERS,
+    discover_stages,
     find_nested_project_roots,
     find_project_roots,
     find_stage_directories,
     group_stages_by_lamella,
-    discover_stages,
     project_markers,
 )
 from .io.path import make_path_relative
@@ -46,13 +47,13 @@ from .layout import (
     state_of_path,
     subdirectories_by_name,
 )
-from .operations.label_io import is_label_file_empty
 from .metadata import (
     AM_METADATA_FILENAME,
     EXPERIMENT_FILENAME,
     ExperimentMetadata,
     build_experiment_metadata,
 )
+from .operations.label_io import is_label_file_empty
 
 logger = logging.getLogger(__name__)
 

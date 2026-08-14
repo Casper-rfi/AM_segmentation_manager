@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from am_segmentation_manager.reporting import filesystem_state, summarize_lamella, print_project_summary
-from am_segmentation_manager.models import Project, Lamella, AdaptiveMillingStage, ImageRecord
+
+from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella, Project
+from am_segmentation_manager.reporting import (
+    filesystem_state,
+    print_project_summary,
+    summarize_lamella,
+)
 
 
 def test_filesystem_state():
@@ -16,7 +21,7 @@ def test_summarize_lamella():
     img_sel = ImageRecord(image_path=Path("/stage/sem/img1.tif"), modality="SEM")
     img_des = ImageRecord(image_path=Path("/stage/sem/deselected/img2.tif"), modality="SEM")
     img_cor = ImageRecord(image_path=Path("/stage/sem/corrected/img3.tif"), modality="SEM", corrected=True)
-    
+
     stage = AdaptiveMillingStage(name="stage1", path=Path("/stage"), images=[img_sel, img_des, img_cor])
     lamella = Lamella(name="lam1", path=Path("/lam1"), stages=[stage])
 

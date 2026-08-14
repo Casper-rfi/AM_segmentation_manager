@@ -21,9 +21,10 @@ from __future__ import annotations
 import logging
 import threading
 from collections import OrderedDict
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Generic, Iterable, Sequence, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from ..display import (
     DEFAULT_PLOT_MAX_EDGE,
@@ -101,7 +102,7 @@ class FrameImage:
 class FramePlot:
     """A frame's prepared summary plot, or why it could not be prepared."""
 
-    plot: "np.ndarray | None" = None
+    plot: np.ndarray | None = None
     error: str | None = None
 
     @property
@@ -254,7 +255,7 @@ class FrameCache:
         self._plots: BoundedCache[int, FramePlot] = BoundedCache(plot_limit)
         self._generation = 0
 
-    def _prepare_plot_at_display_size(self, path: Path) -> "np.ndarray":
+    def _prepare_plot_at_display_size(self, path: Path) -> np.ndarray:
         """Read a plot at whatever size it is currently being displayed."""
         return prepare_plot(path, max_size=self.plot_max_size)
 

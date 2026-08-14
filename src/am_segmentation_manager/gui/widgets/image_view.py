@@ -32,7 +32,7 @@ MIN_SCALE = 0.05
 MAX_SCALE = 40.0
 
 
-def to_qimage(array: "np.ndarray") -> QImage:
+def to_qimage(array: np.ndarray) -> QImage:
     """Convert a display array to a QImage.
 
     Accepts the two shapes the display pipeline produces: 2D greyscale and
@@ -77,7 +77,7 @@ class ImageView(QGraphicsView):
 
     def set_array(
         self,
-        array: "np.ndarray",
+        array: np.ndarray,
         *,
         device_pixel_ratio: float = 1.0,
         native: bool = False,

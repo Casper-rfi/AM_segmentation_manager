@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .colors import RGB, parse_color
 from .io.yaml import read_yaml

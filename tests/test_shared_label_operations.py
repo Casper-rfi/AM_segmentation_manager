@@ -8,23 +8,17 @@ not once per image that references it.
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+from am_segmentation_manager.operations.csv_check import check_csv_paths
+from am_segmentation_manager.operations.selection import deselect_records
+from am_segmentation_manager.scanner import Scanner
 
 HAS_IMAGE_STACK = all(
     importlib.util.find_spec(name) is not None for name in ("numpy", "tifffile", "cv2")
 )
-
-from am_segmentation_manager.operations.csv_check import check_csv_paths
-from am_segmentation_manager.operations.selection import deselect_records
-from am_segmentation_manager.scanner import Scanner
 
 SEM_VARIANTS = ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4")
 

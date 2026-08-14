@@ -14,9 +14,9 @@ scanned model, so it stays cheap to call and straightforward to test.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from .filtering import extract_image_number
 from .models import AdaptiveMillingStage, ImageRecord, Lamella

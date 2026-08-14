@@ -18,11 +18,12 @@ not modelled.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, Mapping
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ METHOD_LAMELLA_TYPES: dict[str, str] = {
 LAMELLA_TYPES: tuple[str, ...] = ("cells-on-grid", "waffle", "lift-out", "other")
 
 
-def merge_metadata(base: Dict, override: Dict) -> Dict:
+def merge_metadata(base: dict, override: dict) -> dict:
     """Merge two metadata dictionaries, with `override` taking precedence.
 
     This performs a shallow merge: keys present in override replace base
@@ -250,7 +251,7 @@ def parse_created_at(value: float | int | str | None) -> datetime | None:
     if value is None:
         return None
     try:
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        return datetime.fromtimestamp(float(value), tz=UTC)
     except (TypeError, ValueError, OverflowError, OSError):
         logger.warning("Could not parse created_at timestamp: %r", value)
         return None

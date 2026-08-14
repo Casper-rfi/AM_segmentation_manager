@@ -13,9 +13,9 @@ performance detail rather than a dependency.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict
 import logging
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def _loader():
         return yaml.SafeLoader
 
 
-def read_yaml(path: Path) -> Dict[str, Any]:
+def read_yaml(path: Path) -> dict[str, Any]:
     """Read a YAML file and return its contents as a dictionary.
 
     A missing file reads as an empty mapping, since most of the files this

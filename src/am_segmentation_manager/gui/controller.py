@@ -11,14 +11,15 @@ render and forward events; decisions live here.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, Sequence
+from typing import Literal
 
 from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import LamellaFrame, build_lamella_frames
-from ..models import Lamella, Project
 from ..layout import MODALITIES, base_path
+from ..models import Lamella, Project
 from ..operations.label_groups import build_groups, expand_to_groups
 from ..operations.label_io import is_label_file_empty
 from ..operations.selection import RecordState, current_state, transition_records
@@ -560,7 +561,7 @@ class CurationController:
             if str(base_path(record.image_path)) not in requested
         ]
 
-    def reach(self) -> "StateChangeReach":
+    def reach(self) -> StateChangeReach:
         """Return how far a state change would go, for display before it is made.
 
         Counted from the same expansion the operation performs, so the number

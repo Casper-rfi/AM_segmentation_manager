@@ -2,17 +2,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
-from .label_groups import (
-    LabelGroup,
-    describe_group,
-    expand_to_groups,
-    find_inconsistent_groups,
-)
-from .labels import STATE_DIRECTORIES, move_to_state
 from ..layout import (
     RecordState,
     base_path,
@@ -24,6 +17,13 @@ from ..layout import (
     subdirectories_by_name,
 )
 from ..models import ImageRecord
+from .label_groups import (
+    LabelGroup,
+    describe_group,
+    expand_to_groups,
+    find_inconsistent_groups,
+)
+from .labels import STATE_DIRECTORIES, move_to_state
 
 logger = logging.getLogger(__name__)
 

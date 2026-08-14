@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from am_segmentation_manager.io.path import make_path_relative
 
 

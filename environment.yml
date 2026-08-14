@@ -6,6 +6,10 @@ dependencies:
   - pip
   - pyyaml
   - pytest
+  # Linting and formatting. Configured in pyproject.toml under [tool.ruff];
+  # `ruff check` should report nothing, so anything it does report is worth
+  # acting on.
+  - ruff
   # optional image-processing dependencies (recommended for full functionality)
   - numpy
   - tifffile

@@ -7,15 +7,9 @@ thing that tells them apart. These tests pin the behaviour that keeps both.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from am_segmentation_manager.filtering import iter_matching_records, matches_project
 from am_segmentation_manager.models import Project

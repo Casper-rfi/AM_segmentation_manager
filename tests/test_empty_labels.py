@@ -8,15 +8,13 @@ blank mask, teaching a model that the structure is background.
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+from am_segmentation_manager.cli import main
+from am_segmentation_manager.operations.label_io import is_label_file_empty
+from am_segmentation_manager.survey import survey_collection
 
 HAS_IMAGE_STACK = all(
     importlib.util.find_spec(name) is not None for name in ("numpy", "tifffile", "cv2")
@@ -25,13 +23,11 @@ pytestmark = pytest.mark.skipif(
     not HAS_IMAGE_STACK, reason="optional image libs not installed"
 )
 
+# Imported only when present: these are optional extras, and the whole module
+# is skipped above when they are missing.
 if HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
-
-from am_segmentation_manager.cli import main
-from am_segmentation_manager.operations.label_io import is_label_file_empty
-from am_segmentation_manager.survey import survey_collection
 
 
 def _write_label(path: Path, annotated: bool) -> Path:

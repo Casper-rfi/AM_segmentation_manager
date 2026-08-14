@@ -17,7 +17,7 @@ from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_compression import compress_labels
 
 
-def _sparse_label(shape=(512, 512)) -> "np.ndarray":
+def _sparse_label(shape=(512, 512)) -> np.ndarray:
     """A label mask that compresses well: mostly one value, one block of another."""
     arr = np.zeros(shape, dtype=np.uint8)
     arr[100:400, 100:400] = 2

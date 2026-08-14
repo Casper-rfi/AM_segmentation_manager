@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from am_segmentation_manager.filtering import (
+    extract_image_number,
+    matches_image,
+    matches_lamella,
+    matches_project,
+    matches_stage,
     parse_scope_number,
     parse_selector_values,
-    extract_image_number,
-    matches_project,
-    matches_lamella,
-    matches_stage,
-    matches_image,
     record_matches_paths,
 )
-from am_segmentation_manager.models import Project, Lamella, AdaptiveMillingStage, ImageRecord
+from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella, Project
 
 
 def test_parse_scope_number():

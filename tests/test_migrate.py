@@ -6,15 +6,9 @@ reports the whole batch before touching anything.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.operations.migrate import (
@@ -153,13 +147,13 @@ def test_the_scanner_still_matches_labels_after_migration(tmp_path: Path):
     before = {
         r.modality: labels_of(r)
         for p in Scanner(tmp_path).build_index().all_projects()
-        for l in p.lamellae for s in l.stages for r in s.images
+        for lam in p.lamellae for s in lam.stages for r in s.images
     }
     apply_label_migration(plan_label_migration(tmp_path))
     after = {
         r.modality: labels_of(r)
         for p in Scanner(tmp_path).build_index().all_projects()
-        for l in p.lamellae for s in l.stages for r in s.images
+        for lam in p.lamellae for s in lam.stages for r in s.images
     }
 
     assert before == after == {"SEM": ["img_000.tif"], "FIB": ["img_000.tif"]}

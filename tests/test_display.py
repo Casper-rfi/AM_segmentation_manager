@@ -432,7 +432,7 @@ def test_default_max_edge_is_applied(tmp_path):
 # Detail-preserving downscaling (used for rendered figures)
 # ---------------------------------------------------------------------------
 
-def _fine_detail_image(size: int = 800) -> "np.ndarray":
+def _fine_detail_image(size: int = 800) -> np.ndarray:
     """A high-contrast pattern standing in for small rendered text."""
     image = np.full((size, size), 255, dtype=np.uint8)
     image[:, ::4] = 0

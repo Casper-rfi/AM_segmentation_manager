@@ -6,14 +6,8 @@ installed so they won't break minimal installations.
 from __future__ import annotations
 
 from pathlib import Path
-import sys
-import pytest
 
-# Ensure src/ is on sys.path when running tests from the repository root
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+import pytest
 
 from am_segmentation_manager.operations.predictions import prediction_to_label
 
@@ -27,8 +21,8 @@ from am_segmentation_manager.operations.predictions import prediction_to_label
     reason="Optional image libs not installed",
 )
 def test_prediction_resizing(tmp_path: Path):
-    import tifffile
     import numpy as np
+    import tifffile
 
     stage = tmp_path / "stage"
     stage.mkdir()

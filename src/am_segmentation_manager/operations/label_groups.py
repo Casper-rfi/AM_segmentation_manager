@@ -22,9 +22,9 @@ command given a single file path expands correctly without scanning everything.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from ..layout import (
     RecordState,

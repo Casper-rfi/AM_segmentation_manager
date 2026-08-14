@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .selection import base_path, existing_variant
 from ..io.path import make_path_relative
+from .selection import base_path, existing_variant
 
 logger = logging.getLogger(__name__)
 

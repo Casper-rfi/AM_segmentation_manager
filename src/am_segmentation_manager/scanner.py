@@ -7,21 +7,20 @@ filesystem.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, List, Iterator
 import logging
 import re
+from collections.abc import Iterator
 from datetime import datetime
+from pathlib import Path
 
-from .models import Project, Lamella, AdaptiveMillingStage, ImageRecord
 from .discovery import (
     DiscoveredStage,
     discover_stages,
     find_project_roots,
     group_stages_by_lamella,
 )
-from .io.yaml import read_yaml
 from .io.path import make_path_relative
+from .io.yaml import read_yaml
 from .layout import (
     PREDICTION_KINDS,
     build_image_sets,
@@ -37,6 +36,7 @@ from .metadata import (
     build_experiment_metadata,
     merge_metadata,
 )
+from .models import AdaptiveMillingStage, ImageRecord, Lamella, Project
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class ProjectIndex:
 
     def __init__(self, start_path: Path | None = None) -> None:
         self.start_path = start_path
-        self.projects: Dict[str, Project] = {}
+        self.projects: dict[str, Project] = {}
 
     def add(self, project: Project) -> None:
         """Add a project, keyed by its identity.
@@ -65,7 +65,7 @@ class ProjectIndex:
             logger.warning("Replacing already-indexed project %s", project.key)
         self.projects[project.key] = project
 
-    def all_projects(self) -> List[Project]:
+    def all_projects(self) -> list[Project]:
         return list(self.projects.values())
 
     def find_by_key(self, key: str) -> Project:
@@ -196,7 +196,7 @@ class Scanner:
         project.lamellae = self._build_lamellae(project_root, project_name)
         return project
 
-    def _build_lamellae(self, project_root: Path, project_name: str) -> List[Lamella]:
+    def _build_lamellae(self, project_root: Path, project_name: str) -> list[Lamella]:
         """Build the lamellae of a project, synthesising absent levels.
 
         Older datasets collapse the hierarchy: some have no stage directory
@@ -206,7 +206,7 @@ class Scanner:
         """
         grouped = group_stages_by_lamella(discover_stages(project_root))
 
-        lamellae: List[Lamella] = []
+        lamellae: list[Lamella] = []
         for lamella_path in sorted(grouped):
             discovered = grouped[lamella_path]
             synthetic = discovered[0].lamella_is_synthetic
@@ -225,11 +225,11 @@ class Scanner:
         return lamellae
 
     def _build_stages(
-        self, discovered: List[DiscoveredStage], project_name: str, lamella_name: str
-    ) -> List[AdaptiveMillingStage]:
+        self, discovered: list[DiscoveredStage], project_name: str, lamella_name: str
+    ) -> list[AdaptiveMillingStage]:
         """Build the stages of one lamella, ordered by acquisition time."""
         ordered = sorted(discovered, key=lambda item: self._stage_sort_key(item.path))
-        stages: List[AdaptiveMillingStage] = []
+        stages: list[AdaptiveMillingStage] = []
         for index, item in enumerate(ordered, start=1):
             stage = AdaptiveMillingStage(
                 name=item.path.name,
@@ -250,7 +250,7 @@ class Scanner:
         return stages
 
     @classmethod
-    def _discover_plots(cls, stage_path: Path) -> List[Path]:
+    def _discover_plots(cls, stage_path: Path) -> list[Path]:
         """Return the summary plot images written for a stage.
 
         Plots are rendered during lamella preparation and combine an image with
@@ -337,7 +337,7 @@ class Scanner:
             return None
         return f"{int(match.group(1)):02d}"
 
-    def _discover_images_in_stage(self, stage_path: Path, project_name: str, lamella_name: str) -> List[ImageRecord]:
+    def _discover_images_in_stage(self, stage_path: Path, project_name: str, lamella_name: str) -> list[ImageRecord]:
         """Discover image files, predictions and labels inside a stage folder.
 
         Directory names are resolved through :mod:`am_segmentation_manager.layout`,
@@ -355,7 +355,7 @@ class Scanner:
         directory each reference the same label file, which is why a record
         records whether its label is shared.
         """
-        image_records: List[ImageRecord] = []
+        image_records: list[ImageRecord] = []
 
         for image_set in build_image_sets(stage_path):
             labels_map = image_files_by_name(image_set.labels_directory)
@@ -386,7 +386,7 @@ class Scanner:
         return image_records
 
     @staticmethod
-    def _collect_predictions(stage_path: Path, image_set) -> dict[str, List[Path]]:
+    def _collect_predictions(stage_path: Path, image_set) -> dict[str, list[Path]]:
         """Return prediction files for an image set, keyed by filename.
 
         Predictions live in a directory resolved by the layout conventions,
@@ -404,7 +404,7 @@ class Scanner:
         if directory is None:
             return {}
 
-        collected: dict[str, List[Path]] = {}
+        collected: dict[str, list[Path]] = {}
         for candidate in [directory, *(directory / kind for kind in PREDICTION_KINDS)]:
             for path in image_files(candidate):
                 collected.setdefault(path.name, []).append(path)

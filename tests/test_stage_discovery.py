@@ -6,18 +6,10 @@ hierarchy. The tests do not require heavy image dependencies.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-
-# Ensure src/ is on sys.path when running tests from the repository root
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from am_segmentation_manager.scanner import Scanner
 from am_segmentation_manager.operations.labels import move_to_state
+from am_segmentation_manager.scanner import Scanner
 
 
 def _write_file(p: Path, content: bytes = b"x") -> None:
@@ -92,7 +84,7 @@ def test_image_record_pred_label_matching(tmp_path: Path):
     rec = next(r for r in found_stage.images if r.image_path.name == "img_sem.tif")
     # predictions and labels should be matched by filename
     assert any(p.name == "img_sem.tif" for p in rec.predictions)
-    assert any(l.name == "img_sem.tif" for l in rec.labels)
+    assert any(label.name == "img_sem.tif" for label in rec.labels)
 
 
 def test_lamella_discovery_does_not_require_numeric_prefix(tmp_path: Path):

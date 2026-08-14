@@ -6,18 +6,11 @@ skipped so the test suite can run in CI without the large dataset.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+
 import pytest
 
-# Ensure src/ is on sys.path when running tests from the repository root
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
 from am_segmentation_manager.scanner import Scanner
-
 
 # Look for a reference dataset folder under the repository root. This
 # makes the test robust to where pytest is invoked from and to minor naming

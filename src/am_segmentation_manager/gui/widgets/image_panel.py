@@ -31,7 +31,7 @@ from ..controller import DisplayMode
 from .image_view import ImageView, LinkedImageViews
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from ...frames import LamellaFrame
+    pass
 
 logger = logging.getLogger(__name__)
 

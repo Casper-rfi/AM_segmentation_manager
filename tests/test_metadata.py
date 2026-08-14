@@ -1,7 +1,8 @@
 """Tests for the metadata module."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from am_segmentation_manager.metadata import merge_metadata, parse_created_at
 
 
@@ -16,7 +17,7 @@ def test_parse_created_at():
     # Valid timestamp float/int/str
     dt = parse_created_at(1785231172.267575)
     assert isinstance(dt, datetime)
-    assert dt.tzinfo == timezone.utc
+    assert dt.tzinfo == UTC
 
     dt_str = parse_created_at("1785231172.267575")
     assert isinstance(dt_str, datetime)

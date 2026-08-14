@@ -8,13 +8,13 @@ from __future__ import annotations
 import csv
 import logging
 import random
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
-from .label_io import is_label_file_empty
 from ..io.path import make_path_relative
 from ..layout import base_path, state_of_path
 from ..models import ImageRecord
+from .label_io import is_label_file_empty
 
 logger = logging.getLogger(__name__)
 

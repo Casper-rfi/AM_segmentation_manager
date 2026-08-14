@@ -2,14 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
-import pytest
 
-# Ensure src/ is on sys.path when running tests from the repository root
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+import pytest
 
 from am_segmentation_manager.operations.predictions import convert_stage_predictions
 
@@ -26,8 +20,8 @@ def test_convert_stage_predictions_simple(tmp_path: Path):
 
     # If tifffile is available, write minimal valid TIFFs so conversion uses image I/O.
     try:
-        import tifffile
         import numpy as np
+        import tifffile
         sem.mkdir(parents=True, exist_ok=True)
         preds.mkdir(parents=True, exist_ok=True)
         tifffile.imwrite(str(sem / "img_sem.tif"), np.zeros((10, 10), dtype=np.uint8))
@@ -44,8 +38,8 @@ def test_convert_stage_predictions_simple(tmp_path: Path):
 
 @pytest.mark.skipif(not (lambda: __import__('importlib').util.find_spec('tifffile') and __import__('importlib').util.find_spec('numpy') and __import__('importlib').util.find_spec('cv2'))(), reason="Optional image libs not installed")
 def test_convert_stage_predictions_resizes(tmp_path: Path):
-    import tifffile
     import numpy as np
+    import tifffile
 
     stage = tmp_path / "stage2"
     stage.mkdir(parents=True)

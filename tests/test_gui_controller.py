@@ -26,7 +26,6 @@ from am_segmentation_manager.models import (
 )
 from am_segmentation_manager.scanner import ProjectIndex
 
-
 CONFIG = SegmentationConfig(
     class_colors={0: (0, 0, 0), 1: (255, 0, 0)}, class_labels={0: "background", 1: "GIS"}
 )

@@ -12,13 +12,13 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
-from .label_io import has_image_stack_support, save_label_image
 from ..layout import state_of_path
 from ..models import ImageRecord
+from .label_io import has_image_stack_support, save_label_image
 
 logger = logging.getLogger(__name__)
 

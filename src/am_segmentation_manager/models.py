@@ -12,9 +12,9 @@ and reason about. Filesystem scanning is separated from these models.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .layout import ImageSet
@@ -42,14 +42,14 @@ class ImageRecord:
     """
 
     image_path: Path
-    predictions: List[Path] = field(default_factory=list)
-    labels: List[Path] = field(default_factory=list)
-    project: Optional[str] = None
-    lamella: Optional[str] = None
-    stage: Optional[str] = None
-    timestamp: Optional[datetime] = None
-    modality: Optional[str] = None
-    variant: Optional[str] = None
+    predictions: list[Path] = field(default_factory=list)
+    labels: list[Path] = field(default_factory=list)
+    project: str | None = None
+    lamella: str | None = None
+    stage: str | None = None
+    timestamp: datetime | None = None
+    modality: str | None = None
+    variant: str | None = None
     label_shared: bool = False
     selected: bool = True
     corrected: bool = False
@@ -58,7 +58,7 @@ class ImageRecord:
 @dataclass
 class AdaptiveMillingStage:
     """A stage inside a lamella's milling history.
-    
+
     Attributes:
         name: human friendly stage name (e.g. 'Adaptive_polish_...')
         path: filesystem path to the stage folder
@@ -75,11 +75,11 @@ class AdaptiveMillingStage:
 
     name: str
     path: Path
-    images: List[ImageRecord] = field(default_factory=list)
-    number: Optional[str] = None
-    plots: List[Path] = field(default_factory=list)
+    images: list[ImageRecord] = field(default_factory=list)
+    number: str | None = None
+    plots: list[Path] = field(default_factory=list)
     synthetic: bool = False
-    image_sets: List["ImageSet"] = field(default_factory=list)
+    image_sets: list[ImageSet] = field(default_factory=list)
 
     @property
     def display_name(self) -> str:
@@ -97,7 +97,7 @@ class AdaptiveMillingStage:
 @dataclass
 class Lamella:
     """Representation of a lamella inside an Autolamella project.
-    
+
     Attributes:
         name: lamella folder name
         path: path to lamella folder
@@ -109,8 +109,8 @@ class Lamella:
 
     name: str
     path: Path
-    stages: List[AdaptiveMillingStage] = field(default_factory=list)
-    number: Optional[str] = None
+    stages: list[AdaptiveMillingStage] = field(default_factory=list)
+    number: str | None = None
     synthetic: bool = False
 
     @property
@@ -138,11 +138,11 @@ class Project:
 
     name: str
     path: Path
-    relative_path: Optional[str] = None
-    metadata: Dict = field(default_factory=dict)
-    experiment_metadata: Optional["ExperimentMetadata"] = None
-    lamellae: List[Lamella] = field(default_factory=list)
-    number: Optional[str] = None
+    relative_path: str | None = None
+    metadata: dict = field(default_factory=dict)
+    experiment_metadata: ExperimentMetadata | None = None
+    lamellae: list[Lamella] = field(default_factory=list)
+    number: str | None = None
 
     @property
     def key(self) -> str:

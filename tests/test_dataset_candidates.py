@@ -11,14 +11,7 @@ the projects beneath it. These tests pin both sides.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.discovery import find_dataset_candidates
@@ -163,8 +156,8 @@ def test_the_dataset_becomes_indexable(tmp_path: Path):
     projects = {p.path.name: p for p in Scanner(tmp_path).build_index().all_projects()}
     assert "20240228_adaptive_milling_ai" in projects
     legacy = projects["20240228_adaptive_milling_ai"]
-    assert [l.name for l in legacy.lamellae] == ["lam_004", "lam_010"]
-    assert all(s.synthetic for l in legacy.lamellae for s in l.stages)
+    assert [lam.name for lam in legacy.lamellae] == ["lam_004", "lam_010"]
+    assert all(s.synthetic for lam in legacy.lamellae for s in lam.stages)
 
 
 def test_an_unmarked_dataset_is_announced_before_being_written(tmp_path: Path, capsys):

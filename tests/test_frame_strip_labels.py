@@ -8,17 +8,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import sys
-from pathlib import Path
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 HAS_QT = importlib.util.find_spec("qtpy") is not None
 pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
@@ -50,7 +44,7 @@ def timeline(qt_app):
     yield widget
 
 
-def _render(widget) -> "QImage":
+def _render(widget) -> QImage:
     """Paint the widget into an image so its pixels can be asserted on."""
     image = QImage(widget.width(), widget.height(), QImage.Format_ARGB32)
     image.fill(0)

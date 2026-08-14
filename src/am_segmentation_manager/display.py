@@ -69,8 +69,8 @@ class DisplayImage:
         source: Path the image was read from.
     """
 
-    image: "np.ndarray"
-    label: "np.ndarray | None" = None
+    image: np.ndarray
+    label: np.ndarray | None = None
     label_status: LabelStatus = "missing"
     label_resized: bool = False
     original_shape: tuple[int, int] = (0, 0)
@@ -88,11 +88,11 @@ class DisplayImage:
 # ---------------------------------------------------------------------------
 
 def to_display_8bit(
-    image: "np.ndarray",
+    image: np.ndarray,
     *,
     stretch: bool = False,
     percentiles: tuple[float, float] = DEFAULT_PERCENTILES,
-) -> "np.ndarray":
+) -> np.ndarray:
     """Convert an image array to 8-bit for display, without altering contrast.
 
     SEM and FIB acquisitions already have their intensity range set correctly
@@ -139,8 +139,8 @@ def to_display_8bit(
 
 
 def downscale_to_fit(
-    array: "np.ndarray", max_edge: int, *, nearest: bool = False
-) -> "np.ndarray":
+    array: np.ndarray, max_edge: int, *, nearest: bool = False
+) -> np.ndarray:
     """Reduce *array* so its longest edge is at most *max_edge* pixels.
 
     Arrays already within the limit are returned unchanged; this never
@@ -169,7 +169,7 @@ def downscale_to_fit(
     return cv2.resize(array, target, interpolation=interpolation)
 
 
-def fit_within(array: "np.ndarray", size: tuple[int, int]) -> "np.ndarray":
+def fit_within(array: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     """Reduce *array* to fit inside ``(width, height)``, preserving detail.
 
     Fitting a box rather than a single edge matters when the result is to be
@@ -192,7 +192,7 @@ def fit_within(array: "np.ndarray", size: tuple[int, int]) -> "np.ndarray":
     )
 
 
-def downscale_for_detail(array: "np.ndarray", max_edge: int) -> "np.ndarray":
+def downscale_for_detail(array: np.ndarray, max_edge: int) -> np.ndarray:
     """Reduce *array* preserving fine detail such as rendered text.
 
     Plain area averaging is correct but soft, which is fine for photographic
@@ -217,8 +217,8 @@ def downscale_for_detail(array: "np.ndarray", max_edge: int) -> "np.ndarray":
 
 
 def _resize_preserving_detail(
-    array: "np.ndarray", target_width: int, target_height: int
-) -> "np.ndarray":
+    array: np.ndarray, target_width: int, target_height: int
+) -> np.ndarray:
     """Resize to an exact size, keeping fine detail as sharp as possible."""
     import cv2
 
@@ -238,7 +238,7 @@ def _resize_preserving_detail(
     )
 
 
-def resize_label_to(label: "np.ndarray", shape: tuple[int, ...]) -> "np.ndarray":
+def resize_label_to(label: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
     """Resample a label array to *shape* using nearest-neighbour.
 
     Class indices are categorical, so interpolation would invent classes that
@@ -252,7 +252,7 @@ def resize_label_to(label: "np.ndarray", shape: tuple[int, ...]) -> "np.ndarray"
     return cv2.resize(label, (width, height), interpolation=cv2.INTER_NEAREST)
 
 
-def is_empty_label(label: "np.ndarray") -> bool:
+def is_empty_label(label: np.ndarray) -> bool:
     """Return whether a label contains nothing but background.
 
     The external segmentation software writes an empty label for every image
@@ -262,7 +262,7 @@ def is_empty_label(label: "np.ndarray") -> bool:
     return not bool((label != BACKGROUND_CLASS).any())
 
 
-def to_rgb(array: "np.ndarray") -> "np.ndarray":
+def to_rgb(array: np.ndarray) -> np.ndarray:
     """Convert a greyscale, RGB or RGBA array to plain 8-bit RGB.
 
     Transparency is composited over white, matching the background these plots
@@ -290,13 +290,13 @@ def to_rgb(array: "np.ndarray") -> "np.ndarray":
 # ---------------------------------------------------------------------------
 
 def compose_overlay(
-    image: "np.ndarray",
-    label: "np.ndarray",
+    image: np.ndarray,
+    label: np.ndarray,
     config: SegmentationConfig,
     *,
     alpha: float = DEFAULT_ALPHA,
     hide_background: bool = True,
-) -> "np.ndarray":
+) -> np.ndarray:
     """Draw a label over an image using the configured class colours.
 
     Args:
@@ -349,7 +349,7 @@ def compose_overlay(
     return result
 
 
-def _drawn_mask(label: "np.ndarray", hide_background: bool) -> "np.ndarray":
+def _drawn_mask(label: np.ndarray, hide_background: bool) -> np.ndarray:
     """Return a boolean mask of the pixels the overlay should colour."""
     import numpy as np
 
@@ -359,8 +359,8 @@ def _drawn_mask(label: "np.ndarray", hide_background: bool) -> "np.ndarray":
 
 
 def _build_palette(
-    label: "np.ndarray", config: SegmentationConfig, hide_background: bool
-) -> "np.ndarray":
+    label: np.ndarray, config: SegmentationConfig, hide_background: bool
+) -> np.ndarray:
     """Build a class-index-to-colour lookup table for the classes in *label*.
 
     Only classes actually present are looked up, so a config warning is never
@@ -452,7 +452,7 @@ def prepare_plot(
     plot_path: Path,
     *,
     max_size: tuple[int, int] = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE),
-) -> "np.ndarray":
+) -> np.ndarray:
     """Read a summary plot as an RGB array, reduced to display size.
 
     Plots are rendered at high resolution (several thousand pixels across) and

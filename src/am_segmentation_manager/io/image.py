@@ -57,7 +57,7 @@ def require_image_stack(operation: str) -> None:
         )
 
 
-def to_2d(array: "np.ndarray") -> "np.ndarray":
+def to_2d(array: np.ndarray) -> np.ndarray:
     """Reduce an image array to two dimensions.
 
     Multi-channel and multi-page files are reduced to a single plane, so that
@@ -82,7 +82,7 @@ def to_2d(array: "np.ndarray") -> "np.ndarray":
     return np.squeeze(array)
 
 
-def read_array(path: Path) -> "np.ndarray":
+def read_array(path: Path) -> np.ndarray:
     """Read an image file into an array, preserving its stored dtype.
 
     TIFFs are read with tifffile; other formats (for example the PNG summary
@@ -123,7 +123,7 @@ def read_array(path: Path) -> "np.ndarray":
     return np.asarray(array)
 
 
-def read_color_array(path: Path) -> "np.ndarray":
+def read_color_array(path: Path) -> np.ndarray:
     """Read an image as 3-channel RGB, discarding any alpha channel on decode.
 
     For an opaque image, decoding to four channels and then compositing the

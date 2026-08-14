@@ -13,9 +13,8 @@ a GUI toolkit installed.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Tuple
 
-RGB = Tuple[int, int, int]
+RGB = tuple[int, int, int]
 
 # The CSS Color Module Level 4 named colours (also known as the X11 or SVG
 # colour names), mapped to their canonical hex values.

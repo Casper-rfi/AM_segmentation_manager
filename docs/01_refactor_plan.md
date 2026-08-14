@@ -1,13 +1,13 @@
 # Refactor and cleanup plan
 
-Status: **§1–§3 done (phases 0–1). §4 and §5 outstanding.**
+Status: **§1–§4 done (phases 0–1). §5 outstanding.**
 Written 2026-08-14 against `main` at c9c05e2.
 
 A consumable checklist. When every box is ticked this document should be
-deleted — it has no value as a record. The two remaining sections are §4
-(packaging and tooling gaps: licence, author metadata, ruff, CI) and §5 (test
-fixture consolidation, which the roadmap deliberately schedules as
-opportunistic rather than as a single pass).
+deleted — it has no value as a record. What remains is §5 (test fixture
+consolidation, which the roadmap deliberately schedules as opportunistic rather
+than as a single pass), plus three items parked by decision rather than
+oversight: the git remote (§1.1), the licence (§4) and CI (§4).
 
 Baseline: `pytest -q` gives **667 passed, 1 skipped in 39 s**. Nothing below is
 a bug fix; the package works. This is removal of things that stopped being true
@@ -334,19 +334,26 @@ for the stated goal of open-sourcing, and all are cheap now and annoying later.
       the copyright holder is** — the author or the Rosalind Franklin Institute
       — which is likely an institutional decision rather than a personal one,
       and worth asking before the code goes anywhere.
-- [ ] **Version is stated twice** — `pyproject.toml` `version = "0.0.0"` and
-      `__init__.py` `__version__ = "0.0.0"`. They will drift. Pick one source:
-      simplest is to keep it in `pyproject.toml` and read it in `__init__.py`
-      with `importlib.metadata.version()`.
-- [ ] **No linter or formatter.** `CLAUDE.md` requires type hints throughout and
-      nothing checks that. Add `ruff` config to `pyproject.toml` (lint +
-      format, one tool, no new concepts) and optionally `mypy`. Do not turn on
-      every rule — start with the defaults plus `I` (import sorting) and fix
-      what it finds.
-- [ ] **No `[tool.pytest.ini_options]`.** `tests/conftest.py` manipulates
-      `sys.path` to run against the source tree. That works, but declaring
-      `pythonpath = ["src"]` in `pyproject.toml` is the supported way and lets
-      the conftest be emptied of everything except real fixtures.
+- [x] **Version is stated twice.** **Done** — `pyproject.toml` is the single
+      source; `__init__.py` reads it with `importlib.metadata.version()` and
+      falls back to `0.0.0+unknown` when running from a checkout that was never
+      installed. Both paths verified.
+- [x] **No linter or formatter.** **Done** — `[tool.ruff]` in
+      `pyproject.toml` selects `E, W, F, I, UP`; `ruff check` now reports
+      nothing. 215 findings were resolved: 168 auto-fixed (import sorting and
+      PEP 585/604 annotation modernisation), 13 fixed by hand (ambiguous `l`
+      loop variables, imports moved above conditional blocks, whitespace in two
+      docstrings), and E501 deliberately left off — see the comment in
+      `pyproject.toml` for why. `ruff` added to `environment.yml`.
+
+- [ ] *(optional)* Add `mypy`. Not attempted; ruff does not check types, so
+      `CLAUDE.md`'s type-hint requirement is still unenforced.
+- [x] **No `[tool.pytest.ini_options]`.** **Done** — `pythonpath = ["src"]`
+      and `testpaths = ["tests"]` declared. The hand-rolled `sys.path` insertion
+      was removed from `conftest.py` **and from 23 test files** that each
+      carried a copy. Verified by uninstalling the package and confirming all
+      667 tests still pass. `test_gui_layering.py` keeps its `SRC` constant: it
+      uses it to build a subprocess environment, not for imports.
 - [ ] **No CI.** A single GitHub Actions workflow running `pytest` on push
       would catch the class of breakage that a 667-test suite exists to catch
       but only when someone remembers to run it. Do this once the remote exists.

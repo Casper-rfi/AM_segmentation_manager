@@ -1,15 +1,8 @@
 """Tests for CLI project listing output."""
 from __future__ import annotations
 
-from pathlib import Path
 import re
-import sys
-
-# Ensure src/ is on sys.path when running tests from the repository root
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+from pathlib import Path
 
 from am_segmentation_manager.cli import main
 

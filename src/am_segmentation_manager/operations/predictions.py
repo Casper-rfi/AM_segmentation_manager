@@ -8,12 +8,11 @@ warning.
 """
 from __future__ import annotations
 
-from pathlib import Path
 import logging
 import shutil
-from typing import Iterable
+from collections.abc import Iterable
+from pathlib import Path
 
-from .label_io import has_image_stack_support, save_label_image
 from ..io.image import to_2d
 from ..layout import (
     MODALITIES,
@@ -24,6 +23,7 @@ from ..layout import (
     subdirectories_by_name,
 )
 from ..models import ImageRecord
+from .label_io import has_image_stack_support, save_label_image
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,9 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
         return
 
     # perform resizing using tifffile + numpy + cv2
-    import tifffile  # type: ignore
-    import numpy as np  # type: ignore
     import cv2  # type: ignore
+    import numpy as np  # type: ignore
+    import tifffile  # type: ignore
 
     # read images
     try:
