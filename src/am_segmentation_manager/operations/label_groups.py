@@ -185,10 +185,6 @@ def primary_record(records: Iterable[ImageRecord]) -> ImageRecord:
     for the unsuffixed directory matters for the oldest layouts, which have no
     unsuffixed directory at all: their SEM sets are ``SEM_8``, ``SEM_8_fi_1``
     and so on.
-
-    Defined here, beside the grouping it belongs to, because two callers now
-    need it: the training export picks one condition per scene, and label
-    measurement takes a shared label's scale from its primary image.
     """
     return min(records, key=condition_sort_key)
 

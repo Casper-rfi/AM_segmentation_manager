@@ -451,24 +451,15 @@ def prepare_plot(
 ) -> np.ndarray:
     """Read a summary plot as an RGB array, reduced to display size.
 
-    Plots are rendered at high resolution (several thousand pixels across) and
-    cost far more memory decoded than an acquisition does, so reducing them on
-    read matters more here than for the images.
+    Plots are rendered at several thousand pixels across and cost far more
+    memory decoded than an acquisition does, so reducing them on read matters
+    more here than for the images. They are opaque, so decoding is delegated to
+    :func:`read_color_array` for three channels.
 
-    The plot is decoded straight to three channels. These figures are opaque,
-    so the alpha channel carries nothing, and compositing it away afterwards
-    cost more than the decode itself -- see :func:`read_color_array`.
-
-    *max_size* should be the size in **physical screen pixels** that the plot
-    will occupy. Two things follow from getting this right, and both matter for
-    small text:
-
-    * Rendering larger and letting the view shrink it resamples twice, the
-      second time with the view's own filter. Rendering at display size
-      resamples once, with a filter chosen for the job.
-    * On a high-resolution display one logical pixel is two physical ones, so a
-      plot prepared to the pane's *logical* size is then magnified to fill it.
-      Passing physical pixels is what avoids that.
+    *max_size* must be the size in **physical screen pixels** the plot will
+    occupy, not logical pixels. Rendering larger and letting the view shrink it
+    resamples twice, and on a high-resolution display a plot prepared to the
+    pane's logical size is then magnified to fill it. Both blur small text.
 
     Args:
         plot_path: The plot PNG to read.

@@ -45,16 +45,10 @@ def find_matching_label(record: ImageRecord) -> Path | None:
 def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRecord]:
     """Return one record per scene, dropping the other imaging conditions.
 
-    Records sharing a label are the same scene captured under different
-    imaging conditions, so exporting all of them multiplies a dataset by
-    near-identical copies. This keeps the *primary* condition of each: the
-    unsuffixed image directory where there is one, otherwise the
-    first-sorting variant -- the same image the curation window displays.
-
-    Choosing the primary this way rather than filtering for the unsuffixed
-    directory matters for the oldest layouts, which have no unsuffixed
-    directory at all: their SEM sets are ``SEM_8``, ``SEM_8_fi_1`` and so on,
-    and a filter for "the base directory" would silently select none of them.
+    Records sharing a label are the same scene captured under different imaging
+    conditions, so exporting all of them multiplies a dataset by near-identical
+    copies. This keeps each scene's primary condition, chosen by
+    :func:`~am_segmentation_manager.operations.label_groups.primary_record`.
 
     Records with no label are kept as they are, since nothing identifies them
     as sharing a scene with anything else.

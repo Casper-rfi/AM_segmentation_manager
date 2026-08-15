@@ -144,18 +144,10 @@ class Scanner:
     def build_index(self) -> ProjectIndex:
         """Scan and build a ProjectIndex for discovered projects.
 
-        The implementation focuses on a robust, minimal index that can be
-        extended later. This version additionally discovers Adaptive Milling
-        stages and image records inside each lamella so downstream operations
-        can operate on in-memory objects instead of re-traversing the FS.
-
-        Behaviour:
-        - discovers projects by experiment.yaml
-        - reads experiment.yaml and AM_metadata.yaml (if present)
-        - collects lamella folders directly under the project folder
-        - for each lamella, finds stage folders that contain a 'sem' or 'fib' subfolder
-        - for each stage, indexes images in sem/ and fib/ (including deselected subfolders)
-        - matches predictions and labels by filename when possible
+        Discovers projects, their lamellae and the Adaptive Milling stages
+        within them, indexing each stage's image sets and matching predictions
+        and labels by filename, so downstream operations work on in-memory
+        objects rather than re-traversing the filesystem.
         """
         index = ProjectIndex(start_path=self.start_path)
 

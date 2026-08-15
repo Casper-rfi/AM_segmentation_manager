@@ -219,13 +219,17 @@ def iter_matching_records(
 ) -> Iterator[ImageRecord]:
     """Yield every :class:`ImageRecord` that passes the supplied filters.
 
-    All scope selectors default to ``None`` (match everything).  When a
-    selector list is provided, only records that satisfy the selector are
-    yielded.  Setting *modality* to ``"SEM"`` or ``"FIB"`` restricts the
-    results to a single imaging modality.  Setting *state* restricts to
-    a specific workflow state (``"corrected"``, ``"selected"``, ``"deselected"``).
-    *variant_selectors* restricts to named imaging-condition variants, where
-    ``"base"`` means the unsuffixed image directory.
+    Filters combine with AND: a record must satisfy every one supplied.
+
+    Args:
+        index: The scanned project index to walk.
+        project_selectors: Match these projects; ``None`` matches all. The
+            lamella, stage and image selectors behave the same way.
+        paths: Match records at these paths.
+        modality: ``"SEM"``, ``"FIB"`` or ``"all"``.
+        state: ``"corrected"``, ``"selected"``, ``"deselected"`` or ``"all"``.
+        variant_selectors: Imaging-condition variants, where ``"base"`` is the
+            unsuffixed image directory.
     """
     for project in index.all_projects():
         if project_selectors is not None and not matches_project(project, project_selectors):

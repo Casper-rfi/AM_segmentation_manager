@@ -31,15 +31,10 @@ logger = logging.getLogger(__name__)
 def prediction_to_label(prediction_path: Path, label_path: Path, target_image_path: Path | None = None) -> None:
     """Convert a prediction file into a label file.
 
-    If `target_image_path` is provided and the prediction dimensions differ
-    from the target, attempt to resize the prediction to match the target
-    using nearest-neighbour interpolation (preserving label values).
-
-    Behaviour:
-    - If tifffile, numpy and cv2 are available: read prediction and target
-      images and resize if necessary, then write label using tifffile.
-    - Otherwise: fall back to copying the prediction file to the label path
-      and log a warning.
+    Where *target_image_path* is given and its dimensions differ from the
+    prediction's, the prediction is resized to match by nearest neighbour,
+    which preserves the discrete label values. Without the optional image
+    stack the prediction is copied unchanged and a warning is logged.
 
     Args:
         prediction_path: Path to the prediction image file.

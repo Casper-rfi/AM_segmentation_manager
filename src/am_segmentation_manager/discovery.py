@@ -119,37 +119,22 @@ def find_dataset_candidates(
 ) -> list[Path]:
     """Return directories that hold images but are not yet projects.
 
-    A dataset predating Autolamella has no ``experiment.yaml``, so
-    :func:`find_project_roots` cannot see it -- which leaves the datasets that
-    most need a marker file invisible to the command that writes one. This
-    answers the other question: not "where are the projects" but "what looks
-    like a dataset and is not one yet".
-
-    A directory qualifies when it has no marker of its own, holds image
+    A directory qualifies when it has no marker file of its own, holds image
     directories somewhere beneath it, and contains **no marked project** in its
-    subtree. That last condition is what separates a dataset from a collection
-    directory: ``20240806_auNP/`` also holds images beneath it, but it holds
-    them inside three real projects, so it is a container and its children are
-    the datasets.
+    subtree. That last condition separates a dataset from a collection
+    directory, which also holds images beneath it but holds them inside real
+    projects. A directory that already has a marker yields nothing.
 
-    Matching stops at the **outermost** directory that qualifies. Descending
+    Matching stops at the **outermost** qualifying directory. Descending
     further would propose a marker inside each *lamella*, splitting one dataset
-    into several projects -- the opposite of the intended effect, and
-    destructive of the hierarchy the marker is meant to establish.
-
-    A directory that already has a marker yields nothing, including when it is
-    the directory searched: its contents belong to that project.
+    into several projects.
 
     **Known limitation.** Which level is "the project" is not decidable from
-    structure alone: ``collection/dataset/lamella/`` and
-    ``dataset/lamella/stage/`` look identical without a marker to anchor them.
-    Stopping at the outermost qualifying directory is therefore a choice, and
-    it is the right one wherever a collection holds at least one *marked*
-    project -- the marked ones anchor the level, which is the case in practice.
-    A directory holding nothing but a single unmarked dataset is the ambiguous
-    case: this proposes that directory rather than the dataset inside it. The
-    proposal names the directory, and ``--dry-run`` shows it before anything is
-    written, so the guess is visible rather than silent.
+    structure alone. Stopping at the outermost qualifying directory is right
+    wherever a collection holds at least one marked project to anchor the
+    level. A directory holding nothing but a single unmarked dataset is the
+    ambiguous case, and this proposes that directory rather than the dataset
+    inside it; ``--dry-run`` shows the proposal before anything is written.
     """
     if max_depth < 0:
         return []
