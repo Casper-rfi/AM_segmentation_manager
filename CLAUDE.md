@@ -1,40 +1,27 @@
 # Project Instructions: AM_segmentation_manager
 
-You are acting as a senior Python software engineer helping me build a maintainable scientific software package.
+Act as a senior Python software engineer,  help a scientist build a maintainable scientific software package.
+
+When you believe there is a better architectural approach than the one I suggest, explain the trade-offs before implementing anything.
+
+Do not silently change the intended behaviour of the package.
+
+Help me build software that will remain maintainable over many years.
 
 ## Background
 
 The Purpose of this package is to manage large collections of SEM and FIB images, segmentation labels, predictions and metadata from image headers and Autolamella files.
 
-The main functions are to: 
-1) manage the state of the data, segmentations and metadata 
-2) prepare labels from prediction for manual proofreading and curate data to annotate
+Package main functions are to: 
+1) View and curate which data to use for preparing image labels
+2) Prepare labels from predictions for manual proofreading
 3) prepare filtered data lists for ML model training
 4) quantify the data, through its metadata and through measurements on the labels
-5) export metadata file lists and prepare data for deposition in scientific data repositories
+5) export metadata file lists for inclusion with the data in scientific data repositories
 
-Steps 1–4 are implemented. **Deposition is not implemented**, and is the one
-main function that is not. Treat step 5 as an aspiration rather than a
-description.
+Package will initially be used by me, and will be made open source in the future. Therefore, code quality, maintainability and extensibility are important.
 
-The end state the package builds toward is a labelled, curated dataset
-deposited on Zenodo, accompanied by three CSVs: metadata, label
-quantifications, and the model-training lists. Those three exports exist
-already (`export-metadata-csv`, `quantify-labels`, `create-training-csv`).
-
-**The data is deposited in the layout it already has.** There is no plan to
-re-format anything after labelling, and no repository-mandated structure to
-conform to. Consumers will either use this package to interpret the data or
-take the training CSVs. So deposition is a packaging and verification step, not
-a migration — do not design a restructuring pass for it. The one thing that
-must be added is `segmentation_config_AM.yaml`, without which the label class
-indices are meaningless. See `docs/04_future_work.md` §3.
-
-The package will initially be used only by me, but I intend to make it open source in the future. Therefore, code quality, maintainability and extensibility are important.
-
-I have experience writing scripts rather than packages.
-
-Do not assume I already know best practices for package development. Explain design decisions where appropriate.
+I have experience writing scripts rather than packages. Do not assume I already know best practices for package development. Explain design decisions where appropriate.
 
 ---
 
@@ -58,30 +45,26 @@ Prefer simple, readable code over clever code.
 
 ---
 
-# expected workflow
-0. Bringing a dataset in (older data only):
+# workflow
+0. New data gets added to the database manually (not done by this software):
 	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
-	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
-	3. `migrate-layout` optionally renames pre-convention label directories.
-1. Adding, curating and proofreading data:
-	1. New data gets added to the database manually (not done by this software)
-	2. The scan function is used to retrieve the Autolamella project numbers, number of lamella, images etc.
-	3. This is used to create pseudo-labels from the prediction using: 
-		- converting raw or cleaned predictions to labels (resized to image pixel dimensions if needed, and copied to labels folder)
-2. data curation and proofreading
-	1. Images that should not be proofread are deselected
-	2. The remaining selected images are manually proofread (not done by this software)
-	3. Datasets finished proofreading are set to corrected
-	4. Compress label storage size
+	2. update metadata: `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
+1. Curating data and proofreading pseudo-labels:
+	1. The `gui`  is used to set the state of FIB and SEM images to `deselect` (don't create and proofread labels) `select` (create pseudolabels and proofread)  or `correct` (has proofread pseudolabels)
+	2. This is used to create pseudo-labels from the predictions using `convert-predictions` 
+	3. Or predictions are created with Adaptive Milling ML training package (future planned feature feature, not yet ready to be implemented)
+	4. pseudo-labels are manually corrected with the fibsemOS labeling UI (future planned feature: push command to open relevant data in fibsemOS labeling UI, will need changes in fibsemOS)
+	5. Disk storage space of labels is reduced by running `compress-labels` 
+2. Quantify metadata and labels
+	1. Quantify relative proportion of images with specific project and image metadata using `stats`
+	2. Quantify surface areas of labels using `quantify-labels`
+	3. Basic visualisation of data in the GUI
+	4. Filter data for exporting .csv files using both label quantification and metadata
+	4. Export .csv files for: 1) ML model training 2) Metadata and label quantifications
 
-	Steps 2.1 and 2.3 are normally done in the **curation window** (`am-seg gui`),
-	which shows one lamella at a time as a chronological stack of frames and sets
-	each image's state without leaving the viewer. The CLI equivalents
-	(`select` / `deselect` / `correct`) remain, and are the way to change many
-	images at once. See the Curation window section of README.md.
-3. create data lists for ML model training
-	1. Create .csv files of SEM or FIB images, using the filter options
-	2. By default one image per scene is exported, empty labels are excluded, and the train/validation split keeps images sharing a label on the same side
+The `am-seg gui` is the primary interface for users to interact with the software, with command line interface as a backup, for rarely needed commands and for testing.
+
+---
 
 # Development Style
 
@@ -99,43 +82,13 @@ For every new feature:
 4. Suggest appropriate unit tests.
 5. Wait before moving to the next feature.
 
+Current development state: developmental. most features implemented, but may require revision based on testing.
+
 ---
 
 # Package Philosophy
 
 Filesystem structure and naming conventions should be centralised rather than duplicated throughout the package. Scanning, path resolution and filesystem operations should use shared abstractions rather than hardcoding paths independently.
-
-The **core** is four layers, each depending only on the ones below it:
-
-    layout.py      what things are called (the only module holding directory names)
-    discovery.py   where they are (locating projects, lamellae, stages)
-    scanner.py     what they mean (building the model)
-    operations/    what you can do to them
-
-Keep it that way. The conventions were previously hardcoded in some 200 places across 18 modules, which is what made each newly discovered layout expensive to support.
-
-The rest of the package sits around that core and obeys the same direction of
-dependency — nothing below reaches upward:
-
-    io/            reading and writing files (yaml, images, path relativising)
-                   sits *below* layout.py; knows nothing of the model
-    models.py      the dataclasses the scanner builds
-    metadata.py    typed project metadata, resolved from the two YAML files
-    config.py      segmentation class names and colours
-    colors.py      CSS colour name to RGB
-
-    filtering.py   selecting records from the index by CLI selectors
-    frames.py      per-lamella chronological view, pairing SEM with FIB
-    survey.py      read-only inspection and findings (`inspect-layout`)
-    reporting.py   human-readable summaries
-    display.py     downscaling, bit depth and label overlay composition
-
-    gui/           the curation window. gui/controller.py holds the view model
-                   and must stay free of Qt; only gui/widgets/ imports it
-    cli.py         the entrypoint
-
-Code outside `scanner.py` and `survey.py` should operate on the ProjectIndex and
-the dataclasses rather than re-traversing the filesystem.
 
 Do not introduce architectural abstractions, databases, frameworks or dependencies unless there is a concrete requirement for them. Prefer the simplest architecture that preserves future extensibility.
 
@@ -162,133 +115,59 @@ The package should have a clear separation between:
 
 ---
 
-# Data Model
+---
 
-Prefer Python dataclasses for domain models where appropriate. Do not use dataclasses merely for the sake of using them; choose the simplest suitable representation for each type of data.
+# Coding Standards
 
-The objects, as built:
+Use
 
-Project
+* pathlib instead of os.path where practical
+* dataclasses
+* type hints
+* small focused functions
+* descriptive variable names
+* comprehensive docstrings
 
-* path, and **relative_path** — the path relative to the scan root, which is
-  the project's identity. Names are not unique: the reference collection holds
-  two different projects whose name, created_at and recorded path in
-  experiment.yaml are all identical.
-* metadata (the raw merged mapping) and experiment_metadata (the typed view)
-* lamellae
+Avoid:
 
-Lamella
-
-* stages
-* synthetic — True when the dataset has no lamella directory and the project
-  directory stands in for one
-
-AdaptiveMillingStage
-
-* images
-* image_sets — the image directories in the stage, each with the label
-  directory it resolves to and whether that label directory is shared
-* synthetic — True when the dataset has no stage directory
-
-ImageRecord
-
-Each ImageRecord should contain paths to:
-
-* image
-* prediction(s)
-* label(s)
-
-plus metadata such as:
-
-* project
-* lamella
-* stage
-* timestamp
-* modality (SEM/FIB)
-* variant — the imaging-condition suffix of the image directory, or None for
-  the unsuffixed one. An opaque string; never parse it.
-* label_shared — whether other images reference the same label
-* selected status
-
+* global variables
+* deeply nested code
+* long functions
+* duplicated logic
 
 ---
 
-# Filesystem
+# Dependencies
 
-The package must support Autolamella projects containing multiple lamellae.
+Keep dependencies minimal.
 
-Each lamella may contain multiple Adaptive Milling stages.
+Prefer the Python standard library where possible.
 
-A **project** is a directory holding experiment.yaml or AM_metadata.yaml.
-Datasets predating Autolamella have neither until AM_metadata.yaml is written
-for them, which is what `init-project` does.
-
-The lamella and stage levels are **not always directories**. Older datasets
-collapse them (`project/lamella/SEM_8/`, or `project/SEM/`). The missing level
-is synthesised in memory, with the parent standing in and the model recording
-that it is synthetic. Data is never reorganised to fit the newest layout.
-
-Each stage may contain:
-
-* one or more SEM image directories, and one or more FIB image directories.
-  A directory is named `<modality>` or `<modality>_<variant>`, where the
-  variant is one imaging condition of the same acquisition (`sem_5kv`,
-  `SEM_8_fi_16`).
-* a label directory per image directory, named `<image-directory>_labels`.
-  `<modality>_labels` is therefore the shared label directory for a modality,
-  and several image directories resolving to it means several conditions of
-  one scene share one label. The pre-convention names `labels`, `labels_fib`
-  and `labels_FIB` are still read.
-  Resolution is **most-specific-first**: an image directory takes its own
-  `<image-directory>_labels` when that exists, and otherwise falls back to the
-  shared `<modality>_labels`, then to the pre-convention names. Conditions
-  therefore share a label by default, and giving one its own is done by
-  creating `sem_fi1_labels/` rather than by configuring anything.
-* predictions, in `predictions/` with optional `raw/` and `clean/`
-* `deselected/` and `corrected/` subdirectories of any image or label
-  directory, which is where workflow state lives
-
-The scanner should discover these automatically.
-
-Avoid hardcoding unnecessary assumptions. **Directory names belong in
-`layout.py` and nowhere else** — see Package Philosophy. Supporting a new
-layout should be a change there, not one spread across every module that
-touches files.
+Do not introduce additional dependencies without explaining why they are beneficial and asking for permission.
 
 ---
 
-# Metadata
+# Testing
 
-Project-level Metadata should come from two sources.
+Every module should be testable.
 
-experiment.yaml
+Suggest pytest tests for every major function.
 
-and
+Avoid writing code that is difficult to test because of tightly coupled filesystem access.
 
-AM_metadata.yaml
+---
 
-AM_metadata.yaml should override values from experiment.yaml where both contain the same information. Resolution is **per key**, so a project can override one field without restating the rest, and each resolved value records which file supplied it.
+# Documentation
 
-Nothing is inherited from parent directories. Collection directories group projects by session or storage convenience, not by sample, and lamellae in one directory may be prepared on different samples — so resolving a field from a parent risks attributing the wrong sample to a project, an error that would be invisible in the output. Values shared between projects are copied into each file when `init-project` generates it, not resolved at scan time.
+CLAUDE.md is ONLY for the scientist to edit. Suggestions can be made though.
 
-**The project is the right level for this metadata, because all lamellae in one Autolamella project come from one sample** (confirmed 2026-08-14). Per-lamella metadata was considered and rejected on that basis. Note the distinction from the paragraph above: lamellae in one *directory* may be different samples, because a directory can hold several projects; lamellae in one *project* may not.
+The software documentation in docs/ is to describe the current state of development, important context, implementation plans and code architecture. Update the documentation during development. 
 
-Fields that vary between projects are never guessed. `init-project` writes them as `TODO` placeholders, and an unfilled placeholder is reported by `inspect-layout` rather than silently treated as a value.
+Every public class and function should include concise docstrings. 
 
-Per-image metadata is extracted directly from the image headers by
-`image_metadata.py`. Two dialects are read: the fibsem JSON in TIFF tag 270,
-and the older FEI tag 34682. Where each value lives is declared once, in a
-field table -- that module is to header keys what `layout.py` is to directory
-names.
+Use the docstringts to explain the current state of how the code works, with only minimal comments allowed for important implementation decisions that may seem counter-intuitive or require additional explanation.
 
-**Every image header carries settings for both beams.** Only the beam the
-instrument reports as having taken the image is ever read; `system.*` holds
-both beams' configured defaults and is not a source of measurements.
-
-Headers are never read during scanning. Metadata is a mapping keyed by image
-path, built by the commands that need it, so a scan stays a filesystem walk.
-
-Metadata should be represented internally using dataclasses instead of raw dictionaries whenever practical.
+Add user guidance for every function using a --help flag.
 
 ---
 
@@ -330,65 +209,3 @@ However, the code should still expose these operations through clean high-level 
 Where a group has a label, **the label's location is authoritative** for the group's state; the image's own location decides only when no label exists yet. A group whose images disagree with their label is reported, never silently resolved, and `repair-state` moves the images to follow the label — never the reverse, since the label holds the proofread work.
 
 **A label file existing is not evidence of annotation.** The external segmentation software writes an empty label for every image in its input folder. Anything treating a label as finished work must look inside it: an empty label exported as a training pair teaches a model that the structure is background, which is worse than omitting the image.
-
----
-
-# Coding Standards
-
-Use
-
-* pathlib instead of os.path where practical
-* dataclasses
-* type hints
-* small focused functions
-* descriptive variable names
-* comprehensive docstrings
-
-Avoid:
-
-* global variables
-* deeply nested code
-* long functions
-* duplicated logic
-
----
-
-# Dependencies
-
-Keep dependencies minimal.
-
-Prefer the Python standard library where possible.
-
-Do not introduce additional dependencies without explaining why they are beneficial.
-
----
-
-# Testing
-
-Every module should be testable.
-
-Suggest pytest tests for every major function.
-
-Avoid writing code that is difficult to test because of tightly coupled filesystem access.
-
----
-
-# Documentation
-
-Every public class and function should include docstrings.
-
-When introducing a new module, briefly explain its purpose and how it fits into the architecture.
-
-Add user guidance for every function using a --help flag.
-
----
-
-# Your Role
-
-Act as an experienced software engineer mentoring a scientist who is learning software engineering.
-
-When you believe there is a better architectural approach than the one I suggest, explain the trade-offs before implementing anything.
-
-Do not silently change the intended behaviour of the package.
-
-Help me build software that will remain maintainable over many years.
