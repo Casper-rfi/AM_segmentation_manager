@@ -1,16 +1,12 @@
 """Reading image files into arrays.
 
-Centralises the optional image-processing dependency check and the mechanics of
-turning a file on disk into a numpy array, so that prediction conversion, label
-compression and display preparation all read images the same way.
+Centralises the optional dependency check and the mechanics of turning a file
+into a numpy array, so prediction conversion, label compression and display
+preparation all read images the same way.
 
-The heavy dependencies (numpy, tifffile, cv2) are optional extras, so they are
-imported inside functions rather than at module level: importing this module
-must stay safe in a minimal installation.
-
-This module deliberately depends on nothing else in the package. Higher-level
-concerns -- contrast, downscaling, overlays -- belong in
-:mod:`am_segmentation_manager.display`.
+numpy, tifffile and cv2 are optional extras, imported inside functions rather
+than at module level: importing this module must stay safe in a minimal
+installation. It depends on nothing else in the package.
 """
 from __future__ import annotations
 
@@ -153,10 +149,9 @@ def read_array(path: Path) -> np.ndarray:
 def read_color_array(path: Path) -> np.ndarray:
     """Read an image as 3-channel RGB, discarding any alpha channel on decode.
 
-    For an opaque image, decoding to four channels and then compositing the
-    alpha away is wasted work, and it is not cheap: on a 3000x4500 plot the
-    compositing measured 275 ms, more than the decode itself. Asking the
-    decoder for three channels skips it entirely.
+    Asking the decoder for three channels is materially faster than decoding
+    four and compositing the alpha away afterwards, which for a large plot costs
+    more than the decode itself.
 
     TIFFs are delegated to :func:`read_array`, since tifffile has no equivalent
     option; the caller is expected to normalise the result.

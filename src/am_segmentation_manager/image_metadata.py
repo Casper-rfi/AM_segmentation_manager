@@ -1,34 +1,13 @@
 """Acquisition metadata read from image headers.
 
-Per-image metadata comes from the TIFF header, in one of two dialects:
+Two dialects are read: the fibsem JSON in TIFF tag 270, where SEM and FIB share
+one schema, and the older FEI vendor tag 34682, symmetric between beams with
+``Beam.Beam`` naming which fired. Where each value lives is declared once, in
+:data:`FIELDS`.
 
-* **fibsem** -- JSON in TIFF tag 270, written by Autolamella-era software. SEM
-  and FIB share one schema; only which sub-object is populated differs.
-* **FEI** -- the vendor tag 34682, a mapping of sections, written by the
-  pre-Autolamella datasets. Symmetric between beams: ``EBeam``/``EScan`` for
-  electron, ``IBeam``/``IScan`` for ion, with ``Beam.Beam`` naming which.
-
-Where the values live is declared once, in :data:`FIELDS`. **This module is to
-header keys what :mod:`am_segmentation_manager.layout` is to directory names**,
-and for the same reason: the alternative is one hand-written extraction block
-per field, so adding a field means writing another block and adding a dialect
-means editing every one. Supporting a third dialect should be a column in a
-table.
-
-Two rules that matter more than they look:
-
-**A missing value is None, never a default.** The fibsem schema has no
-integration fields at all, so a reader that defaults them to 1 reports "one
-integration" for every modern image -- a claim about the acquisition invented
-by the reader. This is the same rule as ``TODO`` resolving to None in
-:mod:`am_segmentation_manager.metadata`, and as an empty label not counting as
-an annotation.
-
-**Headers are never read during scanning.** Reading one costs around half a
-millisecond, which is nothing for a command that asks for metadata and too much
-for a scan that runs on every GUI launch. Metadata is therefore a mapping keyed
-by path, built by the commands that want it, rather than a field on
-:class:`~am_segmentation_manager.models.ImageRecord`.
+**A missing value is None, never a default. Headers are never read during
+scanning** -- metadata is a mapping keyed by image path, built by the commands
+that need it, so a scan stays a filesystem walk.
 """
 from __future__ import annotations
 

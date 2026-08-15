@@ -1,15 +1,11 @@
 """Simple YAML helpers.
 
-This module wraps PyYAML usage for the rest of the package so the import and
-I/O error handling are localised. Consumers should call read_yaml(path).
+Wraps PyYAML for the rest of the package so the import and I/O error handling are
+localised. Call :func:`read_yaml`.
 
-Autolamella's ``experiment.yaml`` reaches hundreds of kilobytes -- 681 KB in one
-project in the reference collection -- and the scanner reads one per project, so
-parsing dominates scan time. Where PyYAML was built against libyaml its
-C loader is used, which measured about 7x faster across the reference
-collection (4.1 s to 0.6 s for 20 projects) with identical results. The pure
-Python loader is used when the C extension is unavailable, so this is a
-performance detail rather than a dependency.
+Autolamella's ``experiment.yaml`` reaches hundreds of kilobytes and the scanner
+reads one per project, so parsing dominates scan time. PyYAML's C loader is used
+where it was built against libyaml, falling back to the pure Python loader.
 """
 from __future__ import annotations
 

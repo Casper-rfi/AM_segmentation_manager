@@ -1,34 +1,13 @@
-"""Segmentation class configuration (class names and display colours).
+"""Segmentation class configuration: class names, colours and measurement settings.
 
-Segmentation classes are defined in a YAML file (``segmentation_config_AM.yaml``)
-holding two mappings from class index to value::
+Resolves which ``segmentation_config_AM.yaml`` applies, loads it into a
+:class:`SegmentationConfig` and validates it. The file holds ``CLASS_COLORS``,
+``CLASS_LABELS`` and an optional ``MEASUREMENT`` section.
 
-    CLASS_COLORS:
-      0: "black"
-      1: "orange"
-    CLASS_LABELS:
-      0: "background"
-      1: "GIS"
-
-An optional third section configures label quantification::
-
-    MEASUREMENT:
-      measured_classes: [1, 2, 3]
-      crack_class: 3
-      min_crack_area_um2: 0.1
-
-This module resolves *which* config file to use, loads it into a
-:class:`SegmentationConfig`, and validates it. Colour names are resolved to RGB
-tuples at load time (see :mod:`am_segmentation_manager.colors`) so a typo in a
-colour name is reported once, when the config is read, rather than surfacing
-later as a rendering failure.
-
-The config describes how labels are *displayed, named and measured*; it is
-consumed by label overlay rendering, by any UI that shows a class legend, and by
-:mod:`am_segmentation_manager.operations.label_measure`. Measurement settings
-live here because they are properties of the segmentation classes: a project
-shipping its own class definitions has to be able to say which of its classes is
-a crack. It deliberately holds no filesystem or workflow state.
+Colour names resolve to RGB at load time, so a typo is reported when the config
+is read rather than as a later rendering failure. Measurement settings belong
+here because they are properties of the segmentation classes: a project
+shipping its own definitions must be able to say which class is a crack.
 """
 from __future__ import annotations
 

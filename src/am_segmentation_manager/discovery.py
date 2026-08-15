@@ -1,22 +1,13 @@
 """Locating projects, lamellae and stages on disk.
 
-This module answers "where are the things" using the naming conventions in
-:mod:`am_segmentation_manager.layout`. It sits between the conventions and the
-two consumers that need to traverse a dataset tree: the scanner, which builds
-the project model, and the survey, which reports on what it finds. Both must
-agree about what counts as a project and where its stages are, so the traversal
-lives here once.
+Answers "where are the things" using the conventions in
+:mod:`am_segmentation_manager.layout`, for the two consumers that traverse a
+dataset tree -- the scanner and the survey -- which must agree about what counts
+as a project and where its stages are.
 
-The hierarchy Autolamella writes is project → lamella → stage → image
-directories, but the older datasets collapse levels: some have no stage
-directory, and the oldest have neither a stage nor a lamella directory. Rather
-than require those levels to be created on disk, the missing ones are
-*synthesised* -- the parent directory stands in -- which
-:class:`DiscoveredStage` records so displays can be honest about it.
-
-Traversal is deliberately tolerant: an unreadable directory yields nothing
-rather than raising, so one bad directory cannot abort a scan of a whole
-collection.
+Older datasets collapse levels. The missing ones are *synthesised*, the parent
+standing in, which :class:`DiscoveredStage` records. An unreadable directory
+yields nothing rather than raising.
 """
 from __future__ import annotations
 

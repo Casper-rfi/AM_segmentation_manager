@@ -1,23 +1,13 @@
 """Images that share a label, and the state they share with it.
 
-When one scene is captured under several imaging conditions -- five SEM images
-at different frame-integration settings, say -- the conditions share a single
-segmentation, because they *are* a single segmentation. That makes the label,
-not the image, the unit of proofreading: "do not proofread this scene" is a
-statement about the scene, so it applies to every image of it.
+Several imaging conditions of one scene share a single segmentation, which makes
+the label -- not the image -- the unit of proofreading. A :class:`LabelGroup` is
+one label file and every image referencing it; a private label forms a group of
+one, keeping this a single code path.
 
-A :class:`LabelGroup` is that unit: one label file and every image referencing
-it. Groups matter for two things:
-
-* **State changes.** Moving a shared label without moving its other images
-  would silently change their state, so a transition expands to the whole group
-  first. An image with a private label forms a group of one, which keeps this a
-  single code path rather than a special case.
-* **State authority.** The label's on-disk location determines the group's
-  state. Where no label exists yet, the image's own location does.
-
-Groups are built from the filesystem rather than from a scanned index, so a
-command given a single file path expands correctly without scanning everything.
+The label's on-disk location determines the group's state, and where no label
+exists yet the image's own location does. Groups are built from the filesystem
+rather than a scanned index, so a command given one file path expands correctly.
 """
 from __future__ import annotations
 

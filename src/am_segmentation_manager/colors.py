@@ -1,14 +1,11 @@
 """Colour-name resolution for segmentation class palettes.
 
-Segmentation configs name their class colours using CSS/X11 colour names (for
-example ``"orange"`` or ``"darkgreen"``). This module turns those names -- and
-hex strings, and explicit RGB triples -- into plain ``(r, g, b)`` tuples.
+Turns CSS/X11 colour names, hex strings and explicit RGB triples into plain
+``(r, g, b)`` tuples, for the class colours named in segmentation configs.
 
-The CSS colour table is embedded here as static data rather than obtained from
-matplotlib or Qt. It is a fixed, standardised list that will never change, so
-carrying ~150 lines of data avoids a heavyweight dependency in the one place
-the package needs to draw something, and keeps colour handling testable without
-a GUI toolkit installed.
+The CSS colour table is embedded here as static data rather than taken from
+matplotlib or Qt: it is a fixed standardised list, so carrying it avoids a
+heavyweight dependency and keeps colour handling testable without a GUI.
 """
 from __future__ import annotations
 

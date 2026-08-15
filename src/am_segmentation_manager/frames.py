@@ -1,15 +1,12 @@
 """Per-lamella chronological view over scanned image records.
 
-The scanner produces one :class:`~am_segmentation_manager.models.ImageRecord`
-per *file*: the SEM image and the FIB image of the same acquisition are separate
-records, spread across the stages of a lamella. Reviewing a lamella needs the
-opposite arrangement -- one entry per *acquisition*, holding both modalities and
-the summary plot, ordered as the images were taken.
+The scanner produces one :class:`~am_segmentation_manager.models.ImageRecord` per
+*file*, so an acquisition's SEM and FIB images are separate records. Reviewing a
+lamella needs the opposite arrangement: one entry per *acquisition*, holding both
+modalities and the summary plot, in the order taken.
 
-:class:`LamellaFrame` is that arrangement, and :func:`build_lamella_frames`
-derives it from an already-scanned :class:`~am_segmentation_manager.models.Lamella`.
-This module performs no filesystem access: it is a pure transformation of the
-scanned model, so it stays cheap to call and straightforward to test.
+:class:`LamellaFrame` is that arrangement. This module performs no filesystem
+access -- it is a pure transformation of the scanned model.
 """
 from __future__ import annotations
 

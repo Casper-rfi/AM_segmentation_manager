@@ -1,20 +1,13 @@
-"""Metadata utilities for am_segmentation_manager.
+"""Typed project metadata, resolved from the two YAML files.
 
-Project metadata comes from two files in the project root:
+Metadata comes from ``experiment.yaml``, written by Autolamella, and
+``AM_metadata.yaml``, written by this package or by hand, which overrides it.
+Values resolve **per key**, so a project can override one field without
+restating the rest.
 
-* ``experiment.yaml``, written by Autolamella
-* ``AM_metadata.yaml``, written by this package or by hand, which overrides it
-
-Values are resolved **per key**, so a project can override one field without
-restating the rest. Nothing is inherited from parent directories: collection
-directories group projects by session or storage convenience rather than by
-sample, and lamellae in one directory may be prepared on different samples, so
-resolving a field from a parent would risk attributing the wrong sample to a
-project -- an error that would be invisible in the output.
-
-:class:`ExperimentMetadata` is the typed view of the descriptive fields. The
-raw merged mapping stays available on the project for Autolamella keys that are
-not modelled.
+Nothing is inherited from parent directories: a directory can hold projects
+prepared on different samples, so resolving a field from a parent would
+attribute the wrong sample to a project invisibly.
 """
 from __future__ import annotations
 

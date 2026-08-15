@@ -1,29 +1,13 @@
 """Measuring what a label contains, in physical units.
 
-This is the first thing in the package that depends on both a label's pixels
-and its image's header: a pixel count is not comparable between two images at
-different magnifications, and comparing across the archive is the point. Areas
-are reported in um^2.
+Areas are reported in um^2, because a pixel count is not comparable between
+images at different magnifications and comparing across the archive is the
+point.
 
-**Labels carry no header of their own.** A label is written by segmentation
-software from an image, and inherits nothing from it, so the scale comes from
-the corresponding image's :class:`~am_segmentation_manager.image_metadata.ImageMetadata`
-and is rescaled by the label's own pixel dimensions -- see
-:func:`label_pixel_size_nm`. A label converted from a prediction may be smaller
-than its image, and getting that scaling wrong produces areas that are wrong by
-a constant factor, which is the hardest kind of error to notice in a
-distribution.
-
-**Two layers, deliberately.** :func:`read_label_pixels` does the expensive,
-unit-free half -- read the file, count class pixels, label the crack class's
-connected components -- and :func:`measure_label` converts the result to
-physical units and applies the size threshold. Only the first half is cached,
-so changing the threshold does not invalidate anything, and the threshold stays
-ordinary arithmetic over numbers already computed.
-
-**Scope.** Per-class area, crack count, crack size distribution. Shape
-descriptors, morphology and position are analysis, and analysis belongs in a
-script reading the exported CSV.
+**Labels carry no header.** The scale comes from the corresponding image's
+metadata, rescaled by the label's own pixel dimensions -- see
+:func:`label_pixel_size_nm` -- because a label converted from a prediction need
+not share its image's dimensions.
 """
 from __future__ import annotations
 

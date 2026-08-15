@@ -1,24 +1,12 @@
 """Writing ``AM_metadata.yaml`` templates into projects.
 
-Two jobs, which happen to want the same file:
+Two jobs wanting the same file: making a pre-Autolamella dataset indexable at
+all, since it has no ``experiment.yaml`` for the scanner to find, and recording
+the descriptive metadata Autolamella does not capture.
 
-* making a pre-Autolamella dataset indexable at all, since it has no
-  ``experiment.yaml`` for the scanner to find;
-* recording the descriptive metadata that Autolamella does not capture --
-  sample, user, organisation and so on -- for projects that are already
-  indexable.
-
-The file is generated as text rather than dumped from a mapping, because the
-comments explaining each field are most of its value to whoever fills it in, and
-a YAML dump would discard them.
-
-Fields that can be derived are pre-filled. Fields that vary between projects are
-written as ``TODO`` placeholders and never guessed: an unfilled placeholder is
-visible and reportable, whereas a plausible wrong sample is neither. This is why
-``--defaults`` copies shared values *into* each file at generation time rather
-than being resolved from a parent directory at scan time.
-
-Existing files are never overwritten: they hold information a person typed.
+The file is generated as text rather than dumped from a mapping, so the comments
+explaining each field survive. Fields that vary between projects are written as
+``TODO`` placeholders and never guessed. Existing files are never overwritten.
 """
 from __future__ import annotations
 

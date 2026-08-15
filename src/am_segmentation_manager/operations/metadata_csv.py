@@ -1,17 +1,10 @@
 """Exporting metadata to CSV, per image, per project and per label.
 
-Three exports, for three questions. The per-image file answers "what is in this
-archive, and under what conditions was it taken"; the per-project file answers
-"what are these experiments, and which of them still need metadata filling in";
-the measurement file answers "what do the labels actually contain".
+Three exports for three questions: what is in this archive and under what
+conditions was it taken; what these experiments are and which still need
+metadata filling in; and what the labels actually contain.
 
-The first two replace the standalone script this package absorbed, and improve
-on it in one way that matters: that script needed a CSV of paths as input and a
-hand-maintained ``sessions_metadata_manual.csv`` to join session metadata onto.
-Both come from the index here, so the manual join disappears.
-
-Everything is written with the standard library's :mod:`csv`. The scale is
-thousands of rows.
+Written with the standard library's :mod:`csv` -- the scale is thousands of rows.
 """
 from __future__ import annotations
 

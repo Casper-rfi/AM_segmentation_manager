@@ -1,17 +1,13 @@
 """Preparing images, labels and plots for viewing.
 
-Turns the large files on disk into small arrays suitable for display: a
-2048x3072 acquisition is ~6 MB, and holding a lamella's worth of them at full
-size is wasteful when a viewer shows them at a fraction of that size.
+Turns the large files on disk into small arrays suitable for display, since a
+viewer shows a 2048x3072 acquisition at a fraction of its size.
 
-The module is deliberately free of any GUI toolkit. It works in numpy arrays,
-which a widget layer can wrap in whatever image type it needs, and every
-function here can be tested with synthetic arrays and no display.
+Deliberately free of any GUI toolkit: it works in numpy arrays a widget layer can
+wrap, and every function here is testable with synthetic arrays.
 
-A :class:`DisplayImage` holds the *data* for a frame -- the reduced greyscale
-image and its label -- rather than a finished picture. Composing the coloured
-overlay is a separate, cheap step, so a viewer can change opacity or toggle the
-overlay without re-reading anything from disk.
+A :class:`DisplayImage` holds a frame's *data* rather than a finished picture, so
+composing the coloured overlay stays a separate, cheap step.
 """
 from __future__ import annotations
 

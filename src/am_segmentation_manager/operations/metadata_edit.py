@@ -1,27 +1,12 @@
 """Editing a project's ``AM_metadata.yaml``.
 
 Creating that file is :mod:`~am_segmentation_manager.operations.init_project`'s
-job; this module changes one that exists. The two are separate because they have
-different risks: creation refuses to touch an existing file, whereas editing
-exists precisely to modify one a person has typed into.
+job; this module changes one that exists.
 
-Three rules shape the implementation.
-
-**Only ``AM_metadata.yaml`` is ever written.** ``experiment.yaml`` belongs to
-Autolamella; the per-key override in
-:mod:`am_segmentation_manager.metadata` exists so nothing here has to touch it.
-
-**The file is edited in place, line by line, not reparsed and dumped.**
-``init-project`` writes a commented template explaining what each field is and
-what a ``TODO`` means, and the file is meant to be hand-edited afterwards.
-Round-tripping it through a YAML dumper would silently delete every comment and
-reorder the keys. Line editing keeps comments, key order, spacing, and any keys
-this package does not model -- losing a key a user added by hand would be the
-worst failure this module could have.
-
-**Nothing is written until the whole batch validates.** The change is computed
-and returned first, so a caller can show it and a dry run costs nothing extra,
-matching :func:`~am_segmentation_manager.operations.selection.plan_transition`.
+Only ``AM_metadata.yaml`` is ever written -- ``experiment.yaml`` belongs to
+Autolamella. It is edited in place line by line rather than reparsed and dumped,
+which preserves its comments, key order and any keys this package does not
+model. Nothing is written until the whole batch validates.
 """
 from __future__ import annotations
 

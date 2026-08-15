@@ -3,15 +3,11 @@
 State is physical location, so changing it means moving files. Two rules govern
 every function here.
 
-**Validate the whole batch, then act.** A transition is planned in full --
-expanded across label groups, every move resolved, every collision detected --
-before anything is moved, so a batch cannot fail partway and leave the tree in a
-state neither the caller nor the filesystem describes.
+**Validate the whole batch, then act**, so a batch cannot fail partway and leave
+the tree in a state neither the caller nor the filesystem describes.
 
-**Corrected labels are never moved without confirmation.** They hold proofread
-work that this package cannot regenerate, so an operation that would move one
-refuses unless the caller passes ``allow_move_from_corrected``, in a dry run as
-much as a real one.
+**Corrected labels are never moved without confirmation**: an operation that
+would move one refuses unless the caller passes ``allow_move_from_corrected``.
 """
 from __future__ import annotations
 

@@ -32,6 +32,11 @@ stay CLI-only: each is run once and read from the log.
 software; this package decides *which* images get proofread and records when they are
 done.
 
+**No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few
+lines with no dependency, over thousands of records rather than millions. pandas was
+removed from the requirements precisely because nothing used it, and it should return
+only if something genuinely needs it.
+
 ---
 
 ## Filesystem conventions
@@ -117,7 +122,14 @@ counts, where absence means "not enabled" — that is decoding the field, not de
 it, and it is the only field with a floor.
 
 **Headers are never read during scanning.** Metadata is a mapping keyed by image path,
-built by the commands that need it, so a scan stays a filesystem walk.
+built by the commands that need it, so a scan stays a filesystem walk. Reading one
+header is cheap; reading one per image on every GUI launch is not.
+
+**Where each header value lives is declared once, in `image_metadata.FIELDS`.** That
+module is to header keys what `layout.py` is to directory names, and for the same
+reason: the alternative is a hand-written extraction block per field, so adding a
+field means writing another block and adding a dialect means editing every one.
+Supporting a third dialect should be a column in a table.
 
 **A label carries no header.** Its scale comes from the image it was drawn from,
 rescaled by the ratio of their widths, because a label converted from a prediction

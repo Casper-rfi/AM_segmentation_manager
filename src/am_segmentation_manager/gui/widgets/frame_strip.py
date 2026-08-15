@@ -1,16 +1,11 @@
 """The frame timeline: position and curation progress in one widget.
 
-This replaces a slider sitting above a separate state strip. Those two could
-never line up, because the slider row carried labels the strip did not, and
-keeping them aligned by padding would have been a permanent maintenance
-irritation. Merging them makes alignment structural rather than something to get
-right: there is one widget, and the position marker is drawn on the same pixels
-as the states.
+The position marker and the state rows are drawn on the same pixels, so their
+alignment is structural rather than something to maintain.
 
-Each modality gets its own row. A curation step often targets one modality --
-deselecting a SEM while leaving its FIB selected is routine -- and a single
-combined row can only report "these disagree", which is exactly the state that
-proved unreadable in testing.
+Each modality gets its own row, because a curation step often targets one --
+deselecting a SEM while leaving its FIB selected is routine -- and a combined row
+could only report that the two disagree.
 """
 from __future__ import annotations
 

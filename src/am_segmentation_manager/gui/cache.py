@@ -1,20 +1,12 @@
 """Display data held in memory for the lamella currently being reviewed.
 
-Reading an acquisition from disk takes ~200 ms cold and a summary plot about
-the same, so navigating a lamella is only smooth if frames are already in memory
-by the time they are asked for. This module holds what has been prepared and
-decides what to prepare next; it does not know how work is scheduled, so the
+Holds what has been prepared and decides what to prepare next, so frames are in
+memory before they are asked for. It does not know how work is scheduled, so the
 same object serves synchronous tests and a background worker thread.
 
-Sizing follows measurements on real data. A prepared acquisition and its label
-cost ~1.4 MB, so a lamella's images fit comfortably in memory. Plots are
-prepared at the display's physical resolution -- which is what keeps their text
-crisp -- so they cost between 2.3 MB and 9 MB each depending on the screen, and
-their limit is derived from a memory budget rather than fixed.
-
-Loading is delegated to injected callables. Tests supply fakes and never touch
-the filesystem; the GUI supplies the real readers from
-:mod:`am_segmentation_manager.display`.
+Plot limits are derived from a memory budget rather than fixed, because plots
+are prepared at the display's physical resolution and so cost between 2.3 MB and
+9 MB each depending on the screen.
 """
 from __future__ import annotations
 

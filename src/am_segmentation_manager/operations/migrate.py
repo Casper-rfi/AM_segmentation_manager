@@ -1,18 +1,12 @@
 """Renaming pre-convention label directories to the current naming.
 
-Older datasets name their label directories ``labels`` and ``labels_fib`` (or
-``labels_FIB``). The current convention is ``<image-directory>_labels`` beside
-the images, which makes the image-to-label mapping a pure string function in
-both directions rather than a lookup table.
-
-Both names are read indefinitely, so migrating is optional. It is offered
-because a collection using one convention is easier to reason about than one
-using two, and because every newly written label already uses the current name
--- leaving the old directories in place means a project slowly acquires both.
+Older datasets name label directories ``labels`` and ``labels_fib`` (or
+``labels_FIB``); the convention is ``<image-directory>_labels`` beside the
+images. Both are read indefinitely, so migrating is optional.
 
 The operation is a directory rename and nothing else. No file is read, written,
-copied or deleted, and a rename that would collide with something already on
-disk aborts the whole batch before anything moves.
+copied or deleted, and a rename that would collide with something on disk aborts
+the whole batch before anything moves.
 """
 from __future__ import annotations
 

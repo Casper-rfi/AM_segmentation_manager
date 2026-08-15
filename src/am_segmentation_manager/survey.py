@@ -1,22 +1,13 @@
 """Read-only inspection of a dataset collection.
 
-The survey reports what the layout conventions in :mod:`am_segmentation_manager.layout`
-make of a directory tree: which projects were found, how their hierarchy was
-interpreted, which image sets exist, where each one's labels resolve to, and
-what does not fit. It never modifies anything.
+Reports what the conventions in :mod:`am_segmentation_manager.layout` make of a
+directory tree: projects found, how their hierarchy was interpreted, which image
+sets exist, where labels resolve to, and what does not fit. It never modifies
+anything.
 
-It exists for three jobs:
-
-* surveying older datasets before their layouts are supported, which is why it
-  discovers projects independently of :class:`~am_segmentation_manager.scanner.Scanner`
-  -- it must be able to describe layouts the scanner cannot yet index;
-* verifying bulk filesystem work, such as reorganising labels back into project
-  directories, by reporting images without labels and labels without images;
-* debugging, by making the conventions' interpretation of a directory visible.
-
-Discovery here is deliberately tolerant: an unreadable directory or an
-unrecognised name produces a finding, never an exception, because a survey of
-twenty projects is useless if one bad directory aborts it.
+Discovery is independent of :class:`~am_segmentation_manager.scanner.Scanner`, so
+it can describe layouts the scanner cannot yet index. An unreadable directory or
+unrecognised name produces a finding, never an exception.
 """
 from __future__ import annotations
 

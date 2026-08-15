@@ -1,15 +1,11 @@
 """Bar charts of the breakdowns :mod:`am_segmentation_manager.aggregate` counts.
 
-**A deliberately small module, and it should stay small.** The package produces
-counts; it draws charts only for breakdowns it already computes. Anything
-bespoke -- a figure for a paper, an unusual comparison, a distribution rather
-than a count -- belongs in a short script reading the exported CSV, which is
-why that export exists. If a plotting request cannot be phrased as "bar chart
-of a ``--by`` breakdown", it is not a job for this module.
+**A deliberately small module, and it should stay small.** It draws charts only
+for breakdowns already computed. Anything bespoke belongs in a short script
+reading the exported CSV, which is why that export exists.
 
-matplotlib is an optional extra. Every statistics command works without it and
-declines to plot, so the dependency is never on the path of anything but
-drawing.
+matplotlib is an optional extra: every statistics command works without it and
+declines to plot.
 """
 from __future__ import annotations
 

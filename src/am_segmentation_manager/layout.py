@@ -1,35 +1,13 @@
 """Filesystem naming conventions for Autolamella and legacy datasets.
 
-This module is the single source of truth for *what directories are called* and
-*how they relate to each other*. Every other module should resolve directory
-names through the functions here rather than embedding string literals, so that
-supporting a new dataset layout is a change in one place.
+The single source of truth for what directories are called; resolve names here
+rather than embedding string literals. Image directories are ``<modality>`` or
+``<modality>_<variant>``, the variant opaque and never parsed. Label directories
+are ``<image-directory>_labels`` beside them, resolved most-specific-first, then
+the shared ``<modality>_labels``, then legacy names. Workflow state is physical
+location: a file under ``deselected/`` or ``corrected/`` is in that state.
 
-The conventions are:
-
-* An image directory is named ``<modality>`` or ``<modality>_<variant>``, where
-  modality is ``sem`` or ``fib`` (matched case-insensitively, so the legacy
-  ``SEM_8_fi_1`` works). The variant is an **opaque** string -- it is never
-  parsed, so ``sem_5kv``, ``sem_defocus`` and ``sem_lowmag`` need no code
-  changes. Authoritative imaging parameters come from the image headers.
-* A label directory is named ``<image-directory-name>_labels`` and sits beside
-  the image directory. ``<modality>_labels`` therefore acts as the *shared*
-  label directory for a modality, and ``<modality>_<variant>_labels`` is
-  *private* to one variant. Sharing is a consequence of how many image
-  directories resolve to the same label directory, and is computed rather than
-  declared. Resolution is most-specific-first: ``<image-dir>_labels`` if it
-  exists, else the shared ``<modality>_labels``, else a legacy name, else
-  ``<image-dir>_labels`` created on first write.
-* Workflow state is physical location: a file in a ``deselected/`` or
-  ``corrected/`` subdirectory is in that state, and anywhere else is selected.
-
-Legacy names (``labels``, ``labels_fib``, ``labels_FIB``, ``predictions_fib``)
-remain readable indefinitely; only newly written directories use the current
-convention.
-
-Beyond :func:`build_image_sets`, which necessarily lists one directory, the
-functions here perform no filesystem access, which keeps the conventions cheap
-to test in isolation.
+Except for :func:`build_image_sets`, nothing here touches the filesystem.
 """
 from __future__ import annotations
 

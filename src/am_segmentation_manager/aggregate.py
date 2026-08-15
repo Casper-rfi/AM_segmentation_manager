@@ -1,26 +1,13 @@
 """Counting records by one or two properties.
 
-Three modules already walk the project tree independently --
-:func:`~am_segmentation_manager.filtering.iter_matching_records`,
-:func:`~am_segmentation_manager.survey.survey_collection` and
-:func:`~am_segmentation_manager.reporting.summarize_lamella`. Statistics would
-have been a fourth, and the GUI's curation status a fifth. This module is the
-shared counting step so that does not happen: it takes records another layer
-selected and groups them.
+The shared counting step: it groups records another layer selected, so
+statistics did not become a fourth traversal of the project tree.
 
-**Scope.** It counts. It does not filter (:mod:`am_segmentation_manager.filtering`
-does), does not read files, and does not format output
-(:mod:`am_segmentation_manager.reporting` does). If it starts growing a query
-language, that is the signal it has outgrown its purpose.
-
-**No dataframe.** :class:`collections.Counter` does all of this in a few lines
-with no dependency, and the collections involved are thousands of records, not
-millions. pandas was removed from the requirements precisely because nothing
-used it; it should return only if something genuinely needs it.
-
-A key function returns :data:`MISSING` rather than ``None`` for an unknown
-value, so "not recorded" is a visible row in the output. A large one is a
-finding -- it says the archive cannot answer the question being asked of it.
+**Scope.** It counts. It does not filter
+(:mod:`am_segmentation_manager.filtering` does), read files, or format output
+(:mod:`am_segmentation_manager.reporting` does). A key function returns
+:data:`MISSING` rather than ``None`` for an unknown value, so "not recorded" is
+a visible row rather than a silent omission.
 """
 from __future__ import annotations
 
