@@ -29,18 +29,13 @@ from ...config import SegmentationConfig
 from ...display import DEFAULT_ALPHA, compose_overlay
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
+from .common import BADGE_STYLES
 from .image_view import ImageView, LinkedImageViews
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     pass
 
 logger = logging.getLogger(__name__)
-
-BADGE_STYLES = {
-    "warning": "color: #c08a34; font-weight: bold;",
-    "error": "color: #c0504d; font-weight: bold;",
-    "info": "color: #888888;",
-}
 
 LABEL_BADGES = {
     "missing": ("no label", "warning"),

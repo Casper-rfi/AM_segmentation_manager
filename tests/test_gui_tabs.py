@@ -12,9 +12,12 @@ import pytest
 
 from am_segmentation_manager.gui.export_controller import ExportController
 from am_segmentation_manager.gui.metadata_controller import (
+    SUGGESTION_LIMIT,
     MetadataController,
     MetadataValidationError,
 )
+from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, build_experiment_metadata
+from am_segmentation_manager.models import Project
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
 
@@ -227,3 +230,190 @@ def test_outstanding_fields_are_reported(metadata: MetadataController):
     metadata.apply({"sample": "TODO"})
 
     assert "sample" in metadata.outstanding()
+
+
+# ---------------------------------------------------------------------------
+# Suggestions, which are read off the projects rather than off the disk
+# ---------------------------------------------------------------------------
+
+def with_samples(*samples: str) -> MetadataController:
+    """Return a controller over one project per sample, selecting the first."""
+    controller = MetadataController()
+    controller.set_projects([
+        Project(
+            name=f"project-{position}",
+            path=Path(f"/collection/project-{position}"),
+            relative_path=f"project-{position}",
+            experiment_metadata=build_experiment_metadata(
+                {}, {"metadata": {"sample": sample}}
+            ),
+        )
+        for position, sample in enumerate(samples)
+    ])
+    return controller
+
+
+def test_suggestions_put_the_most_used_value_first():
+    controller = with_samples("HeLa", "yeast", "COS-7", "HeLa", "COS-7", "HeLa")
+
+    assert controller.suggestions("sample") == ["HeLa", "COS-7", "yeast"]
+
+
+def test_equally_used_values_are_ordered_alphabetically():
+    """Otherwise the list reshuffles between projects for no visible reason."""
+    controller = with_samples("yeast", "COS-7", "HeLa")
+
+    assert controller.suggestions("sample") == ["COS-7", "HeLa", "yeast"]
+
+
+def test_a_field_with_nothing_recorded_offers_nothing():
+    controller = with_samples()
+
+    assert controller.suggestions("sample") == []
+
+
+def test_fields_that_do_not_repeat_are_not_offered_a_list():
+    """`description` is prose, and `project` names this project rather than a
+    shared one, so neither is worth a list of other projects' values."""
+    controller = with_samples("HeLa", "HeLa")
+
+    assert controller.suggestions("description") == []
+    assert controller.suggestions("project") == []
+
+
+def test_the_list_is_capped():
+    controller = with_samples(*(f"sample-{n:02d}" for n in range(SUGGESTION_LIMIT + 5)))
+
+    assert len(controller.suggestions("sample")) == SUGGESTION_LIMIT
+
+
+def test_the_selected_value_survives_the_cap():
+    """A box offering a list that omits what it is showing invites replacing
+    the value by accident."""
+    rare = "zzz-rare-sample"
+    controller = with_samples(
+        rare, *(f"sample-{n:02d}" for n in range(SUGGESTION_LIMIT))
+    )
+
+    offered = controller.suggestions("sample")
+    assert len(offered) == SUGGESTION_LIMIT + 1
+    assert offered[-1] == rare
+
+
+def test_a_saved_value_becomes_a_suggestion(metadata: MetadataController):
+    """The point of rebuilding the list on every refresh: type a sample once
+    and pick it on the next project."""
+    assert metadata.suggestions("sample") == []
+    metadata.editing_enabled = True
+    metadata.apply({"sample": "HeLa"})
+
+    assert metadata.suggestions("sample") == ["HeLa"]
+
+
+# ---------------------------------------------------------------------------
+# The project's own directory, offered as its project name
+# ---------------------------------------------------------------------------
+
+def at(relative: str) -> MetadataController:
+    """Return a controller over one project at *relative* within a scan root."""
+    controller = MetadataController()
+    controller.set_projects([
+        Project(
+            name="recorded-name",
+            path=Path("/collection") / relative,
+            relative_path=str(Path(relative)),
+        )
+    ])
+    return controller
+
+
+def test_the_directory_holding_the_yaml_files_is_offered_as_the_project_name():
+    controller = at("20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57")
+
+    assert controller.suggested_project_name() == "AutoLamella-2026-07-28-13-57"
+
+
+def test_the_directory_is_preferred_over_the_name_experiment_yaml_records():
+    """A project copied to a second location keeps the recorded name of the
+    first; the directory is what is actually there."""
+    controller = at("AutoLamella-2026-07-28-13-57")
+
+    assert controller.projects[0].name == "recorded-name"
+    assert controller.suggested_project_name() == "AutoLamella-2026-07-28-13-57"
+
+
+def test_nothing_is_offered_without_a_project():
+    assert MetadataController().suggested_project_name() is None
+
+
+def test_the_suggestion_is_not_a_resolved_value():
+    """It is a starting point for a person, not a value: until it is saved the
+    field is still unset, and a project nobody opens keeps it that way."""
+    controller = at("20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57")
+
+    assert controller.suggested_project_name() == "AutoLamella-2026-07-28-13-57"
+    assert controller.values()["project"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Which projects still need describing, and where they are
+# ---------------------------------------------------------------------------
+
+def test_a_project_with_no_metadata_file_is_missing_every_field():
+    """It is in the same position as one whose fields are all placeholders."""
+    controller = at("AutoLamella-2026-07-28-13-57")
+
+    summary = controller.project_summaries()[0]
+    assert summary.filled == 0
+    assert summary.is_complete is False
+    assert set(summary.missing) == set(DESCRIPTIVE_FIELDS)
+
+
+def test_a_placeholder_counts_as_missing(metadata: MetadataController):
+    """A TODO is a note that nobody has filled the field in, not a value."""
+    metadata.editing_enabled = True
+    metadata.apply({"sample": "TODO", "user": "Casper"})
+
+    summary = metadata.project_summaries()[0]
+    assert "sample" in summary.missing
+    assert "user" not in summary.missing
+
+
+def test_a_summary_names_the_fields_still_wanted():
+    controller = at("AutoLamella-2026-07-28-13-57")
+
+    assert "missing: description" in controller.project_summaries()[0].describe()
+
+
+def test_a_complete_project_is_reported_as_complete(metadata: MetadataController):
+    metadata.editing_enabled = True
+    metadata.apply({
+        field: "filled" if field != "lamella_type" else "waffle"
+        for field in DESCRIPTIVE_FIELDS
+    })
+
+    summary = metadata.project_summaries()[0]
+    assert summary.is_complete is True
+    assert summary.filled == summary.total
+    assert "missing" not in summary.describe()
+
+
+def test_every_project_gets_a_row_not_only_the_selected_one():
+    """The point of the marks: seeing what is left without clicking each."""
+    controller = with_samples("HeLa", "yeast", "COS-7")
+
+    assert len(controller.project_summaries()) == 3
+
+
+def test_a_project_path_is_absolute():
+    """A path pasted into a terminal has to be, or copying one is no use."""
+    controller = at("20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57")
+
+    assert controller.project_path(0) == Path(
+        "/collection/20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57"
+    )
+
+
+def test_a_path_is_not_invented_for_a_row_that_is_not_there():
+    assert MetadataController().project_path(0) is None
+    assert at("project").project_path(7) is None

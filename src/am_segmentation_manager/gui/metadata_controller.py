@@ -3,16 +3,20 @@
 Wraps :mod:`am_segmentation_manager.operations.metadata_edit` so a widget can
 show the resolved values, collect changes, preview them and apply them, without
 knowing how the file is written or which of the two YAML files a value came
-from.
+from. It also works out what to suggest and how described each project is, both
+read off the projects it was given rather than from the filesystem.
 
 Qt-free, like the other controllers.
 """
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
-from ..metadata import DESCRIPTIVE_FIELDS, LAMELLA_TYPES, TODO_MARKER
+from ..metadata import DESCRIPTIVE_FIELDS, FIELD_COMMENTS, LAMELLA_TYPES, TODO_MARKER
 from ..models import Project
 from ..operations.metadata_edit import (
     MetadataChange,
@@ -25,11 +29,55 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DESCRIPTIVE_FIELDS",
+    "FIELD_COMMENTS",
     "LAMELLA_TYPES",
+    "SUGGESTED_FIELDS",
+    "SUGGESTION_LIMIT",
     "TODO_MARKER",
     "MetadataValidationError",
     "MetadataController",
+    "ProjectSummary",
 ]
+
+#: Fields offered as a list of the values already in use. The others are left
+#: out deliberately: ``description`` is prose about one experiment, ``project``
+#: names this project rather than a shared one, and ``lamella_type`` has a fixed
+#: vocabulary of its own.
+SUGGESTED_FIELDS: tuple[str, ...] = ("organisation", "user", "sample")
+
+#: How many values a field offers. A collection of several hundred projects
+#: would otherwise put a list nobody can read behind every box.
+SUGGESTION_LIMIT = 20
+
+
+@dataclass(frozen=True)
+class ProjectSummary:
+    """One project's row in the list: what to call it, and how described it is.
+
+    Attributes:
+        label: The project's display name, which carries its relative path.
+        filled: How many descriptive fields hold a value.
+        total: How many there are.
+        missing: The fields with no value, in declaration order. A field still
+            holding a ``TODO`` placeholder counts as missing, because it is.
+    """
+
+    label: str
+    filled: int
+    total: int
+    missing: tuple[str, ...] = ()
+
+    @property
+    def is_complete(self) -> bool:
+        """Return whether every descriptive field has a value."""
+        return not self.missing
+
+    def describe(self) -> str:
+        """Return a one-line account of what is filled in and what is not."""
+        counted = f"{self.filled} of {self.total} fields set"
+        if self.is_complete:
+            return counted
+        return f"{counted} -- missing: {', '.join(self.missing)}"
 
 
 class MetadataController:
@@ -94,20 +142,100 @@ class MetadataController:
             field: path.name for field, path in resolved.sources.items()
         }
 
+    def suggestions(self, field: str) -> list[str]:
+        """Return values already recorded for *field*, most projects first.
+
+        Typing a value that repeats across projects is how a collection ends up
+        with ``HeLa`` and ``Hela`` as separate groups in every breakdown that
+        keys on it, so the values in use are worth offering.
+
+        Ties break alphabetically, and the list is capped at
+        :data:`SUGGESTION_LIMIT` -- except that the selected project's own value
+        always appears, since a list that omits what the box is showing invites
+        replacing it by accident. Returns an empty list for a field with no
+        suggestions, and for one not in :data:`SUGGESTED_FIELDS`.
+        """
+        if field not in SUGGESTED_FIELDS:
+            return []
+        counts = Counter(
+            value
+            for project in self._projects
+            if (value := getattr(project.experiment_metadata, field, None))
+        )
+        offered = sorted(counts, key=lambda value: (-counts[value], value.lower()))
+        offered = offered[:SUGGESTION_LIMIT]
+        current = self.values().get(field)
+        if current and current not in offered:
+            offered.append(current)
+        return offered
+
+    def suggested_project_name(self) -> str | None:
+        """Return the name of the directory holding the project's YAML files.
+
+        That directory is the Autolamella project, so its name is what
+        ``project`` is for. The directory is used rather than ``experiment.yaml``'s
+        own ``name`` because a project copied to a second location keeps the
+        recorded name of the first, and the directory is what is actually there.
+
+        This is a suggestion for a person to accept, never a resolved value: a
+        project nobody opens here keeps an empty field. Returns None when no
+        project is selected.
+        """
+        project = self.project
+        return project.path.name if project is not None else None
+
     def outstanding(self) -> tuple[str, ...]:
         """Return fields still marked TODO."""
         project = self.project
         resolved = project.experiment_metadata if project else None
         return resolved.todo_fields if resolved else ()
 
+    def project_summaries(self) -> list[ProjectSummary]:
+        """Return one row per project, in list order.
+
+        This is what lets the list say which projects still need describing
+        without opening each in turn, so it covers every project rather than
+        only the selected one.
+        """
+        return [self._summarise(project) for project in self._projects]
+
     def summary(self) -> str:
         """Return a one-line description of how complete this project is."""
         project = self.project
         if project is None:
             return "No project selected"
-        values = self.values()
-        filled = sum(1 for value in values.values() if value)
-        return f"{project.display_name}: {filled} of {len(DESCRIPTIVE_FIELDS)} fields set"
+        return f"{project.display_name}: {self._summarise(project).describe()}"
+
+    @staticmethod
+    def _summarise(project: Project) -> ProjectSummary:
+        """Return how much of *project* is described.
+
+        A project with no metadata file at all is missing every field, which is
+        the same situation as one whose fields are all placeholders.
+        """
+        resolved = project.experiment_metadata
+        missing = (
+            resolved.missing_fields() if resolved is not None else DESCRIPTIVE_FIELDS
+        )
+        return ProjectSummary(
+            label=project.display_name,
+            filled=len(DESCRIPTIVE_FIELDS) - len(missing),
+            total=len(DESCRIPTIVE_FIELDS),
+            missing=missing,
+        )
+
+    # -- paths, for copying out of the window ------------------------------
+
+    def project_path(self, position: int | None = None) -> Path | None:
+        """Return the absolute path of a project, or of the selected one.
+
+        Absolute, because a path pasted into a terminal or a file manager has to
+        be for it to be any use, and that is the whole point of copying one.
+        """
+        index = self._position if position is None else position
+        if not (0 <= index < len(self._projects)):
+            return None
+        return self._projects[index].path.resolve()
 
     # -- editing -----------------------------------------------------------
 

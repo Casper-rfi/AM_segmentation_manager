@@ -120,6 +120,18 @@ DESCRIPTIVE_FIELDS: tuple[str, ...] = (
     "lamella_type",
 )
 
+#: What a person is expected to enter in each field, in one line. Written above
+#: the field in a generated template and shown as its tooltip in the GUI, which
+#: is why it lives here rather than in either of them.
+FIELD_COMMENTS: dict[str, str] = {
+    "description": "What this experiment was for",
+    "organisation": "Organisation that acquired the data",
+    "project": "Name of the wider project this belongs to",
+    "user": "Who acquired the data",
+    "sample": "Cell type or organism",
+    "lamella_type": f"One of: {', '.join(LAMELLA_TYPES)}",
+}
+
 
 def _metadata_section(document: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return a document's ``metadata:`` block, or an empty mapping.

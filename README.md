@@ -127,6 +127,17 @@ The Export tab shows what the current filters would export *before* writing --
 including the images that one-condition-per-scene and the empty-label rule
 would drop, which the command line reports only afterwards, in the log.
 
+The Metadata tab lists every project with a bar showing how many of its six
+descriptive fields are filled in, so the ones still to describe are visible
+without opening each. Hovering a field name says what belongs in it, and each
+value is annotated with the file it came from. *Organisation*, *User* and
+*Sample* offer the values already used elsewhere in the collection, ranked by
+how many projects use each, while still accepting anything typed -- picking a
+value is what keeps `HeLa` and `Hela` from becoming separate groups in every
+breakdown. *Project* offers the name of the folder holding the project's YAML
+files; the button applies it, and nothing is written until *Save*. Right-click
+a project to copy its path or open it in the file manager.
+
   python -m am_segmentation_manager.cli gui [START_PATH]
 
 `START_PATH` is optional; the folder can also be chosen in the window, and the

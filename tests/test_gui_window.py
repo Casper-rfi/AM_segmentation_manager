@@ -35,12 +35,26 @@ pytestmark = pytest.mark.skipif(
 if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
+    from qtpy.QtCore import Qt
+    from qtpy.QtGui import QPalette
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.metadata_controller import MetadataController
+    from am_segmentation_manager.gui.widgets.common import BADGE_STYLES
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+    from am_segmentation_manager.gui.widgets.metadata_panel import (
+        MetadataPanel,
+        editor_text,
+        set_editor_text,
+    )
+    from am_segmentation_manager.metadata import (
+        FIELD_COMMENTS,
+        build_experiment_metadata,
+    )
+    from am_segmentation_manager.models import Project
 
 CONFIG = None
 
@@ -577,3 +591,173 @@ def test_changing_a_state_updates_the_status_chips(window, monkeypatch):
     # The widget, not just the controller, reflects it.
     item = window.project_panel.lamella_list.item(position)
     assert "SEM: done" in item.toolTip()
+
+
+# ---------------------------------------------------------------------------
+# The metadata tab is read before it is written
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def metadata_panel(qt_app, tmp_path: Path):
+    """A metadata panel over two projects, built without scanning for them.
+
+    The YAML files are written even though the projects are built by hand: a
+    save goes to disk and re-reads what landed there, so a fixture that only
+    existed in memory would lose half its metadata the first time one happened.
+    """
+    experiment = {"metadata": {"organisation": "Rosalind Franklin Institute"}}
+
+    def project(name: str, own: dict) -> Project:
+        # Nested in a session folder, as Autolamella projects are: several
+        # experiments from one sitting share a directory.
+        path = tmp_path / "20260728_CB_AM_bitmap" / name
+        path.mkdir(parents=True)
+        (path / "experiment.yaml").write_text(
+            "metadata:\n  organisation: Rosalind Franklin Institute\n"
+        )
+        (path / "AM_metadata.yaml").write_text(
+            "metadata:\n" + "".join(f"  {key}: {value}\n" for key, value in own.items())
+        )
+        return Project(
+            name=name,
+            path=path,
+            relative_path=f"20260728_CB_AM_bitmap/{name}",
+            experiment_metadata=build_experiment_metadata(
+                experiment,
+                {"metadata": own},
+                experiment_path=path / "experiment.yaml",
+                am_metadata_path=path / "AM_metadata.yaml",
+            ),
+        )
+
+    controller = MetadataController()
+    controller.set_projects([
+        project("described", {"sample": "HeLa", "user": "Casper"}),
+        project("outstanding", {"sample": "TODO"}),
+    ])
+    panel = MetadataPanel(controller)
+    panel.set_projects(controller.project_summaries())
+    yield panel
+    panel.close()
+
+
+def test_a_locked_field_still_draws_its_value_in_the_normal_colour(metadata_panel):
+    """The tab opens locked and is mostly used for reading, so the disabled
+    grey Qt would otherwise use put every value at low contrast."""
+    assert editor_text(metadata_panel.editors["sample"]) == "HeLa"
+    for editor in metadata_panel.editors.values():
+        palette = editor.palette()
+        assert palette.color(QPalette.Disabled, QPalette.Text) == palette.color(
+            QPalette.Active, QPalette.Text
+        )
+
+
+def test_every_field_says_what_is_expected_in_it(metadata_panel):
+    """Hovering either the name or the box has to explain the field."""
+    for field, comment in FIELD_COMMENTS.items():
+        assert metadata_panel.captions[field].toolTip() == comment
+        assert metadata_panel.editors[field].toolTip() == comment
+
+
+def test_a_value_is_annotated_with_the_file_it_came_from(metadata_panel):
+    assert metadata_panel.notes["sample"].text() == "[AM_metadata.yaml]"
+    assert metadata_panel.notes["organisation"].text() == "[experiment.yaml]"
+    assert metadata_panel.notes["sample"].styleSheet() == BADGE_STYLES["info"]
+
+
+def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
+    """A placeholder is the state that most needs seeing; it used to be drawn
+    in the dimmest colour on the panel, in the same grey as provenance."""
+    metadata_panel.projects.setCurrentRow(1)
+
+    note = metadata_panel.notes["sample"]
+    assert note.text() == "[TODO]"
+    assert note.styleSheet() == BADGE_STYLES["warning"]
+    assert editor_text(metadata_panel.editors["sample"]) == ""
+
+
+def test_repeating_fields_offer_the_values_already_in_use(metadata_panel):
+    box = metadata_panel.editors["sample"]
+
+    assert box.isEditable()
+    # A blank first entry, so "unset" stays reachable from the list.
+    assert [box.itemText(row) for row in range(box.count())] == ["", "HeLa"]
+    assert metadata_panel.editors["description"].__class__.__name__ == "QLineEdit"
+
+
+def test_a_value_not_in_the_list_can_still_be_typed(metadata_panel):
+    """The list is a shortcut, not a vocabulary -- the first project to use a
+    sample has nothing to pick."""
+    box = metadata_panel.editors["sample"]
+    box.setCurrentText("Chlamydomonas")
+
+    assert metadata_panel._edits() == {"sample": "Chlamydomonas"}
+    # Typing must not grow the list, or a typo would be offered back later.
+    assert box.count() == 2
+
+
+def test_the_folder_name_is_offered_but_not_filled_in(metadata_panel):
+    """Pre-filling it would save a guess nobody looked at as though someone
+    had; the placeholder shows it and the button applies it."""
+    editor = metadata_panel.editors["project"]
+
+    assert editor.placeholderText() == "described (folder name)"
+    assert editor_text(editor) == ""
+    assert metadata_panel._edits() == {}
+
+
+def test_the_folder_button_follows_the_editing_guard(metadata_panel):
+    assert metadata_panel.folder_button.isEnabled() is False
+
+    metadata_panel.enable.setChecked(True)
+    assert metadata_panel.folder_button.isEnabled() is True
+
+    metadata_panel.folder_button.click()
+    assert editor_text(metadata_panel.editors["project"]) == "described"
+    assert metadata_panel._edits() == {"project": "described"}
+
+
+def test_the_list_says_which_projects_still_need_describing(metadata_panel):
+    """Without this you have to click every project to find the empty ones."""
+    described = metadata_panel.projects.item(0)
+    outstanding = metadata_panel.projects.item(1)
+
+    assert "3 of 6 fields set" in described.toolTip()
+    assert "missing: description, project, lamella_type" in described.toolTip()
+    # Only the organisation, from experiment.yaml: its sample is a placeholder.
+    assert "1 of 6 fields set" in outstanding.toolTip()
+    assert "sample" in outstanding.toolTip()
+    assert not described.icon().isNull()
+
+
+def test_a_long_row_is_elided_rather_than_scrolled(metadata_panel):
+    """These paths differ in the timestamp they end with. With a horizontal
+    scrollbar the view scrolls instead of eliding, and a run of projects from
+    one session is cut off at the edge into identical-looking rows."""
+    item = metadata_panel.projects.item(0)
+
+    assert metadata_panel.projects.textElideMode() == Qt.ElideMiddle
+    assert metadata_panel.projects.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert item.toolTip().startswith(item.text())
+
+
+def test_saving_updates_the_mark_in_the_list(metadata_panel):
+    """Saving is exactly when a project stops being incomplete, so leaving the
+    list describing the state before it is how a user learns to distrust it."""
+    assert "3 of 6 fields set" in metadata_panel.projects.item(0).toolTip()
+    metadata_panel.enable.setChecked(True)
+    set_editor_text(metadata_panel.editors["description"], "A lamella series")
+    metadata_panel._save()
+
+    assert "4 of 6 fields set" in metadata_panel.projects.item(0).toolTip()
+
+
+def test_right_clicking_a_project_asks_for_its_path(metadata_panel):
+    """Reusing the curate tab's menu: the row is emitted, and resolving the
+    path stays the controller's job."""
+    rows: list[int] = []
+    metadata_panel.project_path_requested.connect(rows.append)
+    metadata_panel.project_path_requested.emit(1)
+
+    assert rows == [1]
+    assert metadata_panel.controller.project_path(1).is_absolute()

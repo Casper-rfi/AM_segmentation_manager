@@ -20,7 +20,7 @@ from ..metadata import (
     AM_METADATA_FILENAME,
     DESCRIPTIVE_FIELDS,
     EXPERIMENT_FILENAME,
-    LAMELLA_TYPES,
+    FIELD_COMMENTS,
     TODO_MARKER,
     lamella_type_from_method,
 )
@@ -32,16 +32,6 @@ logger = logging.getLogger(__name__)
 #: wrong is invisible in the output, so they stay placeholders until a person
 #: fills them in.
 NEVER_DEFAULTED: frozenset[str] = frozenset({"description", "sample"})
-
-#: One-line explanation written above each field.
-FIELD_COMMENTS: dict[str, str] = {
-    "description": "What this experiment was for",
-    "organisation": "Organisation that acquired the data",
-    "project": "Name of the wider project this belongs to",
-    "user": "Who acquired the data",
-    "sample": "Cell type or organism",
-    "lamella_type": f"One of: {', '.join(LAMELLA_TYPES)}",
-}
 
 
 @dataclass(frozen=True)

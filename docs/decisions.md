@@ -111,6 +111,15 @@ different samples, and resolving a field from a parent would attribute the wrong
 sample to a project invisibly. Lamellae in one *project* do share a sample, which is
 why the project is the right level for this metadata.
 
+**The Metadata tab suggests, and a suggestion is never a value.** It offers the
+values other projects already use for a field, and the name of the folder a project's
+own YAML files sit in for `project`. Both are computed in the GUI controller and only
+reach a file when the user saves, so `build_experiment_metadata` still resolves from
+the two files and nothing else — the rule above is intact. The folder read for
+`project` is the project's own, never a parent, and the directory is preferred over
+`experiment.yaml`'s `name` because a project copied to a second location keeps the
+recorded name of the first.
+
 **Every image header carries settings for both beams.** `microscope_state.*` describes
 the beam that took the image; `system.*` holds both beams' configured defaults.
 Reading `system.ion.voltage` from an SEM image yields the FIB's 30 kV — plausible and
@@ -148,6 +157,19 @@ measures the wrong population.
 **`downscale_to_fit` uses `min(width_ratio, height_ratio)`.** The images are landscape
 in a portrait pane, so **width binds**, and window chrome does not change how they
 render.
+
+**A locked editor keeps its normal text colour.** The Metadata tab opens locked and is
+mostly used for reading, so Qt's disabled grey put every value at low contrast on a
+grey background — measured at `#bebebe` on white. `keep_readable_when_disabled` copies
+the active text colour onto the disabled palette group and leaves the background
+alone, so a field still reads as locked. Taken from the palette rather than pinned, so
+it follows the theme.
+
+**The metadata list elides; it must not scroll sideways.** Its rows carry relative
+paths that differ in the timestamp they *end* with, and a `QListWidget` with a
+horizontal scrollbar scrolls instead of eliding — which cut a session's projects off
+at the edge into identical-looking rows. `ElideMiddle` plus `ScrollBarAlwaysOff` keeps
+both ends; the tooltip carries the whole label.
 
 **Timeline label lines are violet (`#a78bfa`); empty placeholders are grey
 (`#8a8a8a`).** Each modality's label line sits outside its state row so the two state

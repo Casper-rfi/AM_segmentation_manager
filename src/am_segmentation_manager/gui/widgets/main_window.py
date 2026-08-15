@@ -189,6 +189,12 @@ class CurationWindow(QMainWindow):
         # Editing metadata changes what the export view groups by, so it has to
         # be told rather than left showing the previous sample name.
         self.metadata_panel.metadata_changed.connect(self.export_panel.refresh)
+        self.metadata_panel.project_path_requested.connect(
+            lambda row: self._copy_path(self.metadata_controller.project_path(row), "Project")
+        )
+        self.metadata_panel.project_reveal_requested.connect(
+            lambda row: self._reveal_path(self.metadata_controller.project_path(row))
+        )
 
     # -- the other tabs ----------------------------------------------------
 
@@ -209,9 +215,7 @@ class CurationWindow(QMainWindow):
         projects = self.controller.projects
         self.export_controller.set_projects(projects, self.controller.start_path)
         self.metadata_controller.set_projects(projects)
-        self.metadata_panel.set_projects(
-            [project.display_name for project in projects]
-        )
+        self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
 
     def _export_training(self, directory: str) -> None:
         from ...operations.csv import export_training_csv

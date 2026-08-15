@@ -17,7 +17,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QMenu,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -25,6 +24,7 @@ from qtpy.QtWidgets import (
 )
 
 from ..controller import CurationStatus
+from .common import SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH, add_path_menu
 from .frame_strip import MISMATCH, STATE_COLOURS
 
 
@@ -112,7 +112,7 @@ class ProjectPanel(QWidget):
         self.project_filter.textChanged.connect(
             lambda text: self._apply_filter(self.project_list, self._project_labels, text)
         )
-        self._add_path_menu(
+        add_path_menu(
             self.project_list, "project",
             self.project_path_requested, self.project_reveal_requested,
         )
@@ -122,7 +122,7 @@ class ProjectPanel(QWidget):
         self.lamella_filter.textChanged.connect(
             lambda text: self._apply_filter(self.lamella_list, self._lamella_labels, text)
         )
-        self._add_path_menu(
+        add_path_menu(
             self.lamella_list, "lamella",
             self.lamella_path_requested, self.lamella_reveal_requested,
         )
@@ -154,33 +154,6 @@ class ProjectPanel(QWidget):
         list_widget.currentRowChanged.connect(on_change)
         box_layout.addWidget(list_widget)
         return box, filter_edit, list_widget
-
-    def _add_path_menu(
-        self, widget: QListWidget, noun: str, copy_signal, reveal_signal
-    ) -> None:
-        """Give a list a right-click menu for the row's filesystem path.
-
-        The row under the cursor is used, not the selected row: right-clicking
-        an entry and acting on a different one would be a surprising way to lose
-        track of which path you copied.
-        """
-        widget.setContextMenuPolicy(Qt.CustomContextMenu)
-
-        def show_menu(point) -> None:
-            item = widget.itemAt(point)
-            if item is None:
-                return
-            row = widget.row(item)
-            menu = QMenu(widget)
-            copy = menu.addAction(f"Copy {noun} path")
-            reveal = menu.addAction(f"Reveal {noun} in file manager")
-            chosen = menu.exec_(widget.viewport().mapToGlobal(point))
-            if chosen is copy:
-                copy_signal.emit(row)
-            elif chosen is reveal:
-                reveal_signal.emit(row)
-
-        widget.customContextMenuRequested.connect(show_menu)
 
     def _browse(self) -> None:
         directory = QFileDialog.getExistingDirectory(
@@ -284,17 +257,6 @@ STATUS_COLOURS = {
 #: Nothing is drawn for a modality with no images. An absent modality should
 #: read as absent rather than as a state, and many older datasets have no FIB.
 STATUS_EMPTY = "empty"
-
-#: Every chip gets a dark outline. Without one the "not started" blue is nearly
-#: the same colour as a list row's selection highlight, so the chip on the row
-#: you are looking at -- the one you most want to read -- disappeared. An
-#: outline makes a chip legible on any background rather than tuning the fill
-#: against one particular theme's highlight colour.
-SWATCH_OUTLINE = QColor("#1a1a1a")
-
-SWATCH_WIDTH = 14
-SWATCH_HEIGHT = 10
-
 
 def _status_icon(status: CurationStatus) -> QIcon:
     """Return a two-part chip: SEM on the left, FIB on the right.

@@ -1,18 +1,19 @@
 """The Metadata tab: see a project's descriptive metadata, and edit it.
 
-Shows each field's resolved value beside the file that supplied it, which is
-most of the point -- a value that looks wrong is explained by which of the two
-YAML files it came from, and nothing else in the application surfaces that.
+Each field's value is shown beside the file that supplied it -- a value that
+looks wrong is explained by which of the two YAML files it came from, and
+nothing else surfaces that. The project list marks how much of each project is
+described, so what is left to do is visible without opening every one.
 
-Editing is locked until it is switched on, matching the curation view: this is
-mostly used for reading, and a text field you can change by accident is a poor
-guard on a file people have typed into.
+Editing is locked until switched on, matching the curation view, and a
+suggestion reaches a file only when the user saves.
 """
 from __future__ import annotations
 
 import logging
 
 from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -24,19 +25,94 @@ from qtpy.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
 from ..metadata_controller import (
     DESCRIPTIVE_FIELDS,
+    FIELD_COMMENTS,
     LAMELLA_TYPES,
+    SUGGESTED_FIELDS,
     TODO_MARKER,
     MetadataController,
     MetadataValidationError,
+    ProjectSummary,
 )
+from .common import (
+    BADGE_STYLES,
+    SWATCH_HEIGHT,
+    SWATCH_OUTLINE,
+    SWATCH_WIDTH,
+    add_path_menu,
+    keep_readable_when_disabled,
+)
+from .frame_strip import MISMATCH, STATE_COLOURS
 
 logger = logging.getLogger(__name__)
+
+#: How wide the completeness bar is. Two swatches, so it lines up with the
+#: two-part curation chips in the other list rather than sitting at its own size.
+COMPLETENESS_WIDTH = SWATCH_WIDTH * 2 + 2
+
+
+def _completeness_icon(summary: ProjectSummary) -> QIcon:
+    """Return a bar filled in proportion to how much of a project is described.
+
+    A fill fraction rather than three colour buckets: how full the bar is *is*
+    the message, so there is no second vocabulary to learn, and it separates a
+    project with one field left from one with five.
+
+    The two colours are the ones the curate list already uses for the same two
+    ideas -- the corrected teal for finished, the mismatch amber for needing
+    attention -- so a colour means the same thing in both lists.
+    """
+    pixmap = QPixmap(COMPLETENESS_WIDTH, SWATCH_HEIGHT)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    try:
+        share = summary.filled / summary.total if summary.total else 0.0
+        colour = STATE_COLOURS["corrected"] if summary.is_complete else MISMATCH
+        painter.fillRect(0, 0, round(COMPLETENESS_WIDTH * share), SWATCH_HEIGHT, colour)
+        painter.setPen(SWATCH_OUTLINE)
+        painter.drawRect(0, 0, COMPLETENESS_WIDTH - 1, SWATCH_HEIGHT - 1)
+    finally:
+        # A painter outliving its pixmap crashes the process instead of
+        # reporting it.
+        painter.end()
+    return QIcon(pixmap)
+
+
+def editor_text(editor: QWidget) -> str:
+    """Return what an editor is showing, whichever kind of editor it is."""
+    text = editor.currentText() if isinstance(editor, QComboBox) else editor.text()
+    return text.strip()
+
+
+def set_editor_text(editor: QWidget, value: str) -> None:
+    """Show *value* in an editor, whichever kind of editor it is."""
+    if isinstance(editor, QComboBox):
+        editor.setCurrentText(value)
+    else:
+        editor.setText(value)
+
+
+def _suggestion_box() -> QComboBox:
+    """Return a box offering the values already in use, and accepting new ones.
+
+    Typed text is never added to the list: the suggestions describe the
+    collection, and a box that grew its own entries as you typed would offer
+    back a typo you had just made.
+    """
+    box = QComboBox()
+    box.setEditable(True)
+    box.setInsertPolicy(QComboBox.NoInsert)
+    box.lineEdit().setPlaceholderText("unset")
+    completer = box.completer()
+    completer.setCaseSensitivity(Qt.CaseInsensitive)
+    completer.setFilterMode(Qt.MatchContains)
+    return box
 
 
 class MetadataPanel(QWidget):
@@ -44,6 +120,10 @@ class MetadataPanel(QWidget):
 
     #: Emitted after a successful write, so the window can refresh elsewhere.
     metadata_changed = Signal()
+    #: Emitted with the row the user right-clicked, to have its path copied or
+    #: the folder opened. Resolving a path stays the controller's job.
+    project_path_requested = Signal(int)
+    project_reveal_requested = Signal(int)
 
     def __init__(self, controller: MetadataController) -> None:
         super().__init__()
@@ -53,17 +133,51 @@ class MetadataPanel(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(8)
-        layout.addWidget(self._build_projects(), stretch=0)
-        layout.addWidget(self._build_fields(), stretch=1)
+        # In a splitter because the rows carry relative paths, which are long
+        # and are the point: most projects in one folder share their metadata,
+        # so the folder a row names is what tells you what to type.
+        panes = QSplitter(Qt.Horizontal)
+        panes.addWidget(self._build_projects())
+        panes.addWidget(self._build_fields())
+        panes.setSizes([460, 900])
+        layout.addWidget(panes)
 
     def _build_projects(self) -> QWidget:
         box = QGroupBox("Projects")
-        box.setMinimumWidth(280)
+        box.setMinimumWidth(360)
         column = QVBoxLayout(box)
         self.projects = QListWidget()
+        # Elided in the middle rather than the end: these paths differ in the
+        # timestamp they end with, so cutting the tail off makes a run of
+        # projects from one session indistinguishable. The tooltip carries the
+        # whole label regardless.
+        #
+        # The horizontal scrollbar has to go for that to happen at all -- with
+        # one, the view scrolls instead of eliding, and a row is simply cut off
+        # at the edge.
+        self.projects.setTextElideMode(Qt.ElideMiddle)
+        self.projects.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.projects.currentRowChanged.connect(self._select)
+        add_path_menu(
+            self.projects, "project",
+            self.project_path_requested, self.project_reveal_requested,
+        )
         column.addWidget(self.projects)
         return box
+
+    def _build_folder_button(self) -> QPushButton:
+        """Return the button that copies the project's own directory name across.
+
+        A button rather than a pre-filled box: the directory name is a guess,
+        and one nobody looked at would otherwise be saved as though someone had.
+        """
+        self.folder_button = QPushButton("Use folder name")
+        self.folder_button.setToolTip(
+            "Copy the name of this project's own folder -- the one holding its "
+            "YAML files -- into the box. Nothing is written until you save."
+        )
+        self.folder_button.clicked.connect(self._use_folder_name)
+        return self.folder_button
 
     def _build_fields(self) -> QWidget:
         box = QGroupBox("Metadata")
@@ -75,27 +189,39 @@ class MetadataPanel(QWidget):
 
         form = QFormLayout()
         self.editors: dict[str, QWidget] = {}
-        self.sources: dict[str, QLabel] = {}
+        self.notes: dict[str, QLabel] = {}
+        self.captions: dict[str, QLabel] = {}
         for field in DESCRIPTIVE_FIELDS:
             if field == "lamella_type":
                 editor: QWidget = QComboBox()
                 editor.setEditable(False)
                 editor.addItems(["", *LAMELLA_TYPES, TODO_MARKER])
+            elif field in SUGGESTED_FIELDS:
+                editor = _suggestion_box()
             else:
                 editor = QLineEdit()
                 editor.setPlaceholderText("unset")
-            source = QLabel("")
-            source.setStyleSheet("color: palette(mid);")
-            source.setToolTip("Which file this value came from")
+            # The tab opens locked, so without this every value would be drawn
+            # in Qt's disabled grey -- on a tab whose main job is reading.
+            keep_readable_when_disabled(editor)
+
+            note = QLabel("")
+            caption = QLabel(field.replace("_", " ").title())
+            help_text = FIELD_COMMENTS.get(field, "")
+            for widget in (caption, editor):
+                widget.setToolTip(help_text)
 
             row = QHBoxLayout()
             row.addWidget(editor, stretch=1)
-            row.addWidget(source)
+            row.addWidget(note)
+            if field == "project":
+                row.addWidget(self._build_folder_button())
             holder = QWidget()
             holder.setLayout(row)
-            form.addRow(field.replace("_", " ").title(), holder)
+            form.addRow(caption, holder)
             self.editors[field] = editor
-            self.sources[field] = source
+            self.notes[field] = note
+            self.captions[field] = caption
         column.addLayout(form)
 
         self.enable = QCheckBox("Enable editing")
@@ -127,16 +253,32 @@ class MetadataPanel(QWidget):
 
     # -- behaviour ---------------------------------------------------------
 
-    def set_projects(self, labels: list[str]) -> None:
+    def set_projects(self, summaries: list[ProjectSummary]) -> None:
+        """List the projects, selecting the first."""
         self._loading = True
         try:
             self.projects.clear()
-            self.projects.addItems(labels)
-            if labels:
+            self.projects.addItems([summary.label for summary in summaries])
+            self._show_completeness(summaries)
+            if summaries:
                 self.projects.setCurrentRow(0)
         finally:
             self._loading = False
         self.refresh()
+
+    def _show_completeness(self, summaries: list[ProjectSummary]) -> None:
+        """Mark each row with how much of its metadata is filled in.
+
+        The row text is already carrying a path, so the count and the fields
+        still wanted go in the tooltip -- which is also where the full label
+        goes, since the list elides long ones.
+        """
+        for row, summary in enumerate(summaries):
+            item = self.projects.item(row)
+            if item is None:
+                break
+            item.setIcon(_completeness_icon(summary))
+            item.setToolTip(f"{summary.label}\n{summary.describe()}")
 
     def _select(self, row: int) -> None:
         if self._loading or row < 0:
@@ -149,6 +291,22 @@ class MetadataPanel(QWidget):
         for editor in self.editors.values():
             editor.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
+        self._update_folder_button()
+
+    def _update_folder_button(self) -> None:
+        """Offer the folder name only when editing is on and there is one."""
+        self.folder_button.setEnabled(
+            self.controller.editing_enabled
+            and self.controller.suggested_project_name() is not None
+        )
+
+    def _use_folder_name(self) -> None:
+        """Put the project's directory name in the project box, ready to save."""
+        suggestion = self.controller.suggested_project_name()
+        if suggestion is None:
+            self.status.setText("No project selected")
+            return
+        set_editor_text(self.editors["project"], suggestion)
 
     def _edits(self) -> dict[str, str | None]:
         """Return the fields whose editor differs from the resolved value.
@@ -160,9 +318,7 @@ class MetadataPanel(QWidget):
         current = self.controller.values()
         edits: dict[str, str | None] = {}
         for field, editor in self.editors.items():
-            text = (
-                editor.currentText() if isinstance(editor, QComboBox) else editor.text()
-            ).strip()
+            text = editor_text(editor)
             if text == (current.get(field) or ""):
                 continue
             edits[field] = text or None
@@ -195,6 +351,36 @@ class MetadataPanel(QWidget):
         self.refresh()
         self.metadata_changed.emit()
 
+    def _show_note(self, field: str, source: str, outstanding: bool) -> None:
+        """Annotate one field with where its value came from, or that it is due.
+
+        The two never coincide -- a field still holding a placeholder resolves
+        to no value and so has no source -- but they are not the same kind of
+        remark, and drawing an outstanding field in the dimmest colour on the
+        panel put the state that matters most where it was hardest to see.
+        """
+        note = self.notes[field]
+        if outstanding:
+            note.setText(f"[{TODO_MARKER}]")
+            note.setStyleSheet(BADGE_STYLES["warning"])
+            note.setToolTip("Still a placeholder; nobody has filled this in")
+        elif source:
+            note.setText(f"[{source}]")
+            note.setStyleSheet(BADGE_STYLES["info"])
+            note.setToolTip("Which file this value came from")
+        else:
+            note.setText("")
+            note.setToolTip("")
+
+    def _show_folder_suggestion(self) -> None:
+        """Show the project's directory name behind an empty box, and offer it."""
+        suggestion = self.controller.suggested_project_name()
+        editor = self.editors["project"]
+        editor.setPlaceholderText(
+            "unset" if suggestion is None else f"{suggestion} (folder name)"
+        )
+        self._update_folder_button()
+
     def refresh(self) -> None:
         """Redraw the fields from the controller."""
         self._loading = True
@@ -204,14 +390,17 @@ class MetadataPanel(QWidget):
             outstanding = set(self.controller.outstanding())
             for field, editor in self.editors.items():
                 value = values.get(field, "")
-                if isinstance(editor, QComboBox):
-                    editor.setCurrentText(value)
-                else:
-                    editor.setText(value)
-                note = sources.get(field, "")
-                if field in outstanding:
-                    note = TODO_MARKER
-                self.sources[field].setText(f"[{note}]" if note else "")
+                if field in SUGGESTED_FIELDS:
+                    # Rebuilt every time, so a value saved on one project is
+                    # offered on the next without rescanning.
+                    editor.clear()
+                    editor.addItems(["", *self.controller.suggestions(field)])
+                set_editor_text(editor, value)
+                self._show_note(field, sources.get(field, ""), field in outstanding)
+            self._show_folder_suggestion()
+            # Saving is exactly when a project stops being incomplete, so the
+            # marks in the list must not be left describing the state before it.
+            self._show_completeness(self.controller.project_summaries())
             self.summary.setText(self.controller.summary())
         finally:
             self._loading = False
