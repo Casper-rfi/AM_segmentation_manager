@@ -43,23 +43,28 @@ class MetadataController:
     # -- selection ---------------------------------------------------------
 
     def set_projects(self, projects: Sequence[Project]) -> None:
+        """Replace the project list, selecting the first."""
         self._projects = list(projects)
         self._position = 0
 
     @property
     def projects(self) -> list[Project]:
+        """Return the projects available to edit."""
         return self._projects
 
     @property
     def position(self) -> int:
+        """Return the index of the selected project."""
         return self._position
 
     def select(self, position: int) -> None:
+        """Select a project by index, clamped to the available range."""
         if self._projects:
             self._position = max(0, min(position, len(self._projects) - 1))
 
     @property
     def project(self) -> Project | None:
+        """Return the selected project, or None when the list is empty."""
         if not self._projects:
             return None
         return self._projects[self._position]

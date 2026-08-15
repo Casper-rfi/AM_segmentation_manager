@@ -1,0 +1,111 @@
+"""Every command and option must explain itself.
+
+The GUI already asserts that every keyboard shortcut carries a description
+(``test_gui_window.test_every_shortcut_is_documented``). The CLI is the larger
+surface and had no equivalent, which is how ``convert-predictions`` went without
+a description paragraph unnoticed.
+"""
+from __future__ import annotations
+
+import argparse
+
+import pytest
+
+from am_segmentation_manager.cli import build_parser
+
+
+def _subparser_action(parser: argparse.ArgumentParser) -> argparse._SubParsersAction:
+    """Return the parser's subcommand action."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    raise AssertionError("the CLI parser has no subcommands")
+
+
+def _subcommands() -> dict[str, argparse.ArgumentParser]:
+    """Return every subcommand name mapped to its parser, aliases included."""
+    return dict(_subparser_action(build_parser()).choices)
+
+
+def _canonical_subcommands() -> list[tuple[str, argparse.ArgumentParser]]:
+    """Return one entry per distinct subparser, so aliases are not counted twice."""
+    seen: dict[int, tuple[str, argparse.ArgumentParser]] = {}
+    for name, parser in _subcommands().items():
+        seen.setdefault(id(parser), (name, parser))
+    return list(seen.values())
+
+
+def test_parser_builds_without_running_a_command():
+    parser = build_parser()
+
+    assert parser.description
+    assert _subcommands()
+
+
+@pytest.mark.parametrize("name", [n for n, _ in _canonical_subcommands()])
+def test_every_subcommand_has_a_help_line(name):
+    """The one-line help shown in the top-level command list.
+
+    Aliases share their parser's entry, so only the primary name appears here.
+    """
+    action = _subparser_action(build_parser())
+
+    choice = next((c for c in action._choices_actions if c.dest == name), None)
+    assert choice is not None, f"{name} has no entry in the command list"
+    assert choice.help, f"{name} has no help= for the command list"
+
+
+@pytest.mark.parametrize("name", [n for n, _ in _canonical_subcommands()])
+def test_every_subcommand_has_a_description(name):
+    """The paragraph shown by ``<command> --help``."""
+    parser = _subcommands()[name]
+
+    assert parser.description, f"{name} has no description=, so its --help explains nothing"
+
+
+@pytest.mark.parametrize("name", [n for n, _ in _canonical_subcommands()])
+def test_every_argument_has_help(name):
+    """Every flag and positional explains itself."""
+    parser = _subcommands()[name]
+
+    undocumented = [
+        action.dest
+        for action in parser._actions
+        if not action.help and action.dest != "help"
+    ]
+
+    assert not undocumented, f"{name} has arguments with no help=: {undocumented}"
+
+
+def test_top_level_flags_have_help():
+    """The subcommand container itself carries no help; every real flag must."""
+    undocumented = [
+        action.dest
+        for action in build_parser()._actions
+        if not action.help
+        and action.dest != "help"
+        and not isinstance(action, argparse._SubParsersAction)
+    ]
+
+    assert not undocumented
+
+
+def test_convert_predictions_explains_the_prediction_kinds():
+    """``raw`` and ``clean`` are opaque names; --help has to say what they select."""
+    kind = next(
+        action
+        for action in _subcommands()["convert-predictions"]._actions
+        if action.dest == "kind"
+    )
+
+    assert "raw" in kind.help and "clean" in kind.help
+
+
+def test_version_flag_reports_the_package_version():
+    from am_segmentation_manager import __version__
+
+    with pytest.raises(SystemExit) as excinfo:
+        build_parser().parse_args(["--version"])
+
+    assert excinfo.value.code == 0
+    assert __version__

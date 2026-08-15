@@ -147,8 +147,7 @@ label              20240228_adaptive_milling_ai/lam_010/labels_FIB/img_0004.tif
 ## 7. Resolutions
 
 How each open question in the original notes was settled. All of these are
-implemented; see [`design_record_layouts.md`](design_record_layouts.md) for the
-reasoning.
+implemented; see [`decisions.md`](decisions.md) for the reasoning.
 
 ### 7.1 Recognising pre-Autolamella datasets
 

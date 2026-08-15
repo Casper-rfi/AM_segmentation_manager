@@ -232,19 +232,17 @@ Project layout
     - metadata_csv.py    : per-image and per-project metadata export
     - metadata_edit.py   : editing AM_metadata.yaml in place
     - migrate.py         : renaming pre-convention label directories
+    - label_measure.py   : per-class label areas and cracks in um^2
+    - labels.py          : conservative moves between workflow state folders
   - gui/             : the desktop window (only gui/widgets/ imports Qt)
     - controller.py, export_controller.py, metadata_controller.py : view models
   - cli.py           : CLI entrypoint
 - tests/             : pytest tests using tmp_path fixtures
 - docs/
-  - 00_roadmap.md            : planning index and phase order
-  - 01_refactor_plan.md      : cleanup checklist (consumable)
-  - 02_gui_improvements_plan.md : planned curation window changes
-  - 03_metadata_plan.md      : metadata reading, editing, export and statistics
-  - 04_future_work.md        : sketches, not designs
-  - reference_layouts.md     : real path examples, and the axes they vary along
-  - design_record_gui.md     : why the curation window is built as it is
-  - design_record_layouts.md : why legacy layouts are supported as they are
+  - 00_roadmap.md        : what is built, what is next, and where the rest is
+  - decisions.md         : why the software is built this way; environment traps
+  - 04_future_work.md    : what is not built, and the questions to answer first
+  - reference_layouts.md : real path examples, and the axes they vary along
 
 Notes for developers
 --------------------

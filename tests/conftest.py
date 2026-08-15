@@ -22,7 +22,7 @@ Migration is deliberately opportunistic. Roughly thirty test files still build
 their own trees; they are correct and passing, and rewriting them all at once
 would be a large diff with no behaviour change in the code that would tell us
 if something broke. Use these builders for new tests, and convert an old file
-when you are editing it anyway. See ``docs/01_refactor_plan.md`` section 5.1.
+when you are editing it anyway. See ``docs/00_roadmap.md``.
 """
 from __future__ import annotations
 

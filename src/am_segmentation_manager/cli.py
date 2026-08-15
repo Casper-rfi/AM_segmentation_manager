@@ -14,6 +14,7 @@ import logging
 import sys
 from pathlib import Path
 
+from . import __version__
 from .aggregate import BREAKDOWNS, NEEDS_MEASUREMENTS, NEEDS_METADATA
 from .filtering import METADATA_FILTERS, filter_by_metadata, iter_matching_records
 from .io.path import make_path_relative
@@ -174,13 +175,21 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
-    """Parse arguments and dispatch to the appropriate operation."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the parser for every subcommand.
+
+    Kept separate from :func:`main` so the parser can be inspected without
+    running a command, which is what lets the help text be tested.
+    """
     parser = argparse.ArgumentParser(
         "am_segmentation_manager",
         description="Manage Autolamella segmentation projects",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--version", action="version", version=f"am-seg {__version__}",
+        help="Print the installed version and exit",
+    )
     sub = parser.add_subparsers(dest="command")
 
     # -- list-projects / scan -----------------------------------------------
@@ -514,11 +523,25 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     convert_predictions = sub.add_parser(
         "convert-predictions",
         help="Convert predictions into labels for explicitly selected images",
+        description=(
+            "Write a label file for each selected image from its prediction, "
+            "resizing by nearest neighbour where the prediction and the image "
+            "have different pixel dimensions. Labels are written to the label "
+            "directory the image set resolves to, and an existing label is "
+            "never overwritten. Only images explicitly selected by the scope "
+            "arguments are converted, because the labels this produces are "
+            "pseudo-labels awaiting proofreading, not finished annotations."
+        ),
     )
     _add_scope_arguments(convert_predictions)
     convert_predictions.add_argument(
         "--kind", choices=["raw", "clean"], required=True,
-        help="Prediction set to convert",
+        help=(
+            "Which subdirectory of predictions/ to read: 'raw' as the model "
+            "wrote them, or 'clean' after the pipeline's post-processing step. "
+            "This package does not produce either; both come from the "
+            "prediction pipeline"
+        ),
     )
 
     # -- deselect / select / correct ----------------------------------------
@@ -683,6 +706,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         help="Preview compression savings without modifying any files",
     )
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
+    """Parse arguments and dispatch to the appropriate operation."""
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     # -- configure logging --------------------------------------------------

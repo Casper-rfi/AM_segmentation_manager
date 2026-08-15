@@ -108,10 +108,12 @@ def by_variant(record: ImageRecord) -> Hashable:
 
 
 def by_stage(record: ImageRecord) -> Hashable:
+    """Group by adaptive-milling stage name."""
     return _present(record.stage)
 
 
 def by_lamella(record: ImageRecord) -> Hashable:
+    """Group by lamella name, synthetic ones included."""
     return _present(record.lamella)
 
 
@@ -153,14 +155,17 @@ def by_voltage(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
 
 
 def by_beam_current(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by beam current in picoamps."""
     return _metadata_key(metadata, "beam_current_pa")
 
 
 def by_dwell_time(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by pixel dwell time in nanoseconds."""
     return _metadata_key(metadata, "dwell_time_ns")
 
 
 def by_pixel_size(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by pixel size in nanometres."""
     return _metadata_key(metadata, "pixel_size_nm")
 
 
@@ -170,6 +175,7 @@ def by_beam_source(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
 
 
 def by_detector(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by detector type."""
     return _metadata_key(metadata, "detector_type")
 
 
@@ -256,10 +262,12 @@ def by_lamella_type(lookup: Mapping[Path, Project]) -> KeyFunction:
 
 
 def by_user(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by the user recorded in the project's metadata."""
     return _project_metadata_key(lookup, "user")
 
 
 def by_organisation(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by the organisation recorded in the project's metadata."""
     return _project_metadata_key(lookup, "organisation")
 
 

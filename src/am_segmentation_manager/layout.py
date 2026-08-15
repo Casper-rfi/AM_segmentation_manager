@@ -17,7 +17,9 @@ The conventions are:
   label directory for a modality, and ``<modality>_<variant>_labels`` is
   *private* to one variant. Sharing is a consequence of how many image
   directories resolve to the same label directory, and is computed rather than
-  declared.
+  declared. Resolution is most-specific-first: ``<image-dir>_labels`` if it
+  exists, else the shared ``<modality>_labels``, else a legacy name, else
+  ``<image-dir>_labels`` created on first write.
 * Workflow state is physical location: a file in a ``deselected/`` or
   ``corrected/`` subdirectory is in that state, and anywhere else is selected.
 

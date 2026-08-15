@@ -25,10 +25,9 @@ Everything else is easy.
 * Image and label directory resolution: `layout.py`, via the stage's
   `image_sets`, each of which already carries the label directory it resolves to.
   No new path logic.
-* `02_gui_improvements_plan.md` §2 adds copy-path to the context menu. **That is
-  the useful 80 % of this feature and it costs almost nothing.** Copy the path,
-  paste it into the other tool. Do that first and find out how much of the pain
-  it removes before building process launching.
+* **Copy-path is already in the window's context menu, and is the useful 80 % of
+  this feature.** Copy the path, paste it into the other tool. Find out how much
+  of the pain that removes before building process launching.
 
 ### Questions to answer before designing
 
@@ -51,8 +50,8 @@ programmatically would require the two tools to share a schema in code, which
 couples their release cycles. A file is a stable, inspectable interface, and it
 is the one that already exists.
 
-(Note `01_refactor_plan.md` §1.2 deletes the duplicate config at the repo root.
-Resolution goes through `config.py` either way.)
+(Resolution goes through `config.py`, which is the only place that knows where
+the config may live.)
 
 ### Constraint
 
@@ -124,12 +123,6 @@ a record of title, authors, licence and description. Consumers will either use
 this package to interpret the data or take the training CSVs and ignore the
 rest.
 
-*An earlier draft of this section claimed deposition was blocked on choosing a
-repository, "since the required directory structure and metadata schema come
-from the target". That was wrong, and wrong in an expensive direction: it would
-have justified building a restructuring step nobody wants. Recorded here
-because the reasoning looked sound and was not.*
-
 So the remaining work is small, and is about making the deposit
 *interpretable* rather than about moving files:
 
@@ -149,3 +142,31 @@ Practical constraint worth knowing before the first deposit: Zenodo's default
 ceiling is 50 GB per record. The reference collection is 40 GB, which fits, but
 not with much room — a larger collection would need either a request to Zenodo
 or splitting across records.
+
+---
+
+## 4. Importing existing labels into the project hierarchy
+
+**What you want:** the labels that live in folder structures you created by hand,
+brought back into the project hierarchy where `layout.py` expects them.
+
+**Why it is not designed yet:** designing a matching strategy without having seen
+the source structures would be speculation, and a bulk filesystem-writing command
+built on a guessed input shape is the worst thing to have in a package whose point
+is not losing data.
+
+### What is already in place
+
+* **The destination is unambiguous.** `layout.labels_directory_for(...)` gives the
+  right target for any image, so a helper script — in this package or outside it —
+  never has to reimplement the convention.
+* **Verification is available now.** `inspect-layout` reports images with no label
+  and labels matching no image, so the result of any import can be checked rather
+  than trusted.
+
+### The shape it would take
+
+A dry-run-first command matching on filename within a selected scope, refusing to
+overwrite, never deleting from the source, and reporting unmatched and ambiguous
+cases before writing anything. That is a small amount of work *given* `layout.py`,
+and much better specified once there is a real input to look at.
