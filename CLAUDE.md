@@ -34,6 +34,7 @@ Code quality, maintainability and extensibility therefore matter.
 0. New data gets added to the collection manually (not done by this software):
 	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
 	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
+	3. `edit-metadata` is used to add any missing metadata or make corrections
 1. Curating data and proofreading pseudo-labels:
 	1. The `gui` is used to set the state of FIB and SEM images to `deselect` (don't create and proofread labels), `select` (create pseudolabels and proofread) or `correct` (has proofread pseudolabels)
 	2. `convert-predictions` creates pseudo-labels from the predictions
