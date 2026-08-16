@@ -297,3 +297,23 @@ def test_is_labels_directory_covers_current_and_legacy_names():
     assert is_labels_directory("sem_labels")
     assert is_labels_directory("labels_FIB")
     assert not is_labels_directory("sem")
+
+
+def test_is_convertible_prediction_reads_directories_not_the_filename():
+    """Only ancestor *directories* disqualify a prediction.
+
+    The check scans path parts rather than building a parent path per level, so
+    the filename has to be excluded explicitly -- otherwise a file that happened
+    to be called `clean` would be refused on the strength of its own name.
+    """
+    from am_segmentation_manager.layout import is_convertible_prediction
+
+    assert is_convertible_prediction(Path("/a/predictions/raw/img.tif"))
+    assert is_convertible_prediction(Path("/a/predictions/img.tif"))
+    assert is_convertible_prediction(Path("/a/predictions/raw/clean"))
+
+    assert not is_convertible_prediction(Path("/a/predictions/clean/img.tif"))
+    # Case is not significant, and depth is not either: post-processed output
+    # nested any distance below a `clean` directory is still post-processed.
+    assert not is_convertible_prediction(Path("/a/predictions/CLEAN/img.tif"))
+    assert not is_convertible_prediction(Path("/a/clean/more/img.tif"))

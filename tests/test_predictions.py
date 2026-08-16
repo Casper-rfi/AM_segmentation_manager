@@ -91,7 +91,7 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
     records = []
     for folder, predictions in (("sem", "predictions"), ("sem_5kv", "predictions_5kv")):
         image = stage / folder / "img.tif"
-        prediction = stage / predictions / "clean" / "img.tif"
+        prediction = stage / predictions / "raw" / "img.tif"
         for path in (image, prediction):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"content")
@@ -99,9 +99,128 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
             ImageRecord(image_path=image, modality="SEM", predictions=[prediction])
         )
 
-    planned = plan_conversions(records, "clean")
+    planned = plan_conversions(records).conversions
     destinations = [item.destination for item in planned]
 
     assert len(destinations) == len(set(destinations))
-    assert convert_record_predictions(records, "clean") == 1
+    assert convert_record_predictions(records) == 1
     assert len(list((stage / "sem_labels").glob("*.tif"))) == 1
+
+
+def _record_with_prediction(tmp_path: Path, kind: str | None) -> ImageRecord:
+    """Return a record whose single prediction sits in *kind*, or directly in
+    the predictions directory when *kind* is None."""
+    stage = tmp_path / "project" / "01" / "stage"
+    image = stage / "sem" / "img.tif"
+    directory = stage / "predictions"
+    prediction = (directory / kind if kind else directory) / "img.tif"
+    for path in (image, prediction):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"content")
+    return ImageRecord(image_path=image, modality="SEM", predictions=[prediction])
+
+
+def test_post_processed_predictions_are_never_converted(tmp_path: Path) -> None:
+    """Adaptive Polishing's clean/ output cannot become a label.
+
+    Post-processing rewrites the intensity values, so they no longer index the
+    segmentation classes. Converting one would produce a label that looks valid
+    and teaches a model the wrong classes -- which is why this is a property of
+    the layout rather than a choice offered to the caller.
+    """
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    plan = plan_conversions([_record_with_prediction(tmp_path, "clean")])
+
+    assert plan.conversions == ()
+    assert plan.count_skipped("post-processed") == 1
+    # Not reported as a missing prediction: the pipeline ran, and the fix is to
+    # re-run it, not to wait for it.
+    assert plan.count_skipped("no-prediction") == 0
+
+
+def test_an_undivided_predictions_directory_still_converts(tmp_path: Path) -> None:
+    """Not every project splits predictions into raw/ and clean/.
+
+    The rule excludes post-processed output rather than requiring ``raw/``, so a
+    flat predictions directory keeps working.
+    """
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    plan = plan_conversions([_record_with_prediction(tmp_path, None)])
+
+    assert len(plan.conversions) == 1
+
+
+def test_raw_predictions_convert(tmp_path: Path) -> None:
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    plan = plan_conversions([_record_with_prediction(tmp_path, "raw")])
+
+    assert len(plan.conversions) == 1
+    assert plan.skipped == ()
+
+
+def test_a_label_is_replaced_where_it_lies_not_where_the_image_is(tmp_path: Path) -> None:
+    """An image and its label can sit in different state folders.
+
+    That disagreement is `repair-state`'s to fix. Computing a destination from
+    the image's state would write a *second* label in another folder while the
+    real one stayed put, which is worse than either overwriting or refusing.
+    """
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    record = _record_with_prediction(tmp_path, "raw")
+    label = record.image_path.parent.parent / "sem_labels" / "deselected" / "img.tif"
+    label.parent.mkdir(parents=True)
+    label.write_bytes(b"label")
+    record.labels = [label]
+
+    plan = plan_conversions([record], overwrite=True)
+
+    assert [item.destination for item in plan.conversions] == [label]
+
+
+def test_a_corrected_label_is_refused_even_with_overwrite(tmp_path: Path) -> None:
+    """There is no argument to `plan_conversions` that reaches proofread work."""
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    record = _record_with_prediction(tmp_path, "raw")
+    label = record.image_path.parent.parent / "sem_labels" / "corrected" / "img.tif"
+    label.parent.mkdir(parents=True)
+    label.write_bytes(b"proofread")
+    record.labels = [label]
+
+    plan = plan_conversions([record], overwrite=True)
+
+    assert plan.conversions == ()
+    assert [item.destination for item in plan.refused] == [label]
+    assert label.read_bytes() == b"proofread"
+
+
+def test_an_interrupted_conversion_leaves_the_original_label_intact(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The label appears whole or not at all.
+
+    Now that conversion can overwrite, a write that fails part way through would
+    otherwise destroy a readable label and leave a truncated file in its place.
+    """
+    from am_segmentation_manager.operations import predictions
+
+    prediction = tmp_path / "pred.tif"
+    label = tmp_path / "label.tif"
+    prediction.write_bytes(b"prediction")
+    label.write_bytes(b"the original label")
+
+    def explode(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(predictions, "_write_label", explode)
+
+    with pytest.raises(OSError):
+        predictions.prediction_to_label(prediction, label)
+
+    assert label.read_bytes() == b"the original label"
+    # And no temporary file is left behind next to it.
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["label.tif", "pred.tif"]

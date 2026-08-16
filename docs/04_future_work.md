@@ -1,6 +1,6 @@
 # Future work
 
-Status: **sketches, not designs.** Written 2026-08-14.
+Status: **sketches, not designs.** Last reviewed 2026-08-16.
 
 A holding area for things deliberately not being designed yet. Each entry
 records enough to stop the idea being lost, and the questions that would have to
@@ -62,9 +62,11 @@ that could touch corrected work.
 
 ## 2. ML inference to generate predictions
 
-**What you want:** create raw and cleaned predictions using the existing
-`AM_training` package, from the CLI and then the GUI, closing the loop —
-predict, convert to labels, proofread, export, retrain.
+**What you want:** create predictions using the existing `AM_training` package,
+from the CLI and then the GUI, closing the loop — predict, convert to labels,
+proofread, export, retrain. Raw predictions are what matters here: this package
+converts only those, for the reason in [`decisions.md`](decisions.md) §
+Filesystem conventions.
 
 ### What is already in place
 
@@ -92,7 +94,10 @@ What is missing is producing the predictions in the first place.
    It is the first genuinely long-running operation, and it will not fit the
    current validate-then-act shape without thought.
 4. **Does it overwrite existing predictions?** By `CLAUDE.md`'s rules, no — not
-   without an explicit flag.
+   without an explicit flag. Label conversion has since set the precedent to
+   follow: tier the answer by what replacing the file would cost, rather than
+   by one flag covering every case. See [`decisions.md`](decisions.md) §
+   Workflow state.
 
 ### Why it is last
 

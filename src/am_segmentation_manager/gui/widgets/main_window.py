@@ -79,6 +79,14 @@ TAB_EXPORT = "export"
 #: A key that works everywhere, whatever is showing.
 ANY_TAB = "any"
 
+#: What the confirm button says for each thing an operation can be blocked on.
+#: The generic wording is right for including corrected files in a batch;
+#: replacing a label needs the destructive word, because it is one.
+BLOCKED_ACTIONS: dict[str, str] = {
+    "corrected": "Include them",
+    "existing": "Replace them",
+}
+
 #: Mouse gestures worth listing beside the keys, per tab.
 #:
 #: Not bindings: nothing registers these, the widgets read the modifiers
@@ -455,9 +463,10 @@ class CurationWindow(QMainWindow):
 
         Args:
             title: Names the operation in every dialog it opens.
-            run: Called as ``run(allow_corrected, dry_run)``, returning an
-                :class:`OperationReport`. It runs on the worker thread, so it
-                must touch nothing belonging to the window.
+            run: Called as ``run(allow, dry_run)``, returning an
+                :class:`OperationReport`. ``allow`` answers whatever the report
+                was blocked on. It runs on the worker thread, so it must touch
+                nothing belonging to the window.
             rescan: Set where the operation creates files a scan would have
                 indexed -- a new label, a new project. A refresh recounts what
                 is already in memory, which cannot show a file that was not
@@ -468,9 +477,10 @@ class CurationWindow(QMainWindow):
         filesystem the user has had time to change.
         """
 
-        def previewed(report: OperationReport, allow_corrected: bool = False) -> None:
-            if report.blocked and not allow_corrected:
-                if not self._confirm_report(title, report, "Include them"):
+        def previewed(report: OperationReport, allowed: bool = False) -> None:
+            if report.blocked and not allowed:
+                action = BLOCKED_ACTIONS.get(report.blocked, "Include them")
+                if not self._confirm_report(title, report, action):
                     return
                 self._run_operation(
                     title, lambda: run(True, True), lambda r: previewed(r, True)
@@ -483,7 +493,7 @@ class CurationWindow(QMainWindow):
                 return
             self._run_operation(
                 title,
-                lambda: run(allow_corrected, False),
+                lambda: run(allowed, False),
                 lambda applied: self._operation_applied(title, applied, rescan),
             )
 
@@ -528,7 +538,7 @@ class CurationWindow(QMainWindow):
             return None
         return records
 
-    def _convert_predictions(self, kind: str) -> None:
+    def _convert_predictions(self) -> None:
         records = self._editable_records()
         if records is None:
             return
@@ -537,7 +547,7 @@ class CurationWindow(QMainWindow):
         self._operate(
             "Convert predictions",
             lambda allow, dry: self.operations_controller.convert_predictions(
-                records, kind, dry_run=dry
+                records, allow_overwrite=allow, dry_run=dry
             ),
             rescan=True,
         )
@@ -1236,6 +1246,9 @@ class CurationWindow(QMainWindow):
         self.state_panel.show_reach(reach.summary(), reach.shared_note())
         self.state_panel.show_selection(self.controller.describe_selection())
         self.operations_panel.show_selection(self.controller.describe_selection())
+        self.operations_panel.show_predictions(
+            self.operations_controller.describe_predictions(self.controller.scoped_records())
+        )
         self.project_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 

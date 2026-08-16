@@ -12,19 +12,19 @@ def _build_project(tmp_path: Path) -> tuple[Path, Path, Path]:
     (project / "experiment.yaml").write_text("name: project")
     sem_image = stage / "sem" / "sem.tif"
     fib_image = stage / "fib" / "fib.tif"
-    sem_prediction = stage / "predictions" / "clean" / sem_image.name
-    fib_prediction = stage / "predictions_fib" / "clean" / fib_image.name
+    sem_prediction = stage / "predictions" / "raw" / sem_image.name
+    fib_prediction = stage / "predictions_fib" / "raw" / fib_image.name
     for path in (sem_image, fib_image, sem_prediction, fib_prediction):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"image")
     return stage, sem_image, fib_image
 
 
-def _convert(tmp_path: Path, modality: str) -> int:
+def _convert(tmp_path: Path, modality: str, *extra: str) -> int:
     return main([
         "convert-predictions", "--start-path", str(tmp_path), "--project", "project",
         "--lamella", "01", "--stage", "01", "--image", "all",
-        "--modality", modality, "--kind", "clean",
+        "--modality", modality, *extra,
     ])
 
 
@@ -53,3 +53,66 @@ def test_cli_writes_into_an_existing_legacy_label_directory(tmp_path: Path) -> N
 
     assert (stage / "labels_fib" / fib_image.name).exists()
     assert not (stage / "fib_labels").exists()
+
+
+def test_cli_keeps_an_existing_label_without_the_overwrite_flag(tmp_path: Path) -> None:
+    """Overwriting is opt-in on the command line as it is in the window."""
+    stage, _, fib_image = _build_project(tmp_path)
+    label = stage / "fib_labels" / fib_image.name
+    label.parent.mkdir(parents=True)
+    label.write_bytes(b"existing label")
+
+    _convert(tmp_path, "FIB")
+
+    assert label.read_bytes() == b"existing label"
+
+    _convert(tmp_path, "FIB", "--overwrite")
+
+    assert label.read_bytes() != b"existing label"
+
+
+def test_cli_refuses_a_proofread_label_even_with_overwrite(tmp_path: Path) -> None:
+    """`--overwrite` reaches pseudo-labels, never proofread ones."""
+    stage, _, fib_image = _build_project(tmp_path)
+    label = stage / "fib_labels" / "corrected" / fib_image.name
+    label.parent.mkdir(parents=True)
+    label.write_bytes(b"proofread")
+
+    _convert(tmp_path, "FIB", "--overwrite")
+
+    assert label.read_bytes() == b"proofread"
+    # Nor is it sidestepped by writing a second label beside the corrected one,
+    # which would leave the group with two and no way to tell which is current.
+    assert not (stage / "fib_labels" / fib_image.name).exists()
+
+
+def test_cli_never_converts_post_processed_predictions(tmp_path: Path) -> None:
+    """A prediction under ``clean/`` is not a label source, however it is reached.
+
+    Post-processing rewrites the intensity values, so the result no longer
+    corresponds to the segmentation classes. An image whose only prediction is
+    post-processed has nothing convertible, which the command reports as finding
+    nothing rather than by writing an unusable label.
+    """
+    stage, _, fib_image = _build_project(tmp_path)
+    (stage / "predictions_fib" / "raw" / fib_image.name).unlink()
+    clean = stage / "predictions_fib" / "clean" / fib_image.name
+    clean.parent.mkdir(parents=True, exist_ok=True)
+    clean.write_bytes(b"image")
+
+    _convert(tmp_path, "FIB")
+
+    assert not (stage / "fib_labels" / fib_image.name).exists()
+
+
+def test_cli_dry_run_writes_nothing(tmp_path: Path) -> None:
+    """Every command that moves files offers a dry run, this one included."""
+    stage, _, fib_image = _build_project(tmp_path)
+
+    assert _convert(tmp_path, "FIB", "--dry-run") == 0
+
+    assert not (stage / "fib_labels" / fib_image.name).exists()
+
+    assert _convert(tmp_path, "FIB") == 0
+
+    assert (stage / "fib_labels" / fib_image.name).exists()

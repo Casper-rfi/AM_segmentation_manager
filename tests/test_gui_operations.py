@@ -48,13 +48,13 @@ def controller(tmp_path: Path) -> OperationsController:
 # ---------------------------------------------------------------------------
 
 def _project_with_prediction(tmp_path: Path) -> tuple[Path, Path]:
-    """Return the stage directory and the SEM image with a clean prediction."""
+    """Return the stage directory and the SEM image with a raw prediction."""
     project = tmp_path / "project"
     stage = project / "01-lamella" / "stage"
     (project / "experiment.yaml").parent.mkdir(parents=True)
     (project / "experiment.yaml").write_text("name: project")
     image = stage / "sem" / "img.tif"
-    prediction = stage / "predictions" / "clean" / "img.tif"
+    prediction = stage / "predictions" / "raw" / "img.tif"
     for path in (image, prediction):
         path.parent.mkdir(parents=True, exist_ok=True)
         tifffile.imwrite(str(path), _sparse_label())
@@ -65,10 +65,10 @@ def test_a_conversion_preview_writes_nothing(controller, tmp_path: Path):
     stage, image = _project_with_prediction(tmp_path)
     record = ImageRecord(
         image_path=image, modality="SEM",
-        predictions=[stage / "predictions" / "clean" / "img.tif"],
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
     )
 
-    report = controller.convert_predictions([record], "clean", dry_run=True)
+    report = controller.convert_predictions([record], dry_run=True)
 
     assert report.count == 1
     assert report.applied is False
@@ -80,11 +80,11 @@ def test_converting_writes_the_labels_the_preview_listed(controller, tmp_path: P
     stage, image = _project_with_prediction(tmp_path)
     record = ImageRecord(
         image_path=image, modality="SEM",
-        predictions=[stage / "predictions" / "clean" / "img.tif"],
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
     )
-    preview = controller.convert_predictions([record], "clean", dry_run=True)
+    preview = controller.convert_predictions([record], dry_run=True)
 
-    report = controller.convert_predictions([record], "clean")
+    report = controller.convert_predictions([record])
 
     assert report.applied is True
     assert report.count == 1
@@ -92,22 +92,147 @@ def test_converting_writes_the_labels_the_preview_listed(controller, tmp_path: P
     assert (stage / "sem_labels" / "img.tif").exists()
 
 
-def test_an_image_that_already_has_a_label_is_not_converted(controller, tmp_path: Path):
-    stage, image = _project_with_prediction(tmp_path)
-    label = stage / "sem_labels" / "img.tif"
-    label.parent.mkdir(parents=True)
-    tifffile.imwrite(str(label), np.zeros((4, 4), dtype=np.uint8))
-    original = label.read_bytes()
-    record = ImageRecord(
-        image_path=image, modality="SEM", labels=[label],
-        predictions=[stage / "predictions" / "clean" / "img.tif"],
+def _record(stage: Path, kind: str | None = "raw", label: Path | None = None) -> ImageRecord:
+    """Return a record whose prediction is of *kind*, with an optional label.
+
+    Nothing is written: the summary line is counted from the scanned index, and
+    a test that built files would not notice if it started reading them.
+    """
+    directory = stage / "predictions"
+    return ImageRecord(
+        image_path=stage / "sem" / "img.tif", modality="SEM",
+        predictions=[(directory / kind if kind else directory) / "img.tif"] if kind else [],
+        labels=[label] if label else [],
     )
 
-    report = controller.convert_predictions([record], "clean", dry_run=True)
+
+def test_the_summary_counts_what_is_ready_without_reading_the_disk(tmp_path: Path):
+    controller = OperationsController()
+    stage = tmp_path / "stage"
+
+    summary = controller.describe_predictions([_record(stage), _record(stage)])
+
+    assert summary == "2 of 2 image(s) ready to convert."
+
+
+def test_the_summary_separates_the_reasons_nothing_is_ready(tmp_path: Path):
+    """The three reasons need different actions, so one count cannot serve.
+
+    Post-processed means re-run the pipeline; missing means wait for it; a
+    label already there means neither.
+    """
+    controller = OperationsController()
+    stage = tmp_path / "stage"
+
+    summary = controller.describe_predictions([
+        _record(stage, "clean"), _record(stage, None),
+        _record(stage, "raw", stage / "sem_labels" / "corrected" / "img.tif"),
+    ])
+
+    assert "Nothing to convert" in summary
+    assert "post-processed" in summary
+    assert "no prediction yet" in summary
+    assert "proofread" in summary
+
+
+def test_a_replaceable_label_is_not_reported_as_nothing_to_convert(tmp_path: Path):
+    """There is work available; it just replaces something and must be confirmed."""
+    controller = OperationsController()
+    stage = tmp_path / "stage"
+
+    summary = controller.describe_predictions(
+        [_record(stage, "raw", stage / "sem_labels" / "img.tif")]
+    )
+
+    assert summary == "Nothing new to convert. 1 with a replaceable label."
+
+
+def test_an_empty_selection_reports_nothing_at_all(tmp_path: Path):
+    """"0 of 0" reads as a fault; with nothing selected the line is hidden."""
+    assert OperationsController().describe_predictions([]) == ""
+
+
+def _labelled_record(stage: Path, image: Path, label_state: str, content) -> ImageRecord:
+    """Return a record whose label sits in *label_state* holding *content*."""
+    directory = stage / "sem_labels"
+    if label_state != "selected":
+        directory = directory / label_state
+    directory.mkdir(parents=True, exist_ok=True)
+    label = directory / "img.tif"
+    tifffile.imwrite(str(label), content)
+    return ImageRecord(
+        image_path=image, modality="SEM", labels=[label],
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
+    )
+
+
+def test_an_existing_label_blocks_until_replacing_is_confirmed(controller, tmp_path: Path):
+    """A label that is already there is not silently skipped, nor silently lost.
+
+    Silently skipping is what made a re-run look broken; overwriting without
+    asking is what the guard exists to prevent. So it blocks, and says which
+    files and what is in them.
+    """
+    stage, image = _project_with_prediction(tmp_path)
+    record = _labelled_record(stage, image, "selected", _sparse_label())
+    original = record.labels[0].read_bytes()
+
+    report = controller.convert_predictions([record], dry_run=True)
+
+    assert report.blocked == "existing"
+    assert report.applied is False
+    assert any("replace (holds annotation)" in line for line in report.lines)
+    assert record.labels[0].read_bytes() == original
+
+
+def test_an_empty_placeholder_is_named_as_costing_nothing(controller, tmp_path: Path):
+    """The segmentation software writes an empty label for every input image.
+
+    Replacing one loses nothing, and the preview has to say so -- otherwise the
+    only safe-looking answer to the prompt is to cancel.
+    """
+    stage, image = _project_with_prediction(tmp_path)
+    record = _labelled_record(stage, image, "selected", np.zeros((4, 4), dtype=np.uint8))
+
+    report = controller.convert_predictions([record], dry_run=True)
+
+    assert report.blocked == "existing"
+    assert any("replace (empty placeholder)" in line for line in report.lines)
+
+
+def test_confirming_replaces_the_label_in_place(controller, tmp_path: Path):
+    stage, image = _project_with_prediction(tmp_path)
+    record = _labelled_record(stage, image, "selected", np.zeros((4, 4), dtype=np.uint8))
+    label = record.labels[0]
+
+    report = controller.convert_predictions([record], allow_overwrite=True)
+
+    assert report.applied is True
+    assert report.count == 1
+    # Rewritten where it lay, not duplicated into a second file.
+    assert len(list((stage / "sem_labels").glob("*.tif"))) == 1
+    assert tifffile.imread(str(label)).shape == _sparse_label().shape
+
+
+def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
+    controller, tmp_path: Path
+):
+    """The confirmable tier stops short of proofread work.
+
+    Compression can be confirmed for corrected labels because it preserves pixel
+    values. Conversion replaces them with a machine guess, so there is no
+    setting that reaches one -- the report says which images to move instead.
+    """
+    stage, image = _project_with_prediction(tmp_path)
+    record = _labelled_record(stage, image, "corrected", _sparse_label())
+    original = record.labels[0].read_bytes()
+
+    report = controller.convert_predictions([record], allow_overwrite=True)
 
     assert report.count == 0
-    assert "no matching prediction" in report.headline
-    assert label.read_bytes() == original
+    assert record.labels[0].read_bytes() == original
+    assert any("refused" in line for line in report.lines)
+    assert any("corrected/" in line for line in report.lines)
 
 
 # ---------------------------------------------------------------------------

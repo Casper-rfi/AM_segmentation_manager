@@ -21,14 +21,16 @@ from ..layout import state_of_path
 from ..models import ImageRecord
 from ..operations.label_compression import compress_labels, existing_labels
 from ..operations.label_groups import describe_group
-from ..operations.predictions import convert_record_predictions, plan_conversions
+from ..operations.predictions import (
+    SKIP_DESCRIPTIONS,
+    ConversionPlan,
+    convert_record_predictions,
+    count_convertible,
+    plan_conversions,
+)
 from ..operations.selection import repair_group_states
 
 logger = logging.getLogger(__name__)
-
-#: Which subdirectory of ``predictions/`` to convert from. The empty string
-#: takes whichever prediction a record has, whatever it is filed under.
-PREDICTION_KINDS = ("clean", "raw", "")
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,24 @@ class OperationReport:
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""
         return [self.headline, *self.lines]
+
+
+def _skip_summary(plan: ConversionPlan) -> tuple[str, ...]:
+    """Return one line per reason records were passed over, largest first.
+
+    A run that converts nothing is the case most in need of an explanation, and
+    the three reasons need different actions: wait for the pipeline, re-run it
+    without post-processing, or accept that the label is already there.
+    """
+    counted = [
+        (plan.count_skipped(reason), description)
+        for reason, description in SKIP_DESCRIPTIONS.items()
+    ]
+    return tuple(
+        f"{count} image(s) skipped: {description}"
+        for count, description in sorted(counted, reverse=True)
+        if count
+    )
 
 
 def format_bytes(size: int) -> str:
@@ -91,34 +111,103 @@ class OperationsController:
 
     # -- converting predictions -------------------------------------------
 
+    def describe_predictions(self, records: Iterable[ImageRecord]) -> str:
+        """Return the line saying what converting this selection would find.
+
+        Shown beside the button rather than reached by pressing it: "is there
+        anything here to convert" is a question about the data, and answering it
+        with a dialog makes the user open one to find out there was nothing.
+
+        The reasons matter more than the number, because they need different
+        actions -- run the prediction pipeline, re-run it without
+        post-processing, or accept the label that is already there.
+        """
+        counts = count_convertible(records)
+        if not counts.total:
+            return ""
+        if counts.ready:
+            leading = f"{counts.ready} of {counts.total} image(s) ready to convert"
+        elif counts.labelled:
+            # Distinguished from "nothing to convert": there is work available
+            # here, it just replaces something and has to be confirmed.
+            leading = "Nothing new to convert"
+        else:
+            leading = "Nothing to convert"
+
+        detail = [
+            (counts.labelled, "with a replaceable label"),
+            (counts.corrected, "proofread, never replaced"),
+            (counts.post_processed, "with post-processed predictions only"),
+            (counts.no_prediction, "with no prediction yet"),
+        ]
+        described = "; ".join(f"{count} {text}" for count, text in detail if count)
+        return f"{leading}. {described}." if described else f"{leading}."
+
+    def _refusal_summary(self, plan: ConversionPlan) -> tuple[str, ...]:
+        """Return the lines naming proofread labels that stopped a conversion.
+
+        Named individually rather than counted: this is the one outcome the user
+        cannot unblock from the dialog, so it has to say which images to move
+        out of ``corrected/`` if they really are to be re-converted.
+        """
+        if not plan.refused:
+            return ()
+        return (
+            f"{len(plan.refused)} image(s) refused: a proofread label is already "
+            f"there. Move the image out of corrected/ to re-convert it.",
+        ) + tuple(f"  {self._relative(item.destination)}" for item in plan.refused)
+
     def convert_predictions(
         self,
         records: Iterable[ImageRecord],
-        prediction_kind: str = "clean",
         *,
+        allow_overwrite: bool = False,
         dry_run: bool = False,
     ) -> OperationReport:
-        """Turn each record's prediction into a label, where it has no label yet.
+        """Turn each record's prediction into a label.
 
-        Records already carrying a label are left out, so this can never
-        overwrite proofread work. Applying re-resolves the plan rather than
-        reusing the preview's, so a file that appeared in between is still seen.
+        An image that already has a label is held back until *allow_overwrite*
+        is set, and one whose label is proofread is refused however it is set:
+        conversion replaces annotation with a machine guess. Applying
+        re-resolves the plan rather than reusing the preview's, so a file that
+        appeared in between is still seen.
         """
         records = list(records)
-        planned = plan_conversions(records, prediction_kind)
-        lines = tuple(self._relative(item.destination) for item in planned)
-        if not planned:
+        plan = plan_conversions(records, overwrite=allow_overwrite)
+        context = self._refusal_summary(plan) + _skip_summary(plan)
+
+        if plan.replaceable and not allow_overwrite:
+            # Asked before applying, so the window can say how much is at stake
+            # and which files. The refusal itself lives in plan_conversions.
             return OperationReport(
-                "Nothing to convert: every selected image either has a label "
-                "already or has no matching prediction."
+                f"{len(plan.replaceable)} of these image(s) already have a label. "
+                f"Converting replaces the file.",
+                tuple(
+                    f"{self._relative(item.destination)}: {item.describe()}"
+                    for item in plan.replaceable
+                ) + context,
+                len(plan.replaceable) + len(plan.conversions),
+                blocked="existing",
             )
+
+        lines = tuple(
+            f"{self._relative(item.destination)}: {item.describe()}"
+            for item in plan.conversions
+        )
+        if not plan.conversions:
+            return OperationReport("Nothing to convert.", context)
         if dry_run:
             return OperationReport(
-                f"Would write {len(planned)} label(s) from predictions.", lines, len(planned)
+                f"Would write {len(plan.conversions)} label(s) from predictions.",
+                lines + context,
+                len(plan.conversions),
             )
-        written = convert_record_predictions(records, prediction_kind)
+        written = convert_record_predictions(records, overwrite=allow_overwrite)
         return OperationReport(
-            f"Wrote {written} label(s) from predictions.", lines, written, applied=True
+            f"Wrote {written} label(s) from predictions.",
+            lines + context,
+            written,
+            applied=True,
         )
 
     # -- recompressing labels ----------------------------------------------

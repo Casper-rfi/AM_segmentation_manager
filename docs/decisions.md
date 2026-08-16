@@ -97,6 +97,17 @@ them; the missing level is synthesised in memory with the parent standing in, an
 model records that it is synthetic. Data on disk is never reorganised to fit the
 newest layout.
 
+**`predictions/clean/` is indexed but can never become a label.** Adaptive Polishing's
+post-processing rewrites the intensity values, so they no longer index the
+segmentation classes. A label converted from one looks entirely valid — right
+dimensions, plausible shapes — and teaches a model the wrong classes, which is worse
+than having no label at all. This will not change upstream, so it is a property of
+`layout.py` (`is_convertible_prediction`) rather than a choice offered to the caller.
+
+It is still indexed, deliberately: otherwise a project holding only post-processed
+predictions would report "no predictions", indistinguishable from one the pipeline has
+never reached, when those need opposite actions. Conversion counts the two separately.
+
 ---
 
 ## Workflow state
@@ -111,6 +122,24 @@ Group expansion sits in front of the existing `transition_records` logic, so eve
 safety property applies unchanged — only the set they apply to grows. Callers get the
 expanded set back, because with expansion the blast radius of a state change is no
 longer obvious from the command line.
+
+**Overwriting a label is tiered by what replacing it would cost, not by one flag.** A
+run that writes nothing has to say why, or it cannot be told from a broken one. So
+conversion sorts destinations three ways: an empty placeholder costs nothing to
+replace (see *A label file existing is not evidence of annotation* below); a
+pseudo-label holding annotation is regenerable machine output, replaced once the user
+confirms; a label in `corrected/` is refused, and no argument to `plan_conversions`
+reaches it.
+
+That last tier is stricter than `compress-labels`, which *can* be confirmed for
+corrected labels. The difference is what each does to the pixels: compression
+preserves them exactly, conversion replaces proofread work with a machine guess. A
+dialog is the right guard for the first and too weak for the second, so re-converting
+a corrected label means moving the image out of `corrected/` by hand.
+
+Conversion writes to a temporary file and renames it into place, as
+`label_compression` already did. Now that a write can land on a file that exists,
+failing part way through would truncate a readable label.
 
 **What a state change applies to is a set the user builds, and the finest level
 present wins.** Picked-out frames beat ticked lamellae, which beat ticked projects,
@@ -137,9 +166,9 @@ indistinguishable from finished work by any check that only looks at the filesys
 training export that includes one pairs an image with a blank mask, which teaches a
 model that the structure is background.
 
-`is_label_file_empty()` returns True, False, or **None when it cannot tell** (no image
-stack, unreadable file). None is deliberately distinct from True: reporting "not
-annotated" for a label nobody could read would be a guess presented as a fact.
+Hence the tri-state `is_label_file_empty()`, where **None means "cannot tell"** and is
+deliberately distinct from True: reporting "not annotated" for a label nobody could
+read would be a guess presented as a fact.
 
 ---
 
@@ -203,12 +232,13 @@ palette and a short stylesheet; nothing else in the window picks a chrome colour
 Fusion rather than the platform's style because the two bindings draw the same widgets
 differently and the development and user environments differ by binding — a window
 that inherits its style is a window nobody has both seen. It is built into Qt, so it
-costs no dependency. The
-order matters more than it looks: where a stylesheet rule and the palette disagree, the
-rule wins, and a widget palette edited in Python is simply ignored. A per-widget
-palette adjustment that kept locked fields readable was therefore silently overridden
-the moment the stylesheet arrived, and the palette it set still asserted true in the
-test. Anything about how something *renders* is asserted on the pixels for that reason.
+costs no dependency.
+
+The precedence matters more than it looks: where a stylesheet rule and the palette
+disagree the rule wins, and a widget palette edited in Python is simply ignored — yet
+that palette still reads back as the value it was set to, so a test asserting on it
+passes while the screen shows something else. **Anything about how something
+*renders* is asserted on the pixels**, for that reason.
 
 **A locked editor keeps its normal text colour.** The Add data tab opens locked and is
 mostly used for reading, so Qt's disabled grey put every value at low contrast —
@@ -275,8 +305,3 @@ non-English locale before releasing.
 **Never mix conda-forge with Anaconda `defaults`.** `environment.yml` pins
 `nodefaults` for this reason: a mixed environment paired Anaconda's OpenCV with
 conda-forge's protobuf and `cv2` would not load at all.
-
-**The sample layouts in `tests/conftest.py` are presets, not a taxonomy.**
-`build_dataset` takes layout *axes* — lamella level, stage nesting, naming,
-modalities, variants. A suite passing across all five named samples does not show that
-every layout works; vary the axis the behaviour actually depends on.

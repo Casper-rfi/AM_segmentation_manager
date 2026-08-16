@@ -1,45 +1,51 @@
-"""Prediction handling utilities.
+"""Turning predictions into the pseudo-labels that are then proofread.
 
-Provides a function to convert a prediction image into a label image. If
-image-processing dependencies (tifffile, numpy, cv2) are available the module
-will perform nearest-neighbour resizing when prediction and target image
-shapes differ. Otherwise it falls back to copying the file and logs a
-warning.
+Converts a prediction image into a label image, resizing by nearest neighbour
+where the prediction and its image differ in shape; without the image-processing
+dependencies (tifffile, numpy, cv2) it copies the file and logs a warning.
+
+Only predictions the pipeline has not post-processed are eligible. An existing
+label is replaced only when the caller asks for it, and a proofread one not even
+then, so nothing here can destroy manual annotation.
 """
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final, Literal
 
 from ..io.image import to_2d
 from ..layout import (
     MODALITIES,
     base_path,
+    is_convertible_prediction,
     resolve_labels_directory,
     state_of_path,
     state_path,
     subdirectories_by_name,
 )
 from ..models import ImageRecord
-from .label_io import has_image_stack_support, save_label_image
+from .label_io import has_image_stack_support, is_label_file_empty, save_label_image
 
 logger = logging.getLogger(__name__)
 
 
 def prediction_to_label(prediction_path: Path, label_path: Path, target_image_path: Path | None = None) -> None:
-    """Convert a prediction file into a label file.
+    """Convert a prediction file into a label file, whole or not at all.
 
-    Where *target_image_path* is given and its dimensions differ from the
-    prediction's, the prediction is resized to match by nearest neighbour,
-    which preserves the discrete label values. Without the optional image
-    stack the prediction is copied unchanged and a warning is logged.
+    Resized to *target_image_path* by nearest neighbour where their dimensions
+    differ, which preserves the discrete label values; copied unchanged, with a
+    warning, when the optional image stack is absent.
 
     Args:
         prediction_path: Path to the prediction image file.
-        label_path: Destination path for the label image.
+        label_path: Destination path for the label image. Written by rename, so
+            an interrupted run cannot truncate a label already there.
         target_image_path: Optional path to the SEM/FIB image whose shape should
             be matched.
     """
@@ -48,6 +54,25 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
     if not prediction_path.exists():
         raise FileNotFoundError(f"Prediction file does not exist: {prediction_path}")
 
+    # The suffix is kept: the encoder OpenCV selects is chosen by extension.
+    handle, temporary_name = tempfile.mkstemp(dir=label_path.parent, suffix=label_path.suffix)
+    os.close(handle)
+    temporary = Path(temporary_name)
+    try:
+        _write_label(prediction_path, temporary, target_image_path)
+        os.replace(temporary, label_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _write_label(prediction_path: Path, label_path: Path, target_image_path: Path | None) -> None:
+    """Write the converted prediction to *label_path*, resizing where needed.
+
+    Separate from :func:`prediction_to_label` only so that every path through
+    the conversion -- copy, matched shapes, resized -- lands in one temporary
+    file that the caller then moves into place.
+    """
     if target_image_path is None:
         # nothing to match, do a direct copy
         shutil.copy2(str(prediction_path), str(label_path))
@@ -98,6 +123,18 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
     logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, resized.shape)
 
 
+#: What is already at a conversion's destination. The three that exist differ in
+#: what replacing them costs: nothing, nothing, and irreplaceable work.
+ExistingLabel = Literal["none", "placeholder", "annotated", "corrected"]
+
+EXISTING_DESCRIPTIONS: Final[dict[ExistingLabel, str]] = {
+    "none": "write",
+    "placeholder": "replace (empty placeholder)",
+    "annotated": "replace (holds annotation)",
+    "corrected": "refused (proofread)",
+}
+
+
 @dataclass(frozen=True)
 class PlannedConversion:
     """One prediction and the label file it would become.
@@ -105,73 +142,214 @@ class PlannedConversion:
     Attributes:
         record: The image the prediction belongs to.
         prediction: The prediction file to convert.
-        destination: Where the label would be written. Never an existing file.
+        destination: Where the label would be written. An existing label's own
+            path when there is one, so replacing it overwrites that file rather
+            than writing a second label elsewhere.
+        existing: What is at the destination now.
     """
 
     record: ImageRecord
     prediction: Path
     destination: Path
+    existing: ExistingLabel = "none"
+
+    def describe(self) -> str:
+        """Return what this conversion would do to the destination."""
+        return EXISTING_DESCRIPTIONS[self.existing]
+
+
+#: Why a record produces no conversion. Reported rather than logged, because a
+#: run that converts nothing is the case most in need of an explanation.
+SkipReason = Literal["no-prediction", "post-processed"]
+
+SKIP_DESCRIPTIONS: Final[dict[SkipReason, str]] = {
+    "no-prediction": "no prediction file",
+    "post-processed": "only post-processed predictions, whose values do not "
+                      "match the segmentation classes",
+}
+
+
+@dataclass(frozen=True)
+class SkippedConversion:
+    """One record that will not be converted, and why.
+
+    Attributes:
+        record: The image passed over.
+        reason: Which of :data:`SKIP_DESCRIPTIONS` applies.
+    """
+
+    record: ImageRecord
+    reason: SkipReason
+
+
+@dataclass(frozen=True)
+class ConversionPlan:
+    """Everything a conversion run would and would not do.
+
+    Split four ways because each needs a different answer: run it, confirm the
+    loss, move the image out of ``corrected/`` by hand, or wait for a prediction.
+
+    Attributes:
+        conversions: The labels that would be written now, in record order.
+        replaceable: Conversions held back because a label is already there and
+            overwriting was not asked for. Empty when it was.
+        refused: Conversions that will not run at any setting, because a
+            proofread label is at the destination.
+        skipped: Records with nothing to convert, each with its reason.
+    """
+
+    conversions: tuple[PlannedConversion, ...] = ()
+    replaceable: tuple[PlannedConversion, ...] = ()
+    refused: tuple[PlannedConversion, ...] = ()
+    skipped: tuple[SkippedConversion, ...] = ()
+
+    def count_skipped(self, reason: SkipReason) -> int:
+        """Return how many records were passed over for *reason*."""
+        return sum(1 for item in self.skipped if item.reason == reason)
+
+
+@dataclass(frozen=True)
+class ConversionCounts:
+    """How a set of records divides up, counted from the index alone.
+
+    Opens no file and walks no directory, so it can be recomputed whenever the
+    selection changes; this counts images, while :func:`plan_conversions` is the
+    authority on how many label files a run would write.
+
+    Attributes:
+        total: Images considered.
+        ready: Images with a convertible prediction and no label yet.
+        labelled: Images whose existing label could be replaced on confirmation.
+        corrected: Images whose label is proofread, which nothing will replace.
+        post_processed: Images whose only predictions are the unusable kind.
+        no_prediction: Images the prediction pipeline has not reached.
+    """
+
+    total: int = 0
+    ready: int = 0
+    labelled: int = 0
+    corrected: int = 0
+    post_processed: int = 0
+    no_prediction: int = 0
+
+
+def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
+    """Return how *records* divide up, without touching the filesystem."""
+    counts: dict[str, int] = {}
+    total = 0
+    for record in records:
+        if record.modality not in MODALITIES:
+            continue
+        total += 1
+        if not any(is_convertible_prediction(path) for path in record.predictions):
+            key = "post_processed" if record.predictions else "no_prediction"
+        elif not record.labels:
+            key = "ready"
+        elif state_of_path(record.labels[0]) == "corrected":
+            key = "corrected"
+        else:
+            key = "labelled"
+        counts[key] = counts.get(key, 0) + 1
+    return ConversionCounts(total=total, **counts)
+
+
+def classify_destination(label_path: Path | None) -> ExistingLabel:
+    """Return what replacing *label_path* would cost.
+
+    A label that cannot be read counts as annotated, being the last thing to
+    overwrite on an assumption.
+    """
+    if label_path is None or not label_path.exists():
+        return "none"
+    if state_of_path(label_path) == "corrected":
+        return "corrected"
+    return "placeholder" if is_label_file_empty(label_path) is True else "annotated"
 
 
 def plan_conversions(
-    records: Iterable[ImageRecord], prediction_kind: str = "clean"
-) -> list[PlannedConversion]:
-    """Return the conversions that would run for *records*.
+    records: Iterable[ImageRecord], *, overwrite: bool = False
+) -> ConversionPlan:
+    """Return the conversions that would run for *records*, and what they do not.
 
-    Records with no matching prediction are passed over; records that already
-    have a label, or whose destination file exists, are skipped and logged --
-    an existing label is either proofread work or an earlier conversion, and
-    neither is overwritten. The whole set is resolved before any of it is
-    written, so a caller can show what a run would do.
-
-    No destination appears twice: imaging conditions of one scene share a label
-    directory, so several records resolve to one label file, and a plan that
-    listed it twice would have the second write silently replace the first.
+    Sources are whatever :func:`~..layout.is_convertible_prediction` allows. An
+    existing label is replaced only when *overwrite* is set, and a proofread one
+    not even then. The whole set is resolved before any of it is written, and no
+    destination appears twice -- conditions of one scene share a label file, and
+    listing it twice would have the second write silently replace the first.
     """
     planned: list[PlannedConversion] = []
+    replaceable: list[PlannedConversion] = []
+    refused: list[PlannedConversion] = []
+    skipped: list[SkippedConversion] = []
     claimed: set[Path] = set()
     for record in records:
         if record.modality not in MODALITIES:
             continue
-        matching_predictions = [
-            prediction
-            for prediction in record.predictions
-            if not prediction_kind
-            or any(parent.name.lower() == prediction_kind.lower() for parent in prediction.parents)
+        convertible = [
+            prediction for prediction in record.predictions
+            if is_convertible_prediction(prediction)
         ]
-        if not matching_predictions:
-            continue
-        if record.labels:
-            logger.warning("Skipping %s: a label already exists", record.image_path)
+        if not convertible:
+            # Distinguished so the report can say which of the two it is: one
+            # means the pipeline has not run, the other that it ran and its
+            # output cannot be used.
+            reason: SkipReason = "post-processed" if record.predictions else "no-prediction"
+            skipped.append(SkippedConversion(record, reason))
             continue
 
-        image_directory = base_path(record.image_path).parent
-        labels_directory, _, _ = resolve_labels_directory(
-            image_directory, record.modality, subdirectories_by_name(image_directory.parent)
-        )
-        # The generated label follows the image's own workflow state.
-        destination = state_path(
-            labels_directory / record.image_path.name, state_of_path(record.image_path)
-        )
-        if destination.exists() or destination in claimed:
-            logger.warning("Skipping %s: refusing to overwrite %s", record.image_path, destination)
+        # An existing label is overwritten where it lies. Its state folder can
+        # differ from the image's -- that disagreement is repair-state's to fix
+        # -- and computing a fresh destination would write a second label
+        # instead of replacing the one that is really there.
+        existing_label = record.labels[0] if record.labels else None
+        if existing_label is not None:
+            destination = existing_label
+        else:
+            image_directory = base_path(record.image_path).parent
+            labels_directory, _, _ = resolve_labels_directory(
+                image_directory, record.modality, subdirectories_by_name(image_directory.parent)
+            )
+            # A new label follows the image's own workflow state.
+            destination = state_path(
+                labels_directory / record.image_path.name, state_of_path(record.image_path)
+            )
+
+        if destination in claimed:
             continue
         claimed.add(destination)
-        planned.append(PlannedConversion(record, matching_predictions[0], destination))
-    return planned
+
+        existing = classify_destination(destination)
+        conversion = PlannedConversion(record, convertible[0], destination, existing)
+        if existing == "corrected":
+            refused.append(conversion)
+        elif existing == "none" or overwrite:
+            planned.append(conversion)
+        else:
+            replaceable.append(conversion)
+    return ConversionPlan(
+        tuple(planned), tuple(replaceable), tuple(refused), tuple(skipped)
+    )
 
 
-def convert_record_predictions(records: Iterable[ImageRecord], prediction_kind: str = "clean") -> int:
+def convert_record_predictions(
+    records: Iterable[ImageRecord], *, overwrite: bool = False
+) -> int:
     """Convert predictions for explicitly selected image records.
 
-    Existing labels, including corrected labels, are never overwritten.  The
-    generated label follows the image's selected/deselected/corrected folder.
+    Corrected labels are never overwritten, whatever *overwrite* is set to. The
+    generated label follows the image's selected/deselected/corrected folder,
+    unless it is replacing a label, which is rewritten where it lies.
     """
-    planned = plan_conversions(records, prediction_kind)
-    for conversion in planned:
+    plan = plan_conversions(records, overwrite=overwrite)
+    for conversion in plan.conversions:
+        if conversion.existing != "none":
+            logger.info(
+                "Replacing %s label %s from %s",
+                conversion.existing, conversion.destination, conversion.prediction,
+            )
         prediction_to_label(
             conversion.prediction,
             conversion.destination,
             target_image_path=conversion.record.image_path,
         )
-    return len(planned)
+    return len(plan.conversions)

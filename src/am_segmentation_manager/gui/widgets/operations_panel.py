@@ -13,26 +13,21 @@ from __future__ import annotations
 
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import (
-    QComboBox,
     QGroupBox,
-    QHBoxLayout,
+    QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ..operations_controller import PREDICTION_KINDS
-
-#: How the empty prediction kind -- "whatever this record has" -- reads in a
-#: menu, where an empty row would look like a mistake.
-ANY_KIND = "any"
+from .theme import BADGE_STYLES
 
 
 class OperationsPanel(QWidget):
     """Convert predictions, compress labels, repair state: preview then apply."""
 
-    #: Emitted with the prediction kind to convert from ("" means any).
-    convert_requested = Signal(str)
+    #: Emitted when the user asks to convert the selection's predictions.
+    convert_requested = Signal()
     #: Emitted when the user asks to recompress the selection's labels.
     compress_requested = Signal()
     #: Emitted when the user asks to repair inconsistent groups.
@@ -54,24 +49,30 @@ class OperationsPanel(QWidget):
         )
         column = QVBoxLayout(box)
 
-        row = QHBoxLayout()
-        self.kind = QComboBox()
-        self.kind.addItems([kind or ANY_KIND for kind in PREDICTION_KINDS])
-        self.kind.setToolTip(
-            "Which predictions/ subfolder to convert from. 'any' takes whatever "
-            "prediction a record has."
-        )
         self.convert_button = QPushButton("Convert predictions...")
         self.convert_button.setToolTip(
-            "Write a label from each selected image's prediction. Images that "
-            "already have a label are never touched."
+            "Write a label from each selected image's prediction.\n"
+            "Replacing a label that is already there is offered and has to be "
+            "confirmed; a proofread label in corrected/ is never replaced.\n"
+            "Post-processed (clean/) predictions are never used: their "
+            "intensity values no longer match the segmentation classes."
         )
-        self.convert_button.clicked.connect(
-            lambda: self.convert_requested.emit(self.prediction_kind())
+        self.convert_button.clicked.connect(self.convert_requested.emit)
+        column.addWidget(self.convert_button)
+
+        # Above the button's own report rather than inside it: whether there is
+        # anything here to convert is a question about the data, and a dialog
+        # you have to open to find out the answer was "nothing" is the version
+        # of this that sends you looking for the predictions by hand.
+        self.predictions = QLabel("")
+        self.predictions.setWordWrap(True)
+        self.predictions.setStyleSheet(BADGE_STYLES["info"])
+        self.predictions.setToolTip(
+            "What converting this selection would find, counted from the last "
+            "scan. Images sharing a scene share one label, so the preview can "
+            "write fewer files than there are images ready."
         )
-        row.addWidget(self.convert_button, stretch=1)
-        row.addWidget(self.kind)
-        column.addLayout(row)
+        column.addWidget(self.predictions)
 
         self.compress_button = QPushButton("Compress labels...")
         self.compress_button.setToolTip(
@@ -92,14 +93,18 @@ class OperationsPanel(QWidget):
         layout.addWidget(box)
         self.buttons = (self.convert_button, self.compress_button, self.repair_button)
 
-    def prediction_kind(self) -> str:
-        """Return the chosen prediction kind, with "any" back as an empty string."""
-        text = self.kind.currentText()
-        return "" if text == ANY_KIND else text
-
     def show_selection(self, description: str) -> None:
         """Say what the buttons would act on."""
         self.box.setTitle(f"Operations on {description}")
+
+    def show_predictions(self, summary: str) -> None:
+        """Say what converting the selection would find.
+
+        An empty summary hides the line: with nothing selected there is no
+        count to report, and "0 of 0" reads as a fault rather than as silence.
+        """
+        self.predictions.setText(summary)
+        self.predictions.setVisible(bool(summary))
 
     def set_busy(self, busy: bool) -> None:
         """Lock the buttons while an operation runs.

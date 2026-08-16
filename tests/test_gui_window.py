@@ -1033,6 +1033,19 @@ def test_the_operations_box_says_what_it_would_act_on(window):
     assert "1 lamella" in window.operations_panel.box.title()
 
 
+def test_the_operations_box_says_whether_there_is_anything_to_convert(window):
+    """Answered before the button is pressed, not by pressing it.
+
+    The count comes from the selection, so it has to survive a refresh: this is
+    the path that recomputes it, and a line wired up only at construction would
+    pass a direct call to `show_predictions` and still be permanently stale.
+    """
+    _tick_lamella(window)
+    window.refresh()
+
+    assert window.operations_panel.predictions.text()
+
+
 def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monkeypatch):
     """The seam every other test substitutes, exercised once for real.
 

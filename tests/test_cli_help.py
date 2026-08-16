@@ -124,15 +124,15 @@ def test_top_level_flags_have_help():
     assert not undocumented
 
 
-def test_convert_predictions_explains_the_prediction_kinds():
-    """``raw`` and ``clean`` are opaque names; --help has to say what they select."""
-    kind = next(
-        action
-        for action in _subcommands()["convert-predictions"]._actions
-        if action.dest == "kind"
-    )
+def test_convert_predictions_explains_which_predictions_it_reads():
+    """A user with a populated clean/ has to be told why it is passed over.
 
-    assert "raw" in kind.help and "clean" in kind.help
+    Otherwise the command looks broken: the predictions are visibly there and
+    nothing is written.
+    """
+    description = _subcommands()["convert-predictions"].description
+
+    assert "raw" in description and "clean" in description
 
 
 def test_version_flag_reports_the_package_version():

@@ -50,7 +50,13 @@ PREDICTIONS_SUFFIX: Final[str] = "_predictions"
 PLOTS_DIRECTORY: Final[str] = "plots"
 
 #: Subdirectories of a predictions directory holding different prediction sets.
+#: Both are indexed; only one may become a label. See
+#: :func:`is_convertible_prediction`.
 PREDICTION_KINDS: Final[tuple[str, ...]] = ("raw", "clean")
+
+#: The prediction subdirectory whose values do not survive post-processing, and
+#: which therefore may never be converted into a label.
+POST_PROCESSED_KIND: Final[str] = "clean"
 
 #: Pre-convention label directory names, lowercased, to the modality they hold.
 LEGACY_LABEL_DIRECTORIES: Final[dict[str, str]] = {
@@ -269,6 +275,22 @@ def resolve_labels_directory(
 def predictions_directory_name(image_directory_name: str) -> str:
     """Return the predictions directory name belonging to an image directory."""
     return f"{image_directory_name}{PREDICTIONS_SUFFIX}"
+
+
+def is_convertible_prediction(prediction_path: Path) -> bool:
+    """Return whether a prediction file may be converted into a label.
+
+    Everything except the post-processing pipeline's ``clean/`` output, whose
+    intensity values no longer correspond to the segmentation classes. Stated as
+    an exclusion so that a prediction sitting directly in a ``predictions/``
+    directory, with no ``raw``/``clean`` split, stays convertible.
+
+    Reads ``parts`` rather than ``parents`` -- the latter builds a path object
+    per level, and this is called once per image behind a line that recounts
+    every time the selection changes. The final part is the filename, which
+    names no directory and is excluded.
+    """
+    return not any(part.lower() == POST_PROCESSED_KIND for part in prediction_path.parts[:-1])
 
 
 def candidate_predictions_directory_names(image_directory_name: str, modality: str) -> list[str]:

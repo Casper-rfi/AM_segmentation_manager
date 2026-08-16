@@ -19,7 +19,7 @@ from .aggregate import BREAKDOWNS, NEEDS_MEASUREMENTS, NEEDS_METADATA
 from .filtering import METADATA_FILTERS, filter_by_metadata, iter_matching_records
 from .io.path import make_path_relative
 from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
-from .operations.predictions import convert_record_predictions
+from .operations.predictions import convert_record_predictions, plan_conversions
 from .reporting import print_project_summary, print_survey
 from .scanner import Scanner
 from .survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
@@ -378,19 +378,26 @@ def build_parser() -> argparse.ArgumentParser:
             "resizing by nearest neighbour where the prediction and the image "
             "have different pixel dimensions. Labels are written to the label "
             "directory the image set resolves to, and an existing label is "
-            "never overwritten. Only images explicitly selected by the scope "
+            "kept unless --overwrite is given. Only images explicitly selected by the scope "
             "arguments are converted, because the labels this produces are "
-            "pseudo-labels awaiting proofreading, not finished annotations."
+            "pseudo-labels awaiting proofreading, not finished annotations. "
+            "Predictions are read from predictions/raw/, or from an undivided "
+            "predictions/ directory. The pipeline's post-processed "
+            "predictions/clean/ output is never converted: its intensity "
+            "values no longer correspond to the segmentation classes."
         ),
     )
     _add_scope_arguments(convert_predictions)
     convert_predictions.add_argument(
-        "--kind", choices=["raw", "clean"], required=True,
+        "--dry-run", action="store_true",
+        help="List the labels that would be written without writing any",
+    )
+    convert_predictions.add_argument(
+        "--overwrite", action="store_true",
         help=(
-            "Which subdirectory of predictions/ to read: 'raw' as the model "
-            "wrote them, or 'clean' after the pipeline's post-processing step. "
-            "This package does not produce either; both come from the "
-            "prediction pipeline"
+            "Replace labels that already exist. Proofread labels in corrected/ "
+            "are refused even with this flag; move the image out of corrected/ "
+            "first if one really is to be re-converted"
         ),
     )
 
@@ -1095,7 +1102,21 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         if not records:
             logger.info("No matching images found to convert")
             return 2
-        converted = convert_record_predictions(records, prediction_kind=args.kind)
+        plan = plan_conversions(records, overwrite=args.overwrite)
+        if args.dry_run:
+            for item in plan.conversions:
+                logger.info("%s %s", item.describe(), item.destination)
+        for item in plan.refused:
+            logger.warning("Refused %s: a proofread label is already there", item.destination)
+        if plan.replaceable:
+            logger.warning(
+                "%d label(s) already exist and were kept; pass --overwrite to replace them",
+                len(plan.replaceable),
+            )
+        if args.dry_run:
+            logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
+            return 0
+        converted = convert_record_predictions(records, overwrite=args.overwrite)
         logger.info("Total converted: %d", converted)
         return 0
 
