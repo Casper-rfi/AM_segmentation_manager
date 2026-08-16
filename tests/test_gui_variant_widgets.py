@@ -31,6 +31,7 @@ pytestmark = pytest.mark.skipif(
 if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
+    from qtpy.QtCore import QSettings
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
@@ -96,7 +97,12 @@ def _window(qt_app, root: Path) -> CurationWindow:
         class_colors={0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)},
         class_labels={0: "background", 1: "GIS", 2: "lamella"},
     )
-    window = CurationWindow(CurationController(cache=FrameCache(), config=config))
+    # Preferences into the scan folder, which is a tmp_path: the default is the
+    # real window's, and a test must not read or overwrite that.
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config),
+        settings=QSettings(str(root / "preferences.ini"), QSettings.IniFormat),
+    )
     window.scan(str(root))
     _settle(qt_app)
     return window

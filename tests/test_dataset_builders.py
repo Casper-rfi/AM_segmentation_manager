@@ -193,8 +193,8 @@ def test_the_stage_level_can_be_removed_from_any_sample(tmp_path: Path):
 
 
 def test_label_naming_is_independent_of_layout(tmp_path: Path):
-    """A collapsed dataset migrated to the current convention is a combination
-    no observed dataset shows, and must still index."""
+    """A collapsed dataset using the current label naming is a combination no
+    observed dataset shows, and must still index."""
     build_dataset(
         tmp_path, layout="no_lamella_level", label_naming="convention",
         image_dirs={"SEM": "sem", "FIB": "fib"},

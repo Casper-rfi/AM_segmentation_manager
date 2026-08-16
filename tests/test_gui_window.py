@@ -35,21 +35,20 @@ pytestmark = pytest.mark.skipif(
 if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
-    from qtpy.QtCore import Qt
-    from qtpy.QtGui import QPalette
+    from qtpy.QtCore import QSettings, Qt
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
-    from am_segmentation_manager.gui.widgets.common import BADGE_STYLES
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
     from am_segmentation_manager.gui.widgets.metadata_panel import (
         MetadataPanel,
         editor_text,
         set_editor_text,
     )
+    from am_segmentation_manager.gui.widgets.theme import BADGE_STYLES
     from am_segmentation_manager.metadata import (
         FIELD_COMMENTS,
         build_experiment_metadata,
@@ -103,14 +102,25 @@ def _ensure(path: Path) -> Path:
 
 
 @pytest.fixture
-def window(qt_app, project: Path):
+def settings(tmp_path: Path) -> QSettings:
+    """A throwaway preferences file.
+
+    The window remembers its scan root and its layout. Left on the default,
+    every test run would read and overwrite the preferences of the real window
+    on this machine.
+    """
+    return QSettings(str(tmp_path / "preferences.ini"), QSettings.IniFormat)
+
+
+@pytest.fixture
+def window(qt_app, project: Path, settings: QSettings):
     """A window with the synthetic project scanned and its first frame ready."""
     config = SegmentationConfig(
         class_colors={0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)},
         class_labels={0: "background", 1: "GIS", 2: "lamella"},
     )
     controller = CurationController(cache=FrameCache(), config=config)
-    window = CurationWindow(controller)
+    window = CurationWindow(controller, settings=settings)
     window.scan(str(project))
     _settle(qt_app, lambda: window.image_panel.pair.left._item.pixmap().isNull() is False)
     yield window
@@ -400,15 +410,144 @@ def test_list_titles_show_counts(window):
 
 
 # ---------------------------------------------------------------------------
+# Tabs
+# ---------------------------------------------------------------------------
+
+def test_tabs_are_in_workflow_order(window):
+    titles = [window.tabs.tabText(index) for index in range(window.tabs.count())]
+
+    assert titles == ["Add data", "Curate", "Export"]
+
+
+def test_curate_is_the_tab_that_opens(window):
+    """Left-most is the workflow's first step; open on the one used most."""
+    assert window.tabs.currentIndex() == _curate_tab(window)
+    assert window._current_tab() == "curate"
+
+
+def test_the_add_data_tab_opens_before_anything_is_scanned(qt_app, settings):
+    """Reachable from a fresh window, which has no projects to describe yet."""
+    controller = CurationController(cache=FrameCache(), config=SegmentationConfig(
+        class_colors={0: (0, 0, 0)}, class_labels={0: "background"},
+    ))
+    fresh = CurationWindow(controller, settings=settings)
+    try:
+        fresh.tabs.setCurrentWidget(fresh.metadata_panel)
+
+        assert fresh.metadata_panel.summary.text() == "No project selected"
+    finally:
+        fresh.close()
+
+
+# ---------------------------------------------------------------------------
+# Remembering the layout
+# ---------------------------------------------------------------------------
+
+def test_the_splitter_positions_survive_closing_the_window(qt_app, project, settings):
+    """Dragging a divider is a preference, and losing it every session is what
+    makes a window feel like it is not listening."""
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0)}, class_labels={0: "background"},
+    )
+    first = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    first.splitter.setSizes([400, 800, 400])
+    sizes = first.splitter.sizes()
+    first.close()
+
+    second = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        assert second.splitter.sizes() == sizes
+    finally:
+        second.close()
+
+
+def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
+    """A first run has nothing to restore, which must not leave a collapsed
+    pane behind."""
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0)}, class_labels={0: "background"},
+    )
+    fresh = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        assert all(size > 0 for size in fresh.splitter.sizes())
+    finally:
+        fresh.close()
+
+
+# ---------------------------------------------------------------------------
 # Shortcut reference
 # ---------------------------------------------------------------------------
 
 def test_every_shortcut_is_documented(window):
-    documented = dict(window._bindings)
+    assert len(window._bindings) == len(window._shortcuts)
+    assert all(binding.description for binding in window._bindings)
+    assert any(binding.key == "F1" for binding in window._bindings)
 
-    assert len(documented) == len(window._shortcuts)
-    assert documented["F1"] == "Show this list"
-    assert all(description for description in documented.values())
+
+def test_a_key_is_live_only_on_the_tab_it_belongs_to(window):
+    """Curate keys firing behind another tab is what stopped the Metadata list
+    ever seeing an arrow key."""
+    window.tabs.setCurrentWidget(window.metadata_panel)
+
+    live = {b.key for b, s in zip(window._bindings, window._shortcuts) if s.isEnabled()}
+
+    assert live == {"Up", "Down", "F1"}
+
+
+def test_curate_keys_come_back_with_the_curate_tab(window):
+    window.tabs.setCurrentWidget(window.metadata_panel)
+    window.tabs.setCurrentIndex(_curate_tab(window))
+
+    live = {b.key for b, s in zip(window._bindings, window._shortcuts) if s.isEnabled()}
+
+    assert {"Left", "Right", "Space", "D", "F1"} <= live
+
+
+def _curate_tab(window) -> int:
+    """Return the curate tab's index, whatever order the tabs are in."""
+    others = {window.metadata_panel, window.export_panel}
+    return next(
+        index for index in range(window.tabs.count())
+        if window.tabs.widget(index) not in others
+    )
+
+
+def test_the_help_lists_only_the_active_tab(window):
+    from am_segmentation_manager.gui.widgets.main_window import TAB_ADD_DATA, TAB_CURATE
+
+    curate = window.shortcut_help(TAB_CURATE)
+    metadata = window.shortcut_help(TAB_ADD_DATA)
+
+    assert "Next frame" in curate and "Next project" not in curate
+    assert "Next project" in metadata and "Next frame" not in metadata
+    # The editing guard only governs the curate tab's keys.
+    assert "Enable editing" in curate and "Enable editing" not in metadata
+
+
+def test_a_tab_with_no_keys_of_its_own_says_so(window):
+    from am_segmentation_manager.gui.widgets.main_window import TAB_EXPORT
+
+    help_text = window.shortcut_help(TAB_EXPORT)
+
+    assert "no keys of its own" in help_text
+    assert "F1" in help_text
+
+
+def test_the_project_arrows_are_scoped_to_the_project_list(window):
+    """Window-wide, they would take Up/Down from the editable combo boxes on
+    the same tab."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_ADD_DATA
+
+    scoped = [b for b in window._bindings if b.tab == TAB_ADD_DATA]
+
+    assert {b.key for b in scoped} == {"Up", "Down"}
+    assert all(b.scope is window.metadata_panel.projects for b in scoped)
 
 
 # ---------------------------------------------------------------------------
@@ -641,15 +780,14 @@ def metadata_panel(qt_app, tmp_path: Path):
     panel.close()
 
 
-def test_a_locked_field_still_draws_its_value_in_the_normal_colour(metadata_panel):
-    """The tab opens locked and is mostly used for reading, so the disabled
-    grey Qt would otherwise use put every value at low contrast."""
+def test_a_locked_field_still_shows_its_value(metadata_panel):
+    """The tab opens locked and is mostly used for reading.
+
+    That the value is also drawn *legibly* while locked is a property of the
+    theme, and is asserted on the pixels in ``test_gui_theme.py``.
+    """
     assert editor_text(metadata_panel.editors["sample"]) == "HeLa"
-    for editor in metadata_panel.editors.values():
-        palette = editor.palette()
-        assert palette.color(QPalette.Disabled, QPalette.Text) == palette.color(
-            QPalette.Active, QPalette.Text
-        )
+    assert all(not editor.isEnabled() for editor in metadata_panel.editors.values())
 
 
 def test_every_field_says_what_is_expected_in_it(metadata_panel):
@@ -663,6 +801,21 @@ def test_a_value_is_annotated_with_the_file_it_came_from(metadata_panel):
     assert metadata_panel.notes["sample"].text() == "[AM_metadata.yaml]"
     assert metadata_panel.notes["organisation"].text() == "[experiment.yaml]"
     assert metadata_panel.notes["sample"].styleSheet() == BADGE_STYLES["info"]
+
+
+def test_stepping_moves_to_the_next_project_and_stops_at_the_ends(metadata_panel):
+    """What Up/Down are bound to on this tab."""
+    metadata_panel.step_project(1)
+    assert metadata_panel.projects.currentRow() == 1
+    assert metadata_panel.controller.position == 1
+
+    # The last project: stepping past it stays there rather than wrapping.
+    metadata_panel.step_project(1)
+    assert metadata_panel.projects.currentRow() == 1
+
+    metadata_panel.step_project(-1)
+    assert metadata_panel.projects.currentRow() == 0
+    assert metadata_panel.controller.position == 0
 
 
 def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):

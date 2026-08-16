@@ -24,8 +24,9 @@ from qtpy.QtWidgets import (
 )
 
 from ..controller import CurationStatus
-from .common import SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH, add_path_menu
+from .common import add_path_menu
 from .frame_strip import MISMATCH, STATE_COLOURS
+from .theme import SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
 
 class ProjectPanel(QWidget):
@@ -127,11 +128,11 @@ class ProjectPanel(QWidget):
             self.lamella_path_requested, self.lamella_reveal_requested,
         )
 
-        lists = QSplitter(Qt.Vertical)
-        lists.addWidget(self.project_box)
-        lists.addWidget(self.lamella_box)
-        lists.setSizes([200, 300])
-        layout.addWidget(lists, stretch=1)
+        self.lists = QSplitter(Qt.Vertical)
+        self.lists.addWidget(self.project_box)
+        self.lists.addWidget(self.lamella_box)
+        self.lists.setSizes([200, 300])
+        layout.addWidget(self.lists, stretch=1)
 
         self.summary = QLabel("No project loaded")
         self.summary.setWordWrap(True)

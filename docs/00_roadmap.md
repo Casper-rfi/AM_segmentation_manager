@@ -20,10 +20,10 @@ Four of the five main functions in `CLAUDE.md` are implemented.
 
 **Curate.** `inspect-layout` reports how a directory is interpreted and what does not
 fit; `init-project` writes `AM_metadata.yaml` so a pre-Autolamella dataset becomes
-indexable; `migrate-layout` renames pre-convention label directories. The curation
-window is the primary interface, with `select` / `deselect` / `correct` and
-`repair-state` on the command line. All of them expand a change across the label
-group and validate the whole batch before moving anything.
+indexable. The curation window is the primary interface, with `select` /
+`deselect` / `correct` and `repair-state` on the command line. All of them expand
+a change across the label group and validate the whole batch before moving
+anything.
 
 **Prepare labels.** `convert-predictions` turns predictions into labels, resizing
 where prediction and image dimensions differ. `compress-labels` shrinks them on disk.
@@ -37,8 +37,9 @@ lamella. `export-metadata-csv` and `export-projects-csv` write per-image and
 per-project metadata. `show-metadata` and `edit-metadata` read and edit project
 metadata in place.
 
-The window has three tabs — Curate, Metadata and Export — each with a controller that
-holds no Qt.
+The window has three tabs in workflow order — Add data, Curate and Export — each with
+a controller that holds no Qt. Curate is the tab that opens. Keys belong to a tab and
+are live only while it shows, so `F1` lists what can actually be pressed.
 
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.

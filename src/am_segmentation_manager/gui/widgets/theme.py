@@ -1,0 +1,211 @@
+"""How the window looks: the palette, the stylesheet, and the chrome colours.
+
+Qt's default is whatever the platform hands it, which on the development
+machine is a mid-grey from the 1990s and on another machine is something else
+again. Everything visual that is not carrying information is set here, so the
+window looks the same under PyQt5 and PySide6 and there is one file to change.
+
+Colours that carry *meaning* are not here. The workflow states, the label lines
+and the mismatch wash live in :mod:`frame_strip`, and the class colours come
+from the segmentation config: those are data, and this is chrome.
+
+The stylesheet is deliberately short. Qt re-evaluates it whenever a widget is
+polished, and a window that stays fast is worth more than any rule in it.
+"""
+from __future__ import annotations
+
+from qtpy.QtGui import QColor, QPalette
+
+#: The surface a panel sits on, and the surface a value sits in. Inputs and
+#: lists are white against an off-white window, which is what separates "you can
+#: type here" from "this is background" without drawing a box around everything.
+WINDOW = "#f4f5f7"
+BASE = "#ffffff"
+ALTERNATE = "#eef0f3"
+
+TEXT = "#1d1f23"
+#: Secondary text: group box titles, placeholders, provenance notes.
+MUTED = "#6b7280"
+DISABLED_TEXT = "#a3a8b0"
+
+BORDER = "#d6d9df"
+#: Separators that should be felt rather than seen -- splitter handles, the rule
+#: under a heading.
+BORDER_LIGHT = "#e6e8ec"
+HOVER = "#eaeef6"
+PRESSED = "#e2e6ee"
+
+#: One accent, used for selection, focus and hover. A second would have to mean
+#: something, and everything that means something is already spoken for by the
+#: workflow colours.
+ACCENT = "#2f6feb"
+ACCENT_TEXT = "#ffffff"
+
+#: Text colours for a short annotation beside a value.
+WARNING = "#b26a00"
+ERROR = "#c0392b"
+
+#: How a short annotation beside a value is coloured. Three levels, so a panel
+#: says what it means rather than picking a colour.
+BADGE_STYLES = {
+    "warning": f"color: {WARNING}; font-weight: bold;",
+    "error": f"color: {ERROR}; font-weight: bold;",
+    "info": f"color: {MUTED};",
+}
+
+#: The shared-label note reports a consequence the user did not ask for, so it
+#: is set apart rather than reading as body text.
+SHARED_NOTE_STYLE = f"color: {WARNING};"
+
+#: Every chip drawn into a list row gets a dark outline. Without one a chip
+#: whose fill is near the selection highlight disappears on exactly the row the
+#: user is looking at. An outline makes it legible on any background rather than
+#: tuning the fill against one theme.
+SWATCH_OUTLINE = QColor("#1a1a1a")
+
+SWATCH_WIDTH = 14
+SWATCH_HEIGHT = 10
+
+
+def build_palette() -> QPalette:
+    """Return the window's colour palette.
+
+    The palette covers everything the stylesheet does not name. Where the two
+    disagree the stylesheet wins, which is why a locked editor's text colour is
+    settled there rather than here.
+    """
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(WINDOW))
+    palette.setColor(QPalette.WindowText, QColor(TEXT))
+    palette.setColor(QPalette.Base, QColor(BASE))
+    palette.setColor(QPalette.AlternateBase, QColor(ALTERNATE))
+    palette.setColor(QPalette.Text, QColor(TEXT))
+    palette.setColor(QPalette.Button, QColor(BASE))
+    palette.setColor(QPalette.ButtonText, QColor(TEXT))
+    palette.setColor(QPalette.ToolTipBase, QColor(BASE))
+    palette.setColor(QPalette.ToolTipText, QColor(TEXT))
+    palette.setColor(QPalette.Highlight, QColor(ACCENT))
+    palette.setColor(QPalette.HighlightedText, QColor(ACCENT_TEXT))
+    palette.setColor(QPalette.Link, QColor(ACCENT))
+    if hasattr(QPalette, "PlaceholderText"):  # Qt 5.12+
+        palette.setColor(QPalette.PlaceholderText, QColor(MUTED))
+    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText):
+        palette.setColor(QPalette.Disabled, role, QColor(DISABLED_TEXT))
+    return palette
+
+
+def stylesheet() -> str:
+    """Return the application stylesheet.
+
+    Backgrounds, borders and spacing only. Nothing here sets a text colour on an
+    input, for the reason :func:`build_palette` gives.
+    """
+    return f"""
+    QGroupBox {{
+        border: 1px solid {BORDER_LIGHT};
+        border-radius: 6px;
+        margin-top: 9px;
+        padding: 8px 6px 6px 6px;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 8px;
+        padding: 0 4px;
+        color: {MUTED};
+    }}
+
+    QLineEdit, QComboBox, QPlainTextEdit, QListWidget, QAbstractSpinBox {{
+        background: {BASE};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+        padding: 3px 5px;
+        selection-background-color: {ACCENT};
+        selection-color: {ACCENT_TEXT};
+    }}
+    QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus {{
+        border-color: {ACCENT};
+    }}
+    /* A locked field is read, not merely unavailable: the Add data tab opens
+       locked and is mostly used for reading, and Qt's disabled grey puts every
+       value at low contrast on exactly the tab whose job is showing them. The
+       background dulls instead, which is what says "locked"; the buttons and
+       radio groups beside it still grey out normally. */
+    QLineEdit:disabled, QComboBox:disabled, QPlainTextEdit:disabled {{
+        color: {TEXT};
+        background: {WINDOW};
+    }}
+    QListWidget::item {{ padding: 3px 2px; border-radius: 3px; }}
+    QListWidget::item:hover:!selected {{ background: {HOVER}; }}
+    /* Styling ::item at all stops Qt drawing the selection from the palette,
+       which leaves highlighted text painted white on the list's white
+       background -- the selected row simply goes blank. Both states are set
+       here because an inactive window uses its own. */
+    QListWidget::item:selected {{ background: {ACCENT}; color: {ACCENT_TEXT}; }}
+    QListWidget::item:selected:!active {{
+        background: {ACCENT}; color: {ACCENT_TEXT};
+    }}
+
+    QPushButton {{
+        background: {BASE};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+        padding: 4px 12px;
+    }}
+    QPushButton:hover {{ border-color: {ACCENT}; }}
+    QPushButton:pressed {{ background: {PRESSED}; }}
+    QPushButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
+
+    QTabWidget::pane {{
+        border: 1px solid {BORDER};
+        border-radius: 6px;
+        top: -1px;
+    }}
+    QTabBar::tab {{
+        background: transparent;
+        border: 1px solid transparent;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+        padding: 6px 16px;
+        margin-right: 2px;
+        color: {MUTED};
+    }}
+    QTabBar::tab:selected {{
+        background: {BASE};
+        border-color: {BORDER};
+        border-bottom-color: {BASE};
+        color: {TEXT};
+    }}
+    QTabBar::tab:hover:!selected {{ background: {HOVER}; color: {TEXT}; }}
+
+    QSplitter::handle {{ background: {BORDER_LIGHT}; }}
+    QSplitter::handle:hover {{ background: {ACCENT}; }}
+
+    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
+    QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 0; }}
+    QScrollBar::handle {{ background: #c3c8d0; border-radius: 5px; }}
+    QScrollBar::handle:vertical {{ min-height: 24px; }}
+    QScrollBar::handle:horizontal {{ min-width: 24px; }}
+    QScrollBar::handle:hover {{ background: {MUTED}; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+
+    QToolTip {{
+        background: {BASE};
+        color: {TEXT};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+        padding: 4px 6px;
+    }}
+    """
+
+
+def apply_theme(application) -> None:
+    """Give *application* the window's style, palette and stylesheet.
+
+    Fusion rather than the platform style, so the window looks the same wherever
+    it runs -- the development machine and the user's differ in Qt binding, and
+    three bugs have already reached the user through that gap.
+    """
+    application.setStyle("Fusion")
+    application.setPalette(build_palette())
+    application.setStyleSheet(stylesheet())

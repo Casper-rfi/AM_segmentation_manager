@@ -29,8 +29,8 @@ from ...config import SegmentationConfig
 from ...display import DEFAULT_ALPHA, compose_overlay
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
-from .common import BADGE_STYLES
 from .image_view import ImageView, LinkedImageViews
+from .theme import BADGE_STYLES
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     pass

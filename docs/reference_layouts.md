@@ -178,7 +178,7 @@ newest layout.
 **Resolution.** The convention is `<image-directory>_labels`, so `sem/` →
 `sem_labels/` and `sem_5kv/` → `sem_5kv_labels/`. The pre-convention names
 `labels`, `labels_fib` and `labels_FIB` are read indefinitely;
-`am-seg migrate-layout` renames them on request.
+`scripts/rename_legacy_label_dirs.py` renames them on request.
 
 `<modality>_labels` therefore acts as the *shared* label directory for that
 modality, which is what makes §6 work.

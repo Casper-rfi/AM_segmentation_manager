@@ -1,36 +1,18 @@
-"""Small widget helpers shared between panels.
+"""Small widget behaviours shared between panels.
 
-What lands here is a presentation primitive that more than one panel needs --
-a colour vocabulary, a palette adjustment. Anything that knows about projects,
-labels or the filesystem belongs in a controller instead, and anything only one
-panel uses belongs in that panel.
+What lands here is something more than one panel *does* -- a context menu, an
+event filter. What the window looks like belongs in :mod:`theme`, anything that
+knows about projects, labels or the filesystem belongs in a controller, and
+anything only one panel uses belongs in that panel.
 """
 from __future__ import annotations
 
 import logging
 
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QColor, QPalette
-from qtpy.QtWidgets import QListWidget, QMenu, QWidget
+from qtpy.QtWidgets import QListWidget, QMenu
 
 logger = logging.getLogger(__name__)
-
-#: How a short annotation beside a value is coloured. Three levels, so a panel
-#: says what it means rather than picking a colour.
-BADGE_STYLES = {
-    "warning": "color: #c08a34; font-weight: bold;",
-    "error": "color: #c0504d; font-weight: bold;",
-    "info": "color: #888888;",
-}
-
-#: Every chip drawn into a list row gets a dark outline. Without one a chip
-#: whose fill is near the theme's selection highlight disappears on exactly the
-#: row the user is looking at. An outline makes it legible on any background
-#: rather than tuning the fill against one theme.
-SWATCH_OUTLINE = QColor("#1a1a1a")
-
-SWATCH_WIDTH = 14
-SWATCH_HEIGHT = 10
 
 
 def add_path_menu(
@@ -60,18 +42,3 @@ def add_path_menu(
             reveal_signal.emit(row)
 
     widget.customContextMenuRequested.connect(show_menu)
-
-
-def keep_readable_when_disabled(widget: QWidget) -> None:
-    """Make *widget* draw its text in the normal colour while disabled.
-
-    The disabled background is left alone, so the widget still reads as locked
-    while its value stays legible. Colours are taken from the palette in effect
-    now, so this follows the system theme rather than pinning a colour.
-    """
-    palette = widget.palette()
-    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText):
-        palette.setColor(
-            QPalette.Disabled, role, palette.color(QPalette.Active, role)
-        )
-    widget.setPalette(palette)

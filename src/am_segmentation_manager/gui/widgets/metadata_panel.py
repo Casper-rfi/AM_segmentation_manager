@@ -1,4 +1,4 @@
-"""The Metadata tab: see a project's descriptive metadata, and edit it.
+"""The Add data tab: see a project's descriptive metadata, and edit it.
 
 Each field's value is shown beside the file that supplied it -- a value that
 looks wrong is explained by which of the two YAML files it came from, and
@@ -40,15 +40,9 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import (
-    BADGE_STYLES,
-    SWATCH_HEIGHT,
-    SWATCH_OUTLINE,
-    SWATCH_WIDTH,
-    add_path_menu,
-    keep_readable_when_disabled,
-)
+from .common import add_path_menu
 from .frame_strip import MISMATCH, STATE_COLOURS
+from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
 logger = logging.getLogger(__name__)
 
@@ -136,11 +130,11 @@ class MetadataPanel(QWidget):
         # In a splitter because the rows carry relative paths, which are long
         # and are the point: most projects in one folder share their metadata,
         # so the folder a row names is what tells you what to type.
-        panes = QSplitter(Qt.Horizontal)
-        panes.addWidget(self._build_projects())
-        panes.addWidget(self._build_fields())
-        panes.setSizes([460, 900])
-        layout.addWidget(panes)
+        self.panes = QSplitter(Qt.Horizontal)
+        self.panes.addWidget(self._build_projects())
+        self.panes.addWidget(self._build_fields())
+        self.panes.setSizes([460, 900])
+        layout.addWidget(self.panes)
 
     def _build_projects(self) -> QWidget:
         box = QGroupBox("Projects")
@@ -201,9 +195,6 @@ class MetadataPanel(QWidget):
             else:
                 editor = QLineEdit()
                 editor.setPlaceholderText("unset")
-            # The tab opens locked, so without this every value would be drawn
-            # in Qt's disabled grey -- on a tab whose main job is reading.
-            keep_readable_when_disabled(editor)
 
             note = QLabel("")
             caption = QLabel(field.replace("_", " ").title())
@@ -279,6 +270,18 @@ class MetadataPanel(QWidget):
                 break
             item.setIcon(_completeness_icon(summary))
             item.setToolTip(f"{summary.label}\n{summary.describe()}")
+
+    def step_project(self, delta: int) -> None:
+        """Move *delta* rows through the project list, stopping at its ends.
+
+        Walking the collection a project at a time is the way this tab is used,
+        so it is worth a key rather than a click per project.
+        """
+        count = self.projects.count()
+        if not count:
+            return
+        row = max(0, min(self.projects.currentRow() + delta, count - 1))
+        self.projects.setCurrentRow(row)
 
     def _select(self, row: int) -> None:
         if self._loading or row < 0:

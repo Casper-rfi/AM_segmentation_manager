@@ -100,8 +100,8 @@ SAMPLE_LAYOUTS: tuple[str, ...] = (
 #: Kept so existing callers and any external references keep working.
 ERAS = SAMPLE_LAYOUTS
 
-#: Label directory naming schemes, oldest first. ``convention`` is what
-#: ``migrate-layout`` produces; the other two are read indefinitely.
+#: Label directory naming schemes, oldest first. ``convention`` is what new
+#: label directories are named; the other two are read indefinitely.
 LABEL_NAMING: dict[str, tuple[str, str]] = {
     "legacy_upper": ("labels", "labels_FIB"),
     "legacy": ("labels", "labels_fib"),

@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
-from qtpy.QtCore import QRect, QSettings, Qt, QUrl, Signal
+from qtpy.QtCore import QByteArray, QRect, QSettings, Qt, QUrl, Signal
 from qtpy.QtGui import QCursor, QDesktopServices
 from qtpy.QtWidgets import (
     QApplication,
@@ -44,6 +46,8 @@ logger = logging.getLogger(__name__)
 SETTINGS_ORGANISATION = "am_segmentation_manager"
 SETTINGS_APPLICATION = "curation"
 SETTING_SCAN_ROOT = "scan_root"
+SETTING_GEOMETRY = "geometry"
+SETTING_SPLITTER = "splitter"
 
 #: How many filenames a confirmation lists before summarising the rest.
 MAX_LISTED_FILES = 12
@@ -54,6 +58,41 @@ except ImportError:  # pragma: no cover - depends on the installed binding
     from qtpy.QtGui import QKeySequence
     from qtpy.QtWidgets import QShortcut
 
+#: Which tab a key belongs to. A key is live only while its tab is showing --
+#: without that, Up/Down step the lamella behind whichever tab you are actually
+#: looking at, and the lists on the other tabs never see an arrow key at all.
+#:
+#: Each is named after its tab, and the tabs after the step of the workflow they
+#: cover. The widget behind "Add data" is the metadata panel, because describing
+#: a project is what adding one to the collection currently consists of.
+TAB_CURATE = "curate"
+TAB_ADD_DATA = "add data"
+TAB_EXPORT = "export"
+
+#: A key that works everywhere, whatever is showing.
+ANY_TAB = "any"
+
+
+@dataclass(frozen=True)
+class Binding:
+    """One keyboard shortcut: what it does, where it applies, and what it says.
+
+    Attributes:
+        key: The key sequence, as :class:`QKeySequence` accepts it.
+        description: The line shown in the F1 list. Every binding has one.
+        action: What pressing the key does.
+        tab: The tab this key belongs to, or :data:`ANY_TAB`.
+        scope: Restrict the key to this widget and its children instead of the
+            whole window. Needed where a tab holds editors with arrow-key
+            behaviour of their own, which a window-wide key would take first.
+    """
+
+    key: str
+    description: str
+    action: Callable[[], None]
+    tab: str
+    scope: QWidget | None = None
+
 
 class CurationWindow(QMainWindow):
     """Main window for reviewing and curating adaptive milling data."""
@@ -61,13 +100,25 @@ class CurationWindow(QMainWindow):
     #: Emitted to the background loader thread; see :class:`BackgroundLoader`.
     request_load = Signal(list, int)
 
-    def __init__(self, controller: CurationController) -> None:
+    def __init__(
+        self, controller: CurationController, settings: QSettings | None = None
+    ) -> None:
+        """Build the window.
+
+        Args:
+            controller: The view model the window reads from and reports to.
+            settings: Where the window's own preferences are kept. Defaults to
+                the user's configuration area; tests pass a throwaway file so a
+                test run cannot overwrite a real window's remembered layout.
+        """
         super().__init__()
         self.controller = controller
         self.setWindowTitle("Adaptive milling segmentation curation")
         self.resize(1600, 950)
 
-        self.settings = QSettings(SETTINGS_ORGANISATION, SETTINGS_APPLICATION)
+        self.settings = settings if settings is not None else QSettings(
+            SETTINGS_ORGANISATION, SETTINGS_APPLICATION
+        )
         self.project_panel = ProjectPanel()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
@@ -83,6 +134,7 @@ class CurationWindow(QMainWindow):
         self._build_layout()
         self._connect()
         self._add_shortcuts()
+        self._restore_layout()
 
         self.loader = BackgroundLoader(controller.cache)
         self.request_load.connect(self.loader.worker.load_batch)
@@ -109,7 +161,7 @@ class CurationWindow(QMainWindow):
         centre_layout.addWidget(self.image_panel, stretch=1)
         centre_layout.addLayout(self._build_timeline())
 
-        splitter = QSplitter(Qt.Horizontal)
+        self.splitter = splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(3)
         splitter.addWidget(self.project_panel)
         splitter.addWidget(centre)
@@ -117,12 +169,16 @@ class CurationWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([270, 1080, 250])
 
-        # The curation view becomes the first tab, its contents untouched: the
-        # splitter above is exactly what used to be the central widget.
+        # Left to right in workflow order: describe the data, curate it, export
+        # it. Curate opens, because it is where the repeated work happens and
+        # the other two are visited once per collection.
         self.tabs = QTabWidget()
+        self.tabs.addTab(self.metadata_panel, "Add data")
         self.tabs.addTab(splitter, "Curate")
-        self.tabs.addTab(self.metadata_panel, "Metadata")
         self.tabs.addTab(self.export_panel, "Export")
+        # Chosen before the signal is connected: _tab_changed switches the
+        # keyboard shortcuts, which do not exist until _add_shortcuts runs.
+        self.tabs.setCurrentWidget(splitter)
         self.tabs.currentChanged.connect(self._tab_changed)
         self.setCentralWidget(self.tabs)
 
@@ -196,10 +252,42 @@ class CurationWindow(QMainWindow):
             lambda row: self._reveal_path(self.metadata_controller.project_path(row))
         )
 
+    # -- remembering the layout --------------------------------------------
+
+    def _splitters(self) -> dict[str, QSplitter]:
+        """Return the resizable divisions, keyed by the name they persist under.
+
+        Keyed by name rather than by position so that adding a splitter, or
+        moving one, cannot silently restore the wrong sizes into it.
+        """
+        return {
+            "curate": self.splitter,
+            "lists": self.project_panel.lists,
+            "add_data": self.metadata_panel.panes,
+        }
+
+    def _restore_layout(self) -> None:
+        """Put the window back the size and shape it was left in."""
+        geometry = self.settings.value(SETTING_GEOMETRY, None, type=QByteArray)
+        if geometry:
+            self.restoreGeometry(geometry)
+        for name, splitter in self._splitters().items():
+            state = self.settings.value(
+                f"{SETTING_SPLITTER}/{name}", None, type=QByteArray
+            )
+            if state:
+                splitter.restoreState(state)
+
+    def _save_layout(self) -> None:
+        """Record the window's size and its splitter positions."""
+        self.settings.setValue(SETTING_GEOMETRY, self.saveGeometry())
+        for name, splitter in self._splitters().items():
+            self.settings.setValue(f"{SETTING_SPLITTER}/{name}", splitter.saveState())
+
     # -- the other tabs ----------------------------------------------------
 
     def _tab_changed(self, index: int) -> None:
-        """Refresh a tab when it comes forward.
+        """Refresh a tab when it comes forward, and hand it its keys.
 
         Refreshing only on the way in keeps the cost off the curation view,
         which is where the keyboard-driven work happens.
@@ -209,6 +297,11 @@ class CurationWindow(QMainWindow):
             self.export_panel.refresh()
         elif widget is self.metadata_panel:
             self.metadata_panel.refresh()
+            # The arrow keys here are scoped to the project list, so they only
+            # work once something in it has focus. Giving it focus on arrival
+            # is what makes them work without a click first.
+            self.metadata_panel.projects.setFocus()
+        self._apply_tab_shortcuts(self._current_tab())
 
     def _share_scan(self) -> None:
         """Hand the scanned projects to the other tabs."""
@@ -317,67 +410,137 @@ class CurationWindow(QMainWindow):
         logger.info("Revealed %s", folder)
 
     def _add_shortcuts(self) -> None:
-        """Bind the keys that make curating a long lamella bearable."""
-        bindings = (
-            ("Right", "Next frame", lambda: self._step_frame(1)),
-            ("Left", "Previous frame", lambda: self._step_frame(-1)),
-            ("Down", "Next lamella", lambda: self._step_lamella(1)),
-            ("Up", "Previous lamella", lambda: self._step_lamella(-1)),
-            ("1", "SEM view", lambda: self._set_mode("sem", from_user=True)),
-            ("2", "FIB view", lambda: self._set_mode("fib", from_user=True)),
-            ("3", "Plot view", lambda: self._set_mode("plot", from_user=True)),
-            ("Space", "Show / hide the label overlay", self._toggle_overlay),
-            ("D", "Set state: deselected", lambda: self.apply_state("deselected")),
-            ("S", "Set state: selected", lambda: self.apply_state("selected")),
-            ("C", "Set state: corrected", lambda: self.apply_state("corrected")),
-            ("F", "Fit the images to the panes", self.image_panel.pair.fit),
-            ("F1", "Show this list", self.show_shortcuts),
-        )
-        self._bindings = [(key, description) for key, description, _ in bindings]
-        self._shortcuts = [
-            QShortcut(QKeySequence(key), self, activated=action)
-            for key, _, action in bindings
+        """Bind the keys, each tagged with the tab it belongs to.
+
+        A binding scoped to a widget uses ``WidgetWithChildrenShortcut`` and so
+        only fires with focus inside it; every other binding belongs to the
+        window and is switched on and off as tabs change.
+        """
+        curate = TAB_CURATE
+        self._bindings = [
+            Binding("Right", "Next frame", lambda: self._step_frame(1), curate),
+            Binding("Left", "Previous frame", lambda: self._step_frame(-1), curate),
+            Binding("Down", "Next lamella", lambda: self._step_lamella(1), curate),
+            Binding("Up", "Previous lamella", lambda: self._step_lamella(-1), curate),
+            Binding("1", "SEM view", lambda: self._set_mode("sem", from_user=True), curate),
+            Binding("2", "FIB view", lambda: self._set_mode("fib", from_user=True), curate),
+            Binding("3", "Plot view", lambda: self._set_mode("plot", from_user=True), curate),
+            Binding("Space", "Show / hide the label overlay", self._toggle_overlay, curate),
+            Binding("D", "Set state: deselected", lambda: self.apply_state("deselected"), curate),
+            Binding("S", "Set state: selected", lambda: self.apply_state("selected"), curate),
+            Binding("C", "Set state: corrected", lambda: self.apply_state("corrected"), curate),
+            Binding("F", "Fit the images to the panes", self.image_panel.pair.fit, curate),
+            # Scoped to the project list: the fields beside it include editable
+            # combo boxes, whose own Up/Down a window-wide key would swallow.
+            Binding(
+                "Down", "Next project", lambda: self.metadata_panel.step_project(1),
+                TAB_ADD_DATA, scope=self.metadata_panel.projects,
+            ),
+            Binding(
+                "Up", "Previous project", lambda: self.metadata_panel.step_project(-1),
+                TAB_ADD_DATA, scope=self.metadata_panel.projects,
+            ),
+            Binding("F1", "Show this list", self.show_shortcuts, ANY_TAB),
         ]
+        self._shortcuts = []
+        for binding in self._bindings:
+            shortcut = QShortcut(
+                QKeySequence(binding.key), binding.scope or self, activated=binding.action
+            )
+            if binding.scope is not None:
+                shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+            self._shortcuts.append(shortcut)
+        self._apply_tab_shortcuts(self._current_tab())
+
+    def _apply_tab_shortcuts(self, tab: str) -> None:
+        """Switch on the keys belonging to *tab*, and switch off the rest."""
+        for binding, shortcut in zip(self._bindings, self._shortcuts):
+            shortcut.setEnabled(binding.tab in (tab, ANY_TAB))
+
+    def _current_tab(self) -> str:
+        """Return the key of the tab now showing."""
+        widget = self.tabs.currentWidget()
+        for panel, tab in (
+            (self.metadata_panel, TAB_ADD_DATA), (self.export_panel, TAB_EXPORT)
+        ):
+            if widget is panel:
+                return tab
+        return TAB_CURATE
+
+    def shortcut_help(self, tab: str | None = None) -> str:
+        """Return the shortcut table for a tab, as the help dialog's HTML.
+
+        Separate from showing it so what the dialog says can be tested without
+        opening a modal window.
+        """
+        tab = tab if tab is not None else self._current_tab()
+        applicable = [b for b in self._bindings if b.tab in (tab, ANY_TAB)]
+        rows = "".join(
+            f"<tr><td style='padding-right: 14px;'><b>{binding.key}</b></td>"
+            f"<td>{binding.description}</td></tr>"
+            for binding in applicable
+        )
+        help_text = f"<table>{rows}</table>"
+        if not any(binding.tab != ANY_TAB for binding in applicable):
+            help_text += (
+                "<p style='margin-top: 10px;'>This tab has no keys of its own.</p>"
+            )
+        if tab == TAB_CURATE:
+            help_text += (
+                "<p style='margin-top: 10px;'>State changes need <i>Enable editing</i> "
+                "switched on.</p>"
+            )
+        return help_text
 
     def show_shortcuts(self) -> None:
-        """List the keyboard shortcuts.
+        """List the keys that work on the tab now showing.
 
         Tooltips only help someone who already suspects a control exists; this
-        is the one place that answers "what can I press?".
+        is the one place that answers "what can I press?". Only the active tab's
+        keys are listed, because the others are switched off and pressing one
+        does nothing.
         """
-        rows = "".join(
-            f"<tr><td style='padding-right: 14px;'><b>{key}</b></td>"
-            f"<td>{description}</td></tr>"
-            for key, description in self._bindings
-        )
         QMessageBox.information(
             self,
-            "Keyboard shortcuts",
-            f"<table>{rows}</table>"
-            "<p style='margin-top: 10px;'>State changes need <i>Enable editing</i> "
-            "switched on.</p>",
+            f"Keyboard shortcuts: {self.tabs.tabText(self.tabs.currentIndex())}",
+            self.shortcut_help(),
         )
 
     # -- user actions ------------------------------------------------------
 
     def scan(self, path: str) -> None:
-        """Scan *path* for projects and show what was found."""
+        """Scan *path* for projects and show what was found.
+
+        Under a wait cursor throughout: scanning a collection is the slowest
+        thing the window does, and until it finishes there is nothing on screen
+        to say anything is happening.
+        """
         if not path:
             return
         directory = Path(path)
         if not directory.is_dir():
             QMessageBox.warning(self, "Scan", f"Not a folder: {directory}")
             return
+
+        failure: Exception | None = None
+        QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self.controller.scan(directory)
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
             logger.exception("Scan failed")
-            QMessageBox.critical(self, "Scan failed", str(exc))
-            return
-        self.project_panel.set_path(str(directory))
-        self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
-        self._share_scan()
-        self.refresh(reload_lists=True)
+            failure = exc
+        else:
+            self.project_panel.set_path(str(directory))
+            self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
+            self._share_scan()
+            self.refresh(reload_lists=True)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        # Reported after the cursor is back: a modal dialog under an hourglass
+        # looks like the window is still working on something.
+        if failure is not None:
+            QMessageBox.critical(self, "Scan failed", str(failure))
 
     def _select_project(self, row: int) -> None:
         self.controller.select_project(row)
@@ -730,5 +893,6 @@ class CurationWindow(QMainWindow):
             self._render()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._save_layout()
         self.loader.stop()
         super().closeEvent(event)

@@ -28,8 +28,10 @@ A label directory is named after the image directory it belongs to:
 `sem/` -> `sem_labels/`, `sem_5kv/` -> `sem_5kv_labels/`. `<modality>_labels`
 therefore acts as the **shared** label directory for that modality, and
 `<modality>_<variant>_labels` is private to one variant. The pre-convention
-names `labels`, `labels_fib` and `labels_FIB` are read indefinitely;
-`migrate-layout` renames them.
+names `labels`, `labels_fib` and `labels_FIB` are read indefinitely, and a new
+label is written into whichever directory an image set already resolves to, so
+a project never ends up holding two. `scripts/rename_legacy_label_dirs.py`
+renames them to the current convention if you want that anyway.
 
 **Resolution is most-specific-first.** An image directory takes its own
 `<image-directory>_labels` when that directory exists, and otherwise falls back
@@ -64,7 +66,9 @@ Command-specific help:
 
   am-seg <command> --help
 
-Commands by purpose:
+Commands are listed by `--help` in workflow order, and so are they here.
+
+Adding data to the collection:
 
 | Purpose | Command |
 | --- | --- |
@@ -72,21 +76,30 @@ Commands by purpose:
 | Make a pre-Autolamella dataset indexable, and record metadata | `init-project` |
 | See each project's metadata and where each value came from | `show-metadata` |
 | Set or clear metadata fields | `edit-metadata` |
-| Rename pre-convention label directories | `migrate-layout` |
 | List discovered projects and their counts | `list-projects` |
+
+Curating data and preparing labels:
+
+| Purpose | Command |
+| --- | --- |
+| Review images and set their state in a window | `gui` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
-| Choose what gets proofread | `select` / `deselect` / `correct` |
+| Choose what gets proofread | `deselect` / `select` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |
+| Shrink label files on disk | `compress-labels` |
+
+Quantifying and exporting:
+
+| Purpose | Command |
+| --- | --- |
 | Count images by one or two properties, and chart them | `stats` |
 | Measure what the labels contain, in um^2 | `quantify-labels` |
 | Export per-image metadata | `export-metadata-csv` |
 | Export per-project metadata | `export-projects-csv` |
 | Export training lists | `create-training-csv` / `check-training-csv` |
-| Shrink label files on disk | `compress-labels` |
 
 `inspect-layout` is read-only and the place to start on unfamiliar data.
-Anything that moves or renames files takes a preview flag -- `--dry-run`, or
-`--apply` for `migrate-layout`, which previews unless told otherwise.
+Anything that moves files takes `--dry-run`.
 
 Measuring labels
 ----------------
@@ -119,15 +132,16 @@ default. That threshold is a setting, not a constant: change it in the
 
 Desktop window
 --------------
-Three tabs: **Curate** for reviewing images against their labels and setting
-their workflow state, **Metadata** for seeing and editing each project's
-descriptive fields, and **Export** for choosing a subset and writing it out.
+Three tabs, in workflow order: **Add data** for describing a project so it can
+be indexed and grouped, **Curate** for reviewing images against their labels
+and setting their workflow state, and **Export** for choosing a subset and
+writing it out. Curate is the tab that opens, being the one used most.
 
 The Export tab shows what the current filters would export *before* writing --
 including the images that one-condition-per-scene and the empty-label rule
 would drop, which the command line reports only afterwards, in the log.
 
-The Metadata tab lists every project with a bar showing how many of its six
+The Add data tab lists every project with a bar showing how many of its six
 descriptive fields are filled in, so the ones still to describe are visible
 without opening each. Hovering a field name says what belongs in it, and each
 value is annotated with the file it came from. *Organisation*, *User* and
@@ -169,6 +183,11 @@ Do not install a second Qt binding alongside the first: loading two into one
 process crashes at import. If the environment already has PyQt5 (via napari,
 for example), install `qtpy` only.
 
+Keys belong to a tab and work only while that tab is showing, so `F1` lists
+what is live rather than everything the window can do.
+
+On the Curate tab:
+
 | Key | Action |
 | --- | --- |
 | Left / Right | Previous / next frame |
@@ -177,7 +196,13 @@ for example), install `qtpy` only.
 | Space | Show or hide the label overlay |
 | D / S / C | Set state: deselected / selected / corrected |
 | F | Fit the images to the panes |
-| F1 | List the shortcuts |
+
+On the Add data tab, Up / Down walk the project list. `F1` works everywhere.
+
+The window remembers its size and where its dividers were left, per machine.
+Every divider between panels can be dragged: the project and lamella lists
+against each other, the lists against the images, and the images against the
+state panel.
 
 Class names and colours come from `segmentation_config_AM.yaml`, searched for
 in the scan folder and falling back to the copy bundled with the package. Pass
@@ -242,13 +267,14 @@ Project layout
     - init_project.py    : AM_metadata.yaml templates
     - metadata_csv.py    : per-image and per-project metadata export
     - metadata_edit.py   : editing AM_metadata.yaml in place
-    - migrate.py         : renaming pre-convention label directories
     - label_measure.py   : per-class label areas and cracks in um^2
     - labels.py          : conservative moves between workflow state folders
   - gui/             : the desktop window (only gui/widgets/ imports Qt)
     - controller.py, export_controller.py, metadata_controller.py : view models
+    - widgets/theme.py : the palette, stylesheet and chrome colours
   - cli.py           : CLI entrypoint
 - tests/             : pytest tests using tmp_path fixtures
+- scripts/           : one-off helpers, not part of the installed package
 - docs/
   - 00_roadmap.md        : what is built, what is next, and where the rest is
   - decisions.md         : why the software is built this way; environment traps

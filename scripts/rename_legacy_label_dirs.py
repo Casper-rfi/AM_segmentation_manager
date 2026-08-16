@@ -1,22 +1,35 @@
-"""Renaming pre-convention label directories to the current naming.
+#!/usr/bin/env python3
+"""Rename pre-convention label directories to the current naming.
 
-Older datasets name label directories ``labels`` and ``labels_fib`` (or
-``labels_FIB``); the convention is ``<image-directory>_labels`` beside the
-images. Both are read indefinitely, so migrating is optional.
+``labels`` becomes ``sem_labels`` and ``labels_fib`` (or ``labels_FIB``) becomes
+``fib_labels``, the convention of naming a label directory after the image
+directory it belongs to.
 
-The operation is a directory rename and nothing else. No file is read, written,
-copied or deleted, and a rename that would collide with something on disk aborts
-the whole batch before anything moves.
+**This is a standalone script, not an ``am-seg`` command.** The package reads
+both namings indefinitely, and ``convert-predictions`` writes new labels into
+whichever directory an image set already resolves to, so a project is never left
+holding two. Only a handful of datasets predate the convention and they all
+belong to one person, which makes a general command in the package bloat rather
+than a feature. Adapt this script per dataset if a layout does not fit it.
+
+Previews by default; pass ``--apply`` to perform the renames. Only directories
+are renamed: no file is read, copied or deleted, and a rename that would collide
+with something on disk aborts the whole batch before anything moves.
+
+    python scripts/rename_legacy_label_dirs.py <directory> [--apply]
 """
 from __future__ import annotations
 
+import argparse
 import logging
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..discovery import discover_stages, find_project_roots
-from ..layout import (
+from am_segmentation_manager.discovery import discover_stages, find_project_roots
+from am_segmentation_manager.io.path import make_path_relative
+from am_segmentation_manager.layout import (
     LEGACY_LABEL_DIRECTORIES,
     build_image_sets,
     shared_labels_directory_name,
@@ -45,8 +58,6 @@ class LabelRename:
 
     def describe(self, root: Path | None = None) -> str:
         """Return a one-line description for a preview or a log."""
-        from ..io.path import make_path_relative
-
         location = make_path_relative(self.source, root) if root else self.source
         used_by = ", ".join(self.image_sets) if self.image_sets else "no image set"
         return f"{location} -> {self.destination.name}/  ({self.modality}: {used_by})"
@@ -163,3 +174,53 @@ def apply_label_migration(renames: Iterable[LabelRename]) -> int:
         logger.info("Renamed %s -> %s", rename.source, rename.destination)
         count += 1
     return count
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Preview or perform the renames under the given directory."""
+    parser = argparse.ArgumentParser(
+        description=__doc__.split("\n\n")[1],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "start_path", nargs="?", default=".",
+        help="Directory to migrate (default: current directory)",
+    )
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="Perform the renames. Without this, they are only listed",
+    )
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    start_path = Path(args.start_path)
+    try:
+        renames = plan_label_migration(start_path)
+    except MigrationConflict as exc:
+        for conflict in exc.conflicts:
+            logger.error("%s", conflict)
+        logger.error("Nothing was renamed.")
+        return 2
+
+    if not renames:
+        logger.info("No pre-convention label directories found under %s", start_path)
+        return 0
+
+    for rename in renames:
+        logger.info(
+            "%s %s", "Renaming" if args.apply else "Would rename",
+            rename.describe(start_path),
+        )
+    if not args.apply:
+        logger.info(
+            "%d directory rename(s) to make. Re-run with --apply to perform them.",
+            len(renames),
+        )
+        return 0
+
+    logger.info("Renamed %d label directory(ies)", apply_label_migration(renames))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

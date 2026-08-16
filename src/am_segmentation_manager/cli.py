@@ -190,16 +190,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--version", action="version", version=f"am-seg {__version__}",
         help="Print the installed version and exit",
     )
+    # Subcommands are registered in workflow order, because argparse lists them
+    # in registration order and that listing is how the commands are found.
     sub = parser.add_subparsers(dest="command")
 
-    # -- list-projects / scan -----------------------------------------------
-    list_projects = sub.add_parser(
-        "list-projects",
-        aliases=["scan"],
-        help="Scan a directory and list discovered projects",
-        description="Recursively scan for Autolamella projects and print a project summary",
-    )
-    list_projects.add_argument("start_path", nargs="?", default=".", help="Directory to start scanning from")
+    # === Adding data to the collection =======================================
 
     # -- inspect-layout -----------------------------------------------------
     inspect_layout = sub.add_parser(
@@ -242,28 +237,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    # -- migrate-layout -----------------------------------------------------
-    migrate_layout = sub.add_parser(
-        "migrate-layout",
-        help="Rename pre-convention label directories to the current naming",
-        description=(
-            "Rename 'labels' to 'sem_labels' and 'labels_fib' to 'fib_labels', "
-            "the current convention of naming a label directory after the image "
-            "directory it belongs to. Both names are read indefinitely, so this "
-            "is optional; it is offered because newly written labels already use "
-            "the current name, and a project otherwise ends up with both. "
-            "Previews by default -- pass --apply to make the changes. Only "
-            "directories are renamed: no file is read, copied or deleted."
-        ),
-    )
-    migrate_layout.add_argument(
-        "start_path", nargs="?", default=".", help="Directory to migrate (default: current directory)",
-    )
-    migrate_layout.add_argument(
-        "--apply", action="store_true",
-        help="Perform the renames. Without this, they are only listed",
-    )
-
     # -- init-project -------------------------------------------------------
     init_project_cmd = sub.add_parser(
         "init-project",
@@ -302,39 +275,194 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report which files would be written without creating anything",
     )
 
-    # -- metadata exports ----------------------------------------------------
-    export_metadata = sub.add_parser(
-        "export-metadata-csv",
-        help="Write one CSV row per image, with acquisition and project metadata",
+    # -- show-metadata / edit-metadata ---------------------------------------
+    show_metadata = sub.add_parser(
+        "show-metadata",
+        help="Show each project's resolved metadata, and where each value came from",
         description=(
-            "Export the selected images with everything known about each: where "
-            "it sits, its workflow and label state, the acquisition settings "
-            "read from its header, and its project's metadata. One file, no "
-            "join needed. Read-only."
+            "Print the descriptive metadata in effect for each project, with the "
+            "file that supplied each value. Values in AM_metadata.yaml override "
+            "experiment.yaml per key, so a surprising value is easiest to "
+            "explain by seeing which file it came from. Read-only."
         ),
     )
-    _add_scope_arguments(export_metadata, default_modality="all")
-    _add_metadata_filters(export_metadata)
-    export_metadata.add_argument("-o", "--output", required=True, help="CSV file to write")
-    export_metadata.add_argument(
-        "--no-headers", action="store_true",
+    show_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    show_metadata.add_argument(
+        "--project", action="append", default=None,
+        help="Project name, relative path or scan number; repeatable. Default: all",
+    )
+
+    edit_metadata = sub.add_parser(
+        "edit-metadata",
+        help="Set or clear fields in a project's AM_metadata.yaml",
+        description=(
+            "Edit the descriptive metadata of one or more projects. Only "
+            "AM_metadata.yaml is written; experiment.yaml belongs to Autolamella "
+            "and is never touched. The file is edited in place, so comments, key "
+            "order and any keys this package does not model are preserved. "
+            "Nothing is written unless every requested edit is valid."
+        ),
+    )
+    edit_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    edit_metadata.add_argument(
+        "--project", action="append", default=None,
+        help="Project name, relative path or scan number; repeatable",
+    )
+    edit_metadata.add_argument(
+        "--all", action="store_true",
         help=(
-            "Skip reading image headers, leaving the acquisition columns empty. "
-            "Faster for a purely structural listing"
+            "Apply to every project found. Values are copied into each file "
+            "rather than resolved from a shared one, because nothing is "
+            "inherited from parent directories"
+        ),
+    )
+    edit_metadata.add_argument(
+        "--set", action="append", default=[], metavar="FIELD=VALUE",
+        help=f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}",
+    )
+    edit_metadata.add_argument(
+        "--clear", action="append", default=[], metavar="FIELD",
+        help=(
+            "Remove a field from AM_metadata.yaml, so experiment.yaml's value "
+            "applies again; repeatable"
+        ),
+    )
+    edit_metadata.add_argument(
+        "--todo", action="append", default=[], metavar="FIELD",
+        help=(
+            "Mark a field as outstanding work. Different from --clear: an "
+            "unfilled placeholder is reported by inspect-layout"
+        ),
+    )
+    edit_metadata.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would change without writing anything",
+    )
+
+    # -- list-projects / scan -----------------------------------------------
+    list_projects = sub.add_parser(
+        "list-projects",
+        aliases=["scan"],
+        help="Scan a directory and list discovered projects",
+        description="Recursively scan for Autolamella projects and print a project summary",
+    )
+    list_projects.add_argument("start_path", nargs="?", default=".", help="Directory to start scanning from")
+
+    # === Curating data and preparing labels ==================================
+
+    # -- gui ----------------------------------------------------------------
+    gui_cmd = sub.add_parser(
+        "gui",
+        help="Open the curation window to review images and set their state",
+        description=(
+            "Open a window for reviewing SEM and FIB images against their "
+            "labels, and for setting images to selected, deselected or "
+            "corrected. Requires the optional GUI dependencies."
+        ),
+    )
+    gui_cmd.add_argument(
+        "start_path", nargs="?", default=None,
+        help="Directory to scan on startup (optional; can be chosen in the window)",
+    )
+    gui_cmd.add_argument(
+        "--config", default=None,
+        help="Segmentation config file defining class names and colours",
+    )
+
+    # -- convert-predictions ------------------------------------------------
+    convert_predictions = sub.add_parser(
+        "convert-predictions",
+        help="Convert predictions into labels for explicitly selected images",
+        description=(
+            "Write a label file for each selected image from its prediction, "
+            "resizing by nearest neighbour where the prediction and the image "
+            "have different pixel dimensions. Labels are written to the label "
+            "directory the image set resolves to, and an existing label is "
+            "never overwritten. Only images explicitly selected by the scope "
+            "arguments are converted, because the labels this produces are "
+            "pseudo-labels awaiting proofreading, not finished annotations."
+        ),
+    )
+    _add_scope_arguments(convert_predictions)
+    convert_predictions.add_argument(
+        "--kind", choices=["raw", "clean"], required=True,
+        help=(
+            "Which subdirectory of predictions/ to read: 'raw' as the model "
+            "wrote them, or 'clean' after the pipeline's post-processing step. "
+            "This package does not produce either; both come from the "
+            "prediction pipeline"
         ),
     )
 
-    export_projects = sub.add_parser(
-        "export-projects-csv",
-        help="Write one CSV row per project, with its metadata and counts",
+    # -- deselect / select / correct ----------------------------------------
+    for name, help_text in (
+        ("deselect", "Move images and labels into the deselected state"),
+        ("select", "Move images and labels into the selected state"),
+        ("correct", "Move images and labels into the corrected state"),
+    ):
+        cmd = sub.add_parser(
+            name,
+            help=help_text,
+            description=(
+                f"{help_text}. Images sharing a label move together: the label "
+                "is the unit of proofreading, so the change applies to every "
+                "image of the same scene. Use --dry-run to see exactly which "
+                "files would move first."
+            ),
+        )
+        _add_scope_arguments(cmd)
+        cmd.add_argument(
+            "--confirm-corrected", action="store_true",
+            help="Confirm moving artifacts out of the corrected state",
+        )
+        cmd.add_argument(
+            "--dry-run", action="store_true",
+            help="Show the files that would move without changing anything",
+        )
+
+    # -- repair-state -------------------------------------------------------
+    repair_state = sub.add_parser(
+        "repair-state",
+        help="Move images to agree with the state of the label they share",
         description=(
-            "Export each project's descriptive metadata, which file supplied "
-            "each value, the fields still marked TODO, and how many lamellae, "
-            "stages and images it holds. Read-only."
+            "Find images whose workflow state disagrees with the label they "
+            "share, and move the images to match. The label is authoritative "
+            "because it holds the proofreading work. Groups become inconsistent "
+            "when files are moved outside this package, or when an operation is "
+            "interrupted partway."
         ),
     )
-    export_projects.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
-    export_projects.add_argument("-o", "--output", required=True, help="CSV file to write")
+    _add_scope_arguments(repair_state, default_modality="all")
+    repair_state.add_argument(
+        "--confirm-corrected", action="store_true",
+        help="Confirm moving images out of a corrected folder to match their label",
+    )
+    repair_state.add_argument(
+        "--dry-run", action="store_true",
+        help="Show the files that would move without changing anything",
+    )
+
+    # -- compress-labels ------------------------------------------------------
+    compress_labels_cmd = sub.add_parser(
+        "compress-labels",
+        help="Recompress on-disk label files to reduce storage size",
+        description=(
+            "Re-encode label TIFFs discovered by the scanner using a compact "
+            "encoding, shrinking file size on disk without changing pixel "
+            "dimensions or label values."
+        ),
+    )
+    _add_scope_arguments(compress_labels_cmd, default_modality="all")
+    compress_labels_cmd.add_argument(
+        "--confirm-corrected", action="store_true",
+        help="Allow recompressing labels that live in a corrected/ folder",
+    )
+    compress_labels_cmd.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview compression savings without modifying any files",
+    )
+
+    # === Quantifying and exporting ===========================================
 
     # -- stats ---------------------------------------------------------------
     stats_cmd = sub.add_parser(
@@ -436,161 +564,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print only the totals, not the per-lamella table",
     )
 
-    # -- show-metadata / edit-metadata ---------------------------------------
-    show_metadata = sub.add_parser(
-        "show-metadata",
-        help="Show each project's resolved metadata, and where each value came from",
+    # -- metadata exports ----------------------------------------------------
+    export_metadata = sub.add_parser(
+        "export-metadata-csv",
+        help="Write one CSV row per image, with acquisition and project metadata",
         description=(
-            "Print the descriptive metadata in effect for each project, with the "
-            "file that supplied each value. Values in AM_metadata.yaml override "
-            "experiment.yaml per key, so a surprising value is easiest to "
-            "explain by seeing which file it came from. Read-only."
+            "Export the selected images with everything known about each: where "
+            "it sits, its workflow and label state, the acquisition settings "
+            "read from its header, and its project's metadata. One file, no "
+            "join needed. Read-only."
         ),
     )
-    show_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
-    show_metadata.add_argument(
-        "--project", action="append", default=None,
-        help="Project name, relative path or scan number; repeatable. Default: all",
-    )
-
-    edit_metadata = sub.add_parser(
-        "edit-metadata",
-        help="Set or clear fields in a project's AM_metadata.yaml",
-        description=(
-            "Edit the descriptive metadata of one or more projects. Only "
-            "AM_metadata.yaml is written; experiment.yaml belongs to Autolamella "
-            "and is never touched. The file is edited in place, so comments, key "
-            "order and any keys this package does not model are preserved. "
-            "Nothing is written unless every requested edit is valid."
-        ),
-    )
-    edit_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
-    edit_metadata.add_argument(
-        "--project", action="append", default=None,
-        help="Project name, relative path or scan number; repeatable",
-    )
-    edit_metadata.add_argument(
-        "--all", action="store_true",
+    _add_scope_arguments(export_metadata, default_modality="all")
+    _add_metadata_filters(export_metadata)
+    export_metadata.add_argument("-o", "--output", required=True, help="CSV file to write")
+    export_metadata.add_argument(
+        "--no-headers", action="store_true",
         help=(
-            "Apply to every project found. Values are copied into each file "
-            "rather than resolved from a shared one, because nothing is "
-            "inherited from parent directories"
+            "Skip reading image headers, leaving the acquisition columns empty. "
+            "Faster for a purely structural listing"
         ),
-    )
-    edit_metadata.add_argument(
-        "--set", action="append", default=[], metavar="FIELD=VALUE",
-        help=f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}",
-    )
-    edit_metadata.add_argument(
-        "--clear", action="append", default=[], metavar="FIELD",
-        help=(
-            "Remove a field from AM_metadata.yaml, so experiment.yaml's value "
-            "applies again; repeatable"
-        ),
-    )
-    edit_metadata.add_argument(
-        "--todo", action="append", default=[], metavar="FIELD",
-        help=(
-            "Mark a field as outstanding work. Different from --clear: an "
-            "unfilled placeholder is reported by inspect-layout"
-        ),
-    )
-    edit_metadata.add_argument(
-        "--dry-run", action="store_true",
-        help="Show what would change without writing anything",
     )
 
-    # -- gui ----------------------------------------------------------------
-    gui_cmd = sub.add_parser(
-        "gui",
-        help="Open the curation window to review images and set their state",
+    export_projects = sub.add_parser(
+        "export-projects-csv",
+        help="Write one CSV row per project, with its metadata and counts",
         description=(
-            "Open a window for reviewing SEM and FIB images against their "
-            "labels, and for setting images to selected, deselected or "
-            "corrected. Requires the optional GUI dependencies."
+            "Export each project's descriptive metadata, which file supplied "
+            "each value, the fields still marked TODO, and how many lamellae, "
+            "stages and images it holds. Read-only."
         ),
     )
-    gui_cmd.add_argument(
-        "start_path", nargs="?", default=None,
-        help="Directory to scan on startup (optional; can be chosen in the window)",
-    )
-    gui_cmd.add_argument(
-        "--config", default=None,
-        help="Segmentation config file defining class names and colours",
-    )
-
-    # -- convert-predictions ------------------------------------------------
-    convert_predictions = sub.add_parser(
-        "convert-predictions",
-        help="Convert predictions into labels for explicitly selected images",
-        description=(
-            "Write a label file for each selected image from its prediction, "
-            "resizing by nearest neighbour where the prediction and the image "
-            "have different pixel dimensions. Labels are written to the label "
-            "directory the image set resolves to, and an existing label is "
-            "never overwritten. Only images explicitly selected by the scope "
-            "arguments are converted, because the labels this produces are "
-            "pseudo-labels awaiting proofreading, not finished annotations."
-        ),
-    )
-    _add_scope_arguments(convert_predictions)
-    convert_predictions.add_argument(
-        "--kind", choices=["raw", "clean"], required=True,
-        help=(
-            "Which subdirectory of predictions/ to read: 'raw' as the model "
-            "wrote them, or 'clean' after the pipeline's post-processing step. "
-            "This package does not produce either; both come from the "
-            "prediction pipeline"
-        ),
-    )
-
-    # -- deselect / select / correct ----------------------------------------
-    for name, help_text in (
-        ("deselect", "Move images and labels into the deselected state"),
-        ("select", "Move images and labels into the selected state"),
-        ("correct", "Move images and labels into the corrected state"),
-    ):
-        cmd = sub.add_parser(
-            name,
-            help=help_text,
-            description=(
-                f"{help_text}. Images sharing a label move together: the label "
-                "is the unit of proofreading, so the change applies to every "
-                "image of the same scene. Use --dry-run to see exactly which "
-                "files would move first."
-            ),
-        )
-        _add_scope_arguments(cmd)
-        cmd.add_argument(
-            "--confirm-corrected", action="store_true",
-            help="Confirm moving artifacts out of the corrected state",
-        )
-        cmd.add_argument(
-            "--dry-run", action="store_true",
-            help="Show the files that would move without changing anything",
-        )
-
-    # -- repair-state -------------------------------------------------------
-    repair_state = sub.add_parser(
-        "repair-state",
-        help="Move images to agree with the state of the label they share",
-        description=(
-            "Find images whose workflow state disagrees with the label they "
-            "share, and move the images to match. The label is authoritative "
-            "because it holds the proofreading work. Groups become inconsistent "
-            "when files are moved outside this package, or when an operation is "
-            "interrupted partway."
-        ),
-    )
-    _add_scope_arguments(repair_state, default_modality="all")
-    repair_state.add_argument(
-        "--confirm-corrected", action="store_true",
-        help="Confirm moving images out of a corrected folder to match their label",
-    )
-    repair_state.add_argument(
-        "--dry-run", action="store_true",
-        help="Show the files that would move without changing anything",
-    )
+    export_projects.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    export_projects.add_argument("-o", "--output", required=True, help="CSV file to write")
 
     # -- create-training-csv -----------------------------------------------
     create_training_csv = sub.add_parser(
@@ -686,26 +692,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --fix, keep rows with unresolved paths unchanged instead of aborting",
     )
 
-    # -- compress-labels ------------------------------------------------------
-    compress_labels_cmd = sub.add_parser(
-        "compress-labels",
-        help="Recompress on-disk label files to reduce storage size",
-        description=(
-            "Re-encode label TIFFs discovered by the scanner using a compact "
-            "encoding, shrinking file size on disk without changing pixel "
-            "dimensions or label values."
-        ),
-    )
-    _add_scope_arguments(compress_labels_cmd, default_modality="all")
-    compress_labels_cmd.add_argument(
-        "--confirm-corrected", action="store_true",
-        help="Allow recompressing labels that live in a corrected/ folder",
-    )
-    compress_labels_cmd.add_argument(
-        "--dry-run", action="store_true",
-        help="Preview compression savings without modifying any files",
-    )
-
     return parser
 
 
@@ -741,42 +727,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         # A non-zero exit lets the command be used as a check in a script,
         # without making warnings -- which are expected on legacy data -- fail.
         return 1 if survey.finding_counts()["error"] else 0
-
-    if args.command == "migrate-layout":
-        from .operations.migrate import (
-            MigrationConflict,
-            apply_label_migration,
-            plan_label_migration,
-        )
-
-        start_path = Path(args.start_path)
-        try:
-            renames = plan_label_migration(start_path)
-        except MigrationConflict as exc:
-            for conflict in exc.conflicts:
-                logger.error("%s", conflict)
-            logger.error("Nothing was renamed.")
-            return 2
-
-        if not renames:
-            logger.info("No pre-convention label directories found under %s", start_path)
-            return 0
-
-        for rename in renames:
-            logger.info(
-                "%s %s", "Renaming" if args.apply else "Would rename",
-                rename.describe(start_path),
-            )
-        if not args.apply:
-            logger.info(
-                "%d directory rename(s) to make. Re-run with --apply to perform them.",
-                len(renames),
-            )
-            return 0
-
-        changed = apply_label_migration(renames)
-        logger.info("Renamed %d label directory(ies)", changed)
-        return 0
 
     if args.command == "init-project":
         from .discovery import (

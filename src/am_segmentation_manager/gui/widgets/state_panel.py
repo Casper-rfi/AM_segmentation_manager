@@ -25,6 +25,7 @@ from qtpy.QtWidgets import (
 from ...operations.selection import RecordState
 from ..controller import MIXED
 from .frame_strip import STATE_COLOURS
+from .theme import SHARED_NOTE_STYLE
 
 #: Workflow order, which is also the order of the rows in the timeline: data is
 #: excluded, or queued for proofreading, or finished.
@@ -42,10 +43,6 @@ STATE_HELP = {
 }
 
 SWATCH_SIZE = 12
-
-#: The shared-label note is the one thing here that reports a consequence the
-#: user did not ask for, so it is set apart rather than reading as body text.
-SHARED_NOTE_STYLE = "color: #b36b00;"
 
 
 class StatePanel(QWidget):

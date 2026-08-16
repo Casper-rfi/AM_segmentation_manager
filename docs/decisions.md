@@ -17,6 +17,11 @@ image dimensions are not equal across a lamella, and the plot PNGs have a differ
 aspect ratio again. `qtpy` rather than a binding directly, because loading two Qt
 bindings into one process crashes in hard-to-debug ways.
 
+**The window forces the Fusion style rather than taking the platform's.** The two
+bindings draw the same widgets differently, and the development and user environments
+differ by binding — so a window that inherits its style is a window nobody has both
+seen. Fusion is built into Qt, so this costs no dependency.
+
 **No Qt below `gui/widgets/`.** Everything the GUI knows lives in plain Python
 controllers. This is what makes navigation, cache eviction and state expansion
 testable without a display server. It is the one structural rule of the UI; adding a
@@ -25,8 +30,8 @@ tab is not a reason to bend it.
 **The GUI hosts operations that are iterative or exploratory; batch operations stay in
 the CLI.** Choosing a training set is a loop — filter, see how many images survive,
 adjust — and a command that re-scans on every attempt is slow enough that you stop
-exploring. By this test `convert-predictions`, `compress-labels` and `migrate-layout`
-stay CLI-only: each is run once and read from the log.
+exploring. By this test `convert-predictions` and `compress-labels` stay CLI-only:
+each is run once and read from the log.
 
 **Label editing is out of scope.** Proofreading stays in the external segmentation
 software; this package decides *which* images get proofread and records when they are
@@ -52,7 +57,16 @@ configuring anything.
 
 **Image directories keep their Autolamella names.** We do not own `sem` and `fib`;
 renaming them would break reopening the project in Autolamella. Label directories are
-ours, so they are the only ones `migrate-layout` touches.
+ours, so they are the only ones anything here renames.
+
+**Renaming pre-convention label directories is a script, not a command.** The
+package reads `labels`, `labels_fib` and `labels_FIB` indefinitely, and
+`resolve_labels_directory` returns whichever directory an image set already has —
+so a new label lands beside the old ones and a project never ends up holding two
+namings. That leaves cosmetic tidiness as the only reason to rename, over a fixed
+handful of datasets belonging to one person. It lives in
+`scripts/rename_legacy_label_dirs.py`, where a layout that does not fit can be
+handled by editing the script rather than by generalising a command.
 
 **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`,
 `sem_lowmag` all work with no code change, because authoritative imaging parameters
@@ -111,7 +125,7 @@ different samples, and resolving a field from a parent would attribute the wrong
 sample to a project invisibly. Lamellae in one *project* do share a sample, which is
 why the project is the right level for this metadata.
 
-**The Metadata tab suggests, and a suggestion is never a value.** It offers the
+**The Add data tab suggests, and a suggestion is never a value.** It offers the
 values other projects already use for a field, and the name of the folder a project's
 own YAML files sit in for `project`. Both are computed in the GUI controller and only
 reach a file when the user saves, so `build_experiment_metadata` still resolves from
@@ -158,12 +172,20 @@ measures the wrong population.
 in a portrait pane, so **width binds**, and window chrome does not change how they
 render.
 
-**A locked editor keeps its normal text colour.** The Metadata tab opens locked and is
-mostly used for reading, so Qt's disabled grey put every value at low contrast on a
-grey background — measured at `#bebebe` on white. `keep_readable_when_disabled` copies
-the active text colour onto the disabled palette group and leaves the background
-alone, so a field still reads as locked. Taken from the palette rather than pinned, so
-it follows the theme.
+**One stylesheet, and it beats the palette.** `theme.py` sets the Fusion style, a
+palette and a short stylesheet; nothing else in the window picks a chrome colour. The
+order matters more than it looks: where a stylesheet rule and the palette disagree, the
+rule wins, and a widget palette edited in Python is simply ignored. A per-widget
+palette adjustment that kept locked fields readable was therefore silently overridden
+the moment the stylesheet arrived, and the palette it set still asserted true in the
+test. Anything about how something *renders* is asserted on the pixels for that reason.
+
+**A locked editor keeps its normal text colour.** The Add data tab opens locked and is
+mostly used for reading, so Qt's disabled grey put every value at low contrast —
+measured at `#bebebe` on white, and at `lightness 170` when the stylesheet reintroduced
+it. The stylesheet dulls the *background* of a disabled input instead and leaves the
+text dark, so a field still reads as locked. Buttons and radio groups grey out
+normally: they are controls you cannot use, not values you are reading.
 
 **The metadata list elides; it must not scroll sideways.** Its rows carry relative
 paths that differ in the timestamp they *end* with, and a `QListWidget` with a

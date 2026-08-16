@@ -53,6 +53,26 @@ def _missing_qt_message(error: Exception) -> str:
     )
 
 
+def _enable_high_dpi() -> None:
+    """Ask Qt 5 to scale for the display it is on.
+
+    Both attributes have to be set before a QApplication exists, which is why
+    this is separate from applying the theme. Qt 6 scales by default and dropped
+    them, and setting one on an application that already exists warns and does
+    nothing -- so both cases are skipped rather than guessed at.
+    """
+    from qtpy import QT_VERSION
+    from qtpy.QtCore import Qt
+    from qtpy.QtWidgets import QApplication
+
+    if not QT_VERSION.startswith("5") or QApplication.instance() is not None:
+        return
+    for name in ("AA_EnableHighDpiScaling", "AA_UseHighDpiPixmaps"):
+        attribute = getattr(Qt, name, None)
+        if attribute is not None:
+            QApplication.setAttribute(attribute, True)
+
+
 def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
     """Open the curation window and run until it is closed.
 
@@ -73,13 +93,16 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
         raise RuntimeError(_missing_qt_message(exc)) from exc
 
     from .widgets.main_window import CurationWindow
+    from .widgets.theme import apply_theme
 
     config = load_segmentation_config(explicit_path=config_path, start_path=start_path)
     logger.info("Using segmentation config: %s", config.source)
 
     controller = CurationController(cache=FrameCache(), config=config)
 
+    _enable_high_dpi()
     application = QApplication.instance() or QApplication(sys.argv)
+    apply_theme(application)
     window = CurationWindow(controller)
     window.show()
 

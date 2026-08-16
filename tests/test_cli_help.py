@@ -35,6 +35,32 @@ def _canonical_subcommands() -> list[tuple[str, argparse.ArgumentParser]]:
     return list(seen.values())
 
 
+#: The order ``am-seg --help`` must list the commands in, which is the order of
+#: the workflow in CLAUDE.md: add data to the collection, curate it and prepare
+#: labels, then quantify and export. argparse lists subcommands in registration
+#: order, so this pins the order they are registered in.
+WORKFLOW_ORDER = [
+    "inspect-layout",
+    "init-project",
+    "show-metadata",
+    "edit-metadata",
+    "list-projects",
+    "gui",
+    "convert-predictions",
+    "deselect",
+    "select",
+    "correct",
+    "repair-state",
+    "compress-labels",
+    "stats",
+    "quantify-labels",
+    "export-metadata-csv",
+    "export-projects-csv",
+    "create-training-csv",
+    "check-training-csv",
+]
+
+
 def test_parser_builds_without_running_a_command():
     parser = build_parser()
 
@@ -75,6 +101,14 @@ def test_every_argument_has_help(name):
     ]
 
     assert not undocumented, f"{name} has arguments with no help=: {undocumented}"
+
+
+def test_subcommands_are_listed_in_workflow_order():
+    """The command list is how the commands are found, so its order teaches the
+    workflow. Aliases are excluded: they share their parser's position."""
+    listed = [name for name, _ in _canonical_subcommands()]
+
+    assert listed == WORKFLOW_ORDER
 
 
 def test_top_level_flags_have_help():
