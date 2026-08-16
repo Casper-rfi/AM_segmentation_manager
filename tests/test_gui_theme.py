@@ -189,3 +189,38 @@ def test_a_splitter_comes_back_the_size_it_was_left(tmp_path: Path, qt_app):
     restored.restoreState(settings.value("splitter/test", None, type=QByteArray))
 
     assert restored.sizes() == splitter.sizes()
+
+
+# ---------------------------------------------------------------------------
+# The window icon
+# ---------------------------------------------------------------------------
+
+def test_the_icon_ships_inside_the_package(qt_app):
+    """It lives in `data/`, not at the repository root, so installing keeps it.
+
+    Loaded rather than merely located: a file Qt cannot decode produces a null
+    icon and no error, which looks identical to a correct one until the window
+    opens with a blank tile.
+    """
+    from qtpy.QtGui import QIcon
+
+    from am_segmentation_manager.gui.app import ICON_PATH
+
+    assert ICON_PATH.exists()
+    assert not QIcon(str(ICON_PATH)).isNull()
+
+
+def test_a_missing_icon_does_not_stop_the_window_opening(qt_app, monkeypatch):
+    """A source checkout without the asset must still run."""
+    from am_segmentation_manager.gui import app
+
+    monkeypatch.setattr(app, "ICON_PATH", Path("/nowhere/absent.png"))
+    app._apply_icon(qt_app)
+
+
+def test_the_icon_is_set_on_the_application_so_dialogs_inherit_it(qt_app):
+    from am_segmentation_manager.gui.app import _apply_icon
+
+    _apply_icon(qt_app)
+
+    assert not qt_app.windowIcon().isNull()

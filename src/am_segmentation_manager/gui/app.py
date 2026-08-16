@@ -18,6 +18,27 @@ logger = logging.getLogger(__name__)
 
 QT_BINDINGS = ("PyQt5", "PyQt6", "PySide2", "PySide6")
 
+#: The window and taskbar icon. A PNG rather than the ``.ico`` beside it: Qt
+#: reads PNG through a built-in plugin on every platform, where ICO buys nothing
+#: outside Windows. Located the way :mod:`..config` locates the packaged
+#: segmentation config, for the reason given there.
+ICON_PATH = Path(__file__).parent.parent / "data" / "AM_icon.png"
+
+
+def _apply_icon(application) -> None:
+    """Set the application icon, if it is there to set.
+
+    Applied to the application rather than the window so that dialogs and the
+    taskbar entry inherit it. A missing file is not an error: a source checkout
+    without the asset must still open the window.
+    """
+    from qtpy.QtGui import QIcon
+
+    if not ICON_PATH.exists():
+        logger.debug("No window icon at %s", ICON_PATH)
+        return
+    application.setWindowIcon(QIcon(str(ICON_PATH)))
+
 
 def _missing_qt_message(error: Exception) -> str:
     """Explain which part of the Qt stack is missing, and what to do about it.
@@ -103,6 +124,7 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
     _enable_high_dpi()
     application = QApplication.instance() or QApplication(sys.argv)
     apply_theme(application)
+    _apply_icon(application)
     window = CurationWindow(controller)
     window.show()
 

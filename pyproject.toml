@@ -15,7 +15,7 @@ keywords = ["FIB-SEM", "segmentation", "autolamella", "microscopy"]
 # the default -- all rights reserved -- which is the accurate state while the
 # question is open. Choosing a licence (and whether the copyright holder is the
 # author or the Rosalind Franklin Institute) is deferred; see
-# docs/01_refactor_plan.md section 4.
+# docs/00_roadmap.md, "Before publishing".
 #
 # "Private :: Do Not Upload" is not a real classifier to PyPI: it rejects any
 # upload carrying it. That is deliberate belt-and-braces against an accidental
@@ -70,8 +70,11 @@ include = ["am_segmentation_manager*"]
 
 [tool.setuptools.package-data]
 # The default segmentation class definitions, used when no project-specific
-# segmentation_config_AM.yaml is found.
-am_segmentation_manager = ["data/*.yaml"]
+# segmentation_config_AM.yaml is found, and the window's icon. Both ship inside
+# the package rather than at the repository root, so they survive installation.
+# The .ico is not loaded by the GUI -- Qt uses the PNG on every platform -- and
+# is kept for building a Windows shortcut.
+am_segmentation_manager = ["data/*.yaml", "data/*.png", "data/*.ico"]
 
 [tool.pytest.ini_options]
 # Put src/ on the import path, so the tests run against the source tree without
