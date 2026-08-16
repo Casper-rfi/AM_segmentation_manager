@@ -17,11 +17,6 @@ image dimensions are not equal across a lamella, and the plot PNGs have a differ
 aspect ratio again. `qtpy` rather than a binding directly, because loading two Qt
 bindings into one process crashes in hard-to-debug ways.
 
-**The window forces the Fusion style rather than taking the platform's.** The two
-bindings draw the same widgets differently, and the development and user environments
-differ by binding — so a window that inherits its style is a window nobody has both
-seen. Fusion is built into Qt, so this costs no dependency.
-
 **No Qt below `gui/widgets/`.** Everything the GUI knows lives in plain Python
 controllers. This is what makes navigation, cache eviction and state expansion
 testable without a display server. It is the one structural rule of the UI; adding a
@@ -61,7 +56,9 @@ table, which is what lets one module hold the convention instead of the 200-odd
 hardcoded strings it replaced. A `labels/<image-dir>/` subtree would push the
 `deselected/` and `corrected/` state folders three deep and gain nothing. Conditions
 share a label by default; giving one its own means creating the directory, not
-configuring anything.
+configuring anything. `sem/` is not a special case in this: its private and shared
+names coincide, which is why one rule covers the plain layout and the five-condition
+one alike.
 
 **Image directories keep their Autolamella names.** We do not own `sem` and `fib`;
 renaming them would break reopening the project in Autolamella. Label directories are
@@ -86,7 +83,9 @@ mis-indexing.
 **A project is a directory containing `experiment.yaml` or `AM_metadata.yaml`.**
 `init-project` writes the latter rather than fabricating the former, because
 `experiment.yaml` is Autolamella's file: writing one misrepresents provenance and
-could collide if Autolamella ever opens that directory.
+could collide if Autolamella ever opens that directory. `protocol.yaml` looks like a
+third marker and is not usable as one: some genuine Autolamella projects have
+`experiment.yaml` without it.
 
 **A project's identity is its path relative to the scan root, not its name.** The
 reference collection holds two different projects whose name, `created_at` and
@@ -200,7 +199,11 @@ in a portrait pane, so **width binds**, and window chrome does not change how th
 render.
 
 **One stylesheet, and it beats the palette.** `theme.py` sets the Fusion style, a
-palette and a short stylesheet; nothing else in the window picks a chrome colour. The
+palette and a short stylesheet; nothing else in the window picks a chrome colour.
+Fusion rather than the platform's style because the two bindings draw the same widgets
+differently and the development and user environments differ by binding — a window
+that inherits its style is a window nobody has both seen. It is built into Qt, so it
+costs no dependency. The
 order matters more than it looks: where a stylesheet rule and the palette disagree, the
 rule wins, and a widget palette edited in Python is simply ignored. A per-widget
 palette adjustment that kept locked fields readable was therefore silently overridden

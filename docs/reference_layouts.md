@@ -34,12 +34,9 @@ evidence behind the conventions implemented in
 > reaching for the example that happens to exhibit it. `tests/conftest.py`
 > builds datasets that way, with these examples as named starting points.
 
-Moved from `data_structures.txt` (repository root) on 2026-08-14 and converted
-to Markdown. The observations are unchanged; the resolutions that had been
-annotated into the original are separated out into [§7](#7-resolutions).
-
 All paths are relative to the Autolamella project, and show an example SEM and
-FIB image with its corresponding label.
+FIB image with its corresponding label. How each of these layouts is resolved is
+in [`decisions.md`](decisions.md) § Filesystem conventions.
 
 Note that §4 and §5 are **not** in the current working collection at
 `20260807_lamella_segmentations_new`; they are recorded here from elsewhere.
@@ -141,59 +138,3 @@ shared label       20240228_adaptive_milling_ai/lam_010/labels/img_0004.tif
 FIB                20240228_adaptive_milling_ai/lam_010/FIB/img_0004.tif
 label              20240228_adaptive_milling_ai/lam_010/labels_FIB/img_0004.tif
 ```
-
----
-
-## 7. Resolutions
-
-How each open question in the original notes was settled. All of these are
-implemented; see [`decisions.md`](decisions.md) for the reasoning.
-
-### 7.1 Recognising pre-Autolamella datasets
-
-**Question.** §4–§6 have no `experiment.yaml`, so the scanner cannot find them.
-
-**Resolution.** A project is any directory holding `experiment.yaml` *or*
-`AM_metadata.yaml`. `am-seg init-project` writes the latter, which is both the
-project marker and the metadata file.
-
-`protocol.yaml` turned out **not** to distinguish these: some genuine
-Autolamella projects have `experiment.yaml` but no `protocol.yaml`, so it is
-not a usable marker.
-
-### 7.2 The collapsed hierarchy
-
-**Question.** §4 has no lamella *or* stage directory; §5 and §6 have no stage
-directory.
-
-**Resolution.** The missing level is synthesised in memory, with the parent
-standing in, and the model records that it is synthetic (`Lamella.synthetic`,
-`AdaptiveMillingStage.synthetic`). Data on disk is never reorganised to fit the
-newest layout.
-
-### 7.3 Label directory naming
-
-**Question.** §1–§3 use `labels/` and `labels_fib/`; §6 also uses `labels_FIB/`.
-
-**Resolution.** The convention is `<image-directory>_labels`, so `sem/` →
-`sem_labels/` and `sem_5kv/` → `sem_5kv_labels/`. The pre-convention names
-`labels`, `labels_fib` and `labels_FIB` are read indefinitely;
-`scripts/rename_legacy_label_dirs.py` renames them on request.
-
-`<modality>_labels` therefore acts as the *shared* label directory for that
-modality, which is what makes §6 work.
-
-Resolution is **most-specific-first**: `sem_fi1/` takes `sem_fi1_labels/` when
-that directory exists, and falls back to the shared `sem_labels/` when it does
-not. So conditions share a label by default, and a condition-specific label is
-created by making the directory. `label_shared` on each record reports which
-happened. `sem/` is not special: its private and shared names coincide.
-
-### 7.4 Imaging-condition variants
-
-**Question.** What are `SEM_8`, `SEM_8_fi_16`?
-
-**Resolution.** An image directory named `<modality>_<variant>` holds one
-imaging condition of an acquisition. The variant string is **opaque** and is
-never parsed, so any naming works. Conditions sharing a label are one scene, so
-a workflow state change follows the label and moves all of them together.

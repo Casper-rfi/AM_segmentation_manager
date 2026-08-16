@@ -50,9 +50,6 @@ programmatically would require the two tools to share a schema in code, which
 couples their release cycles. A file is a stable, inspectable interface, and it
 is the one that already exists.
 
-(Resolution goes through `config.py`, which is the only place that knows where
-the config may live.)
-
 ### Constraint
 
 Launching an external process that writes into label directories sits outside
