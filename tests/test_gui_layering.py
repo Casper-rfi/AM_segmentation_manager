@@ -27,6 +27,8 @@ HEADLESS_MODULES = [
     "am_segmentation_manager.gui.controller",
     "am_segmentation_manager.gui.export_controller",
     "am_segmentation_manager.gui.metadata_controller",
+    "am_segmentation_manager.gui.operations_controller",
+    "am_segmentation_manager.gui.selection",
     "am_segmentation_manager.display",
     "am_segmentation_manager.frames",
     "am_segmentation_manager.config",

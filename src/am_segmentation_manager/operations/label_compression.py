@@ -43,8 +43,13 @@ class LabelCompressionResult:
     applied: bool
 
 
-def _existing_labels(records: Iterable[ImageRecord]) -> list[Path]:
-    """Return the deduplicated, existing label files referenced by *records*."""
+def existing_labels(records: Iterable[ImageRecord]) -> list[Path]:
+    """Return the deduplicated, existing label files referenced by *records*.
+
+    Public so a caller can say how much work a compression run is before
+    starting one, which measuring the saving would otherwise require doing the
+    whole run twice.
+    """
     seen: set[Path] = set()
     labels: list[Path] = []
     for record in records:
@@ -91,7 +96,7 @@ def compress_labels(
         )
     import tifffile
 
-    labels = _existing_labels(records)
+    labels = existing_labels(records)
     if not allow_corrected:
         corrected = [label for label in labels if state_of_path(label) == "corrected"]
         if corrected:

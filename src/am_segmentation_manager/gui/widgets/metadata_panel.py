@@ -11,6 +11,7 @@ suggestion reaches a file only when the user saves.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QPainter, QPixmap
@@ -118,11 +119,17 @@ class MetadataPanel(QWidget):
     #: the folder opened. Resolving a path stays the controller's job.
     project_path_requested = Signal(int)
     project_reveal_requested = Signal(int)
+    #: Emitted when the user asks what the scanned folder looks like, or asks
+    #: for the projects in it to be given a metadata file. Both act on the whole
+    #: scanned collection, so the window supplies the root.
+    survey_requested = Signal()
+    init_requested = Signal()
 
     def __init__(self, controller: MetadataController) -> None:
         super().__init__()
         self.controller = controller
         self._loading = False
+        self.root: Path | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -157,7 +164,59 @@ class MetadataPanel(QWidget):
             self.project_path_requested, self.project_reveal_requested,
         )
         column.addWidget(self.projects)
+        column.addWidget(self._build_collection_actions())
         return box
+
+    def _build_collection_actions(self) -> QWidget:
+        """Return the two steps that come before this list has rows in it.
+
+        Both act on the whole scanned folder rather than on a selected project,
+        which is why they sit under the list rather than beside the fields: a
+        collection with no metadata files has nothing to select.
+        """
+        self.collection_box = box = QGroupBox("Whole collection")
+        row = QHBoxLayout(box)
+
+        self.survey_button = QPushButton("Inspect layout")
+        self.survey_button.setToolTip(
+            "Report how the scanned folder is interpreted and what does not "
+            "fit. Reads nothing but the directory structure, and changes nothing."
+        )
+        self.survey_button.clicked.connect(self.survey_requested.emit)
+        row.addWidget(self.survey_button)
+
+        self.init_button = QPushButton("Add metadata files...")
+        self.init_button.setToolTip(
+            "Write an AM_metadata.yaml into every project that has none, "
+            "including folders holding images that are not indexed as projects "
+            "yet. An existing file is never overwritten."
+        )
+        self.init_button.clicked.connect(self.init_requested.emit)
+        row.addWidget(self.init_button)
+        self._update_collection_buttons()
+        return box
+
+    def set_root(self, root) -> None:
+        """Name the folder the two collection actions would act on.
+
+        Named rather than left implicit because these act on everything under
+        it, and the tab otherwise never says which folder is loaded.
+        """
+        self.root = root
+        self.collection_box.setTitle(
+            "Whole collection" if root is None else f"Whole collection: {root.name}"
+        )
+        self._update_collection_buttons()
+
+    def _update_collection_buttons(self) -> None:
+        """Offer the collection actions only when they have a folder to act on.
+
+        Writing metadata files also waits on the editing guard, matching the
+        fields beside it; inspecting the layout changes nothing and does not.
+        """
+        has_root = self.root is not None
+        self.survey_button.setEnabled(has_root)
+        self.init_button.setEnabled(has_root and self.controller.editing_enabled)
 
     def _build_folder_button(self) -> QPushButton:
         """Return the button that copies the project's own directory name across.
@@ -295,6 +354,7 @@ class MetadataPanel(QWidget):
             editor.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
         self._update_folder_button()
+        self._update_collection_buttons()
 
     def _update_folder_button(self) -> None:
         """Offer the folder name only when editing is on and there is one."""

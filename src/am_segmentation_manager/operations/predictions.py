@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import shutil
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..io.image import to_2d
@@ -97,13 +98,38 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
     logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, resized.shape)
 
 
-def convert_record_predictions(records: Iterable[ImageRecord], prediction_kind: str = "clean") -> int:
-    """Convert predictions for explicitly selected image records.
+@dataclass(frozen=True)
+class PlannedConversion:
+    """One prediction and the label file it would become.
 
-    Existing labels, including corrected labels, are never overwritten.  The
-    generated label follows the image's selected/deselected/corrected folder.
+    Attributes:
+        record: The image the prediction belongs to.
+        prediction: The prediction file to convert.
+        destination: Where the label would be written. Never an existing file.
     """
-    converted = 0
+
+    record: ImageRecord
+    prediction: Path
+    destination: Path
+
+
+def plan_conversions(
+    records: Iterable[ImageRecord], prediction_kind: str = "clean"
+) -> list[PlannedConversion]:
+    """Return the conversions that would run for *records*.
+
+    Records with no matching prediction are passed over; records that already
+    have a label, or whose destination file exists, are skipped and logged --
+    an existing label is either proofread work or an earlier conversion, and
+    neither is overwritten. The whole set is resolved before any of it is
+    written, so a caller can show what a run would do.
+
+    No destination appears twice: imaging conditions of one scene share a label
+    directory, so several records resolve to one label file, and a plan that
+    listed it twice would have the second write silently replace the first.
+    """
+    planned: list[PlannedConversion] = []
+    claimed: set[Path] = set()
     for record in records:
         if record.modality not in MODALITIES:
             continue
@@ -127,9 +153,25 @@ def convert_record_predictions(records: Iterable[ImageRecord], prediction_kind: 
         destination = state_path(
             labels_directory / record.image_path.name, state_of_path(record.image_path)
         )
-        if destination.exists():
+        if destination.exists() or destination in claimed:
             logger.warning("Skipping %s: refusing to overwrite %s", record.image_path, destination)
             continue
-        prediction_to_label(matching_predictions[0], destination, target_image_path=record.image_path)
-        converted += 1
-    return converted
+        claimed.add(destination)
+        planned.append(PlannedConversion(record, matching_predictions[0], destination))
+    return planned
+
+
+def convert_record_predictions(records: Iterable[ImageRecord], prediction_kind: str = "clean") -> int:
+    """Convert predictions for explicitly selected image records.
+
+    Existing labels, including corrected labels, are never overwritten.  The
+    generated label follows the image's selected/deselected/corrected folder.
+    """
+    planned = plan_conversions(records, prediction_kind)
+    for conversion in planned:
+        prediction_to_label(
+            conversion.prediction,
+            conversion.destination,
+            target_image_path=conversion.record.image_path,
+        )
+    return len(planned)

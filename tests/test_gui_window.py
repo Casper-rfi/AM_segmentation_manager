@@ -856,6 +856,246 @@ def test_the_title_says_how_many_are_ticked(window):
 
 
 # ---------------------------------------------------------------------------
+# Operations run against the same selection a state change does
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def inline_operations(window, monkeypatch):
+    """Run operations on the calling thread and accept every dialog.
+
+    ``_run_operation`` is the one seam between the window and its worker
+    thread; substituting it leaves the whole preview-confirm-apply ladder
+    running for real, which is where the behaviour worth testing is.
+    """
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done: on_done(work()),
+    )
+    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        window, "_confirm_report",
+        lambda title, report, action: asked.append((title, action)) or True,
+    )
+    return asked
+
+
+def test_compressing_acts_on_the_ticked_lamella(window, inline_operations):
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+
+    window._compress_labels()
+
+    assert inline_operations == [("Compress labels", "Apply")]
+    assert "Compress labels" in window.changes_log.text()
+
+
+def test_writing_metadata_files_rescans_so_the_new_projects_appear(
+    project: Path, window, inline_operations
+):
+    """Making an unindexed dataset into a project is the point of this.
+
+    A refresh recounts what is already in memory; only a scan can see the
+    project the operation just created, and without one the Add data list keeps
+    showing the collection as it was before.
+    """
+    unindexed = project / "loose-dataset" / "01-lamella" / "stage" / "sem"
+    unindexed.mkdir(parents=True)
+    (unindexed / "img.tif").write_bytes(b"i")
+    window.metadata_panel.enable.setChecked(True)
+    assert len(window.controller.projects) == 1
+
+    window._add_metadata_files()
+
+    assert (project / "loose-dataset" / "AM_metadata.yaml").exists()
+    assert len(window.controller.projects) == 2
+    assert window.metadata_panel.projects.count() == 2
+
+
+def test_an_operation_previews_before_it_applies(window, monkeypatch):
+    """The preview must be a real run of the operation, not a guess at one."""
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+    reports: list = []
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done: on_done(work()),
+    )
+    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
+    monkeypatch.setattr(
+        window, "_confirm_report",
+        lambda title, report, action: reports.append(report) or False,
+    )
+
+    window._compress_labels()
+
+    assert len(reports) == 1
+    assert reports[0].applied is False
+    assert reports[0].count > 0
+
+
+def test_corrected_labels_are_confirmed_separately_before_being_touched(
+    qt_app, window, monkeypatch
+):
+    """Two confirmations, in order of what is at stake.
+
+    The same ladder apply_state uses: first that this is more than the frame on
+    screen, then that proofread work is at risk. Recompressing rewrites the
+    file, so a corrected label must not be reached by one Apply.
+    """
+    window.state_panel.enable_check.setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
+    _tick_lamella(window)
+    monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
+    window.apply_state("corrected")
+    _settle(qt_app, lambda: window.controller.frame_states()[0] == "corrected")
+
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done: on_done(work()),
+    )
+    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
+    asked: list[str] = []
+
+    def refuse(title, report, action):
+        asked.append(action)
+        return False
+
+    monkeypatch.setattr(window, "_confirm_report", refuse)
+    window._compress_labels()
+    assert asked == ["Include them"]
+
+    # Confirming the corrected question re-previews and then asks to apply.
+    asked.clear()
+    monkeypatch.setattr(
+        window, "_confirm_report",
+        lambda title, report, action: asked.append(action) or True,
+    )
+    window._compress_labels()
+
+    assert asked == ["Include them", "Apply"]
+
+
+def test_an_operation_will_not_run_with_editing_off(window, monkeypatch):
+    """The same guard the state buttons have: writing files is writing files."""
+    _tick_lamella(window)
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda *args: pytest.fail("should not have started"),
+    )
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information", lambda *args, **kwargs: None
+    )
+
+    window._compress_labels()
+
+
+def test_an_operation_needs_something_selected(window, monkeypatch):
+    """With no project scanned there is nothing for an operation to act on."""
+    window.state_panel.enable_check.setChecked(True)
+    monkeypatch.setattr(window.controller, "scoped_records", list)
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda *args: pytest.fail("should not have started"),
+    )
+
+    window._compress_labels()
+
+
+def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings):
+    """Both act on the whole scan root, so neither is offered before one exists."""
+    controller = CurationController(cache=FrameCache(), config=CONFIG)
+    fresh = CurationWindow(controller, settings=settings)
+    try:
+        panel = fresh.metadata_panel
+        assert not panel.survey_button.isEnabled()
+        assert not panel.init_button.isEnabled()
+
+        panel.set_root(Path("/somewhere"))
+        assert panel.survey_button.isEnabled()
+        # Inspecting changes nothing; writing metadata files still waits.
+        assert not panel.init_button.isEnabled()
+
+        panel.enable.setChecked(True)
+        assert panel.init_button.isEnabled()
+    finally:
+        fresh.close()
+
+
+def test_scanning_names_the_collection_the_actions_would_write_to(window, project: Path):
+    assert window.metadata_panel.root == project
+    assert project.name in window.metadata_panel.collection_box.title()
+
+
+def test_the_operations_box_says_what_it_would_act_on(window):
+    _tick_lamella(window)
+
+    assert "1 lamella" in window.operations_panel.box.title()
+
+
+def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monkeypatch):
+    """The seam every other test substitutes, exercised once for real.
+
+    Asserted on the thread the work ran on: a queued connection that degraded
+    to a direct call would still deliver a result, and would freeze the window
+    for the minutes a compression takes.
+
+    The failure path is redirected because the window reports it in a modal
+    box, which in a test run waits for a click that never comes -- an
+    unexpected failure here has to fail the test, not stop the suite.
+    """
+    import threading
+
+    failures: list = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.critical",
+        lambda parent, title, text, *args: failures.append(text),
+    )
+    results: list = []
+    window._run_operation("Test", lambda: threading.current_thread().name, results.append)
+    _settle(qt_app, lambda: bool(results) or bool(failures))
+
+    assert not failures
+    assert results[0] != threading.current_thread().name
+    # The buttons locked for the duration are usable again.
+    assert window.operations_panel.convert_button.isEnabled()
+
+
+def test_a_failing_operation_is_reported_and_leaves_the_window_usable(
+    qt_app, window, monkeypatch
+):
+    reported: list = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.critical",
+        lambda parent, title, text, *args: reported.append(text),
+    )
+
+    window._run_operation("Test", lambda: 1 / 0, lambda result: pytest.fail("no result"))
+    _settle(qt_app, lambda: bool(reported))
+
+    assert "division by zero" in reported[0]
+    assert window.operations_panel.convert_button.isEnabled()
+
+
+def test_a_report_dialog_shows_its_lines_and_asks_only_when_it_can_act(qt_app):
+    """The dialog every operation reports through, on both of its two jobs."""
+    from qtpy.QtWidgets import QDialogButtonBox
+
+    from am_segmentation_manager.gui.widgets.report_dialog import ReportDialog
+
+    asking = ReportDialog(None, "Compress labels", ["headline", "a/b.tif"], "Apply")
+    assert asking.text() == "headline\na/b.tif"
+    assert asking.buttons.button(QDialogButtonBox.Ok).text() == "Apply"
+    # Cancel is the default, so Return cannot apply an operation by accident.
+    assert asking.buttons.button(QDialogButtonBox.Cancel).isDefault()
+    # exec() rather than exec_(): present and undeprecated under both bindings.
+    assert callable(asking.exec)
+
+    telling = ReportDialog(None, "Inspect layout", ["headline"])
+    assert telling.buttons.button(QDialogButtonBox.Ok) is None
+
+
+# ---------------------------------------------------------------------------
 # Plots are prepared at the size they are shown at
 # ---------------------------------------------------------------------------
 

@@ -170,3 +170,30 @@ A dry-run-first command matching on filename within a selected scope, refusing t
 overwrite, never deleting from the source, and reporting unmatched and ambiguous
 cases before writing anything. That is a small amount of work *given* `layout.py`,
 and much better specified once there is a real input to look at.
+
+---
+
+## 5. Label quantification in the window
+
+**What you want:** `quantify-labels` where the labels are on screen, so a surface
+area can be looked at against the image it was measured from.
+
+**Why it is not built:** it opens every label in the selection, which puts it in a
+different class from the operations that moved into the window — those report a
+list of files, this reports a table of numbers per class per lamella, and a table
+needs a widget, a sort order and somewhere to put it. The Export tab's breakdown
+already answers the cheap version of the question ("how much of what do I have"),
+and the command writes a CSV that a spreadsheet reads better than any pane here
+would.
+
+`stats` is out for the same reason and one more: it is a report over the whole
+collection, and the rule in [`decisions.md`](decisions.md) § Architecture puts
+whole-collection sweeps on the command line.
+
+### Questions to answer before designing
+
+* Is the wanted thing a table, or a per-frame number beside the image? The second
+  is much cheaper and might be the actual need.
+* Measuring is per label file and slow enough to need the worker thread and a
+  cache. Where would the results live between refreshes — recomputed, or held on
+  the controller like the frame cache?

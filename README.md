@@ -139,7 +139,9 @@ writing it out. Curate is the tab that opens, being the one used most.
 
 The Export tab shows what the current filters would export *before* writing --
 including the images that one-condition-per-scene and the empty-label rule
-would drop, which the command line reports only afterwards, in the log.
+would drop, which the command line reports only afterwards, in the log. *Check
+exported CSV* re-checks a list written earlier against the current tree, and
+reports which recorded paths have moved or gone.
 
 The Add data tab lists every project with a bar showing how many of its six
 descriptive fields are filled in, so the ones still to describe are visible
@@ -150,7 +152,11 @@ how many projects use each, while still accepting anything typed -- picking a
 value is what keeps `HeLa` and `Hela` from becoming separate groups in every
 breakdown. *Project* offers the name of the folder holding the project's YAML
 files; the button applies it, and nothing is written until *Save*. Right-click
-a project to copy its path or open it in the file manager.
+a project to copy its path or open it in the file manager. Under the list,
+*Inspect layout* reports how the scanned folder is read and what does not fit,
+and *Add metadata files* writes an `AM_metadata.yaml` into every project that
+has none -- including folders holding images that are not indexed as projects
+yet, which is what makes a pre-Autolamella dataset visible at all.
 
   python -m am_segmentation_manager.cli gui [START_PATH]
 
@@ -193,6 +199,16 @@ lamellae, otherwise ticked projects, otherwise the frame on screen. The panel on
 the right says which in words, and how many files it would move, before you
 press anything -- and anything beyond the current frame asks for confirmation.
 Ticking is not editing, so it works with the guard on.
+
+**Operations on the selection.** Below the state controls, *Convert
+predictions*, *Compress labels* and *Repair state* act on exactly the same
+selection, and need the same *Enable editing* guard. Each shows what it would
+do -- the labels it would write, the files it would re-encode, the groups it
+would move -- and does it only if you accept that report. Anything touching
+proofread data in `corrected/` asks separately first. The work runs on a
+background thread, so the window stays drawn while it happens; it cannot be
+cancelled partway, because each validates its whole batch before starting and
+stopping halfway is what that rule exists to prevent.
 
 **Requires a Qt binding.** `qtpy` alone is not enough -- it is an adapter and
 needs PySide6 (or PyQt5) underneath:
@@ -292,7 +308,9 @@ Project layout
     - labels.py          : conservative moves between workflow state folders
   - gui/             : the desktop window (only gui/widgets/ imports Qt)
     - controller.py, export_controller.py, metadata_controller.py : view models
+    - operations_controller.py : previewing and running the batch operations
     - selection.py     : what a state change applies to
+    - loader.py, worker.py : the two background threads
     - widgets/theme.py : the palette, stylesheet and chrome colours
   - cli.py           : CLI entrypoint
 - tests/             : pytest tests using tmp_path fixtures

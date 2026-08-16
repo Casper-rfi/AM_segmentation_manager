@@ -43,6 +43,9 @@ class ExportPanel(QWidget):
     image_metadata_export_requested = Signal(str)
     project_metadata_export_requested = Signal(str)
 
+    #: Emitted with a CSV to check the recorded paths of.
+    csv_check_requested = Signal(str)
+
     def __init__(self, controller: ExportController) -> None:
         super().__init__()
         self.controller = controller
@@ -174,8 +177,28 @@ class ExportPanel(QWidget):
             )
             column.addWidget(button)
 
+        # Beside the buttons that write the CSVs, because it answers the
+        # question they raise later: a training CSV records paths, and curating
+        # the collection afterwards moves the files they point at.
+        column.addSpacing(8)
+        self.check_button = QPushButton("Check exported CSV...")
+        self.check_button.setToolTip(
+            "Read a CSV written earlier and report which recorded paths have "
+            "moved or disappeared. Changes nothing."
+        )
+        self.check_button.clicked.connect(self._check)
+        column.addWidget(self.check_button)
+
         column.addStretch(1)
         return box
+
+    def _check(self) -> None:
+        """Ask which CSV to check. The window does the checking."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Check exported CSV", "", "CSV files (*.csv)"
+        )
+        if path:
+            self.csv_check_requested.emit(path)
 
     # -- behaviour ---------------------------------------------------------
 

@@ -16,10 +16,12 @@ from qtpy.QtCore import QByteArray, QRect, QSettings, Qt, QUrl, Signal
 from qtpy.QtGui import QCursor, QDesktopServices
 from qtpy.QtWidgets import (
     QApplication,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QSplitter,
     QTabWidget,
     QToolTip,
@@ -32,12 +34,16 @@ from ..controller import CurationController, EditingDisabled
 from ..export_controller import ExportController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
+from ..operations_controller import OperationReport, OperationsController
+from ..worker import BackgroundOperation
 from .changes_log import ChangesLog
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
 from .metadata_panel import MetadataPanel
+from .operations_panel import OperationsPanel
 from .project_panel import ProjectPanel
+from .report_dialog import ReportDialog
 from .state_panel import StatePanel
 
 logger = logging.getLogger(__name__)
@@ -86,6 +92,7 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str], ...]] = {
         ("Ctrl or Shift + drag", "Sweep a run of frames"),
         ("Tick a project or lamella", "Apply a state change to the whole of it"),
         ("Right-click a row or an image", "Copy its path, or open its folder"),
+        ("Operations", "Act on the same selection; each previews before it applies"),
     ),
     TAB_ADD_DATA: (
         ("Right-click a project", "Copy its path, or open its folder"),
@@ -130,6 +137,10 @@ class CurationWindow(QMainWindow):
     #: Emitted to the background loader thread; see :class:`BackgroundLoader`.
     request_load = Signal(list, int)
 
+    #: Emitted to the operations thread with the callable to run; see
+    #: :class:`~am_segmentation_manager.gui.worker.BackgroundOperation`.
+    request_operation = Signal(object)
+
     def __init__(
         self, controller: CurationController, settings: QSettings | None = None
     ) -> None:
@@ -152,6 +163,7 @@ class CurationWindow(QMainWindow):
         self.project_panel = ProjectPanel()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
+        self.operations_panel = OperationsPanel()
         self.changes_log = ChangesLog()
 
         # The other tabs get their own Qt-free controllers, and are handed the
@@ -159,6 +171,7 @@ class CurationWindow(QMainWindow):
         # scan would double the slowest thing the application does.
         self.export_controller = ExportController()
         self.metadata_controller = MetadataController()
+        self.operations_controller = OperationsController()
         self.export_panel = ExportPanel(self.export_controller)
         self.metadata_panel = MetadataPanel(self.metadata_controller)
 
@@ -170,6 +183,17 @@ class CurationWindow(QMainWindow):
         self.loader = BackgroundLoader(controller.cache)
         self.request_load.connect(self.loader.worker.load_batch)
         self.loader.worker.loaded.connect(self._on_loaded)
+
+        # Connected once and left alone. Disconnecting a slot from inside the
+        # emission of the signal it is handling is a connection list mutated
+        # mid-emit, which the two bindings do not treat alike; what is pending
+        # is tracked in a plain attribute instead.
+        self.operations = BackgroundOperation()
+        self.request_operation.connect(self.operations.worker.run)
+        self.operations.worker.finished.connect(self._operation_finished)
+        self.operations.worker.failed.connect(self._operation_failed)
+        self._pending_operation: tuple | None = None
+        self._busy: QProgressDialog | None = None
 
         remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
         if remembered:
@@ -192,13 +216,23 @@ class CurationWindow(QMainWindow):
         centre_layout.addWidget(self.image_panel, stretch=1)
         centre_layout.addLayout(self._build_timeline())
 
+        # The state controls take the top of the right column and the operations
+        # the bottom, with the free space between them: both act on the same
+        # selection, and separating them puts the buttons that change files
+        # where nothing else is going to be clicked by accident.
+        right = QWidget()
+        right_column = QVBoxLayout(right)
+        right_column.setContentsMargins(0, 0, 0, 0)
+        right_column.addWidget(self.state_panel, stretch=1)
+        right_column.addWidget(self.operations_panel)
+
         self.splitter = splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(3)
         splitter.addWidget(self.project_panel)
         splitter.addWidget(centre)
-        splitter.addWidget(self.state_panel)
+        splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([300, 1080, 220])
+        splitter.setSizes([300, 1080, 260])
 
         # The log spans the window under everything else, and can be dragged
         # shut. See changes_log.py for why it is not in the right-hand column.
@@ -285,6 +319,14 @@ class CurationWindow(QMainWindow):
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.state_requested.connect(self.apply_state)
 
+        self.operations_panel.convert_requested.connect(self._convert_predictions)
+        self.operations_panel.compress_requested.connect(self._compress_labels)
+        self.operations_panel.repair_requested.connect(self._repair_state)
+
+        self.metadata_panel.survey_requested.connect(self._inspect_layout)
+        self.metadata_panel.init_requested.connect(self._add_metadata_files)
+        self.export_panel.csv_check_requested.connect(self._check_csv)
+
         self.export_panel.training_export_requested.connect(self._export_training)
         self.export_panel.image_metadata_export_requested.connect(self._export_image_metadata)
         self.export_panel.project_metadata_export_requested.connect(self._export_project_metadata)
@@ -355,7 +397,218 @@ class CurationWindow(QMainWindow):
         projects = self.controller.projects
         self.export_controller.set_projects(projects, self.controller.start_path)
         self.metadata_controller.set_projects(projects)
+        self.operations_controller.set_start_path(self.controller.start_path)
         self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
+        self.metadata_panel.set_root(self.controller.start_path)
+
+    # -- operations that change files --------------------------------------
+
+    def _run_operation(self, description: str, work, on_done) -> None:
+        """Run *work* off the interface thread, then hand its result to *on_done*.
+
+        The one seam through which every operation reaches its thread, so a test
+        can substitute an inline call and still exercise the rest of the flow.
+        """
+        # An empty cancel button label is how Qt is told there is no cancel
+        # button; see worker.py for why there is nothing to cancel.
+        self._busy = QProgressDialog(f"{description}...", "", 0, 0, self)
+        self._busy.setWindowTitle(description)
+        self._busy.setWindowModality(Qt.ApplicationModal)
+        self._busy.setMinimumDuration(0)
+        self._busy.show()
+        self.operations_panel.set_busy(True)
+
+        self._pending_operation = (description, on_done)
+        self.request_operation.emit(work)
+
+    def _operation_finished(self, result) -> None:
+        """Hand a finished operation's result to whatever asked for it."""
+        pending = self._take_pending_operation()
+        if pending is None:  # pragma: no cover - nothing was submitted
+            return
+        _description, on_done = pending
+        on_done(result)
+
+    def _operation_failed(self, error) -> None:
+        """Report an operation that raised, on the thread that can show it."""
+        logger.warning("Operation failed: %s", error)
+        pending = self._take_pending_operation()
+        description = pending[0] if pending else "Operation failed"
+        QMessageBox.critical(self, description, str(error))
+
+    def _take_pending_operation(self) -> tuple | None:
+        """Close the busy dialog and return what was waiting on it, once.
+
+        Cleared before the callback runs, so a callback that starts the next
+        operation -- which is how preview leads to apply -- is not overwritten
+        by the one that just finished.
+        """
+        pending, self._pending_operation = self._pending_operation, None
+        if self._busy is not None:
+            self._busy.close()
+            self._busy = None
+        self.operations_panel.set_busy(False)
+        return pending
+
+    def _operate(self, title: str, run, *, rescan: bool = False) -> None:
+        """Preview an operation, confirm it, then apply what was previewed.
+
+        Args:
+            title: Names the operation in every dialog it opens.
+            run: Called as ``run(allow_corrected, dry_run)``, returning an
+                :class:`OperationReport`. It runs on the worker thread, so it
+                must touch nothing belonging to the window.
+            rescan: Set where the operation creates files a scan would have
+                indexed -- a new label, a new project. A refresh recounts what
+                is already in memory, which cannot show a file that was not
+                there when the scan ran.
+
+        Preview and apply are two runs of the same function rather than one run
+        whose result is replayed: a preview held across a dialog describes a
+        filesystem the user has had time to change.
+        """
+
+        def previewed(report: OperationReport, allow_corrected: bool = False) -> None:
+            if report.blocked and not allow_corrected:
+                if not self._confirm_report(title, report, "Include them"):
+                    return
+                self._run_operation(
+                    title, lambda: run(True, True), lambda r: previewed(r, True)
+                )
+                return
+            if not report.count:
+                self._show_report(title, report)
+                return
+            if not self._confirm_report(title, report, "Apply"):
+                return
+            self._run_operation(
+                title,
+                lambda: run(allow_corrected, False),
+                lambda applied: self._operation_applied(title, applied, rescan),
+            )
+
+        self._run_operation(title, lambda: run(False, True), previewed)
+
+    def _operation_applied(
+        self, title: str, report: OperationReport, rescan: bool = False
+    ) -> None:
+        """Record what an operation did and bring the window back in step."""
+        self.changes_log.append(f"{title}: {report.headline}")
+        logger.info("%s: %s", title, report.headline)
+        self._show_report(title, report)
+        if rescan and self.controller.start_path is not None:
+            self.scan(str(self.controller.start_path))
+        else:
+            self.refresh(reload_lists=True)
+
+    def _confirm_report(self, title: str, report: OperationReport, action: str) -> bool:
+        """Show a report and ask whether to go ahead."""
+        return ReportDialog(self, title, report.text(), action).exec() == QDialog.Accepted
+
+    def _show_report(self, title: str, report: OperationReport) -> None:
+        """Show a report with nothing to accept."""
+        ReportDialog(self, title, report.text()).exec()
+
+    def _editable_records(self) -> list | None:
+        """Return what an operation would act on, or None with a reason shown.
+
+        The same guard and the same selection the state buttons use: an
+        operation that writes files is no less of a change for being called
+        something else.
+        """
+        if not self.controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' before running an operation.",
+            )
+            return None
+        records = self.controller.scoped_records()
+        if not records:
+            self._flash("Nothing selected")
+            return None
+        return records
+
+    def _convert_predictions(self, kind: str) -> None:
+        records = self._editable_records()
+        if records is None:
+            return
+        # Rescanned afterwards: the new labels do not exist in the scanned
+        # index, so the timeline would keep drawing these frames as unlabelled.
+        self._operate(
+            "Convert predictions",
+            lambda allow, dry: self.operations_controller.convert_predictions(
+                records, kind, dry_run=dry
+            ),
+            rescan=True,
+        )
+
+    def _compress_labels(self) -> None:
+        records = self._editable_records()
+        if records is None:
+            return
+        self._operate(
+            "Compress labels",
+            lambda allow, dry: self.operations_controller.compress_labels(
+                records, allow_corrected=allow, dry_run=dry
+            ),
+        )
+
+    def _repair_state(self) -> None:
+        records = self._editable_records()
+        if records is None:
+            return
+        self._operate(
+            "Repair state",
+            lambda allow, dry: self.operations_controller.repair_state(
+                records, allow_corrected=allow, dry_run=dry
+            ),
+        )
+
+    def _inspect_layout(self) -> None:
+        """Report how the scanned directory is interpreted. Read-only."""
+        root = self.controller.start_path
+        if root is None:
+            self._flash("Scan a folder first")
+            return
+        self._run_operation(
+            "Inspect layout",
+            lambda: self.operations_controller.survey(root),
+            lambda report: self._show_report("Inspect layout", report),
+        )
+
+    def _add_metadata_files(self) -> None:
+        """Write a metadata file into every project under the scanned root."""
+        root = self.controller.start_path
+        if root is None:
+            self._flash("Scan a folder first")
+            return
+        if not self.metadata_controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' before writing metadata files.",
+            )
+            return
+        # Rescanned afterwards: making an unindexed dataset into a project is
+        # the point of this, and only a scan discovers the projects it created.
+        self._operate(
+            "Add metadata files",
+            lambda allow, dry: self.operations_controller.add_metadata_files(
+                root, dry_run=dry
+            ),
+            rescan=True,
+        )
+
+    def _check_csv(self, path: str) -> None:
+        """Check that every path an exported CSV records still exists."""
+        root = self.controller.start_path
+        if root is None:
+            self._flash("Scan a folder first")
+            return
+        self._run_operation(
+            "Check exported CSV",
+            lambda: self.operations_controller.check_csv(Path(path), root),
+            lambda report: self._show_report("Check exported CSV", report),
+        )
 
     def _export_training(self, directory: str) -> None:
         from ...operations.csv import export_training_csv
@@ -982,6 +1235,7 @@ class CurationWindow(QMainWindow):
         reach = self.controller.reach()
         self.state_panel.show_reach(reach.summary(), reach.shared_note())
         self.state_panel.show_selection(self.controller.describe_selection())
+        self.operations_panel.show_selection(self.controller.describe_selection())
         self.project_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 
@@ -1006,4 +1260,5 @@ class CurationWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         self._save_layout()
         self.loader.stop()
+        self.operations.stop()
         super().closeEvent(event)

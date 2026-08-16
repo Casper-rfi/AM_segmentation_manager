@@ -27,11 +27,19 @@ controllers. This is what makes navigation, cache eviction and state expansion
 testable without a display server. It is the one structural rule of the UI; adding a
 tab is not a reason to bend it.
 
-**The GUI hosts operations that are iterative or exploratory; batch operations stay in
-the CLI.** Choosing a training set is a loop — filter, see how many images survive,
-adjust — and a command that re-scans on every attempt is slow enough that you stop
-exploring. By this test `convert-predictions` and `compress-labels` stay CLI-only:
-each is run once and read from the log.
+**An operation belongs in the window when its input is the selection on screen; it
+stays on the command line when it is a sweep over the whole collection.** Naming a
+selection twice — once by ticking it, once as command-line filters — is where the two
+diverge and the wrong data gets moved. By this test `convert-predictions`,
+`compress-labels` and `repair-state` moved into the Curate tab once ticking made "the
+selection" a real thing, and `inspect-layout` and `init-project` into Add data, where
+the sweep *is* the collection and there is nothing to select. `stats` and
+`quantify-labels` did not: both are whole-collection reports, and their output is a
+table nobody is going to act on one row at a time.
+
+Each of these previews and then applies what it previewed, as two runs of the same
+function rather than one run replayed. A preview held across a dialog describes a
+filesystem the user has had time to change.
 
 **Label editing is out of scope.** Proofreading stays in the external segmentation
 software; this package decides *which* images get proofread and records when they are
@@ -220,6 +228,13 @@ rendered as `#207a94`). `chip_icon()` supplies the pixmap for every mode and sta
 which leaves Qt nothing to generate. Any future icon carrying meaning rather than
 decoration has to go through it.
 
+**A long operation runs on a thread, and there is nothing to cancel.** Recompressing
+a project's labels is minutes, and Qt draws nothing while the thread owning the
+widgets is busy — so the work goes to `gui/worker.py` and the window shows a busy
+dialog. No cancel button: these operations validate the complete set of changes before
+performing any of them, and stopping one halfway leaves exactly the half-applied
+collection that rule exists to prevent.
+
 **Timeline label lines are violet (`#a78bfa`); empty placeholders are grey
 (`#8a8a8a`).** Each modality's label line sits outside its state row so the two state
 rows stay adjacent for comparison. The placeholder must be *lighter* than the
@@ -243,7 +258,14 @@ effect, and `test_gui_*` sorts before most other tests. That is how a locale-dep
 non-English locale. `LC_ALL=… pytest` does **not** test this; `AM_SEG_TEST_LOCALE=…
 pytest` does.
 
-**The development and user environments differ** — PyQt5 here, PySide6 there. Three
+**Never disconnect a signal from inside the handler for that signal.** A connection
+list mutated mid-emit works under PyQt5 and hangs under PySide6 — the suite stalled
+indefinitely on the first test to run a real background operation, with no traceback,
+because the failure path opens a modal box nobody is there to dismiss. Connect once
+and track what is pending in an attribute. The same shape hides in any
+connect-per-call pattern.
+
+**The development and user environments differ** — PyQt5 here, PySide6 there. Four
 bugs have reached the user through that gap. Run the suite under both bindings and a
 non-English locale before releasing.
 

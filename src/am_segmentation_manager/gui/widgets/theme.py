@@ -222,7 +222,7 @@ def apply_theme(application) -> None:
 
     Fusion rather than the platform style, so the window looks the same wherever
     it runs -- the development machine and the user's differ in Qt binding, and
-    three bugs have already reached the user through that gap.
+    four bugs have already reached the user through that gap.
     """
     application.setStyle("Fusion")
     application.setPalette(build_palette())

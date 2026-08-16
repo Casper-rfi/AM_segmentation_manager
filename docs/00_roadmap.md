@@ -43,6 +43,12 @@ are live only while it shows, so `F1` lists what can actually be pressed. What a
 change applies to is ticked in the project and lamella lists, or picked out of the
 timeline frame by frame.
 
+Every command whose input is that selection is also in the window: Curate runs
+`convert-predictions`, `compress-labels` and `repair-state` against the ticked set,
+Add data runs `inspect-layout` and `init-project` over the scanned folder, and Export
+checks a CSV written earlier. Each previews first and applies only what the preview
+showed, on a worker thread so a long one cannot freeze the window.
+
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.
 
