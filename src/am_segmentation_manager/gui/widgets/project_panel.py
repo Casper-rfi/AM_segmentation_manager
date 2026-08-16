@@ -32,9 +32,15 @@ from qtpy.QtWidgets import (
 )
 
 from ..controller import CurationStatus
-from .common import add_path_menu
+from .common import add_path_menu, chip_icon
 from .frame_strip import MISMATCH, STATE_COLOURS
-from .theme import SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
+from .theme import (
+    SWATCH_BAND,
+    SWATCH_GAP,
+    SWATCH_HEIGHT,
+    SWATCH_OUTLINE,
+    SWATCH_WIDTH,
+)
 
 
 class ProjectPanel(QWidget):
@@ -407,42 +413,44 @@ STATUS_COLOURS = {
 STATUS_EMPTY = "empty"
 
 def _status_icon(status: CurationStatus) -> QIcon:
-    """Return a two-part chip: SEM on the left, FIB on the right.
+    """Return a two-band chip: SEM above, FIB below.
 
     One icon rather than two so a list row stays one line, and split rather
     than combined because a lamella whose SEM work is finished and whose FIB has
-    not started is a normal situation that one mark cannot express.
+    not started is a normal situation that one mark cannot express. Stacked
+    rather than side by side; :data:`SWATCH_WIDTH` says why.
     """
-    pixmap = QPixmap(SWATCH_WIDTH * 2 + 2, SWATCH_HEIGHT)
+    pixmap = QPixmap(SWATCH_WIDTH, SWATCH_HEIGHT)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     try:
         for index, modality in enumerate(("SEM", "FIB")):
-            left = index * (SWATCH_WIDTH + 2)
-            _paint_status(painter, left, status.of(modality))
+            top = index * (SWATCH_BAND + SWATCH_GAP)
+            _paint_status(painter, top, status.of(modality))
     finally:
         # status.of() raises on an unexpected modality, and a painter left
         # alive past its pixmap crashes the process instead of reporting it.
         painter.end()
-    return QIcon(pixmap)
+    return chip_icon(pixmap)
 
 
-def _paint_status(painter: QPainter, left: int, status: str) -> None:
-    """Paint one modality's chip at *left*, outlined so it reads anywhere."""
+def _paint_status(painter: QPainter, top: int, status: str) -> None:
+    """Paint one modality's band at *top*, outlined so it reads anywhere."""
     if status == STATUS_EMPTY:
         return
     if status == "in progress":
-        # Half started, half finished -- reads as "between the two" without
-        # needing a fourth colour explained anywhere.
+        # Part started, part finished, filling left to right like any progress
+        # bar -- which reads as "between the two" without needing a fourth
+        # colour explained anywhere.
         half = SWATCH_WIDTH // 2
-        painter.fillRect(left, 0, half, SWATCH_HEIGHT, STATUS_COLOURS["not started"])
+        painter.fillRect(0, top, half, SWATCH_BAND, STATUS_COLOURS["done"])
         painter.fillRect(
-            left + half, 0, SWATCH_WIDTH - half, SWATCH_HEIGHT, STATUS_COLOURS["done"]
+            half, top, SWATCH_WIDTH - half, SWATCH_BAND, STATUS_COLOURS["not started"]
         )
     else:
         painter.fillRect(
-            left, 0, SWATCH_WIDTH, SWATCH_HEIGHT,
+            0, top, SWATCH_WIDTH, SWATCH_BAND,
             STATUS_COLOURS.get(status, QColor(Qt.transparent)),
         )
     painter.setPen(SWATCH_OUTLINE)
-    painter.drawRect(left, 0, SWATCH_WIDTH - 1, SWATCH_HEIGHT - 1)
+    painter.drawRect(0, top, SWATCH_WIDTH - 1, SWATCH_BAND - 1)

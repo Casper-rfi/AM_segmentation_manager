@@ -21,9 +21,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 if importlib.util.find_spec("qtpy") is not None:
-    from qtpy.QtCore import QSettings
+    from qtpy.QtCore import QSettings, Qt
     from qtpy.QtGui import QColor, QPalette
-    from qtpy.QtWidgets import QApplication, QLineEdit, QSplitter, QWidget
+    from qtpy.QtWidgets import (
+        QApplication,
+        QLineEdit,
+        QListWidget,
+        QSplitter,
+        QWidget,
+    )
 
     from am_segmentation_manager.gui.widgets import theme
 
@@ -111,6 +117,50 @@ def test_a_locked_field_still_reads_as_locked(themed):
     disabled = QColor(editor.grab().toImage().pixel(150, 13))
 
     assert disabled != enabled
+
+
+def _ticked_list(current: int) -> QListWidget:
+    """Return a three-row ticked list with *current* selected."""
+    widget = QListWidget()
+    widget.addItems(["one", "two", "three"])
+    for row in range(widget.count()):
+        item = widget.item(row)
+        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+        item.setCheckState(Qt.Checked)
+    widget.setCurrentRow(current)
+    widget.resize(300, 90)
+    return widget
+
+
+def _indicator_darkness(widget, row: int) -> int:
+    """Return the darkest pixel in a row's checkbox column."""
+    image = widget.grab().toImage()
+    top = 4 + row * 22
+    return min(
+        QColor(image.pixel(x, y)).lightness()
+        for y in range(top, top + 20)
+        for x in range(4, 24)
+    )
+
+
+def test_a_tick_stays_dark_on_the_row_being_looked_at(themed):
+    """The ticks decide what a state change moves, so one that fades on the
+    current row is the one row where it matters most.
+
+    A solid accent fill left the indicator at mid grey on blue; the row is
+    tinted instead, which keeps Qt's own indicator legible.
+    """
+    widget = _ticked_list(current=0)
+
+    assert _indicator_darkness(widget, 0) <= _indicator_darkness(widget, 1) + 10
+
+
+def test_the_row_being_looked_at_is_still_obvious(themed):
+    """Legible is not the same as indistinguishable: it still has to stand out."""
+    widget = _ticked_list(current=0)
+    image = widget.grab().toImage()
+
+    assert QColor(image.pixel(200, 12)) != QColor(image.pixel(200, 34))
 
 
 def test_a_badge_says_what_it_means_rather_than_naming_a_colour(themed):

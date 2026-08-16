@@ -73,6 +73,35 @@ TAB_EXPORT = "export"
 #: A key that works everywhere, whatever is showing.
 ANY_TAB = "any"
 
+#: Mouse gestures worth listing beside the keys, per tab.
+#:
+#: Not bindings: nothing registers these, the widgets read the modifiers
+#: themselves. They are here because F1 is the one place that answers "what can
+#: I do here?", and a gesture nobody can discover is a gesture nobody uses.
+TAB_GESTURES: dict[str, tuple[tuple[str, str], ...]] = {
+    TAB_CURATE: (
+        ("Click or drag the timeline", "Move to a frame"),
+        ("Ctrl-click a frame", "Pick it out for a state change, or drop it again"),
+        ("Shift-click a frame", "Extend the picked run from the last frame you pointed at"),
+        ("Ctrl or Shift + drag", "Sweep a run of frames"),
+        ("Tick a project or lamella", "Apply a state change to the whole of it"),
+        ("Right-click a row or an image", "Copy its path, or open its folder"),
+    ),
+    TAB_ADD_DATA: (
+        ("Right-click a project", "Copy its path, or open its folder"),
+    ),
+}
+
+
+def _table(rows) -> str:
+    """Return an HTML table of ``(what to do, what it does)`` pairs."""
+    body = "".join(
+        f"<tr><td style='padding-right: 14px;'><b>{action}</b></td>"
+        f"<td>{description}</td></tr>"
+        for action, description in rows
+    )
+    return f"<table>{body}</table>"
+
 
 @dataclass(frozen=True)
 class Binding:
@@ -496,15 +525,18 @@ class CurationWindow(QMainWindow):
         """
         tab = tab if tab is not None else self._current_tab()
         applicable = [b for b in self._bindings if b.tab in (tab, ANY_TAB)]
-        rows = "".join(
-            f"<tr><td style='padding-right: 14px;'><b>{binding.key}</b></td>"
-            f"<td>{binding.description}</td></tr>"
-            for binding in applicable
+        help_text = _table(
+            (binding.key, binding.description) for binding in applicable
         )
-        help_text = f"<table>{rows}</table>"
         if not any(binding.tab != ANY_TAB for binding in applicable):
             help_text += (
                 "<p style='margin-top: 10px;'>This tab has no keys of its own.</p>"
+            )
+        gestures = TAB_GESTURES.get(tab, ())
+        if gestures:
+            help_text += (
+                "<p style='margin-top: 12px;'><b>With the mouse</b></p>"
+                + _table(gestures)
             )
         if tab == TAB_CURATE:
             help_text += (

@@ -236,28 +236,40 @@ def test_no_mismatch_leaves_the_strip_untinted(timeline):
 # images loading.
 # ---------------------------------------------------------------------------
 
-def _click(widget, index: int, modifier=None):
-    """Send a real press at a frame's column, with an optional modifier."""
-    from qtpy.QtCore import QPoint, Qt
+def _mouse_event(widget, index: int, kind, button, buttons, modifier):
+    """Build a mouse event over a frame's column.
+
+    The global position is passed even though nothing here reads it: the
+    overload without one is deprecated in Qt 6 and warns under PySide6, while
+    this form exists in both Qt 5 and Qt 6.
+    """
+    from qtpy.QtCore import QPoint
     from qtpy.QtGui import QMouseEvent
 
-    modifiers = modifier if modifier is not None else Qt.NoModifier
     point = QPoint(_column(index, widget), widget.height() // 2)
-    event = QMouseEvent(
-        QMouseEvent.MouseButtonPress, point, Qt.LeftButton, Qt.LeftButton, modifiers
+    return QMouseEvent(
+        kind, point, widget.mapToGlobal(point), button, buttons, modifier
     )
-    widget.mousePressEvent(event)
+
+
+def _click(widget, index: int, modifier=None):
+    """Send a real press at a frame's column, with an optional modifier."""
+    from qtpy.QtCore import Qt
+    from qtpy.QtGui import QMouseEvent
+
+    widget.mousePressEvent(_mouse_event(
+        widget, index, QMouseEvent.MouseButtonPress,
+        Qt.LeftButton, Qt.LeftButton, modifier if modifier is not None else Qt.NoModifier,
+    ))
 
 
 def _drag_to(widget, index: int, modifier):
-    from qtpy.QtCore import QPoint, Qt
+    from qtpy.QtCore import Qt
     from qtpy.QtGui import QMouseEvent
 
-    point = QPoint(_column(index, widget), widget.height() // 2)
-    event = QMouseEvent(
-        QMouseEvent.MouseMove, point, Qt.NoButton, Qt.LeftButton, modifier
-    )
-    widget.mouseMoveEvent(event)
+    widget.mouseMoveEvent(_mouse_event(
+        widget, index, QMouseEvent.MouseMove, Qt.NoButton, Qt.LeftButton, modifier,
+    ))
 
 
 @pytest.fixture

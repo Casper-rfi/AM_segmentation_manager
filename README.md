@@ -161,6 +161,12 @@ stay locked until *Enable editing* is ticked.
 The window shows one lamella at a time, as a single chronological stack of
 frames across all of its adaptive milling stages.
 
+Every row of the project and lamella lists carries a chip showing how far
+curated it is: SEM in the upper band, FIB in the lower one, matching the
+timeline. Blue means not started, teal means done, and a band filled part way
+from the left is part way through. A modality with no images at all draws no
+band. Hover a row for the same thing in words.
+
 The timeline at the bottom shows curation progress for the whole lamella, SEM
 on the top row and FIB below. A thin line outside each row shows that
 modality's labels: violet where a label holds an annotation, grey where it is

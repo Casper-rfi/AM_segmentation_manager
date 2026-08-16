@@ -40,15 +40,15 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import add_path_menu
+from .common import add_path_menu, chip_icon
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
 logger = logging.getLogger(__name__)
 
-#: How wide the completeness bar is. Two swatches, so it lines up with the
-#: two-part curation chips in the other list rather than sitting at its own size.
-COMPLETENESS_WIDTH = SWATCH_WIDTH * 2 + 2
+#: How wide the completeness bar is. The same as a curation chip in the other
+#: list, so the two line up rather than each sitting at its own size.
+COMPLETENESS_WIDTH = SWATCH_WIDTH
 
 
 def _completeness_icon(summary: ProjectSummary) -> QIcon:
@@ -75,7 +75,7 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
         # A painter outliving its pixmap crashes the process instead of
         # reporting it.
         painter.end()
-    return QIcon(pixmap)
+    return chip_icon(pixmap)
 
 
 def editor_text(editor: QWidget) -> str:

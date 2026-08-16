@@ -418,6 +418,125 @@ def test_list_titles_show_counts(window):
 
 
 # ---------------------------------------------------------------------------
+# Status chips
+#
+# The colour is the information, so Qt must not be left to re-tint it.
+# ---------------------------------------------------------------------------
+
+def test_a_chip_is_the_same_pixmap_in_every_icon_mode(qt_app):
+    """Left to itself, Qt generates a Selected variant blended with the
+    highlight colour, which washes the chip out on the row the user is on."""
+    from qtpy.QtGui import QIcon, QPixmap
+
+    from am_segmentation_manager.gui.widgets.common import chip_icon
+
+    pixmap = QPixmap(14, 10)
+    pixmap.fill(Qt.red)
+    icon = chip_icon(pixmap)
+
+    normal = icon.pixmap(14, 10, QIcon.Normal).toImage()
+    for mode in (QIcon.Selected, QIcon.Active, QIcon.Disabled):
+        assert icon.pixmap(14, 10, mode).toImage() == normal
+
+
+def _chip_image(sem: str, fib: str):
+    """Render one status chip on its own, at its natural size."""
+    from am_segmentation_manager.gui.controller import CurationStatus
+    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_HEIGHT, SWATCH_WIDTH
+
+    icon = _status_icon(CurationStatus(sem=sem, fib=fib))
+    return icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage()
+
+
+def test_the_two_modalities_are_stacked_not_side_by_side(qt_app):
+    """Progress fills a band left to right, so the modalities must not also be
+    split left to right: a chip was up to four segments in a row and nothing
+    said which boundary separated the modalities. SEM above FIB also matches
+    the timeline's rows."""
+    from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
+    from am_segmentation_manager.gui.widgets.theme import (
+        SWATCH_BAND,
+        SWATCH_GAP,
+        SWATCH_WIDTH,
+    )
+
+    image = _chip_image(sem="done", fib="not started")
+    middle = SWATCH_WIDTH // 2
+
+    assert image.pixelColor(middle, 2) == STATE_COLOURS["corrected"]
+    assert image.pixelColor(middle, SWATCH_BAND + SWATCH_GAP + 2) == (
+        STATE_COLOURS["selected"]
+    )
+
+
+def test_a_part_finished_modality_reads_as_a_progress_bar(qt_app):
+    """Filled from the left in the finished colour, which is the one thing a
+    half-and-half band can be without needing a fourth colour explained."""
+    from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_WIDTH
+
+    image = _chip_image(sem="in progress", fib="empty")
+
+    assert image.pixelColor(2, 2) == STATE_COLOURS["corrected"]
+    assert image.pixelColor(SWATCH_WIDTH - 3, 2) == STATE_COLOURS["selected"]
+
+
+def test_a_modality_with_no_images_draws_no_band(qt_app):
+    """Absent has to read as absent, not as a state: many older datasets have
+    no FIB whatsoever."""
+    from am_segmentation_manager.gui.widgets.theme import (
+        SWATCH_BAND,
+        SWATCH_GAP,
+        SWATCH_WIDTH,
+    )
+
+    image = _chip_image(sem="done", fib="empty")
+    band = image.pixelColor(SWATCH_WIDTH // 2, SWATCH_BAND + SWATCH_GAP + 2)
+
+    assert band.alpha() == 0
+
+
+def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
+    """The regression: a 'done' teal came out blue-green on the current row,
+    against a blue-tinted background -- so a finished lamella looked unfinished
+    exactly when you selected it to check."""
+    from qtpy.QtGui import QColor
+    from qtpy.QtWidgets import QListWidget
+
+    from am_segmentation_manager.gui.controller import CurationStatus
+    from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
+    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
+    from am_segmentation_manager.gui.widgets.theme import apply_theme
+
+    stylesheet, palette = qt_app.styleSheet(), qt_app.palette()
+    apply_theme(qt_app)
+    try:
+        done = CurationStatus(sem="done", fib="done")
+        widget = QListWidget()
+        widget.addItems(["current", "other"])
+        for row in range(2):
+            widget.item(row).setIcon(_status_icon(done))
+        widget.setCurrentRow(0)
+        widget.resize(300, 60)
+        image = widget.grab().toImage()
+
+        teal = STATE_COLOURS["corrected"].name()
+        found = [
+            any(
+                QColor(image.pixel(x, y)).name() == teal
+                for y in range(4 + row * 22, 24 + row * 22)
+                for x in range(4, 40)
+            )
+            for row in range(2)
+        ]
+        assert found == [True, True]
+    finally:
+        qt_app.setStyleSheet(stylesheet)
+        qt_app.setPalette(palette)
+
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 
@@ -536,6 +655,25 @@ def test_the_help_lists_only_the_active_tab(window):
     assert "Next project" in metadata and "Next frame" not in metadata
     # The editing guard only governs the curate tab's keys.
     assert "Enable editing" in curate and "Enable editing" not in metadata
+
+
+def test_the_help_describes_the_mouse_gestures_too(window):
+    """Picking frames out has no key to press, so listing only keys left the
+    whole selection mechanism undiscoverable."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+
+    help_text = window.shortcut_help(TAB_CURATE)
+
+    assert "Ctrl-click" in help_text
+    assert "Shift-click" in help_text
+    assert "Tick a project or lamella" in help_text
+
+
+def test_every_gesture_is_described(window):
+    from am_segmentation_manager.gui.widgets.main_window import TAB_GESTURES
+
+    for gestures in TAB_GESTURES.values():
+        assert all(action and description for action, description in gestures)
 
 
 def test_a_tab_with_no_keys_of_its_own_says_so(window):

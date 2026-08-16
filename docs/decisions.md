@@ -212,6 +212,14 @@ horizontal scrollbar scrolls instead of eliding — which cut a session's projec
 at the edge into identical-looking rows. `ElideMiddle` plus `ScrollBarAlwaysOff` keeps
 both ends; the tooltip carries the whole label.
 
+**A list re-tints the icon of the row you are on.** Qt draws a selected row's icon
+in `QIcon::Selected` mode, and the variant it generates for that mode is blended with
+the highlight colour — so a status chip whose colour *is* the information came out as
+a different colour on exactly the row being looked at (the corrected teal `#1a7f6e`
+rendered as `#207a94`). `chip_icon()` supplies the pixmap for every mode and state,
+which leaves Qt nothing to generate. Any future icon carrying meaning rather than
+decoration has to go through it.
+
 **Timeline label lines are violet (`#a78bfa`); empty placeholders are grey
 (`#8a8a8a`).** Each modality's label line sits outside its state row so the two state
 rows stay adjacent for comparison. The placeholder must be *lighter* than the

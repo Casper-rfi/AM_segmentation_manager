@@ -41,6 +41,13 @@ PRESSED = "#e2e6ee"
 ACCENT = "#2f6feb"
 ACCENT_TEXT = "#ffffff"
 
+#: The row being looked at, in a list whose rows also carry a checkbox and a
+#: status chip. A tint rather than a solid accent fill: Qt draws the check
+#: indicator in its own colours, so a saturated row left the tick at low
+#: contrast on exactly the row the user is on -- and the chips are outlined for
+#: legibility on any background, not for surviving white-on-blue.
+SELECTED = "#dbe6fb"
+
 #: Text colours for a short annotation beside a value.
 WARNING = "#b26a00"
 ERROR = "#c0392b"
@@ -63,8 +70,19 @@ SHARED_NOTE_STYLE = f"color: {WARNING};"
 #: tuning the fill against one theme.
 SWATCH_OUTLINE = QColor("#1a1a1a")
 
-SWATCH_WIDTH = 14
-SWATCH_HEIGHT = 10
+#: A status chip is one band per modality, **SEM above FIB** -- the same
+#: arrangement as the timeline's two rows, so the layout means the same thing in
+#: both places.
+#:
+#: Stacking them is what makes a part-finished modality readable. Progress runs
+#: left to right within a band, so with the modalities side by side a chip was
+#: up to four segments in a row and nothing said which boundary separated the
+#: modalities and which separated started from finished -- it read as a gradient.
+#: On different axes neither can be mistaken for the other.
+SWATCH_WIDTH = 20
+SWATCH_BAND = 6
+SWATCH_GAP = 1
+SWATCH_HEIGHT = SWATCH_BAND * 2 + SWATCH_GAP
 
 
 def build_palette() -> QPalette:
@@ -140,9 +158,9 @@ def stylesheet() -> str:
        which leaves highlighted text painted white on the list's white
        background -- the selected row simply goes blank. Both states are set
        here because an inactive window uses its own. */
-    QListWidget::item:selected {{ background: {ACCENT}; color: {ACCENT_TEXT}; }}
+    QListWidget::item:selected {{ background: {SELECTED}; color: {TEXT}; }}
     QListWidget::item:selected:!active {{
-        background: {ACCENT}; color: {ACCENT_TEXT};
+        background: {SELECTED}; color: {TEXT};
     }}
 
     QPushButton {{

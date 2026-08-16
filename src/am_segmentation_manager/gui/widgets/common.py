@@ -10,9 +10,29 @@ from __future__ import annotations
 import logging
 
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QIcon, QPixmap
 from qtpy.QtWidgets import QListWidget, QMenu
 
 logger = logging.getLogger(__name__)
+
+
+def chip_icon(pixmap: QPixmap) -> QIcon:
+    """Return an icon Qt will draw the same way on every row.
+
+    A view draws the icon of the row being looked at in ``QIcon.Selected``
+    mode, and the variant Qt generates for that mode blends the pixmap with the
+    highlight colour. For a status chip that is wrong twice over: the colour
+    *is* the information, and it gets washed out on exactly the row the user is
+    on -- a "done" teal came out as a blue-green against a blue-tinted row.
+
+    Supplying the pixmap for every mode and state leaves nothing for Qt to
+    generate.
+    """
+    icon = QIcon()
+    for mode in (QIcon.Normal, QIcon.Selected, QIcon.Active, QIcon.Disabled):
+        for state in (QIcon.On, QIcon.Off):
+            icon.addPixmap(pixmap, mode, state)
+    return icon
 
 
 def add_path_menu(
