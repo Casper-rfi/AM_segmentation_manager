@@ -469,37 +469,50 @@ def test_target_can_still_be_set_explicitly_after_a_mode_change():
 
 
 # ---------------------------------------------------------------------------
-# Edit scope
+# What a state change applies to
+#
+# The precedence is the whole of the model: frames beat ticked lamellae, which
+# beat ticked projects, and with none of them it is the frame on screen.
 # ---------------------------------------------------------------------------
 
-def test_frame_scope_covers_only_the_current_frame():
+def test_nothing_ticked_covers_only_the_current_frame():
     controller = make_controller()
     controller.set_target("both")
 
     assert len(controller.scoped_records()) == 2
+    assert controller.describe_selection() == "this frame"
 
 
-def test_lamella_scope_covers_every_frame_of_the_lamella():
+def test_a_ticked_lamella_covers_every_frame_of_it():
     controller = make_controller()
     controller.set_target("both")
-    controller.set_scope("lamella")
+    controller.set_lamella_checked(0, True)
 
     # 4 frames x 2 modalities
     assert len(controller.scoped_records()) == 8
 
 
-def test_project_scope_covers_every_lamella():
+def test_a_ticked_project_covers_every_lamella():
     controller = make_controller()
     controller.set_target("both")
-    controller.set_scope("project")
+    controller.set_project_checked(0, True)
 
     # (4 + 2) frames x 2 modalities
     assert len(controller.scoped_records()) == 12
 
 
-def test_scope_respects_the_modality_target():
+def test_unticking_puts_it_back(tmp_path):
     controller = make_controller()
-    controller.set_scope("lamella")
+    controller.set_target("both")
+    controller.set_lamella_checked(0, True)
+    controller.set_lamella_checked(0, False)
+
+    assert len(controller.scoped_records()) == 2
+
+
+def test_a_selection_respects_the_modality_target():
+    controller = make_controller()
+    controller.set_lamella_checked(0, True)
     controller.set_target("SEM")
 
     records = controller.scoped_records()
@@ -508,18 +521,60 @@ def test_scope_respects_the_modality_target():
     assert {record.modality for record in records} == {"SEM"}
 
 
-def test_unknown_scope_raises():
+def test_picked_frames_beat_a_ticked_lamella():
+    """Finest-first, because it is the fail-safe direction: a forgotten frame
+    selection makes a change smaller than intended, not larger."""
     controller = make_controller()
+    controller.set_target("both")
+    controller.set_lamella_checked(0, True)
+    controller.selection.toggle(0)
 
-    with pytest.raises(ValueError):
-        controller.set_scope("everything")
+    assert len(controller.scoped_records()) == 2
 
 
-def test_bulk_change_applies_across_the_lamella(tmp_path):
+def test_a_ticked_lamella_beats_a_ticked_project():
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_project_checked(0, True)
+    controller.set_lamella_checked(0, True)
+
+    assert len(controller.scoped_records()) == 8
+
+
+def test_picked_frames_are_dropped_when_the_lamella_changes():
+    """A frame index only means anything within one lamella."""
+    controller = make_controller()
+    controller.selection.toggle(2)
+
+    controller.select_lamella(1)
+
+    assert controller.selected_frames() == set()
+
+
+def test_a_tick_survives_changing_project():
+    """Ticks are keyed by path, so they outlive the row numbers they were made
+    on -- a lamella ticked in one project is still ticked after visiting
+    another."""
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_lamella_checked(1, True)
+    ticked = controller.lamellae[1]
+
+    controller.select_lamella(0)
+
+    assert controller.lamella_checks() == [False, True]
+    records = controller.scoped_records()
+    assert len(records) == 4  # the second lamella has 2 frames x 2 modalities
+    assert all(
+        str(ticked.path) in str(record.image_path) for record in records
+    )
+
+
+def test_a_change_applies_across_a_ticked_lamella(tmp_path):
     controller = make_controller()
     controller.set_editing_enabled(True)
     controller.set_target("both")
-    controller.set_scope("lamella")
+    controller.set_lamella_checked(0, True)
     for frame in controller.frames:
         _place_on_disk(tmp_path, frame)
 
@@ -527,6 +582,22 @@ def test_bulk_change_applies_across_the_lamella(tmp_path):
 
     assert changed == 8
     assert all(state == "deselected" for state in controller.frame_states())
+
+
+def test_a_change_applies_to_only_the_picked_frames(tmp_path):
+    controller = make_controller()
+    controller.set_editing_enabled(True)
+    controller.set_target("both")
+    for frame in controller.frames:
+        _place_on_disk(tmp_path, frame)
+    controller.selection.toggle(0)
+    controller.selection.toggle(2)
+
+    controller.apply_state("deselected")
+
+    states = controller.frame_states()
+    assert [states[0], states[2]] == ["deselected", "deselected"]
+    assert [states[1], states[3]] == ["selected", "selected"]
 
 
 # ---------------------------------------------------------------------------

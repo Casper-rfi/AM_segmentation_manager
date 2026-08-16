@@ -174,6 +174,20 @@ only: a state change follows the label, so images sharing one always move
 together whichever is on screen. The line above the state buttons says how far
 the next change reaches, and names how many images a shared label pulls in.
 
+**Choosing what a state change applies to.** Tick projects or lamellae in the
+lists on the left -- *Tick all* and *None* sit under each -- or pick individual
+frames out of the timeline: Ctrl-click (Cmd on macOS) adds or removes one,
+Shift-click extends from the last frame you pointed at, and either modifier can
+be dragged to sweep a run. Picked frames are marked by a white band along the
+top of the timeline, and `Esc` clears them. Plain clicking still moves you to a
+frame rather than picking it, so building a selection never sets images loading.
+
+The finest thing picked wins: frames if any are picked, otherwise ticked
+lamellae, otherwise ticked projects, otherwise the frame on screen. The panel on
+the right says which in words, and how many files it would move, before you
+press anything -- and anything beyond the current frame asks for confirmation.
+Ticking is not editing, so it works with the guard on.
+
 **Requires a Qt binding.** `qtpy` alone is not enough -- it is an adapter and
 needs PySide6 (or PyQt5) underneath:
 
@@ -196,6 +210,7 @@ On the Curate tab:
 | Space | Show or hide the label overlay |
 | D / S / C | Set state: deselected / selected / corrected |
 | F | Fit the images to the panes |
+| Esc | Clear the picked-out frames |
 
 On the Add data tab, Up / Down walk the project list. `F1` works everywhere.
 
@@ -271,6 +286,7 @@ Project layout
     - labels.py          : conservative moves between workflow state folders
   - gui/             : the desktop window (only gui/widgets/ imports Qt)
     - controller.py, export_controller.py, metadata_controller.py : view models
+    - selection.py     : what a state change applies to
     - widgets/theme.py : the palette, stylesheet and chrome colours
   - cli.py           : CLI entrypoint
 - tests/             : pytest tests using tmp_path fixtures

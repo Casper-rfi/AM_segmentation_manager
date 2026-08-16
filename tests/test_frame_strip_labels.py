@@ -26,6 +26,7 @@ if HAS_QT:
         LABEL_LINE_HEIGHT,
         ROW_HEIGHT,
         ROW_MODALITIES,
+        SELECTION_BAND,
         STATE_COLOURS,
         FrameTimeline,
     )
@@ -83,8 +84,9 @@ def _column(index: int, widget) -> int:
 # ---------------------------------------------------------------------------
 
 def test_each_modality_gets_a_label_line_and_a_state_row(timeline):
-    expected = len(ROW_MODALITIES) * (ROW_HEIGHT + LABEL_LINE_HEIGHT + 1) + 2
-    assert timeline.height() == expected
+    bands = len(ROW_MODALITIES) * (ROW_HEIGHT + LABEL_LINE_HEIGHT + 1) + 2
+
+    assert timeline.height() == SELECTION_BAND + bands
 
 
 def test_the_label_lines_sit_on_the_outside_edges(timeline):
@@ -224,3 +226,130 @@ def test_no_mismatch_leaves_the_strip_untinted(timeline):
 
     row_y = FrameTimeline._row_top(0) + ROW_HEIGHT // 2
     assert image.pixelColor(_column(0, timeline), row_y) == STATE_COLOURS["selected"]
+
+
+# ---------------------------------------------------------------------------
+# Picking frames out
+#
+# Plain click and drag still seek; the modifiers select instead. The two are
+# separate on purpose: building a selection must not set a lamella's worth of
+# images loading.
+# ---------------------------------------------------------------------------
+
+def _click(widget, index: int, modifier=None):
+    """Send a real press at a frame's column, with an optional modifier."""
+    from qtpy.QtCore import QPoint, Qt
+    from qtpy.QtGui import QMouseEvent
+
+    modifiers = modifier if modifier is not None else Qt.NoModifier
+    point = QPoint(_column(index, widget), widget.height() // 2)
+    event = QMouseEvent(
+        QMouseEvent.MouseButtonPress, point, Qt.LeftButton, Qt.LeftButton, modifiers
+    )
+    widget.mousePressEvent(event)
+
+
+def _drag_to(widget, index: int, modifier):
+    from qtpy.QtCore import QPoint, Qt
+    from qtpy.QtGui import QMouseEvent
+
+    point = QPoint(_column(index, widget), widget.height() // 2)
+    event = QMouseEvent(
+        QMouseEvent.MouseMove, point, Qt.NoButton, Qt.LeftButton, modifier
+    )
+    widget.mouseMoveEvent(event)
+
+
+@pytest.fixture
+def loaded(timeline):
+    timeline.set_states(
+        {"SEM": ["selected"] * 8, "FIB": ["selected"] * 8}, 0,
+    )
+    return timeline
+
+
+def test_a_plain_click_seeks_rather_than_selecting(loaded):
+    from qtpy.QtCore import Qt
+
+    seeks, picks = [], []
+    loaded.frame_selected.connect(seeks.append)
+    loaded.frame_toggled.connect(picks.append)
+
+    _click(loaded, 3, Qt.NoModifier)
+
+    assert seeks == [3]
+    assert picks == []
+
+
+def test_ctrl_click_picks_a_frame_without_moving_to_it(loaded):
+    from qtpy.QtCore import Qt
+
+    seeks, picks = [], []
+    loaded.frame_selected.connect(seeks.append)
+    loaded.frame_toggled.connect(picks.append)
+
+    _click(loaded, 3, Qt.ControlModifier)
+
+    assert picks == [3]
+    assert seeks == []
+
+
+def test_shift_click_starts_and_reports_an_extension(loaded):
+    from qtpy.QtCore import Qt
+
+    started, reached = [], []
+    loaded.extend_started.connect(started.append)
+    loaded.extend_reached.connect(reached.append)
+
+    _click(loaded, 5, Qt.ShiftModifier)
+
+    assert started == [5]
+    assert reached == [5]
+
+
+def test_dragging_with_a_modifier_widens_the_extension(loaded):
+    from qtpy.QtCore import Qt
+
+    reached = []
+    loaded.extend_reached.connect(reached.append)
+
+    _click(loaded, 2, Qt.ShiftModifier)
+    _drag_to(loaded, 4, Qt.ShiftModifier)
+    _drag_to(loaded, 6, Qt.ShiftModifier)
+
+    assert reached == [2, 4, 6]
+
+
+def test_dragging_without_a_modifier_still_scrubs(loaded):
+    from qtpy.QtCore import Qt
+
+    seeks = []
+    loaded.frame_selected.connect(seeks.append)
+
+    _click(loaded, 1, Qt.NoModifier)
+    _drag_to(loaded, 5, Qt.NoModifier)
+
+    assert seeks == [1, 5]
+
+
+def test_picked_frames_are_drawn_as_a_band_on_top(loaded):
+    from am_segmentation_manager.gui.widgets.frame_strip import SELECTION
+
+    loaded.set_states(
+        {"SEM": ["selected"] * 8, "FIB": ["selected"] * 8}, 0, selected={5},
+    )
+    image = _render(loaded)
+
+    assert image.pixelColor(_column(5, loaded), 1) == SELECTION
+    assert image.pixelColor(_column(4, loaded), 1) != SELECTION
+
+
+def test_the_band_does_not_cover_a_state_row(loaded):
+    """It sits above everything, so a picked frame still shows its state."""
+    loaded.set_states(
+        {"SEM": ["corrected"] * 8, "FIB": ["corrected"] * 8}, 0, selected={5},
+    )
+    image = _render(loaded)
+
+    row_y = FrameTimeline._row_top(0) + ROW_HEIGHT // 2
+    assert image.pixelColor(_column(5, loaded), row_y) == STATE_COLOURS["corrected"]

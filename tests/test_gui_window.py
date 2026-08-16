@@ -214,8 +214,16 @@ def test_overlay_can_be_switched_off(window):
 
 def test_state_controls_start_locked(window):
     assert window.state_panel.state_box.isEnabled() is False
-    assert window.state_panel.target_box.isEnabled() is False
     assert window.controller.editing_enabled is False
+
+
+def test_choosing_what_to_change_is_not_guarded(window):
+    """Ticking rows and picking a modality write nothing, so they stay usable
+    with the guard on -- and the reach line recounts as they change."""
+    assert window.controller.editing_enabled is False
+
+    assert window.project_panel.target_buttons["FIB"].isEnabled() is True
+    assert window.project_panel.lamella_list.isEnabled() is True
 
 
 def test_enabling_editing_unlocks_the_controls(window):
@@ -227,7 +235,7 @@ def test_enabling_editing_unlocks_the_controls(window):
 
 def test_state_change_moves_files_and_updates_the_readout(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.project_panel.target_buttons["SEM"].setChecked(True)
     record = window.controller.frame.record("SEM")
     original = record.image_path
     assert original.exists()
@@ -244,7 +252,7 @@ def test_state_change_moves_files_and_updates_the_readout(qt_app, window):
 
 def test_applying_to_both_moves_both_modalities(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
 
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
@@ -258,12 +266,12 @@ def test_the_change_is_logged(window):
 
     window.apply_state("deselected")
 
-    assert "deselected" in window.state_panel.log.toPlainText()
+    assert "deselected" in window.changes_log.text()
 
 
 def test_timeline_reflects_the_lamella(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
@@ -275,11 +283,11 @@ def test_timeline_reflects_the_lamella(qt_app, window):
 def test_mixed_state_shows_no_option_selected(qt_app, window):
     """A frame whose modalities disagree must not claim to be in one state."""
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.project_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "mixed")
 
-    window.state_panel.target_buttons["both"].setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
     window._refresh_state_panel()
 
     assert not any(
@@ -328,7 +336,7 @@ def test_zoom_out_stops_at_fit(window):
 def test_timeline_shows_each_modality_separately(qt_app, window):
     """A frame with one modality changed must not read as an unlabelled 'mixed'."""
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.project_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.timeline._rows["SEM"][0] == "deselected")
 
@@ -597,11 +605,11 @@ def test_switching_view_points_the_target_at_that_modality(window):
     window._set_mode("fib")
 
     assert window.controller.target == "FIB"
-    assert window.state_panel.target_buttons["FIB"].isChecked()
+    assert window.project_panel.target_buttons["FIB"].isChecked()
 
     window._set_mode("sem")
     assert window.controller.target == "SEM"
-    assert window.state_panel.target_buttons["SEM"].isChecked()
+    assert window.project_panel.target_buttons["SEM"].isChecked()
 
 
 # ---------------------------------------------------------------------------
@@ -611,28 +619,45 @@ def test_switching_view_points_the_target_at_that_modality(window):
 def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
     """With a corrected SEM and a deselected FIB, only the SEM is at risk."""
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.project_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("corrected")
-    window.state_panel.target_buttons["FIB"].setChecked(True)
+    window.project_panel.target_buttons["FIB"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.state_of("FIB") == "deselected")
 
-    window.state_panel.target_buttons["both"].setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
     at_risk = window.controller.corrected_records()
 
     assert [record.modality for record in at_risk] == ["SEM"]
 
 
-def test_scope_control_drives_the_controller(window):
-    window.state_panel.scope_buttons["lamella"].setChecked(True)
+def _tick_lamella(window, row: int = 0) -> None:
+    """Tick a lamella through the widget, as a user would."""
+    window.project_panel.lamella_list.item(row).setCheckState(Qt.Checked)
 
-    assert window.controller.scope == "lamella"
+
+def test_ticking_a_lamella_drives_the_controller(window):
+    _tick_lamella(window)
+
+    assert window.controller.lamella_checks() == [True, False]
+    assert window.controller.describe_selection() == "1 lamella"
 
 
-def test_bulk_scope_is_confirmed_before_anything_moves(qt_app, window, monkeypatch):
-    """A wider scope must not move a single file without an explicit yes."""
+def test_a_tick_widens_what_a_change_would_move(window):
+    """The reach line is the number that has to agree with the ticks."""
+    frame_only = window.controller.reach().images
+
+    _tick_lamella(window)
+
+    assert window.controller.reach().images > frame_only
+    assert str(window.controller.reach().images) in window.state_panel.reach.text()
+    assert "1 lamella" in window.state_panel.applies_to.text()
+
+
+def test_a_ticked_selection_is_confirmed_before_anything_moves(qt_app, window, monkeypatch):
+    """More than the frame on screen must not move without an explicit yes."""
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.scope_buttons["lamella"].setChecked(True)
+    _tick_lamella(window)
     asked = []
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: asked.append(state) or False)
 
@@ -642,27 +667,54 @@ def test_bulk_scope_is_confirmed_before_anything_moves(qt_app, window, monkeypat
     assert all(state == "selected" for state in window.controller.frame_states())
 
 
-def test_confirmed_bulk_change_applies_to_the_whole_lamella(qt_app, window, monkeypatch):
+def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, monkeypatch):
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
-    window.state_panel.scope_buttons["lamella"].setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
+    _tick_lamella(window)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
 
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.frame_states()[0] == "deselected")
 
     assert all(state == "deselected" for state in window.controller.frame_states())
-    assert "deselected" in window.state_panel.log.toPlainText()
+    assert "deselected" in window.changes_log.text()
 
 
-def test_frame_scope_is_not_confirmed(window, monkeypatch):
+def test_nothing_ticked_is_not_confirmed(window, monkeypatch):
+    """The common case -- one frame -- must not ask every time."""
     window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
+    window.project_panel.target_buttons["both"].setChecked(True)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: pytest.fail("should not ask"))
 
     window.apply_state("deselected")
 
     assert window.controller.combined_state() == "deselected"
+
+
+def test_ticks_survive_a_list_rebuild(window):
+    """Every refresh rebuilds the rows, and the ticks decide what moves -- so
+    losing them would silently narrow the next change."""
+    _tick_lamella(window)
+
+    window.refresh(reload_lists=True)
+
+    assert window.project_panel.lamella_list.item(0).checkState() == Qt.Checked
+    assert window.controller.lamella_checks() == [True, False]
+
+
+def test_tick_all_and_none_cover_the_list(window):
+    window.project_panel.lamellae_check_all.emit(True)
+    assert window.controller.lamella_checks() == [True, True]
+
+    window.project_panel.lamellae_check_all.emit(False)
+    assert window.controller.lamella_checks() == [False, False]
+
+
+def test_the_title_says_how_many_are_ticked(window):
+    """The lists scroll, so a tick out of view still has to be countable."""
+    _tick_lamella(window)
+
+    assert window.project_panel.lamella_box.title() == "Lamellae (2, 1 ticked)"
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +775,7 @@ def test_changing_a_state_updates_the_status_chips(window, monkeypatch):
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
     controller.set_editing_enabled(True)
     controller.set_target("SEM")
-    controller.set_scope("lamella")
+    controller.set_lamella_checked(position, True)
     window.apply_state("corrected")
 
     assert controller.lamella_statuses()[position].sem == "done"

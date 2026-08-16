@@ -32,6 +32,7 @@ from ..controller import CurationController, EditingDisabled
 from ..export_controller import ExportController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
+from .changes_log import ChangesLog
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
@@ -122,6 +123,7 @@ class CurationWindow(QMainWindow):
         self.project_panel = ProjectPanel()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
+        self.changes_log = ChangesLog()
 
         # The other tabs get their own Qt-free controllers, and are handed the
         # projects from the curation scan rather than scanning again: a second
@@ -167,18 +169,27 @@ class CurationWindow(QMainWindow):
         splitter.addWidget(centre)
         splitter.addWidget(self.state_panel)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([270, 1080, 250])
+        splitter.setSizes([300, 1080, 220])
+
+        # The log spans the window under everything else, and can be dragged
+        # shut. See changes_log.py for why it is not in the right-hand column.
+        self.curate = QSplitter(Qt.Vertical)
+        self.curate.setHandleWidth(3)
+        self.curate.addWidget(splitter)
+        self.curate.addWidget(self.changes_log)
+        self.curate.setStretchFactor(0, 1)
+        self.curate.setSizes([800, 120])
 
         # Left to right in workflow order: describe the data, curate it, export
         # it. Curate opens, because it is where the repeated work happens and
         # the other two are visited once per collection.
         self.tabs = QTabWidget()
         self.tabs.addTab(self.metadata_panel, "Add data")
-        self.tabs.addTab(splitter, "Curate")
+        self.tabs.addTab(self.curate, "Curate")
         self.tabs.addTab(self.export_panel, "Export")
         # Chosen before the signal is connected: _tab_changed switches the
         # keyboard shortcuts, which do not exist until _add_shortcuts runs.
-        self.tabs.setCurrentWidget(splitter)
+        self.tabs.setCurrentWidget(self.curate)
         self.tabs.currentChanged.connect(self._tab_changed)
         self.setCentralWidget(self.tabs)
 
@@ -196,6 +207,9 @@ class CurationWindow(QMainWindow):
 
         self.timeline = FrameTimeline()
         self.timeline.frame_selected.connect(self._seek_frame)
+        self.timeline.frame_toggled.connect(self._toggle_frame)
+        self.timeline.extend_started.connect(self._begin_extend)
+        self.timeline.extend_reached.connect(self._extend_frames)
         row.addWidget(self.timeline, stretch=1)
 
         self.frame_label = QLabel("0 / 0")
@@ -222,6 +236,11 @@ class CurationWindow(QMainWindow):
         self.project_panel.lamella_reveal_requested.connect(
             lambda row: self._reveal_path(self.controller.lamella_path(row))
         )
+        self.project_panel.project_checked.connect(self._check_project)
+        self.project_panel.lamella_checked.connect(self._check_lamella)
+        self.project_panel.projects_check_all.connect(self._check_all_projects)
+        self.project_panel.lamellae_check_all.connect(self._check_all_lamellae)
+        self.project_panel.target_changed.connect(self._set_target)
 
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
@@ -235,8 +254,6 @@ class CurationWindow(QMainWindow):
         )
 
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
-        self.state_panel.target_changed.connect(self._set_target)
-        self.state_panel.scope_changed.connect(self._set_scope)
         self.state_panel.state_requested.connect(self.apply_state)
 
         self.export_panel.training_export_requested.connect(self._export_training)
@@ -262,6 +279,7 @@ class CurationWindow(QMainWindow):
         """
         return {
             "curate": self.splitter,
+            "changes": self.curate,
             "lists": self.project_panel.lists,
             "add_data": self.metadata_panel.panes,
         }
@@ -430,6 +448,9 @@ class CurationWindow(QMainWindow):
             Binding("S", "Set state: selected", lambda: self.apply_state("selected"), curate),
             Binding("C", "Set state: corrected", lambda: self.apply_state("corrected"), curate),
             Binding("F", "Fit the images to the panes", self.image_panel.pair.fit, curate),
+            Binding(
+                "Esc", "Clear the picked-out frames", self._clear_frame_selection, curate
+            ),
             # Scoped to the project list: the fields beside it include editable
             # combo boxes, whose own Up/Down a window-wide key would swallow.
             Binding(
@@ -569,7 +590,7 @@ class CurationWindow(QMainWindow):
         self.controller.set_mode(mode)
         self.image_panel.set_mode(mode)
         # set_mode may have pointed the edit target at the new modality.
-        self.state_panel.set_target(self.controller.target)
+        self.project_panel.set_target(self.controller.target)
         self.refresh()
 
     def _set_overlay(self, show: bool) -> None:
@@ -583,10 +604,67 @@ class CurationWindow(QMainWindow):
         self.controller.set_target(target)
         self._refresh_state_panel()
 
-    def _set_scope(self, scope: str) -> None:
-        """Change how far a state change reaches, and re-count it."""
-        self.controller.set_scope(scope)
+    # -- choosing what a change applies to ---------------------------------
+    #
+    # Every one of these ends in a refresh of the state panel, because the
+    # reach line above the state buttons is the number that has to agree with
+    # whatever was just ticked or picked out.
+
+    def _check_project(self, row: int, checked: bool) -> None:
+        self.controller.set_project_checked(row, checked)
+        self._refresh_list_titles()
         self._refresh_state_panel()
+
+    def _check_lamella(self, row: int, checked: bool) -> None:
+        self.controller.set_lamella_checked(row, checked)
+        self._refresh_list_titles()
+        self._refresh_state_panel()
+
+    def _check_all_projects(self, checked: bool) -> None:
+        self.controller.check_all_projects(checked)
+        self._refresh_lists()
+        self._refresh_state_panel()
+
+    def _check_all_lamellae(self, checked: bool) -> None:
+        self.controller.check_all_lamellae(checked)
+        self._refresh_lists()
+        self._refresh_state_panel()
+
+    def _toggle_frame(self, position: int) -> None:
+        """Add a frame to the selection, or take it out again."""
+        self.controller.selection.toggle(position)
+        self._refresh_after_selecting()
+
+    def _begin_extend(self, position: int) -> None:
+        self.controller.selection.begin_extend(position)
+
+    def _extend_frames(self, position: int) -> None:
+        self.controller.selection.extend_to(position)
+        self._refresh_after_selecting()
+
+    def _clear_frame_selection(self) -> None:
+        self.controller.selection.clear_frames()
+        self._refresh_after_selecting()
+
+    def _refresh_after_selecting(self) -> None:
+        """Redraw what a frame selection changes, and nothing else.
+
+        Deliberately not the whole window: picking frames out does not move the
+        view, so nothing needs re-rendering or re-loading, and a drag along the
+        timeline emits one of these per pixel.
+        """
+        self._refresh_timeline()
+        self._refresh_state_panel()
+
+    def _refresh_list_titles(self) -> None:
+        """Update the counts of ticked rows without rebuilding the lists.
+
+        Rebuilding would reset the row the user is on, and ticking a row is not
+        a change of what is being looked at.
+        """
+        self.project_panel.show_check_counts(
+            self.controller.project_checks(), self.controller.lamella_checks()
+        )
 
     def _set_variant(self, variant: str) -> None:
         """Show a different imaging condition.
@@ -604,7 +682,7 @@ class CurationWindow(QMainWindow):
         at stake: first whether the user really means to change more than the
         current frame, then whether proofread work may be moved.
         """
-        if self.controller.editing_enabled and self.controller.scope != "frame":
+        if self.controller.editing_enabled and not self.controller.selection.is_empty:
             if not self._confirm_bulk(state):
                 return
         try:
@@ -630,9 +708,10 @@ class CurationWindow(QMainWindow):
 
         if changed:
             frame = self.controller.frame
-            name = frame.display_name if frame is not None else "frame"
-            where = name if self.controller.scope == "frame" else f"this {self.controller.scope}"
-            self.state_panel.append_log(
+            where = self.controller.describe_selection()
+            if self.controller.selection.is_empty and frame is not None:
+                where = frame.display_name
+            self.changes_log.append(
                 f"{where}: {changed} file(s) -> {state} ({self.controller.target})"
             )
         # Rebuild the lists too: a state change is exactly what moves a lamella
@@ -645,9 +724,9 @@ class CurationWindow(QMainWindow):
     def _confirm_bulk(self, state: str) -> bool:
         """Ask before changing more than the frame on screen.
 
-        Counts the *expanded* set, not the scope: images sharing a label move
-        with it, so counting the scope alone would promise to move fewer files
-        than the operation actually does.
+        Counts the *expanded* set, not the selection: images sharing a label
+        move with it, so counting what was ticked alone would promise to move
+        fewer files than the operation actually does.
         """
         scoped = self.controller.scoped_records()
         if not scoped:
@@ -655,13 +734,7 @@ class CurationWindow(QMainWindow):
         records = self.controller.expanded_records(scoped)
         shared = len(records) - len(scoped)
 
-        where = {
-            "lamella": f"lamella {self.controller.lamella.display_name}"
-            if self.controller.lamella is not None else "this lamella",
-            "project": f"project {self.controller.project.display_name}"
-            if self.controller.project is not None else "this project",
-        }[self.controller.scope]
-
+        where = self.controller.describe_selection()
         counts = Counter(record.modality for record in records)
         breakdown = ", ".join(f"{count} {modality}" for modality, count in sorted(counts.items()))
         unchanged = sum(1 for r in records if current_state(r) == state)
@@ -731,11 +804,13 @@ class CurationWindow(QMainWindow):
             [project.display_name for project in self.controller.projects],
             self.controller.project_position,
             self.controller.project_statuses(),
+            self.controller.project_checks(),
         )
         self.project_panel.show_lamellae(
             [lamella.display_name for lamella in self.controller.lamellae],
             self.controller.lamella_position,
             self.controller.lamella_statuses(),
+            self.controller.lamella_checks(),
         )
         self.project_panel.show_summary(self._summary_text())
 
@@ -768,14 +843,17 @@ class CurationWindow(QMainWindow):
 
     def _refresh_timeline(self) -> None:
         total = len(self.controller.frames)
+        selected = self.controller.selected_frames()
         self.timeline.set_states(
             self.controller.modality_states(),
             self.controller.frame_position,
             self.controller.mismatched_frames(),
             self.controller.label_states(),
+            selected,
         )
+        position = f"{self.controller.frame_position + 1} / {total}" if total else "0 / 0"
         self.frame_label.setText(
-            f"{self.controller.frame_position + 1} / {total}" if total else "0 / 0"
+            f"{position}\n{len(selected)} picked" if selected else position
         )
 
     def _render(self) -> None:
@@ -871,7 +949,8 @@ class CurationWindow(QMainWindow):
         )
         reach = self.controller.reach()
         self.state_panel.show_reach(reach.summary(), reach.shared_note())
-        self.state_panel.set_target(self.controller.target)
+        self.state_panel.show_selection(self.controller.describe_selection())
+        self.project_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 
     def _schedule_loads(self) -> None:

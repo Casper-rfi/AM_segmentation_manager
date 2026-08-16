@@ -31,7 +31,7 @@ pytestmark = pytest.mark.skipif(
 if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
-    from qtpy.QtCore import QSettings
+    from qtpy.QtCore import QSettings, Qt
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
@@ -220,15 +220,15 @@ def test_the_reach_line_follows_the_target(qt_app, variant_project: Path):
         window.close()
 
 
-def test_the_reach_line_follows_the_scope(qt_app, variant_project: Path):
-    """Widening the scope must re-count, not report the old frame's total."""
+def test_the_reach_line_follows_the_selection(qt_app, variant_project: Path):
+    """Ticking a lamella must re-count, not report the old frame's total."""
     window = _window(qt_app, variant_project)
     try:
         frame_total = window.controller.reach().images
-        window._set_scope("lamella")
+        window.project_panel.lamella_list.item(0).setCheckState(Qt.Checked)
         _settle(qt_app)
 
-        assert window.controller.scope == "lamella"
+        assert window.controller.lamella_checks() == [True]
         assert window.controller.reach().images > frame_total
         assert str(window.controller.reach().images) in window.state_panel.reach.text()
     finally:

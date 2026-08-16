@@ -79,32 +79,60 @@ ROW_HEIGHT = 11
 ROW_GAP = 2
 CURSOR_WIDTH = 2
 
+#: Frames picked out for a state change, drawn as a band above everything else.
+#:
+#: The cursor's white rather than a new hue. The widget already carries four
+#: colour vocabularies -- workflow states, label lines, the mismatch wash and
+#: the class legend directly above it -- and a fifth would have to be explained.
+#: White is already the user's own mark here: the cursor says where you are and
+#: this says what you picked, and neither is a fact about the data. A horizontal
+#: band cannot be confused with the vertical cursor line.
+SELECTION = CURSOR
+SELECTION_HEIGHT = 3
+SELECTION_GAP = 2
+
+#: How much the state rows are pushed down to make room for the band.
+SELECTION_BAND = SELECTION_HEIGHT + SELECTION_GAP
+
 #: Ticks are only drawn when frames are at least this wide, below which they
 #: would occupy more of the bar than the states they separate.
 MIN_TICK_SPACING = 5
 
 
 class FrameTimeline(QWidget):
-    """Position within a lamella, and each modality's state across it.
+    """Position within a lamella, each modality's state, and what is selected.
 
-    Click or drag anywhere on the widget to move to that frame.
+    Click or drag to move to a frame. Ctrl (Cmd) and Shift pick frames out for
+    a state change instead of moving to them -- deliberately separate, so that
+    building a selection never sets a lamella's worth of images loading.
     """
 
     #: Emitted with a frame index when the user clicks or drags.
     frame_selected = Signal(int)
+    #: Emitted with a frame to add to, or take out of, the selection.
+    frame_toggled = Signal(int)
+    #: Emitted when a Shift-extension begins, with the frame it began on.
+    extend_started = Signal(int)
+    #: Emitted with the frame an extension now reaches, repeatedly while
+    #: dragging. Each one describes the whole extension rather than adding to
+    #: it, so dragging back shrinks the range again.
+    extend_reached = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
         self._rows: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._labels: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._mismatched: set[int] = set()
+        self._selected: set[int] = set()
         self._count = 0
         self._current = 0
         # Each modality's label line sits on the outside of its state row, so
         # the two label lines frame the widget and neither can be mistaken for
-        # the other's row.
+        # the other's row. The selection band sits above all of it.
         self.setFixedHeight(
-            len(ROW_MODALITIES) * (ROW_HEIGHT + LABEL_LINE_HEIGHT + LABEL_LINE_GAP) + ROW_GAP
+            SELECTION_BAND
+            + len(ROW_MODALITIES) * (ROW_HEIGHT + LABEL_LINE_HEIGHT + LABEL_LINE_GAP)
+            + ROW_GAP
         )
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setCursor(Qt.PointingHandCursor)
@@ -113,8 +141,11 @@ class FrameTimeline(QWidget):
             "below.\nThe thin line outside each row shows its labels: bright "
             "means annotated, dim means an empty placeholder, and nothing "
             "means no label file.\nAn amber wash marks a frame whose images "
-            "disagree with their shared label.\nClick or drag to jump to a "
-            "frame; Left/Right arrow keys step one frame."
+            "disagree with their shared label.\n"
+            "Click or drag to jump to a frame; Left/Right arrow keys step one.\n"
+            "Ctrl-click picks a frame out for a state change, Shift-click "
+            "extends the run, and Esc clears it. The white band on top marks "
+            "what is picked."
         )
 
     def set_states(
@@ -123,6 +154,7 @@ class FrameTimeline(QWidget):
         current: int,
         mismatched: set[int] | None = None,
         labels: dict[str, list] | None = None,
+        selected: set[int] | None = None,
     ) -> None:
         """Show per-modality states and the current position.
 
@@ -139,12 +171,14 @@ class FrameTimeline(QWidget):
                 image. Drawn as a thin line outside each state row, because
                 annotation progress and workflow state are different questions
                 and reading one as the other would be misleading.
+            selected: Frames picked out for a state change.
         """
         self._rows = {modality: list(rows.get(modality, [])) for modality in ROW_MODALITIES}
         self._labels = {
             modality: list((labels or {}).get(modality, [])) for modality in ROW_MODALITIES
         }
         self._mismatched = set(mismatched or ())
+        self._selected = set(selected or ())
         self._count = max((len(states) for states in self._rows.values()), default=0)
         self._current = current
         self.update()
@@ -165,7 +199,7 @@ class FrameTimeline(QWidget):
         line, so the two label lines sit on the outside edges and the state
         rows stay adjacent in the middle where they are easiest to compare.
         """
-        band = row * (cls._band_height() + ROW_GAP)
+        band = SELECTION_BAND + row * (cls._band_height() + ROW_GAP)
         if row == 0:
             return band + LABEL_LINE_HEIGHT + LABEL_LINE_GAP
         return band
@@ -173,7 +207,7 @@ class FrameTimeline(QWidget):
     @classmethod
     def _label_line_top(cls, row: int) -> int:
         """Return the y of a modality's label line."""
-        band = row * (cls._band_height() + ROW_GAP)
+        band = SELECTION_BAND + row * (cls._band_height() + ROW_GAP)
         if row == 0:
             return band
         return band + ROW_HEIGHT + LABEL_LINE_GAP
@@ -233,6 +267,14 @@ class FrameTimeline(QWidget):
                 int(index * width), 0, max(1, int(width) + 1), self.height(), wash
             )
 
+        for index in sorted(self._selected):
+            if index >= self._count:
+                continue
+            painter.fillRect(
+                int(index * width), 0, max(1, int(width) + 1),
+                SELECTION_HEIGHT, SELECTION,
+            )
+
         # The position marker spans both rows, so it reads as one cursor rather
         # than two independent marks.
         cursor_left = int(self._current * width + width / 2) - CURSOR_WIDTH // 2
@@ -244,11 +286,43 @@ class FrameTimeline(QWidget):
             return 0
         return max(0, min(int(x / width), self._count - 1))
 
+    @staticmethod
+    def _picking(modifiers) -> str:
+        """Return which selection gesture *modifiers* asks for.
+
+        ``ControlModifier`` is Cmd on macOS, which is what a Mac user expects
+        for "add this one to what I already picked".
+        """
+        if modifiers & Qt.ShiftModifier:
+            return "extend"
+        if modifiers & Qt.ControlModifier:
+            return "toggle"
+        return "seek"
+
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        if self._count and event.button() == Qt.LeftButton:
-            self.frame_selected.emit(self._frame_at(event.pos().x()))
+        if not self._count or event.button() != Qt.LeftButton:
+            return
+        frame = self._frame_at(event.pos().x())
+        gesture = self._picking(event.modifiers())
+        if gesture == "toggle":
+            self.frame_toggled.emit(frame)
+        elif gesture == "extend":
+            self.extend_started.emit(frame)
+            self.extend_reached.emit(frame)
+        else:
+            self.frame_selected.emit(frame)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Scrub while the button is held."""
-        if self._count and event.buttons() & Qt.LeftButton:
-            self.frame_selected.emit(self._frame_at(event.pos().x()))
+        """Scrub, or widen the selection, while the button is held.
+
+        A drag with either modifier extends: dragging is how a run is picked
+        out, and toggling frame by frame under the pointer would flicker items
+        in and out as the pointer crossed them.
+        """
+        if not self._count or not event.buttons() & Qt.LeftButton:
+            return
+        frame = self._frame_at(event.pos().x())
+        if self._picking(event.modifiers()) == "seek":
+            self.frame_selected.emit(frame)
+        else:
+            self.extend_reached.emit(frame)

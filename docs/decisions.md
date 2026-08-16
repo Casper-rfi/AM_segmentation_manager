@@ -105,6 +105,25 @@ safety property applies unchanged — only the set they apply to grows. Callers 
 expanded set back, because with expansion the blast radius of a state change is no
 longer obvious from the command line.
 
+**What a state change applies to is a set the user builds, and the finest level
+present wins.** Picked-out frames beat ticked lamellae, which beat ticked projects,
+and with none of them it is the frame on screen. Finest-first is chosen for its
+failure mode, not its ergonomics: a selection the user has forgotten about makes the
+next change *smaller* than they intended, where the opposite order would make it
+larger. Ticks are keyed by resolved path, since a row means a different lamella as
+soon as the project changes; frame indices are cleared with the lamella, because that
+is all an index means here. Everything reaches `transition_records` through
+`scoped_records()`, so group expansion and the corrected-data guard apply to a ticked
+selection unchanged.
+
+**A tick is Qt's own checkbox, not the status chip.** Merging them was considered:
+Qt draws the check indicator in its own column ahead of the icon, so it would need a
+custom item delegate. The cost is not the reason to refuse. Curation progress and "I
+am about to change this" are orthogonal — a finished lamella can be ticked and an
+untouched one need not be — and one mark cannot carry both without becoming
+ambiguous in exactly the situation that matters. Two marks side by side also gets
+keyboard toggling for free.
+
 **A label file existing is not evidence of annotation.** The external software writes
 a label for every image in its input folder, so a 2048×3072 file of class 0 is
 indistinguishable from finished work by any check that only looks at the filesystem. A

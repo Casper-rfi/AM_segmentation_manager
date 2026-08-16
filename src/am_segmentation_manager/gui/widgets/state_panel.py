@@ -1,7 +1,12 @@
-"""Right panel: changing the workflow state of the current frame.
+"""Right panel: which state to move to, and how far that reaches.
 
-Everything here is disabled until editing is explicitly switched on, so that
-reviewing data cannot change it by a stray click.
+*What* a state change applies to is chosen on the left, by ticking projects or
+lamellae and picking frames out of the timeline. This panel answers the other
+half -- which state, and whether the guard is off -- and reports how much the
+change would move before it is made.
+
+Everything that writes is disabled until editing is explicitly switched on, so
+that reviewing data cannot change it by a stray click.
 
 State is presented as a set of mutually exclusive choices rather than
 independent checkboxes, because that is what the filesystem enforces: an image
@@ -16,7 +21,6 @@ from qtpy.QtWidgets import (
     QButtonGroup,
     QGroupBox,
     QLabel,
-    QPlainTextEdit,
     QRadioButton,
     QVBoxLayout,
     QWidget,
@@ -46,14 +50,10 @@ SWATCH_SIZE = 12
 
 
 class StatePanel(QWidget):
-    """The editing guard, the edit target, and the state controls."""
+    """The editing guard, the reach of the next change, and the state controls."""
 
     #: Emitted when the editing guard is switched.
     editing_toggled = Signal(bool)
-    #: Emitted with the new edit target: 'SEM', 'FIB' or 'both'.
-    target_changed = Signal(str)
-    #: Emitted with the new edit scope: 'frame', 'lamella' or 'project'.
-    scope_changed = Signal(str)
     #: Emitted with the state the user asked for.
     state_requested = Signal(str)
 
@@ -72,55 +72,18 @@ class StatePanel(QWidget):
         self.enable_check.toggled.connect(self._editing_toggled)
         layout.addWidget(self.enable_check)
 
-        # -- target --------------------------------------------------------
-        self.target_box = QGroupBox("Apply to")
-        target_layout = QVBoxLayout(self.target_box)
-        self.target_box.setToolTip(
-            "Which images a state change moves. The two modalities can be in "
-            "different states."
+        # -- what is selected ------------------------------------------------
+        # The ticks and the timeline band are on the other side of the window,
+        # and a wide change is made from here -- so this says in words what
+        # they say in marks, next to the button that acts on it.
+        self.applies_to = QLabel("")
+        self.applies_to.setWordWrap(True)
+        self.applies_to.setToolTip(
+            "What the state buttons below will move. Tick projects or lamellae "
+            "on the left, or Ctrl-click frames on the timeline; with nothing "
+            "picked out it is the frame on screen."
         )
-        self.target_buttons: dict[str, QRadioButton] = {}
-        target_group = QButtonGroup(self)
-        for target, caption, hint in (
-            ("SEM", "SEM", "Change the SEM image only"),
-            ("FIB", "FIB", "Change the FIB image only"),
-            ("both", "Both", "Change both images of this frame together"),
-        ):
-            button = QRadioButton(caption)
-            button.setToolTip(hint)
-            button.toggled.connect(
-                lambda checked, t=target: checked and self.target_changed.emit(t)
-            )
-            target_group.addButton(button)
-            target_layout.addWidget(button)
-            self.target_buttons[target] = button
-        self.target_buttons["SEM"].setChecked(True)
-        layout.addWidget(self.target_box)
-
-        # -- scope ---------------------------------------------------------
-        self.scope_box = QGroupBox("Across")
-        scope_layout = QVBoxLayout(self.scope_box)
-        self.scope_box.setToolTip(
-            "How many images a state change covers. Anything wider than the "
-            "current frame is confirmed before any file is moved."
-        )
-        self.scope_buttons: dict[str, QRadioButton] = {}
-        scope_group = QButtonGroup(self)
-        for scope, caption, hint in (
-            ("frame", "This frame", "Only the frame on screen"),
-            ("lamella", "This lamella", "Every frame of the current lamella"),
-            ("project", "This project", "Every frame of every lamella in the project"),
-        ):
-            button = QRadioButton(caption)
-            button.setToolTip(hint)
-            button.toggled.connect(
-                lambda checked, s=scope: checked and self.scope_changed.emit(s)
-            )
-            scope_group.addButton(button)
-            scope_layout.addWidget(button)
-            self.scope_buttons[scope] = button
-        self.scope_buttons["frame"].setChecked(True)
-        layout.addWidget(self.scope_box)
+        layout.addWidget(self.applies_to)
 
         # -- reach -----------------------------------------------------------
         # Above the state controls, because it describes what is about to
@@ -164,14 +127,7 @@ class StatePanel(QWidget):
         self.readout = QLabel("")
         self.readout.setWordWrap(True)
         layout.addWidget(self.readout)
-
-        log_box = QGroupBox("Changes")
-        log_layout = QVBoxLayout(log_box)
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(500)
-        log_layout.addWidget(self.log)
-        layout.addWidget(log_box, stretch=1)
+        layout.addStretch(1)
 
         self.set_editing_enabled(False)
 
@@ -180,9 +136,12 @@ class StatePanel(QWidget):
         self.editing_toggled.emit(enabled)
 
     def set_editing_enabled(self, enabled: bool) -> None:
-        """Lock or unlock the controls that change data on disk."""
-        self.target_box.setEnabled(enabled)
-        self.scope_box.setEnabled(enabled)
+        """Lock or unlock the controls that change data on disk.
+
+        Only the state buttons: choosing what a change *would* apply to writes
+        nothing, so the ticks and the modality control stay usable with the
+        guard on, and the reach line recounts as they change.
+        """
         self.state_box.setEnabled(enabled)
         if self.enable_check.isChecked() != enabled:
             self.enable_check.blockSignals(True)
@@ -220,23 +179,9 @@ class StatePanel(QWidget):
         self.reach_shared.setText(shared_note)
         self.reach_shared.setVisible(bool(shared_note))
 
-    def set_target(self, target: str) -> None:
-        """Reflect the current edit target without re-emitting a change."""
-        button = self.target_buttons[target]
-        button.blockSignals(True)
-        button.setChecked(True)
-        button.blockSignals(False)
-
-    def set_scope(self, scope: str) -> None:
-        """Reflect the current edit scope without re-emitting a change."""
-        button = self.scope_buttons[scope]
-        button.blockSignals(True)
-        button.setChecked(True)
-        button.blockSignals(False)
-
-    def append_log(self, message: str) -> None:
-        """Record a change, so what happened stays visible."""
-        self.log.appendPlainText(message)
+    def show_selection(self, description: str) -> None:
+        """Say in words what the state buttons will move."""
+        self.applies_to.setText(f"Applies to: {description}")
 
 
 def _swatch(state: str) -> QIcon:

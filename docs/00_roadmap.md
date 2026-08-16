@@ -39,7 +39,9 @@ metadata in place.
 
 The window has three tabs in workflow order — Add data, Curate and Export — each with
 a controller that holds no Qt. Curate is the tab that opens. Keys belong to a tab and
-are live only while it shows, so `F1` lists what can actually be pressed.
+are live only while it shows, so `F1` lists what can actually be pressed. What a state
+change applies to is ticked in the project and lamella lists, or picked out of the
+timeline frame by frame.
 
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.

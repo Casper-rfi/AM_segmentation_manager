@@ -32,6 +32,13 @@ from .cache import (
     FramePlot,
     LoadRequest,
 )
+from .selection import (
+    LEVEL_CURRENT_FRAME,
+    LEVEL_LAMELLAE,
+    LEVEL_PROJECTS,
+    Selection,
+    selection_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +47,6 @@ DisplayMode = Literal["sem", "fib", "plot"]
 
 #: What a state change applies to.
 EditTarget = Literal["SEM", "FIB", "both"]
-
-#: How far a state change reaches. "frame" is the default: the wider scopes
-#: move many files at once and the window confirms them before proceeding.
-EditScope = Literal["frame", "lamella", "project"]
 
 #: The state of a frame whose two acquisitions disagree.
 MIXED = "mixed"
@@ -268,8 +271,9 @@ class CurationController:
         # follows the view thereafter: the modality on screen is the one a
         # state change is meant for.
         self.target: EditTarget = "SEM"
-        self.scope: EditScope = "frame"
         self.follow_mode = True
+        #: What a state change applies to; see :mod:`.selection`.
+        self.selection = Selection()
 
     # -- scanning ----------------------------------------------------------
 
@@ -344,13 +348,15 @@ class CurationController:
         """Select a lamella by index and rebuild its frame stack.
 
         Everything prepared for the previous lamella is discarded: at a lamella
-        boundary none of it is worth keeping.
+        boundary none of it is worth keeping. The frame selection goes with it,
+        since a frame index only means anything within one lamella.
         """
         self._lamella_position = _clamp(position, len(self._lamellae))
         lamella = self.lamella
         self._frames = build_lamella_frames(lamella) if lamella is not None else []
         self.cache.set_frames(self._frames)
         self._frame_position = 0
+        self.selection.clear_frames()
         logger.debug(
             "Selected lamella %s with %d frames",
             lamella.name if lamella is not None else "(none)", len(self._frames),
@@ -651,11 +657,66 @@ class CurationController:
             raise ValueError(f"Unknown edit target: {target}")
         self.target = target
 
-    def set_scope(self, scope: EditScope) -> None:
-        """Choose whether a state change covers one frame, a lamella, or all."""
-        if scope not in ("frame", "lamella", "project"):
-            raise ValueError(f"Unknown edit scope: {scope}")
-        self.scope = scope
+    # -- what a state change applies to ------------------------------------
+    #
+    # The window works in row numbers; the selection works in resolved paths,
+    # because a row means a different lamella as soon as the project changes.
+    # Translating between the two is this layer's job.
+
+    def set_project_checked(self, position: int, checked: bool) -> None:
+        """Check or uncheck the project at a row of the project list."""
+        project = self._at(self._projects, position)
+        if project is not None:
+            self.selection.check(LEVEL_PROJECTS, selection_key(project.path), checked)
+
+    def set_lamella_checked(self, position: int, checked: bool) -> None:
+        """Check or uncheck the lamella at a row of the lamella list."""
+        lamella = self._at(self._lamellae, position)
+        if lamella is not None:
+            self.selection.check(LEVEL_LAMELLAE, selection_key(lamella.path), checked)
+
+    def check_all_projects(self, checked: bool) -> None:
+        """Check or uncheck every discovered project."""
+        self.selection.check_all(
+            LEVEL_PROJECTS,
+            [selection_key(project.path) for project in self._projects],
+            checked,
+        )
+
+    def check_all_lamellae(self, checked: bool) -> None:
+        """Check or uncheck every lamella of the selected project.
+
+        Lamellae checked in other projects are left alone: the list only shows
+        this project's, and un-checking what is not on screen would be a change
+        nobody could see.
+        """
+        self.selection.check_all(
+            LEVEL_LAMELLAE,
+            [selection_key(lamella.path) for lamella in self._lamellae],
+            checked,
+        )
+
+    def project_checks(self) -> list[bool]:
+        """Return whether each project is checked, in list order."""
+        return [
+            self.selection.is_checked(LEVEL_PROJECTS, selection_key(project.path))
+            for project in self._projects
+        ]
+
+    def lamella_checks(self) -> list[bool]:
+        """Return whether each lamella of the selected project is checked."""
+        return [
+            self.selection.is_checked(LEVEL_LAMELLAE, selection_key(lamella.path))
+            for lamella in self._lamellae
+        ]
+
+    def selected_frames(self) -> set[int]:
+        """Return the frames picked out on the timeline."""
+        return set(self.selection.frames)
+
+    def describe_selection(self) -> str:
+        """Return a phrase naming what a state change would apply to."""
+        return self.selection.describe()
 
     def target_records(self, frame: LamellaFrame | None = None) -> list:
         """Return the image records a state change would apply to in one frame.
@@ -673,20 +734,60 @@ class CurationController:
         return [record] if record is not None else []
 
     def scoped_records(self) -> list:
-        """Return every record a state change would apply to, honouring scope.
+        """Return every record a state change would apply to.
 
-        Wider scopes read the records straight from the scanned stages rather
-        than building frames, since the frame grouping only matters for display.
+        The finest level the user has picked out wins, and nothing coarser is
+        consulted -- see :mod:`.selection` for why that order and not the other.
+        Everything downstream (:meth:`expanded_records`, :meth:`reach`,
+        :meth:`apply_state`) reads this one method, so label-group expansion and
+        the corrected-data guard apply to a checked selection unchanged.
+
+        Whole lamellae are read straight from the scanned stages rather than
+        through frames, since the chronological pairing only matters for display.
         """
-        if self.scope == "frame":
+        level = self.selection.level
+        if level == LEVEL_CURRENT_FRAME:
             return self.target_records()
+        if level == LEVEL_PROJECTS:
+            return self._records_of(self._checked_lamellae())
+        if level == LEVEL_LAMELLAE:
+            return self._records_of(self._checked_lamellae())
+        return [
+            record
+            for position in sorted(self.selection.frames)
+            if 0 <= position < len(self._frames)
+            for record in self.target_records(self._frames[position])
+        ]
 
-        lamellae = [self.lamella] if self.scope == "lamella" else self._lamellae
+    def _checked_lamellae(self) -> list[Lamella]:
+        """Return the lamellae the selection covers, across every project.
+
+        Checks persist by path, so a lamella checked before the project was
+        changed is still checked -- and still has to be found, which is why this
+        searches every project rather than only the one on screen.
+        """
+        if self.selection.lamellae:
+            wanted = self.selection.lamellae
+            return [
+                lamella
+                for project in self._projects
+                for lamella in project.lamellae
+                if selection_key(lamella.path) in wanted
+            ]
+        wanted = self.selection.projects
+        return [
+            lamella
+            for project in self._projects
+            if selection_key(project.path) in wanted
+            for lamella in project.lamellae
+        ]
+
+    def _records_of(self, lamellae: list[Lamella]) -> list:
+        """Return every record of *lamellae* belonging to the edit target."""
         modalities = ("SEM", "FIB") if self.target == "both" else (self.target,)
         return [
             record
             for lamella in lamellae
-            if lamella is not None
             for stage in lamella.stages
             for record in stage.images
             if record.modality in modalities
@@ -780,13 +881,19 @@ class CurationController:
             )
         records = self.scoped_records()
         if not records:
-            logger.info("Nothing to change: no %s image in this %s", self.target, self.scope)
+            logger.info(
+                "Nothing to change: no %s image in %s",
+                self.target, self.selection.describe(),
+            )
             return 0
 
         changed = transition_records(
             records, state, allow_move_from_corrected=confirm_corrected
         )
-        logger.info("Moved %d record(s) to %s across this %s", changed, state, self.scope)
+        logger.info(
+            "Moved %d record(s) to %s across %s",
+            changed, state, self.selection.describe(),
+        )
         return changed
 
     def set_editing_enabled(self, enabled: bool) -> None:
