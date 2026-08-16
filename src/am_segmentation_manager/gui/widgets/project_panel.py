@@ -4,11 +4,10 @@ Holds the scan root, the projects found under it, and the lamellae of the
 selected project. Scanning happens on the caller's terms -- this panel only
 reports that the user asked for it.
 
-The lists do two jobs at once. The *current* row is what is being looked at;
-the *checked* rows are what a state change will be applied to. They are
-separate because they are separate questions, and a chip on every row already
-says how far curated it is -- so the check is Qt's own, in its own column,
-rather than a third meaning loaded onto the chip.
+The lists do two jobs at once: the *current* row is what is being looked at,
+the *checked* rows are what a state change applies to, and the chip beside them
+reports curation progress. Three separate questions, three separate marks --
+see `docs/decisions.md` § Workflow state.
 """
 from __future__ import annotations
 

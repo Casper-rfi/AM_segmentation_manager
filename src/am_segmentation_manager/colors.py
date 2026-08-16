@@ -184,10 +184,9 @@ def parse_color(value: str | Sequence[int]) -> RGB:
         The colour as a three-tuple of integers in the range 0-255.
 
     Raises:
-        ValueError: If *value* is not a recognised colour name, is a malformed
-            hex string, or is a sequence with the wrong length or out-of-range
-            components. The message names the offending value so a bad entry in
-            a config file can be found quickly.
+        ValueError: If *value* is not a recognised name, is a malformed hex
+            string, or is a sequence of the wrong length or range. The message
+            names the offending value, so a bad config entry is findable.
     """
     if isinstance(value, str):
         return _parse_color_string(value)

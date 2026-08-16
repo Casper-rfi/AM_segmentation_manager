@@ -1,16 +1,13 @@
 """How the window looks: the palette, the stylesheet, and the chrome colours.
 
-Qt's default is whatever the platform hands it, which on the development
-machine is a mid-grey from the 1990s and on another machine is something else
-again. Everything visual that is not carrying information is set here, so the
-window looks the same under PyQt5 and PySide6 and there is one file to change.
+Everything visual that carries no information is set here, so the window looks
+the same under either Qt binding; see `docs/decisions.md` § Display for why the
+style is set rather than inherited, and why a stylesheet rule beats a palette.
+It is kept short because Qt re-evaluates it whenever a widget is polished.
 
-Colours that carry *meaning* are not here. The workflow states, the label lines
-and the mismatch wash live in :mod:`frame_strip`, and the class colours come
-from the segmentation config: those are data, and this is chrome.
-
-The stylesheet is deliberately short. Qt re-evaluates it whenever a widget is
-polished, and a window that stays fast is worth more than any rule in it.
+Colours that carry *meaning* are not here: the workflow states and label lines
+live in :mod:`frame_strip`, and the class colours come from the segmentation
+config. Those are data, this is chrome.
 """
 from __future__ import annotations
 

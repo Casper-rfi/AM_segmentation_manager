@@ -1,17 +1,13 @@
 """Right panel: which state to move to, and how far that reaches.
 
-*What* a state change applies to is chosen on the left, by ticking projects or
-lamellae and picking frames out of the timeline. This panel answers the other
-half -- which state, and whether the guard is off -- and reports how much the
-change would move before it is made.
+*What* a change applies to is chosen on the left; this panel answers the other
+half, and reports how much would move before it is made. Everything that writes
+stays disabled until editing is switched on, so reviewing data cannot change it
+by a stray click.
 
-Everything that writes is disabled until editing is explicitly switched on, so
-that reviewing data cannot change it by a stray click.
-
-State is presented as a set of mutually exclusive choices rather than
-independent checkboxes, because that is what the filesystem enforces: an image
-lives in exactly one of the selected, deselected and corrected locations. When
-a frame's two acquisitions disagree, no option is shown as chosen.
+The states are mutually exclusive because the filesystem makes them so -- an
+image lives in exactly one of the three locations. A frame whose acquisitions
+disagree therefore shows no option chosen.
 """
 from __future__ import annotations
 

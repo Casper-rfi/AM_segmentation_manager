@@ -1,23 +1,9 @@
 """What a state change applies to: checked projects, lamellae or frames.
 
-The window used to ask this as one of three radio buttons -- this frame, this
-lamella, this project -- which cannot express "these four lamellae" or "frames
-1, 3 and 5 to 8". Here the selection is a set the user builds and can see:
-checkmarks in the two lists, and a band over the frames chosen on the timeline.
-
-**The finest level present wins**, and nothing else is consulted. Selected
-frames beat checked lamellae, which beat checked projects, and with none of them
-the frame on screen is what moves. Finest-first is the fail-safe order: a
-forgotten frame selection makes a change smaller than intended, where the other
-order would make it larger.
-
-Projects and lamellae are keyed by resolved path rather than by row, because a
-row means a different lamella as soon as the project changes. Frames are keyed
-by index and are cleared whenever the lamella does, since that is what an index
-means here.
-
-Qt-free, like the controllers: this is the whole of what selection *is*, and
-none of it needs a display to test.
+A set the user builds and can see -- checkmarks in the two lists, a band over
+the frames picked out on the timeline. **The finest level present wins**, and
+nothing coarser is consulted; see `docs/decisions.md` § Workflow state for why
+that order. Qt-free, like the controllers.
 """
 from __future__ import annotations
 

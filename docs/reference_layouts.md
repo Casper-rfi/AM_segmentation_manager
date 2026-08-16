@@ -31,8 +31,9 @@ evidence behind the conventions implemented in
 > dataset in the current working collection has FIB images.
 >
 > Tests should therefore vary the axis a behaviour depends on, rather than
-> reaching for the example that happens to exhibit it. `tests/conftest.py`
-> builds datasets that way, with these examples as named starting points.
+> reaching for the example that happens to exhibit it. `conftest.build_dataset`
+> takes these axes as arguments, with the examples below as named presets — so a
+> suite passing on all of them still does not show that every layout works.
 
 All paths are relative to the Autolamella project, and show an example SEM and
 FIB image with its corresponding label. How each of these layouts is resolved is
