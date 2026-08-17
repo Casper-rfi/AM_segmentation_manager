@@ -69,8 +69,7 @@ class ImageMetadata:
         microscope_serial: Instrument serial number. Distinguishes two
             instruments of the same model, which is what "fine-tune for one
             microscope" actually needs.
-        acceleration_voltage_kv: Accelerating voltage in kilovolts. Both
-            dialects record volts; kV is the unit the setting is spoken in.
+        acceleration_voltage_kv: Accelerating voltage in kilovolts.
         beam_current_pa: Beam current in picoamps. Amps in both dialects and
             both beams, so one conversion covers everything.
         beam_type: ``"ELECTRON"`` or ``"ION"``, as stated by the instrument.

@@ -25,12 +25,10 @@ tab is not a reason to bend it.
 **An operation belongs in the window when its input is the selection on screen; it
 stays on the command line when it is a sweep over the whole collection.** Naming a
 selection twice — once by ticking it, once as command-line filters — is where the two
-diverge and the wrong data gets moved. By this test `convert-predictions`,
-`compress-labels` and `repair-state` moved into the Curate tab once ticking made "the
-selection" a real thing, and `inspect-layout` and `init-project` into Add data, where
-the sweep *is* the collection and there is nothing to select. `stats` and
-`quantify-labels` did not: both are whole-collection reports, and their output is a
-table nobody is going to act on one row at a time.
+diverge and the wrong data gets moved. The Add data commands are in the window despite
+being sweeps, because there the sweep *is* the collection and there is nothing to select.
+`stats` and `quantify-labels` stay out: their output is a table nobody is going to act on
+one row at a time. [`00_roadmap.md`](00_roadmap.md) says where each command ended up.
 
 Each of these previews and then applies what it previewed, as two runs of the same
 function rather than one run replayed. A preview held across a dialog describes a
@@ -41,9 +39,8 @@ software; this package decides *which* images get proofread and records when the
 done.
 
 **No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few
-lines with no dependency, over thousands of records rather than millions. pandas was
-removed from the requirements precisely because nothing used it, and it should return
-only if something genuinely needs it.
+lines with no dependency, over thousands of records rather than millions. pandas belongs
+here only once something genuinely needs it.
 
 ---
 
@@ -52,26 +49,23 @@ only if something genuinely needs it.
 **A label directory is `<image-directory>_labels`, a sibling of the image directory.**
 `layout.py` states the resolution order; what it cannot say is why that shape. It
 makes image-dir → label-dir a pure string function in both directions with no lookup
-table, which is what lets one module hold the convention instead of the 200-odd
-hardcoded strings it replaced. A `labels/<image-dir>/` subtree would push the
-`deselected/` and `corrected/` state folders three deep and gain nothing. Conditions
-share a label by default; giving one its own means creating the directory, not
-configuring anything. `sem/` is not a special case in this: its private and shared
-names coincide, which is why one rule covers the plain layout and the five-condition
-one alike.
+table, which is what lets one module hold the convention at all. A `labels/<image-dir>/`
+subtree would push the `deselected/` and `corrected/` state folders three deep and gain
+nothing. Conditions share a label by default; giving one its own means creating the
+directory, not configuring anything. `sem/` is not a special case in this: its private
+and shared names coincide, which is why one rule covers the plain layout and the
+five-condition one alike.
 
 **Image directories keep their Autolamella names.** We do not own `sem` and `fib`;
 renaming them would break reopening the project in Autolamella. Label directories are
 ours, so they are the only ones anything here renames.
 
-**Renaming pre-convention label directories is a script, not a command.** The
-package reads `labels`, `labels_fib` and `labels_FIB` indefinitely, and
-`resolve_labels_directory` returns whichever directory an image set already has —
-so a new label lands beside the old ones and a project never ends up holding two
-namings. That leaves cosmetic tidiness as the only reason to rename, over a fixed
-handful of datasets belonging to one person. It lives in
-`scripts/rename_legacy_label_dirs.py`, where a layout that does not fit can be
-handled by editing the script rather than by generalising a command.
+**Renaming pre-convention label directories is a script, not a command.** The package
+reads `labels`, `labels_fib` and `labels_FIB` indefinitely, and a new label lands in
+whichever directory an image set already has, so no project ends up holding two namings.
+That leaves cosmetic tidiness as the only reason to rename, over a fixed handful of
+datasets — so it lives in `scripts/rename_legacy_label_dirs.py`, where a layout that
+does not fit is handled by editing the script rather than by generalising a command.
 
 **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`,
 `sem_lowmag` all work with no code change, because authoritative imaging parameters
@@ -152,13 +146,10 @@ is all an index means here. Everything reaches `transition_records` through
 `scoped_records()`, so group expansion and the corrected-data guard apply to a ticked
 selection unchanged.
 
-**A tick is Qt's own checkbox, not the status chip.** Merging them was considered:
-Qt draws the check indicator in its own column ahead of the icon, so it would need a
-custom item delegate. The cost is not the reason to refuse. Curation progress and "I
-am about to change this" are orthogonal — a finished lamella can be ticked and an
-untouched one need not be — and one mark cannot carry both without becoming
-ambiguous in exactly the situation that matters. Two marks side by side also gets
-keyboard toggling for free.
+**A tick is Qt's own checkbox, not the status chip.** Curation progress and "I am about
+to change this" are orthogonal — a finished lamella can be ticked and an untouched one
+need not be — so one mark cannot carry both without becoming ambiguous in exactly the
+situation that matters. Two marks side by side also gets keyboard toggling for free.
 
 **A label file existing is not evidence of annotation.** The external software writes
 a label for every image in its input folder, so a 2048×3072 file of class 0 is
@@ -189,19 +180,23 @@ the two files and nothing else — the rule above is intact. The folder read for
 `experiment.yaml`'s `name` because a project copied to a second location keeps the
 recorded name of the first.
 
-**Every image header carries settings for both beams.** `microscope_state.*` describes
-the beam that took the image; `system.*` holds both beams' configured defaults.
-Reading `system.ion.voltage` from an SEM image yields the FIB's 30 kV — plausible and
-wrong. `image_metadata.FIELDS` confines beam-specific fields, including the fallback
-search, to the beam that fired.
+**Every image header carries settings for both beams, and some values exist for only
+one of them.** `microscope_state.*` describes the beam that took the image; `system.*`
+holds both beams' configured defaults, so reading `system.ion.voltage` from an SEM image
+yields the FIB's 30 kV — plausible and wrong. `image_metadata.FIELDS` therefore confines
+beam-specific fields, including the fallback search, to the beam that fired, and
+declares which beams a value exists for at all. A plasma gas belongs to an ion column
+and an emitter type to an electron one, which is why they are two fields rather than one
+"beam source": one field for the two reported the FIB's Argon for SEM images, and the
+SEM's `FEG` emitter as if it were a plasma gas. Each stays blank on the other beam, and
+on an image whose beam the header does not state. A blank `plasma_gas` on a FIB image is
+therefore a real answer — a gallium column has no plasma and records no gas.
 
-**Some values exist for one beam only, and the header records them for both anyway.** A
-plasma gas is a property of an ion column and an emitter type of an electron one, so
-they are two fields rather than one "beam source": a single field reported the FIB's
-Argon for SEM images taken on a plasma FIB, and the SEM's `FEG` emitter as if it were a
-plasma gas. Each is declared with the beam it exists for and stays blank on the other,
-including when the beam that fired cannot be determined. A blank `plasma_gas` on a FIB
-image is therefore a real answer — a gallium column has no plasma and records no gas.
+**A value is stored in the unit its field name states, converted where the header is
+read.** So `acceleration_voltage_kv` is kV even though both dialects record volts, and
+nothing downstream converts anything. A by-voltage breakdown rounds to 0.1 kV, because a
+header sometimes records a measured voltage rather than the set point; the exported
+value does not.
 
 **A missing measurement is never a default.** The one exception is the integration
 counts, where absence means "not enabled" — that is decoding the field, not defaulting
@@ -249,11 +244,10 @@ passes while the screen shows something else. **Anything about how something
 *renders* is asserted on the pixels**, for that reason.
 
 **A locked editor keeps its normal text colour.** The Add data tab opens locked and is
-mostly used for reading, so Qt's disabled grey put every value at low contrast —
-measured at `#bebebe` on white, and at `lightness 170` when the stylesheet reintroduced
-it. The stylesheet dulls the *background* of a disabled input instead and leaves the
-text dark, so a field still reads as locked. Buttons and radio groups grey out
-normally: they are controls you cannot use, not values you are reading.
+mostly used for reading, and Qt's disabled grey puts every value at low contrast. The
+stylesheet dulls the *background* of a disabled input instead and leaves the text dark,
+so a field still reads as locked. Buttons and radio groups grey out normally: they are
+controls you cannot use, not values you are reading.
 
 **The metadata list elides; it must not scroll sideways.** Its rows carry relative
 paths that differ in the timestamp they *end* with, and a `QListWidget` with a
@@ -263,11 +257,16 @@ both ends; the tooltip carries the whole label.
 
 **A list re-tints the icon of the row you are on.** Qt draws a selected row's icon
 in `QIcon::Selected` mode, and the variant it generates for that mode is blended with
-the highlight colour — so a status chip whose colour *is* the information came out as
-a different colour on exactly the row being looked at (the corrected teal `#1a7f6e`
-rendered as `#207a94`). `chip_icon()` supplies the pixmap for every mode and state,
-which leaves Qt nothing to generate. Any future icon carrying meaning rather than
-decoration has to go through it.
+the highlight colour — so a status chip whose colour *is* the information came out a
+different colour on exactly the row being looked at. `chip_icon()` supplies the pixmap
+for every mode and state, which leaves Qt nothing to generate. Any future icon carrying
+meaning rather than decoration has to go through it.
+
+**`QScrollArea.setWidget` shows whatever it is handed**, so hiding a widget and then
+putting it in a scroller leaves it on screen — which is how the Export tab's acquisition
+filters, meant to appear only once the headers are read, were visible from the start.
+Hide the scroller, and give the column a widget to hold its spare height: a layout shares
+that height between whatever is still visible, and a stretch cannot be hidden again.
 
 **A long operation runs on a thread, and there is nothing to cancel.** Recompressing
 a project's labels is minutes, and Qt draws nothing while the thread owning the
@@ -295,22 +294,16 @@ at it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
 
 **Every file dialog is Qt's own, never the platform's.** The macOS panel under PyQt5
 5.15.2 offered no selectable files at all for a `*.csv` filter — only folders to
-navigate into — so "Check exported CSV" could not be given a CSV. Directory dialogs
-were unaffected, which is why it looked like a missing feature rather than a broken
-one. `widgets/common.build_path_dialog` sets `DontUseNativeDialog` for all of them, so
-one binding and one platform cannot behave differently from another. Revealing a folder
-in the file manager is not a dialog and stays native.
+navigate into — so "Check exported CSV" could not be given a CSV, and because directory
+dialogs were unaffected it read as a missing feature rather than a broken one.
+`widgets/common.build_path_dialog` sets `DontUseNativeDialog` for all of them. Revealing
+a folder in the file manager is not a dialog and stays native.
 
 **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side
 effect, and `test_gui_*` sorts before most other tests. That is how a locale-dependent
 `strptime('%p')` bug appears only in full runs, and only on a machine with a
 non-English locale. `LC_ALL=… pytest` does **not** test this; `AM_SEG_TEST_LOCALE=…
 pytest` does.
-
-**`QScrollArea.setWidget` shows whatever it is handed.** Hiding a widget and then
-putting it in a scroller leaves it on screen; hide the scroller instead, and give the
-column something else to hold its spare height, since a layout shares that height
-between whatever is still visible.
 
 **Never disconnect a signal from inside the handler for that signal.** A connection
 list mutated mid-emit works under PyQt5 and hangs under PySide6 — the suite stalled
@@ -319,9 +312,10 @@ because the failure path opens a modal box nobody is there to dismiss. Connect o
 and track what is pending in an attribute. The same shape hides in any
 connect-per-call pattern.
 
-**The development and user environments differ** — PyQt5 here, PySide6 there. Four
-bugs have reached the user through that gap. Run the suite under both bindings and a
-non-English locale before releasing.
+**The development and user environments differ** — PyQt5 here, PySide6 there, and a
+different macOS. Bugs keep reaching the user through that gap, which is why the entries
+above prefer one code path over a platform's own. Run the suite under both bindings and
+a non-English locale before releasing.
 
 **Never mix conda-forge with Anaconda `defaults`.** `environment.yml` pins
 `nodefaults` for this reason: a mixed environment paired Anaconda's OpenCV with

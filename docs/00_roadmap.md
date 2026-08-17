@@ -25,9 +25,10 @@ Every command whose input is that selection is also in the window: Curate runs
 Add data runs `inspect-layout` and `init-project` over the scanned folder, and Export
 writes the three CSVs and checks one written earlier. Each previews first and applies
 only what the preview showed, on a worker thread so a long one cannot freeze the
-window. The training export takes the same split, seed and filename prefix as
-`create-training-csv`, and the count above the buttons runs the same split, so how the
-two files divide is visible before either is written.
+window. Export takes the same split, seed and filenames as `create-training-csv`, and
+its live count runs the same split, so how the two files divide is visible before either
+is written. It filters by modality, workflow state and acquisition metadata; scoping an
+export to particular projects or lamellae is command-line only.
 
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.
@@ -63,7 +64,6 @@ oversight, and all of them become necessary at the same moment:
 * The version is pinned at `0.0.0`.
 * `mypy` is not configured. `ruff` does not check types, so the annotations are
   currently unverified.
-
-**Run the suite under both Qt bindings and a non-English locale before any release.**
-See [`decisions.md`](decisions.md) § Environment for what this has caught and why
-`LC_ALL=` is not sufficient.
+* The suite has not been run under PySide6 or a non-English locale. Do both before any
+  release: [`decisions.md`](decisions.md) § Environment has what it catches, and why
+  `LC_ALL=` is not sufficient.
