@@ -27,8 +27,15 @@ stays on the command line when it is a sweep over the whole collection.** Naming
 selection twice — once by ticking it, once as command-line filters — is where the two
 diverge and the wrong data gets moved. The Add data commands are in the window despite
 being sweeps, because there the sweep *is* the collection and there is nothing to select.
-`stats` and `quantify-labels` stay out: their output is a table nobody is going to act on
-one row at a time. [`00_roadmap.md`](00_roadmap.md) says where each command ended up.
+[`00_roadmap.md`](00_roadmap.md) says where each command ended up.
+
+**Counting is the exception, and it split rather than moved.** The Export tab counts and
+cross-tabulates the set its filters describe, measuring labels when asked — because
+choosing a training set means looking at what survives a filter, and that loop cannot
+run through a command that prints and exits. `stats` keeps the whole-collection sweep
+with its own scope selectors, and `quantify-labels` keeps the per-lamella table: a table
+of numbers per class per lamella is not something anyone acts on one row at a time, and
+a spreadsheet reads it better from the CSV.
 
 Each of these previews and then applies what it previewed, as two runs of the same
 function rather than one run replayed. A preview held across a dialog describes a
@@ -298,6 +305,20 @@ navigate into — so "Check exported CSV" could not be given a CSV, and because 
 dialogs were unaffected it read as a missing feature rather than a broken one.
 `widgets/common.build_path_dialog` sets `DontUseNativeDialog` for all of them. Revealing
 a folder in the file manager is not a dialog and stays native.
+
+**Figures are built as `Figure()`, never through `pyplot`.** pyplot keeps every figure
+it makes in a global list until something closes it, and choosing a backend for that
+list is what makes a chart drawn over ssh look for a display. A bare `Figure` has
+neither problem: `savefig` works on it, the window attaches its own canvas, and a
+session of charts is collected as the dialogs holding them close. `matplotlib` is in
+the `gui` and `all` extras rather than only `plots`, because against the OpenCV and Qt
+those already install its size is not what makes an environment large.
+
+**A dropdown you can arrow through is `StepCombo`, not Qt's own keys.** Whether Up
+and Down step through a combo box or open its popup is decided by the style hint
+`SH_ComboBox_Popup`. Under PyQt5 with the `macintosh` style they step, so the
+difference is invisible here — but the hint belongs to the style, and the window
+ships under a different binding. Same reasoning as the file dialogs above.
 
 **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side
 effect, and `test_gui_*` sorts before most other tests. That is how a locale-dependent

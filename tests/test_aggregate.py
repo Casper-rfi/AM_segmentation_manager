@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager import aggregate as ag
+from am_segmentation_manager.config import load_segmentation_config
 from am_segmentation_manager.filtering import (
     METADATA_FILTERS,
     filter_by_metadata,
@@ -162,6 +163,122 @@ def test_every_declared_breakdown_resolves():
     in the CLI, for whichever option nobody tried."""
     for name in ag.BREAKDOWNS:
         assert callable(ag.resolve_breakdown(name, {}, {}))
+
+
+def test_every_breakdown_is_named_for_a_reader():
+    """A bare key is what the dropdown used to show: "dwell" does not say
+    dwell of what, and "current" reads as the current selection."""
+    for entry in ag.BREAKDOWNS.values():
+        assert entry.label
+        assert entry.kind in ag.GROUP_TITLES
+
+    assert ag.BREAKDOWNS["dwell"].label == "dwell time (ns)"
+    assert ag.BREAKDOWNS["current"].label == "beam current (pA)"
+    assert ag.BREAKDOWNS["serial"].label == "microscope serial number"
+
+
+def test_a_breakdown_carrying_a_unit_says_which():
+    """A count of "30" is unreadable without knowing it is kV."""
+    for name in ("voltage", "current", "dwell", "pixel-size"):
+        assert "(" in ag.BREAKDOWNS[name].label
+
+
+def test_the_groups_offer_every_breakdown_exactly_once():
+    grouped = ag.grouped_breakdowns()
+    offered = [name for _, rows in grouped for name, _ in rows]
+
+    assert sorted(offered) == sorted(ag.BREAKDOWNS)
+    assert [title for title, _ in grouped] == list(ag.GROUP_TITLES.values())
+
+
+def test_rows_within_a_group_are_ordered_by_what_is_read():
+    """The label is what a reader scans down, not the identifier behind it."""
+    for _, rows in ag.grouped_breakdowns():
+        assert [label for _, label in rows] == sorted(label for _, label in rows)
+
+
+# ---------------------------------------------------------------------------
+# Class areas, binned
+# ---------------------------------------------------------------------------
+
+def test_an_area_falls_in_the_bin_that_contains_it():
+    assert ag._area_bin(0.005) == "< 0.01"
+    assert ag._area_bin(0.5) == "0.1 - 1"
+    assert ag._area_bin(132.0) == "100 - 1000"
+    assert ag._area_bin(5000.0) == ">= 1000"
+
+
+def test_a_bin_edge_belongs_to_the_bin_above_it():
+    """Otherwise an area exactly on an edge falls in both or neither."""
+    assert ag._area_bin(0.1) == "0.1 - 1"
+    assert ag._area_bin(1.0) == "1 - 10"
+
+
+def test_a_class_that_is_not_in_the_label_is_absent_not_zero():
+    """"No GIS was deposited here" is a finding; a zero area reads as one."""
+    assert ag._area_bin(0.0) == ag.ABSENT
+
+
+def test_a_label_that_was_never_measured_keeps_its_own_status():
+    """No area is not the same as a small one, so it groups under why."""
+    key = ag.by_class_area(2)({})
+
+    assert key(record("a")) == "no-label"
+
+
+def test_the_bins_run_smallest_first_with_the_failures_last():
+    order = ag.AREA_ORDER
+
+    assert order[0] == ag.ABSENT
+    assert list(order[1 : 1 + len(ag.area_bins())]) == list(ag.area_bins())
+    assert order[-3:] == ("empty", "no-pixel-size", "no-label")
+
+
+def test_every_measured_class_gets_an_area_breakdown():
+    """Which classes exist is the segmentation config's to say, so the table
+    cannot be fixed in code without hardcoding one project's classes."""
+    config = load_segmentation_config()
+    table = ag.breakdowns_for(config)
+
+    assert set(table) - set(ag.BREAKDOWNS) == {
+        "area-gis", "area-lamella", "area-crack-hole",
+    }
+    assert table["area-lamella"].label == "lamella area (um^2)"
+    assert table["area-lamella"].kind == "measurement"
+
+
+def test_a_class_name_becomes_a_command_line_safe_breakdown_name():
+    assert ag._slug("crack/hole") == "crack-hole"
+    assert ag._slug("GIS") == "gis"
+
+
+# ---------------------------------------------------------------------------
+# Declared ordering
+# ---------------------------------------------------------------------------
+
+def test_counts_keep_a_declared_order_rather_than_the_largest_first():
+    """Bins of increasing area shuffled by population stop reading as a
+    distribution."""
+    records = [record(str(index)) for index in range(5)]
+    sizes = iter([1.0, 1.0, 1.0, 0.005, 0.5])
+
+    counts = ag.count_by(records, lambda _: ag._area_bin(next(sizes)), ag.AREA_ORDER)
+
+    assert list(counts) == ["< 0.01", "0.1 - 1", "1 - 10"]
+
+
+def test_an_unordered_breakdown_still_leads_with_its_largest_group():
+    records = [record("a"), record("b"), record("c", "FIB")]
+
+    assert list(ag.count_by(records, ag.by_modality)) == ["SEM", "FIB"]
+
+
+def test_a_cross_tabulated_axis_can_be_ordered_too():
+    table = {("1 - 10", "a"): 1, ("< 0.01", "a"): 1}
+
+    rows, _ = ag.totals(table, row_order=ag.AREA_ORDER)
+
+    assert rows == ["< 0.01", "1 - 10"]
 
 
 def test_only_the_header_breakdowns_are_marked_as_needing_metadata():
@@ -327,9 +444,24 @@ def test_a_cross_tabulation_carries_row_and_column_totals():
     assert "= 4" in text      # the grand total
 
 
+def test_a_cross_tabulation_can_be_headed_with_what_was_counted():
+    """The window counts one particular set and has to say which; the axes go
+    on naming themselves down the side and along the top either way."""
+    table = {("Arctis", "SEM"): 2}
+    lines = format_cross_tabulation(
+        table, "microscope", "modality", title="Exportable images"
+    )
+
+    assert lines[0] == "Exportable images"
+    assert lines[1].startswith("microscope")
+
+
 def test_formatting_nothing_says_so_rather_than_printing_an_empty_table():
     assert "nothing to count" in format_counts({}, "Images")[0]
     assert "nothing to count" in format_cross_tabulation({}, "a", "b")[0]
+    assert format_cross_tabulation({}, "a", "b", title="Exportable")[0].startswith(
+        "Exportable"
+    )
 
 
 # ---------------------------------------------------------------------------

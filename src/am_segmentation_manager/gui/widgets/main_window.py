@@ -177,7 +177,10 @@ class CurationWindow(QMainWindow):
         # The other tabs get their own Qt-free controllers, and are handed the
         # projects from the curation scan rather than scanning again: a second
         # scan would double the slowest thing the application does.
-        self.export_controller = ExportController()
+        # Handed the curation controller's config rather than loading its own:
+        # which class is a crack has to be the same question the overlays
+        # answer, and resolving it twice invites two answers.
+        self.export_controller = ExportController(config=controller.config)
         self.metadata_controller = MetadataController()
         self.operations_controller = OperationsController()
         self.export_panel = ExportPanel(self.export_controller)
@@ -334,6 +337,7 @@ class CurationWindow(QMainWindow):
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
         self.metadata_panel.init_requested.connect(self._add_metadata_files)
         self.export_panel.csv_check_requested.connect(self._check_csv)
+        self.export_panel.measure_requested.connect(self._measure_labels)
 
         self.export_panel.training_export_requested.connect(self._export_training)
         self.export_panel.image_metadata_export_requested.connect(self._export_image_metadata)
@@ -620,6 +624,25 @@ class CurationWindow(QMainWindow):
             lambda report: self._show_report("Check exported CSV", report),
         )
 
+    def _measure_labels(self) -> None:
+        """Measure every label off the interface thread, then redraw.
+
+        The first thing in the Export tab slow enough to need the worker: it
+        opens each label and labels its components, tens of milliseconds each
+        against half a millisecond for a header.
+        """
+        labels = self.export_controller.measurable_labels()
+        self._run_operation(
+            f"Measuring {labels} label(s)",
+            self.export_controller.load_measurements,
+            lambda measured: self._labels_measured(measured),
+        )
+
+    def _labels_measured(self, measured: int) -> None:
+        """Redraw with the measurements the worker read."""
+        logger.info("Measured labels for %d image(s)", measured)
+        self.export_panel.refresh()
+
     def _export_training(self, directory: str) -> None:
         from ...operations.csv import export_training_csv
 
@@ -627,7 +650,6 @@ class CurationWindow(QMainWindow):
         if not records:
             self._flash("Nothing matches these filters")
             return
-        filters = self.export_controller.filters
         training = self.export_controller.training
         try:
             train, validation = export_training_csv(
@@ -637,8 +659,13 @@ class CurationWindow(QMainWindow):
                 prefix=training.prefix,
                 train_ratio=training.train_ratio,
                 seed=training.seed,
-                include_empty_labels=filters.include_empty_labels,
-                conditions=filters.conditions,
+                # The window never writes blank masks. Deliberate negative
+                # examples are a considered thing, and the command line's
+                # --include-empty-labels is where they stay.
+                include_empty_labels=False,
+                # Already applied: the filters decide which images are in play,
+                # and "one image per label" is one of them.
+                conditions="all",
             )
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))

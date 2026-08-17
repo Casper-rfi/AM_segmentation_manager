@@ -20,7 +20,7 @@ from ..io.path import make_path_relative
 from ..metadata import DESCRIPTIVE_FIELDS
 from ..models import ImageRecord, Project
 from .csv import find_matching_label
-from .label_io import is_label_file_empty
+from .label_io import label_state
 from .label_measure import LabelMeasurement, measurement_status
 from .selection import current_state
 
@@ -55,22 +55,6 @@ def _descriptive_column(field: str) -> str:
     return DESCRIPTIVE_COLUMN_OVERRIDES.get(field, field)
 
 
-def _label_state(record: ImageRecord) -> str:
-    """Return whether the record's label holds an annotation.
-
-    A label existing is not evidence of annotation: the segmentation software
-    writes an empty one for every image it is pointed at. An export that did
-    not distinguish these would overstate how much of the archive is done.
-    """
-    label = find_matching_label(record)
-    if label is None:
-        return "missing"
-    empty = is_label_file_empty(label)
-    if empty is None:
-        return "unreadable"
-    return "empty" if empty else "annotated"
-
-
 def image_rows(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -91,7 +75,7 @@ def image_rows(
             "modality": record.modality,
             "variant": record.variant or "base",
             "state": current_state(record),
-            "label_state": _label_state(record),
+            "label_state": label_state(record),
             "label_shared": record.label_shared,
             "image": make_path_relative(record.image_path, start_path),
             "label": make_path_relative(label, start_path) if label else "",

@@ -242,10 +242,7 @@ def _count_pixels(path: Path, crack_class: int | None) -> LabelPixels | None:
         return None
 
     height, width = int(array.shape[0]), int(array.shape[1])
-    counts = np.bincount(array.reshape(-1).astype(np.int64, copy=False))
-    class_pixels = {
-        int(index): int(count) for index, count in enumerate(counts) if count
-    }
+    class_pixels = _class_pixels(array)
 
     component_pixels: tuple[int, ...] = ()
     if crack_class is not None:
@@ -258,6 +255,35 @@ def _count_pixels(path: Path, crack_class: int | None) -> LabelPixels | None:
         component_pixels=component_pixels,
         crack_class=crack_class,
     )
+
+
+#: Largest pixel count a float32 histogram still represents exactly. cv2
+#: returns float32, whose mantissa is 24 bits, so a label with more pixels than
+#: this could come back with a count off by one -- and a pixel count that is
+#: quietly approximate is worse than a slow one.
+_EXACT_IN_FLOAT32 = 2 ** 24
+
+
+def _class_pixels(array) -> dict[int, int]:
+    """Return how many pixels each class index covers.
+
+    Counting is the single most expensive step of measuring a label -- more
+    than reading the file, and more than finding its connected components --
+    because ``np.bincount`` widens the array to ``intp`` first, which allocates
+    eight bytes a pixel before counting any of them. cv2's histogram counts the
+    bytes where it can, which is a labelled TIFF's usual dtype.
+    """
+    import cv2
+    import numpy as np
+
+    if array.dtype == np.uint8 and array.size <= _EXACT_IN_FLOAT32:
+        # calcHist will not take a view, and to_2d may well have handed us one.
+        counted = cv2.calcHist(
+            [np.ascontiguousarray(array)], [0], None, [256], [0, 256]
+        ).ravel()
+    else:
+        counted = np.bincount(array.reshape(-1).astype(np.int64, copy=False))
+    return {int(index): int(count) for index, count in enumerate(counted) if count}
 
 
 def _components(mask) -> tuple[int, ...]:

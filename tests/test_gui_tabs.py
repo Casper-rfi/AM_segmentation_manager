@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.aggregate import MISSING
 from am_segmentation_manager.gui.export_controller import ExportController
 from am_segmentation_manager.gui.metadata_controller import (
     SUGGESTION_LIMIT,
@@ -91,14 +92,18 @@ def test_empty_labels_are_shown_as_excluded_rather_than_silently_dropped(tmp_pat
     assert "empty label" in preview.summary()
 
 
-def test_including_empty_labels_makes_them_exportable(tmp_path: Path):
+def test_an_empty_label_is_never_exportable_from_the_window(tmp_path: Path):
+    """Looking at the placeholders is what the label filter is for; writing
+    them into a training file is a deliberate act the command line keeps."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="empty")
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
-    controller.filters.include_empty_labels = True
 
-    assert controller.preview().exportable == 4
+    controller.filters.label = "empty (placeholder)"
+
+    assert controller.preview().matched == 4      # visible, and countable
+    assert controller.preview().exportable == 0   # but never written
 
 
 def test_images_without_labels_are_counted_separately(tmp_path: Path):
@@ -123,13 +128,14 @@ def test_one_condition_per_scene_is_visible_before_exporting(tmp_path: Path):
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
 
-    primary = controller.preview()
-    controller.filters.conditions = "all"
     everything = controller.preview()
+    controller.filters.conditions = "primary"
+    primary = controller.preview()
 
-    assert primary.matched == 3
-    assert primary.after_conditions == 1
-    assert everything.after_conditions == 3
+    # The rule is a filter, so it narrows what "matched" means rather than
+    # being reported as a separate step further down the line.
+    assert primary.matched == 1
+    assert everything.matched == 3
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +158,10 @@ def written_split(exporter: ExportController, output: Path) -> tuple[int, int]:
         prefix=exporter.training.prefix,
         train_ratio=exporter.training.train_ratio,
         seed=exporter.training.seed,
-        include_empty_labels=exporter.filters.include_empty_labels,
-        conditions=exporter.filters.conditions,
+        # As the window calls it: the filters have already applied the dedup
+        # rule, and the window never writes blank masks.
+        include_empty_labels=False,
+        conditions="all",
     )
     return csv_rows(train), csv_rows(validation)
 
@@ -229,6 +237,153 @@ def test_breakdowns_count_the_current_selection(exporter: ExportController):
     exporter.filters.modality = "SEM"
 
     assert exporter.breakdown("modality") == {"SEM": 2}
+
+
+def test_a_breakdown_counts_what_would_be_exported(tmp_path: Path):
+    """One tab, one set. A tick that halves the export has to halve the table
+    under it, or the two numbers on screen describe different collections."""
+    pytest.importorskip("tifffile")
+    build_dataset(
+        tmp_path, layout="no_stage_level", sem_variants=("SEM_8_fi_1", "SEM_8_fi_4"),
+        modalities=("SEM",), acquisitions=1, labels="annotated",
+    )
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert controller.breakdown("variant") == {"8": 1, "8_fi_1": 1, "8_fi_4": 1}
+
+    controller.filters.conditions = "primary"
+
+    assert controller.breakdown("variant") == {"8": 1}
+
+
+def test_an_image_with_no_label_is_counted_but_not_exportable(tmp_path: Path):
+    """The tab has to answer "what have I got" as well as "what can I write":
+    an archive that is mostly unlabelled is the normal case, and a table that
+    showed none of it would be describing a collection nobody has."""
+    build_dataset(tmp_path, acquisitions=2, labels="none")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert sum(controller.breakdown("modality").values()) == 4
+    assert controller.preview().matched == 4
+    assert controller.preview().exportable == 0
+
+
+def test_the_label_filter_decides_what_the_table_counts(tmp_path: Path):
+    """Finding the placeholders is the point of the filter: they are what you
+    would go and correct or remove, and they cannot be found if nothing counts
+    them."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, labels="empty")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert sum(controller.breakdown("modality").values()) == 4   # "any"
+
+    controller.filters.label = "annotated"
+    assert controller.breakdown("modality") == {}
+
+    controller.filters.label = "empty (placeholder)"
+    assert sum(controller.breakdown("modality").values()) == 4
+
+    controller.filters.label = "no label yet"
+    assert controller.breakdown("modality") == {}
+
+
+def test_the_label_states_present_can_be_counted(tmp_path: Path):
+    """One row set answering "how much of this collection is annotated"."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, labels="empty")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert controller.breakdown("label") == {"empty": 4}
+
+
+def test_two_properties_cross_tabulate(headers: ExportController):
+    """The question a training set raises is rarely one-dimensional: not how
+    many SEM images, but which plasma gas the FIB ones were taken with."""
+    table = headers.cross_tabulation("modality", "plasma-gas")
+
+    # The fixture gives each beam a property the other cannot have, so the SEM
+    # row lands under "not recorded" and the two FIB images under a gas each.
+    assert table == {
+        ("FIB", "Argon"): 1,
+        ("FIB", "Xenon"): 1,
+        ("SEM", MISSING): 2,
+    }
+    assert sum(table.values()) == len(headers.exportable_records())
+
+
+def test_a_cross_tabulation_reads_the_headers_it_needs(exporter: ExportController):
+    """Either half needing headers is enough to have to read them."""
+    exporter.cross_tabulation("modality", "state")
+    assert not exporter.metadata_loaded()
+
+    exporter.cross_tabulation("modality", "voltage")
+    assert exporter.metadata_loaded()
+
+
+def test_labels_are_never_measured_without_being_asked(exporter: ExportController):
+    """Measuring is tens of milliseconds a label. Doing it because a breakdown
+    was chosen would fire on every press of an arrow key down the list."""
+    exporter.breakdown("has-crack")
+
+    assert not exporter.measurements_loaded()
+
+
+def test_a_crack_breakdown_counts_nothing_until_the_labels_are_measured(
+    exporter: ExportController,
+):
+    """Regression: the key function was built without the measurements, so
+    every image came back "no-label" -- which reads as a finding about the data
+    rather than as a question that was never asked."""
+    assert exporter.needs_measurements("has-crack")
+    assert exporter.breakdown("has-crack") == {"no-label": 4}
+
+    exporter.load_measurements()
+
+    assert exporter.breakdown("has-crack") != {"no-label": 4}
+
+
+def test_measuring_reports_what_it_covered(exporter: ExportController):
+    assert exporter.measurable_labels() == 4
+    assert exporter.load_measurements() == 4
+    assert exporter.measurements_loaded()
+
+
+def test_a_second_scan_forgets_what_was_measured(exporter: ExportController, tmp_path):
+    """The measurements belong to the scan they were taken from."""
+    exporter.load_measurements()
+
+    exporter.set_projects(scanned(tmp_path), tmp_path)
+
+    assert not exporter.measurements_loaded()
+
+
+def test_class_areas_are_offered_for_the_classes_the_config_measures(
+    exporter: ExportController,
+):
+    """The dropdown is built from the config, so a project that renamed its
+    classes gets its own areas rather than this project's."""
+    offered = {
+        name for _, rows in exporter.available_breakdowns() for name, _ in rows
+    }
+
+    assert {"area-gis", "area-lamella", "area-crack-hole"} <= offered
+
+
+def test_an_area_breakdown_keeps_its_bins_in_order(exporter: ExportController):
+    """Ordered by population, bins of increasing area stop reading as a
+    distribution."""
+    exporter.load_measurements()
+    order = exporter.breakdowns["area-lamella"].order
+
+    counts = exporter.breakdown("area-lamella")
+
+    positions = [order.index(key) for key in counts]
+    assert positions == sorted(positions)
 
 
 def test_headers_are_only_read_when_something_needs_them(exporter: ExportController):

@@ -40,9 +40,15 @@ all = [
   "tifffile",
   "imagecodecs",
   "opencv-python",
+  "matplotlib",
 ]
-# Bar charts of the `stats` breakdowns. Optional: every statistics command
-# works without it and declines to plot.
+# Charts alone, for a command-line install that wants `stats --plot` and
+# nothing else. matplotlib is in `all` and `gui` as well: against the ~250 MB
+# those already install for OpenCV and Qt, its own ~50 MB is not what makes an
+# environment large, and charting is not a feature worth having to discover a
+# second install command to reach. The core stays near-stdlib, and every
+# statistics command still declines to plot rather than failing when it is
+# absent.
 plots = [
   "matplotlib",
 ]
@@ -56,6 +62,7 @@ gui = [
   "tifffile",
   "imagecodecs",
   "opencv-python",
+  "matplotlib",
 ]
 
 [project.scripts]

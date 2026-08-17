@@ -8,11 +8,19 @@ belongs in a controller, and anything only one panel uses belongs in that panel.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QIcon, QPixmap
-from qtpy.QtWidgets import QFileDialog, QListWidget, QMenu, QWidget
+from qtpy.QtGui import QIcon, QPixmap, QStandardItem, QStandardItemModel
+from qtpy.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QLabel,
+    QListWidget,
+    QMenu,
+    QWidget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +48,99 @@ def chip_icon(pixmap: QPixmap) -> QIcon:
         for state in (QIcon.On, QIcon.Off):
             icon.addPixmap(pixmap, mode, state)
     return icon
+
+
+def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:
+    """Return a caption for *widget*, putting *tooltip* on both.
+
+    A user reaches for the word naming a control, not the control itself, so a
+    tooltip on the control alone is one nobody finds. Returning the label keeps
+    the two impossible to write apart.
+    """
+    label = QLabel(text)
+    label.setToolTip(tooltip)
+    widget.setToolTip(tooltip)
+    return label
+
+
+class StepCombo(QComboBox):
+    """A combo box whose Up and Down keys always move through the list.
+
+    Qt's own handling of those keys turns on ``SH_ComboBox_Popup``: where a
+    style sets it, the keys open the popup instead of stepping. Under PyQt5
+    here they step, but that hint is a style's to answer and this window runs
+    under a different binding and a different macOS than it is developed on --
+    the gap ``docs/decisions.md`` § Environment is about. One code path rather
+    than a style's is the same choice already made for the file dialogs.
+
+    Stepping skips disabled rows, so a grouped list arrows through its entries
+    and not its headings. Alt-Down still opens the popup, and every other key
+    is Qt's.
+    """
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt's spelling
+        if event.key() in (Qt.Key_Up, Qt.Key_Down) and not event.modifiers():
+            self.step(1 if event.key() == Qt.Key_Down else -1)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def step(self, delta: int) -> None:
+        """Move to the next selectable row in *delta*'s direction.
+
+        Stops at the ends rather than wrapping: a list that jumps from the
+        last row back to the first loses your place in a long one.
+        """
+        wanted = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        index = self.currentIndex() + delta
+        while 0 <= index < self.count():
+            # Asked of the model rather than the item, so this works whatever
+            # model the combo was given.
+            if self.model().index(index, self.modelColumn()).flags() & wanted == wanted:
+                self.setCurrentIndex(index)
+                return
+            index += delta
+
+
+def fill_grouped_combo(
+    combo: QComboBox,
+    groups: Sequence[tuple[str, Sequence[tuple[str, str]]]],
+    *,
+    first: tuple[str, str] | None = None,
+) -> None:
+    """Fill *combo* with rows gathered under non-selectable headings.
+
+    Each row carries its identifier as item data, so a caller reads
+    ``currentData()`` and never has to map a display label back to a name.
+    A heading carries none, which is what distinguishes the two.
+
+    Args:
+        groups: ``(heading, rows)`` pairs, where each row is
+            ``(identifier, label)``.
+        first: A row to place above every group, for an entry that belongs to
+            no group -- an "any" or "none" option.
+    """
+    model = QStandardItemModel(combo)
+    if first is not None:
+        name, label = first
+        item = QStandardItem(label)
+        item.setData(name, Qt.UserRole)
+        model.appendRow(item)
+    for heading, rows in groups:
+        item = QStandardItem(heading)
+        # NoItemFlags rather than clearing ItemIsSelectable alone: a heading
+        # must also be skipped when stepping through the list with the arrow
+        # keys, and Qt skips disabled rows for free.
+        item.setFlags(Qt.NoItemFlags)
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+        model.appendRow(item)
+        for name, label in rows:
+            row = QStandardItem(label)
+            row.setData(name, Qt.UserRole)
+            model.appendRow(row)
+    combo.setModel(model)
 
 
 def build_path_dialog(

@@ -27,8 +27,17 @@ writes the three CSVs and checks one written earlier. Each previews first and ap
 only what the preview showed, on a worker thread so a long one cannot freeze the
 window. Export takes the same split, seed and filenames as `create-training-csv`, and
 its live count runs the same split, so how the two files divide is visible before either
-is written. It filters by modality, workflow state and acquisition metadata; scoping an
-export to particular projects or lamellae is command-line only.
+is written. It filters by modality, workflow state, label state, acquisition metadata
+and whether repeated imaging conditions of one scene collapse to one image — every
+control that narrows sits in one box, and the count and breakdown both follow it.
+Scoping an export to particular projects or lamellae is command-line only. Two
+buttons buy the breakdowns that need more than the filesystem: reading the headers,
+and measuring the labels — the second on the worker thread, and never implicit,
+because it opens every label. Once measured, each class the segmentation config names
+gets a binned area breakdown, so which classes those are is the config's answer and
+not a list fixed in code. **Chart** draws whatever the table shows — bars for one
+property, a grid for two, where the empty cells are the combinations nothing has been
+acquired for. `stats --plot` writes the same charts to a file.
 
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.

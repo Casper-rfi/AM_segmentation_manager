@@ -2,10 +2,14 @@
 
 The reason this is in the window rather than only on the command line: choosing
 a training set is iterative. You filter, look at what survives, and adjust. The
-live count in the middle is the whole point -- ``keep_one_condition_per_scene``
-and the empty-label rule both drop images silently on the command line, and
-seeing what they drop is what makes the composition of an export visible before
-it is written.
+live count in the middle is the whole point -- the empty-label rule drops images
+silently on the command line, reported only in the log, and seeing what it drops
+is what makes the composition of an export visible before it is written.
+
+**Three boxes, three jobs.** Filters decides which images are in play, Breakdown
+counts them, Export writes files. Nothing on the right narrows anything: a
+control that shrank the export without shrinking the table would leave two
+numbers on screen describing different collections.
 """
 from __future__ import annotations
 
@@ -22,6 +26,7 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -33,14 +38,28 @@ from qtpy.QtWidgets import (
 
 from ...filtering import METADATA_FILTERS, filter_property
 from ..export_controller import (
+    ANY_LABEL,
     DEFAULT_PREFIX,
+    LABEL_FILTERS,
     MODALITIES,
     STATES,
     ExportController,
 )
-from .common import choose_directory, choose_open_file, choose_save_file
+from .chart_dialog import ChartDialog
+from .common import (
+    StepCombo,
+    caption_for,
+    choose_directory,
+    choose_open_file,
+    choose_save_file,
+    fill_grouped_combo,
+)
 
 logger = logging.getLogger(__name__)
+
+#: Item data of the second dropdown's "(none)" row, meaning no
+#: cross-tabulation. Not ``None``, which is what a group heading carries.
+NO_CROSS = ""
 
 
 class ExportPanel(QWidget):
@@ -54,6 +73,10 @@ class ExportPanel(QWidget):
     #: Emitted with a CSV to check the recorded paths of.
     csv_check_requested = Signal(str)
 
+    #: Emitted when the user asks for the labels to be measured. The window
+    #: runs it, because it owns the worker thread and the busy dialog.
+    measure_requested = Signal()
+
     def __init__(self, controller: ExportController) -> None:
         super().__init__()
         self.controller = controller
@@ -63,13 +86,22 @@ class ExportPanel(QWidget):
         # session only: the window's QSettings are injected for test isolation,
         # and a panel reaching for the real ones would break that.
         self._last_directory: Path | None = None
+        # Open chart windows. Held only so Python does not collect a
+        # modeless dialog the moment the call that showed it returns.
+        self._charts: list[ChartDialog] = []
+
+        # Held rather than only added, so which box a control ended up in can be
+        # asserted on: that is the rule the layout exists to keep.
+        self._filters_box = self._build_filters()
+        self._breakdown_box = self._build_middle()
+        self._export_box = self._build_actions()
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(8)
-        layout.addWidget(self._build_filters(), stretch=0)
-        layout.addWidget(self._build_middle(), stretch=1)
-        layout.addWidget(self._build_actions(), stretch=0)
+        layout.addWidget(self._filters_box, stretch=0)
+        layout.addWidget(self._breakdown_box, stretch=1)
+        layout.addWidget(self._export_box, stretch=0)
 
     # -- construction ------------------------------------------------------
 
@@ -81,14 +113,57 @@ class ExportPanel(QWidget):
         self.modality = QComboBox()
         self.modality.addItems(MODALITIES)
         self.modality.currentTextChanged.connect(self._controls_changed)
-        column.addWidget(QLabel("Modality"))
+        column.addWidget(
+            caption_for(
+                "Modality",
+                self.modality,
+                "Keep only images taken with one beam: SEM (electron) or FIB "
+                "(ion). This is the directory the image sits in, not what its "
+                "header reports.",
+            )
+        )
         column.addWidget(self.modality)
 
         self.state = QComboBox()
         self.state.addItems(STATES)
         self.state.currentTextChanged.connect(self._controls_changed)
-        column.addWidget(QLabel("Workflow state"))
+        column.addWidget(
+            caption_for(
+                "Workflow state",
+                self.state,
+                "Keep only images in one state: selected for proofreading, "
+                "deselected, or corrected once the proofreading is done.",
+            )
+        )
         column.addWidget(self.state)
+
+        self.label_state = QComboBox()
+        self.label_state.addItems(LABEL_FILTERS)
+        self.label_state.setCurrentText(ANY_LABEL)
+        self.label_state.currentTextChanged.connect(self._controls_changed)
+        column.addWidget(
+            caption_for(
+                "Label",
+                self.label_state,
+                "Keep only images whose label is in one state. A label file "
+                "existing is not evidence of annotation -- the segmentation "
+                "software writes a blank one for every image it is pointed at "
+                "-- so 'has a label' and 'annotated' are different sets, and "
+                "'empty (placeholder)' is how you find the blanks to correct "
+                "or remove.",
+            )
+        )
+        column.addWidget(self.label_state)
+
+        self.conditions = QCheckBox("One image per label")
+        self.conditions.setToolTip(
+            "Several imaging conditions of one acquisition share a single "
+            "label. Ticked, only the first condition of each is kept. Cleared, "
+            "every condition is kept -- the same scene repeated, each copy "
+            "paired with the identical label."
+        )
+        self.conditions.toggled.connect(self._controls_changed)
+        column.addWidget(self.conditions)
 
         column.addSpacing(6)
         self.load_button = QPushButton("Load image metadata")
@@ -110,17 +185,20 @@ class ExportPanel(QWidget):
         self.metadata_lists: dict[str, QListWidget] = {}
         for name in sorted(METADATA_FILTERS):
             described = filter_property(name)
-            # Only the first letter: capitalize() would lowercase the rest and
-            # turn the units it carries into "(pa)" and "(kv)".
-            metadata_column.addWidget(QLabel(described[:1].upper() + described[1:]))
             widget = QListWidget()
             widget.setSelectionMode(QListWidget.MultiSelection)
             widget.setMaximumHeight(64)
-            widget.setToolTip(
-                f"Keep only images whose {filter_property(name)} is one of the "
-                f"selected values"
-            )
             widget.itemSelectionChanged.connect(self._controls_changed)
+            # Only the first letter: capitalize() would lowercase the rest and
+            # turn the units it carries into "(pa)" and "(kv)".
+            metadata_column.addWidget(
+                caption_for(
+                    described[:1].upper() + described[1:],
+                    widget,
+                    f"Keep only images whose {described} is one of the "
+                    f"selected values. Select nothing to keep them all.",
+                )
+            )
             self.metadata_lists[name] = widget
             metadata_column.addWidget(widget)
 
@@ -146,7 +224,7 @@ class ExportPanel(QWidget):
         return box
 
     def _build_middle(self) -> QWidget:
-        box = QGroupBox("Selection")
+        box = QGroupBox("Breakdown")
         column = QVBoxLayout(box)
 
         self.summary = QLabel("No data loaded")
@@ -154,13 +232,71 @@ class ExportPanel(QWidget):
         self.summary.setTextInteractionFlags(Qt.TextSelectableByMouse)
         column.addWidget(self.summary)
 
+        groups = self.controller.available_breakdowns()
+
         row = QHBoxLayout()
-        row.addWidget(QLabel("Break down by"))
-        self.breakdown = QComboBox()
-        self.breakdown.addItems(self.controller.available_breakdowns())
-        self.breakdown.setCurrentText("modality")
-        self.breakdown.currentTextChanged.connect(self.refresh)
+        self.breakdown = StepCombo()
+        fill_grouped_combo(self.breakdown, groups)
+        self.breakdown.setCurrentIndex(self.breakdown.findData("modality"))
+        self.breakdown.currentIndexChanged.connect(self.refresh)
+        row.addWidget(
+            caption_for(
+                "Break down by",
+                self.breakdown,
+                "Group the images that would be exported by one property, and "
+                "show each group's share of them. This counts the same set the "
+                "line above ends with, not everything the filters match -- an "
+                "image with no label, or a blank one, is never exported and so "
+                "is never counted here. The list is grouped by where the value "
+                "comes from.",
+            )
+        )
         row.addWidget(self.breakdown, stretch=1)
+        column.addLayout(row)
+
+        row = QHBoxLayout()
+        self.cross = StepCombo()
+        fill_grouped_combo(self.cross, groups, first=(NO_CROSS, "(none)"))
+        self.cross.currentIndexChanged.connect(self.refresh)
+        row.addWidget(
+            caption_for(
+                "and",
+                self.cross,
+                "Cross-tabulate against a second property, which is usually "
+                "the question worth asking: not how many images are on one "
+                "microscope, but how many of them are FIB at 30 kV. The empty "
+                "cells are the combinations nothing has been acquired for.",
+            )
+        )
+        row.addWidget(self.cross, stretch=1)
+        column.addLayout(row)
+
+        # Its own button, and never triggered by choosing a breakdown: opening
+        # every label is the one thing in this tab slow enough that it has to
+        # be asked for. What it costs is on the button before it is pressed.
+        self.measure_button = QPushButton("Measure labels")
+        self.measure_button.setToolTip(
+            "Open every label and measure what it holds, which the breakdowns "
+            "under Label measurements need. Tens of milliseconds per label, "
+            "and there is no way to stop it once it starts -- but it is done "
+            "once, and every measured breakdown is instant afterwards."
+        )
+        self.measure_button.clicked.connect(self.measure_requested)
+
+        # "Chart", not "Plot": the Curate tab's plot view already means the
+        # summary images Autolamella writes, and two things called plot in one
+        # window is one too many.
+        self.chart_button = QPushButton("Chart...")
+        self.chart_button.setToolTip(
+            "Draw what the table shows. One property is bars, two are a grid "
+            "-- where the empty cells are the combinations nothing has been "
+            "acquired for."
+        )
+        self.chart_button.clicked.connect(self._chart)
+
+        row = QHBoxLayout()
+        row.addWidget(self.measure_button, stretch=1)
+        row.addWidget(self.chart_button, stretch=1)
         column.addLayout(row)
 
         self.table = QPlainTextEdit()
@@ -174,36 +310,40 @@ class ExportPanel(QWidget):
         box.setMinimumWidth(240)
         column = QVBoxLayout(box)
 
-        self.conditions = QCheckBox("One condition per scene")
-        self.conditions.setChecked(True)
-        self.conditions.setToolTip(
-            "Imaging conditions of one acquisition share a label and are "
-            "near-identical. Exporting all of them multiplies the dataset by "
-            "copies of the same scene."
-        )
-        self.conditions.toggled.connect(self._controls_changed)
-        column.addWidget(self.conditions)
-
-        self.include_empty = QCheckBox("Include empty labels")
-        self.include_empty.setToolTip(
-            "An empty label teaches a model that the structure is background. "
-            "Turn this on only to build negative examples deliberately."
-        )
-        self.include_empty.toggled.connect(self._controls_changed)
-        column.addWidget(self.include_empty)
-
-        column.addSpacing(8)
         column.addWidget(self._build_split())
 
         column.addSpacing(8)
         # The training export writes two files it names itself, so it asks for a
         # directory; the other two write one file the user names.
-        for label, signal, directory in (
-            ("Training CSV...", self.training_export_requested, True),
-            ("Per-image metadata CSV...", self.image_metadata_export_requested, False),
-            ("Per-project metadata CSV...", self.project_metadata_export_requested, False),
+        for label, signal, directory, tooltip in (
+            (
+                "Training CSV...",
+                self.training_export_requested,
+                True,
+                "Write the two training files into a directory you choose: one "
+                "row per image and the label it is paired with, split as the "
+                "Training split box says.",
+            ),
+            (
+                "Per-image metadata CSV...",
+                self.image_metadata_export_requested,
+                False,
+                "Write one row per matching image: where it is, what state it "
+                "is in, whether its label holds an annotation, and every "
+                "acquisition setting read from its header.",
+            ),
+            (
+                "Per-project metadata CSV...",
+                self.project_metadata_export_requested,
+                False,
+                "Write one row per project in the scan: the sample, "
+                "preparation type, user and organisation recorded in its "
+                "metadata. Not narrowed by the filters -- projects are the "
+                "unit here, not images.",
+            ),
         ):
             button = QPushButton(label)
+            button.setToolTip(tooltip)
             button.clicked.connect(
                 lambda _checked=False, s=signal, d=directory, t=label: self._choose(s, t, d)
             )
@@ -239,12 +379,15 @@ class ExportPanel(QWidget):
         self.train_share.setRange(0, 100)
         self.train_share.setValue(80)
         self.train_share.setSuffix(" %")
-        self.train_share.setToolTip(
-            "Share of the exportable pairs written to the training file, the "
-            "rest to validation. 100% writes no validation file."
-        )
         self.train_share.valueChanged.connect(self._controls_changed)
-        row.addWidget(QLabel("Training"))
+        row.addWidget(
+            caption_for(
+                "Training",
+                self.train_share,
+                "Share of the exportable pairs written to the training file, "
+                "the rest to validation. 100% writes no validation file.",
+            )
+        )
         row.addWidget(self.train_share, stretch=1)
         grid.addLayout(row)
 
@@ -259,6 +402,7 @@ class ExportPanel(QWidget):
         self.seed = QSpinBox()
         self.seed.setRange(0, 999_999)
         self.seed.setValue(42)
+        self.seed.setToolTip(self.seeded.toolTip())
         self.seed.valueChanged.connect(self._controls_changed)
         row.addWidget(self.seeded)
         row.addWidget(self.seed, stretch=1)
@@ -267,13 +411,16 @@ class ExportPanel(QWidget):
         row = QHBoxLayout()
         self.prefix = QLineEdit()
         self.prefix.setPlaceholderText(DEFAULT_PREFIX)
-        self.prefix.setToolTip(
-            f"Names the two files: <prefix>_train.csv and <prefix>_val.csv. "
-            f"Left empty, they are called {DEFAULT_PREFIX}_train.csv and "
-            f"{DEFAULT_PREFIX}_val.csv."
-        )
         self.prefix.textChanged.connect(self._controls_changed)
-        row.addWidget(QLabel("Name"))
+        row.addWidget(
+            caption_for(
+                "Name",
+                self.prefix,
+                f"Names the two files: <prefix>_train.csv and <prefix>_val.csv. "
+                f"Left empty, they are called {DEFAULT_PREFIX}_train.csv and "
+                f"{DEFAULT_PREFIX}_val.csv.",
+            )
+        )
         row.addWidget(self.prefix, stretch=1)
         grid.addLayout(row)
         return box
@@ -336,8 +483,8 @@ class ExportPanel(QWidget):
         filters = self.controller.filters
         filters.modality = self.modality.currentText()
         filters.state = self.state.currentText()
+        filters.label = self.label_state.currentText()
         filters.conditions = "primary" if self.conditions.isChecked() else "all"
-        filters.include_empty_labels = self.include_empty.isChecked()
         for name, widget in self.metadata_lists.items():
             self.controller.set_metadata_filter(
                 name, [item.text() for item in widget.selectedItems()]
@@ -350,20 +497,132 @@ class ExportPanel(QWidget):
 
     def refresh(self) -> None:
         """Recount and redraw. Cheap: the records are already in memory."""
-        from ...reporting import format_counts
-
         if not self.controller.records:
             self.summary.setText("No data loaded. Scan a folder in the Curate tab.")
             self.table.setPlainText("")
             return
 
         self.summary.setText(self.controller.preview().summary())
-        name = self.breakdown.currentText()
+        self._show_measure_state()
         try:
-            counts = self.controller.breakdown(name)
+            lines = self._counted()
         except ValueError as error:  # unknown breakdown, should not happen
             self.table.setPlainText(str(error))
             return
-        self.table.setPlainText("\n".join(format_counts(counts, f"By {name}")))
+        self.table.setPlainText("\n".join(lines))
         if self.controller.metadata_loaded():
             self._populate_metadata_lists()
+
+    def _chart(self) -> None:
+        """Open a chart of whatever the table currently shows.
+
+        The chart type follows the data rather than being chosen: one property
+        is bars, two are a grid. Asking would be asking the user to know which
+        shape suits a shape they have not seen yet.
+        """
+        from ...plots import bar_figure, has_plot_support, heatmap_figure
+
+        if not has_plot_support():
+            from ...plots import INSTALL_HINT
+
+            QMessageBox.information(
+                self, "Charts need matplotlib",
+                f"Drawing charts requires matplotlib.\n\n{INSTALL_HINT}",
+            )
+            return
+        if not self.controller.records:
+            return
+
+        breakdowns = self.controller.breakdowns
+        name = self.breakdown.currentData()
+        other = self.cross.currentData()
+        if any(
+            self.controller.needs_measurements(chosen)
+            for chosen in (name, other) if chosen
+        ) and not self.controller.measurements_loaded():
+            QMessageBox.information(
+                self, "Nothing to chart yet",
+                "This breakdown needs the labels measured first.",
+            )
+            return
+
+        row = breakdowns[name].label
+        try:
+            if other:
+                column = breakdowns[other].label
+                table = self.controller.cross_tabulation(name, other)
+                title = f"Images by {row} and {column}"
+                build = lambda normalise: heatmap_figure(  # noqa: E731
+                    table, row, column, title=title, normalise=normalise,
+                    row_order=breakdowns[name].order,
+                    column_order=breakdowns[other].order,
+                )
+            else:
+                counts = self.controller.breakdown(name)
+                title = f"Images by {row}"
+                build = lambda _normalise: bar_figure(  # noqa: E731
+                    counts, title, xlabel=row, ordered=bool(breakdowns[name].order),
+                )
+            dialog = ChartDialog(title, build, normalisable=bool(other), parent=self)
+        except ValueError as error:  # nothing matched the filters
+            QMessageBox.information(self, "Nothing to chart", str(error))
+            return
+        # Kept so the dialog is not collected the moment this returns, and
+        # modeless so two breakdowns can be compared side by side.
+        self._charts.append(dialog)
+        dialog.finished.connect(lambda _result, d=dialog: self._charts.remove(d))
+        dialog.show()
+
+    def _show_measure_state(self) -> None:
+        """Put the size of the job on the button, or say it is done.
+
+        The cost scales with the collection and there is nothing to cancel, so
+        how much is being asked for belongs on the button rather than in a
+        dialog that appears once it is too late.
+        """
+        if self.controller.measurements_loaded():
+            self.measure_button.setText("Labels measured")
+            self.measure_button.setEnabled(False)
+            return
+        labels = self.controller.measurable_labels()
+        self.measure_button.setText(f"Measure {labels} label(s)")
+        self.measure_button.setEnabled(bool(labels))
+
+    def _counted(self) -> list[str]:
+        """Return the table for whichever of the two dropdowns are in use."""
+        from ...reporting import format_counts, format_cross_tabulation
+
+        breakdowns = self.controller.breakdowns
+        name = self.breakdown.currentData()
+        row = breakdowns[name].label
+        other = self.cross.currentData()
+
+        unmeasured = [
+            breakdowns[chosen].label
+            for chosen in (name, other)
+            if chosen and self.controller.needs_measurements(chosen)
+        ]
+        if unmeasured and not self.controller.measurements_loaded():
+            # Counting anyway would put every image under "no-label", which
+            # reads as a finding rather than as a question not yet asked.
+            return [
+                f"Counting by {' and '.join(unmeasured)} needs the labels "
+                f"measured.",
+                "",
+                "Press Measure labels above.",
+            ]
+
+        if not other:
+            counts = self.controller.breakdown(name)
+            return format_counts(counts, f"Images by {row}")
+
+        column = breakdowns[other].label
+        table = self.controller.cross_tabulation(name, other)
+        return format_cross_tabulation(
+            table,
+            row,
+            column,
+            title=f"Images by {row} and {column}",
+            row_order=breakdowns[name].order,
+            column_order=breakdowns[other].order,
+        )

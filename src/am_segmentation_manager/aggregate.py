@@ -12,16 +12,19 @@ a visible row rather than a silent omission.
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
-from collections.abc import Callable, Hashable, Iterable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config import SegmentationConfig
 from .image_metadata import ImageMetadata
 from .models import ImageRecord, Project
 from .operations.label_measure import (
     EMPTY,
     MEASURED,
+    NO_LABEL,
     NO_PIXEL_SIZE,
     LabelMeasurement,
     measurement_status,
@@ -45,14 +48,35 @@ def _present(value: object) -> Hashable:
     return value  # type: ignore[return-value]
 
 
-def count_by(records: Iterable[ImageRecord], key: KeyFunction) -> dict[Hashable, int]:
+def _ranked(order: Sequence[Hashable]) -> Callable[[Hashable], tuple[int, str]]:
+    """Return a sort key placing *order*'s values first, in that order.
+
+    Anything not listed sorts after everything listed, by name.
+    """
+    rank = {value: index for index, value in enumerate(order)}
+    return lambda value: (rank.get(value, len(rank)), str(value))
+
+
+def count_by(
+    records: Iterable[ImageRecord],
+    key: KeyFunction,
+    order: Sequence[Hashable] = (),
+) -> dict[Hashable, int]:
     """Return how many records fall into each group.
 
     Ordered by count descending, then by the group name, so the largest group
     is first and the order is stable between runs.
+
+    Args:
+        order: Group names to keep in a declared order instead, largest-first
+            being wrong for a scale: bins of increasing area shuffled by
+            population no longer read as a distribution.
     """
     counts = Counter(key(record) for record in records)
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], str(item[0]))))
+    if not order:
+        return dict(sorted(counts.items(), key=lambda item: (-item[1], str(item[0]))))
+    ranked = _ranked(order)
+    return dict(sorted(counts.items(), key=lambda item: ranked(item[0])))
 
 
 def cross_tabulate(
@@ -68,10 +92,19 @@ def cross_tabulate(
     return dict(sorted(counts.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))))
 
 
-def totals(table: Mapping[tuple[Hashable, Hashable], int]) -> tuple[list, list]:
-    """Return the distinct row and column labels of a cross-tabulation."""
-    rows = sorted({key[0] for key in table}, key=str)
-    columns = sorted({key[1] for key in table}, key=str)
+def totals(
+    table: Mapping[tuple[Hashable, Hashable], int],
+    row_order: Sequence[Hashable] = (),
+    column_order: Sequence[Hashable] = (),
+) -> tuple[list, list]:
+    """Return the distinct row and column labels of a cross-tabulation.
+
+    Args:
+        row_order: Labels to place first, in this order, for an axis that is a
+            scale rather than a set of names. The column order likewise.
+    """
+    rows = sorted({key[0] for key in table}, key=_ranked(row_order))
+    columns = sorted({key[1] for key in table}, key=_ranked(column_order))
     return rows, columns
 
 
@@ -195,6 +228,19 @@ def by_header_modality(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
 # asked for.
 # ---------------------------------------------------------------------------
 
+def by_label_state(states: Mapping[Path, str]) -> KeyFunction:
+    """Group by what the image's label turned out to be.
+
+    Its own kind rather than a measurement: answering it opens each label but
+    needs no segmentation config and does no component labelling, so it is
+    milliseconds where a measurement is tens of them.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        return _present(states.get(record.image_path))
+
+    return key
+
+
 def by_has_crack(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
     """Group by whether the label holds a crack at or above the threshold.
 
@@ -211,6 +257,68 @@ def by_has_crack(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
         return "cracked" if measurement.has_crack else "intact"
 
     return key
+
+
+#: Decade edges for a class-area breakdown, in um^2. Decades rather than bins
+#: fitted to one class, because the classes differ by orders of magnitude -- in
+#: the reference collection a lamella is hundreds of um^2 and a crack hundredths
+#: -- and one scale is what lets the three be read against each other. Fixed
+#: rather than derived from the data, so a bin means the same thing after a
+#: filter changes.
+AREA_BIN_EDGES = (0.01, 0.1, 1.0, 10.0, 100.0, 1000.0)
+
+#: The class is not in this label at all. Distinct from a small area and from
+#: an unmeasurable label: "no GIS was deposited here" is a finding.
+ABSENT = "absent"
+
+
+def area_bins() -> tuple[str, ...]:
+    """Return the area bin labels, smallest first."""
+    edges = AREA_BIN_EDGES
+    labels = [f"< {edges[0]:g}"]
+    labels += [f"{low:g} - {high:g}" for low, high in zip(edges, edges[1:])]
+    labels.append(f">= {edges[-1]:g}")
+    return tuple(labels)
+
+
+def _area_bin(area: float) -> str:
+    """Return which bin *area* falls in."""
+    if area <= 0:
+        return ABSENT
+    for index, edge in enumerate(AREA_BIN_EDGES):
+        if area < edge:
+            return area_bins()[index]
+    return area_bins()[-1]
+
+
+#: Every row a class-area breakdown can produce, in the order they mean
+#: something: absent, then increasing area, then the three ways a label can
+#: fail to yield a number at all.
+AREA_ORDER: tuple[str, ...] = (
+    ABSENT, *area_bins(), EMPTY, NO_PIXEL_SIZE, NO_LABEL,
+)
+
+
+def by_class_area(class_index: int):
+    """Return a factory grouping by how much of one class a label holds.
+
+    Binned because a count needs discrete groups and an area is continuous.
+    The areas themselves are free once a label is measured -- they come from
+    the same pixel counts the emptiness check already needs -- so this costs
+    nothing beyond the measurement.
+    """
+
+    def factory(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
+        def key(record: ImageRecord) -> Hashable:
+            measurement = measurements.get(record.image_path)
+            status = measurement_status(measurement)
+            if status != MEASURED:
+                return status
+            return _area_bin(measurement.areas_um2.get(class_index, 0.0))
+
+        return key
+
+    return factory
 
 
 def by_crack_count(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
@@ -283,48 +391,149 @@ def by_project(lookup: Mapping[Path, Project]) -> KeyFunction:
     return key
 
 
-#: Breakdowns available by name, for the CLI's ``--by``. Values are either a
-#: key function or a factory needing metadata (``m``) or a project lookup
-#: (``p``); the CLI supplies whichever the chosen breakdown asks for.
-BREAKDOWNS: dict[str, tuple[str, object]] = {
-    "modality": ("record", by_modality),
-    "state": ("record", by_state),
-    "variant": ("record", by_variant),
-    "stage": ("record", by_stage),
-    "lamella": ("record", by_lamella),
-    "microscope": ("metadata", by_microscope_model),
-    "serial": ("metadata", by_microscope_serial),
-    "voltage": ("metadata", by_voltage),
-    "current": ("metadata", by_beam_current),
-    "dwell": ("metadata", by_dwell_time),
-    "pixel-size": ("metadata", by_pixel_size),
-    "plasma-gas": ("metadata", by_plasma_gas),
-    "electron-source": ("metadata", by_electron_source),
-    "detector": ("metadata", by_detector),
-    "sample": ("project", by_sample),
-    "lamella-type": ("project", by_lamella_type),
-    "user": ("project", by_user),
-    "organisation": ("project", by_organisation),
-    "project": ("project", by_project),
-    "has-crack": ("measurement", by_has_crack),
-    "crack-count": ("measurement", by_crack_count),
+@dataclass(frozen=True)
+class Breakdown:
+    """One way of grouping records, and what to call it.
+
+    Attributes:
+        kind: What the key function needs before it can be used --
+            ``record`` (nothing), ``metadata``, ``project`` or ``measurement``.
+            It is also where the value comes from, which is what
+            :data:`GROUP_TITLES` turns into a heading.
+        factory: The key function itself for a ``record`` breakdown, or a
+            factory taking whatever *kind* names for the rest.
+        label: What the breakdown is called where there is room to say it
+            properly, carrying the unit the values are counted in.
+        order: The rows this produces, in the order they mean something. Empty
+            where the groups are names rather than a scale, which is when
+            largest-first is the more useful order.
+    """
+
+    kind: str
+    factory: object
+    label: str
+    order: tuple[Hashable, ...] = ()
+
+
+#: Heading for each kind of breakdown, in the order they are offered. The kind
+#: says what a value needs to be computed, which is also what it means: a
+#: microscope model read from a header and a crack area measured off a label
+#: are answers to different sorts of question, and a flat list of names does
+#: not say which is which.
+GROUP_TITLES: dict[str, str] = {
+    "record": "Image and workflow",
+    "metadata": "Acquisition, from the image header",
+    "project": "Project metadata",
+    "label": "Label state",
+    "measurement": "Label measurements",
+}
+
+
+#: Breakdowns available by name, for the CLI's ``--by`` and the window's
+#: dropdown. The name is the stable identifier a command line takes; the label
+#: is what a reader is shown.
+BREAKDOWNS: dict[str, Breakdown] = {
+    "modality": Breakdown("record", by_modality, "modality (SEM / FIB)"),
+    "state": Breakdown("record", by_state, "workflow state"),
+    "variant": Breakdown("record", by_variant, "imaging condition"),
+    "stage": Breakdown("record", by_stage, "milling stage"),
+    "lamella": Breakdown("record", by_lamella, "lamella"),
+    "microscope": Breakdown("metadata", by_microscope_model, "microscope model"),
+    "serial": Breakdown("metadata", by_microscope_serial, "microscope serial number"),
+    "voltage": Breakdown("metadata", by_voltage, "accelerating voltage (kV)"),
+    "current": Breakdown("metadata", by_beam_current, "beam current (pA)"),
+    "dwell": Breakdown("metadata", by_dwell_time, "dwell time (ns)"),
+    "pixel-size": Breakdown("metadata", by_pixel_size, "pixel size (nm)"),
+    "plasma-gas": Breakdown("metadata", by_plasma_gas, "plasma gas"),
+    "electron-source": Breakdown("metadata", by_electron_source, "electron source"),
+    "detector": Breakdown("metadata", by_detector, "detector type"),
+    "sample": Breakdown("project", by_sample, "sample"),
+    "lamella-type": Breakdown("project", by_lamella_type, "lamella preparation type"),
+    "user": Breakdown("project", by_user, "user"),
+    "organisation": Breakdown("project", by_organisation, "organisation"),
+    "project": Breakdown("project", by_project, "project"),
+    "label": Breakdown("label", by_label_state, "label state"),
+    "has-crack": Breakdown("measurement", by_has_crack, "cracked (yes / no)"),
+    "crack-count": Breakdown("measurement", by_crack_count, "number of cracks"),
 }
 
 #: Which breakdowns need per-image headers read. Reading them costs about half
 #: a millisecond each, so a command asking only for structural breakdowns
 #: should not pay for it.
 NEEDS_METADATA = frozenset(
-    name for name, (kind, _) in BREAKDOWNS.items() if kind == "metadata"
+    name for name, entry in BREAKDOWNS.items() if entry.kind == "metadata"
 )
 
 #: Which breakdowns need every label read and its components labelled. That is
-#: milliseconds to seconds per label rather than half a millisecond, so it is
+#: tens of milliseconds per label rather than half a millisecond, so it is
 #: worth keeping separate from NEEDS_METADATA: a command should pay for this
 #: only when asked a question that needs it. These also need the headers, for
 #: the scale.
 NEEDS_MEASUREMENTS = frozenset(
-    name for name, (kind, _) in BREAKDOWNS.items() if kind == "measurement"
+    name for name, entry in BREAKDOWNS.items() if entry.kind == "measurement"
 )
+
+#: Which breakdowns need each label opened but not measured. Between the two
+#: above in cost, and worth its own set for the same reason: a command should
+#: pay only for what it was asked.
+NEEDS_LABEL_STATES = frozenset(
+    name for name, entry in BREAKDOWNS.items() if entry.kind == "label"
+)
+
+
+def _slug(name: str) -> str:
+    """Return a class name as a command-line-safe breakdown name."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def breakdowns_for(config: SegmentationConfig) -> dict[str, Breakdown]:
+    """Return every breakdown, including one area breakdown per measured class.
+
+    The per-class ones cannot live in :data:`BREAKDOWNS`: which classes exist
+    is the segmentation config's to say, and a table fixed in code would either
+    hardcode this project's classes or drop a project that renamed them.
+    """
+    table = dict(BREAKDOWNS)
+    for index in config.classes_to_measure:
+        name = f"area-{_slug(config.name(index))}"
+        if name in table:
+            logger.warning(
+                "Class %d is called %r, which collides with the breakdown "
+                "%r; not offering its area", index, config.name(index), name
+            )
+            continue
+        table[name] = Breakdown(
+            "measurement",
+            by_class_area(index),
+            f"{config.name(index)} area (um^2)",
+            order=AREA_ORDER,
+        )
+    return table
+
+
+def grouped_breakdowns(
+    table: Mapping[str, Breakdown] | None = None
+) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Return each group's heading and its ``(name, label)`` rows.
+
+    Groups follow :data:`GROUP_TITLES`; rows within one are ordered by label,
+    which is what a reader scans. A group with no breakdowns is omitted rather
+    than shown empty.
+    """
+    table = BREAKDOWNS if table is None else table
+    grouped = []
+    for kind, title in GROUP_TITLES.items():
+        rows = sorted(
+            (
+                (name, entry.label)
+                for name, entry in table.items()
+                if entry.kind == kind
+            ),
+            key=lambda row: row[1],
+        )
+        if rows:
+            grouped.append((title, rows))
+    return grouped
 
 
 def resolve_breakdown(
@@ -332,26 +541,35 @@ def resolve_breakdown(
     metadata: Mapping[Path, ImageMetadata] | None = None,
     lookup: Mapping[Path, Project] | None = None,
     measurements: Mapping[Path, LabelMeasurement] | None = None,
+    label_states: Mapping[Path, str] | None = None,
+    table: Mapping[str, Breakdown] | None = None,
 ) -> KeyFunction:
     """Return the key function for a breakdown name.
+
+    Args:
+        table: The breakdowns to resolve against, from :func:`breakdowns_for`
+            where the per-class area breakdowns are wanted. Defaults to the
+            config-independent ones.
 
     Raises:
         ValueError: If *name* is not a known breakdown, listing the ones that
             are.
     """
-    entry = BREAKDOWNS.get(name)
+    table = BREAKDOWNS if table is None else table
+    entry = table.get(name)
     if entry is None:
         raise ValueError(
-            f"Unknown breakdown {name!r}; choose from {', '.join(sorted(BREAKDOWNS))}"
+            f"Unknown breakdown {name!r}; choose from {', '.join(sorted(table))}"
         )
-    kind, factory = entry
-    if kind == "record":
-        return factory  # type: ignore[return-value]
-    if kind == "metadata":
-        return factory(metadata or {})  # type: ignore[operator]
-    if kind == "measurement":
-        return factory(measurements or {})  # type: ignore[operator]
-    return factory(lookup or {})  # type: ignore[operator]
+    if entry.kind == "record":
+        return entry.factory  # type: ignore[return-value]
+    if entry.kind == "metadata":
+        return entry.factory(metadata or {})  # type: ignore[operator]
+    if entry.kind == "measurement":
+        return entry.factory(measurements or {})  # type: ignore[operator]
+    if entry.kind == "label":
+        return entry.factory(label_states or {})  # type: ignore[operator]
+    return entry.factory(lookup or {})  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------

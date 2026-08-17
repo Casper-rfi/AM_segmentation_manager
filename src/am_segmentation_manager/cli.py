@@ -15,7 +15,12 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .aggregate import BREAKDOWNS, NEEDS_MEASUREMENTS, NEEDS_METADATA
+from .aggregate import (
+    BREAKDOWNS,
+    NEEDS_LABEL_STATES,
+    NEEDS_MEASUREMENTS,
+    NEEDS_METADATA,
+)
 from .filtering import (
     METADATA_FILTERS,
     filter_by_metadata,
@@ -486,9 +491,10 @@ def build_parser() -> argparse.ArgumentParser:
             "twice for a cross-tabulation, which is usually the question worth "
             "asking: not how many Arctis images there are, but how many "
             "corrected FIB images at 30 kV are on each instrument. Read-only. "
-            "Breakdowns marked (header) read each image's header, which costs "
-            "about half a millisecond per image; those marked (reads labels) "
-            "open every label, which is far slower. Every count here is a "
+            "Breakdowns marked [header] read each image's header, about half a "
+            "millisecond per image; [opens labels] reads every label to see "
+            "whether it holds anything, tens of milliseconds each; [measures "
+            "labels] also labels its connected components. Every count here is a "
             "count of images, so the crack breakdowns count one crack once per "
             "imaging condition sharing the label -- use quantify-labels for "
             "the per-lamella view."
@@ -498,13 +504,18 @@ def build_parser() -> argparse.ArgumentParser:
     stats_cmd.add_argument(
         "--by", action="append", default=[], metavar="PROPERTY",
         help=(
-            "Property to count by; pass twice to cross-tabulate. Choices: "
+            "Property to count by; pass twice to cross-tabulate. Choices, as "
+            "<name> = <what it counts>: "
             + ", ".join(
-                f"{name}"
-                f"{' (header)' if name in NEEDS_METADATA else ''}"
-                f"{' (reads labels)' if name in NEEDS_MEASUREMENTS else ''}"
+                f"{name} = {BREAKDOWNS[name].label}"
+                f"{' [header]' if name in NEEDS_METADATA else ''}"
+                f"{' [opens labels]' if name in NEEDS_LABEL_STATES else ''}"
+                f"{' [measures labels]' if name in NEEDS_MEASUREMENTS else ''}"
                 for name in sorted(BREAKDOWNS)
             )
+            + ". Plus area-<class> [measures labels] for each class the "
+            "segmentation config measures, which for the bundled one is "
+            "area-gis, area-lamella and area-crack-hole"
         ),
     )
     stats_cmd.add_argument(
@@ -863,12 +874,25 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             logger.error("--by takes at most two properties, got %d", len(chosen))
             return 2
 
+        # The config decides which classes have an area breakdown, so it is
+        # resolved before the chosen names can be looked up at all. Loading it
+        # opens one small YAML and scans nothing.
+        from .aggregate import breakdowns_for
+        from .config import load_segmentation_config
+
+        config = load_segmentation_config(start_path=start_path)
+        breakdowns = breakdowns_for(config)
+
         # Headers are only read when a chosen breakdown needs them, so a purely
         # structural question stays a filesystem walk. Measuring needs them
         # too, for the scale.
-        measuring = any(name in NEEDS_MEASUREMENTS for name in chosen)
+        def kind_of(name: str) -> str:
+            entry = breakdowns.get(name)
+            return entry.kind if entry is not None else ""
+
+        measuring = any(kind_of(name) == "measurement" for name in chosen)
         metadata: dict = {}
-        if measuring or any(name in NEEDS_METADATA for name in chosen):
+        if measuring or any(kind_of(name) == "metadata" for name in chosen):
             from .image_metadata import read_records_metadata
 
             logger.info("Reading headers for %d image(s)", len(records))
@@ -876,32 +900,45 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
 
         measurements: dict = {}
         if measuring:
-            from .config import load_segmentation_config
             from .operations.label_measure import measure_records
 
             logger.info("Measuring labels for %d image(s)", len(records))
-            measurements = measure_records(
-                records, load_segmentation_config(start_path=start_path), metadata
-            )
+            measurements = measure_records(records, config, metadata)
+
+        label_states: dict = {}
+        if any(kind_of(name) == "label" for name in chosen):
+            from .operations.label_io import label_state
+
+            logger.info("Reading labels for %d image(s)", len(records))
+            label_states = {
+                record.image_path: label_state(record) for record in records
+            }
 
         lookup = project_lookup(Scanner(start_path).build_index().all_projects())
         try:
             keys = [
-                resolve_breakdown(name, metadata, lookup, measurements) for name in chosen
+                resolve_breakdown(
+                    name, metadata, lookup, measurements, label_states, breakdowns
+                )
+                for name in chosen
             ]
         except ValueError as exc:
             logger.error("%s", exc)
             return 2
 
         if len(keys) == 1:
-            counts = count_by(records, keys[0])
+            counts = count_by(records, keys[0], breakdowns[chosen[0]].order)
             for line in format_counts(counts, f"Images per {chosen[0]}"):
                 print(line)
             rows = [(str(key), count) for key, count in counts.items()]
             header = [chosen[0], "images"]
         else:
             table = cross_tabulate(records, keys[0], keys[1])
-            for line in format_cross_tabulation(table, chosen[0], chosen[1]):
+            for line in format_cross_tabulation(
+                table, chosen[0], chosen[1],
+                row_order=breakdowns[chosen[0]].order,
+                column_order=breakdowns[chosen[1]].order,
+            ):
                 print(line)
             rows = [(str(a), str(b), count) for (a, b), count in table.items()]
             header = [chosen[0], chosen[1], "images"]

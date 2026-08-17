@@ -175,18 +175,34 @@ and much better specified once there is a real input to look at.
 
 ---
 
-## 5. Label quantification in the window
+## 5. Acting on what the Export tab finds
+
+**What you want:** the Export tab's label filter finds the blank placeholders and
+the unlabelled images; correcting or removing them happens in the Curate tab, and
+nothing connects the two. Filtering to `empty (placeholder)` tells you there is
+one and not which lamella it is in.
+
+**Why it is not designed yet:** the two tabs hold different selections — Curate's
+is a ticked set of projects and lamellae, Export's is a predicate over images —
+and handing one to the other means deciding what a predicate becomes when it
+arrives. That is the question to answer first.
+
+**The route that works today:** filter to the state, write the per-image metadata
+CSV, and act from its `label_state` column.
+
+---
+
+## 6. Label quantification in the window
 
 **What you want:** `quantify-labels` where the labels are on screen, so a surface
 area can be looked at against the image it was measured from.
 
-**Why it is not built:** it opens every label in the selection, which puts it in a
-different class from the operations that moved into the window — those report a
-list of files, this reports a table of numbers per class per lamella, and a table
-needs a widget, a sort order and somewhere to put it. The Export tab's breakdown
-already answers the cheap version of the question ("how much of what do I have"),
-and the command writes a CSV that a spreadsheet reads better than any pane here
-would.
+**Why it is not built:** what the Export tab has is the *counting* half —
+**Measure labels** opens every label, and the crack breakdowns then group images
+by what was found. The per-lamella table `quantify-labels` prints is the other
+half: numbers per class per lamella, which needs a widget, a sort order and
+somewhere to put it, and which a spreadsheet reads better from the CSV than any
+pane here would.
 
 `stats` is out for the same reason and one more: it is a report over the whole
 collection, and the rule in [`decisions.md`](decisions.md) § Architecture puts

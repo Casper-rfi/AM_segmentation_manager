@@ -11,6 +11,7 @@ logger.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 from .io.path import make_path_relative
@@ -291,15 +292,29 @@ def format_counts(
 
 
 def format_cross_tabulation(
-    table: dict, row_title: str, column_title: str
+    table: dict,
+    row_title: str,
+    column_title: str,
+    *,
+    title: str | None = None,
+    row_order: Sequence = (),
+    column_order: Sequence = (),
 ) -> list[str]:
-    """Return a two-dimensional breakdown as an aligned grid, with margins."""
+    """Return a two-dimensional breakdown as an aligned grid, with margins.
+
+    Args:
+        title: Replaces the heading line, for a caller that has to say which
+            set was counted. The two titles keep naming the axes either way.
+        row_order: Row labels to keep in a declared order, for an axis that is
+            a scale rather than a set of names. The column order likewise.
+    """
     from .aggregate import totals
 
+    heading = title or f"{row_title} x {column_title}"
     if not table:
-        return [f"{row_title} x {column_title}: nothing to count"]
+        return [f"{heading}: nothing to count"]
 
-    rows, columns = totals(table)
+    rows, columns = totals(table, row_order, column_order)
     row_width = max([len(str(row)) for row in rows] + [len(row_title)])
     column_widths = {
         column: max(len(str(column)), 7) for column in columns
@@ -308,7 +323,7 @@ def format_cross_tabulation(
     header = f"{row_title:<{row_width}} " + " ".join(
         f"{str(column):>{column_widths[column]}}" for column in columns
     )
-    lines = [f"{row_title} x {column_title}", header, "-" * len(header)]
+    lines = [heading, header, "-" * len(header)]
 
     for row in rows:
         cells = " ".join(

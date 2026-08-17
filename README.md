@@ -95,7 +95,7 @@ is the place for anything scripted:
 | Choose what gets proofread | `deselect` / `select` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |
 | Shrink label files on disk | `compress-labels` |
-| Count images by one or two properties | `stats` |
+| Count images by one or two properties, and chart them | `stats` |
 | Measure what the labels contain, in um^2 | `quantify-labels` |
 | Export metadata and training lists | `export-*-csv` / `create-training-csv` |
 

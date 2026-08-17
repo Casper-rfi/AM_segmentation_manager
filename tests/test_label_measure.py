@@ -89,6 +89,35 @@ def test_counts_pixels_per_class(tmp_path: Path):
     assert sum(counts.class_pixels.values()) == counts.pixels
 
 
+def test_a_label_wider_than_a_byte_is_still_counted(tmp_path: Path):
+    """Counting takes cv2's histogram for uint8 and numpy's otherwise. A label
+    with more than 256 classes is unlikely, but a wrong count would show up as
+    a plausible area rather than as a failure."""
+    array = np.zeros((10, 20), dtype=np.uint16)
+    array[:2] = 300
+    counts = read_label_pixels(write_label(tmp_path / "l.tif", array), None)
+
+    assert counts is not None
+    assert counts.class_pixels == {0: 160, 300: 40}
+
+
+def test_counting_stays_exact_past_a_float32_mantissa(tmp_path: Path, monkeypatch):
+    """cv2 returns a float32 histogram, which represents integers exactly only
+    to 2**24. Past that the count has to come from numpy, or a class covering
+    most of a large label comes back off by one."""
+    from am_segmentation_manager.operations import label_measure
+
+    # Standing in for a label too large to build in a test: the guard is on the
+    # pixel count, so lowering it exercises the same branch.
+    monkeypatch.setattr(label_measure, "_EXACT_IN_FLOAT32", 4)
+    array = np.zeros((10, 20), dtype=np.uint8)
+    array[:2] = LAMELLA_CLASS
+    counts = read_label_pixels(write_label(tmp_path / "l.tif", array), None)
+
+    assert counts is not None
+    assert counts.class_pixels == {0: 160, LAMELLA_CLASS: 40}
+
+
 def test_separate_regions_are_separate_components(tmp_path: Path):
     array = label_with_squares(squares=((0, 0, 10), (50, 50, 4)))
     counts = read_label_pixels(write_label(tmp_path / "l.tif", array), CRACK_CLASS)
