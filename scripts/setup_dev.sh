@@ -66,6 +66,17 @@ try:
 except Exception as error:  # noqa: BLE001
     print(f"  Qt binding    NOT USABLE: {error!r}")
     print("  The 'gui' command will not work until this is fixed.")
+
+# Reported rather than fatal: everything works without it except drawing, and
+# the window says so when asked. Checked here because the alternative is
+# finding out from a dialog the first time the Chart button is pressed.
+from am_segmentation_manager.plots import has_plot_support
+
+if has_plot_support():
+    print("  charts        OK (matplotlib)")
+else:
+    print("  charts        NOT AVAILABLE: matplotlib is missing")
+    print("  The Chart button and 'stats --plot' will decline to draw.")
 PYCHECK
 
 echo

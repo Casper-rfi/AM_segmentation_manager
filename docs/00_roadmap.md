@@ -21,23 +21,21 @@ change applies to is ticked in the project and lamella lists, or picked out of t
 timeline frame by frame.
 
 Every command whose input is that selection is also in the window: Curate runs
-`convert-predictions`, `compress-labels` and `repair-state` against the ticked set,
-Add data runs `inspect-layout` and `init-project` over the scanned folder, and Export
-writes the three CSVs and checks one written earlier. Each previews first and applies
-only what the preview showed, on a worker thread so a long one cannot freeze the
-window. Export takes the same split, seed and filenames as `create-training-csv`, and
-its live count runs the same split, so how the two files divide is visible before either
-is written. It filters by modality, workflow state, label state, acquisition metadata
-and whether repeated imaging conditions of one scene collapse to one image — every
-control that narrows sits in one box, and the count and breakdown both follow it.
-Scoping an export to particular projects or lamellae is command-line only. Two
-buttons buy the breakdowns that need more than the filesystem: reading the headers,
-and measuring the labels — the second on the worker thread, and never implicit,
-because it opens every label. Once measured, each class the segmentation config names
-gets a binned area breakdown, so which classes those are is the config's answer and
-not a list fixed in code. **Chart** draws whatever the table shows — bars for one
-property, a grid for two, where the empty cells are the combinations nothing has been
-acquired for. `stats --plot` writes the same charts to a file.
+`convert-predictions`, `compress-labels` and `repair-state` against the ticked set, and
+Add data runs `inspect-layout` and `init-project` over the scanned folder. Each previews
+first and applies only what the preview showed, on a worker thread.
+
+**Export is three boxes with three jobs.** *Filters* decides which images are in play —
+modality, workflow state, label state, acquisition metadata, and whether the repeated
+imaging conditions of one scene collapse to one image. *Breakdown* counts what they
+describe, by one property or two crossed, and charts it: bars for one, a grid for two
+where the empty cells are the combinations nothing has been acquired for. *Export*
+writes the three CSVs, taking the same split, seed and filenames as
+`create-training-csv` and previewing the split before either file exists. Two buttons
+buy what the filesystem cannot answer alone — reading the headers, and measuring the
+labels, the second never implicit because it opens every one and adds an area breakdown
+per class the segmentation config names. `stats --plot` writes the same charts to a
+file. Scoping to particular projects or lamellae is still command-line only.
 
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.
@@ -54,6 +52,14 @@ already exist. [`04_future_work.md`](04_future_work.md) §3 lists what is left.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
+
+**Project and lamella filters in the Export tab** — the last thing the command line can
+narrow that the window cannot. Both are already offered as *breakdowns*, so you can see
+that one lamella is a seventh of the annotated images and not then exclude it. The
+matching exists (`filtering.matches_project`, `matches_lamella`) and the widget is the
+same multi-select list the acquisition filters use; the open question is that lamella
+names repeat between projects, so the filter has to be scoped by project or keyed on a
+pair, as `aggregate.summarise_lamellae` already is.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py`
 builders when editing them for other reasons, never as a sweep. Three files still

@@ -27,7 +27,9 @@ dependencies:
   - tifffile
   - imagecodecs
   - opencv
-  # charts for `am-seg stats --plot`
+  # Charts: the window's Chart button and `am-seg stats --plot`. Not optional
+  # in practice any more -- it is in the pip `gui` and `all` extras too -- but
+  # the package still runs and declines to chart without it.
   - matplotlib
   # curation window (`am-seg gui`). qtpy is only an adapter and does nothing on
   # its own: it needs a binding underneath, which is what pyside6 provides.

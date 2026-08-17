@@ -63,6 +63,11 @@ checks the optional dependencies import. With pip instead:
   `opencv-python` both provide `cv2`, and having both leaves an import that
   fails. In a conda environment, do not also run `pip install -e '.[all]'`.
 
+The `[all]` and `[gui]` extras both include matplotlib, so charting works out of
+the box. `[plots]` installs it alone, for a command-line-only environment that
+wants `stats --plot` and nothing else. Without it everything still runs and the
+charts decline to draw.
+
 To check an environment at any time:
 
     python -c "from am_segmentation_manager.io.image import image_stack_problems; print(image_stack_problems() or 'image stack OK')"

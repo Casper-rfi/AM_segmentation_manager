@@ -39,16 +39,9 @@ Everything else is easy.
    knowing when to rescan; not waiting means the curation window shows stale
    state until the user presses Scan.
 
-### On passing the config
-
-You asked whether `segmentation_config_AM.yaml` should be passed from package
-code rather than as a file. **Pass the file.** The package already resolves the
-config through `config.py` — scan folder first, packaged copy as fallback — so
-it can hand over a concrete path, including a temporary one written from
-in-memory values if the other tool needs a file. Constructing the settings
-programmatically would require the two tools to share a schema in code, which
-couples their release cycles. A file is a stable, inspectable interface, and it
-is the one that already exists.
+**Pass `segmentation_config_AM.yaml` as a file**, not as settings constructed in
+code: `config.py` already resolves one to a concrete path, and a shared schema
+in code would couple the two tools' release cycles.
 
 ### Constraint
 
@@ -101,12 +94,11 @@ What is missing is producing the predictions in the first place.
 
 ### Why it is last
 
-Everything else in the roadmap improves work you are doing today. This adds a
-capability you currently have elsewhere. It is also the largest single piece,
-and the one most likely to pull heavy dependencies into a package that is
-currently near-stdlib. Worth doing eventually; not worth doing before the
-metadata work, which is what makes the training sets it would feed actually
-selectable.
+Everything else in the roadmap improves work you are doing today; this adds a
+capability you already have elsewhere. It is the largest single piece and the
+one most likely to pull a training stack into a package that is currently
+near-stdlib. Its one prerequisite — being able to *select* the training sets it
+would feed — is now met by the Export tab's filters and breakdowns.
 
 ---
 
@@ -177,18 +169,22 @@ and much better specified once there is a real input to look at.
 
 ## 5. Acting on what the Export tab finds
 
-**What you want:** the Export tab's label filter finds the blank placeholders and
-the unlabelled images; correcting or removing them happens in the Curate tab, and
-nothing connects the two. Filtering to `empty` tells you there is
-one and not which lamella it is in.
+**What you want:** the Export tab's label filter finds the empty labels and the
+unlabelled images; correcting or removing them happens in the Curate tab, and
+nothing carries you from one to the other.
 
-**Why it is not designed yet:** the two tabs hold different selections — Curate's
-is a ticked set of projects and lamellae, Export's is a predicate over images —
-and handing one to the other means deciding what a predicate becomes when it
-arrives. That is the question to answer first.
+**How much is actually missing:** less than it sounds. Filtering to a label state
+and then breaking down by project or lamella names the lamella holding them, in
+the window, without a CSV. What is missing is only the last step — switching tabs
+and navigating there by hand.
 
-**The route that works today:** filter to the state, write the per-image metadata
-CSV, and act from its `label_state` column.
+**Why it is not designed yet:** the two tabs hold different kinds of selection.
+Curate's is a ticked *set* of projects, lamellae or frames, and is the target of
+an operation that writes to disk; Export's is a *predicate* over images. Handing
+a predicate to a ticked set means choosing what it becomes on arrival — tick
+every project containing a match, every lamella, or jump to the first frame and
+tick nothing? Each is defensible, and the wrong one silently widens what a later
+state change applies to, which is what the ticked set exists to prevent.
 
 ---
 
@@ -197,21 +193,12 @@ CSV, and act from its `label_state` column.
 **What you want:** `quantify-labels` where the labels are on screen, so a surface
 area can be looked at against the image it was measured from.
 
-**Why it is not built:** what the Export tab has is the *counting* half —
-**Measure labels** opens every label, and the crack breakdowns then group images
-by what was found. The per-lamella table `quantify-labels` prints is the other
-half: numbers per class per lamella, which needs a widget, a sort order and
-somewhere to put it, and which a spreadsheet reads better from the CSV than any
-pane here would.
+**Why it is not built:** the Export tab already has the *counting* half —
+**Measure labels** opens every label and the crack and area breakdowns group
+images by what was found. What is left is the per-lamella table: numbers per
+class per lamella, which needs a widget, a sort order and somewhere to put it,
+and which a spreadsheet reads better from the CSV than any pane here would.
 
-`stats` is out for the same reason and one more: it is a report over the whole
-collection, and the rule in [`decisions.md`](decisions.md) § Architecture puts
-whole-collection sweeps on the command line.
-
-### Questions to answer before designing
-
-* Is the wanted thing a table, or a per-frame number beside the image? The second
-  is much cheaper and might be the actual need.
-* Measuring is per label file and slow enough to need the worker thread and a
-  cache. Where would the results live between refreshes — recomputed, or held on
-  the controller like the frame cache?
+**The question to answer first:** is the wanted thing that table, or a per-frame
+number beside the image being looked at? The second is much cheaper, and may be
+the actual need.
