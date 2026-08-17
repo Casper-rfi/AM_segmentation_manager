@@ -65,11 +65,16 @@ MODALITIES = ("all", "SEM", "FIB")
 #: assert a file is blank that nobody managed to open -- the distinction
 #: :func:`~am_segmentation_manager.operations.label_io.is_label_file_empty`
 #: exists to preserve.
+#:
+#: "empty" says what the file holds, and nothing about how it came to. The
+#: segmentation software's blank and a label somebody proofread and found
+#: nothing in are the same bytes; only where the label sits tells them apart,
+#: and that is the workflow state filter's question rather than this one's.
 LABEL_FILTERS: dict[str, frozenset[str]] = {
     "any": frozenset({ANNOTATED, EMPTY, MISSING, UNREADABLE}),
     "has a label": frozenset({ANNOTATED, EMPTY, UNREADABLE}),
     "annotated": frozenset({ANNOTATED}),
-    "empty (placeholder)": frozenset({EMPTY}),
+    "empty": frozenset({EMPTY}),
     "no label yet": frozenset({MISSING}),
 }
 
@@ -97,7 +102,8 @@ class ExportPreview:
         matched: Images passing every filter, dedup included.
         corrected: How many of those are corrected.
         annotated: How many have a label holding an annotation.
-        empty_labels: Images excluded because their label is a blank placeholder.
+        empty_labels: Images excluded because their label holds nothing but
+            background.
         missing_labels: Images excluded because they have no label at all.
         exportable: What a training export would actually write.
         train: How many of those the split would put in the training set.
@@ -141,7 +147,7 @@ class Sifted:
     Attributes:
         pairs: Each exportable image with the label it is paired with.
         annotated: How many of those have a label holding an annotation.
-        empty_labels: Images whose label is a blank placeholder.
+        empty_labels: Images whose label holds nothing but background.
         missing_labels: Images with no label at all.
     """
 

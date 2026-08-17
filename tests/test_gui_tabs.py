@@ -93,14 +93,14 @@ def test_empty_labels_are_shown_as_excluded_rather_than_silently_dropped(tmp_pat
 
 
 def test_an_empty_label_is_never_exportable_from_the_window(tmp_path: Path):
-    """Looking at the placeholders is what the label filter is for; writing
+    """Looking at the empty ones is what the label filter is for; writing
     them into a training file is a deliberate act the command line keeps."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="empty")
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
 
-    controller.filters.label = "empty (placeholder)"
+    controller.filters.label = "empty"
 
     assert controller.preview().matched == 4      # visible, and countable
     assert controller.preview().exportable == 0   # but never written
@@ -271,7 +271,7 @@ def test_an_image_with_no_label_is_counted_but_not_exportable(tmp_path: Path):
 
 
 def test_the_label_filter_decides_what_the_table_counts(tmp_path: Path):
-    """Finding the placeholders is the point of the filter: they are what you
+    """Finding the empty ones is the point of the filter: they are what you
     would go and correct or remove, and they cannot be found if nothing counts
     them."""
     pytest.importorskip("tifffile")
@@ -284,7 +284,7 @@ def test_the_label_filter_decides_what_the_table_counts(tmp_path: Path):
     controller.filters.label = "annotated"
     assert controller.breakdown("modality") == {}
 
-    controller.filters.label = "empty (placeholder)"
+    controller.filters.label = "empty"
     assert sum(controller.breakdown("modality").values()) == 4
 
     controller.filters.label = "no label yet"

@@ -179,7 +179,7 @@ and much better specified once there is a real input to look at.
 
 **What you want:** the Export tab's label filter finds the blank placeholders and
 the unlabelled images; correcting or removing them happens in the Curate tab, and
-nothing connects the two. Filtering to `empty (placeholder)` tells you there is
+nothing connects the two. Filtering to `empty` tells you there is
 one and not which lamella it is in.
 
 **Why it is not designed yet:** the two tabs hold different selections — Curate's

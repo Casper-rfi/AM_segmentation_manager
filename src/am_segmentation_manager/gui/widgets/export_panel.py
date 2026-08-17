@@ -148,9 +148,10 @@ class ExportPanel(QWidget):
                 "Keep only images whose label is in one state. A label file "
                 "existing is not evidence of annotation -- the segmentation "
                 "software writes a blank one for every image it is pointed at "
-                "-- so 'has a label' and 'annotated' are different sets, and "
-                "'empty (placeholder)' is how you find the blanks to correct "
-                "or remove.",
+                "-- so 'has a label' and 'annotated' are different sets. "
+                "'empty' means the file holds nothing but background, whether "
+                "nobody has annotated it yet or somebody looked and found "
+                "nothing; narrow by workflow state to tell those apart.",
             )
         )
         column.addWidget(self.label_state)

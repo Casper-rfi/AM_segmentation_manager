@@ -135,9 +135,9 @@ def test_the_label_filter_opens_on_everything(panel: ExportPanel):
 
 
 def test_choosing_a_label_state_reaches_the_controller(panel: ExportPanel):
-    panel.label_state.setCurrentText("empty (placeholder)")
+    panel.label_state.setCurrentText("empty")
 
-    assert panel.controller.filters.label == "empty (placeholder)"
+    assert panel.controller.filters.label == "empty"
 
 
 def test_the_window_offers_no_way_to_export_a_blank_mask(panel: ExportPanel):
