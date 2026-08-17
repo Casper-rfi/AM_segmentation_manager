@@ -6,6 +6,7 @@ on the command line, and which the Export tab exists to make visible.
 """
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pytest
@@ -16,8 +17,10 @@ from am_segmentation_manager.gui.metadata_controller import (
     MetadataController,
     MetadataValidationError,
 )
+from am_segmentation_manager.image_metadata import ELECTRON, ION, ImageMetadata
 from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, build_experiment_metadata
 from am_segmentation_manager.models import Project
+from am_segmentation_manager.operations.csv import export_training_csv
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
 
@@ -33,6 +36,31 @@ def exporter(tmp_path: Path) -> ExportController:
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
     return controller
+
+
+@pytest.fixture
+def headers(exporter: ExportController, monkeypatch) -> ExportController:
+    """The same scan, with headers, without writing any.
+
+    Each beam gets a property the other cannot have -- a plasma gas for the ion
+    column, an emitter for the electron one -- and the two FIB images get
+    different gases, which is what the filter lists are asserted against.
+    """
+    from am_segmentation_manager.gui import export_controller as module
+
+    def read(records) -> dict[Path, ImageMetadata]:
+        gases = ["Argon", "Xenon"]
+        entries = {}
+        for record in records:
+            if record.modality == "FIB":
+                entry = ImageMetadata(beam_type=ION, plasma_gas=gases[len(entries) % 2])
+            else:
+                entry = ImageMetadata(beam_type=ELECTRON, electron_source="FEG")
+            entries[record.image_path] = entry
+        return entries
+
+    monkeypatch.setattr(module, "read_records_metadata", read)
+    return exporter
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +132,82 @@ def test_one_condition_per_scene_is_visible_before_exporting(tmp_path: Path):
     assert everything.after_conditions == 3
 
 
+# ---------------------------------------------------------------------------
+# Export: the training split
+# ---------------------------------------------------------------------------
+
+def csv_rows(path: Path | None) -> int:
+    if path is None:
+        return 0
+    with path.open(newline="", encoding="utf-8") as handle:
+        return sum(1 for _ in csv.reader(handle)) - 1   # less the header
+
+
+def written_split(exporter: ExportController, output: Path) -> tuple[int, int]:
+    """Export for real, and return how the two files came out."""
+    train, validation = export_training_csv(
+        records=exporter.selected_records(),
+        start_path=exporter.start_path,
+        output_dir=output,
+        prefix=exporter.training.prefix,
+        train_ratio=exporter.training.train_ratio,
+        seed=exporter.training.seed,
+        include_empty_labels=exporter.filters.include_empty_labels,
+        conditions=exporter.filters.conditions,
+    )
+    return csv_rows(train), csv_rows(validation)
+
+
+def test_the_split_defaults_to_what_the_command_line_does(exporter: ExportController):
+    """The same selection exported from either interface must give the same two
+    files, so the defaults cannot drift apart."""
+    assert (exporter.training.train_ratio, exporter.training.seed) == (0.8, 42)
+    assert exporter.training.prefix == "dataset"
+
+
+def test_the_preview_and_the_export_agree_on_the_split(
+    exporter: ExportController, tmp_path: Path
+):
+    """The count shown is produced by the same split as the files, which is the
+    only way a preview of a shuffle can be trusted."""
+    preview = exporter.preview()
+
+    assert (preview.train, preview.validation) == written_split(
+        exporter, tmp_path / "exported"
+    )
+    assert preview.train and preview.validation   # not vacuously equal at 0
+    assert preview.train + preview.validation == preview.exportable
+
+
+def test_a_full_training_share_leaves_nothing_to_validate(exporter: ExportController):
+    exporter.training.train_ratio = 1.0
+    preview = exporter.preview()
+
+    assert (preview.train, preview.validation) == (preview.exportable, 0)
+
+
+def test_an_unseeded_split_still_places_every_pair(
+    exporter: ExportController, tmp_path: Path
+):
+    exporter.training.seed = None
+    preview = exporter.preview()
+
+    assert preview.train + preview.validation == preview.exportable
+    assert (preview.train, preview.validation) == written_split(
+        exporter, tmp_path / "unseeded"
+    )
+
+
+def test_the_summary_reports_the_split_it_would_write(exporter: ExportController):
+    assert "train / 1 validation" in exporter.preview().summary()
+
+
+def test_nothing_to_export_reports_no_split(exporter: ExportController):
+    exporter.filters.state = "corrected"
+
+    assert "train" not in exporter.preview().summary()
+
+
 def test_filters_narrow_the_selection(exporter: ExportController):
     exporter.filters.modality = "FIB"
 
@@ -159,6 +263,35 @@ def test_metadata_filter_values_come_from_the_data(exporter: ExportController):
     """Offering what the archive holds is the difference between a filter you
     can explore and one you must already know the answer to."""
     assert exporter.metadata_values("microscope") == []   # synthetic TIFFs, no header
+
+
+def test_a_filter_offers_only_what_the_selection_still_holds(headers: ExportController):
+    """Regression: the lists were built from the whole scan, so looking at SEM
+    images offered Argon as a plasma gas -- which reads as the SEM claiming it."""
+    headers.filters.modality = "SEM"
+
+    assert headers.metadata_values("plasma-gas") == []
+    assert headers.metadata_values("electron-source") == ["FEG"]
+
+
+def test_a_filter_does_not_narrow_its_own_list(headers: ExportController):
+    """Choosing one gas must leave the others reachable, or a filter list
+    collapses to the single value already chosen."""
+    headers.set_metadata_filter("plasma-gas", ["Argon"])
+
+    assert headers.metadata_values("plasma-gas") == ["Argon", "Xenon"]
+
+
+def test_a_chosen_value_stays_offered_when_something_else_excludes_it(
+    headers: ExportController,
+):
+    """A filter that vanished from its own list could not be seen or cleared,
+    and would go on excluding everything."""
+    headers.set_metadata_filter("plasma-gas", ["Argon"])
+    headers.filters.modality = "SEM"
+
+    assert headers.metadata_values("plasma-gas") == ["Argon"]
+    assert headers.preview().matched == 0
 
 
 def test_an_unknown_metadata_filter_is_rejected(exporter: ExportController):

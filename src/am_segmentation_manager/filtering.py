@@ -268,13 +268,34 @@ def iter_matching_records(
 METADATA_FILTERS: dict[str, str] = {
     "microscope": "microscope_model",
     "serial": "microscope_serial",
-    "voltage": "acceleration_voltage_v",
+    "voltage": "acceleration_voltage_kv",
     "current": "beam_current_pa",
     "dwell": "dwell_time_ns",
     "pixel-size": "pixel_size_nm",
-    "beam-source": "beam_source",
+    "plasma-gas": "plasma_gas",
+    "electron-source": "electron_source",
     "detector": "detector_type",
 }
+
+#: How the unit a field name ends in is spelled for a reader. A filter takes the
+#: value in the unit the field is stored in, so the unit has to be visible
+#: wherever the filter is offered -- "acceleration voltage kv" invites volts.
+FIELD_UNITS: dict[str, str] = {
+    "kv": "kV", "nm": "nm", "pa": "pA", "ns": "ns", "um": "µm",
+}
+
+
+def filter_property(name: str) -> str:
+    """Return what a metadata filter matches on, with its unit, for a reader.
+
+    Raises:
+        KeyError: If *name* is not a metadata filter.
+    """
+    words = METADATA_FILTERS[name].split("_")
+    unit = FIELD_UNITS.get(words[-1])
+    if unit is None:
+        return " ".join(words)
+    return f"{' '.join(words[:-1])} ({unit})"
 
 
 def _matches_value(actual, wanted: str) -> bool:
@@ -296,8 +317,8 @@ def matches_metadata(metadata, selectors: dict[str, list[str]] | None) -> bool:
     """Return whether one image's metadata satisfies every filter.
 
     Filters combine with AND across properties and OR within one, so
-    ``--voltage 2000 --voltage 2500 --microscope Arctis`` means "either voltage,
-    on that microscope".
+    ``--voltage 2 --voltage 2.5 --microscope Arctis`` means "either voltage, on
+    that microscope".
 
     An image whose header could not be read matches nothing once a metadata
     filter is in play. That is deliberate: including it would put images of

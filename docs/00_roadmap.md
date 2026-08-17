@@ -23,8 +23,11 @@ timeline frame by frame.
 Every command whose input is that selection is also in the window: Curate runs
 `convert-predictions`, `compress-labels` and `repair-state` against the ticked set,
 Add data runs `inspect-layout` and `init-project` over the scanned folder, and Export
-checks a CSV written earlier. Each previews first and applies only what the preview
-showed, on a worker thread so a long one cannot freeze the window.
+writes the three CSVs and checks one written earlier. Each previews first and applies
+only what the preview showed, on a worker thread so a long one cannot freeze the
+window. The training export takes the same split, seed and filename prefix as
+`create-training-csv`, and the count above the buttons runs the same split, so how the
+two files divide is visible before either is written.
 
 **Deposition is the one main function not implemented.** See
 [`04_future_work.md`](04_future_work.md) §3.

@@ -16,7 +16,12 @@ from pathlib import Path
 
 from . import __version__
 from .aggregate import BREAKDOWNS, NEEDS_MEASUREMENTS, NEEDS_METADATA
-from .filtering import METADATA_FILTERS, filter_by_metadata, iter_matching_records
+from .filtering import (
+    METADATA_FILTERS,
+    filter_by_metadata,
+    filter_property,
+    iter_matching_records,
+)
 from .io.path import make_path_relative
 from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
 from .operations.predictions import convert_record_predictions, plan_conversions
@@ -98,8 +103,8 @@ def _add_metadata_filters(parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
             f"--{name}", action="append", default=None, metavar="VALUE",
             help=(
-                f"Keep only images whose {METADATA_FILTERS[name].replace('_', ' ')} "
-                f"matches; repeatable for alternatives"
+                f"Keep only images whose {filter_property(name)} matches; "
+                f"repeatable for alternatives"
             ),
         )
 

@@ -19,7 +19,11 @@ from ..aggregate import BREAKDOWNS, NEEDS_METADATA, count_by, project_lookup, re
 from ..filtering import METADATA_FILTERS, filter_by_metadata, matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..models import ImageRecord, Project
-from ..operations.csv import find_matching_label, keep_one_condition_per_scene
+from ..operations.csv import (
+    find_matching_label,
+    keep_one_condition_per_scene,
+    split_pairs,
+)
 from ..operations.label_io import is_label_file_empty
 
 logger = logging.getLogger(__name__)
@@ -29,6 +33,11 @@ STATES = ("all", "selected", "deselected", "corrected")
 
 #: Modalities offered as a filter, plus "any".
 MODALITIES = ("all", "SEM", "FIB")
+
+#: What the two training files are called when the user names nothing. The
+#: command line's default, so the same selection exported either way lands in
+#: the same filenames.
+DEFAULT_PREFIX = "dataset"
 
 
 @dataclass(frozen=True)
@@ -48,6 +57,11 @@ class ExportPreview:
         missing_labels: Images excluded because they have no label at all.
         after_conditions: How many remain once one condition per scene is kept.
         exportable: What a training export would actually write.
+        train: How many of those the split would put in the training set.
+        validation: How many it would put in the validation set. The two are
+            whole label groups, so the achieved ratio is only as close to the
+            requested one as the grouping allows -- which is the reason to show
+            it before writing rather than after.
     """
 
     matched: int = 0
@@ -57,6 +71,8 @@ class ExportPreview:
     missing_labels: int = 0
     after_conditions: int = 0
     exportable: int = 0
+    train: int = 0
+    validation: int = 0
 
     def summary(self) -> str:
         """Return the one-line description shown above the export buttons."""
@@ -70,6 +86,8 @@ class ExportPreview:
         if self.after_conditions != self.matched:
             parts.append(f"{self.after_conditions} after one condition per scene")
         parts.append(f"{self.exportable} exportable")
+        if self.exportable:
+            parts.append(f"{self.train} train / {self.validation} validation")
         return " · ".join(parts)
 
 
@@ -87,9 +105,27 @@ class ExportFilters:
     conditions: str = "primary"
     include_empty_labels: bool = False
 
-    @property
-    def needs_metadata(self) -> bool:
-        return bool(self.metadata)
+
+@dataclass
+class TrainingExport:
+    """How a training export is divided and named.
+
+    Separate from :class:`ExportFilters` because none of it decides which images
+    are exported, only how they are split and what the files are called. The
+    defaults are the command line's, so the window and ``create-training-csv``
+    produce the same two files from the same selection.
+
+    Attributes:
+        train_ratio: Share of pairs assigned to training. ``1.0`` writes no
+            validation file.
+        seed: Seed for a reproducible shuffle, or None to leave the order alone.
+        prefix: Filename stem, written as ``<prefix>_train.csv`` and
+            ``<prefix>_val.csv``.
+    """
+
+    train_ratio: float = 0.8
+    seed: int | None = 42
+    prefix: str = DEFAULT_PREFIX
 
 
 class ExportController:
@@ -98,6 +134,7 @@ class ExportController:
     def __init__(self, start_path: Path | None = None) -> None:
         self.start_path = start_path
         self.filters = ExportFilters()
+        self.training = TrainingExport()
         self._projects: list[Project] = []
         self._records: list[ImageRecord] = []
         self._metadata: dict[Path, ImageMetadata] = {}
@@ -157,16 +194,27 @@ class ExportController:
 
     # -- filtering ---------------------------------------------------------
 
-    def selected_records(self) -> list[ImageRecord]:
-        """Return the records passing the current filters."""
+    def selected_records(self, ignoring: str | None = None) -> list[ImageRecord]:
+        """Return the records passing the current filters.
+
+        Args:
+            ignoring: A metadata filter to leave out, which is what lets that
+                filter offer the values still reachable rather than only the
+                ones it already keeps.
+        """
         kept = [
             record for record in self._records
             if (self.filters.modality == "all" or record.modality == self.filters.modality)
             and matches_state(record, self.filters.state)
         ]
-        if self.filters.needs_metadata:
+        metadata_filters = {
+            name: values
+            for name, values in self.filters.metadata.items()
+            if name != ignoring
+        }
+        if metadata_filters:
             self.load_metadata()
-            kept = filter_by_metadata(kept, self._metadata, self.filters.metadata)
+            kept = filter_by_metadata(kept, self._metadata, metadata_filters)
         return kept
 
     def _is_empty_label(self, path: Path) -> bool | None:
@@ -193,7 +241,9 @@ class ExportController:
         )
 
         empty = missing = annotated = 0
-        exportable = 0
+        # Built in the order the export builds them, and split by the same
+        # function, so the counts shown cannot disagree with the files written.
+        pairs: list[tuple[str, str]] = []
         for record in after:
             label = find_matching_label(record)
             if label is None:
@@ -203,10 +253,16 @@ class ExportController:
             if is_empty is True:
                 empty += 1
                 if self.filters.include_empty_labels:
-                    exportable += 1
+                    pairs.append((str(record.image_path), str(label)))
                 continue
             annotated += 1
-            exportable += 1
+            pairs.append((str(record.image_path), str(label)))
+
+        train, validation = split_pairs(
+            pairs,
+            train_ratio=self.training.train_ratio,
+            seed=self.training.seed,
+        )
 
         return ExportPreview(
             matched=len(matched),
@@ -215,7 +271,9 @@ class ExportController:
             empty_labels=empty,
             missing_labels=missing,
             after_conditions=len(after),
-            exportable=exportable,
+            exportable=len(pairs),
+            train=len(train),
+            validation=len(validation),
         )
 
     # -- breakdowns --------------------------------------------------------
@@ -233,22 +291,29 @@ class ExportController:
         return count_by(self.selected_records(), key)
 
     def metadata_values(self, name: str) -> list[str]:
-        """Return the distinct values of a metadata property, for a filter list.
+        """Return the values of a metadata property the selection still holds.
 
         Offering what the data actually contains, rather than a free-text box,
         is the difference between a filter you can explore and one you have to
-        already know the answer to.
+        already know the answer to. The values are those of the records passing
+        every *other* filter, so a FIB-only property is not offered while
+        looking at SEM images -- and so that narrowing one filter does not empty
+        the list of the one you are using.
+
+        Values already chosen for *name* stay offered whatever else excludes
+        them, because a filter that vanished from its own list could not be
+        seen or cleared.
         """
         if name not in METADATA_FILTERS:
             raise ValueError(f"Unknown metadata filter: {name}")
         self.load_metadata()
         attribute = METADATA_FILTERS[name]
         values = {
-            getattr(entry, attribute, None) for entry in self._metadata.values()
+            getattr(self._metadata.get(record.image_path), attribute, None)
+            for record in self.selected_records(ignoring=name)
         }
-        return sorted(
-            (str(value) for value in values if value is not None), key=str
-        )
+        offered = {str(value) for value in values if value is not None}
+        return sorted(offered | set(self.filters.metadata.get(name, ())), key=str)
 
     def set_metadata_filter(self, name: str, values: Sequence[str]) -> None:
         """Set or clear one metadata filter."""

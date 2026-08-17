@@ -16,21 +16,29 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
-from ...filtering import METADATA_FILTERS
-from ..export_controller import MODALITIES, STATES, ExportController
+from ...filtering import METADATA_FILTERS, filter_property
+from ..export_controller import (
+    DEFAULT_PREFIX,
+    MODALITIES,
+    STATES,
+    ExportController,
+)
+from .common import choose_directory, choose_open_file, choose_save_file
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +58,11 @@ class ExportPanel(QWidget):
         super().__init__()
         self.controller = controller
         self._updating = False
+        # Where the last dialog left off, so writing a CSV and then checking it
+        # does not mean navigating to the same folder twice. Held for the
+        # session only: the window's QSettings are injected for test isolation,
+        # and a panel reaching for the real ones would break that.
+        self._last_directory: Path | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -67,13 +80,13 @@ class ExportPanel(QWidget):
 
         self.modality = QComboBox()
         self.modality.addItems(MODALITIES)
-        self.modality.currentTextChanged.connect(self._filters_changed)
+        self.modality.currentTextChanged.connect(self._controls_changed)
         column.addWidget(QLabel("Modality"))
         column.addWidget(self.modality)
 
         self.state = QComboBox()
         self.state.addItems(STATES)
-        self.state.currentTextChanged.connect(self._filters_changed)
+        self.state.currentTextChanged.connect(self._controls_changed)
         column.addWidget(QLabel("Workflow state"))
         column.addWidget(self.state)
 
@@ -89,33 +102,47 @@ class ExportPanel(QWidget):
         # One list per metadata property, populated from what the data actually
         # holds -- a free-text box would need you to know the answer already.
         #
-        # Hidden until the headers are read. Eight empty boxes read as broken,
-        # and they are not usable before the values exist to choose from.
+        # Hidden until the headers are read. A column of empty boxes reads as
+        # broken, and they are not usable before the values exist to choose from.
         self.metadata_box = QWidget()
         metadata_column = QVBoxLayout(self.metadata_box)
         metadata_column.setContentsMargins(0, 0, 0, 0)
         self.metadata_lists: dict[str, QListWidget] = {}
         for name in sorted(METADATA_FILTERS):
-            metadata_column.addWidget(QLabel(name.replace("-", " ").title()))
+            described = filter_property(name)
+            # Only the first letter: capitalize() would lowercase the rest and
+            # turn the units it carries into "(pa)" and "(kv)".
+            metadata_column.addWidget(QLabel(described[:1].upper() + described[1:]))
             widget = QListWidget()
             widget.setSelectionMode(QListWidget.MultiSelection)
             widget.setMaximumHeight(64)
             widget.setToolTip(
-                f"Keep only images whose {METADATA_FILTERS[name].replace('_', ' ')} "
-                f"is one of the selected values"
+                f"Keep only images whose {filter_property(name)} is one of the "
+                f"selected values"
             )
-            widget.itemSelectionChanged.connect(self._filters_changed)
+            widget.itemSelectionChanged.connect(self._controls_changed)
             self.metadata_lists[name] = widget
             metadata_column.addWidget(widget)
-        self.metadata_box.setVisible(False)
 
-        # Scrolled, so eight filter lists cannot force the window taller than
-        # the screen.
-        scroller = QScrollArea()
-        scroller.setWidgetResizable(True)
-        scroller.setFrameShape(QScrollArea.NoFrame)
-        scroller.setWidget(self.metadata_box)
-        column.addWidget(scroller, stretch=1)
+        # Scrolled, so the filter lists cannot force the window taller than the
+        # screen. The scroller is what gets hidden, rather than the box inside
+        # it: QScrollArea.setWidget shows whatever it is handed, and an empty
+        # scroller still draws its scrollbar over the space it keeps.
+        self.metadata_scroller = QScrollArea()
+        self.metadata_scroller.setWidgetResizable(True)
+        self.metadata_scroller.setFrameShape(QScrollArea.NoFrame)
+        self.metadata_scroller.setWidget(self.metadata_box)
+        self.metadata_scroller.setVisible(False)
+        column.addWidget(self.metadata_scroller, stretch=1)
+
+        # Holds the column's spare height while the lists are hidden. A layout
+        # shares that height between whatever is left, so without something to
+        # take it the two combo boxes above drift apart down the column. A
+        # widget rather than a stretch, because a stretch cannot be hidden and
+        # would go on competing with the lists once they appear.
+        self.filter_space = QWidget()
+        self.filter_space.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        column.addWidget(self.filter_space, stretch=1)
         return box
 
     def _build_middle(self) -> QWidget:
@@ -154,7 +181,7 @@ class ExportPanel(QWidget):
             "near-identical. Exporting all of them multiplies the dataset by "
             "copies of the same scene."
         )
-        self.conditions.toggled.connect(self._filters_changed)
+        self.conditions.toggled.connect(self._controls_changed)
         column.addWidget(self.conditions)
 
         self.include_empty = QCheckBox("Include empty labels")
@@ -162,18 +189,23 @@ class ExportPanel(QWidget):
             "An empty label teaches a model that the structure is background. "
             "Turn this on only to build negative examples deliberately."
         )
-        self.include_empty.toggled.connect(self._filters_changed)
+        self.include_empty.toggled.connect(self._controls_changed)
         column.addWidget(self.include_empty)
 
         column.addSpacing(8)
-        for label, signal, suffix in (
-            ("Training CSV...", self.training_export_requested, ""),
-            ("Per-image metadata CSV...", self.image_metadata_export_requested, ".csv"),
-            ("Per-project metadata CSV...", self.project_metadata_export_requested, ".csv"),
+        column.addWidget(self._build_split())
+
+        column.addSpacing(8)
+        # The training export writes two files it names itself, so it asks for a
+        # directory; the other two write one file the user names.
+        for label, signal, directory in (
+            ("Training CSV...", self.training_export_requested, True),
+            ("Per-image metadata CSV...", self.image_metadata_export_requested, False),
+            ("Per-project metadata CSV...", self.project_metadata_export_requested, False),
         ):
             button = QPushButton(label)
             button.clicked.connect(
-                lambda _checked=False, s=signal, x=suffix, t=label: self._choose(s, x, t)
+                lambda _checked=False, s=signal, d=directory, t=label: self._choose(s, t, d)
             )
             column.addWidget(button)
 
@@ -192,29 +224,93 @@ class ExportPanel(QWidget):
         column.addStretch(1)
         return box
 
+    def _build_split(self) -> QWidget:
+        """Build the controls for how a training export is divided and named.
+
+        These belong beside the training button rather than among the filters:
+        they change nothing about which images are exported, only how the two
+        files are written. The preview above shows what they come out as.
+        """
+        box = QGroupBox("Training split")
+        grid = QVBoxLayout(box)
+
+        row = QHBoxLayout()
+        self.train_share = QSpinBox()
+        self.train_share.setRange(0, 100)
+        self.train_share.setValue(80)
+        self.train_share.setSuffix(" %")
+        self.train_share.setToolTip(
+            "Share of the exportable pairs written to the training file, the "
+            "rest to validation. 100% writes no validation file."
+        )
+        self.train_share.valueChanged.connect(self._controls_changed)
+        row.addWidget(QLabel("Training"))
+        row.addWidget(self.train_share, stretch=1)
+        grid.addLayout(row)
+
+        row = QHBoxLayout()
+        self.seeded = QCheckBox("Seed")
+        self.seeded.setChecked(True)
+        self.seeded.setToolTip(
+            "Shuffle reproducibly, so the same selection and seed always give "
+            "the same two files. Clear it to shuffle differently every time."
+        )
+        self.seeded.toggled.connect(self._seeding_toggled)
+        self.seed = QSpinBox()
+        self.seed.setRange(0, 999_999)
+        self.seed.setValue(42)
+        self.seed.valueChanged.connect(self._controls_changed)
+        row.addWidget(self.seeded)
+        row.addWidget(self.seed, stretch=1)
+        grid.addLayout(row)
+
+        row = QHBoxLayout()
+        self.prefix = QLineEdit()
+        self.prefix.setPlaceholderText(DEFAULT_PREFIX)
+        self.prefix.setToolTip(
+            f"Names the two files: <prefix>_train.csv and <prefix>_val.csv. "
+            f"Left empty, they are called {DEFAULT_PREFIX}_train.csv and "
+            f"{DEFAULT_PREFIX}_val.csv."
+        )
+        self.prefix.textChanged.connect(self._controls_changed)
+        row.addWidget(QLabel("Name"))
+        row.addWidget(self.prefix, stretch=1)
+        grid.addLayout(row)
+        return box
+
+    def _seeding_toggled(self, seeded: bool) -> None:
+        """Grey out the seed when the shuffle is not to be reproducible."""
+        self.seed.setEnabled(seeded)
+        self._controls_changed()
+
     def _check(self) -> None:
         """Ask which CSV to check. The window does the checking."""
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Check exported CSV", "", "CSV files (*.csv)"
-        )
-        if path:
-            self.csv_check_requested.emit(path)
+        path = choose_open_file(self, "Check exported CSV", self._last_directory)
+        if path is not None:
+            self._remember(path)
+            self.csv_check_requested.emit(str(path))
 
     # -- behaviour ---------------------------------------------------------
 
-    def _choose(self, signal, suffix: str, title: str) -> None:
+    def _choose(self, signal, title: str, directory: bool) -> None:
         """Ask where to write, then emit. The window does the writing."""
-        if suffix:
-            path, _ = QFileDialog.getSaveFileName(self, title, "", "CSV files (*.csv)")
+        if directory:
+            path = choose_directory(self, "Choose an output directory", self._last_directory)
         else:
-            path = QFileDialog.getExistingDirectory(self, "Choose an output directory")
-        if path:
-            signal.emit(path)
+            path = choose_save_file(self, title, self._last_directory)
+        if path is not None:
+            self._remember(path)
+            signal.emit(str(path))
+
+    def _remember(self, path: Path) -> None:
+        """Open the next dialog where this one left off."""
+        self._last_directory = path if path.is_dir() else path.parent
 
     def _load_metadata(self) -> None:
         count = self.controller.load_metadata()
         self._populate_metadata_lists()
-        self.metadata_box.setVisible(True)
+        self.metadata_scroller.setVisible(True)
+        self.filter_space.setVisible(False)
         self.load_button.setText(f"{count} header(s) read")
         self.load_button.setEnabled(False)
         self.refresh()
@@ -233,7 +329,8 @@ class ExportPanel(QWidget):
         finally:
             self._updating = False
 
-    def _filters_changed(self) -> None:
+    def _controls_changed(self) -> None:
+        """Copy every control into the controller, then recount."""
         if self._updating:
             return
         filters = self.controller.filters
@@ -245,6 +342,10 @@ class ExportPanel(QWidget):
             self.controller.set_metadata_filter(
                 name, [item.text() for item in widget.selectedItems()]
             )
+        training = self.controller.training
+        training.train_ratio = self.train_share.value() / 100
+        training.seed = self.seed.value() if self.seeded.isChecked() else None
+        training.prefix = self.prefix.text().strip() or DEFAULT_PREFIX
         self.refresh()
 
     def refresh(self) -> None:
@@ -266,6 +367,3 @@ class ExportPanel(QWidget):
         self.table.setPlainText("\n".join(format_counts(counts, f"By {name}")))
         if self.controller.metadata_loaded():
             self._populate_metadata_lists()
-
-    def output_directory(self) -> Path:
-        return Path.home()

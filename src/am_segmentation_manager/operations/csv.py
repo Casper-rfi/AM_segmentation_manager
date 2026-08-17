@@ -94,6 +94,10 @@ def split_pairs(
     variants -- each group holds a single pair and this behaves exactly as a
     plain shuffle-and-split.
 
+    Reports nothing: the export view runs this on every filter change, and a log
+    line per keystroke saying how a split came out reads as an export happening.
+    :func:`export_training_csv` reports it, because it is the one that writes.
+
     Args:
         pairs: ``(image, label)`` relative paths.
         train_ratio: Share of pairs assigned to training.
@@ -126,12 +130,6 @@ def split_pairs(
         else:
             val_pairs.extend(group)
 
-    if len(groups) < len(pairs):
-        logger.info(
-            "Split %d pair(s) as %d label group(s) so images sharing a label stay "
-            "on the same side: %d training, %d validation",
-            len(pairs), len(groups), len(train_pairs), len(val_pairs),
-        )
     return train_pairs, val_pairs
 
 
@@ -215,6 +213,13 @@ def export_training_csv(
         logger.warning("No image/label pairs found to export")
 
     train_pairs, val_pairs = split_pairs(pairs, train_ratio=train_ratio, seed=seed)
+    groups = {label for _, label in pairs}
+    if len(groups) < len(pairs):
+        logger.info(
+            "Split %d pair(s) as %d label group(s) so images sharing a label stay "
+            "on the same side: %d training, %d validation",
+            len(pairs), len(groups), len(train_pairs), len(val_pairs),
+        )
 
     def _write_csv(path: Path, rows: list[tuple[str, str]]) -> Path:
         with path.open("w", newline="", encoding="utf-8") as fh:

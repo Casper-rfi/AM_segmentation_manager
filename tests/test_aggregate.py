@@ -13,7 +13,12 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager import aggregate as ag
-from am_segmentation_manager.filtering import filter_by_metadata, matches_metadata
+from am_segmentation_manager.filtering import (
+    METADATA_FILTERS,
+    filter_by_metadata,
+    filter_property,
+    matches_metadata,
+)
 from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.models import (
     AdaptiveMillingStage,
@@ -77,6 +82,25 @@ def test_metadata_keys_report_missing_for_images_without_headers():
     assert ag.count_by(records, ag.by_microscope_model(metadata)) == {
         "Arctis": 1, ag.MISSING: 1,
     }
+
+
+def test_one_beam_setting_is_one_voltage_group():
+    """A header sometimes records a measured voltage rather than the set point,
+    which left exact makes a row per image of a table about beam settings."""
+    records = [record("a"), record("b"), record("c")]
+    voltages = (30.0, 29.984666704217595, 29.99588191484701)
+    metadata = {
+        record_.image_path: ImageMetadata(acceleration_voltage_kv=voltage)
+        for record_, voltage in zip(records, voltages)
+    }
+
+    assert ag.count_by(records, ag.by_voltage(metadata)) == {30.0: 3}
+
+
+def test_a_voltage_no_header_recorded_is_still_reported_as_missing():
+    records = [record("a")]
+
+    assert ag.count_by(records, ag.by_voltage({})) == {ag.MISSING: 1}
 
 
 # ---------------------------------------------------------------------------
@@ -154,10 +178,22 @@ def test_only_the_header_breakdowns_are_marked_as_needing_metadata():
 # ---------------------------------------------------------------------------
 
 def test_numbers_match_across_int_and_float_spellings():
-    entry = ImageMetadata(acceleration_voltage_v=30000.0)
+    entry = ImageMetadata(acceleration_voltage_kv=30.0)
 
-    assert matches_metadata(entry, {"voltage": ["30000"]})
-    assert not matches_metadata(entry, {"voltage": ["2000"]})
+    assert matches_metadata(entry, {"voltage": ["30"]})
+    assert not matches_metadata(entry, {"voltage": ["2"]})
+
+
+def test_a_filter_is_offered_with_the_unit_it_takes_values_in():
+    """A filter takes the value in the unit the field is stored in, so a label
+    reading "acceleration voltage kv" invites a value in volts."""
+    assert filter_property("voltage") == "acceleration voltage (kV)"
+    assert filter_property("microscope") == "microscope model"
+
+
+def test_every_filter_can_be_described():
+    for name in METADATA_FILTERS:
+        assert filter_property(name)
 
 
 def test_text_matches_case_insensitively():
@@ -167,10 +203,10 @@ def test_text_matches_case_insensitively():
 
 
 def test_filters_are_and_across_properties_or_within_one():
-    entry = ImageMetadata(microscope_model="Arctis", acceleration_voltage_v=2000.0)
+    entry = ImageMetadata(microscope_model="Arctis", acceleration_voltage_kv=2.0)
 
-    assert matches_metadata(entry, {"voltage": ["2000", "2500"]})
-    assert not matches_metadata(entry, {"microscope": ["Arctis"], "voltage": ["30000"]})
+    assert matches_metadata(entry, {"voltage": ["2", "2.5"]})
+    assert not matches_metadata(entry, {"microscope": ["Arctis"], "voltage": ["30"]})
 
 
 def test_an_image_with_no_header_matches_no_filter():
@@ -240,7 +276,7 @@ def test_the_image_export_can_skip_headers(tmp_path: Path):
     row = next(iter(csv.DictReader(output.open(encoding="utf-8"))))
 
     assert row["modality"] == "SEM"
-    assert row["acceleration_voltage_v"] == ""
+    assert row["acceleration_voltage_kv"] == ""
 
 
 def test_the_image_export_reports_label_state_not_just_presence(tmp_path: Path):

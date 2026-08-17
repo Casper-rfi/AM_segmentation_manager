@@ -195,6 +195,14 @@ Reading `system.ion.voltage` from an SEM image yields the FIB's 30 kV — plausi
 wrong. `image_metadata.FIELDS` confines beam-specific fields, including the fallback
 search, to the beam that fired.
 
+**Some values exist for one beam only, and the header records them for both anyway.** A
+plasma gas is a property of an ion column and an emitter type of an electron one, so
+they are two fields rather than one "beam source": a single field reported the FIB's
+Argon for SEM images taken on a plasma FIB, and the SEM's `FEG` emitter as if it were a
+plasma gas. Each is declared with the beam it exists for and stays blank on the other,
+including when the beam that fired cannot be determined. A blank `plasma_gas` on a FIB
+image is therefore a real answer — a gallium column has no plasma and records no gas.
+
 **A missing measurement is never a default.** The one exception is the integration
 counts, where absence means "not enabled" — that is decoding the field, not defaulting
 it, and it is the only field with a floor.
@@ -285,11 +293,24 @@ asserts the lightness ordering (background < empty < annotated).
 indexed images, 40 GB, three microscopes. Treat it as read-only. Point the smoke test
 at it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
 
+**Every file dialog is Qt's own, never the platform's.** The macOS panel under PyQt5
+5.15.2 offered no selectable files at all for a `*.csv` filter — only folders to
+navigate into — so "Check exported CSV" could not be given a CSV. Directory dialogs
+were unaffected, which is why it looked like a missing feature rather than a broken
+one. `widgets/common.build_path_dialog` sets `DontUseNativeDialog` for all of them, so
+one binding and one platform cannot behave differently from another. Revealing a folder
+in the file manager is not a dialog and stays native.
+
 **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side
 effect, and `test_gui_*` sorts before most other tests. That is how a locale-dependent
 `strptime('%p')` bug appears only in full runs, and only on a machine with a
 non-English locale. `LC_ALL=… pytest` does **not** test this; `AM_SEG_TEST_LOCALE=…
 pytest` does.
+
+**`QScrollArea.setWidget` shows whatever it is handed.** Hiding a widget and then
+putting it in a scroller leaves it on screen; hide the scroller instead, and give the
+column something else to hold its spare height, since a layout shares that height
+between whatever is still visible.
 
 **Never disconnect a signal from inside the handler for that signal.** A connection
 list mutated mid-emit works under PyQt5 and hangs under PySide6 — the suite stalled

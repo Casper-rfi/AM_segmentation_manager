@@ -628,11 +628,15 @@ class CurationWindow(QMainWindow):
             self._flash("Nothing matches these filters")
             return
         filters = self.export_controller.filters
+        training = self.export_controller.training
         try:
             train, validation = export_training_csv(
                 records=records,
                 start_path=self.controller.start_path or Path(directory),
                 output_dir=Path(directory),
+                prefix=training.prefix,
+                train_ratio=training.train_ratio,
+                seed=training.seed,
                 include_empty_labels=filters.include_empty_labels,
                 conditions=filters.conditions,
             )

@@ -69,17 +69,19 @@ class ImageMetadata:
         microscope_serial: Instrument serial number. Distinguishes two
             instruments of the same model, which is what "fine-tune for one
             microscope" actually needs.
-        acceleration_voltage_v: Accelerating voltage in volts.
+        acceleration_voltage_kv: Accelerating voltage in kilovolts. Both
+            dialects record volts; kV is the unit the setting is spoken in.
         beam_current_pa: Beam current in picoamps. Amps in both dialects and
             both beams, so one conversion covers everything.
         beam_type: ``"ELECTRON"`` or ``"ION"``, as stated by the instrument.
         detector_type: e.g. ``"ETD"``.
         detector_mode: e.g. ``"SecondaryElectrons"``.
-        beam_source: What the beam that took the image comes from -- the ion
-            source for a FIB (``"Argon"`` on a plasma FIB), the emitter type for
-            an SEM (``"FEG"``). One field rather than two because both dialects
-            record it in one place per beam, and only the beam that took the
-            image is ever read.
+        plasma_gas: The ion column's plasma gas, e.g. ``"Argon"``. Only ever
+            read for an image the ion beam took, and ``None`` on a gallium
+            column, which has no plasma and records no gas.
+        electron_source: The electron column's emitter, e.g. ``"FEG"``. Only
+            ever read for an image the electron beam took; the fibsem dialect
+            records none, so it is ``None`` there.
         hfw_um: Horizontal field width in micrometres. With pixel size this
             pins down magnification.
         acquired_at: When the image was taken.
@@ -94,12 +96,13 @@ class ImageMetadata:
     line_integrations: int | None = None
     microscope_model: str | None = None
     microscope_serial: str | None = None
-    acceleration_voltage_v: float | None = None
+    acceleration_voltage_kv: float | None = None
     beam_current_pa: float | None = None
     beam_type: str | None = None
     detector_type: str | None = None
     detector_mode: str | None = None
-    beam_source: str | None = None
+    plasma_gas: str | None = None
+    electron_source: str | None = None
     hfw_um: float | None = None
     acquired_at: datetime | None = None
     source: str | None = None
@@ -145,6 +148,10 @@ class HeaderField:
             search is confined to the subtrees belonging to the beam that took
             the image, and returns nothing rather than something plausible from
             the wrong column.
+        beams: The beams the value exists for at all. For any other beam -- and
+            for an image whose beam the header does not state -- the field stays
+            None rather than reading a key that means nothing for the column
+            that fired. Empty means every beam.
         floor: A value to use when the header records none. Set only where
             absence has a defined physical meaning -- the integration counts,
             where "not enabled" is one pass. Everywhere else absence stays
@@ -157,6 +164,7 @@ class HeaderField:
     scale: float | None = None
     search: tuple[str, ...] = ()
     beam_specific: bool = False
+    beams: tuple[str, ...] = ()
     floor: int | None = None
 
 
@@ -230,9 +238,10 @@ FIELDS: tuple[HeaderField, ...] = (
     # image's setting nor necessarily this beam's -- a plausible wrong number is
     # worse than None.
     HeaderField(
-        "acceleration_voltage_v",
+        "acceleration_voltage_kv",
         fibsem=(("microscope_state", "{beam}", "voltage"),),
         fei=(("{Beam}", "HV"), ("Beam", "HV")),
+        scale=1e-3,
         search=("voltage", "hv"),
         beam_specific=True,
     ),
@@ -256,16 +265,21 @@ FIELDS: tuple[HeaderField, ...] = (
         fei=(("Detectors", "Mode"),),
         beam_specific=True,
     ),
-    # The beam's own source, never the other beam's. In the FEI dialect
-    # `Source` is FEG for the electron column and the gas for the ion column;
-    # fibsem records only the ion side, as plasma_gas. Hardcoding system.ion
-    # here reported "Argon" for every SEM image, and naming the field
-    # plasma_gas reported "FEG" as a plasma gas.
+    # Both dialects record these once per beam -- FEI as `Source` under each
+    # column, fibsem as `plasma_gas` under each -- and write the key for the
+    # column that did not fire as well, so a fibsem SEM header carries
+    # system.electron.plasma_gas. `beams` is what keeps each value on the beam
+    # it exists for; see docs/decisions.md § Metadata.
     HeaderField(
-        "beam_source",
-        fibsem=(("system", "{system_beam}", "plasma_gas"),),
-        fei=(("{Beam}", "Source"),),
-        beam_specific=True,
+        "plasma_gas",
+        fibsem=(("system", "ion", "plasma_gas"),),
+        fei=(("IBeam", "Source"),),
+        beams=(ION,),
+    ),
+    HeaderField(
+        "electron_source",
+        fei=(("EBeam", "Source"),),
+        beams=(ELECTRON,),
     ),
     HeaderField(
         "hfw_um",
@@ -364,7 +378,7 @@ _INTEGER_FIELDS = {
 #: Fields that are labels rather than numbers.
 _TEXT_FIELDS = {
     "microscope_model", "microscope_serial", "detector_type", "detector_mode",
-    "beam_source",
+    "plasma_gas", "electron_source",
 }
 
 
@@ -523,6 +537,8 @@ def extract_metadata(document: Mapping[str, Any], dialect: str) -> ImageMetadata
     floors: dict[str, int] = {}
 
     for field in FIELDS:
+        if field.beams and beam not in field.beams:
+            continue
         candidates = field.fibsem if dialect == "fibsem" else field.fei
         raw = None
         for path in candidates:

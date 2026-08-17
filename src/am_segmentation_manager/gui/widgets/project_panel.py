@@ -11,13 +11,10 @@ see `docs/decisions.md` § Workflow state.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
-    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -31,7 +28,7 @@ from qtpy.QtWidgets import (
 )
 
 from ..controller import CurationStatus
-from .common import add_path_menu, chip_icon
+from .common import add_path_menu, chip_icon, choose_directory
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .theme import (
     SWATCH_BAND,
@@ -255,12 +252,12 @@ class ProjectPanel(QWidget):
         button.blockSignals(False)
 
     def _browse(self) -> None:
-        directory = QFileDialog.getExistingDirectory(
-            self, "Choose a folder to scan", self.path_edit.text() or str(Path.home())
+        directory = choose_directory(
+            self, "Choose a folder to scan", self.path_edit.text() or None
         )
-        if directory:
-            self.path_edit.setText(directory)
-            self.scan_requested.emit(directory)
+        if directory is not None:
+            self.path_edit.setText(str(directory))
+            self.scan_requested.emit(str(directory))
 
     def _project_changed(self, row: int) -> None:
         if not self._emitting and row >= 0:

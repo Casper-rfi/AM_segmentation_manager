@@ -137,8 +137,18 @@ def by_microscope_serial(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
 
 
 def by_voltage(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
-    """Group by accelerating voltage in volts."""
-    return _metadata_key(metadata, "acceleration_voltage_v")
+    """Group by accelerating voltage in kV, to the nearest tenth.
+
+    Rounded because a header sometimes records a measured voltage rather than
+    the set point: 29.98 kV and 30.0 kV are one beam setting, and left exact
+    each becomes its own row of a table about beam settings.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        entry = metadata.get(record.image_path)
+        voltage = entry.acceleration_voltage_kv if entry is not None else None
+        return _present(None if voltage is None else round(voltage, 1))
+
+    return key
 
 
 def by_beam_current(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
@@ -156,9 +166,14 @@ def by_pixel_size(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     return _metadata_key(metadata, "pixel_size_nm")
 
 
-def by_beam_source(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
-    """Group by ion source or electron emitter."""
-    return _metadata_key(metadata, "beam_source")
+def by_plasma_gas(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by the ion column's plasma gas, e.g. ``Argon``."""
+    return _metadata_key(metadata, "plasma_gas")
+
+
+def by_electron_source(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by the electron column's emitter, e.g. ``FEG``."""
+    return _metadata_key(metadata, "electron_source")
 
 
 def by_detector(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
@@ -283,7 +298,8 @@ BREAKDOWNS: dict[str, tuple[str, object]] = {
     "current": ("metadata", by_beam_current),
     "dwell": ("metadata", by_dwell_time),
     "pixel-size": ("metadata", by_pixel_size),
-    "beam-source": ("metadata", by_beam_source),
+    "plasma-gas": ("metadata", by_plasma_gas),
+    "electron-source": ("metadata", by_electron_source),
     "detector": ("metadata", by_detector),
     "sample": ("project", by_sample),
     "lamella-type": ("project", by_lamella_type),

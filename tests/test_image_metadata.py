@@ -96,7 +96,7 @@ def test_an_electron_image_reads_the_electron_beam():
 
     assert metadata.beam_type == ELECTRON
     assert metadata.modality == "SEM"
-    assert metadata.acceleration_voltage_v == 2000.0
+    assert metadata.acceleration_voltage_kv == 2.0
     assert metadata.beam_current_pa == pytest.approx(25.0)
     assert metadata.dwell_time_ns == pytest.approx(200.0)
 
@@ -106,30 +106,44 @@ def test_an_ion_image_reads_the_ion_beam():
 
     assert metadata.beam_type == ION
     assert metadata.modality == "FIB"
-    assert metadata.acceleration_voltage_v == 30000.0
+    assert metadata.acceleration_voltage_kv == 30.0
     assert metadata.beam_current_pa == pytest.approx(20.0)
     assert metadata.dwell_time_ns == pytest.approx(300.0)
 
 
-def test_an_electron_image_never_reports_the_ion_beams_source():
-    """Regression: beam_source was read from system.ion regardless of beam, so
-    every SEM image reported the FIB's Argon."""
-    assert extract_metadata(fibsem_header(ELECTRON), "fibsem").beam_source is None
-    assert extract_metadata(fibsem_header(ION), "fibsem").beam_source == "Argon"
+def test_only_an_ion_image_reports_a_plasma_gas():
+    assert extract_metadata(fibsem_header(ELECTRON), "fibsem").plasma_gas is None
+    assert extract_metadata(fibsem_header(ION), "fibsem").plasma_gas == "Argon"
 
 
-def test_each_beam_reports_its_own_source_in_the_legacy_dialect():
-    """Regression: the field was called plasma_gas, so an SEM reported its FEG
-    emitter as a plasma gas."""
-    assert extract_metadata(fei_header(ELECTRON), "fei").beam_source == "FEG"
-    assert extract_metadata(fei_header(ION), "fei").beam_source == "Argon"
+def test_a_gas_recorded_under_the_electron_column_is_not_the_sems_gas():
+    """A fibsem header carries system.electron.plasma_gas whatever beam fired,
+    and an electron column has no plasma. Reading it reported Argon for SEM."""
+    document = fibsem_header(ELECTRON)
+    document["system"]["electron"]["plasma_gas"] = "Argon"
+
+    assert extract_metadata(document, "fibsem").plasma_gas is None
+
+
+def test_an_emitter_is_never_reported_as_a_plasma_gas():
+    """Both are `Source` under their own column in the legacy dialect, so one
+    field for the two reported the SEM's FEG emitter as a plasma gas."""
+    electron = extract_metadata(fei_header(ELECTRON), "fei")
+    ion = extract_metadata(fei_header(ION), "fei")
+
+    assert (electron.electron_source, electron.plasma_gas) == ("FEG", None)
+    assert (ion.plasma_gas, ion.electron_source) == ("Argon", None)
+
+
+def test_the_fibsem_dialect_records_no_electron_emitter():
+    assert extract_metadata(fibsem_header(ELECTRON), "fibsem").electron_source is None
 
 
 def test_the_legacy_dialect_reads_the_matching_beam_column():
     electron = extract_metadata(fei_header(ELECTRON), "fei")
     ion = extract_metadata(fei_header(ION), "fei")
 
-    assert (electron.acceleration_voltage_v, ion.acceleration_voltage_v) == (2000.0, 30000.0)
+    assert (electron.acceleration_voltage_kv, ion.acceleration_voltage_kv) == (2.0, 30.0)
     assert electron.beam_current_pa == pytest.approx(100.0)
     assert ion.beam_current_pa == pytest.approx(20.0)
     # EScan vs IScan, which differ here precisely so a mix-up is visible.
@@ -147,7 +161,7 @@ def test_a_beam_specific_search_does_not_cross_to_the_other_beam():
     document = fibsem_header(ELECTRON)
     del document["microscope_state"]["electron_beam"]["voltage"]
 
-    assert extract_metadata(document, "fibsem").acceleration_voltage_v is None
+    assert extract_metadata(document, "fibsem").acceleration_voltage_kv is None
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +175,7 @@ def test_units_are_converted_from_the_si_values_headers_store():
     assert metadata.dwell_time_ns == pytest.approx(300.0)             # s  -> ns
     assert metadata.beam_current_pa == pytest.approx(20.0)            # A  -> pA
     assert metadata.hfw_um == pytest.approx(40.0)                     # m  -> um
+    assert metadata.acceleration_voltage_kv == pytest.approx(30.0)    # V  -> kV
 
 
 def test_beam_current_needs_no_special_case_for_the_ion_beam():
@@ -222,7 +237,7 @@ def test_only_the_integration_counts_have_a_floor():
     del document["microscope_state"]["electron_beam"]["beam_current"]
     metadata = extract_metadata(document, "fibsem")
 
-    assert metadata.acceleration_voltage_v is None
+    assert metadata.acceleration_voltage_kv is None
     assert metadata.beam_current_pa is None
 
 
@@ -252,7 +267,7 @@ def test_a_serialised_null_string_is_not_a_value():
     document = fibsem_header(ION)
     document["system"]["ion"]["plasma_gas"] = "None"
 
-    assert extract_metadata(document, "fibsem").beam_source is None
+    assert extract_metadata(document, "fibsem").plasma_gas is None
 
 
 def test_a_bare_shape_document_is_not_an_acquisition_header():
@@ -386,7 +401,7 @@ def test_round_trip_through_a_real_tiff(tmp_path: Path):
     assert metadata is not None
     assert metadata.source == "fibsem"
     assert metadata.beam_type == ION
-    assert metadata.acceleration_voltage_v == 30000.0
+    assert metadata.acceleration_voltage_kv == 30.0
 
 
 def test_an_unreadable_file_is_reported_as_absent_rather_than_raising(tmp_path: Path):
