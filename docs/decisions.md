@@ -33,15 +33,12 @@ user has had time to change.
 
 **A filter and a breakdown are one declaration in the Export tab.** They are the same
 key function used two ways — group by it, or keep the records whose group was chosen —
-so the tab derives its filter lists from `BREAKDOWNS` rather than from a second table
-beside it. The two therefore cannot disagree about what a value *is*: a pixel size is
-grouped to four significant figures, and the filter used to offer the raw header
-value, a list of numbers no table row ever showed. Two consequences worth knowing:
-"(not recorded)" becomes a value you can select, which is the only way to find the
-images whose header would not read; and a measured property is not offered at all,
-since it cannot answer until the labels are measured. Modality, workflow state and the
-label filter keep dedicated controls, being fixed questions rather than whatever the
-data holds.
+so the filter lists come from `BREAKDOWNS` rather than a second table beside it, and
+cannot disagree with the table about what a value *is*: the filter used to offer a raw
+pixel size no row ever showed. Two consequences: "(not recorded)" is selectable, the
+only way to find images whose header would not read; and a measured property is not
+offered, since it cannot answer before Measure is pressed. Modality, workflow state and
+the label filter keep dedicated controls, being fixed questions rather than data.
 
 `filtering.METADATA_FILTERS` stays as it was — it is the command line's contract,
 where a filter is typed rather than picked and has to tolerate `30000` for a stored
@@ -86,14 +83,13 @@ here only once something genuinely needs it.
 ## Filesystem conventions
 
 **A label directory is `<image-directory>_labels`, a sibling of the image directory.**
-`layout.py` states the resolution order; what it cannot say is why that shape. It
-makes image-dir → label-dir a pure string function in both directions with no lookup
-table, which is what lets one module hold the convention at all. A `labels/<image-dir>/`
-subtree would push the `deselected/` and `corrected/` state folders three deep and gain
-nothing. Conditions share a label by default; giving one its own means creating the
-directory, not configuring anything. `sem/` is not a special case in this: its private
-and shared names coincide, which is why one rule covers the plain layout and the
-five-condition one alike.
+`layout.py` states the resolution order; what it cannot say is why that shape. It makes
+image-dir → label-dir a pure string function both ways with no lookup table, which is
+what lets one module hold the convention. A `labels/<image-dir>/` subtree would push the
+`deselected/` and `corrected/` folders three deep and gain nothing. Conditions share a
+label by default; giving one its own means creating the directory, not configuring
+anything. `sem/` is no special case: its private and shared names coincide, so one rule
+covers the plain layout and the five-condition one alike.
 
 **Image directories keep their Autolamella names.** We do not own `sem` and `fib`;
 renaming them would break reopening the project in Autolamella. Label directories are
@@ -181,16 +177,15 @@ Conversion writes to a temporary file and renames it into place, as
 `label_compression` already did. Now that a write can land on a file that exists,
 failing part way through would truncate a readable label.
 
-**What a state change applies to is a set the user builds, and the finest level
-present wins.** Picked-out frames beat ticked lamellae, which beat ticked projects,
-and with none of them it is the frame on screen. Finest-first is chosen for its
-failure mode, not its ergonomics: a selection the user has forgotten about makes the
-next change *smaller* than they intended, where the opposite order would make it
-larger. Ticks are keyed by resolved path, since a row means a different lamella as
-soon as the project changes; frame indices are cleared with the lamella, because that
-is all an index means here. Everything reaches `transition_records` through
-`scoped_records()`, so group expansion and the corrected-data guard apply to a ticked
-selection unchanged.
+**What a state change applies to is a set the user builds, and the finest level present
+wins.** Picked-out frames beat ticked lamellae, which beat ticked projects, and with
+none of them it is the frame on screen. Finest-first is chosen for its failure mode: a
+selection the user has forgotten makes the next change *smaller* than intended, where
+the opposite order would make it larger. Ticks are keyed by resolved path, since a row
+means a different lamella as soon as the project changes; frame indices clear with the
+lamella, because that is all an index means here. Everything reaches
+`transition_records` through `scoped_records()`, so group expansion and the
+corrected-data guard apply to a ticked selection unchanged.
 
 **A tick is Qt's own checkbox, not the status chip.** Curation progress and "I am about
 to change this" are orthogonal — a finished lamella can be ticked and an untouched one
@@ -231,14 +226,13 @@ different samples, and resolving a field from a parent would attribute the wrong
 sample to a project invisibly. Lamellae in one *project* do share a sample, which is
 why the project is the right level for this metadata.
 
-**The Add data tab suggests, and a suggestion is never a value.** It offers the
-values other projects already use for a field, and the name of the folder a project's
-own YAML files sit in for `project`. Both are computed in the GUI controller and only
-reach a file when the user saves, so `build_experiment_metadata` still resolves from
-the two files and nothing else — the rule above is intact. The folder read for
-`project` is the project's own, never a parent, and the directory is preferred over
-`experiment.yaml`'s `name` because a project copied to a second location keeps the
-recorded name of the first.
+**The Add data tab suggests, and a suggestion is never a value.** It offers the values
+other projects use for a field, and the name of the folder a project's own YAML files
+sit in for `project`. Both are computed in the controller and reach a file only when the
+user saves, so `build_experiment_metadata` still resolves from the two files and nothing
+else — the rule above is intact. The folder read is the project's own, never a parent,
+and is preferred over `experiment.yaml`'s `name` because a project copied elsewhere
+keeps the recorded name of the first location.
 
 **Every image header carries settings for both beams, and some values exist for only
 one of them.** `microscope_state.*` describes the beam that took the image; `system.*`
@@ -344,8 +338,10 @@ is still visible, and a stretch cannot be hidden again.
 **The breakdown pane shows a table or a chart, never both, and draws the chart only
 while it is showing.** They are the same numbers, and half of each reads worse than
 either whole; a figure costs real time, so a pane nobody is looking at does not get one
-on every filter change. The detached window stays, because comparing two breakdowns
-means having both on screen and one pane cannot.
+on every filter change. There is no second chart in a window of its own: the pane takes
+the bulk of the tab and carries matplotlib's own toolbar, so zooming and saving work
+there, and a button called "Chart" beside a *Table/Chart* switch is the one anyone
+presses — which made the tab look as though it had no inline chart at all.
 
 **A tooltip says what a control does, in under 200 characters**, and a test holds the
 ceiling. They had grown to five lines apiece explaining *why* the software works as it

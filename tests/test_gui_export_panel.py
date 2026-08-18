@@ -443,6 +443,20 @@ def test_the_breakdown_opens_as_a_table(qt_app, tmp_path):
     assert panel.views.currentWidget() is panel.table
 
 
+def test_only_one_control_is_called_chart(panel: ExportPanel):
+    """Regression: a second button called "Chart..." sat next to Measure labels
+    and opened a window, so it was what anyone wanting a chart pressed, and the
+    tab looked as though it had no inline chart at all. There is now one chart
+    and one way to reach it."""
+    named = {
+        widget.text()
+        for widget in panel.findChildren(QWidget)
+        if getattr(widget, "text", None) and "chart" in widget.text().lower()
+    }
+
+    assert named == {"Chart"}
+
+
 @needs_plots
 def test_switching_to_the_chart_draws_it_in_the_pane(qt_app, tmp_path):
     """The reason this is inline at all: there is room for it beside the
@@ -454,7 +468,6 @@ def test_switching_to_the_chart_draws_it_in_the_pane(qt_app, tmp_path):
 
     assert panel.views.currentWidget() is panel.chart_view
     assert panel.chart_view._canvas is not None
-    assert panel._charts == []      # inline, not a window
 
 
 @needs_plots
@@ -494,30 +507,15 @@ def test_an_unmeasured_breakdown_says_so_in_the_pane_rather_than_drawing(
 
 
 @needs_plots
-def test_a_detached_chart_is_still_offered_alongside_the_pane(qt_app, tmp_path):
-    """Comparing two breakdowns means having both on screen, which one pane
-    cannot do -- which is why the dialog stays."""
-    panel = measurable(qt_app, tmp_path)
-    panel.as_chart.setChecked(True)
-
-    panel._chart()
-
-    assert len(panel._charts) == 1
-    assert panel.chart_view._canvas is not None
-    panel._charts[0].close()
-
-
-@needs_plots
 def test_one_property_is_charted_as_bars(qt_app, tmp_path):
     panel = measurable(qt_app, tmp_path)
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
 
-    panel._chart()
+    panel.as_chart.setChecked(True)
 
-    assert len(panel._charts) == 1
+    assert panel.chart_view._canvas is not None
     # Bars have no row to take a share of, so the shading toggle is not offered.
-    assert not panel._charts[0].normalise.isVisible()
-    panel._charts[0].close()
+    assert panel.chart_view.normalise.isHidden()
 
 
 @needs_plots
@@ -526,11 +524,9 @@ def test_two_properties_are_charted_as_a_shadeable_grid(qt_app, tmp_path):
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
     panel.cross.setCurrentIndex(panel.cross.findData("state"))
 
-    panel._chart()
+    panel.as_chart.setChecked(True)
 
-    dialog = panel._charts[0]
-    assert dialog.normalise.isVisibleTo(dialog)
-    dialog.close()
+    assert not panel.chart_view.normalise.isHidden()
 
 
 @needs_plots
@@ -540,63 +536,29 @@ def test_toggling_the_shading_redraws_rather_than_stacking_canvases(qt_app, tmp_
     panel = measurable(qt_app, tmp_path)
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
     panel.cross.setCurrentIndex(panel.cross.findData("state"))
-    panel._chart()
-    dialog = panel._charts[0]
-    first = dialog._canvas
+    panel.as_chart.setChecked(True)
+    first = panel.chart_view._canvas
 
-    dialog.normalise.setChecked(True)
+    panel.chart_view.normalise.setChecked(True)
 
-    assert dialog._canvas is not first
+    assert panel.chart_view._canvas is not first
     # Taken out of the layout, not merely covered by the new one: a canvas
     # still parented keeps its figure alive.
     assert first.parent() is None
-    dialog.close()
-
-
-@needs_plots
-def test_charting_an_unmeasured_breakdown_says_so_rather_than_drawing_nothing(
-    qt_app, tmp_path, monkeypatch
-):
-    panel = measurable(qt_app, tmp_path)
-    panel.breakdown.setCurrentIndex(panel.breakdown.findData("crack-count"))
-    asked = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: asked.append(args[2]),
-    )
-
-    panel._chart()
-
-    assert panel._charts == []
-    assert "measured" in asked[0]
-
-
-@needs_plots
-def test_a_closed_chart_is_let_go_of(qt_app, tmp_path):
-    """Held only so a modeless dialog outlives the call that showed it."""
-    panel = measurable(qt_app, tmp_path)
-    panel._chart()
-
-    panel._charts[0].close()
-
-    assert panel._charts == []
 
 
 def test_charting_without_matplotlib_explains_rather_than_failing(
     qt_app, tmp_path, monkeypatch
 ):
+    """The pane says so where the chart would be, rather than a dialog that
+    has to be dismissed before the table can be read again."""
     panel = measurable(qt_app, tmp_path)
     monkeypatch.setattr("am_segmentation_manager.plots.has_plot_support", lambda: False)
-    told = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: told.append(args[2]),
-    )
 
-    panel._chart()
+    panel.as_chart.setChecked(True)
 
-    assert panel._charts == []
-    assert "pip install" in told[0]
+    assert "pip install" in panel.chart_view.message.text()
+    assert panel.chart_view._canvas is None
 
 
 # ---------------------------------------------------------------------------
@@ -610,7 +572,6 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
     for widget in (
         panel.modality, panel.state, panel.label_state, panel.breakdown,
         panel.cross, panel.conditions, panel.measure_button,
-        panel.chart_button,
         panel.train_share, panel.seeded, panel.seed, panel.prefix,
         panel.load_button, panel.check_button,
     ):

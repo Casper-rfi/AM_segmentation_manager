@@ -25,8 +25,9 @@ and tab does. What is worth knowing beyond that:
   previews first and applies only what the preview showed, on a worker thread.
 * **Export filters, counts and writes, and every filter narrows all three.** Its filter
   lists are derived from the breakdowns, so a property can be counted by and filtered
-  on without being declared twice; the breakdown reads as a table or a chart, and the
-  crack threshold and area bin resolution sit beside the button that measures.
+  on without being declared twice; the breakdown reads as a table or a chart in the
+  same pane, and the crack threshold and area bin resolution sit beside the button
+  that measures.
 
 Why each of these is so is in [`decisions.md`](decisions.md).
 

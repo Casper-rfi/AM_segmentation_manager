@@ -5,10 +5,8 @@ builds figures and knows nothing about widgets; this attaches a canvas to one
 and gives it matplotlib's own toolbar, which is where saving and zooming come
 from rather than being rebuilt here.
 
-Used twice, which is why it is a widget rather than part of the dialog: inline
-in the Export tab, where the breakdown can be read as a table or a chart, and in
-:mod:`chart_dialog`, which detaches one so two breakdowns can be compared side
-by side.
+A widget rather than a window: the Export tab reads its breakdown as a table or
+a chart in the same pane, and there is nowhere else a chart belongs.
 """
 from __future__ import annotations
 

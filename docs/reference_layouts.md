@@ -5,14 +5,11 @@ not a plan: it is what future layout work gets checked against, and it is the
 evidence behind the conventions implemented in
 [`layout.py`](../src/am_segmentation_manager/layout.py).
 
-> **These are representative examples, not a definitive taxonomy.**
->
-> The sections below are datasets that happen to have been looked at. They are
-> not an exhaustive classification of what Adaptive Milling can produce, and the
-> numbering is for reference within this document — there is no guarantee that a
-> new dataset falls into one of these groups, or into exactly one.
->
-> What actually varies is a set of **independent axes**:
+> **These are representative examples, not a taxonomy.** They are the datasets
+> that happen to have been looked at; the numbering is for reference within this
+> document, and a new dataset need not fall into one of these groups, or into
+> exactly one. What varies is a set of **independent axes, which combine
+> freely**:
 >
 > | Axis | Values seen |
 > |---|---|
@@ -25,15 +22,12 @@ evidence behind the conventions implemented in
 > | Imaging-condition variants | absent, or several sharing one label |
 > | Modalities present | both, or SEM only |
 >
-> **These combine freely.** Modality presence in particular is a property of a
-> *dataset*, not of its layout: §4 and §5 below have no FIB, but §6 — an older
-> layout than either — has FIB throughout, and every lamella of the oldest
-> dataset in the current working collection has FIB images.
->
-> Tests should therefore vary the axis a behaviour depends on, rather than
-> reaching for the example that happens to exhibit it. `conftest.build_dataset`
-> takes these axes as arguments, with the examples below as named presets — so a
-> suite passing on all of them still does not show that every layout works.
+> Modality presence in particular belongs to the *dataset*, not the layout: §4
+> and §5 have no FIB, while §6 — older than either — has it throughout. So a test
+> should vary the axis its behaviour depends on rather than reach for the example
+> that happens to exhibit it. `conftest.build_dataset` takes these axes as
+> arguments with the sections below as named presets, so a suite passing on all
+> of them still does not show that every layout works.
 
 All paths are relative to the Autolamella project, and show an example SEM and
 FIB image with its corresponding label. How each of these layouts is resolved is
@@ -87,14 +81,6 @@ label AutoLamella-2025-04-14-20-54/06-kind-moray/adaptive_polish_2025-04-15-04-2
 
 FIB   AutoLamella-2025-04-14-20-54/06-kind-moray/adaptive_polish_2025-04-15-04-24-02AM/fib/06-kind-moray_AP_img_000_SEM.tif
 label AutoLamella-2025-04-14-20-54/06-kind-moray/adaptive_polish_2025-04-15-04-24-02AM/labels_fib/06-kind-moray_AP_img_000_SEM.tif
-```
-
-```
-SEM   AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-22-12-54-52AM/sem/08-happy-shrimp_AP_img_000_SEM.tif
-label AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-22-12-54-52AM/labels/08-happy-shrimp_AP_img_000_SEM.tif
-
-FIB   AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-22-12-54-52AM/fib/08-happy-shrimp_AP_img_000_SEM.tif
-label AutoLamella-2025-07-21-15-21_AM01/08-happy-shrimp/adaptive_polish_2025-07-22-12-54-52AM/labels_fib/08-happy-shrimp_AP_img_000_SEM.tif
 ```
 
 ## 4. Pre-Autolamella data — no lamella or stage directory

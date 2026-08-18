@@ -27,7 +27,6 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
@@ -48,7 +47,6 @@ from ..export_controller import (
     STATES,
     ExportController,
 )
-from .chart_dialog import ChartDialog
 from .chart_view import ChartView
 from .common import (
     StepCombo,
@@ -61,6 +59,11 @@ from .common import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Said wherever the pane has nothing to show, so the table and the chart give
+#: the same answer rather than two phrasings of it.
+NOTHING_SCANNED = "No data loaded. Scan a folder in the Curate tab."
+NOTHING_MATCHES = "Nothing matches these filters"
 
 #: Item data of the second dropdown's "(none)" row, meaning no
 #: cross-tabulation. Not ``None``, which is what a group heading carries.
@@ -91,10 +94,6 @@ class ExportPanel(QWidget):
         # session only: the window's QSettings are injected for test isolation,
         # and a panel reaching for the real ones would break that.
         self._last_directory: Path | None = None
-        # Open chart windows. Held only so Python does not collect a
-        # modeless dialog the moment the call that showed it returns.
-        self._charts: list[ChartDialog] = []
-
         # Held rather than only added, so which box a control ended up in can be
         # asserted on: that is the rule the layout exists to keep.
         self._filters_box = self._build_filters()
@@ -290,20 +289,7 @@ class ExportPanel(QWidget):
         )
         self.measure_button.clicked.connect(self.measure_requested)
 
-        # "Chart", not "Plot": the Curate tab's plot view already means the
-        # summary images Autolamella writes, and two things called plot in one
-        # window is one too many.
-        self.chart_button = QPushButton("Chart...")
-        self.chart_button.setToolTip(
-            "Open the chart in a window of its own, so two breakdowns can be "
-            "compared side by side."
-        )
-        self.chart_button.clicked.connect(self._chart)
-
-        row = QHBoxLayout()
-        row.addWidget(self.measure_button, stretch=1)
-        row.addWidget(self.chart_button, stretch=1)
-        column.addLayout(row)
+        column.addWidget(self.measure_button)
 
         column.addLayout(self._build_measurement_settings())
 
@@ -329,14 +315,14 @@ class ExportPanel(QWidget):
         return box
 
     def _build_view_choice(self) -> QHBoxLayout:
-        """Build the Table/Chart switch over the breakdown pane."""
+        """Build the Table/Chart switch, directly over the pane it acts on."""
         row = QHBoxLayout()
         self.as_table = QRadioButton("Table")
         self.as_chart = QRadioButton("Chart")
         self.as_table.setChecked(True)
         for button, tip in (
             (self.as_table, "Show the counts as numbers."),
-            (self.as_chart, "Show the same counts as a chart."),
+            (self.as_chart, "Show the same counts as a chart, here in the pane."),
         ):
             button.setToolTip(tip)
             row.addWidget(button)
@@ -629,9 +615,9 @@ class ExportPanel(QWidget):
     def refresh(self) -> None:
         """Recount and redraw. Cheap: the records are already in memory."""
         if not self.controller.records:
-            self.summary.setText("No data loaded. Scan a folder in the Curate tab.")
+            self.summary.setText(NOTHING_SCANNED)
             self.table.setPlainText("")
-            self.chart_view.show_message("No data loaded. Scan a folder in the Curate tab.")
+            self.chart_view.show_message(NOTHING_SCANNED)
             return
 
         self.summary.setText(self.controller.preview().summary())
@@ -647,103 +633,67 @@ class ExportPanel(QWidget):
             self._draw_inline_chart()
         self._populate_filter_lists()
 
-    def _chart_blocker(self) -> str:
-        """Return why the current breakdown cannot be charted, or an empty string.
-
-        Asked before building anything, so the inline pane and the detached
-        window give the same answer for the same reason -- one in the pane,
-        one in a dialog.
-        """
-        from ...plots import has_plot_support
-
-        if not has_plot_support():
-            from ...plots import INSTALL_HINT
-
-            return f"Drawing charts requires matplotlib.\n\n{INSTALL_HINT}"
-        if not self.controller.records:
-            return "No data loaded. Scan a folder in the Curate tab."
-        unmeasured = [
-            chosen for chosen in (self.breakdown.currentData(), self.cross.currentData())
-            if chosen and self.controller.needs_measurements(chosen)
-        ]
-        if unmeasured and not self.controller.measurements_loaded():
-            return "This breakdown needs the labels measured first."
-        return ""
-
-    def _chart_spec(self) -> tuple[str, object, bool]:
-        """Return the title, figure builder and shadeability of the current chart.
+    def _draw_inline_chart(self) -> None:
+        """Draw the current breakdown into the pane, or say why it cannot be.
 
         The chart type follows the data rather than being chosen: one property
         is bars, two are a grid. Asking would be asking the user to know which
         shape suits a shape they have not seen yet.
-
-        Raises:
-            ValueError: If nothing matched the filters, so there is nothing to
-                draw.
         """
-        from ...plots import bar_figure, heatmap_figure
+        from ...plots import bar_figure, has_plot_support, heatmap_figure
+
+        if not has_plot_support():
+            from ...plots import INSTALL_HINT
+
+            self.chart_view.show_message(
+                f"Drawing charts requires matplotlib.\n\n{INSTALL_HINT}"
+            )
+            return
+        if not self.controller.records:
+            self.chart_view.show_message(NOTHING_SCANNED)
+            return
 
         breakdowns = self.controller.breakdowns
         name = self.breakdown.currentData()
         other = self.cross.currentData()
-        row = breakdowns[name].label
+        unmeasured = [
+            chosen for chosen in (name, other)
+            if chosen and self.controller.needs_measurements(chosen)
+        ]
+        if unmeasured and not self.controller.measurements_loaded():
+            self.chart_view.show_message(
+                "This breakdown needs the labels measured first."
+            )
+            return
 
+        row = breakdowns[name].label
         if other:
-            column = breakdowns[other].label
             table = self.controller.cross_tabulation(name, other)
             if not table:
-                raise ValueError("Nothing matches these filters")
+                self.chart_view.show_message(NOTHING_MATCHES)
+                return
+            column = breakdowns[other].label
             title = f"Images by {row} and {column}"
-            build = lambda normalise: heatmap_figure(  # noqa: E731
-                table, row, column, title=title, normalise=normalise,
-                row_order=breakdowns[name].order,
-                column_order=breakdowns[other].order,
+            self.chart_view.show_chart(
+                lambda normalise: heatmap_figure(
+                    table, row, column, title=title, normalise=normalise,
+                    row_order=breakdowns[name].order,
+                    column_order=breakdowns[other].order,
+                ),
+                normalisable=True,
             )
-            return title, build, True
+            return
 
         counts = self.controller.breakdown(name)
         if not counts:
-            raise ValueError("Nothing matches these filters")
+            self.chart_view.show_message(NOTHING_MATCHES)
+            return
         title = f"Images by {row}"
-        build = lambda _normalise: bar_figure(  # noqa: E731
-            counts, title, xlabel=row, ordered=bool(breakdowns[name].order),
+        self.chart_view.show_chart(
+            lambda _normalise: bar_figure(
+                counts, title, xlabel=row, ordered=bool(breakdowns[name].order),
+            )
         )
-        return title, build, False
-
-    def _draw_inline_chart(self) -> None:
-        """Draw the current breakdown into the pane, or say why it cannot be."""
-        blocker = self._chart_blocker()
-        if blocker:
-            self.chart_view.show_message(blocker)
-            return
-        try:
-            _title, build, normalisable = self._chart_spec()
-        except ValueError as error:
-            self.chart_view.show_message(str(error))
-            return
-        self.chart_view.show_chart(build, normalisable=normalisable)
-
-    def _chart(self) -> None:
-        """Open the current breakdown in a window of its own.
-
-        The inline pane shows one chart; this is what puts a second beside it,
-        which is the whole reason the dialog is modeless.
-        """
-        blocker = self._chart_blocker()
-        if blocker:
-            QMessageBox.information(self, "Nothing to chart", blocker)
-            return
-        try:
-            title, build, normalisable = self._chart_spec()
-        except ValueError as error:
-            QMessageBox.information(self, "Nothing to chart", str(error))
-            return
-        dialog = ChartDialog(title, build, normalisable=normalisable, parent=self)
-        # Kept so the dialog is not collected the moment this returns, and
-        # modeless so two breakdowns can be compared side by side.
-        self._charts.append(dialog)
-        dialog.finished.connect(lambda _result, d=dialog: self._charts.remove(d))
-        dialog.show()
 
     def _show_measure_state(self) -> None:
         """Put the size of the job on the button, or say it is done.
