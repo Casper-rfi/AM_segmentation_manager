@@ -368,6 +368,17 @@ asserts the lightness ordering (background < empty < annotated).
 
 ## Environment
 
+**A save refuses a label whose file changed since it was opened.** Proofreading
+holds a lamella's edits in memory until the reviewer saves, which leaves a window
+of minutes to hours in which something else can rewrite a label file. That is not
+hypothetical here: this collection lives on OneDrive, which writes files back
+under a running program, and the whole point of the corrected state is that the
+annotation in it cannot be reconstructed. So the size and modification time are
+recorded when a label is opened and compared before writing, and a mismatch stops
+the entire batch rather than the one file -- which of the two versions is wanted
+is not a question this package can answer, and overwriting is the answer that
+cannot be undone.
+
 **The reference collection is at
 `<collection>/`** — 21 projects, 2670
 indexed images, 40 GB, three microscopes. Treat it as read-only. Point the smoke test

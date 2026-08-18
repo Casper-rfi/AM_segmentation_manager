@@ -22,7 +22,14 @@ from ..layout import MODALITIES
 from ..models import Lamella
 from ..operations import label_io
 from ..operations.label_edit import EditPatch, new_label
-from ..operations.selection import RecordState, current_state
+from ..operations.label_save import (
+    LabelToSave,
+    SavePlan,
+    fingerprint_of,
+    plan_saves,
+    save_labels,
+)
+from ..operations.selection import RecordState, current_state, transition_records
 from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
 from .controller import LABEL_DISPLAY
 from .label_session import LabelSession
@@ -318,7 +325,12 @@ class LabelController:
             display.label if display.label is not None
             else new_label(display.image.shape)
         )
-        return self.session.open(key, source, created=display.label is None)
+        return self.session.open(
+            key,
+            source,
+            created=display.label is None,
+            fingerprint=fingerprint_of(key),
+        )
 
     def record_edit(self, patch: EditPatch | None) -> None:
         """Record a completed stroke against the label on screen."""
@@ -350,6 +362,88 @@ class LabelController:
     def pending_count(self) -> int:
         """Return how many labels are waiting to be saved."""
         return len(self.session)
+
+    # -- saving ---------------------------------------------------------------
+
+    def records_for(self, keys) -> list:
+        """Return every record in the lamella proofread through one of *keys*.
+
+Every record of every frame is considered:
+        pending edits are not confined to the modality on screen, and imaging
+        conditions of one scene share a label and so share its state.
+        """
+        wanted = set(keys)
+        found = []
+        for frame in self._frames:
+            for record in frame.records:
+                if self.key_for(record) in wanted:
+                    found.append(record)
+        return found
+
+    def pending_saves(self) -> list[LabelToSave]:
+        """Return what a save would write, newest edits included."""
+        return [
+            LabelToSave(
+                destination=entry.key,
+                label=label,
+                created=entry.created,
+                fingerprint=entry.fingerprint,
+            )
+            for entry, label in self.session.labels()
+            if entry.edited
+        ]
+
+    def save_plan(self) -> SavePlan:
+        """Return what a save would write, and what is holding it up."""
+        return plan_saves(self.pending_saves())
+
+    def approved_records(self) -> list:
+        """Return the records whose label the reviewer has passed.
+
+        What "mark corrected" would move. Edited and approved-unchanged alike:
+        both are a judgement that the label is right.
+        """
+        return self.records_for(self.session.reviewed_keys())
+
+    def save(self, *, mark_corrected: bool = False, allow_corrected: bool = False) -> str:
+        """Write every edited label, and optionally mark the reviewed set corrected.
+
+        The labels are written before any file moves, because marking corrected
+        moves them and a path resolved beforehand would no longer be where the
+        file is.
+
+        Args:
+            mark_corrected: Also move the reviewed labels, and the images
+                sharing them, into ``corrected/``.
+            allow_corrected: Confirm replacing labels that are already
+                proofread.
+
+        Returns:
+            A line describing what was done, for the window's log.
+
+        Raises:
+            StaleLabels: If a label's file changed after it was opened.
+            PermissionError: If a proofread label would be replaced without
+                *allow_corrected*.
+        """
+        report = save_labels(self.pending_saves(), allow_corrected=allow_corrected)
+        headline = report.headline()
+
+        if mark_corrected:
+            records = self.approved_records()
+            if records:
+                moved = transition_records(records, "corrected")
+                headline += f", marked {moved} image(s) corrected"
+
+        self.session.discard()
+        self._label_states.clear()
+        return headline
+
+    def discard_edits(self) -> None:
+        """Throw away every pending edit in this lamella."""
+        if self.session:
+            logger.info("Discarding %d pending label edit(s)", len(self.session))
+        self.session.discard()
 
     def timeline_states(self) -> dict[str, list[RecordState | None]]:
         """Return the current modality's state for every proofreadable frame.

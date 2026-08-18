@@ -9,6 +9,8 @@ treats a label as finished work has to ask: is there anything in it.
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,9 +55,38 @@ __all__ = [
     "has_compression_support",
     "is_label_file_empty",
     "label_destination",
+    "write_atomically",
     "label_state",
     "save_label_image",
 ]
+
+
+def write_atomically(destination: Path, write: Callable[[Path], None]) -> None:
+    """Have *write* produce a temporary file, then move it onto *destination*.
+
+    The rename is what makes a write whole or absent: an interrupted run leaves
+    the label that was already there untouched rather than half-replaced. The
+    temporary is created in the destination's own directory, because a rename
+    across filesystems is not atomic.
+
+    Args:
+        destination: Where the file should end up. Its directory is created if
+            it does not exist.
+        write: Called with the temporary path to write.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # The suffix is kept: the encoder OpenCV selects is chosen by extension.
+    handle, temporary_name = tempfile.mkstemp(
+        dir=destination.parent, suffix=destination.suffix
+    )
+    os.close(handle)
+    temporary = Path(temporary_name)
+    try:
+        write(temporary)
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def label_destination(record: ImageRecord) -> Path:

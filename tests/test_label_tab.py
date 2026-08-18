@@ -33,7 +33,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     import tifffile
     from qtpy.QtCore import QEvent, QPoint, QPointF, QSettings, Qt
     from qtpy.QtGui import QImage, QMouseEvent
-    from qtpy.QtWidgets import QApplication, QGraphicsView
+    from qtpy.QtWidgets import QApplication, QGraphicsView, QMessageBox
 
     from am_segmentation_manager.config import (
         BACKGROUND_CLASS,
@@ -100,6 +100,7 @@ def window(qt_app, project: Path, config, tmp_path: Path):
     window.tabs.setCurrentWidget(window.label_panel)
     _settle(qt_app, lambda: window.label_panel.controller.cached_image() is not None)
     yield window
+    window.label_controller.discard_edits()
     window.close()
 
 
@@ -638,7 +639,9 @@ def test_an_image_with_no_label_can_still_be_annotated(qt_app, config, tmp_path)
         window.close()
 
 
-def test_switching_lamella_does_not_carry_edits_across(qt_app, config, tmp_path):
+@pytest.fixture
+def two_lamellae(qt_app, config, tmp_path):
+    """A window on a two-lamella project, with the Label tab in front."""
     root = tmp_path / "two"
     build_dataset(root, lamellae=2, acquisitions=1)
     for tiff in root.rglob("*.tif"):
@@ -648,18 +651,188 @@ def test_switching_lamella_does_not_carry_edits_across(qt_app, config, tmp_path)
     window = CurationWindow(
         controller, settings=QSettings(str(tmp_path / "p4.ini"), QSettings.IniFormat)
     )
-    try:
-        window.scan(str(root))
-        window.tabs.setCurrentWidget(window.label_panel)
-        _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
-        paint_on(window)
-        assert window.label_controller.pending_count() == 1
+    window.scan(str(root))
+    window.tabs.setCurrentWidget(window.label_panel)
+    _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
+    yield window
+    window.label_controller.discard_edits()
+    window.close()
 
-        window._step_label_lamella(1)
 
-        assert window.label_controller.pending_count() == 0
-    finally:
-        window.close()
+def answer_warning(monkeypatch, answer):
+    """Answer the unsaved-edits warning, recording that it was asked."""
+    asked = []
+
+    def warned(*args, **kwargs):
+        asked.append(args[2] if len(args) > 2 else "")
+        return answer
+
+    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.warning", warned)
+    return asked
+
+
+def test_leaving_a_lamella_with_unsaved_edits_asks_first(two_lamellae, monkeypatch):
+    paint_on(two_lamellae)
+    asked = answer_warning(monkeypatch, QMessageBox.Cancel)
+    first = two_lamellae.label_controller.lamella
+
+    two_lamellae._step_label_lamella(1)
+
+    assert asked, "the edits would have been thrown away silently"
+    assert two_lamellae.label_controller.lamella is first
+    assert two_lamellae.label_controller.pending_count() == 1
+
+
+def test_discarding_unsaved_edits_moves_on(two_lamellae, monkeypatch):
+    paint_on(two_lamellae)
+    answer_warning(monkeypatch, QMessageBox.Discard)
+    first = two_lamellae.label_controller.lamella
+
+    two_lamellae._step_label_lamella(1)
+
+    assert two_lamellae.label_controller.lamella is not first
+    assert two_lamellae.label_controller.pending_count() == 0
+
+
+def test_moving_lamella_with_nothing_pending_asks_nothing(two_lamellae, monkeypatch):
+    asked = answer_warning(monkeypatch, QMessageBox.Cancel)
+
+    two_lamellae._step_label_lamella(1)
+
+    assert not asked
+
+
+def test_closing_with_unsaved_edits_asks_first(two_lamellae, monkeypatch):
+    paint_on(two_lamellae)
+    answer_warning(monkeypatch, QMessageBox.Cancel)
+
+    two_lamellae.close()
+
+    assert two_lamellae.isVisible() or two_lamellae.label_controller.pending_count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Saving
+# ---------------------------------------------------------------------------
+
+def save_with(window, mark_corrected):
+    """Answer the save dialog without opening it."""
+    window._ask_how_to_save = lambda plan: mark_corrected
+    window.save_labels()
+
+
+def saved(window):
+    """Whether the window has caught up with a finished save.
+
+    Waited on rather than the session's own count, which is cleared on the
+    worker thread before the interface has redrawn.
+    """
+    return not window.label_panel.save_button.isEnabled()
+
+
+def test_saving_writes_the_edited_label(qt_app, window):
+    key = window.label_controller.current_key
+    paint_on(window, value=2)
+    before = key.read_bytes()
+
+    save_with(window, mark_corrected=False)
+    _settle(qt_app, lambda: saved(window))
+
+    assert key.read_bytes() != before
+    assert (tifffile.imread(str(key)) == 2).any(), "the stroke did not reach the file"
+
+
+def test_saving_clears_what_was_waiting(qt_app, window):
+    paint_on(window)
+
+    save_with(window, mark_corrected=False)
+    _settle(qt_app, lambda: saved(window))
+
+    assert window.label_panel.pending_label.text() == ""
+    assert not window.label_panel.save_button.isEnabled()
+
+
+def test_saving_alone_does_not_move_anything(qt_app, window):
+    image = window.label_controller.record.image_path
+    paint_on(window)
+
+    save_with(window, mark_corrected=False)
+    _settle(qt_app, lambda: saved(window))
+
+    assert image.exists(), "save only must not move the image"
+    assert "corrected" not in str(image)
+
+
+def test_marking_corrected_moves_the_image_and_its_label(qt_app, window):
+    window.controller.set_editing_enabled(True)
+    image = window.label_controller.record.image_path
+    paint_on(window)
+
+    save_with(window, mark_corrected=True)
+    _settle(qt_app, lambda: saved(window))
+
+    assert not image.exists(), "the image should have moved into corrected/"
+    assert (image.parent / "corrected" / image.name).exists()
+
+
+def test_a_saved_lamella_is_rescanned(qt_app, window):
+    paint_on(window)
+
+    save_with(window, mark_corrected=False)
+    _settle(qt_app, lambda: saved(window))
+
+    assert window.label_controller.lamella is window.controller.lamella
+    assert window.label_panel.frame_label.text() == "1 / 3"
+
+
+def test_saving_nothing_writes_nothing(window, monkeypatch):
+    asked = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.exec_", lambda box: asked.append(box) or 0
+    )
+
+    window.save_labels()
+
+    assert not asked, "there was nothing to ask about"
+
+
+def test_the_save_dialog_offers_marking_corrected_only_when_editing_is_on(
+    window, monkeypatch
+):
+    boxes = []
+
+    def captured(box):
+        boxes.append([button.text() for button in box.buttons()])
+        return 0
+
+    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.exec_", captured)
+    paint_on(window)
+
+    window.controller.set_editing_enabled(False)
+    window._ask_how_to_save(window.label_controller.save_plan())
+    window.controller.set_editing_enabled(True)
+    window._ask_how_to_save(window.label_controller.save_plan())
+
+    locked, unlocked = boxes
+    assert not any("mark corrected" in text for text in locked)
+    assert any("mark corrected" in text for text in unlocked)
+
+
+def test_a_label_changed_on_disk_stops_the_save(qt_app, window, monkeypatch):
+    key = window.label_controller.current_key
+    paint_on(window)
+    tifffile.imwrite(str(key), np.full((48, 64), 3, dtype=np.uint8))
+
+    reported = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.critical",
+        lambda *args, **kwargs: reported.append(args[2]),
+    )
+    save_with(window, mark_corrected=False)
+
+    assert reported and "changed on disk" in reported[0]
+    assert (tifffile.imread(str(key)) == 3).all(), "the file was overwritten"
+    assert window.label_controller.pending_count() == 1, "the edit is still held"
 
 
 # ---------------------------------------------------------------------------

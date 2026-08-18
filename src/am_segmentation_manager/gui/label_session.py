@@ -66,6 +66,9 @@ class PendingLabel:
     Attributes:
         key: Where the label will be written. Its identity here.
         created: Whether no label file existed, so saving writes a new one.
+        fingerprint: What the label's file looked like when it was first
+            opened, for the save to check nothing else has rewritten it since.
+            Held rather than taken here, so this module stays off the disk.
         edited: Whether a stroke has changed it.
         reviewed: Whether the reviewer has passed it as correct. Set by editing
             it, and settable on its own for a label that needed no change --
@@ -75,6 +78,7 @@ class PendingLabel:
 
     key: Path
     created: bool = False
+    fingerprint: tuple[int, int] | None = None
     edited: bool = False
     reviewed: bool = False
     undo: UndoStack = field(default_factory=UndoStack)
@@ -103,7 +107,14 @@ class LabelSession:
 
     # -- the label in hand --------------------------------------------------
 
-    def open(self, key: Path, source: np.ndarray, *, created: bool = False) -> np.ndarray:
+    def open(
+        self,
+        key: Path,
+        source: np.ndarray,
+        *,
+        created: bool = False,
+        fingerprint: tuple[int, int] | None = None,
+    ) -> np.ndarray:
         """Return the working array for *key*, and make it the open one.
 
         A label with edits pending is restored from them; one without is a copy
@@ -115,6 +126,9 @@ class LabelSession:
             source: The label as it is on disk, or a blank one where no file
                 exists yet.
             created: Whether *source* stands in for a file that is not there.
+            fingerprint: What the file looked like when it was read. Recorded
+                the first time a label is opened and not revised after, so the
+                save compares against the state the reviewer started from.
         """
         if key == self._open_key and self._open_label is not None:
             return self._open_label
@@ -122,7 +136,12 @@ class LabelSession:
         self.release()
         entry = self._pending.get(key)
         if entry is None:
-            entry = PendingLabel(key=key, created=created, undo=UndoStack(self.undo_depth))
+            entry = PendingLabel(
+                key=key,
+                created=created,
+                fingerprint=fingerprint,
+                undo=UndoStack(self.undo_depth),
+            )
             self._pending[key] = entry
 
         stored = self._stored.pop(key, None)

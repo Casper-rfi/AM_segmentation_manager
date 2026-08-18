@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 #: Said whenever anything is waiting, because an edit that exists only in this
 #: window is one closing it would throw away.
-UNSAVED_NOTE = "held in this window only - not yet written to disk"
+UNSAVED_NOTE = "not yet written to disk"
 
 #: The swatch drawn beside each class in the brush's class list.
 SWATCH = 12
@@ -58,6 +58,10 @@ class LabelPanel(QWidget):
     #: Emitted when the frames around this one need preparing. The window owns
     #: the loader thread, so the panel asks rather than reads.
     loads_needed = Signal()
+
+    #: Emitted when the reviewer asks to write this lamella's edits. The window
+    #: owns everything that touches the filesystem.
+    save_requested = Signal()
 
     def __init__(self, controller: LabelController) -> None:
         """Build the tab against *controller*."""
@@ -221,6 +225,15 @@ class LabelPanel(QWidget):
         self.redo_button.clicked.connect(self.redo)
         tools.addWidget(self.redo_button)
 
+        tools.addSpacing(16)
+        self.save_button = QPushButton("Save labels...")
+        self.save_button.setToolTip(
+            "Write every label edited in this lamella, and choose whether to "
+            "mark them corrected\nShortcut: Ctrl+S"
+        )
+        self.save_button.clicked.connect(self.save_requested.emit)
+        tools.addWidget(self.save_button)
+
         tools.addStretch()
         self.pending_label = QLabel("")
         self.pending_label.setStyleSheet(BADGE_STYLES["warning"])
@@ -359,6 +372,7 @@ class LabelPanel(QWidget):
         self._refresh_modalities()
         self._refresh_timeline()
         self.status.setText(self.controller.status_text())
+        self._refresh_edit_state()
         self.draw_current()
         self.loads_needed.emit()
 
@@ -368,8 +382,9 @@ class LabelPanel(QWidget):
         self.undo_button.setEnabled(session.can_undo)
         self.redo_button.setEnabled(session.can_redo)
         pending = self.controller.pending_count()
+        self.save_button.setEnabled(bool(pending))
         self.pending_label.setText(
-            f"{pending} label{'s' if pending != 1 else ''} edited - {UNSAVED_NOTE}"
+            f"{pending} label{'s' if pending != 1 else ''} waiting - {UNSAVED_NOTE}"
             if pending else ""
         )
 
@@ -424,7 +439,6 @@ class LabelPanel(QWidget):
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_editable(self.controller.editable)
         self._set_badges(self._label_badges(display))
-        self._refresh_edit_state()
 
     def _label_badges(self, display) -> list[tuple[str, str]]:
         """Return the badges describing what is on screen."""

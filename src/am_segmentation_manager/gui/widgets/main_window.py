@@ -61,6 +61,9 @@ SETTING_SPLITTER = "splitter"
 #: How many filenames a confirmation lists before summarising the rest.
 MAX_LISTED_FILES = 12
 
+#: Names the save in every dialog and log line it produces.
+SAVE_TITLE = "Save labels"
+
 try:  # Qt 6 moved QShortcut out of QtWidgets.
     from qtpy.QtGui import QKeySequence, QShortcut
 except ImportError:  # pragma: no cover - depends on the installed binding
@@ -319,6 +322,7 @@ class CurationWindow(QMainWindow):
 
     def _connect(self) -> None:
         self.label_panel.loads_needed.connect(self._schedule_label_loads)
+        self.label_panel.save_requested.connect(self.save_labels)
         self.project_panel.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
         self.project_panel.lamella_selected.connect(self._select_lamella)
@@ -871,6 +875,7 @@ class CurationWindow(QMainWindow):
             Binding("F", "Next class", lambda: self.label_panel.step_class(1), TAB_LABEL),
             Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-2), TAB_LABEL),
             Binding("]", "Larger brush", lambda: self.label_panel.step_brush(2), TAB_LABEL),
+            Binding("Ctrl+S", "Save this lamella's labels", self.save_labels, TAB_LABEL),
             Binding("Ctrl+Z", "Undo the last stroke", self.label_panel.undo, TAB_LABEL),
             Binding(
                 "Ctrl+Shift+Z", "Redo the last stroke", self.label_panel.redo, TAB_LABEL
@@ -932,8 +937,9 @@ class CurationWindow(QMainWindow):
             )
         if tab == TAB_LABEL:
             help_text += (
-                "<p style='margin-top: 10px;'>Edits are held in this window only. "
-                "Saving them to disk is not built yet.</p>"
+                "<p style='margin-top: 10px;'>Edits are held in this window until "
+                "you save them. Marking the saved set corrected needs "
+                "<i>Enable editing</i> switched on.</p>"
             )
         return help_text
 
@@ -1431,14 +1437,141 @@ class CurationWindow(QMainWindow):
 
         The Label tab has no lamella list of its own: proofreading follows the
         lamella being curated, so there is one cursor over the collection rather
-        than two that can disagree.
+        than two that can disagree. Where that would throw away unsaved edits,
+        the tab stays where it is instead.
         """
-        self.label_controller.set_lamella(self.controller.lamella)
+        wanted = self.controller.lamella
+        current = self.label_controller.lamella
+        changing = wanted is not None and (
+            current is None or wanted.path != current.path
+        )
+        if changing and not self._may_discard_label_edits():
+            self.label_panel.refresh()
+            return
+        self.label_controller.set_lamella(wanted)
         self.label_panel.refresh()
 
     def _step_label_lamella(self, delta: int) -> None:
         """Move both views to another lamella, from the Label tab."""
+        if not self._may_discard_label_edits():
+            return
         self._step_lamella(delta)
+        self._point_label_tab()
+
+    def _may_discard_label_edits(self) -> bool:
+        """Ask before throwing away unsaved label edits; return whether to go on.
+
+        Deliberately not offered as "save these first": saving runs off the
+        interface thread and asks its own questions, and threading a navigation
+        through the far side of that is how a half-finished save ends up moving
+        files under a lamella nobody is looking at any more.
+        """
+        pending = self.label_controller.pending_count()
+        if not pending:
+            return True
+        lamella = self.label_controller.lamella
+        name = lamella.display_name if lamella is not None else "this lamella"
+        answer = QMessageBox.warning(
+            self,
+            "Unsaved label edits",
+            f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
+            f"{'have' if pending != 1 else 'has'} not been saved.\n\n"
+            "Save them with Ctrl+S first, or discard them to continue.",
+            QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if answer != QMessageBox.Discard:
+            return False
+        self.label_controller.discard_edits()
+        return True
+
+    def save_labels(self) -> None:
+        """Write this lamella's edited labels, after asking what to do with them."""
+        if not self.label_controller.pending_count():
+            self._flash("No label edits to save")
+            return
+
+        plan = self.label_controller.save_plan()
+        if plan.stale:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                f"{len(plan.stale)} label(s) changed on disk since you opened "
+                f"them, so nothing has been saved:\n\n"
+                + "\n".join(item.destination.name for item in plan.stale)
+                + "\n\nRe-scan to see what is there now. Re-opening the "
+                "lamella will discard the edits made here.",
+            )
+            return
+
+        choice = self._ask_how_to_save(plan)
+        if choice is None:
+            return
+        mark_corrected = choice
+        allow_corrected = bool(plan.corrected)
+        self._run_operation(
+            SAVE_TITLE,
+            lambda: self.label_controller.save(
+                mark_corrected=mark_corrected, allow_corrected=allow_corrected
+            ),
+            self._labels_saved,
+        )
+
+    def _ask_how_to_save(self, plan) -> bool | None:
+        """Ask whether to mark the saved labels corrected; None cancels.
+
+        Marking corrected is a state change, so it is offered only while editing
+        is switched on -- the same guard every other state change is behind.
+        """
+        approved = len(self.label_controller.approved_records())
+        lines = [f"Save {plan.summary()} in this lamella?"]
+        if plan.corrected:
+            lines.append(
+                f"{len(plan.corrected)} of them replace a label already marked "
+                "corrected."
+            )
+        if approved:
+            lines.append(
+                f"Marking corrected would move {approved} image(s), and the "
+                "labels they share."
+            )
+
+        box = QMessageBox(self)
+        box.setWindowTitle(SAVE_TITLE)
+        box.setIcon(QMessageBox.Question)
+        box.setText("\n\n".join(lines))
+        save_only = box.addButton("Save only", QMessageBox.AcceptRole)
+        mark = None
+        if self.controller.editing_enabled:
+            mark = box.addButton("Save and mark corrected", QMessageBox.AcceptRole)
+            box.setDefaultButton(mark)
+        else:
+            box.setInformativeText(
+                "Switch on Enable editing in the Curate tab to mark them "
+                "corrected as well."
+            )
+            box.setDefaultButton(save_only)
+        box.addButton(QMessageBox.Cancel)
+        box.exec_()
+
+        clicked = box.clickedButton()
+        if clicked is save_only:
+            return False
+        if mark is not None and clicked is mark:
+            return True
+        return None
+
+    def _labels_saved(self, headline: str) -> None:
+        """Record what a save did and bring the window back in step."""
+        self.changes_log.append(f"{SAVE_TITLE}: {headline}")
+        logger.info("%s: %s", SAVE_TITLE, headline)
+        self._flash(headline, 4000)
+        # Rescanned rather than refreshed: a save writes labels that were not
+        # there when the scan ran, and marking corrected moves the files.
+        if self.controller.start_path is not None:
+            self.scan(str(self.controller.start_path))
+        else:  # pragma: no cover - the window always has a scan root by here
+            self.refresh(reload_lists=True)
         self._point_label_tab()
 
     def _schedule_label_loads(self) -> None:
@@ -1474,6 +1607,9 @@ class CurationWindow(QMainWindow):
             self._render()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if not self._may_discard_label_edits():
+            event.ignore()
+            return
         self._save_layout()
         self.loader.stop()
         self.label_loader.stop()

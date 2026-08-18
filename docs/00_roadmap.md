@@ -23,6 +23,11 @@ and tab does. What is worth knowing beyond that:
   runs `convert-predictions`, `compress-labels` and `repair-state` against the ticked
   set; Add data runs `inspect-layout` and `init-project` over the scanned folder. Each
   previews first and applies only what the preview showed, on a worker thread.
+* **Labels are proofread in the window**, not in external software. The Label tab
+  reads one lamella's selected and corrected frames at full resolution, paints with a
+  brush and a flood fill, and saves the lamella's edits in one action that offers to
+  mark the reviewed set corrected. A save refuses the whole batch rather than
+  overwrite a label something else has rewritten since it was opened.
 * **Export filters, counts and writes, and every filter narrows all three.** Its filter
   lists are derived from the breakdowns, so a property can be counted by and filtered
   on without being declared twice; the breakdown reads as a table or a chart in the
@@ -36,10 +41,6 @@ Why each of these is so is in [`decisions.md`](decisions.md).
 ## What to pick up next
 
 In no particular order.
-
-**The Label tab** -- proofreading in this window instead of fibsemOS. Viewing and
-both drawing tools are built; the lamella-wide save is what is left.
-[`04_future_work.md`](04_future_work.md) §1.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.

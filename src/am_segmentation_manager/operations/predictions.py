@@ -11,9 +11,7 @@ then, so nothing here can destroy manual annotation.
 from __future__ import annotations
 
 import logging
-import os
 import shutil
-import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +29,7 @@ from .label_io import (
     is_label_file_empty,
     label_destination,
     save_label_image,
+    write_atomically,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,21 +49,13 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
         target_image_path: Optional path to the SEM/FIB image whose shape should
             be matched.
     """
-    label_path.parent.mkdir(parents=True, exist_ok=True)
-
     if not prediction_path.exists():
         raise FileNotFoundError(f"Prediction file does not exist: {prediction_path}")
 
-    # The suffix is kept: the encoder OpenCV selects is chosen by extension.
-    handle, temporary_name = tempfile.mkstemp(dir=label_path.parent, suffix=label_path.suffix)
-    os.close(handle)
-    temporary = Path(temporary_name)
-    try:
-        _write_label(prediction_path, temporary, target_image_path)
-        os.replace(temporary, label_path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
+    write_atomically(
+        label_path,
+        lambda temporary: _write_label(prediction_path, temporary, target_image_path),
+    )
 
 
 def _write_label(prediction_path: Path, label_path: Path, target_image_path: Path | None) -> None:

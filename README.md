@@ -85,8 +85,8 @@ is equivalent and needs no installation.
 data* to describe projects so they can be indexed and grouped, *Curate* to
 review images against their labels and set their state, *Label* to proofread one
 lamella's selected images at full resolution, and *Export* to choose a subset and
-write it out. The *Label* tab can paint but cannot yet save: its edits are held
-in the window until the save step is built. Reviewing is safe by default: everything that writes stays locked until
+write it out. Proofreading holds a lamella's edits until you save them, and saving
+offers to mark the reviewed set corrected. Reviewing is safe by default: everything that writes stays locked until
 *Enable editing* is ticked. Press **`F1`** for the keys and mouse gestures live
 on the tab you are on.
 
