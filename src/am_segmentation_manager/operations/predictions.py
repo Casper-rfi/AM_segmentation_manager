@@ -22,15 +22,16 @@ from typing import Final, Literal
 from ..io.image import to_2d
 from ..layout import (
     MODALITIES,
-    base_path,
     is_convertible_prediction,
-    resolve_labels_directory,
     state_of_path,
-    state_path,
-    subdirectories_by_name,
 )
 from ..models import ImageRecord
-from .label_io import has_image_stack_support, is_label_file_empty, save_label_image
+from .label_io import (
+    has_image_stack_support,
+    is_label_file_empty,
+    label_destination,
+    save_label_image,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -297,23 +298,7 @@ def plan_conversions(
             skipped.append(SkippedConversion(record, reason))
             continue
 
-        # An existing label is overwritten where it lies. Its state folder can
-        # differ from the image's -- that disagreement is repair-state's to fix
-        # -- and computing a fresh destination would write a second label
-        # instead of replacing the one that is really there.
-        existing_label = record.labels[0] if record.labels else None
-        if existing_label is not None:
-            destination = existing_label
-        else:
-            image_directory = base_path(record.image_path).parent
-            labels_directory, _, _ = resolve_labels_directory(
-                image_directory, record.modality, subdirectories_by_name(image_directory.parent)
-            )
-            # A new label follows the image's own workflow state.
-            destination = state_path(
-                labels_directory / record.image_path.name, state_of_path(record.image_path)
-            )
-
+        destination = label_destination(record)
         if destination in claimed:
             continue
         claimed.add(destination)

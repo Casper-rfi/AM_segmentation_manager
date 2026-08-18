@@ -22,6 +22,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...config import SegmentationConfig
+
 logger = logging.getLogger(__name__)
 
 #: The name filters the CSV dialogs offer. ``All files`` is offered beside the
@@ -29,6 +31,32 @@ logger = logging.getLogger(__name__)
 #: still readable and refusing to show it would be the dialog deciding.
 CSV_FILTER = "CSV files (*.csv)"
 ALL_FILES_FILTER = "All files (*)"
+
+
+#: What each label status is called, and how strongly it is said. Shared by the
+#: curation and proofreading panels: the two report the same fact about the same
+#: file, and a second wording for it would read as a second meaning.
+LABEL_BADGES = {
+    "missing": ("no label", "warning"),
+    "empty": ("empty label - not yet annotated", "warning"),
+    "present": ("", "info"),
+}
+
+
+def class_legend_html(config: SegmentationConfig) -> str:
+    """Return a swatch and name for each foreground class, as rich text.
+
+    Background is left out: it covers most of a frame and is never drawn, so
+    naming it in the legend would describe a colour nothing uses.
+    """
+    parts = []
+    for class_index in config.foreground_classes:
+        red, green, blue = config.rgb(class_index)
+        parts.append(
+            f'<span style="color: rgb({red},{green},{blue});">&#9632;</span> '
+            f"{config.name(class_index)}"
+        )
+    return "&nbsp;&nbsp;".join(parts)
 
 
 def chip_icon(pixmap: QPixmap) -> QIcon:

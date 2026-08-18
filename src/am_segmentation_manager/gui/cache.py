@@ -378,6 +378,17 @@ class FrameCache:
         """Return a prepared plot only if it is already held."""
         return self._plots.get(frame_index)
 
+    def holds(
+        self, frame_index: int, modality: str, variant: str | None = None
+    ) -> bool:
+        """Return whether a prepared acquisition is already held.
+
+        Asked by a caller building its own read-ahead order, so that it can
+        leave out what is in memory without disturbing the recency ordering the
+        way a lookup would.
+        """
+        return (frame_index, modality, variant) in self._images
+
     def ensure(self, request: LoadRequest) -> None:
         """Prepare the data named by *request* if it is not already held."""
         if request.modality is None:

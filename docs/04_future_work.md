@@ -9,34 +9,44 @@ is needed becomes detail that has to be maintained and re-argued.
 
 ---
 
-## 1. Launch the segmentation software from the GUI
+## 1. Labelling in the GUI
 
-**What you want:** a button that opens the external labelling UI on the current
-adaptive-milling stage and imaging modality, so proofreading starts without
-copying paths by hand.
+**What you want:** to proofread labels in this package's own window and stop
+using the external fibsemOS labelling UI altogether. It is large, externally
+maintained, cannot show every stage of one lamella together, writes
+uncompressed labels, and creates a blank label for every image in its input
+folder -- the behaviour the `deselected/` move exists to defeat. Model-assisted
+labelling is the one feature not being reproduced, and is not wanted.
 
-**Why it is not designed yet:** you noted it *"may require changes in the
-fibsemOS labeling UI"*. That is the crux — until it is known whether that UI can
-be launched with arguments, and if so which, there is nothing here to design.
-The path side needs no new code: `layout.py` resolves image and label
-directories through the stage's `image_sets`.
+**What is built:** everything except saving. `operations/label_edit.py` holds
+brush, flood fill, class locking and undo on numpy arrays, with no toolkit and
+no filesystem; OpenCV supplies every drawing primitive, so none of it needs a
+new dependency. The Label tab reads one lamella's selected and corrected frames
+at full resolution and draws each as two stacked graphics items -- the image,
+and the label as an indexed-8 image whose colour table carries the alpha -- so
+the opacity control costs nothing and the label layer redraws without touching
+the image. `compose_overlay` stays as it is for Curate, which shows a reduced
+frame and never changes one. Brush and fill both work on the left button, with
+space or the middle button panning instead; edits are held in a `LabelSession`
+scoped to the lamella, PNG-encoded once the reviewer moves off a frame.
 
-**Try copy-path first.** It is already in the window's context menu and is the
-useful 80 % of this: copy, paste into the other tool. Find out how much of the
-pain that removes before building process launching.
+**What remains: the save.** Until it exists the tab says so, in its status line
+and under F1: an edit lives in the window and nowhere else.
 
-**Questions to answer before designing:** can the labelling UI be given a
-working directory and a config, or does it only start interactively? If it needs
-changes, is that repository yours, and on what timescale? Does it exit cleanly,
-and should this package wait — waiting means knowing when to rescan, not waiting
-means the window shows stale state until Scan is pressed.
+**Decisions already taken.** Save is explicit and covers every label edited in
+the lamella, because the work is done one area of each image at a time rather
+than one image at a time; pending edits are held PNG-encoded in memory (14 kB
+for a 6 MB label), so the whole lamella fits. Saving asks whether to also mark
+the saved set corrected, and a label approved unedited can be marked reviewed
+without a token brush stroke. Editing is refused where a label's dimensions
+disagree with its image, since saving the resampled array would rewrite the
+annotation at the wrong scale.
 
-Pass `segmentation_config_AM.yaml` as a file rather than settings built in code:
-`config.py` already resolves one to a path, and a shared schema would couple the
-two tools' release cycles. And note that launching a process that writes into
-label directories sits outside this package's safety guarantees — nothing it
-does can be validated in advance or dry-run — so it must never be pointed at a
-`corrected/` directory without explicit confirmation.
+**The consequence most easily missed:** with fibsemOS gone, nothing else
+creates a blank label, so the editor must write one where none exists --
+resolving the destination through `resolve_labels_directory` exactly as
+`predictions.py` does. `compress-labels` becomes legacy-only, since anything
+saved here is already LZW.
 
 ---
 

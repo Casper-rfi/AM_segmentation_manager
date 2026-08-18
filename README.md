@@ -81,12 +81,14 @@ Getting started
 Installing provides the `am-seg` command; `python -m am_segmentation_manager.cli`
 is equivalent and needs no installation.
 
-**The window is the primary interface.** Three tabs in workflow order — *Add
+**The window is the primary interface.** Four tabs in workflow order — *Add
 data* to describe projects so they can be indexed and grouped, *Curate* to
-review images against their labels and set their state, *Export* to choose a
-subset and write it out. Reviewing is safe by default: everything that writes
-stays locked until *Enable editing* is ticked. Press **`F1`** for the keys and
-mouse gestures live on the tab you are on.
+review images against their labels and set their state, *Label* to proofread one
+lamella's selected images at full resolution, and *Export* to choose a subset and
+write it out. The *Label* tab can paint but cannot yet save: its edits are held
+in the window until the save step is built. Reviewing is safe by default: everything that writes stays locked until
+*Enable editing* is ticked. Press **`F1`** for the keys and mouse gestures live
+on the tab you are on.
 
 The command line covers the same ground plus the whole-collection reports, and
 is the place for anything scripted:

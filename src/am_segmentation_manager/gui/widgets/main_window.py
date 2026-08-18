@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
 from ...operations.selection import RecordState, current_state
 from ..controller import CurationController, EditingDisabled
 from ..export_controller import ExportController
+from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
@@ -40,6 +41,7 @@ from .changes_log import ChangesLog
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
+from .label_panel import LabelPanel
 from .metadata_panel import MetadataPanel
 from .operations_panel import OperationsPanel
 from .project_panel import ProjectPanel
@@ -74,6 +76,7 @@ except ImportError:  # pragma: no cover - depends on the installed binding
 #: a project is what adding one to the collection currently consists of.
 TAB_CURATE = "curate"
 TAB_ADD_DATA = "add data"
+TAB_LABEL = "label"
 TAB_EXPORT = "export"
 
 #: A key that works everywhere, whatever is showing.
@@ -104,6 +107,14 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     TAB_ADD_DATA: (
         ("Right-click a project", "Copy its path, or open its folder"),
+    ),
+    TAB_LABEL: (
+        ("Drag with the left button", "Paint with the brush"),
+        ("Click with the fill tool", "Flood the area of one class you clicked in"),
+        ("Hold Space, or drag with the middle button", "Pan instead of painting"),
+        ("Scroll wheel", "Zoom about the pointer"),
+        ("Click or drag the timeline", "Move to a frame"),
+        ("A white band on the timeline", "That label has unsaved edits"),
     ),
 }
 
@@ -145,6 +156,11 @@ class CurationWindow(QMainWindow):
     #: Emitted to the background loader thread; see :class:`BackgroundLoader`.
     request_load = Signal(list, int)
 
+    #: Emitted to the Label tab's own loader thread. Separate from
+    #: :attr:`request_load` because the two prepare frames at different sizes:
+    #: proofreading needs every pixel, and reviewing deliberately does not.
+    request_label_load = Signal(list, int)
+
     #: Emitted to the operations thread with the callable to run; see
     #: :class:`~am_segmentation_manager.gui.worker.BackgroundOperation`.
     request_operation = Signal(object)
@@ -181,9 +197,11 @@ class CurationWindow(QMainWindow):
         # which class is a crack has to be the same question the overlays
         # answer, and resolving it twice invites two answers.
         self.export_controller = ExportController(config=controller.config)
+        self.label_controller = LabelController(config=controller.config)
         self.metadata_controller = MetadataController()
         self.operations_controller = OperationsController()
         self.export_panel = ExportPanel(self.export_controller)
+        self.label_panel = LabelPanel(self.label_controller)
         self.metadata_panel = MetadataPanel(self.metadata_controller)
 
         self._build_layout()
@@ -194,6 +212,10 @@ class CurationWindow(QMainWindow):
         self.loader = BackgroundLoader(controller.cache)
         self.request_load.connect(self.loader.worker.load_batch)
         self.loader.worker.loaded.connect(self._on_loaded)
+
+        self.label_loader = BackgroundLoader(self.label_controller.cache)
+        self.request_label_load.connect(self.label_loader.worker.load_batch)
+        self.label_loader.worker.loaded.connect(self._on_label_loaded)
 
         # Connected once and left alone. Disconnecting a slot from inside the
         # emission of the signal it is handling is a connection list mutated
@@ -254,12 +276,13 @@ class CurationWindow(QMainWindow):
         self.curate.setStretchFactor(0, 1)
         self.curate.setSizes([800, 120])
 
-        # Left to right in workflow order: describe the data, curate it, export
-        # it. Curate opens, because it is where the repeated work happens and
-        # the other two are visited once per collection.
+        # Left to right in workflow order: describe the data, curate it,
+        # proofread its labels, export it. Curate opens, because it is where the
+        # repeated work starts and the outer two are visited once per collection.
         self.tabs = QTabWidget()
         self.tabs.addTab(self.metadata_panel, "Add data")
         self.tabs.addTab(self.curate, "Curate")
+        self.tabs.addTab(self.label_panel, "Label")
         self.tabs.addTab(self.export_panel, "Export")
         # Chosen before the signal is connected: _tab_changed switches the
         # keyboard shortcuts, which do not exist until _add_shortcuts runs.
@@ -295,6 +318,7 @@ class CurationWindow(QMainWindow):
         return row
 
     def _connect(self) -> None:
+        self.label_panel.loads_needed.connect(self._schedule_label_loads)
         self.project_panel.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
         self.project_panel.lamella_selected.connect(self._select_lamella)
@@ -396,6 +420,8 @@ class CurationWindow(QMainWindow):
         widget = self.tabs.widget(index)
         if widget is self.export_panel:
             self.export_panel.refresh()
+        elif widget is self.label_panel:
+            self._point_label_tab()
         elif widget is self.metadata_panel:
             self.metadata_panel.refresh()
             # The arrow keys here are scoped to the project list, so they only
@@ -412,6 +438,9 @@ class CurationWindow(QMainWindow):
         self.operations_controller.set_start_path(self.controller.start_path)
         self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
         self.metadata_panel.set_root(self.controller.start_path)
+        # Re-pointed rather than left holding records from the previous scan,
+        # whose paths may no longer be where the files are.
+        self.label_controller.set_lamella(self.controller.lamella)
 
     # -- operations that change files --------------------------------------
 
@@ -818,6 +847,34 @@ class CurationWindow(QMainWindow):
                 "Up", "Previous project", lambda: self.metadata_panel.step_project(-1),
                 TAB_ADD_DATA, scope=self.metadata_panel.projects,
             ),
+            Binding(
+                "Right", "Next frame", lambda: self.label_panel.step_frame(1), TAB_LABEL
+            ),
+            Binding(
+                "Left", "Previous frame", lambda: self.label_panel.step_frame(-1), TAB_LABEL
+            ),
+            Binding("Down", "Next lamella", lambda: self._step_label_lamella(1), TAB_LABEL),
+            Binding("Up", "Previous lamella", lambda: self._step_label_lamella(-1), TAB_LABEL),
+            Binding("1", "SEM images", lambda: self.label_panel.set_modality("SEM"), TAB_LABEL),
+            Binding("2", "FIB images", lambda: self.label_panel.set_modality("FIB"), TAB_LABEL),
+            Binding("V", "Show / hide the label", self.label_panel.toggle_label, TAB_LABEL),
+            # D and F step the class, as they do in the labelling UI this tab
+            # replaces. Fit moves to 0 here rather than take one of them.
+            Binding("0", "Fit the image to the pane", self.label_panel.canvas_fit, TAB_LABEL),
+            Binding(
+                "B", "Brush tool", lambda: self.label_panel.set_tool("brush"), TAB_LABEL
+            ),
+            Binding(
+                "G", "Fill tool", lambda: self.label_panel.set_tool("fill"), TAB_LABEL
+            ),
+            Binding("D", "Previous class", lambda: self.label_panel.step_class(-1), TAB_LABEL),
+            Binding("F", "Next class", lambda: self.label_panel.step_class(1), TAB_LABEL),
+            Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-2), TAB_LABEL),
+            Binding("]", "Larger brush", lambda: self.label_panel.step_brush(2), TAB_LABEL),
+            Binding("Ctrl+Z", "Undo the last stroke", self.label_panel.undo, TAB_LABEL),
+            Binding(
+                "Ctrl+Shift+Z", "Redo the last stroke", self.label_panel.redo, TAB_LABEL
+            ),
             Binding("F1", "Show this list", self.show_shortcuts, ANY_TAB),
         ]
         self._shortcuts = []
@@ -839,7 +896,9 @@ class CurationWindow(QMainWindow):
         """Return the key of the tab now showing."""
         widget = self.tabs.currentWidget()
         for panel, tab in (
-            (self.metadata_panel, TAB_ADD_DATA), (self.export_panel, TAB_EXPORT)
+            (self.metadata_panel, TAB_ADD_DATA),
+            (self.label_panel, TAB_LABEL),
+            (self.export_panel, TAB_EXPORT),
         ):
             if widget is panel:
                 return tab
@@ -870,6 +929,11 @@ class CurationWindow(QMainWindow):
             help_text += (
                 "<p style='margin-top: 10px;'>State changes need <i>Enable editing</i> "
                 "switched on.</p>"
+            )
+        if tab == TAB_LABEL:
+            help_text += (
+                "<p style='margin-top: 10px;'>Edits are held in this window only. "
+                "Saving them to disk is not built yet.</p>"
             )
         return help_text
 
@@ -1362,6 +1426,35 @@ class CurationWindow(QMainWindow):
         self.project_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 
+    def _point_label_tab(self) -> None:
+        """Show the lamella the curation view is on, and draw it.
+
+        The Label tab has no lamella list of its own: proofreading follows the
+        lamella being curated, so there is one cursor over the collection rather
+        than two that can disagree.
+        """
+        self.label_controller.set_lamella(self.controller.lamella)
+        self.label_panel.refresh()
+
+    def _step_label_lamella(self, delta: int) -> None:
+        """Move both views to another lamella, from the Label tab."""
+        self._step_lamella(delta)
+        self._point_label_tab()
+
+    def _schedule_label_loads(self) -> None:
+        """Ask the Label tab's loader to prepare the frames around this one."""
+        token = self.label_loader.next_token()
+        requests = self.label_controller.pending_loads()
+        if requests:
+            self.request_label_load.emit(requests, token)
+
+    def _on_label_loaded(self, token: int, request) -> None:
+        """Redraw the canvas when the frame on screen finishes preparing."""
+        if token != self.label_loader.token:
+            return
+        if request.frame_index == self.label_controller.frame_index:
+            self.label_panel.draw_current()
+
     def _schedule_loads(self) -> None:
         """Ask the loader thread to prepare the frames around this one.
 
@@ -1383,5 +1476,6 @@ class CurationWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         self._save_layout()
         self.loader.stop()
+        self.label_loader.stop()
         self.operations.stop()
         super().closeEvent(event)

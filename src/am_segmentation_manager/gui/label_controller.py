@@ -1,0 +1,419 @@
+"""What the Label tab is looking at: one lamella, one modality, one frame.
+
+Holds the proofreading view's navigation and its own full-resolution frame
+cache, with no dependency on a GUI toolkit. Nothing here draws or edits; this
+layer decides what is on screen.
+
+Two things separate it from the curation view. Frames are read at full
+resolution, because proofreading a boundary means seeing the pixels it runs
+through, so the cache holds a handful of frames rather than a lamella. And only
+the frames worth proofreading are visited -- a deselected image is one that was
+decided against, and stepping through it wastes the reviewer's attention.
+"""
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from ..config import SegmentationConfig
+from ..display import prepare_display_image
+from ..frames import LamellaFrame, build_lamella_frames
+from ..layout import MODALITIES
+from ..models import Lamella
+from ..operations import label_io
+from ..operations.label_edit import EditPatch, new_label
+from ..operations.selection import RecordState, current_state
+from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
+from .controller import LABEL_DISPLAY
+from .label_session import LabelSession
+
+logger = logging.getLogger(__name__)
+
+#: Passed as ``max_edge`` to read an acquisition without reducing it.
+FULL_RESOLUTION = 0
+
+#: Prepared full-resolution frames to keep. Each costs the image plus its label
+#: at native size -- around 12 MB for a 2048x3072 acquisition -- so this is a
+#: working neighbourhood rather than the whole lamella the curation view holds.
+DEFAULT_IMAGE_LIMIT = 6
+
+#: How far either side of the current frame to prepare ahead. Smaller than the
+#: curation view's for the same reason the cache is: reading every pixel of a
+#: frame is several times the work of reading a reduced one.
+DEFAULT_RADIUS = 1
+
+#: The states worth opening in the proofreading view. ``corrected`` is included
+#: so finished work can be revisited; changing one still needs the confirmation
+#: every corrected label is guarded by.
+PROOFREADABLE: tuple[RecordState, ...] = ("selected", "corrected")
+
+
+def load_full_resolution(image_path, label_path) -> object:
+    """Read an acquisition and its label without reducing either."""
+    return prepare_display_image(image_path, label_path, max_edge=FULL_RESOLUTION)
+
+
+class LabelController:
+    """The proofreading view's model: a lamella, a modality and a position.
+
+    The lamella is handed in rather than chosen here, so that the collection has
+    one navigation cursor rather than two that can disagree about where the user
+    is. Positions are indices into the frames worth proofreading, not into the
+    lamella, so stepping never lands on an image that was deselected.
+    """
+
+    def __init__(
+        self,
+        config: SegmentationConfig,
+        *,
+        cache: FrameCache | None = None,
+    ) -> None:
+        """Create a controller drawing classes from *config*.
+
+        Args:
+            config: Supplies the class colours and names the overlay is drawn
+                with. Shared with the curation view, so both answer "which
+                class is this" the same way.
+            cache: Where prepared frames are kept. Defaults to a small
+                full-resolution cache; tests pass one with a stub loader.
+        """
+        self.config = config
+        self.cache = cache if cache is not None else FrameCache(
+            load_image=load_full_resolution, image_limit=DEFAULT_IMAGE_LIMIT
+        )
+        self.show_overlay = True
+        self._lamella: Lamella | None = None
+        self._frames: tuple[LamellaFrame, ...] = ()
+        self._positions: tuple[int, ...] = ()
+        self._cursor = 0
+        self._modality = MODALITIES[0]
+        self._label_states: dict[object, str] = {}
+        self.session = LabelSession()
+        self._keys: dict[Path, Path] = {}
+
+    # -- what is being reviewed --------------------------------------------
+
+    def set_lamella(self, lamella: Lamella | None) -> None:
+        """Point the view at *lamella*, keeping the position if it is the same one.
+
+        Re-pointing at the same lamella happens every time the tab comes forward,
+        and resetting to its first frame then would throw away the place the
+        reviewer had got to. The frames are rebuilt regardless, because the
+        records may have moved between state folders since -- and what is
+        rebuilt is a pure transformation of the scan, costing nothing.
+
+        Prepared frames are discarded either way, so returning to the tab
+        re-reads the frame on screen. Keeping them would mean holding pixels
+        against frame indices that a rescan may have renumbered.
+        """
+        same = (
+            lamella is not None
+            and self._lamella is not None
+            and lamella.path == self._lamella.path
+        )
+        keep_frame = self.frame_index if same else None
+
+        self._lamella = lamella
+        self._frames = tuple(build_lamella_frames(lamella)) if lamella else ()
+        if not same:
+            self._label_states.clear()
+            self._keys.clear()
+            self.session.discard()
+        self.cache.set_frames(self._frames)
+        self._refresh_positions(keep_frame=keep_frame)
+        logger.debug(
+            "Label view now on %s: %d frames, %d proofreadable %s",
+            lamella.name if lamella else "nothing",
+            len(self._frames), len(self._positions), self._modality,
+        )
+
+    @property
+    def lamella(self) -> Lamella | None:
+        """Return the lamella being proofread."""
+        return self._lamella
+
+    @property
+    def modality(self) -> str:
+        """Return the modality on screen, ``"SEM"`` or ``"FIB"``."""
+        return self._modality
+
+    def set_modality(self, modality: str) -> None:
+        """Show *modality*, staying on the current acquisition where it exists.
+
+        Switching SEM to FIB is a request to look at the same moment of the
+        milling from the other beam, so the position follows the frame rather
+        than the index.
+        """
+        wanted = modality.upper()
+        if wanted not in MODALITIES:
+            raise ValueError(f"Unknown modality: {modality}")
+        if wanted == self._modality:
+            return
+        self._modality = wanted
+        self._refresh_positions(keep_frame=self.frame_index)
+
+    def available_modalities(self) -> list[str]:
+        """Return the modalities with anything to proofread in this lamella."""
+        return [
+            modality for modality in MODALITIES
+            if any(self._is_proofreadable(frame, modality) for frame in self._frames)
+        ]
+
+    def _is_proofreadable(self, frame: LamellaFrame, modality: str) -> bool:
+        """Return whether *frame* has an image of *modality* worth opening."""
+        record = frame.record(modality)
+        return record is not None and current_state(record) in PROOFREADABLE
+
+    def _refresh_positions(self, *, keep_frame: int | None) -> None:
+        """Recompute the visitable frames, staying as near *keep_frame* as possible."""
+        self._positions = tuple(
+            index for index, frame in enumerate(self._frames)
+            if self._is_proofreadable(frame, self._modality)
+        )
+        if not self._positions:
+            self._cursor = 0
+            return
+        if keep_frame is None:
+            self._cursor = 0
+            return
+        # The nearest visitable frame, so a modality switch on an acquisition
+        # that only one beam imaged lands beside it rather than at the start.
+        self._cursor = min(
+            range(len(self._positions)),
+            key=lambda index: abs(self._positions[index] - keep_frame),
+        )
+
+    # -- position -----------------------------------------------------------
+
+    @property
+    def count(self) -> int:
+        """Return how many frames there are to proofread."""
+        return len(self._positions)
+
+    @property
+    def position(self) -> int:
+        """Return the cursor's index among the proofreadable frames."""
+        return self._cursor
+
+    @property
+    def frame_index(self) -> int | None:
+        """Return the current frame's index within the lamella, or None."""
+        if not self._positions:
+            return None
+        return self._positions[self._cursor]
+
+    @property
+    def frame(self) -> LamellaFrame | None:
+        """Return the frame on screen, or None when there is nothing to show."""
+        index = self.frame_index
+        return self._frames[index] if index is not None else None
+
+    @property
+    def record(self):
+        """Return the image record on screen, or None."""
+        frame = self.frame
+        return frame.record(self._modality) if frame is not None else None
+
+    def select(self, position: int) -> None:
+        """Move to *position* among the proofreadable frames, clamped."""
+        if not self._positions:
+            self._cursor = 0
+            return
+        self._cursor = max(0, min(position, len(self._positions) - 1))
+
+    def step(self, delta: int) -> None:
+        """Move *delta* frames, stopping at either end."""
+        self.select(self._cursor + delta)
+
+    # -- what to draw -------------------------------------------------------
+
+    def current_image(self) -> FrameImage | None:
+        """Return the prepared frame, reading it if it is not already held."""
+        index = self.frame_index
+        if index is None:
+            return None
+        return self.cache.image(index, self._modality)
+
+    def cached_image(self) -> FrameImage | None:
+        """Return the prepared frame only if it is already held.
+
+        Lets the panel say *loading* instead of blocking the interface on a
+        full-resolution read.
+        """
+        index = self.frame_index
+        if index is None:
+            return None
+        return self.cache.cached_image(index, self._modality)
+
+    def pending_loads(self, *, radius: int | None = DEFAULT_RADIUS) -> list[LoadRequest]:
+        """Return the frames to prepare, current first then outwards.
+
+        Ordered over the proofreadable frames rather than the lamella, so the
+        read-ahead follows where stepping will actually go.
+        """
+        if not self._positions:
+            return []
+        requests = []
+        for cursor in prefetch_order(self._cursor, len(self._positions), radius):
+            index = self._positions[cursor]
+            if self.cache.holds(index, self._modality):
+                continue
+            requests.append(LoadRequest(index, self._modality))
+        return requests
+
+    # -- editing ------------------------------------------------------------
+
+    def key_for(self, record) -> Path | None:
+        """Return where *record*'s label is, or would be written.
+
+        Cached per record: resolving a destination for an image with no label
+        yet reads the directory it would go in, which is not something to do on
+        every redraw.
+        """
+        if record is None:
+            return None
+        cached = self._keys.get(record.image_path)
+        if cached is None:
+            cached = label_io.label_destination(record)
+            self._keys[record.image_path] = cached
+        return cached
+
+    @property
+    def current_key(self) -> Path | None:
+        """Return the label the frame on screen is proofread through."""
+        return self.key_for(self.record)
+
+    @property
+    def editable(self) -> bool:
+        """Return whether the frame on screen may be painted on.
+
+        A label whose dimensions disagree with its image is refused: it was
+        resampled to be displayed, and saving that back would rewrite the
+        annotation at the wrong scale.
+        """
+        prepared = self.cached_image()
+        if prepared is None or prepared.failed or prepared.display is None:
+            return False
+        return not prepared.display.label_resized
+
+    def working_label(self):
+        """Return the array to draw for the frame on screen.
+
+        While the frame is editable this is the session's own copy, which the
+        canvas paints into; otherwise it is the prepared frame's label, which
+        must not be written to. Where no label file exists, an all-background
+        one is opened, so an unlabelled image can be annotated from nothing.
+        """
+        prepared = self.cached_image()
+        if prepared is None or prepared.failed or prepared.display is None:
+            return None
+        display = prepared.display
+        if not self.editable:
+            return display.label
+
+        key = self.current_key
+        if key is None:
+            return display.label
+        source = (
+            display.label if display.label is not None
+            else new_label(display.image.shape)
+        )
+        return self.session.open(key, source, created=display.label is None)
+
+    def record_edit(self, patch: EditPatch | None) -> None:
+        """Record a completed stroke against the label on screen."""
+        self.session.record(patch)
+
+    def mark_reviewed(self, reviewed: bool = True) -> None:
+        """Record that the label on screen has been proofread, edited or not."""
+        key = self.current_key
+        if key is not None:
+            self.session.mark_reviewed(key, reviewed=reviewed)
+
+    def is_reviewed(self) -> bool:
+        """Return whether the label on screen is marked proofread."""
+        key = self.current_key
+        entry = self.session.state_of(key) if key is not None else None
+        return bool(entry and entry.reviewed)
+
+    def edited_positions(self) -> set[int]:
+        """Return the timeline positions whose label has unsaved changes."""
+        edited = self.session.edited_keys()
+        if not edited:
+            return set()
+        return {
+            position
+            for position, index in enumerate(self._positions)
+            if self.key_for(self._frames[index].record(self._modality)) in edited
+        }
+
+    def pending_count(self) -> int:
+        """Return how many labels are waiting to be saved."""
+        return len(self.session)
+
+    def timeline_states(self) -> dict[str, list[RecordState | None]]:
+        """Return the current modality's state for every proofreadable frame.
+
+        Only the one row: the other modality's proofreadable frames are a
+        different set, and drawing them along the same axis would put two
+        different sequences of acquisitions above one another.
+        """
+        return {
+            self._modality: [
+                current_state(self._frames[index].record(self._modality))
+                for index in self._positions
+            ]
+        }
+
+    def timeline_labels(self) -> dict[str, list[str | None]]:
+        """Return each proofreadable frame's label state, for the timeline."""
+        return {
+            self._modality: [
+                self._label_state(self._frames[index].record(self._modality))
+                for index in self._positions
+            ]
+        }
+
+    def record_label_state(self, record) -> str:
+        """Return what *record*'s label is, reading the file at most once.
+
+        Cached for the controller's life, so stepping back and forth across a
+        lamella re-reads nothing.
+        """
+        path = record.image_path
+        if path not in self._label_states:
+            self._label_states[path] = label_io.label_state(record)
+        return self._label_states[path]
+
+    def forget_label_state(self, record) -> None:
+        """Drop what was known about *record*'s label, so it is read again."""
+        self._label_states.pop(record.image_path, None)
+
+    def _label_state(self, record) -> str | None:
+        """Return one record's label state as the timeline draws it."""
+        if record is None:
+            return None
+        return LABEL_DISPLAY[self.record_label_state(record)]
+
+    def status_text(self) -> str:
+        """Return the line describing where the reviewer is."""
+        if self._lamella is None:
+            return "No lamella selected"
+        if not self._positions:
+            return (
+                f"{self._lamella.display_name}: no {self._modality} images to "
+                f"proofread. Select them in the Curate tab."
+            )
+        frame = self.frame
+        parts = [
+            self._lamella.display_name,
+            f"{self._modality} {self._cursor + 1} / {len(self._positions)}",
+        ]
+        if frame is not None:
+            parts.append(f"stage {frame.stage}")
+            if frame.image_number is not None:
+                parts.append(f"image {frame.image_number}")
+        record = self.record
+        if record is not None:
+            parts.append(current_state(record))
+        return " · ".join(parts)

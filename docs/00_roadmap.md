@@ -37,6 +37,10 @@ Why each of these is so is in [`decisions.md`](decisions.md).
 
 In no particular order.
 
+**The Label tab** -- proofreading in this window instead of fibsemOS. Viewing and
+both drawing tools are built; the lamella-wide save is what is left.
+[`04_future_work.md`](04_future_work.md) §1.
+
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
 

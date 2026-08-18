@@ -29,6 +29,7 @@ from ...config import SegmentationConfig
 from ...display import DEFAULT_ALPHA, compose_overlay
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
+from .common import LABEL_BADGES, class_legend_html
 from .image_view import ImageView, LinkedImageViews
 from .theme import BADGE_STYLES
 
@@ -36,13 +37,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     pass
 
 logger = logging.getLogger(__name__)
-
-LABEL_BADGES = {
-    "missing": ("no label", "warning"),
-    "empty": ("empty label - not yet annotated", "warning"),
-    "present": ("", "info"),
-}
-
 
 class ImagePanel(QWidget):
     """The frame view, its mode controls, legend and badges."""
@@ -238,14 +232,7 @@ class ImagePanel(QWidget):
 
     def _build_legend(self) -> None:
         """Render a colour swatch and name for each foreground class."""
-        parts = []
-        for class_index in self.config.foreground_classes:
-            red, green, blue = self.config.rgb(class_index)
-            parts.append(
-                f'<span style="color: rgb({red},{green},{blue});">&#9632;</span> '
-                f"{self.config.name(class_index)}"
-            )
-        self.legend.setText("&nbsp;&nbsp;".join(parts))
+        self.legend.setText(class_legend_html(self.config))
 
     # -- rendering ---------------------------------------------------------
 

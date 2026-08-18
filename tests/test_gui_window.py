@@ -543,7 +543,7 @@ def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
 def test_tabs_are_in_workflow_order(window):
     titles = [window.tabs.tabText(index) for index in range(window.tabs.count())]
 
-    assert titles == ["Add data", "Curate", "Export"]
+    assert titles == ["Add data", "Curate", "Label", "Export"]
 
 
 def test_curate_is_the_tab_that_opens(window):

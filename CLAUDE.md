@@ -39,8 +39,8 @@ Code quality, maintainability and extensibility therefore matter.
 	1. The `gui` is used to set the state of FIB and SEM images to `deselect` (don't create and proofread labels), `select` (create pseudolabels and proofread) or `correct` (has proofread pseudolabels)
 	2. `convert-predictions` creates pseudo-labels from the predictions
 	3. Or predictions are created with the Adaptive Milling ML training package (planned, not yet ready to implement)
-	4. Pseudo-labels are manually corrected in the fibsemOS labeling UI (planned: a push command to open the relevant data there, which will need changes in fibsemOS)
-	5. `compress-labels` reduces the disk space labels occupy
+	4. `compress-labels` reduces the disk space labels occupy
+3. proofread and correct labels manually in the GUI
 2. Quantify metadata and labels:
 	1. `stats` quantifies the proportion of images with given project and image metadata
 	2. `quantify-labels` measures label surface areas
@@ -204,10 +204,7 @@ practical, operations support a dry-run/preview mode and log enough to reconstru
 what was changed.
 
 **The package MUST physically move selected and deselected images and labels between
-folders.** This is not an implementation choice: the external segmentation software
-automatically creates an empty label for every image found inside an input image
-directory, so moving files into a `deselected/` subdirectory is what prevents
-unwanted label generation. Do not replace this with logical selection flags or
+folders.**  Do not replace this with logical selection flags or
 database-only selection unless explicitly requested. Expose it through clean
 high-level functions rather than spreading file-moving logic through the package.
 
