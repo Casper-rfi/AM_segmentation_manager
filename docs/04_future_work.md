@@ -1,6 +1,6 @@
 # Future work
 
-Status: **sketches, not designs.** Last reviewed 2026-08-17.
+Status: **sketches, not designs.** Last reviewed 2026-08-18.
 
 A holding area for things deliberately not being designed yet. Each entry
 records enough to stop the idea being lost, and the questions that would have to
@@ -16,40 +16,27 @@ adaptive-milling stage and imaging modality, so proofreading starts without
 copying paths by hand.
 
 **Why it is not designed yet:** you noted it *"may require changes in the
-fibsemOS labeling UI"*. That is the crux. Until it is known whether that UI can
-be launched with arguments — and if so, which — there is nothing here to design.
-Everything else is easy.
+fibsemOS labeling UI"*. That is the crux — until it is known whether that UI can
+be launched with arguments, and if so which, there is nothing here to design.
+The path side needs no new code: `layout.py` resolves image and label
+directories through the stage's `image_sets`.
 
-### What is already in place
+**Try copy-path first.** It is already in the window's context menu and is the
+useful 80 % of this: copy, paste into the other tool. Find out how much of the
+pain that removes before building process launching.
 
-* Image and label directory resolution: `layout.py`, via the stage's
-  `image_sets`, each of which already carries the label directory it resolves to.
-  No new path logic.
-* **Copy-path is already in the window's context menu, and is the useful 80 % of
-  this feature.** Copy the path, paste it into the other tool. Find out how much
-  of the pain that removes before building process launching.
+**Questions to answer before designing:** can the labelling UI be given a
+working directory and a config, or does it only start interactively? If it needs
+changes, is that repository yours, and on what timescale? Does it exit cleanly,
+and should this package wait — waiting means knowing when to rescan, not waiting
+means the window shows stale state until Scan is pressed.
 
-### Questions to answer before designing
-
-1. Can the fibsemOS labelling UI be launched with a working directory and
-   a config, or does it only start interactively?
-2. If it needs changes, is that repository yours to change, and on what
-   timescale?
-3. Does it exit cleanly, and should this package wait for it? Waiting means
-   knowing when to rescan; not waiting means the curation window shows stale
-   state until the user presses Scan.
-
-**Pass `segmentation_config_AM.yaml` as a file**, not as settings constructed in
-code: `config.py` already resolves one to a concrete path, and a shared schema
-in code would couple the two tools' release cycles.
-
-### Constraint
-
-Launching an external process that writes into label directories sits outside
-this package's safety guarantees — nothing it does can be validated in advance
-or dry-run. At minimum it must never be pointed at a `corrected/` directory
-without an explicit confirmation, on the same footing as every other operation
-that could touch corrected work.
+Pass `segmentation_config_AM.yaml` as a file rather than settings built in code:
+`config.py` already resolves one to a path, and a shared schema would couple the
+two tools' release cycles. And note that launching a process that writes into
+label directories sits outside this package's safety guarantees — nothing it
+does can be validated in advance or dry-run — so it must never be pointed at a
+`corrected/` directory without explicit confirmation.
 
 ---
 
@@ -61,44 +48,33 @@ proofread, export, retrain. Raw predictions are what matters here: this package
 converts only those, for the reason in [`decisions.md`](decisions.md) §
 Filesystem conventions.
 
-### What is already in place
+The output side is done: `operations/predictions.py` converts predictions into
+labels, resizing where dimensions differ. What is missing is producing them.
 
-`operations/predictions.py` already converts predictions into labels, including
-resizing when prediction and image dimensions differ. The output side is done.
-What is missing is producing the predictions in the first place.
+**Questions to answer before designing:**
 
-### Questions to answer before designing
-
-1. **Is `AM_training` a dependency or a peer?** Importing it makes this package
-   depend on a training stack (torch and friends) — a large dependency for a
-   file-management tool, and one that would have to be an optional extra at
-   minimum. Invoking it as a subprocess keeps them independent. Leaning towards
-   subprocess, for the same reason as §1: a stable interface beats a shared
-   schema in code.
-2. **Where do model weights live, and how is the model used recorded?** A
-   prediction is only interpretable if you know which model made it. This is a
-   provenance question, and it is more important than the mechanics — a
-   `predictions/` directory with no record of the model that filled it is a
-   problem that gets worse with time. It may deserve a small sidecar file
-   alongside the predictions, in the spirit of `AM_metadata.yaml`.
+1. **Is `AM_training` a dependency or a peer?** Importing it pulls a training
+   stack (torch and friends) into a file-management tool — an optional extra at
+   minimum. A subprocess keeps them independent, and is the way this is leaning,
+   for the same reason as §1: a stable interface beats a shared schema in code.
+2. **Where do model weights live, and how is the model recorded?** A prediction
+   is only interpretable if you know which model made it. This provenance
+   question matters more than the mechanics — a `predictions/` directory with no
+   record of what filled it is a problem that worsens with time — and may deserve
+   a sidecar file, in the spirit of `AM_metadata.yaml`.
 3. **GPU availability and runtime.** Inference over thousands of images is
-   minutes to hours, not seconds. That means progress reporting, interruption,
-   and resumption — none of which any existing operation in this package needs.
-   It is the first genuinely long-running operation, and it will not fit the
-   current validate-then-act shape without thought.
-4. **Does it overwrite existing predictions?** By `CLAUDE.md`'s rules, no — not
-   without an explicit flag. Label conversion has since set the precedent to
-   follow: tier the answer by what replacing the file would cost, rather than
-   by one flag covering every case. See [`decisions.md`](decisions.md) §
-   Workflow state.
+   minutes to hours, so it needs progress, interruption and resumption, none of
+   which any existing operation here needs. It will not fit the current
+   validate-then-act shape without thought.
+4. **Does it overwrite existing predictions?** By `CLAUDE.md`'s rules, not
+   without an explicit flag, and label conversion set the precedent: tier the
+   answer by what replacing the file would cost. [`decisions.md`](decisions.md)
+   § Workflow state.
 
-### Why it is last
-
-Everything else in the roadmap improves work you are doing today; this adds a
-capability you already have elsewhere. It is the largest single piece and the
-one most likely to pull a training stack into a package that is currently
-near-stdlib. Its one prerequisite — being able to *select* the training sets it
-would feed — is now met by the Export tab's filters and breakdowns.
+**Why it is last:** everything else improves work you do today; this adds a
+capability you already have elsewhere. It is the largest piece and the one most
+likely to pull a training stack into a near-stdlib package. Its one prerequisite
+— being able to *select* the training sets it would feed — is now met.
 
 ---
 
@@ -108,34 +84,26 @@ would feed — is now met by the Export tab's filters and breakdowns.
 brought back into the project hierarchy where `layout.py` expects them. These will
 be helper scripts, rather than a core feature of the package, and not GUI supported.
 
-### What is already in place
+Two things make this small *given* `layout.py`: the destination is unambiguous,
+since `layout.resolve_labels_directory(...)` gives the right target for any image, so
+no script reimplements the convention; and `inspect-layout` already reports images
+with no label and labels matching no image, so an import can be checked rather
+than trusted.
 
-* **The destination is unambiguous.** `layout.labels_directory_for(...)` gives the
-  right target for any image, so a helper script — in this package or outside it —
-  never has to reimplement the convention.
-* **Verification is available now.** `inspect-layout` reports images with no label
-  and labels matching no image, so the result of any import can be checked rather
-  than trusted.
-
-### The shape it would take
-
-A dry-run-first command matching on filename within a selected scope, refusing to
-overwrite, never deleting from the source, and reporting unmatched and ambiguous
-cases before writing anything. That is a small amount of work *given* `layout.py`,
-and much better specified once there is a real input to look at.
+**The shape it would take:** a dry-run-first command matching on filename within a
+selected scope, refusing to overwrite, never deleting from the source, and
+reporting unmatched and ambiguous cases before writing anything. Much better
+specified once there is a real input to look at.
 
 ---
 
-## 5. Acting on what the Export tab finds
+## 5. Jumping from the Export tab to the images it names
 
-**What you want:** the Export tab's label filter finds the empty labels and the
-unlabelled images; correcting or removing them happens in the Curate tab, and
-nothing carries you from one to the other.
-
-**How much is actually missing:** less than it sounds. Filtering to a label state
-and then breaking down by project or lamella names the lamella holding them, in
-the window, without a CSV. What is missing is only the last step — switching tabs
-and navigating there by hand.
+**What you want:** the Export tab finds the empty and unlabelled images and names
+the lamella holding them — by filter and breakdown, and outright for the
+corrected ones when marking a set corrected or exporting. Fixing them happens in
+the Curate tab, and the only thing missing is being carried there: switching tabs
+and navigating by hand is the whole of it.
 
 **Why it is not designed yet:** the two tabs hold different kinds of selection.
 Curate's is a ticked *set* of projects, lamellae or frames, and is the target of

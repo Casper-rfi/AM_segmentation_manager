@@ -127,14 +127,6 @@ def by_variant(record: ImageRecord) -> Hashable:
     return record.variant or "base"
 
 
-def by_stage(record: ImageRecord) -> Hashable:
-    """Group by adaptive-milling stage name."""
-    return _present(record.stage)
-
-
-def by_lamella(record: ImageRecord) -> Hashable:
-    """Group by lamella name, synthetic ones included."""
-    return _present(record.lamella)
 
 
 # ---------------------------------------------------------------------------
@@ -184,9 +176,41 @@ def by_voltage(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     return key
 
 
+def _significant(value: float, digits: int) -> float:
+    """Return *value* rounded to *digits* significant figures."""
+    if not value:
+        return 0.0
+    return float(f"{value:.{digits}g}")
+
+
+def _rounded_metadata_key(
+    metadata: Mapping[Path, ImageMetadata], attribute: str, digits: int
+) -> KeyFunction:
+    """Return a key grouping a measured value to *digits* significant figures.
+
+    Some header values are derived rather than set: a pixel size comes out of
+    the magnification, so one field of view yields 13.020833333333336 and
+    another 13.020833333333332. Left exact, each becomes its own row of a table
+    whose question is which magnifications were used. Significant figures
+    rather than decimal places, because these span decades -- rounding a
+    0.5 nm pixel and a 500 nm one to the same decimal place loses one of them.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        entry = metadata.get(record.image_path)
+        value = getattr(entry, attribute, None) if entry is not None else None
+        return _present(None if value is None else _significant(value, digits))
+
+    return key
+
+
+#: Significant figures kept by the breakdowns that group a derived measurement.
+#: A grouping figure only; the exported value is never rounded.
+_GROUPING_DIGITS = 4
+
+
 def by_beam_current(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
-    """Group by beam current in picoamps."""
-    return _metadata_key(metadata, "beam_current_pa")
+    """Group by beam current in picoamps, to four significant figures."""
+    return _rounded_metadata_key(metadata, "beam_current_pa", _GROUPING_DIGITS)
 
 
 def by_dwell_time(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
@@ -195,8 +219,8 @@ def by_dwell_time(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
 
 
 def by_pixel_size(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
-    """Group by pixel size in nanometres."""
-    return _metadata_key(metadata, "pixel_size_nm")
+    """Group by pixel size in nanometres, to four significant figures."""
+    return _rounded_metadata_key(metadata, "pixel_size_nm", _GROUPING_DIGITS)
 
 
 def by_plasma_gas(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
@@ -259,47 +283,99 @@ def by_has_crack(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
     return key
 
 
-#: Decade edges for a class-area breakdown, in um^2. Decades rather than bins
-#: fitted to one class, because the classes differ by orders of magnitude -- in
-#: the reference collection a lamella is hundreds of um^2 and a crack hundredths
-#: -- and one scale is what lets the three be read against each other. Fixed
-#: rather than derived from the data, so a bin means the same thing after a
-#: filter changes.
-AREA_BIN_EDGES = (0.01, 0.1, 1.0, 10.0, 100.0, 1000.0)
+#: Powers of ten the area bins span, covering the reference collection from a
+#: hundredth of a um^2 to a thousand.
+_AREA_DECADES = range(-2, 4)
+
+#: How each decade is subdivided, per "bins per decade" setting. 1-3, 1-2-5 and
+#: the E6 series are the standard log-scale subdivisions, and they keep every
+#: edge a round number: raising the resolution splits a bin rather than moving
+#: its edges, so a count taken at one setting still means something at another.
+#:
+#: Six is here because a class can span less than one decade and still want a
+#: distribution: in the reference collection the corrected lamellae run 58 to
+#: 495 um^2 -- 0.93 decades -- so at three per decade they fall in two bins
+#: however finely the rest of the scale is cut. Cracks span 3.6 decades and are
+#: read perfectly well at one.
+_BIN_MANTISSAS: dict[int, tuple[float, ...]] = {
+    1: (1.0,),
+    2: (1.0, 3.0),
+    3: (1.0, 2.0, 5.0),
+    6: (1.0, 1.5, 2.0, 3.0, 5.0, 7.0),
+}
+
+#: The settings :func:`area_bin_edges` accepts.
+AREA_BINS_PER_DECADE: tuple[int, ...] = tuple(sorted(_BIN_MANTISSAS))
+
+#: Decades, which is the coarsest setting. The classes differ by orders of
+#: magnitude -- a lamella is hundreds of um^2 and a crack hundredths -- so one
+#: log scale is what lets them be read against each other, and the useful knob
+#: is how finely it is cut rather than where it sits.
+DEFAULT_AREA_BINS_PER_DECADE = 1
 
 #: The class is not in this label at all. Distinct from a small area and from
 #: an unmeasurable label: "no GIS was deposited here" is a finding.
 ABSENT = "absent"
 
 
-def area_bins() -> tuple[str, ...]:
-    """Return the area bin labels, smallest first."""
-    edges = AREA_BIN_EDGES
+def area_bin_edges(
+    per_decade: int = DEFAULT_AREA_BINS_PER_DECADE,
+) -> tuple[float, ...]:
+    """Return the area bin edges in um^2, smallest first.
+
+    Fixed physical values rather than derived from the data, so a bin means the
+    same thing after a filter changes and across the classes being compared.
+    *per_decade* chooses how finely the scale is cut, which is a different
+    question from where it sits: one class can fill a single decade and still
+    want a distribution inside it.
+
+    Raises:
+        ValueError: If *per_decade* is not one of :data:`AREA_BINS_PER_DECADE`.
+    """
+    if per_decade not in _BIN_MANTISSAS:
+        raise ValueError(
+            f"Bins per decade must be one of {AREA_BINS_PER_DECADE}, "
+            f"got {per_decade!r}"
+        )
+    # Snapped to two significant figures, which every mantissa here has. The
+    # product is not exact -- 3.0 * 10**-1 is 0.30000000000000004 -- and an
+    # edge a hair above its round value puts an area of exactly 0.3 in the bin
+    # below, against the rule that an edge belongs to the bin above it.
+    return tuple(
+        float(f"{mantissa * (10.0 ** decade):.2g}")
+        for decade in _AREA_DECADES
+        for mantissa in _BIN_MANTISSAS[per_decade]
+    )
+
+
+def area_bins(edges: Sequence[float]) -> tuple[str, ...]:
+    """Return the label of each bin *edges* defines, smallest first."""
     labels = [f"< {edges[0]:g}"]
     labels += [f"{low:g} - {high:g}" for low, high in zip(edges, edges[1:])]
     labels.append(f">= {edges[-1]:g}")
     return tuple(labels)
 
 
-def _area_bin(area: float) -> str:
+def area_order(edges: Sequence[float]) -> tuple[str, ...]:
+    """Return every row a class-area breakdown can produce, in meaningful order.
+
+    Absent, then increasing area, then the three ways a label can fail to yield
+    a number at all.
+    """
+    return (ABSENT, *area_bins(edges), EMPTY, NO_PIXEL_SIZE, NO_LABEL)
+
+
+def _area_bin(area: float, edges: Sequence[float], labels: Sequence[str]) -> str:
     """Return which bin *area* falls in."""
     if area <= 0:
         return ABSENT
-    for index, edge in enumerate(AREA_BIN_EDGES):
+    for index, edge in enumerate(edges):
         if area < edge:
-            return area_bins()[index]
-    return area_bins()[-1]
+            return labels[index]
+    return labels[-1]
 
 
-#: Every row a class-area breakdown can produce, in the order they mean
-#: something: absent, then increasing area, then the three ways a label can
-#: fail to yield a number at all.
-AREA_ORDER: tuple[str, ...] = (
-    ABSENT, *area_bins(), EMPTY, NO_PIXEL_SIZE, NO_LABEL,
-)
-
-
-def by_class_area(class_index: int):
+def by_class_area(class_index: int, edges: Sequence[float]):
     """Return a factory grouping by how much of one class a label holds.
 
     Binned because a count needs discrete groups and an area is continuous.
@@ -307,6 +383,9 @@ def by_class_area(class_index: int):
     the same pixel counts the emptiness check already needs -- so this costs
     nothing beyond the measurement.
     """
+    # Built once rather than per record: this key runs over every image in the
+    # selection, on every refresh.
+    labels = area_bins(edges)
 
     def factory(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
         def key(record: ImageRecord) -> Hashable:
@@ -314,7 +393,9 @@ def by_class_area(class_index: int):
             status = measurement_status(measurement)
             if status != MEASURED:
                 return status
-            return _area_bin(measurement.areas_um2.get(class_index, 0.0))
+            return _area_bin(
+                measurement.areas_um2.get(class_index, 0.0), edges, labels
+            )
 
         return key
 
@@ -381,6 +462,48 @@ def by_organisation(lookup: Mapping[Path, Project]) -> KeyFunction:
     return _project_metadata_key(lookup, "organisation")
 
 
+def _project_of(lookup: Mapping[Path, Project], record: ImageRecord) -> str:
+    """Return the identity of *record*'s project, falling back to its name.
+
+    The same fallback :func:`summarise_lamellae` uses: the relative path is the
+    identity, and a record whose project is not in the lookup still has to land
+    somewhere named rather than under "(not recorded)".
+    """
+    project = lookup.get(record.image_path)
+    if project is not None:
+        return str(project.key)
+    return str(_present(record.project))
+
+
+def by_lamella(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by lamella, named as ``project / lamella``.
+
+    Qualified by the project because lamella names repeat between projects --
+    almost every project has an ``01-``. An unqualified row cannot be found
+    again, and two projects' lamellae would be counted as one.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        return f"{_project_of(lookup, record)} / {_present(record.lamella)}"
+
+    return key
+
+
+def by_stage(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by adaptive-milling stage, named as ``project / lamella / stage``.
+
+    Qualified for the same reason as :func:`by_lamella`, and more so: a stage
+    name is either shared by every lamella (``adaptive_polish``) or a bare
+    timestamp, and neither says which lamella it belongs to.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        return (
+            f"{_project_of(lookup, record)} / {_present(record.lamella)}"
+            f" / {_present(record.stage)}"
+        )
+
+    return key
+
+
 def by_project(lookup: Mapping[Path, Project]) -> KeyFunction:
     """Group by the project's identity, which is its relative path."""
 
@@ -398,8 +521,6 @@ class Breakdown:
     Attributes:
         kind: What the key function needs before it can be used --
             ``record`` (nothing), ``metadata``, ``project`` or ``measurement``.
-            It is also where the value comes from, which is what
-            :data:`GROUP_TITLES` turns into a heading.
         factory: The key function itself for a ``record`` breakdown, or a
             factory taking whatever *kind* names for the rest.
         label: What the breakdown is called where there is room to say it
@@ -407,12 +528,21 @@ class Breakdown:
         order: The rows this produces, in the order they mean something. Empty
             where the groups are names rather than a scale, which is when
             largest-first is the more useful order.
+        group: Which heading of :data:`GROUP_TITLES` it is listed under, which
+            is where the value comes from. Usually the same as *kind* and
+            defaults to it; a lamella needs the project lookup to be *named*
+            but is not project metadata, which is where the two come apart.
     """
 
     kind: str
     factory: object
     label: str
     order: tuple[Hashable, ...] = ()
+    group: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.group:
+            object.__setattr__(self, "group", self.kind)
 
 
 #: Heading for each kind of breakdown, in the order they are offered. The kind
@@ -436,8 +566,8 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "modality": Breakdown("record", by_modality, "modality (SEM / FIB)"),
     "state": Breakdown("record", by_state, "workflow state"),
     "variant": Breakdown("record", by_variant, "imaging condition"),
-    "stage": Breakdown("record", by_stage, "milling stage"),
-    "lamella": Breakdown("record", by_lamella, "lamella"),
+    "stage": Breakdown("project", by_stage, "milling stage", group="record"),
+    "lamella": Breakdown("project", by_lamella, "lamella", group="record"),
     "microscope": Breakdown("metadata", by_microscope_model, "microscope model"),
     "serial": Breakdown("metadata", by_microscope_serial, "microscope serial number"),
     "voltage": Breakdown("metadata", by_voltage, "accelerating voltage (kV)"),
@@ -486,13 +616,23 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def breakdowns_for(config: SegmentationConfig) -> dict[str, Breakdown]:
+def breakdowns_for(
+    config: SegmentationConfig,
+    area_bins_per_decade: int = DEFAULT_AREA_BINS_PER_DECADE,
+) -> dict[str, Breakdown]:
     """Return every breakdown, including one area breakdown per measured class.
 
     The per-class ones cannot live in :data:`BREAKDOWNS`: which classes exist
     is the segmentation config's to say, and a table fixed in code would either
     hardcode this project's classes or drop a project that renamed them.
+
+    Args:
+        area_bins_per_decade: How finely the area scale is cut; see
+            :func:`area_bin_edges`. Rebuilding the table is how a caller
+            changes it, because the bins are closed over by the key functions.
     """
+    edges = area_bin_edges(area_bins_per_decade)
+    order = area_order(edges)
     table = dict(BREAKDOWNS)
     for index in config.classes_to_measure:
         name = f"area-{_slug(config.name(index))}"
@@ -504,9 +644,9 @@ def breakdowns_for(config: SegmentationConfig) -> dict[str, Breakdown]:
             continue
         table[name] = Breakdown(
             "measurement",
-            by_class_area(index),
+            by_class_area(index, edges),
             f"{config.name(index)} area (um^2)",
-            order=AREA_ORDER,
+            order=order,
         )
     return table
 
@@ -527,7 +667,7 @@ def grouped_breakdowns(
             (
                 (name, entry.label)
                 for name, entry in table.items()
-                if entry.kind == kind
+                if entry.group == kind
             ),
             key=lambda row: row[1],
         )

@@ -27,7 +27,25 @@ stays on the command line when it is a sweep over the whole collection.** Naming
 selection twice — once by ticking it, once as command-line filters — is where the two
 diverge and the wrong data gets moved. The Add data commands are in the window despite
 being sweeps, because there the sweep *is* the collection and there is nothing to select.
-[`00_roadmap.md`](00_roadmap.md) says where each command ended up.
+Each previews and then applies what it previewed, as two runs of the same function
+rather than one run replayed: a preview held across a dialog describes a filesystem the
+user has had time to change.
+
+**A filter and a breakdown are one declaration in the Export tab.** They are the same
+key function used two ways — group by it, or keep the records whose group was chosen —
+so the tab derives its filter lists from `BREAKDOWNS` rather than from a second table
+beside it. The two therefore cannot disagree about what a value *is*: a pixel size is
+grouped to four significant figures, and the filter used to offer the raw header
+value, a list of numbers no table row ever showed. Two consequences worth knowing:
+"(not recorded)" becomes a value you can select, which is the only way to find the
+images whose header would not read; and a measured property is not offered at all,
+since it cannot answer until the labels are measured. Modality, workflow state and the
+label filter keep dedicated controls, being fixed questions rather than whatever the
+data holds.
+
+`filtering.METADATA_FILTERS` stays as it was — it is the command line's contract,
+where a filter is typed rather than picked and has to tolerate `30000` for a stored
+`30000.0`.
 
 **Counting is the exception, and it split rather than moved.** The Export tab counts and
 cross-tabulates the set its filters describe, measuring labels when asked — because
@@ -37,13 +55,27 @@ with its own scope selectors, and `quantify-labels` keeps the per-lamella table:
 of numbers per class per lamella is not something anyone acts on one row at a time, and
 a spreadsheet reads it better from the CSV.
 
-Each of these previews and then applies what it previewed, as two runs of the same
-function rather than one run replayed. A preview held across a dialog describes a
-filesystem the user has had time to change.
-
 **Label editing is out of scope.** Proofreading stays in the external segmentation
 software; this package decides *which* images get proofread and records when they are
 done.
+
+**What a measured number means is set beside the breakdown, not among the filters.**
+The crack threshold and the area bin resolution change how a measurement is *read*, not
+which images are in play, so a Filters box promising to narrow something is the wrong
+home. Changing the threshold re-measures at once rather than spending the Measure button
+again: `read_label_pixels` caches component pixel counts *without* the threshold, so a
+new one costs arithmetic — 11-70 ms against 7.7 s for the first pass. `load_measurements`
+keeps the headers it reads for the same reason.
+
+**The area bins are fixed edges cut more or less finely, never fitted to the data.**
+Fitting them would make a bin mean something different after a filter changed, and stop
+the classes being read against each other, which is the point of one shared log scale.
+So the knob is how finely each decade is cut — 1, 2, 3 or 6, on the standard 1-3, 1-2-5
+and E6 subdivisions, which keeps every edge round and splits a bin rather than moving
+it. Six exists because a class can span less than a decade and still want a
+distribution: the corrected lamellae run 58 to 495 um^2, so at three per decade they
+fall in two bins however the rest of the scale is cut. Cracks span 3.6 decades and read
+well at one. The control cannot manufacture spread that is not in the data.
 
 **No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few
 lines with no dependency, over thousands of records rather than millions. pandas belongs
@@ -93,6 +125,14 @@ reference collection holds two different projects whose name, `created_at` and
 recorded path in `experiment.yaml` are all identical — keying by name silently drops
 one.
 
+**A lamella is counted as `project / lamella`, and a stage one level deeper.** The
+same rule as above, applied to a table rather than an index: almost every project has
+an `01-`, so an unqualified row merges lamellae with nothing to do with each other —
+in the reference collection two projects each hold an `05-pet-mutt`, reported as one
+lamella of 140 images. Stage names are worse, being either shared by every lamella
+(`adaptive_polish`) or a bare timestamp. `aggregate.summarise_lamellae` already keyed
+on the pair; the breakdowns now agree with it.
+
 **The lamella and stage levels are not always directories.** Older datasets collapse
 them; the missing level is synthesised in memory with the parent standing in, and the
 model records that it is synthetic. Data on disk is never reorganised to fit the
@@ -127,10 +167,9 @@ longer obvious from the command line.
 **Overwriting a label is tiered by what replacing it would cost, not by one flag.** A
 run that writes nothing has to say why, or it cannot be told from a broken one. So
 conversion sorts destinations three ways: an empty placeholder costs nothing to
-replace (see *A label file existing is not evidence of annotation* below); a
-pseudo-label holding annotation is regenerable machine output, replaced once the user
-confirms; a label in `corrected/` is refused, and no argument to `plan_conversions`
-reaches it.
+replace (nothing was in it); a pseudo-label holding annotation is regenerable machine
+output, replaced once the user confirms; a label in `corrected/` is refused, and no
+argument to `plan_conversions` reaches it.
 
 That last tier is stricter than `compress-labels`, which *can* be confirmed for
 corrected labels. The difference is what each does to the pixels: compression
@@ -158,15 +197,29 @@ to change this" are orthogonal — a finished lamella can be ticked and an untou
 need not be — so one mark cannot carry both without becoming ambiguous in exactly the
 situation that matters. Two marks side by side also gets keyboard toggling for free.
 
-**A label file existing is not evidence of annotation.** The external software writes
-a label for every image in its input folder, so a 2048×3072 file of class 0 is
-indistinguishable from finished work by any check that only looks at the filesystem. A
-training export that includes one pairs an image with a blank mask, which teaches a
-model that the structure is background.
+**Reading a label gives three answers, not two.** `is_label_file_empty()` is
+tri-state, and **None means "cannot tell"** — deliberately distinct from True, because
+reporting "not annotated" for a label nobody could read would be a guess presented as
+a fact. Every caller that groups labels keeps the two apart.
 
-Hence the tri-state `is_label_file_empty()`, where **None means "cannot tell"** and is
-deliberately distinct from True: reporting "not annotated" for a label nobody could
-read would be a guess presented as a fact.
+**Corrected is a claim, and it is checked where it is made.** Marking an image
+corrected asserts somebody proofread its label, and a training export trusts that. An
+image reaching `corrected/` with no label or with a placeholder breaks the claim, and
+the export is *right* to drop it — what was wrong was doing so in silence, leaving a
+training set short of exactly the images you believe you annotated, discoverable only
+by counting CSV rows months later. So the window asks on either side of the gap:
+before marking a set corrected, and before writing a training CSV that would drop one.
+Both read `classify_labels`, so the two dialogs cannot disagree about a label.
+
+The export side asks only about *corrected* images: an unlabelled selected image is
+the ordinary condition of an archive being worked through, and a warning firing on
+every export is one nobody reads by the third time. `repair-state` cannot cover any of
+this — it moves images to follow their label, and here there is no label to follow.
+
+**The command line warns and proceeds where the window asks.** `correct` lists the
+images whose label holds nothing and moves them anyway. The window is the primary
+interface and the place for a guard; a flag to override a refusal would be a flag that
+lives in everybody's shell history.
 
 ---
 
@@ -201,9 +254,13 @@ therefore a real answer — a gallium column has no plasma and records no gas.
 
 **A value is stored in the unit its field name states, converted where the header is
 read.** So `acceleration_voltage_kv` is kV even though both dialects record volts, and
-nothing downstream converts anything. A by-voltage breakdown rounds to 0.1 kV, because a
-header sometimes records a measured voltage rather than the set point; the exported
-value does not.
+nothing downstream converts anything. A breakdown that groups a *measured* value
+rounds it, because a header records what was measured rather than what was set: a
+voltage to 0.1 kV, and a pixel size and beam current to four significant figures,
+those two being derived from the magnification and so differing in the last decimal
+between two images of one field of view. Significant figures rather than decimal
+places, since pixel sizes span decades and one decimal place would lose either the 0.5
+nm end or the 500 nm one. The exported value is never rounded.
 
 **A missing measurement is never a default.** The one exception is the integration
 counts, where absence means "not enabled" — that is decoding the field, not defaulting
@@ -256,11 +313,20 @@ stylesheet dulls the *background* of a disabled input instead and leaves the tex
 so a field still reads as locked. Buttons and radio groups grey out normally: they are
 controls you cannot use, not values you are reading.
 
-**The metadata list elides; it must not scroll sideways.** Its rows carry relative
-paths that differ in the timestamp they *end* with, and a `QListWidget` with a
-horizontal scrollbar scrolls instead of eliding — which cut a session's projects off
-at the edge into identical-looking rows. `ElideMiddle` plus `ScrollBarAlwaysOff` keeps
-both ends; the tooltip carries the whole label.
+**A list of paths elides; it must not scroll sideways.** Rows carrying paths differ in
+what they *end* with, and a `QListWidget` with a horizontal scrollbar scrolls instead
+of eliding — which cut a session's projects off into identical-looking rows.
+`ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends, and the tooltip carries the
+whole label. Applies to the metadata panel's project list and to the Export tab's
+project, lamella and stage filters.
+
+**`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under
+PyQt5 it returns the proportional `.AppleSystemUIFont` while reporting the family it
+was asked for, so a table padded into columns comes out unaligned with nothing saying
+why. A style hint alone does not help: Qt consults it only for a family that does not
+exist. `common.fixed_width_font` names real families per platform. Asserted on the
+metrics (`"i"` and `"W"` advance equally), never on `QFont.fixedPitch()`, which reads
+back what was requested, not what resolved.
 
 **A list re-tints the icon of the row you are on.** Qt draws a selected row's icon
 in `QIcon::Selected` mode, and the variant it generates for that mode is blended with
@@ -270,10 +336,22 @@ for every mode and state, which leaves Qt nothing to generate. Any future icon c
 meaning rather than decoration has to go through it.
 
 **`QScrollArea.setWidget` shows whatever it is handed**, so hiding a widget and then
-putting it in a scroller leaves it on screen — which is how the Export tab's acquisition
-filters, meant to appear only once the headers are read, were visible from the start.
-Hide the scroller, and give the column a widget to hold its spare height: a layout shares
-that height between whatever is still visible, and a stretch cannot be hidden again.
+putting it in a scroller leaves it on screen — which is how the Export tab's filters
+were visible before there was anything to put in them. Hide the scroller, and give the
+column a widget to hold its spare height: a layout shares that height between whatever
+is still visible, and a stretch cannot be hidden again.
+
+**The breakdown pane shows a table or a chart, never both, and draws the chart only
+while it is showing.** They are the same numbers, and half of each reads worse than
+either whole; a figure costs real time, so a pane nobody is looking at does not get one
+on every filter change. The detached window stays, because comparing two breakdowns
+means having both on screen and one pane cannot.
+
+**A tooltip says what a control does, in under 200 characters**, and a test holds the
+ceiling. They had grown to five lines apiece explaining *why* the software works as it
+does, which belongs here rather than in a hover nobody finishes. Every control in the
+Filters box also says what it narrows: that it decides the breakdown *and* the exports
+is not visible from the box's title.
 
 **A long operation runs on a thread, and there is nothing to cancel.** Recompressing
 a project's labels is minutes, and Qt draws nothing while the thread owning the

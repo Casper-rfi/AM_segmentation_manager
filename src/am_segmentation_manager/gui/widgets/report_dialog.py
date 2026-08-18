@@ -13,13 +13,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from qtpy.QtGui import QFontDatabase
 from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QPlainTextEdit,
     QVBoxLayout,
 )
+
+from .common import fixed_width_font
 
 
 class ReportDialog(QDialog):
@@ -50,7 +51,7 @@ class ReportDialog(QDialog):
         self.view.setReadOnly(True)
         # Paths line up only in a fixed-width font, and a report is read by
         # scanning down the column where the paths differ.
-        self.view.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self.view.setFont(fixed_width_font())
         self.view.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.view.setPlainText("\n".join(lines))
         layout.addWidget(self.view)

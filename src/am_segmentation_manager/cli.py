@@ -1163,6 +1163,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 0
 
     if args.command in {"deselect", "select", "correct"}:
+        from .operations.label_io import classify_labels
         from .operations.selection import plan_transition, transition_records
 
         records, start_path = _resolve_records(args)
@@ -1190,6 +1191,23 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             )
             for record in plan.added:
                 logger.info("  %s", make_path_relative(record.image_path, start_path))
+
+        # Corrected is the claim that somebody proofread these labels, and a
+        # training export trusts it. Reported rather than refused: the command
+        # line is where a deliberate exception is made, and the GUI is where
+        # the guard belongs. Read over the expanded set, since a shared label
+        # is marked corrected by any image of its scene.
+        if state == "corrected":
+            readiness = classify_labels(plan.records)
+            if readiness:
+                logger.warning(
+                    "%s, which is not proofread work. Marking them corrected "
+                    "means a training export skips them:", readiness.summary(),
+                )
+                for record in readiness.records:
+                    logger.warning(
+                        "  %s", make_path_relative(record.image_path, start_path)
+                    )
 
         if args.dry_run:
             for line in plan.describe():

@@ -9,6 +9,8 @@ treats a label as finished work has to ask: is there anything in it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +40,8 @@ __all__ = [
     "EMPTY",
     "MISSING",
     "UNREADABLE",
+    "LabelReadiness",
+    "classify_labels",
     "has_image_stack_support",
     "has_compression_support",
     "is_label_file_empty",
@@ -102,6 +106,83 @@ def label_state(record: ImageRecord) -> str:
     if empty is None:
         return UNREADABLE
     return EMPTY if empty else ANNOTATED
+
+
+@dataclass(frozen=True)
+class LabelReadiness:
+    """The records of a set whose label is not an annotation.
+
+    What "corrected" claims is that somebody proofread a label. These three
+    groups are the ways that claim can be false, kept apart because they need
+    different actions: annotate it, find where the label went, or work out why
+    the file will not open.
+
+    Attributes:
+        missing: Records with no label file at all.
+        empty: Records whose label holds nothing but background.
+        unreadable: Records whose label could not be opened, so nothing is
+            known about what is in it. Never folded into *empty*: reporting a
+            file as blank that nobody managed to read is a guess presented as
+            a fact.
+    """
+
+    missing: tuple[ImageRecord, ...] = ()
+    empty: tuple[ImageRecord, ...] = ()
+    unreadable: tuple[ImageRecord, ...] = ()
+
+    def __bool__(self) -> bool:
+        """Return whether anything at all was found."""
+        return bool(self.missing or self.empty or self.unreadable)
+
+    @property
+    def records(self) -> tuple[ImageRecord, ...]:
+        """Return every record found, missing first."""
+        return (*self.missing, *self.empty, *self.unreadable)
+
+    def summary(self) -> str:
+        """Return a one-line count of what was found, or an empty string."""
+        parts = [
+            (len(self.missing), "with no label"),
+            (len(self.empty), "with an empty label"),
+            (len(self.unreadable), "with an unreadable label"),
+        ]
+        found = [f"{count} {text}" for count, text in parts if count]
+        return ", ".join(found)
+
+
+def classify_labels(
+    records: Iterable[ImageRecord],
+    state_of: Callable[[ImageRecord], str] = label_state,
+    *,
+    states: Sequence[str] = (MISSING, EMPTY, UNREADABLE),
+) -> LabelReadiness:
+    """Return the records of *records* whose label is in one of *states*.
+
+    The check behind marking a set corrected, and behind exporting one. Both
+    ask the same question -- is there actually an annotation here -- so they
+    ask it through one function rather than each walking the labels itself.
+
+    Args:
+        state_of: How to read one record's label state. Defaults to opening
+            the file; a caller holding a cache passes its own lookup, which is
+            what keeps this off the disk on every refresh.
+        states: Which states to collect. Narrow it to leave out a finding a
+            particular caller has no action for.
+
+    Returns:
+        The records found, grouped by what was wrong. Order within each group
+        follows *records*.
+    """
+    found: dict[str, list[ImageRecord]] = {MISSING: [], EMPTY: [], UNREADABLE: []}
+    for record in records:
+        state = state_of(record)
+        if state in states and state in found:
+            found[state].append(record)
+    return LabelReadiness(
+        missing=tuple(found[MISSING]),
+        empty=tuple(found[EMPTY]),
+        unreadable=tuple(found[UNREADABLE]),
+    )
 
 
 def has_compression_support() -> bool:

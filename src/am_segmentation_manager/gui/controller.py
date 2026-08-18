@@ -20,8 +20,9 @@ from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import LamellaFrame, build_lamella_frames
 from ..layout import MODALITIES, base_path
 from ..models import Lamella, Project
+from ..operations import label_io
 from ..operations.label_groups import build_groups, expand_to_groups
-from ..operations.label_io import is_label_file_empty
+from ..operations.label_io import LabelReadiness, classify_labels
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
 from .cache import (
@@ -208,6 +209,20 @@ class StateChangeReach:
         return f"{self.shared} more share a label with this one"
 
 
+#: How a label's state is drawn on the timeline. A display decision, and the
+#: only place the two vocabularies meet: :mod:`.operations.label_io` says what
+#: a label *is*, and the timeline has three marks for it. UNREADABLE draws as
+#: annotated because the file does exist -- what is unknown is what is inside
+#: it, and drawing it as a placeholder would assert the one thing nobody could
+#: check.
+LABEL_DISPLAY: dict[str, str] = {
+    label_io.ANNOTATED: "present",
+    label_io.UNREADABLE: "present",
+    label_io.EMPTY: "empty",
+    label_io.MISSING: "missing",
+}
+
+
 class EditingDisabled(RuntimeError):
     """Raised when a state change is attempted while editing is switched off.
 
@@ -250,10 +265,12 @@ class CurationController:
         self._lamellae: list[Lamella] = []
         self._frames: list[LamellaFrame] = []
 
-        #: Whether each label path holds only background, keyed by path.
-        #: None means it could not be determined. Cached because reading a
-        #: label costs a few milliseconds and the timeline asks per frame.
-        self._label_emptiness: dict[str, bool | None] = {}
+        #: What each record's label turned out to be, keyed by image path, in
+        #: :mod:`.operations.label_io`'s vocabulary. Cached because reading a
+        #: label costs a few milliseconds and the timeline asks per frame;
+        #: cleared by :meth:`scan`, which is the user saying the filesystem has
+        #: moved on.
+        self._label_states: dict[Path, str] = {}
 
         self._project_position = 0
         self._lamella_position = 0
@@ -284,6 +301,9 @@ class CurationController:
             The projects found, in scan order.
         """
         self.start_path = Path(start_path)
+        # Proofreading happens in another application while this one is open,
+        # so a rescan must not answer from labels read before it.
+        self._label_states.clear()
         self.index = self._scan(self.start_path)
         self._projects = self.index.all_projects()
         logger.info("Found %d project(s) under %s", len(self._projects), self.start_path)
@@ -616,23 +636,23 @@ class CurationController:
             for modality in MODALITIES
         }
 
+    def record_label_state(self, record) -> str:
+        """Return what *record*'s label turned out to be, reading it once.
+
+        One of :mod:`.operations.label_io`'s four states. The timeline and the
+        guard on marking corrected both ask this, so they cannot disagree
+        about a label between them.
+        """
+        path = record.image_path
+        if path not in self._label_states:
+            self._label_states[path] = label_io.label_state(record)
+        return self._label_states[path]
+
     def _label_state(self, record) -> str | None:
-        """Return one record's label state, reading the file at most once."""
+        """Return one record's label state as the timeline draws it."""
         if record is None:
             return None
-        if not record.labels:
-            return "missing"
-        path = record.labels[0]
-        key = str(path)
-        cached = self._label_emptiness.get(key)
-        if cached is None:
-            cached = is_label_file_empty(path)
-            self._label_emptiness[key] = cached
-        if cached is None:
-            # Unreadable, or no image stack installed. Reporting "annotated"
-            # would be a guess; the label does exist, so say that much.
-            return "present"
-        return "empty" if cached else "present"
+        return LABEL_DISPLAY[self.record_label_state(record)]
 
     def mismatched_frames(self) -> set[int]:
         """Return frames whose images disagree with the label they share.
@@ -830,6 +850,24 @@ class CurationController:
             record for record in self.expanded_records(candidates)
             if str(base_path(record.image_path)) not in requested
         ]
+
+    def label_readiness(self, records: list | None = None) -> LabelReadiness:
+        """Return the images of a selection that hold no annotation.
+
+        Asked before marking a set corrected, which is the claim that somebody
+        proofread these labels. Counted over the *expanded* set, because a
+        shared label is marked corrected by any image of its scene.
+
+        Reads each label at most once per scan, through
+        :meth:`record_label_state`, so the timeline has usually paid for it
+        already.
+        """
+        candidates = records if records is not None else self.scoped_records()
+        if not candidates:
+            return LabelReadiness()
+        return classify_labels(
+            self.expanded_records(candidates), self.record_label_state
+        )
 
     def reach(self) -> StateChangeReach:
         """Return how far a state change would go, for display before it is made.

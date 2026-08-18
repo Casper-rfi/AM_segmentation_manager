@@ -98,6 +98,35 @@ def test_one_beam_setting_is_one_voltage_group():
     assert ag.count_by(records, ag.by_voltage(metadata)) == {30.0: 3}
 
 
+def test_one_magnification_is_one_pixel_size_group():
+    """A pixel size is derived from the magnification, so one field of view
+    comes back as 13.020833333333336 and another as ...32. Left exact, each is
+    its own row of a table about which magnifications were used."""
+    first, second = record("a"), record("b")
+    metadata = {
+        first.image_path: ImageMetadata(pixel_size_nm=13.020833333333336),
+        second.image_path: ImageMetadata(pixel_size_nm=13.020833333333332),
+    }
+
+    counts = ag.count_by([first, second], ag.by_pixel_size(metadata))
+
+    assert counts == {13.02: 2}
+
+
+def test_pixel_sizes_a_decade_apart_stay_apart():
+    """Significant figures rather than decimal places: rounding a 0.5 nm pixel
+    and a 500 nm one to the same decimal place loses one of them."""
+    small, large = record("a"), record("b")
+    metadata = {
+        small.image_path: ImageMetadata(pixel_size_nm=0.5234567),
+        large.image_path: ImageMetadata(pixel_size_nm=523.4567),
+    }
+
+    counts = ag.count_by([small, large], ag.by_pixel_size(metadata))
+
+    assert set(counts) == {0.5235, 523.5}
+
+
 def test_a_voltage_no_header_recorded_is_still_reported_as_missing():
     records = [record("a")]
 
@@ -140,6 +169,59 @@ def test_project_properties_are_looked_up_by_path_not_by_name():
     counts = ag.count_by([first, second], ag.by_sample(lookup))
 
     assert counts == {"HeLa": 1, "S. cerevisiae": 1}
+
+
+def test_lamellae_of_two_projects_are_not_counted_as_one():
+    """Almost every project has an "01-", so an unqualified lamella row merges
+    lamellae that have nothing to do with each other."""
+    first, second = record("a"), record("b")
+    object.__setattr__(first, "image_path", Path("one/sem/a.tif"))
+    object.__setattr__(second, "image_path", Path("two/sem/b.tif"))
+    first.lamella = second.lamella = "01-lam"
+    lookup = ag.project_lookup([
+        make_project("same-name", "one", "HeLa", [first]),
+        make_project("same-name", "two", "HeLa", [second]),
+    ])
+
+    counts = ag.count_by([first, second], ag.by_lamella(lookup))
+
+    assert counts == {"one / 01-lam": 1, "two / 01-lam": 1}
+
+
+def test_a_stage_is_named_by_the_lamella_it_belongs_to():
+    """Stage names are either shared by every lamella (adaptive_polish) or a
+    bare timestamp. Neither says where to go and look."""
+    only = record("a")
+    object.__setattr__(only, "image_path", Path("one/sem/a.tif"))
+    only.lamella, only.stage = "01-lam", "adaptive_polish"
+    lookup = ag.project_lookup([make_project("p", "one", None, [only])])
+
+    counts = ag.count_by([only], ag.by_stage(lookup))
+
+    assert counts == {"one / 01-lam / adaptive_polish": 1}
+
+
+def test_a_record_outside_the_lookup_still_lands_somewhere_named():
+    """A record the lookup does not hold falls back to the name it carries,
+    rather than collapsing into "(not recorded)" with every other orphan."""
+    only = record("a")
+    only.project, only.lamella = "loose-project", "01-lam"
+
+    counts = ag.count_by([only], ag.by_lamella({}))
+
+    assert counts == {"loose-project / 01-lam": 1}
+
+
+def test_lamella_and_stage_are_listed_as_workflow_not_project_metadata():
+    """They need the project lookup to be named, but a lamella is not something
+    read out of a project's metadata file, and the headings say where a value
+    comes from."""
+    grouped = dict(ag.grouped_breakdowns())
+
+    workflow = [name for name, _ in grouped[ag.GROUP_TITLES["record"]]]
+
+    assert "lamella" in workflow
+    assert "stage" in workflow
 
 
 def test_a_project_without_metadata_reports_missing():
@@ -201,37 +283,98 @@ def test_rows_within_a_group_are_ordered_by_what_is_read():
 # Class areas, binned
 # ---------------------------------------------------------------------------
 
+DECADES = ag.area_bin_edges()
+DECADE_BINS = ag.area_bins(DECADES)
+DECADE_ORDER = ag.area_order(DECADES)
+
+
+def binned(area: float, edges=DECADES) -> str:
+    return ag._area_bin(area, edges, ag.area_bins(edges))
+
+
 def test_an_area_falls_in_the_bin_that_contains_it():
-    assert ag._area_bin(0.005) == "< 0.01"
-    assert ag._area_bin(0.5) == "0.1 - 1"
-    assert ag._area_bin(132.0) == "100 - 1000"
-    assert ag._area_bin(5000.0) == ">= 1000"
+    assert binned(0.005) == "< 0.01"
+    assert binned(0.5) == "0.1 - 1"
+    assert binned(132.0) == "100 - 1000"
+    assert binned(5000.0) == ">= 1000"
 
 
 def test_a_bin_edge_belongs_to_the_bin_above_it():
     """Otherwise an area exactly on an edge falls in both or neither."""
-    assert ag._area_bin(0.1) == "0.1 - 1"
-    assert ag._area_bin(1.0) == "1 - 10"
+    assert binned(0.1) == "0.1 - 1"
+    assert binned(1.0) == "1 - 10"
+
+
+def test_an_edge_holds_at_every_resolution():
+    """Regression: 3.0 * 10**-1 is 0.30000000000000004, and an edge a hair
+    above its round value puts an area of exactly 0.3 in the bin below."""
+    for per_decade in ag.AREA_BINS_PER_DECADE:
+        edges = ag.area_bin_edges(per_decade)
+        for edge in edges[:-1]:
+            assert binned(edge, edges).startswith(f"{edge:g} -")
 
 
 def test_a_class_that_is_not_in_the_label_is_absent_not_zero():
     """"No GIS was deposited here" is a finding; a zero area reads as one."""
-    assert ag._area_bin(0.0) == ag.ABSENT
+    assert binned(0.0) == ag.ABSENT
 
 
 def test_a_label_that_was_never_measured_keeps_its_own_status():
     """No area is not the same as a small one, so it groups under why."""
-    key = ag.by_class_area(2)({})
+    key = ag.by_class_area(2, DECADES)({})
 
     assert key(record("a")) == "no-label"
 
 
 def test_the_bins_run_smallest_first_with_the_failures_last():
-    order = ag.AREA_ORDER
+    order = DECADE_ORDER
 
     assert order[0] == ag.ABSENT
-    assert list(order[1 : 1 + len(ag.area_bins())]) == list(ag.area_bins())
+    assert list(order[1 : 1 + len(DECADE_BINS)]) == list(DECADE_BINS)
     assert order[-3:] == ("empty", "no-pixel-size", "no-label")
+
+
+# -- how finely the scale is cut --------------------------------------------
+
+def test_the_default_bins_are_decades():
+    """The setting a caller that says nothing gets, and what the CLI keeps."""
+    assert DECADES == (0.01, 0.1, 1.0, 10.0, 100.0, 1000.0)
+
+
+def test_raising_the_resolution_splits_a_bin_rather_than_moving_its_edges():
+    """A lamella is hundreds of um^2, so at one bin per decade nearly all of
+    them land in "100 - 1000" and the breakdown says nothing about their
+    spread. Every decade edge has to survive being cut finer, or a count taken
+    at one setting means nothing at another."""
+    finer = ag.area_bin_edges(3)
+
+    assert set(DECADES) < set(finer)
+    assert binned(132.0) == "100 - 1000"
+    assert binned(132.0, finer) == "100 - 200"
+
+
+def test_every_supported_resolution_keeps_its_edges_round():
+    for per_decade in ag.AREA_BINS_PER_DECADE:
+        edges = ag.area_bin_edges(per_decade)
+
+        assert list(edges) == sorted(edges)
+        assert len(set(edges)) == len(edges)
+        # Round numbers, not floating-point residue like 0.30000000000000004.
+        assert all(float(f"{edge:.2g}") == edge for edge in edges)
+
+
+def test_an_unsupported_resolution_is_rejected():
+    with pytest.raises(ValueError, match="Bins per decade"):
+        ag.area_bin_edges(7)
+
+
+def test_the_area_breakdowns_are_built_at_the_chosen_resolution():
+    config = load_segmentation_config()
+
+    table = ag.breakdowns_for(config, area_bins_per_decade=3)
+
+    assert "100 - 200" in table["area-lamella"].order
+    assert "100 - 1000" not in table["area-lamella"].order
 
 
 def test_every_measured_class_gets_an_area_breakdown():
@@ -262,7 +405,7 @@ def test_counts_keep_a_declared_order_rather_than_the_largest_first():
     records = [record(str(index)) for index in range(5)]
     sizes = iter([1.0, 1.0, 1.0, 0.005, 0.5])
 
-    counts = ag.count_by(records, lambda _: ag._area_bin(next(sizes)), ag.AREA_ORDER)
+    counts = ag.count_by(records, lambda _: binned(next(sizes)), DECADE_ORDER)
 
     assert list(counts) == ["< 0.01", "0.1 - 1", "1 - 10"]
 
@@ -276,7 +419,7 @@ def test_an_unordered_breakdown_still_leads_with_its_largest_group():
 def test_a_cross_tabulated_axis_can_be_ordered_too():
     table = {("1 - 10", "a"): 1, ("< 0.01", "a"): 1}
 
-    rows, _ = ag.totals(table, row_order=ag.AREA_ORDER)
+    rows, _ = ag.totals(table, row_order=DECADE_ORDER)
 
     assert rows == ["< 0.01", "1 - 10"]
 

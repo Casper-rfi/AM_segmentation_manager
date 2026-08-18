@@ -9,33 +9,26 @@ are the catalogue of what each command does.
 
 ## What the software does today
 
-Four of the five main functions in `CLAUDE.md` are implemented: curating which data to
-use, preparing labels from predictions, exporting filtered training lists, and
-quantifying the collection through its metadata and its labels. Every state change
-expands across the label group and validates the whole batch before moving anything.
+Four of the five main functions in `CLAUDE.md` are built: curating which data to use,
+preparing labels from predictions, exporting filtered training lists, and quantifying
+the collection through its metadata and its labels. `README.md` says what each command
+and tab does. What is worth knowing beyond that:
 
-The window has three tabs in workflow order — Add data, Curate and Export — each with
-a controller that holds no Qt. Curate is the tab that opens. Keys belong to a tab and
-are live only while it shows, so `F1` lists what can actually be pressed. What a state
-change applies to is ticked in the project and lamella lists, or picked out of the
-timeline frame by frame.
+* **Every state change expands across the label group** and validates the whole batch
+  before moving anything. Marking a set corrected, and exporting a training CSV, both
+  stop to name any image whose label holds no annotation.
+* **Each tab has a controller holding no Qt**, which is what makes navigation, cache
+  eviction and state expansion testable without a display.
+* **An operation is in the window when its input is the selection on screen.** Curate
+  runs `convert-predictions`, `compress-labels` and `repair-state` against the ticked
+  set; Add data runs `inspect-layout` and `init-project` over the scanned folder. Each
+  previews first and applies only what the preview showed, on a worker thread.
+* **Export filters, counts and writes, and every filter narrows all three.** Its filter
+  lists are derived from the breakdowns, so a property can be counted by and filtered
+  on without being declared twice; the breakdown reads as a table or a chart, and the
+  crack threshold and area bin resolution sit beside the button that measures.
 
-Every command whose input is that selection is also in the window: Curate runs
-`convert-predictions`, `compress-labels` and `repair-state` against the ticked set, and
-Add data runs `inspect-layout` and `init-project` over the scanned folder. Each previews
-first and applies only what the preview showed, on a worker thread.
-
-**Export is three boxes with three jobs.** *Filters* decides which images are in play —
-modality, workflow state, label state, acquisition metadata, and whether the repeated
-imaging conditions of one scene collapse to one image. *Breakdown* counts what they
-describe, by one property or two crossed, and charts it: bars for one, a grid for two
-where the empty cells are the combinations nothing has been acquired for. *Export*
-writes the three CSVs, taking the same split, seed and filenames as
-`create-training-csv` and previewing the split before either file exists. Two buttons
-buy what the filesystem cannot answer alone — reading the headers, and measuring the
-labels, the second never implicit because it opens every one and adds an area breakdown
-per class the segmentation config names. `stats --plot` writes the same charts to a
-file. Scoping to particular projects or lamellae is still command-line only.
+Why each of these is so is in [`decisions.md`](decisions.md).
 
 ---
 
@@ -45,14 +38,6 @@ In no particular order.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
-
-**Project and lamella filters in the Export tab** — the last thing the command line can
-narrow that the window cannot. Both are already offered as *breakdowns*, so you can see
-that one lamella is a seventh of the annotated images and not then exclude it. The
-matching exists (`filtering.matches_project`, `matches_lamella`) and the widget is the
-same multi-select list the acquisition filters use; the open question is that lamella
-names repeat between projects, so the filter has to be scoped by project or keyed on a
-pair, as `aggregate.summarise_lamellae` already is.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py`
 builders when editing them for other reasons, never as a sweep. Three files still

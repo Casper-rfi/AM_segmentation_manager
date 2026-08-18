@@ -13,7 +13,14 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.cli import main
-from am_segmentation_manager.operations.label_io import is_label_file_empty
+from am_segmentation_manager.operations.label_io import (
+    ANNOTATED,
+    EMPTY,
+    MISSING,
+    UNREADABLE,
+    classify_labels,
+    is_label_file_empty,
+)
 from am_segmentation_manager.survey import survey_collection
 
 HAS_IMAGE_STACK = all(
@@ -64,6 +71,56 @@ def make_project(root: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Reading a label file
 # ---------------------------------------------------------------------------
+
+
+def test_classify_labels_keeps_the_three_findings_apart():
+    """Each needs a different action -- annotate it, find where the label went,
+    or work out why the file will not open -- so they are not one count."""
+    from am_segmentation_manager.models import ImageRecord
+
+    states = {"a": MISSING, "b": EMPTY, "c": UNREADABLE, "d": ANNOTATED}
+    records = [ImageRecord(image_path=Path(name)) for name in states]
+
+    found = classify_labels(records, lambda r: states[r.image_path.name])
+
+    assert [r.image_path.name for r in found.missing] == ["a"]
+    assert [r.image_path.name for r in found.empty] == ["b"]
+    assert [r.image_path.name for r in found.unreadable] == ["c"]
+
+
+def test_an_annotated_set_is_falsy():
+    """The caller asks "is anything wrong here" before building a dialog."""
+    from am_segmentation_manager.models import ImageRecord
+
+    records = [ImageRecord(image_path=Path("a"))]
+
+    assert not classify_labels(records, lambda r: ANNOTATED)
+
+
+def test_the_summary_counts_only_what_was_found():
+    """A dialog saying "0 with an unreadable label" invites the reader to work
+    out that it means nothing."""
+    from am_segmentation_manager.models import ImageRecord
+
+    records = [ImageRecord(image_path=Path("a")), ImageRecord(image_path=Path("b"))]
+
+    summary = classify_labels(records, lambda r: MISSING).summary()
+
+    assert summary == "2 with no label"
+
+
+def test_classify_labels_reads_the_labels_when_given_no_lookup(tmp_path: Path):
+    """The default has to be the real check: a caller with no cache still gets
+    an answer off the disk rather than an empty result."""
+    from am_segmentation_manager.models import ImageRecord
+
+    image = _write_image(tmp_path / "sem" / "img.tif")
+    label = _write_label(tmp_path / "sem_labels" / "img.tif", annotated=False)
+
+    found = classify_labels([ImageRecord(image_path=image, labels=[label])])
+
+    assert [r.image_path for r in found.empty] == [image]
+
 
 def test_an_all_background_label_is_empty(tmp_path: Path):
     path = _write_label(tmp_path / "label.tif", annotated=False)
@@ -138,6 +195,36 @@ def test_cli_inspect_layout_reports_empty_labels_by_default(tmp_path: Path, caps
 
     assert main(["inspect-layout", str(tmp_path)]) == 0
     assert "empty-labels" in capsys.readouterr().out
+
+
+def _correct(root: Path, modality: str) -> list[str]:
+    """The whole collection, which this command makes you say explicitly."""
+    return [
+        "correct", "--start-path", str(root), "--modality", modality,
+        "--project", "all", "--lamella", "all", "--stage", "all", "--image", "all",
+    ]
+
+
+def test_cli_correct_warns_about_an_empty_label_but_goes_ahead(tmp_path: Path, capsys):
+    """The command line is where a deliberate exception is made, so this
+    reports rather than refuses -- but it must not be silent, or a training set
+    ends up short with nothing having said so."""
+    make_project(tmp_path)
+
+    assert main(_correct(tmp_path, "FIB")) == 0
+
+    output = capsys.readouterr().out
+    assert "1 with an empty label" in output
+    assert "img_000_ion.tif" in output
+    assert not (tmp_path / "project/01-lamella/adaptive_polish/fib/img_000_ion.tif").exists()
+
+
+def test_cli_correct_says_nothing_about_an_annotated_label(tmp_path: Path, capsys):
+    make_project(tmp_path)
+
+    assert main(_correct(tmp_path, "SEM")) == 0
+
+    assert "empty label" not in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

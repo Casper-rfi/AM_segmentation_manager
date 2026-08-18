@@ -36,7 +36,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
     from qtpy.QtCore import QSettings, Qt
-    from qtpy.QtWidgets import QApplication
+    from qtpy.QtWidgets import QApplication, QMessageBox
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
@@ -769,6 +769,89 @@ def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
     assert [record.modality for record in at_risk] == ["SEM"]
 
 
+def test_marking_corrected_without_an_annotation_asks_first(window, monkeypatch):
+    """Corrected is the claim that a label was proofread, and a training export
+    trusts it. The fixture's FIB images have no label at all, so calling them
+    corrected is a claim about work that does not exist."""
+    window.state_panel.enable_check.setChecked(True)
+    window.project_panel.target_buttons["FIB"].setChecked(True)
+    asked: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: asked.append(args[2]) or QMessageBox.Cancel,
+    )
+
+    window.apply_state("corrected")
+
+    assert len(asked) == 1
+    assert "1 with no label" in asked[0]
+    assert window.controller.state_of("FIB") != "corrected"
+
+
+def test_the_warning_names_the_lamella_so_it_can_be_found(window, monkeypatch):
+    """Image filenames repeat between lamellae, so a list of them is not
+    something anyone can act on."""
+    window.state_panel.enable_check.setChecked(True)
+    window.project_panel.target_buttons["FIB"].setChecked(True)
+    asked: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: asked.append(args[2]) or QMessageBox.Cancel,
+    )
+
+    window.apply_state("corrected")
+
+    assert "01-alpha" in asked[0]
+
+
+def test_marking_an_annotated_label_corrected_asks_nothing(window, monkeypatch):
+    """The guard has to be silent in the normal case, or it becomes a dialog
+    people dismiss without reading."""
+    window.state_panel.enable_check.setChecked(True)
+    window.project_panel.target_buttons["SEM"].setChecked(True)
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: pytest.fail("asked about an annotated label"),
+    )
+
+    window.apply_state("corrected")
+
+    assert window.controller.state_of("SEM") == "corrected"
+
+
+def test_the_warning_does_not_apply_to_the_other_states(window, monkeypatch):
+    """Deselecting an unlabelled image is the ordinary case, not a mistake."""
+    window.state_panel.enable_check.setChecked(True)
+    window.project_panel.target_buttons["FIB"].setChecked(True)
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: pytest.fail("asked about a deselection"),
+    )
+
+    window.apply_state("deselected")
+
+    assert window.controller.state_of("FIB") == "deselected"
+
+
+def test_cancelling_the_export_warning_writes_nothing(window, monkeypatch, tmp_path):
+    """The gate has to stop the write, not merely appear before it."""
+    from am_segmentation_manager.models import ImageRecord
+
+    monkeypatch.setattr(
+        window.export_controller, "selected_records",
+        lambda *a, **k: [ImageRecord(image_path=tmp_path / "img.tif")],
+    )
+    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: False)
+    monkeypatch.setattr(
+        "am_segmentation_manager.operations.csv.export_training_csv",
+        lambda **kwargs: pytest.fail("wrote a training set the user cancelled"),
+    )
+
+    window._export_training(str(tmp_path))
+
+    assert list(tmp_path.glob("*.csv")) == []
+
+
 def _tick_lamella(window, row: int = 0) -> None:
     """Tick a lamella through the widget, as a user would."""
     window.project_panel.lamella_list.item(row).setCheckState(Qt.Checked)
@@ -947,6 +1030,8 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     window.project_panel.target_buttons["both"].setChecked(True)
     _tick_lamella(window)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
+    # The fixture's FIB images have no labels, which this ladder is not about.
+    monkeypatch.setattr(window, "_confirm_unannotated", lambda: True)
     window.apply_state("corrected")
     _settle(qt_app, lambda: window.controller.frame_states()[0] == "corrected")
 

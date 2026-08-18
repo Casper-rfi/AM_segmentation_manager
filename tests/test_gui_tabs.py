@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager import aggregate as ag
 from am_segmentation_manager.aggregate import MISSING
 from am_segmentation_manager.gui.export_controller import ExportController
 from am_segmentation_manager.gui.metadata_controller import (
@@ -115,6 +116,77 @@ def test_images_without_labels_are_counted_separately(tmp_path: Path):
 
     assert preview.missing_labels == 4
     assert preview.exportable == 0
+
+
+def test_a_corrected_image_with_an_empty_label_is_flagged_before_export(
+    tmp_path: Path,
+):
+    """Corrected claims a label was proofread. The export is right to drop one
+    that holds nothing, but a training set silently short of the images you
+    believe you annotated is the failure this is here to prevent."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="empty")
+    _mark_corrected(tmp_path)
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    found = controller.unexportable_corrected()
+
+    assert len(found.empty) == 1
+    assert found.summary() == "1 with an empty label"
+
+
+def test_a_corrected_image_with_no_label_is_flagged_before_export(tmp_path: Path):
+    """repair-state moves images to follow their label; with no label there is
+    nothing to follow, so this is the only place it surfaces."""
+    build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="none")
+    _mark_corrected(tmp_path)
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    found = controller.unexportable_corrected()
+
+    assert len(found.missing) == 1
+
+
+def test_an_unlabelled_image_that_is_not_corrected_is_not_flagged(tmp_path: Path):
+    """An archive being worked through is mostly unlabelled. Warning about that
+    on every export is a warning nobody reads by the third time."""
+    build_dataset(tmp_path, acquisitions=2, labels="none")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert not controller.unexportable_corrected()
+
+
+def test_a_corrected_annotated_image_is_not_flagged(tmp_path: Path):
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="annotated")
+    _mark_corrected(tmp_path)
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert not controller.unexportable_corrected()
+
+
+def _mark_corrected(root: Path) -> None:
+    """Move everything under *root* into corrected/, as the window would.
+
+    State is physical location, so this moves the files rather than setting a
+    flag -- anything reading the flag alone would pass while the tree said
+    otherwise.
+    """
+    from am_segmentation_manager.operations.selection import mark_corrected_records
+
+    mark_corrected_records(
+        [
+            record
+            for project in scanned(root)
+            for lamella in project.lamellae
+            for stage in lamella.stages
+            for record in stage.images
+        ]
+    )
 
 
 def test_one_condition_per_scene_is_visible_before_exporting(tmp_path: Path):
@@ -239,7 +311,7 @@ def test_breakdowns_count_the_current_selection(exporter: ExportController):
     assert exporter.breakdown("modality") == {"SEM": 2}
 
 
-def test_a_breakdown_counts_what_would_be_exported(tmp_path: Path):
+def test_a_breakdown_counts_what_the_filters_match(tmp_path: Path):
     """One tab, one set. A tick that halves the export has to halve the table
     under it, or the two numbers on screen describe different collections."""
     pytest.importorskip("tifffile")
@@ -347,6 +419,117 @@ def test_a_crack_breakdown_counts_nothing_until_the_labels_are_measured(
     assert exporter.breakdown("has-crack") != {"no-label": 4}
 
 
+def test_the_crack_threshold_changes_what_counts_as_cracked(tmp_path: Path):
+    """A crack is a physical feature with a size, and where the line falls is a
+    judgement about the sample rather than something to hardcode."""
+    cv2 = pytest.importorskip("cv2")
+    controller = _measured_with_one_small_crack(tmp_path, cv2)
+
+    # The speck is about 0.04 um^2, so it is a crack under a 0.01 threshold and
+    # noise over a 0.1 one.
+    controller.set_crack_threshold(0.01)
+    assert controller.breakdown("has-crack") == {"cracked": 1}
+
+    controller.set_crack_threshold(0.1)
+    assert controller.breakdown("has-crack") == {"intact": 1}
+
+
+def test_changing_the_threshold_re_reads_no_labels(tmp_path: Path):
+    """The threshold is applied to component areas read_label_pixels caches
+    *without* it, so a new one costs arithmetic rather than a second pass over
+    the archive. Without this the control would be unusable on a real
+    collection."""
+    cv2 = pytest.importorskip("cv2")
+    from am_segmentation_manager.operations import label_measure
+
+    controller = _measured_with_one_small_crack(tmp_path, cv2)
+    reads: list[Path] = []
+    original = label_measure._count_pixels
+
+    def counted(path, crack_class):
+        reads.append(path)
+        return original(path, crack_class)
+
+    label_measure._count_pixels = counted
+    try:
+        controller.set_crack_threshold(0.02)
+    finally:
+        label_measure._count_pixels = original
+
+    assert controller.measurements_loaded()
+    assert reads == []
+
+
+def test_setting_the_same_threshold_again_does_nothing(exporter: ExportController):
+    exporter.load_measurements()
+    before = exporter.measurements_loaded()
+
+    exporter.set_crack_threshold(exporter.min_crack_area_um2)
+
+    assert exporter.measurements_loaded() == before
+
+
+def test_a_negative_crack_threshold_is_rejected(exporter: ExportController):
+    with pytest.raises(ValueError, match="cannot be negative"):
+        exporter.set_crack_threshold(-1.0)
+
+
+def test_the_area_scale_can_be_cut_more_finely(exporter: ExportController):
+    """A lamella is hundreds of um^2, so at one bin per decade nearly every one
+    lands in the same bin and the breakdown says nothing about the spread."""
+    assert "100 - 1000" in exporter.breakdowns["area-lamella"].order
+
+    exporter.set_area_bins(3)
+
+    assert exporter.area_bins_per_decade == 3
+    assert "100 - 200" in exporter.breakdowns["area-lamella"].order
+
+
+def test_recutting_the_scale_measures_nothing_again(exporter: ExportController):
+    """How a number is grouped is not a property of the number."""
+    exporter.load_measurements()
+
+    exporter.set_area_bins(2)
+
+    assert exporter.measurements_loaded()
+
+
+def _measured_with_one_small_crack(tmp_path: Path, cv2) -> ExportController:
+    """A scan of one image whose label holds a single small crack component."""
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.config import SegmentationConfig
+    from am_segmentation_manager.image_metadata import ImageMetadata
+    from am_segmentation_manager.operations.label_measure import clear_cache
+
+    clear_cache()
+    build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="annotated")
+    label = next(tmp_path.rglob("*_labels/*.tif"), None) or next(
+        tmp_path.rglob("labels/*.tif")
+    )
+    array = np.zeros((64, 64), dtype=np.uint8)
+    array[10:30, 10:30] = 2      # the lamella
+    array[40:42, 40:42] = 3      # a 4-pixel speck of crack/hole
+    tifffile.imwrite(str(label), array)
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 2: (0, 1, 0), 3: (1, 0, 0)},
+        class_labels={0: "background", 2: "lamella", 3: "crack/hole"},
+        crack_class=3,
+    )
+    controller = ExportController(config=config)
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    # 100 nm pixels, so the 4-pixel speck is 0.04 um^2.
+    controller._metadata = {
+        record.image_path: ImageMetadata(pixel_size_nm=100.0, image_width=64)
+        for record in controller.records
+    }
+    controller._metadata_loaded = True
+    controller.load_measurements()
+    return controller
+
+
 def test_measuring_reports_what_it_covered(exporter: ExportController):
     assert exporter.measurable_labels() == 4
     assert exporter.load_measurements() == 4
@@ -414,10 +597,12 @@ def test_headers_are_not_re_read_when_none_could_be_parsed(exporter: ExportContr
     assert calls == []
 
 
-def test_metadata_filter_values_come_from_the_data(exporter: ExportController):
+def test_filter_values_come_from_the_data(exporter: ExportController):
     """Offering what the archive holds is the difference between a filter you
     can explore and one you must already know the answer to."""
-    assert exporter.metadata_values("microscope") == []   # synthetic TIFFs, no header
+    # Synthetic TIFFs carry no header, and "no header" is a value you can ask
+    # for rather than a gap in the list: it is how the unreadable ones are found.
+    assert exporter.choice_values("microscope") == [ag.MISSING]
 
 
 def test_a_filter_offers_only_what_the_selection_still_holds(headers: ExportController):
@@ -425,16 +610,26 @@ def test_a_filter_offers_only_what_the_selection_still_holds(headers: ExportCont
     images offered Argon as a plasma gas -- which reads as the SEM claiming it."""
     headers.filters.modality = "SEM"
 
-    assert headers.metadata_values("plasma-gas") == []
-    assert headers.metadata_values("electron-source") == ["FEG"]
+    assert "Argon" not in headers.choice_values("plasma-gas")
+    assert headers.choice_values("electron-source") == ["FEG"]
+
+
+def test_images_with_no_header_can_be_filtered_for(headers: ExportController):
+    """"Not recorded" is a value the list offers, not a gap in it. Before, a
+    metadata filter excluded every image whose header could not be read and
+    there was no way to ask which those were; now selecting it finds them."""
+    headers.filters.modality = "FIB"
+    headers.set_choice_filter("electron-source", [ag.MISSING])
+
+    assert headers.preview().matched == 2   # the FIB images, which have no emitter
 
 
 def test_a_filter_does_not_narrow_its_own_list(headers: ExportController):
     """Choosing one gas must leave the others reachable, or a filter list
     collapses to the single value already chosen."""
-    headers.set_metadata_filter("plasma-gas", ["Argon"])
+    headers.set_choice_filter("plasma-gas", ["Argon"])
 
-    assert headers.metadata_values("plasma-gas") == ["Argon", "Xenon"]
+    assert {"Argon", "Xenon"} <= set(headers.choice_values("plasma-gas"))
 
 
 def test_a_chosen_value_stays_offered_when_something_else_excludes_it(
@@ -442,16 +637,47 @@ def test_a_chosen_value_stays_offered_when_something_else_excludes_it(
 ):
     """A filter that vanished from its own list could not be seen or cleared,
     and would go on excluding everything."""
-    headers.set_metadata_filter("plasma-gas", ["Argon"])
+    headers.set_choice_filter("plasma-gas", ["Argon"])
     headers.filters.modality = "SEM"
 
-    assert headers.metadata_values("plasma-gas") == ["Argon"]
+    assert "Argon" in headers.choice_values("plasma-gas")
     assert headers.preview().matched == 0
 
 
-def test_an_unknown_metadata_filter_is_rejected(exporter: ExportController):
-    with pytest.raises(ValueError, match="Unknown metadata filter"):
-        exporter.set_metadata_filter("colour", ["red"])
+def test_an_unknown_filter_is_rejected(exporter: ExportController):
+    with pytest.raises(ValueError, match="Unknown filter"):
+        exporter.set_choice_filter("colour", ["red"])
+
+
+def test_a_measured_property_is_not_offered_as_a_filter(exporter: ExportController):
+    """It cannot answer until the labels are measured, and a filter that keeps
+    nothing until a button elsewhere is pressed is worse than no filter."""
+    offered = dict(exporter.filterable_breakdowns())
+
+    assert "has-crack" not in offered
+    with pytest.raises(ValueError, match="measured property"):
+        exporter.set_choice_filter("has-crack", ["cracked"])
+
+
+def test_a_property_with_its_own_control_is_not_also_a_list(
+    exporter: ExportController,
+):
+    """Modality is three fixed choices, not whatever the data holds, and the
+    label filter asks five questions rather than offering four states."""
+    offered = dict(exporter.filterable_breakdowns())
+
+    assert "modality" not in offered
+    assert "state" not in offered
+    assert "label" not in offered
+
+
+def test_the_project_and_lamella_can_be_filtered_on(exporter: ExportController):
+    """The last thing the command line could narrow that the window could not."""
+    offered = dict(exporter.filterable_breakdowns())
+
+    assert "project" in offered
+    assert "lamella" in offered
+    assert "variant" in offered
 
 
 def test_the_export_view_reuses_the_scan_rather_than_repeating_it(exporter: ExportController):

@@ -20,17 +20,20 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtCore import Qt
+    from qtpy.QtGui import QFontMetricsF
     from qtpy.QtTest import QTest
     from qtpy.QtWidgets import (
         QApplication,
         QCheckBox,
         QComboBox,
+        QDoubleSpinBox,
         QLabel,
         QListWidget,
         QPushButton,
         QWidget,
     )
 
+    from am_segmentation_manager.aggregate import AREA_BINS_PER_DECADE
     from am_segmentation_manager.gui.export_controller import (
         ANY_LABEL,
         DEFAULT_PREFIX,
@@ -52,26 +55,83 @@ def panel(qt_app) -> ExportPanel:
     return ExportPanel(ExportController())
 
 
+def _loaded_panel(tmp_path, **kwargs) -> ExportPanel:
+    """A panel over a real two-lamella scan, as the window builds it."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, lamellae=2, acquisitions=2, labels="annotated", **kwargs)
+    controller = ExportController()
+    controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
+    panel = ExportPanel(controller)
+    panel.refresh()
+    return panel
+
+
 def test_the_acquisition_filters_are_hidden_until_the_headers_are_read(
-    panel: ExportPanel,
+    qt_app, tmp_path,
 ):
     """A column of empty boxes reads as broken, and none of them can be used
     before the values exist to choose from."""
-    assert panel.metadata_scroller.isHidden()
+    panel = _loaded_panel(tmp_path)
+
+    assert panel.filter_lists["microscope"].isHidden()
 
     panel._load_metadata()
 
-    assert not panel.metadata_scroller.isHidden()
+    # Still hidden, but now because the synthetic TIFFs all say the same thing
+    # about it rather than because the headers were never read.
+    assert panel.controller.metadata_loaded()
+
+
+def test_a_filter_that_cannot_narrow_anything_is_not_shown(qt_app, tmp_path):
+    """One project and one value means a list that filters nothing. The
+    breakdowns cover far more properties than any one dataset varies along."""
+    panel = _loaded_panel(tmp_path)
+
+    assert not panel.filter_lists["lamella"].isHidden()   # two of them
+    assert panel.filter_lists["project"].isHidden()       # only one
+
+
+def test_a_chosen_filter_stays_visible_even_when_it_offers_one_value(
+    qt_app, tmp_path,
+):
+    """A list that vanished once used could not be seen or cleared, and would
+    go on narrowing everything under it."""
+    panel = _loaded_panel(tmp_path)
+    lamellae = panel.filter_lists["lamella"]
+    lamellae.item(0).setSelected(True)
+
+    assert not lamellae.isHidden()
+    assert len(panel.controller.filters.choices["lamella"]) == 1
+
+
+def test_choosing_a_lamella_narrows_the_table_under_it(qt_app, tmp_path):
+    """The filter and the breakdown are one selection, so the table has to move
+    when a filter does."""
+    panel = _loaded_panel(tmp_path)
+    before = sum(panel.controller.breakdown("modality").values())
+
+    panel.filter_lists["lamella"].item(0).setSelected(True)
+
+    assert sum(panel.controller.breakdown("modality").values()) < before
+
+
+def test_a_long_filter_row_elides_rather_than_scrolling_sideways(qt_app, tmp_path):
+    """Lamella rows are "project / lamella" and differ at the end. A list that
+    scrolls instead of eliding shows a column of identical project prefixes."""
+    panel = _loaded_panel(tmp_path)
+    lamellae = panel.filter_lists["lamella"]
+
+    assert lamellae.textElideMode() == Qt.ElideMiddle
+    assert lamellae.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert lamellae.item(0).toolTip() == lamellae.item(0).text()
 
 
 def test_a_filter_is_labelled_with_its_unit_spelled_properly(panel: ExportPanel):
-    labels = {
-        panel.metadata_box.layout().itemAt(index).widget().text()
-        for index in range(panel.metadata_box.layout().count())
-        if isinstance(panel.metadata_box.layout().itemAt(index).widget(), QLabel)
-    }
+    """The label is the breakdown's own, so a property is named the same way in
+    the filter list and in the dropdown that counts by it."""
+    labels = {caption.text() for caption in panel.filter_captions.values()}
 
-    assert "Acceleration voltage (kV)" in labels
+    assert "Accelerating voltage (kV)" in labels
     assert "Beam current (pA)" in labels
 
 
@@ -153,6 +213,44 @@ def test_the_window_offers_no_way_to_export_a_blank_mask(panel: ExportPanel):
 # The breakdown dropdown
 # ---------------------------------------------------------------------------
 
+def test_the_measurement_settings_start_where_the_config_says(panel: ExportPanel):
+    """The threshold a run with no override applies, so the window and
+    quantify-labels agree until the user says otherwise."""
+    assert panel.crack_threshold.value() == panel.controller.min_crack_area_um2
+    assert panel.area_bins.currentData() == panel.controller.area_bins_per_decade
+
+
+def test_the_crack_threshold_reaches_the_controller(panel: ExportPanel):
+    panel.crack_threshold.setValue(0.25)
+
+    assert panel.controller.min_crack_area_um2 == 0.25
+
+
+def test_the_bin_control_reaches_the_controller(panel: ExportPanel):
+    panel.area_bins.setCurrentIndex(panel.area_bins.findData(3))
+
+    assert panel.controller.area_bins_per_decade == 3
+    assert "100 - 200" in panel.controller.breakdowns["area-lamella"].order
+
+
+def test_the_bin_control_offers_only_supported_resolutions(panel: ExportPanel):
+    """The settings are 1, 2, 3 and 6. A spin box spanning them would offer 4
+    and 5, which do not subdivide a decade into round edges -- and which
+    set_area_bins rejects."""
+    offered = [panel.area_bins.itemData(i) for i in range(panel.area_bins.count())]
+
+    assert offered == list(AREA_BINS_PER_DECADE)
+
+
+def test_the_measurement_settings_sit_beside_the_breakdown_not_the_filters(
+    panel: ExportPanel,
+):
+    """Neither narrows anything: they say how what was measured is read. A
+    control in the Filters box promises to change which images are in play."""
+    assert panel.crack_threshold in panel._breakdown_box.findChildren(QDoubleSpinBox)
+    assert panel.crack_threshold not in panel._filters_box.findChildren(QDoubleSpinBox)
+
+
 def test_the_breakdown_list_shows_labels_and_carries_names(panel: ExportPanel):
     """The user reads "dwell time (ns)"; the controller is handed "dwell"."""
     rows = {
@@ -202,6 +300,17 @@ def test_the_table_is_headed_with_the_readable_name(qt_app, tmp_path):
 # ---------------------------------------------------------------------------
 # Stepping through the list, and cross-referencing two properties
 # ---------------------------------------------------------------------------
+
+def test_the_table_is_drawn_in_a_font_its_columns_can_line_up_in(
+    panel: ExportPanel,
+):
+    """reporting.py pads its columns with spaces. In the window's own
+    proportional font that padding is not alignment, and the table reads as a
+    ragged list rather than as rows."""
+    metrics = QFontMetricsF(panel.table.font())
+
+    assert metrics.horizontalAdvance("i") == metrics.horizontalAdvance("W")
+
 
 def test_the_arrow_keys_step_through_the_list(panel: ExportPanel):
     """Whether Qt's own keys step or open the popup is a style hint's to
@@ -324,6 +433,80 @@ HAS_PLOTS = importlib.util.find_spec("matplotlib") is not None
 needs_plots = pytest.mark.skipif(not HAS_PLOTS, reason="matplotlib not installed")
 
 
+def test_the_breakdown_opens_as_a_table(qt_app, tmp_path):
+    """Numbers first: the chart is the second way of reading them, and a pane
+    that opened on a chart would hide the counts the summary line refers to."""
+    panel = measurable(qt_app, tmp_path)
+    panel.refresh()
+
+    assert panel.as_table.isChecked()
+    assert panel.views.currentWidget() is panel.table
+
+
+@needs_plots
+def test_switching_to_the_chart_draws_it_in_the_pane(qt_app, tmp_path):
+    """The reason this is inline at all: there is room for it beside the
+    filters, and a separate window has to be moved out of the way to change one."""
+    panel = measurable(qt_app, tmp_path)
+    panel.refresh()
+
+    panel.as_chart.setChecked(True)
+
+    assert panel.views.currentWidget() is panel.chart_view
+    assert panel.chart_view._canvas is not None
+    assert panel._charts == []      # inline, not a window
+
+
+@needs_plots
+def test_the_chart_pane_follows_a_filter(qt_app, tmp_path):
+    """Same rule as the table: one tab, one set. A chart left showing the
+    previous filter would be two collections on screen at once."""
+    panel = measurable(qt_app, tmp_path)
+    panel.refresh()
+    panel.as_chart.setChecked(True)
+    first = panel.chart_view._canvas
+
+    panel.modality.setCurrentText("SEM")
+
+    assert panel.chart_view._canvas is not first
+
+
+def test_the_chart_is_not_drawn_while_the_table_is_showing(qt_app, tmp_path):
+    """Building a figure on every keystroke of a filter, for a pane nobody is
+    looking at, is what the toggle exists to avoid."""
+    panel = measurable(qt_app, tmp_path)
+    panel.refresh()
+
+    assert panel.chart_view._canvas is None
+
+
+@needs_plots
+def test_an_unmeasured_breakdown_says_so_in_the_pane_rather_than_drawing(
+    qt_app, tmp_path,
+):
+    """The same answer the detached window gives, in the place being looked at."""
+    panel = measurable(qt_app, tmp_path)
+    panel.breakdown.setCurrentIndex(panel.breakdown.findData("has-crack"))
+    panel.as_chart.setChecked(True)
+
+    assert "measured first" in panel.chart_view.message.text()
+    assert panel.chart_view._canvas is None
+
+
+@needs_plots
+def test_a_detached_chart_is_still_offered_alongside_the_pane(qt_app, tmp_path):
+    """Comparing two breakdowns means having both on screen, which one pane
+    cannot do -- which is why the dialog stays."""
+    panel = measurable(qt_app, tmp_path)
+    panel.as_chart.setChecked(True)
+
+    panel._chart()
+
+    assert len(panel._charts) == 1
+    assert panel.chart_view._canvas is not None
+    panel._charts[0].close()
+
+
 @needs_plots
 def test_one_property_is_charted_as_bars(qt_app, tmp_path):
     panel = measurable(qt_app, tmp_path)
@@ -364,7 +547,9 @@ def test_toggling_the_shading_redraws_rather_than_stacking_canvases(qt_app, tmp_
     dialog.normalise.setChecked(True)
 
     assert dialog._canvas is not first
-    assert dialog._layout.count() == 3   # toolbar, canvas, controls
+    # Taken out of the layout, not merely covered by the new one: a canvas
+    # still parented keeps its figure alive.
+    assert first.parent() is None
     dialog.close()
 
 
@@ -430,6 +615,41 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
         panel.load_button, panel.check_button,
     ):
         assert widget.toolTip(), f"{widget} explains nothing"
+
+
+#: Longest tooltip worth reading in a hover. Past this it is documentation,
+#: and a tooltip nobody finishes explains nothing.
+MAX_TOOLTIP = 200
+
+
+def test_no_tooltip_is_longer_than_anyone_reads(panel: ExportPanel):
+    """These grew to five lines apiece. A tooltip says what the control does;
+    why the software works that way belongs in docs/decisions.md."""
+    too_long = {
+        widget.toolTip()
+        for widget in panel.findChildren(QWidget)
+        if len(widget.toolTip()) > MAX_TOOLTIP
+    }
+
+    assert not too_long
+
+
+def test_every_filter_says_what_it_narrows(panel: ExportPanel):
+    """The Filters box decides which images are in play for both the breakdown
+    and the exports, and nothing on screen said so."""
+    filters = [panel.modality, panel.state, panel.label_state, panel.conditions]
+    filters += list(panel.filter_lists.values())
+
+    for widget in filters:
+        assert "Narrows the breakdown and every export" in widget.toolTip()
+
+
+def test_the_cross_reference_is_named_rather_than_conjoined(panel: ExportPanel):
+    """"and" is not a name for a control."""
+    captions = {widget.text() for widget in panel.findChildren(QLabel)}
+
+    assert "Then by" in captions
+    assert "and" not in captions
 
 
 def test_the_export_buttons_say_what_they_write(panel: ExportPanel):

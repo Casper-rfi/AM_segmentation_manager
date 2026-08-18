@@ -650,6 +650,8 @@ class CurationWindow(QMainWindow):
         if not records:
             self._flash("Nothing matches these filters")
             return
+        if not self._confirm_dropping_corrected():
+            return
         training = self.export_controller.training
         try:
             train, validation = export_training_csv(
@@ -673,6 +675,38 @@ class CurationWindow(QMainWindow):
         written = ", ".join(str(path.name) for path in (train, validation) if path)
         self._flash(f"Wrote {written}", 4000)
         logger.info("Exported training CSV to %s", directory)
+
+    def _confirm_dropping_corrected(self) -> bool:
+        """Ask before writing a training set that silently omits proofread work.
+
+        The export skips an image whose label is missing or blank, which is
+        right -- pairing an image with a blank mask teaches a model that the
+        structure is background. What is wrong is doing it quietly: a corrected
+        image being dropped means the proofreading or the label has gone
+        missing, and the CSV that results is short with nothing saying so.
+        """
+        readiness = self.export_controller.unexportable_corrected()
+        if not readiness:
+            return True
+
+        rows = [
+            f"{record.project or '?'} / {record.lamella or '?'} / {record.image_path.name}"
+            for record in readiness.records
+        ]
+        shown = "\n".join(rows[:MAX_LISTED_FILES])
+        if len(rows) > MAX_LISTED_FILES:
+            shown += f"\n... and {len(rows) - MAX_LISTED_FILES} more"
+
+        answer = QMessageBox.warning(
+            self,
+            "Export without proofread images?",
+            f"These images are marked corrected, but hold no annotation to "
+            f"pair them with, so the export will leave them out "
+            f"({readiness.summary()}):\n\n{shown}\n\nWrite the files anyway?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return answer == QMessageBox.Yes
 
     def _export_image_metadata(self, path: str) -> None:
         from ...aggregate import project_lookup
@@ -1011,6 +1045,9 @@ class CurationWindow(QMainWindow):
         if self.controller.editing_enabled and not self.controller.selection.is_empty:
             if not self._confirm_bulk(state):
                 return
+        if self.controller.editing_enabled and state == "corrected":
+            if not self._confirm_unannotated():
+                return
         try:
             changed = self.controller.apply_state(state)
         except EditingDisabled:
@@ -1080,6 +1117,48 @@ class CurationWindow(QMainWindow):
         answer = QMessageBox.warning(
             self, "Change many images?", message,
             QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        return answer == QMessageBox.Yes
+
+    def _confirm_unannotated(self) -> bool:
+        """Ask before calling images corrected when their label holds nothing.
+
+        Corrected is the claim that somebody proofread these labels, and it is
+        the claim a training export trusts. An image that reaches it without an
+        annotation is skipped by every export in silence, so the place to catch
+        it is where the claim is made rather than months later in a CSV that is
+        quietly short.
+
+        Named by project and lamella, not by filename: the point of the dialog
+        is to be able to go and fix them, and image filenames repeat across
+        lamellae.
+        """
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            # Reads each label once per scan; the timeline has usually paid for
+            # the lamella on screen already.
+            readiness = self.controller.label_readiness()
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not readiness:
+            return True
+
+        rows = [
+            f"{record.project or '?'} / {record.lamella or '?'} / {record.image_path.name}"
+            for record in readiness.records
+        ]
+        shown = "\n".join(rows[:MAX_LISTED_FILES])
+        if len(rows) > MAX_LISTED_FILES:
+            shown += f"\n... and {len(rows) - MAX_LISTED_FILES} more"
+
+        answer = QMessageBox.warning(
+            self,
+            "Mark as corrected without an annotation?",
+            f"{readiness.summary()}. Corrected means the label was proofread, "
+            f"and a training export skips an image whose label holds "
+            f"nothing:\n\n{shown}\n\nMark them corrected anyway?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
         )
         return answer == QMessageBox.Yes
 

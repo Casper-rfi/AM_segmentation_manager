@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..aggregate import (
+    DEFAULT_AREA_BINS_PER_DECADE,
+    GROUP_TITLES,
     NEEDS_LABEL_STATES,
     NEEDS_METADATA,
     Breakdown,
@@ -28,7 +30,7 @@ from ..aggregate import (
     resolve_breakdown,
 )
 from ..config import SegmentationConfig, load_segmentation_config
-from ..filtering import METADATA_FILTERS, filter_by_metadata, matches_state
+from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..models import ImageRecord, Project
 from ..operations.csv import (
@@ -41,6 +43,8 @@ from ..operations.label_io import (
     EMPTY,
     MISSING,
     UNREADABLE,
+    LabelReadiness,
+    classify_labels,
     is_label_file_empty,
     label_state,
 )
@@ -78,6 +82,14 @@ LABEL_FILTERS: dict[str, frozenset[str]] = {
     "no label yet": frozenset({MISSING}),
 }
 
+#: Breakdowns with a control of their own in the Filters box, so they are not
+#: also offered as a list of values. Modality and workflow state are three
+#: fixed choices each rather than whatever the data holds, and the label filter
+#: is five named questions rather than four states -- "has a label" is not a
+#: value any record carries.
+DEDICATED_CONTROLS = frozenset({"modality", "state", "label"})
+
+
 #: What the label filter starts on: everything. The tab opens on the whole
 #: collection and is narrowed towards an export, rather than opening on the
 #: export and hiding most of the archive until the filter is found.
@@ -87,6 +99,18 @@ ANY_LABEL = "any"
 #: command line's default, so the same selection exported either way lands in
 #: the same filenames.
 DEFAULT_PREFIX = "dataset"
+
+
+def _sortable(value: str) -> tuple[int, float, str]:
+    """Return a sort key putting numbers in numeric order, names after them.
+
+    The values are strings because that is what a list widget holds, and
+    sorting a pixel size as one puts 8.431 after 19.53.
+    """
+    try:
+        return (0, float(value), "")
+    except ValueError:
+        return (1, 0.0, value)
 
 
 @dataclass(frozen=True)
@@ -171,6 +195,10 @@ class ExportFilters:
     reuses them for the rest of the session.
 
     Attributes:
+        choices: Breakdown name to the values kept, for every filter that
+            offers the values the data actually holds. A filter and a
+            breakdown are the same key function used two ways, so there is one
+            table of them rather than two that can disagree.
         conditions: ``"all"`` keeps every imaging condition of a scene,
             ``"primary"`` keeps one image per label. Starts at ``"all"``,
             unlike ``create-training-csv``: the tab opens on the whole
@@ -180,7 +208,7 @@ class ExportFilters:
 
     modality: str = "all"
     state: str = "all"
-    metadata: dict[str, list[str]] = field(default_factory=dict)
+    choices: dict[str, list[str]] = field(default_factory=dict)
     conditions: str = "all"
     label: str = ANY_LABEL
 
@@ -221,7 +249,13 @@ class ExportController:
         # Resolved once: which area breakdowns exist is the config's to say,
         # and rebuilding the table per refresh would rebuild the closures
         # the breakdowns are made of.
-        self.breakdowns: dict[str, Breakdown] = breakdowns_for(self.config)
+        self._area_bins_per_decade = DEFAULT_AREA_BINS_PER_DECADE
+        self.breakdowns: dict[str, Breakdown] = breakdowns_for(
+            self.config, self._area_bins_per_decade
+        )
+        # Starts at the config's, which is also what quantify-labels applies
+        # when nothing overrides it.
+        self._min_crack_area_um2 = self.config.min_crack_area_um2
         self.filters = ExportFilters()
         self.training = TrainingExport()
         self._projects: list[Project] = []
@@ -236,6 +270,9 @@ class ExportController:
         self._label_states: dict[Path, str] = {}
         self._measurements: dict[Path, LabelMeasurement] = {}
         self._measurements_loaded = False
+        # Built by walking every record, and asked for once per filter list on
+        # every refresh. Rebuilt only when the scan changes.
+        self._lookup: dict[Path, Project] = {}
 
     # -- loading -----------------------------------------------------------
 
@@ -261,6 +298,7 @@ class ExportController:
         self._label_states = {}
         self._measurements = {}
         self._measurements_loaded = False
+        self._lookup = project_lookup(self._projects)
         logger.debug("Export view holding %d record(s)", len(self._records))
 
     @property
@@ -303,6 +341,52 @@ class ExportController:
         }
         return len(labels)
 
+    @property
+    def min_crack_area_um2(self) -> float:
+        """Return the smallest component currently counted as a crack, in um^2."""
+        return self._min_crack_area_um2
+
+    def set_crack_threshold(self, value: float) -> None:
+        """Set the smallest component counted as a crack, in um^2.
+
+        Re-measures immediately when the labels have already been read, rather
+        than spending the button again: the threshold is applied to component
+        areas that :func:`read_label_pixels` has already cached *without* it, so
+        a new one costs arithmetic rather than a second pass over the archive.
+
+        Raises:
+            ValueError: If *value* is negative.
+        """
+        if value < 0:
+            raise ValueError(f"A crack threshold cannot be negative: {value!r}")
+        if value == self._min_crack_area_um2:
+            return
+        self._min_crack_area_um2 = float(value)
+        if self._measurements_loaded:
+            self._measurements_loaded = False
+            self.load_measurements()
+
+    @property
+    def area_bins_per_decade(self) -> int:
+        """Return how finely the class-area scale is currently cut."""
+        return self._area_bins_per_decade
+
+    def set_area_bins(self, per_decade: int) -> None:
+        """Set how finely the class-area breakdowns cut each decade.
+
+        Rebuilds the breakdown table, because the bins are closed over by the
+        key functions. The names are unchanged, so a dropdown holding them
+        needs no rebuilding. Nothing is re-measured: the areas do not depend on
+        how they are grouped.
+
+        Raises:
+            ValueError: If *per_decade* is not a supported setting.
+        """
+        if per_decade == self._area_bins_per_decade:
+            return
+        self.breakdowns = breakdowns_for(self.config, per_decade)
+        self._area_bins_per_decade = per_decade
+
     def load_measurements(self) -> int:
         """Measure every label, once per scan.
 
@@ -310,16 +394,23 @@ class ExportController:
         which is why nothing calls this implicitly: it is the one thing in this
         tab that has to be asked for.
 
+        The headers are read first and kept. Measuring needs them anyway, for
+        the scale; reading them into the mapping rather than letting
+        ``measure_records`` read and discard its own is what makes a later
+        change of threshold free.
+
         Returns:
             How many images have a measured label.
         """
         if not self._measurements_loaded:
             from ..operations.label_measure import measure_records
 
+            self.load_metadata()
             self._measurements = measure_records(
                 self._records,
                 self.config,
-                self._metadata if self._metadata_loaded else None,
+                self._metadata,
+                min_crack_area_um2=self._min_crack_area_um2,
             )
             self._measurements_loaded = True
         return len(self._measurements)
@@ -374,14 +465,20 @@ class ExportController:
             and matches_state(record, self.filters.state)
             and (wanted is None or self.label_state(record) in wanted)
         ]
-        metadata_filters = {
-            name: values
-            for name, values in self.filters.metadata.items()
-            if name != ignoring
+        # Each remaining filter keeps the records whose group is one of the
+        # chosen ones -- the breakdown's own key function, read as a predicate.
+        # Compared as the string the list offered, so what was picked and what
+        # is matched cannot drift: a pixel size is grouped to four significant
+        # figures, and the filter has to agree with the table about that.
+        chosen = {
+            name: set(values)
+            for name, values in self.filters.choices.items()
+            if name != ignoring and values
         }
-        if metadata_filters:
-            self.load_metadata()
-            kept = filter_by_metadata(kept, self._metadata, metadata_filters)
+        if chosen:
+            for name, key in zip(chosen, self._keys(list(chosen))):
+                allowed = chosen[name]
+                kept = [record for record in kept if str(key(record)) in allowed]
         if self.filters.conditions == "primary":
             kept = keep_one_condition_per_scene(kept)
         return kept
@@ -432,6 +529,24 @@ class ExportController:
         at them is the point of the filter, but they cannot be exported.
         """
         return [record for record, _ in self._sift(self.selected_records()).pairs]
+
+    def unexportable_corrected(self) -> LabelReadiness:
+        """Return the corrected images the filters match that cannot be exported.
+
+        The one case worth stopping for. An unlabelled image in any other state
+        is the ordinary condition of an archive being worked through, and a
+        dialog about it would fire on every export until it was ignored;
+        corrected is the claim that the label holds proofread work, so an
+        export dropping one means either the proofreading is missing or the
+        label is.
+        """
+        from ..operations.selection import current_state
+
+        corrected = [
+            record for record in self.selected_records()
+            if current_state(record) == "corrected"
+        ]
+        return classify_labels(corrected, self.label_state)
 
     def preview(self) -> ExportPreview:
         """Return what the current filters would export."""
@@ -485,10 +600,9 @@ class ExportController:
                 record.image_path: self.label_state(record)
                 for record in self._records
             }
-        lookup = project_lookup(self._projects)
         return [
             resolve_breakdown(
-                name, self._metadata, lookup, self._measurements, states,
+                name, self._metadata, self._lookup, self._measurements, states,
                 self.breakdowns,
             )
             for name in names
@@ -518,8 +632,34 @@ class ExportController:
         row_key, column_key = self._keys([row, column])
         return cross_tabulate(self.selected_records(), row_key, column_key)
 
-    def metadata_values(self, name: str) -> list[str]:
-        """Return the values of a metadata property the selection still holds.
+    def filterable_breakdowns(self) -> list[tuple[str, str]]:
+        """Return the ``(name, label)`` of every breakdown offered as a filter.
+
+        A filter and a breakdown are the same key function used two ways, so
+        the list of one is derived from the other rather than declared beside
+        it. Ordered as the breakdown dropdown is, so a property is found in
+        the same place in both.
+
+        Measurement breakdowns are left out: they cannot answer until the
+        labels have been measured, and a filter that quietly keeps nothing
+        until a button elsewhere is pressed is worse than no filter.
+        """
+        headings = list(GROUP_TITLES)
+        rows = [
+            (name, entry)
+            for name, entry in self.breakdowns.items()
+            if entry.kind != "measurement" and name not in DEDICATED_CONTROLS
+        ]
+        rows.sort(key=lambda row: (headings.index(row[1].group), row[1].label))
+        return [(name, entry.label) for name, entry in rows]
+
+    def needs_metadata(self, name: str) -> bool:
+        """Return whether *name* cannot be offered until the headers are read."""
+        entry = self.breakdowns.get(name)
+        return entry is not None and entry.kind == "metadata"
+
+    def choice_values(self, name: str) -> list[str]:
+        """Return the values of a property the rest of the selection still holds.
 
         Offering what the data actually contains, rather than a free-text box,
         is the difference between a filter you can explore and one you have to
@@ -531,26 +671,37 @@ class ExportController:
         Values already chosen for *name* stay offered whatever else excludes
         them, because a filter that vanished from its own list could not be
         seen or cleared.
-        """
-        if name not in METADATA_FILTERS:
-            raise ValueError(f"Unknown metadata filter: {name}")
-        self.load_metadata()
-        attribute = METADATA_FILTERS[name]
-        values = {
-            getattr(self._metadata.get(record.image_path), attribute, None)
-            for record in self.selected_records(ignoring=name)
-        }
-        offered = {str(value) for value in values if value is not None}
-        return sorted(offered | set(self.filters.metadata.get(name, ())), key=str)
 
-    def set_metadata_filter(self, name: str, values: Sequence[str]) -> None:
-        """Set or clear one metadata filter."""
-        if name not in METADATA_FILTERS:
-            raise ValueError(f"Unknown metadata filter: {name}")
+        Raises:
+            ValueError: If *name* is not a breakdown offered as a filter.
+        """
+        self._require_filter(name)
+        (key,) = self._keys([name])
+        values = {
+            str(key(record)) for record in self.selected_records(ignoring=name)
+        }
+        return sorted(
+            values | set(self.filters.choices.get(name, ())), key=_sortable
+        )
+
+    def set_choice_filter(self, name: str, values: Sequence[str]) -> None:
+        """Set or clear one filter.
+
+        Raises:
+            ValueError: If *name* is not a breakdown offered as a filter.
+        """
+        self._require_filter(name)
         if values:
-            self.filters.metadata[name] = list(values)
+            self.filters.choices[name] = list(values)
         else:
-            self.filters.metadata.pop(name, None)
+            self.filters.choices.pop(name, None)
+
+    def _require_filter(self, name: str) -> None:
+        """Raise unless *name* is a breakdown that can be filtered on."""
+        if name not in self.breakdowns or name in DEDICATED_CONTROLS:
+            raise ValueError(f"Unknown filter: {name}")
+        if self.breakdowns[name].kind == "measurement":
+            raise ValueError(f"Cannot filter on a measured property: {name}")
 
     @property
     def metadata_map(self) -> Mapping[Path, ImageMetadata]:

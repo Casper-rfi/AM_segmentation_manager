@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QIcon, QPixmap, QStandardItem, QStandardItemModel
+from qtpy.QtGui import QFont, QIcon, QPixmap, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -48,6 +48,31 @@ def chip_icon(pixmap: QPixmap) -> QIcon:
         for state in (QIcon.On, QIcon.Off):
             icon.addPixmap(pixmap, mode, state)
     return icon
+
+
+#: Monospaced families to try, in the order they are looked for. The style hint
+#: below is only consulted for a family that does not exist, so the list has to
+#: carry a real name for each platform rather than relying on the hint alone.
+_FIXED_WIDTH_FAMILIES = ("Menlo", "Consolas", "DejaVu Sans Mono", "Courier New")
+
+
+def fixed_width_font() -> QFont:
+    """Return a font whose characters are all the same width.
+
+    Anything padded into columns with spaces -- the breakdown table, the
+    operation reports -- is only aligned in a font like this.
+
+    Not ``QFontDatabase.systemFont(FixedFont)``, which is the obvious call and
+    returns the proportional UI font on macOS: it reports the family it was
+    asked for while resolving to something else, so the padding stays padding
+    and nothing lines up. Naming families and letting the style hint cover the
+    ones that are missing is what actually resolves.
+    """
+    font = QFont()
+    font.setFamilies(list(_FIXED_WIDTH_FAMILIES))
+    font.setStyleHint(QFont.Monospace)
+    font.setFixedPitch(True)
+    return font
 
 
 def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:
