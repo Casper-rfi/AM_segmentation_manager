@@ -102,52 +102,11 @@ would feed — is now met by the Export tab's filters and breakdowns.
 
 ---
 
-## 3. Deposition to scientific data repositories
-
-**Confirmed as a goal on 2026-08-14, and it is the package's end state** — not
-a nice-to-have at the edge of it. The whole chain leads here: curate the data,
-proofread the labels, export training lists, quantify, and then deposit the
-labelled curated dataset publicly with three CSVs beside it (metadata, label
-quantifications, model training). All three of those exports are built.
-
-**The data is deposited in the layout it already has.** Target: Zenodo. There
-is no plan to re-format anything after labelling, and no repository-mandated
-directory structure or metadata schema to conform to — Zenodo takes files plus
-a record of title, authors, licence and description. Consumers will either use
-this package to interpret the data or take the training CSVs and ignore the
-rest.
-
-So the remaining work is small, and is about making the deposit
-*interpretable* rather than about moving files:
-
-* **`segmentation_config_AM.yaml` must travel with the data.** This is the one
-  real dependency. A label is a TIFF of small integers; without the file saying
-  3 means crack/hole it is uninterpretable, and the class definitions live in
-  the package rather than in the data. Everything else needed is already inside
-  the tree — `experiment.yaml` and `AM_metadata.yaml` sit in each project.
-* **A completeness check before depositing** — no `TODO` metadata placeholders,
-  no empty labels among the selected images, no images disagreeing with their
-  shared label. `inspect-layout` already reports all three; what is missing is
-  a single "is this ready to deposit" verdict over them.
-* **A manifest with checksums**, so a 40 GB transfer can be verified.
-* **The three CSVs**, included as they are.
-
-Practical constraint worth knowing before the first deposit: Zenodo's default
-ceiling is 50 GB per record. The reference collection is 40 GB, which fits, but
-not with much room — a larger collection would need either a request to Zenodo
-or splitting across records.
-
----
-
 ## 4. Importing existing labels into the project hierarchy
 
 **What you want:** the labels that live in folder structures you created by hand,
-brought back into the project hierarchy where `layout.py` expects them.
-
-**Why it is not designed yet:** designing a matching strategy without having seen
-the source structures would be speculation, and a bulk filesystem-writing command
-built on a guessed input shape is the worst thing to have in a package whose point
-is not losing data.
+brought back into the project hierarchy where `layout.py` expects them. These will
+be helper scripts, rather than a core feature of the package, and not GUI supported.
 
 ### What is already in place
 

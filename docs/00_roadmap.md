@@ -37,18 +37,11 @@ labels, the second never implicit because it opens every one and adds an area br
 per class the segmentation config names. `stats --plot` writes the same charts to a
 file. Scoping to particular projects or lamellae is still command-line only.
 
-**Deposition is the one main function not implemented.** See
-[`04_future_work.md`](04_future_work.md) §3.
-
 ---
 
 ## What to pick up next
 
 In no particular order.
-
-**Deposition** is the package's end state and the largest remaining piece — a
-packaging and verification step rather than a restructuring one, since the three CSVs
-already exist. [`04_future_work.md`](04_future_work.md) §3 lists what is left.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
