@@ -698,6 +698,15 @@ def test_the_class_list_offers_background_as_an_eraser(window):
     assert any("erase" in name for name in names)
 
 
+def test_the_class_list_starts_on_what_the_brush_writes(window):
+    combo = window.label_panel.class_combo
+
+    assert combo.currentData() == window.label_panel.canvas.paint_value
+    assert combo.currentData() != BACKGROUND_CLASS, (
+        "a list reading 'erase' while the brush paints a class costs an image"
+    )
+
+
 def test_choosing_a_class_sets_what_the_brush_writes(window):
     combo = window.label_panel.class_combo
     combo.setCurrentIndex(combo.count() - 1)

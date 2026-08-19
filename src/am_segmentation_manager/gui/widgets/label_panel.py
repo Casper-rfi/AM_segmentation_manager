@@ -192,6 +192,11 @@ class LabelPanel(QWidget):
                 name = f"{name} (erase)"
             self.class_combo.addItem(self._swatch(class_index), name, class_index)
         self.class_combo.currentIndexChanged.connect(self._class_chosen)
+        # Qt leaves the first item selected, which is background; the canvas
+        # starts on the first foreground class. Choosing it here makes the list
+        # say what the brush will actually write -- a list that says "erase"
+        # while the brush paints GIS is one that costs somebody an image.
+        self._select_class(self.canvas.paint_value)
         tools.addWidget(self.class_combo)
 
         tools.addSpacing(16)
@@ -307,6 +312,12 @@ class LabelPanel(QWidget):
     def _class_chosen(self, index: int) -> None:
         if index >= 0:
             self.canvas.set_paint_value(self.class_combo.itemData(index))
+
+    def _select_class(self, class_index: int) -> None:
+        """Show *class_index* as the class being painted, if the list has it."""
+        position = self.class_combo.findData(class_index)
+        if position >= 0:
+            self.class_combo.setCurrentIndex(position)
 
     def step_class(self, delta: int) -> None:
         """Move to the next or previous class, from the keyboard."""
