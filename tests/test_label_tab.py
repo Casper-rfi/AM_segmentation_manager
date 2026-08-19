@@ -454,14 +454,14 @@ def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):
     assert len(bound) == len(panel.class_names())
     for binding in bound:
         binding.action()
-        assert panel.class_combo.currentText() in binding.description
+        assert panel.paint_buttons[panel.paint_class].text() in binding.description
 
 
 def test_one_key_locks_and_unlocks_every_class(window):
     panel = window.label_panel
 
     panel.toggle_all_locks()
-    assert panel.canvas.protected == set(panel.lock_checks)
+    assert panel.canvas.protected == set(panel.lock_buttons)
 
     panel.toggle_all_locks()
     assert panel.canvas.protected == frozenset()
@@ -782,35 +782,78 @@ def test_the_timeline_marks_the_frames_with_unsaved_edits(window):
     assert window.label_controller.edited_positions() == {0}
 
 
-def test_the_class_list_offers_background_as_an_eraser(window):
-    names = [
-        window.label_panel.class_combo.itemText(index)
-        for index in range(window.label_panel.class_combo.count())
-    ]
+def test_the_class_row_offers_background_as_an_eraser(window):
+    names = window.label_panel.class_names()
 
     assert any("erase" in name for name in names)
 
 
-def test_the_class_list_starts_on_what_the_brush_writes(window):
-    combo = window.label_panel.class_combo
+def test_the_class_row_starts_on_what_the_brush_writes(window):
+    panel = window.label_panel
+    checked = [index for index, b in panel.paint_buttons.items() if b.isChecked()]
 
-    assert combo.currentData() == window.label_panel.canvas.paint_value
-    assert combo.currentData() != BACKGROUND_CLASS, (
-        "a list reading 'erase' while the brush paints a class costs an image"
-    )
+    assert checked == [panel.canvas.paint_value]
+    assert checked != [BACKGROUND_CLASS], (
+        "a bar reading 'erase' while the brush paints a class costs an image")
 
 
 def test_choosing_a_class_sets_what_the_brush_writes(window):
-    combo = window.label_panel.class_combo
-    combo.setCurrentIndex(combo.count() - 1)
+    panel = window.label_panel
+    last = list(panel.paint_buttons)[-1]
 
-    assert window.label_panel.canvas.paint_value == combo.currentData()
+    panel.paint_buttons[last].click()
+
+    assert panel.canvas.paint_value == last
+
+
+def test_a_class_and_its_lock_share_a_column(window):
+    panel = window.label_panel
+    grid = panel.class_grid
+
+    for class_index, lock in panel.lock_buttons.items():
+        paint = panel.paint_buttons[class_index]
+        assert grid.indexOf(paint) >= 0 and grid.indexOf(lock) >= 0
+        assert grid.getItemPosition(grid.indexOf(paint))[1] == (
+            grid.getItemPosition(grid.indexOf(lock))[1]
+        ), "a lock sits under the class it protects"
+
+
+def test_the_paint_buttons_carry_the_class_colours(window):
+    """They are the legend, so a separate one would repeat them."""
+    panel = window.label_panel
+
+    assert all(not button.icon().isNull() for button in panel.paint_buttons.values())
+    assert not hasattr(panel, "legend")
+
+
+def test_background_has_no_lock_of_its_own(window):
+    panel = window.label_panel
+
+    assert BACKGROUND_CLASS in panel.paint_buttons
+    assert BACKGROUND_CLASS not in panel.lock_buttons
+    assert panel.lock_all_button.text() == "All"
+
+
+def test_the_tools_carry_an_icon_each(window):
+    panel = window.label_panel
+
+    assert all(not button.icon().isNull() for button in panel.tool_buttons.values())
+
+
+def test_the_brush_size_belongs_to_the_brush(window):
+    panel = window.label_panel
+
+    panel.set_tool(TOOL_FILL)
+    assert not panel.brush_slider.isEnabled(), "the fill has no size"
+
+    panel.set_tool(TOOL_BRUSH)
+    assert panel.brush_slider.isEnabled()
 
 
 def test_locking_a_class_reaches_the_canvas(window):
-    class_index, check = next(iter(window.label_panel.lock_checks.items()))
+    class_index, button = next(iter(window.label_panel.lock_buttons.items()))
 
-    check.setChecked(True)
+    button.setChecked(True)
 
     assert class_index in window.label_panel.canvas.protected
 

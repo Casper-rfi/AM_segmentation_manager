@@ -170,6 +170,19 @@ def stylesheet() -> str:
     QPushButton:pressed {{ background: {PRESSED}; }}
     QPushButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
 
+    QToolButton {{
+        background: {BASE};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+        padding: 3px 8px;
+    }}
+    QToolButton:hover {{ border-color: {ACCENT}; }}
+    /* Fusion marks a checked button with a barely darker fill. These carry
+       which class a stroke will write and which classes are protected from
+       one, so being able to see the answer across the room is worth a rule. */
+    QToolButton:checked {{ background: {SELECTED}; border-color: {ACCENT}; }}
+    QToolButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
+
     QTabWidget::pane {{
         border: 1px solid {BORDER};
         border-radius: 6px;

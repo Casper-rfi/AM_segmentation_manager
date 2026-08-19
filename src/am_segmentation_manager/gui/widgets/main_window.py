@@ -42,7 +42,7 @@ from .changes_log import ChangesLog
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
-from .label_panel import LabelPanel
+from .label_panel import CLASS_KEYS, LabelPanel
 from .metadata_panel import MetadataPanel
 from .operations_panel import OperationsPanel
 from .project_panel import ProjectPanel
@@ -85,13 +85,6 @@ TAB_EXPORT = "export"
 
 #: A key that works everywhere, whatever is showing.
 ANY_TAB = "any"
-
-#: The keys that choose a class to paint, in the order the classes are listed.
-#:
-#: The row above the tools, so the hand that reaches D and F reaches these
-#: without moving. Five because that is what the segmentation config declares;
-#: a longer config leaves the rest without a key rather than borrowing one.
-CLASS_KEYS = ("Q", "W", "E", "R", "T")
 
 #: What the confirm button says for each thing an operation can be blocked on.
 #: The generic wording is right for including corrected files in a batch;

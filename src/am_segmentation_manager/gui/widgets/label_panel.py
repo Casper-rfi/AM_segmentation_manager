@@ -11,17 +11,19 @@ from __future__ import annotations
 
 import logging
 
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QPixmap
+from qtpy.QtCore import QPointF, Qt, Signal
+from qtpy.QtGui import QColor, QPainter, QPixmap, QPolygonF
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QComboBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QSlider,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +32,7 @@ from ...config import BACKGROUND_CLASS
 from ...display import DEFAULT_ALPHA
 from ...layout import MODALITIES
 from ..label_controller import LabelController
-from .common import LABEL_BADGES, chip_icon, class_legend_html
+from .common import LABEL_BADGES, chip_icon
 from .frame_strip import FrameTimeline
 from .label_canvas import (
     DEFAULT_BRUSH_RADIUS,
@@ -38,7 +40,7 @@ from .label_canvas import (
     TOOL_FILL,
     LabelCanvas,
 )
-from .theme import BADGE_STYLES
+from .theme import BADGE_STYLES, TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +48,17 @@ logger = logging.getLogger(__name__)
 #: window is one closing it would throw away.
 UNSAVED_NOTE = "not yet written to disk"
 
-#: The swatch drawn beside each class in the brush's class list.
+#: The swatch drawn on each class's paint button.
 SWATCH = 12
+
+#: The keys that choose a class to paint, one per button in the order the
+#: classes are shown.
+#:
+#: The row above the tools, so the hand that reaches D and F reaches these
+#: without moving. Five because that is what the segmentation config declares;
+#: a longer config leaves the rest without a key rather than borrowing one.
+#: Named here, beside the buttons they press, and bound by the window.
+CLASS_KEYS = ("Q", "W", "E", "R", "T")
 
 #: The brush sizes the slider offers, in pixels across the widest part of the
 #: stroke: size 1 is a single pixel, size 3 is three pixels wide, and size n
@@ -65,6 +76,64 @@ BRUSH_WIDTHS = (
     *range(109, 200, 10),
     *range(219, 400, 20),
 )
+
+
+#: Side of the tool icons, in logical pixels.
+ICON = 16
+
+
+def _tool_pixmap() -> QPixmap:
+    """Return a transparent square to draw a tool icon on."""
+    pixmap = QPixmap(ICON, ICON)
+    pixmap.fill(Qt.transparent)
+    return pixmap
+
+
+def brush_icon():
+    """Return the brush's icon: the disc it paints.
+
+    Drawn rather than shipped, so the window carries no image files. A disc
+    because that is literally what the brush lays down -- the icon and the
+    tool are the same shape.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        painter.drawEllipse(3, 3, ICON - 6, ICON - 6)
+    finally:
+        # Always: a QPainter outliving its paint device crashes the process
+        # rather than reporting an error.
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def fill_icon():
+    """Return the fill's icon: a drop, for the area one click floods.
+
+    A drop rather than the usual bucket: a bucket needs a body, a handle and a
+    pouring lip, and at sixteen pixels those merge into a blob. The pair reads
+    as what each tool does -- the brush lays down a disc, the fill pours.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        # A round bottom with a pointed top, drawn as two overlapping shapes of
+        # one colour rather than as a single path: an arc joined to a curve
+        # leaves a seam wherever the join is a degree out, and at this size the
+        # seam is the most visible thing in the icon.
+        painter.drawEllipse(QPointF(8.0, 9.8), 4.2, 4.2)
+        painter.drawPolygon(
+            QPolygonF([QPointF(8.0, 1.4), QPointF(4.4, 9.4), QPointF(11.6, 9.4)])
+        )
+    finally:
+        painter.end()
+    return chip_icon(pixmap)
 
 
 def _width_position(width: int) -> int:
@@ -90,6 +159,8 @@ class LabelPanel(QWidget):
         """Build the tab against *controller*."""
         super().__init__()
         self.controller = controller
+        #: The classes to offer, in the order they are shown and keyed.
+        self._classes = list(controller.config.classes)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -107,10 +178,6 @@ class LabelPanel(QWidget):
         self.badges = QLabel("")
         self.badges.setTextFormat(Qt.RichText)
         layout.addWidget(self.badges)
-
-        self.legend = QLabel(class_legend_html(controller.config))
-        self.legend.setTextFormat(Qt.RichText)
-        layout.addWidget(self.legend)
 
         self.status = QLabel("")
         self.status.setStyleSheet(BADGE_STYLES["info"])
@@ -180,52 +247,56 @@ class LabelPanel(QWidget):
         return controls
 
     def _build_tools(self) -> QHBoxLayout:
-        """Build the row of drawing tools."""
-        tools = QHBoxLayout()
+        """Build the bottom bar: the tools, the classes, and what to do next.
 
-        self.tool_buttons: dict[str, QRadioButton] = {}
-        tool_group = QButtonGroup(self)
-        for tool, caption, key, hint in (
-            (TOOL_BRUSH, "Brush", "B", "Draw where you drag"),
-            (TOOL_FILL, "Fill", "G", "Flood the area of one class you click in"),
-        ):
-            button = QRadioButton(caption)
+        Columns of two rows rather than one long row, because the controls pair
+        up: the brush with its size, a class with its lock, an edit with the
+        save that writes it. The paint buttons carry the class colours, which is
+        what makes a separate legend unnecessary -- the button you press to
+        paint a class is also the thing that tells you what colour it is.
+        """
+        tools = QHBoxLayout()
+        tools.addLayout(self._build_tool_buttons())
+        tools.addSpacing(20)
+        tools.addLayout(self._build_class_table())
+        tools.addSpacing(20)
+        tools.addLayout(self._build_actions())
+        tools.addStretch()
+
+        self.pending_label = QLabel("")
+        self.pending_label.setStyleSheet(BADGE_STYLES["warning"])
+        tools.addWidget(self.pending_label)
+        return tools
+
+    def _build_tool_buttons(self) -> QGridLayout:
+        """Build the two tools, stacked, with the brush size beside the brush."""
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(2)
+
+        self.tool_buttons: dict[str, QToolButton] = {}
+        group = QButtonGroup(self)
+        for row, (tool, caption, key, hint, icon) in enumerate((
+            (TOOL_BRUSH, "Brush", "D", "Draw where you drag", brush_icon()),
+            (
+                TOOL_FILL, "Fill", "F",
+                "Flood the area of one class you click in", fill_icon(),
+            ),
+        )):
+            button = QToolButton()
+            button.setText(caption)
+            button.setIcon(icon)
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setCheckable(True)
             button.setToolTip(f"{hint}\nShortcut: {key}")
             button.toggled.connect(
                 lambda checked, t=tool: checked and self._tool_chosen(t)
             )
-            tool_group.addButton(button)
-            tools.addWidget(button)
+            group.addButton(button)
+            grid.addWidget(button, row, 0)
             self.tool_buttons[tool] = button
-        brush_button = self.tool_buttons[TOOL_BRUSH]
-        brush_button.blockSignals(True)
-        brush_button.setChecked(True)
-        brush_button.blockSignals(False)
 
-        tools.addSpacing(16)
-        tools.addWidget(QLabel("Paint"))
-        self.class_combo = QComboBox()
-        self.class_combo.setMinimumWidth(150)
-        self.class_combo.setToolTip(
-            "Which class the brush writes. Background is how a stroke erases."
-            "\nShortcuts: D and F step through the classes."
-        )
-        for class_index in self.controller.config.classes:
-            name = self.controller.config.name(class_index)
-            if class_index == BACKGROUND_CLASS:
-                name = f"{name} (erase)"
-            self.class_combo.addItem(self._swatch(class_index), name, class_index)
-        self.class_combo.currentIndexChanged.connect(self._class_chosen)
-        # Qt leaves the first item selected, which is background; the canvas
-        # starts on the first foreground class. Choosing it here makes the list
-        # say what the brush will actually write -- a list that says "erase"
-        # while the brush paints GIS is one that costs somebody an image.
-        self._select_class(self.canvas.paint_value)
-        tools.addWidget(self.class_combo)
-
-        tools.addSpacing(16)
-        self.brush_label = brush_label = QLabel("Brush")
-        tools.addWidget(brush_label)
         self.brush_slider = QSlider(Qt.Horizontal)
         # One step of the slider is one entry in BRUSH_WIDTHS, not one pixel:
         # see why there.
@@ -236,51 +307,120 @@ class LabelPanel(QWidget):
             "How many pixels across the brush paints\n"
             "Shortcuts: [ and ], or Shift and the scroll wheel"
         )
-        brush_label.setToolTip(self.brush_slider.toolTip())
         self.brush_slider.valueChanged.connect(self._brush_resized)
-        tools.addWidget(self.brush_slider)
         self.brush_value = QLabel("")
         self.brush_value.setMinimumWidth(38)
         self.brush_value.setToolTip(self.brush_slider.toolTip())
-        tools.addWidget(self.brush_value)
+        # In the brush's own row: the size is the brush's, and means nothing to
+        # the fill.
+        grid.addWidget(self.brush_slider, 0, 1)
+        grid.addWidget(self.brush_value, 0, 2)
         self._brush_resized(self.brush_slider.value())
 
-        tools.addSpacing(16)
-        lock_label = QLabel("Lock")
-        lock_label.setToolTip("Locked classes cannot be painted over by any tool")
-        tools.addWidget(lock_label)
-        self.lock_checks: dict[int, QCheckBox] = {}
-        for class_index in self.controller.config.foreground_classes:
-            check = QCheckBox(self.controller.config.name(class_index))
-            check.setToolTip(lock_label.toolTip())
-            check.toggled.connect(self._locks_changed)
-            tools.addWidget(check)
-            self.lock_checks[class_index] = check
+        brush_button = self.tool_buttons[TOOL_BRUSH]
+        brush_button.blockSignals(True)
+        brush_button.setChecked(True)
+        brush_button.blockSignals(False)
+        return grid
 
-        tools.addSpacing(16)
+    def _build_class_table(self) -> QGridLayout:
+        """Build the classes to paint, above the same classes' locks.
+
+        One column per class, so a lock sits under the class it protects and
+        the two rows read as one table. Background's column carries the
+        lock-everything button instead of a lock of its own: painting background
+        is how a stroke erases, so locking it would take the eraser away.
+        """
+        self.class_grid = grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(4)
+        grid.setVerticalSpacing(2)
+
+        paint_label, lock_label = QLabel("Paint"), QLabel("Lock")
+        lock_label.setToolTip("A locked class cannot be painted over by any tool")
+        grid.addWidget(paint_label, 0, 0)
+        grid.addWidget(lock_label, 1, 0)
+
+        self.paint_buttons: dict[int, QToolButton] = {}
+        self.lock_buttons: dict[int, QToolButton] = {}
+        paint_group = QButtonGroup(self)
+        for column, class_index in enumerate(self._classes, start=1):
+            name = self.controller.config.name(class_index)
+            erasing = class_index == BACKGROUND_CLASS
+
+            button = QToolButton()
+            button.setText(f"{name} (erase)" if erasing else name)
+            button.setIcon(self._swatch(class_index))
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setCheckable(True)
+            hint = (
+                "Paint background, which is how a stroke erases" if erasing
+                else f"Paint {name}"
+            )
+            if column <= len(CLASS_KEYS):
+                hint += f"\nShortcut: {CLASS_KEYS[column - 1]}"
+            button.setToolTip(hint)
+            button.toggled.connect(
+                lambda checked, index=class_index: checked and self._class_chosen(index)
+            )
+            paint_group.addButton(button)
+            grid.addWidget(button, 0, column)
+            self.paint_buttons[class_index] = button
+
+            if erasing:
+                self.lock_all_button = QToolButton()
+                self.lock_all_button.setText("All")
+                self.lock_all_button.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Preferred
+                )
+                self.lock_all_button.setToolTip(
+                    "Lock every class, or unlock them all\nShortcut: A"
+                )
+                self.lock_all_button.clicked.connect(lambda: self.toggle_all_locks())
+                grid.addWidget(self.lock_all_button, 1, column)
+                continue
+
+            lock = QToolButton()
+            lock.setText(name)
+            lock.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            lock.setCheckable(True)
+            lock.setToolTip(lock_label.toolTip())
+            lock.toggled.connect(self._locks_changed)
+            grid.addWidget(lock, 1, column)
+            self.lock_buttons[class_index] = lock
+
+        # Qt leaves nothing checked; the canvas starts on the first foreground
+        # class. Choosing it here makes the bar say what the brush will actually
+        # write -- a bar reading "erase" while the brush paints GIS is one that
+        # costs somebody an image.
+        self._select_class(self.canvas.paint_value)
+        return grid
+
+    def _build_actions(self) -> QGridLayout:
+        """Build undo and redo, above the save they lead to."""
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(4)
+        grid.setVerticalSpacing(2)
+
         self.undo_button = QPushButton("Undo")
         self.undo_button.setToolTip("Undo the last stroke on this label\nShortcut: Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
-        tools.addWidget(self.undo_button)
+        grid.addWidget(self.undo_button, 0, 0)
+
         self.redo_button = QPushButton("Redo")
         self.redo_button.setToolTip("Redo the last undone stroke\nShortcut: Ctrl+Shift+Z")
         self.redo_button.clicked.connect(self.redo)
-        tools.addWidget(self.redo_button)
+        grid.addWidget(self.redo_button, 0, 1)
 
-        tools.addSpacing(16)
         self.save_button = QPushButton("Save labels...")
         self.save_button.setToolTip(
             "Write every label edited in this lamella, and choose whether to "
             "mark them corrected\nShortcut: Ctrl+S"
         )
         self.save_button.clicked.connect(self.save_requested.emit)
-        tools.addWidget(self.save_button)
-
-        tools.addStretch()
-        self.pending_label = QLabel("")
-        self.pending_label.setStyleSheet(BADGE_STYLES["warning"])
-        tools.addWidget(self.pending_label)
-        return tools
+        grid.addWidget(self.save_button, 1, 0, 1, 2)
+        return grid
 
     def _swatch(self, class_index: int):
         """Return a colour chip for one class."""
@@ -329,7 +469,7 @@ class LabelPanel(QWidget):
         self.canvas.set_tool(tool)
         # The brush size means nothing to the fill, so it is switched off rather
         # than left looking as though it applies.
-        for widget in (self.brush_label, self.brush_slider, self.brush_value):
+        for widget in (self.brush_slider, self.brush_value):
             widget.setEnabled(tool == TOOL_BRUSH)
 
     def set_tool(self, tool: str) -> None:
@@ -338,28 +478,32 @@ class LabelPanel(QWidget):
         if button is not None:
             button.setChecked(True)
 
-    def _class_chosen(self, index: int) -> None:
-        if index >= 0:
-            self.canvas.set_paint_value(self.class_combo.itemData(index))
+    def _class_chosen(self, class_index: int) -> None:
+        self.canvas.set_paint_value(class_index)
 
     def _select_class(self, class_index: int) -> None:
-        """Show *class_index* as the class being painted, if the list has it."""
-        position = self.class_combo.findData(class_index)
-        if position >= 0:
-            self.class_combo.setCurrentIndex(position)
+        """Show *class_index* as the class being painted, if there is a button."""
+        button = self.paint_buttons.get(class_index)
+        if button is not None:
+            button.setChecked(True)
+
+    @property
+    def paint_class(self) -> int:
+        """Return the class the brush will write."""
+        return self.canvas.paint_value
 
     def class_names(self) -> list[str]:
         """Return the classes that can be painted, in the order they are shown."""
-        return [self.class_combo.itemText(index) for index in range(self.class_combo.count())]
+        return [self.paint_buttons[index].text() for index in self._classes]
 
     def select_class_at(self, position: int) -> None:
-        """Paint the class at *position* in the list, from the keyboard.
+        """Paint the class at *position* in the row, from the keyboard.
 
         Out of range does nothing: the keys are laid out for the classes a
         config declares, and a config with fewer leaves the last of them idle.
         """
-        if 0 <= position < self.class_combo.count():
-            self.class_combo.setCurrentIndex(position)
+        if 0 <= position < len(self._classes):
+            self._select_class(self._classes[position])
 
     def _brush_resized(self, position: int) -> None:
         """Set the brush to the width at *position* in :data:`BRUSH_WIDTHS`."""
@@ -388,13 +532,13 @@ class LabelPanel(QWidget):
         stroke erases, so locking it would take the eraser away.
         """
         if locked is None:
-            locked = not all(check.isChecked() for check in self.lock_checks.values())
-        for check in self.lock_checks.values():
-            check.setChecked(locked)
+            locked = not all(button.isChecked() for button in self.lock_buttons.values())
+        for button in self.lock_buttons.values():
+            button.setChecked(locked)
 
     def _locks_changed(self) -> None:
         self.canvas.set_protected(
-            {index for index, check in self.lock_checks.items() if check.isChecked()}
+            {index for index, button in self.lock_buttons.items() if button.isChecked()}
         )
 
     def _stroke_finished(self, patch) -> None:
