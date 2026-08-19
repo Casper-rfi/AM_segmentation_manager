@@ -37,6 +37,7 @@ if HAS_QT and HAS_IMAGE_STACK:
         QFocusEvent,
         QImage,
         QMouseEvent,
+        QWheelEvent,
     )
     from qtpy.QtWidgets import (
         QApplication,
@@ -60,6 +61,7 @@ if HAS_QT and HAS_IMAGE_STACK:
         label_colour_table,
         label_to_qimage,
     )
+    from am_segmentation_manager.gui.widgets.label_panel import BRUSH_WIDTHS
     from am_segmentation_manager.gui.widgets.main_window import (
         TAB_CURATE,
         TAB_LABEL,
@@ -722,10 +724,84 @@ def test_locking_a_class_reaches_the_canvas(window):
     assert class_index in window.label_panel.canvas.protected
 
 
-def test_the_brush_slider_sets_the_radius(window):
-    window.label_panel.brush_slider.setValue(25)
+def test_the_brush_slider_sets_the_width(window):
+    panel = window.label_panel
+    panel.brush_slider.setValue(6)
 
-    assert window.label_panel.canvas.brush_radius == 25
+    assert panel.brush_width == BRUSH_WIDTHS[6]
+    assert panel.canvas.brush_radius == (BRUSH_WIDTHS[6] - 1) // 2
+
+
+def test_the_brush_reads_out_in_pixels_painted(window):
+    panel = window.label_panel
+    panel.brush_slider.setValue(1)
+
+    assert panel.brush_width == 3
+    assert panel.brush_value.text() == "3 px"
+
+
+def test_the_smallest_brush_is_a_single_pixel(window):
+    panel = window.label_panel
+    panel.brush_slider.setValue(0)
+
+    assert panel.brush_width == 1
+    assert panel.canvas.brush_radius == 0
+
+
+def test_stepping_the_brush_moves_one_offered_size(window):
+    panel = window.label_panel
+    panel.brush_slider.setValue(0)
+
+    panel.step_brush(1)
+
+    assert panel.brush_width == 3, (
+        "one press from a single pixel is three across, not five"
+    )
+
+
+def test_shift_and_the_wheel_resize_the_brush(window):
+    panel = window.label_panel
+    panel.brush_slider.setValue(4)
+    before = panel.brush_width
+
+    panel.canvas.wheelEvent(wheel_event(QPoint(50, 50), 120, Qt.ShiftModifier))
+
+    assert panel.brush_width > before
+
+
+def test_shift_and_the_wheel_do_not_zoom(window):
+    canvas = window.label_panel.canvas
+    before = canvas.transform().m11()
+
+    canvas.wheelEvent(wheel_event(QPoint(50, 50), 120, Qt.ShiftModifier))
+
+    assert canvas.transform().m11() == before
+
+
+def test_a_sideways_shifted_wheel_still_resizes_the_brush(window):
+    # macOS reports Shift and the wheel as a horizontal scroll.
+    panel = window.label_panel
+    panel.brush_slider.setValue(4)
+    before = panel.brush_width
+
+    panel.canvas.wheelEvent(
+        wheel_event(QPoint(50, 50), 120, Qt.ShiftModifier, sideways=True)
+    )
+
+    assert panel.brush_width > before
+
+
+def wheel_event(position, delta, modifiers=Qt.NoModifier, *, sideways=False):
+    """Build a wheel event, under either Qt version."""
+    angle = QPoint(delta, 0) if sideways else QPoint(0, delta)
+    point = QPointF(position)
+    try:  # Qt 6 wants the phase and the inversion as well.
+        return QWheelEvent(
+            point, point, QPoint(0, 0), angle,
+            Qt.NoButton, modifiers, Qt.NoScrollPhase, False,
+        )
+    except TypeError:  # pragma: no cover - depends on the installed binding
+        return QWheelEvent(position, delta, Qt.NoButton, modifiers, Qt.Vertical)
     assert window.label_panel.brush_value.text() == "25"
 
 

@@ -34,8 +34,6 @@ from .common import LABEL_BADGES, chip_icon, class_legend_html
 from .frame_strip import FrameTimeline
 from .label_canvas import (
     DEFAULT_BRUSH_RADIUS,
-    MAX_BRUSH_RADIUS,
-    MIN_BRUSH_RADIUS,
     TOOL_BRUSH,
     TOOL_FILL,
     LabelCanvas,
@@ -50,6 +48,31 @@ UNSAVED_NOTE = "not yet written to disk"
 
 #: The swatch drawn beside each class in the brush's class list.
 SWATCH = 12
+
+#: The brush sizes the slider offers, in pixels across the widest part of the
+#: stroke: size 1 is a single pixel, size 3 is three pixels wide, and size n
+#: covers 2n-1. Sizes are *odd* because the brush is a disc centred on a pixel.
+#:
+#: The list is why the slider is not a plain range. It is 120 pixels wide, so a
+#: linear 1-to-200 range moves in steps of two and cannot be set to a small odd
+#: size at all -- which is exactly the end that matters, since the last
+#: corrections along a boundary are made a pixel or two at a time. Every size up
+#: to 39 is offered; above that the steps widen, because nobody needs to pick
+#: 151 out from 149 on a slider this size.
+BRUSH_WIDTHS = (
+    *range(1, 40, 2),
+    *range(43, 100, 4),
+    *range(109, 200, 10),
+    *range(219, 400, 20),
+)
+
+
+def _width_position(width: int) -> int:
+    """Return the slider position offering *width*, or the nearest below it."""
+    return max(
+        (index for index, offered in enumerate(BRUSH_WIDTHS) if offered <= width),
+        default=0,
+    )
 
 
 class LabelPanel(QWidget):
@@ -76,6 +99,7 @@ class LabelPanel(QWidget):
 
         self.canvas = LabelCanvas(controller.config)
         self.canvas.edited.connect(self._stroke_finished)
+        self.canvas.brush_stepped.connect(self.step_brush)
         layout.addWidget(self.canvas, stretch=1)
 
         layout.addLayout(self._build_tools())
@@ -203,18 +227,23 @@ class LabelPanel(QWidget):
         self.brush_label = brush_label = QLabel("Brush")
         tools.addWidget(brush_label)
         self.brush_slider = QSlider(Qt.Horizontal)
-        self.brush_slider.setRange(MIN_BRUSH_RADIUS, MAX_BRUSH_RADIUS)
-        self.brush_slider.setValue(DEFAULT_BRUSH_RADIUS)
+        # One step of the slider is one entry in BRUSH_WIDTHS, not one pixel:
+        # see why there.
+        self.brush_slider.setRange(0, len(BRUSH_WIDTHS) - 1)
+        self.brush_slider.setValue(_width_position(2 * DEFAULT_BRUSH_RADIUS + 1))
         self.brush_slider.setFixedWidth(120)
         self.brush_slider.setToolTip(
-            "Brush radius in image pixels\nShortcuts: [ and ] step the size"
+            "How many pixels across the brush paints\n"
+            "Shortcuts: [ and ], or Shift and the scroll wheel"
         )
         brush_label.setToolTip(self.brush_slider.toolTip())
         self.brush_slider.valueChanged.connect(self._brush_resized)
         tools.addWidget(self.brush_slider)
-        self.brush_value = QLabel(str(DEFAULT_BRUSH_RADIUS))
-        self.brush_value.setMinimumWidth(28)
+        self.brush_value = QLabel("")
+        self.brush_value.setMinimumWidth(38)
+        self.brush_value.setToolTip(self.brush_slider.toolTip())
         tools.addWidget(self.brush_value)
+        self._brush_resized(self.brush_slider.value())
 
         tools.addSpacing(16)
         lock_label = QLabel("Lock")
@@ -327,12 +356,21 @@ class LabelPanel(QWidget):
                 (self.class_combo.currentIndex() + delta) % count
             )
 
-    def _brush_resized(self, radius: int) -> None:
-        self.canvas.set_brush_radius(radius)
-        self.brush_value.setText(str(self.canvas.brush_radius))
+    def _brush_resized(self, position: int) -> None:
+        """Set the brush to the width at *position* in :data:`BRUSH_WIDTHS`."""
+        width = BRUSH_WIDTHS[max(0, min(position, len(BRUSH_WIDTHS) - 1))]
+        # The canvas works in the radius OpenCV draws with; the reviewer is
+        # shown how wide the stroke comes out, which is the thing they can see.
+        self.canvas.set_brush_radius((width - 1) // 2)
+        self.brush_value.setText(f"{width} px")
+
+    @property
+    def brush_width(self) -> int:
+        """Return how many pixels across the brush paints."""
+        return 2 * self.canvas.brush_radius + 1
 
     def step_brush(self, delta: int) -> None:
-        """Grow or shrink the brush, from the keyboard."""
+        """Grow or shrink the brush by one offered size, from the keyboard."""
         self.brush_slider.setValue(self.brush_slider.value() + delta)
 
     def _locks_changed(self) -> None:

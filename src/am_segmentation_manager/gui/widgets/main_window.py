@@ -116,6 +116,7 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str], ...]] = {
         ("Click with the fill tool", "Flood the area of one class you clicked in"),
         ("Hold Space, or drag with the middle button", "Pan instead of painting"),
         ("Scroll wheel", "Zoom about the pointer"),
+        ("Shift + scroll wheel", "Make the brush bigger or smaller"),
         ("Click or drag the timeline", "Move to a frame"),
         ("A white band on the timeline", "That label has unsaved edits"),
     ),
@@ -876,8 +877,8 @@ class CurationWindow(QMainWindow):
             ),
             Binding("D", "Previous class", lambda: self.label_panel.step_class(-1), TAB_LABEL),
             Binding("F", "Next class", lambda: self.label_panel.step_class(1), TAB_LABEL),
-            Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-2), TAB_LABEL),
-            Binding("]", "Larger brush", lambda: self.label_panel.step_brush(2), TAB_LABEL),
+            Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-1), TAB_LABEL),
+            Binding("]", "Larger brush", lambda: self.label_panel.step_brush(1), TAB_LABEL),
             Binding("Ctrl+S", "Save this lamella's labels", self.save_labels, TAB_LABEL),
             Binding("Ctrl+Z", "Undo the last stroke", self.label_panel.undo, TAB_LABEL),
             Binding(

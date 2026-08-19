@@ -128,6 +128,11 @@ class LabelCanvas(ImageView):
     #: one undo step.
     edited = Signal(object)
 
+    #: Emitted with +1 or -1 when Shift and the wheel ask for a bigger or
+    #: smaller brush. Reported rather than applied: which sizes are offered is
+    #: the panel's, and the slider has to move with the wheel.
+    brush_stepped = Signal(int)
+
     def __init__(self, config: SegmentationConfig) -> None:
         """Create a canvas drawing classes from *config*."""
         super().__init__()
@@ -504,6 +509,22 @@ class LabelCanvas(ImageView):
         self.set_label(self._label_array)
 
     # -- panning by keyboard -----------------------------------------------
+
+    def wheelEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Zoom, or resize the brush when Shift is held.
+
+        macOS turns Shift and the wheel into a *horizontal* scroll, so the
+        delta arrives on the x axis there and on the y axis everywhere else.
+        Reading both is what makes this work on either.
+        """
+        if event.modifiers() & Qt.ShiftModifier:
+            delta = event.angleDelta()
+            step = delta.y() or delta.x()
+            if step:
+                self.brush_stepped.emit(1 if step > 0 else -1)
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Hold space to pan with the left button instead of painting."""
