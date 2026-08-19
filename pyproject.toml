@@ -133,14 +133,13 @@ line-length = 100
 src = ["src", "tests"]
 target-version = "py311"
 
-# Verbatim copies of AM_training's code, kept byte-identical so they can be
-# diffed against upstream. Linting them would report import order and trailing
-# whitespace we must not fix: the moment this package reformats them, "is this
+# A verbatim copy of AM_training's module, kept byte-identical so it can be
+# diffed against upstream. Linting it would report import order and trailing
+# whitespace we must not fix: the moment this package reformats it, "is this
 # still the same preprocessing the model was trained with?" stops being a
 # question `diff` can answer. Not ours to lint, so not linted.
 extend-exclude = [
   "src/am_segmentation_manager/ml/preprocessing.py",
-  "scripts/sem_prediction_pseudolabels_V4.py",
 ]
 
 [tool.ruff.lint]
