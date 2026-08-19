@@ -137,15 +137,10 @@ class FrameTimeline(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip(
-            "Curation progress across the lamella: SEM on the top row, FIB "
-            "below.\nThe thin line outside each row shows its labels: bright "
-            "means annotated, dim means an empty placeholder, and nothing "
-            "means no label file.\nAn amber wash marks a frame whose images "
-            "disagree with their shared label.\n"
-            "Click or drag to jump to a frame; Left/Right arrow keys step one.\n"
-            "Ctrl-click picks a frame out for a state change, Shift-click "
-            "extends the run, and Esc clears it. The white band on top marks "
-            "what is picked."
+            "Curation progress: SEM above, FIB below, each with a thin line "
+            "for its labels, bright where one holds an annotation.\n"
+            "Amber means a frame disagrees with its label.\n"
+            "Click to jump; F1 lists the rest."
         )
 
     def set_states(

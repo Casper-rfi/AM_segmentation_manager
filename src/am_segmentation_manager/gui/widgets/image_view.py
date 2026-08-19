@@ -3,6 +3,9 @@
 The plain image and the same image under its label overlay are only useful side
 by side if they show the same region at the same magnification, so the two views
 share their zoom and scroll position: pan one and the other follows.
+
+A pane can be scrolled and zoomed past the edges of what it holds, and shows no
+scrollbars; see `docs/decisions.md` § Display.
 """
 from __future__ import annotations
 

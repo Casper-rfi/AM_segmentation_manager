@@ -52,10 +52,9 @@ class OperationsPanel(QWidget):
         self.convert_button = QPushButton("Convert predictions...")
         self.convert_button.setToolTip(
             "Write a label from each selected image's prediction.\n"
-            "Replacing a label that is already there is offered and has to be "
-            "confirmed; a proofread label in corrected/ is never replaced.\n"
-            "Post-processed (clean/) predictions are never used: their "
-            "intensity values no longer match the segmentation classes."
+            "Replacing an existing label has to be confirmed, and a proofread "
+            "one is never replaced. Post-processed (clean/) predictions are "
+            "not used."
         )
         self.convert_button.clicked.connect(self.convert_requested.emit)
         column.addWidget(self.convert_button)

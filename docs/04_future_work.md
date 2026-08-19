@@ -1,6 +1,6 @@
 # Future work
 
-Status: **sketches, not designs.** Last reviewed 2026-08-18.
+Status: **sketches, not designs.** Last reviewed 2026-08-19.
 
 A holding area for things deliberately not being designed yet. Each entry
 records enough to stop the idea being lost, and the questions that would have to
@@ -15,9 +15,8 @@ is needed becomes detail that has to be maintained and re-argued.
 from the CLI and then the GUI, closing the loop — predict, convert to labels,
 proofread, export, retrain. Raw predictions are what matters here: this package
 converts only those, for the reason in [`decisions.md`](decisions.md) §
-Filesystem conventions. --> Strongly considering to build inference function
-based off standalone scripts now, which are functionally equivalent to inference
-in AM training package.
+Filesystem conventions. The leaning is to build the inference function from the
+standalone scripts, which are functionally equivalent to `AM_training`'s.
 
 The output side is done: `operations/predictions.py` converts predictions into
 labels, resizing where dimensions differ. What is missing is producing them.
@@ -68,17 +67,15 @@ specified once there is a real input to look at.
 
 ---
 
-## 5. Label quantification in the window
+## 5. Label areas beside the image
 
-**What you want:** `quantify-labels` where the labels are on screen, so a surface
-area can be looked at against the image it was measured from.
+**What you want, now decided:** the area of each class in the frame on screen, in
+um^2, beside the frame — not a per-lamella table. A spreadsheet reads that table
+better from `quantify-labels`' CSV than any pane here would, and the Export tab
+already counts and groups across the collection.
 
-**Why it is not built:** the Export tab already has the *counting* half —
-**Measure labels** opens every label and the crack and area breakdowns group
-images by what was found. What is left is the per-lamella table: numbers per
-class per lamella, which needs a widget, a sort order and somewhere to put it,
-and which a spreadsheet reads better from the CSV than any pane here would.
-
-**The question to answer first:** is the wanted thing that table, or a per-frame
-number beside the image being looked at? The second is much cheaper, and may be
-the actual need. --> per-frame number beside the image
+**What is left is where to put the number.** The measurement is there:
+`label_measure` counts class pixels, `label_pixel_size_nm` scales them, and the
+Label tab already measures each frame once while the speck filter is on. The open
+question is whether it belongs under the badges, beside the timeline, or only on
+request.

@@ -641,6 +641,26 @@ def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
         fresh.close()
 
 
+#: Longest tooltip worth reading in a hover, as the Export tab already holds
+#: itself to. Past this it is documentation, and a tooltip nobody finishes
+#: explains nothing.
+MAX_TOOLTIP = 200
+
+
+def test_no_tooltip_in_the_window_is_longer_than_anyone_reads(window):
+    """The ceiling was stated in docs/decisions.md and enforced on one tab, so
+    the timeline grew a 488-character legend nobody was reading."""
+    from qtpy.QtWidgets import QWidget
+
+    too_long = {
+        widget.toolTip()
+        for widget in window.findChildren(QWidget)
+        if len(widget.toolTip()) > MAX_TOOLTIP
+    }
+
+    assert not too_long
+
+
 # ---------------------------------------------------------------------------
 # Shortcut reference
 # ---------------------------------------------------------------------------

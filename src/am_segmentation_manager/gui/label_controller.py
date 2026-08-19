@@ -1,8 +1,9 @@
 """What the Label tab is looking at: one lamella, one modality, one frame.
 
-Holds the proofreading view's navigation and its own full-resolution frame
-cache, with no dependency on a GUI toolkit. Nothing here draws or edits; this
-layer decides what is on screen.
+Holds the proofreading view's navigation, its own full-resolution frame cache
+and the edits waiting to be written, with no dependency on a GUI toolkit.
+Nothing here draws; this layer decides what is on screen and what a save would
+do with it.
 
 Two things separate it from the curation view. Frames are read at full
 resolution, because proofreading a boundary means seeing the pixels it runs

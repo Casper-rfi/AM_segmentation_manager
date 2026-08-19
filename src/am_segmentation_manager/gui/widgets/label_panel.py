@@ -1,8 +1,8 @@
 """The Label tab: one acquisition at full resolution, ready to be proofread.
 
 Reads its own controller and draws from it, so the window wires this tab up
-rather than running it. Nothing here writes to disk; the tab is a viewer until
-the drawing tools arrive.
+rather than running it. Nothing here touches the filesystem: an edit is held by
+the controller's session until the window saves it.
 
 The lamella is not chosen here. It is handed in from the Curate tab, so the
 collection has one place where "which lamella am I on" is decided.
@@ -296,10 +296,8 @@ class LabelPanel(QWidget):
         self.speck_check = QCheckBox("Find specks")
         self.speck_check.setToolTip(
             "Ring every component of a few pixels: a stray annotation, or a "
-            "hole that size inside one.\nSwitching it on sets the view that "
-            "makes them findable, and "
-            "switching it off puts your own back.\nShortcut: X, and N steps to "
-            "the next one"
+            "hole that size inside one.\nSets the view that shows them, and "
+            "puts yours back after.\nShortcut: X; N steps to the next"
         )
         self.speck_check.toggled.connect(self._finding_toggled)
         controls.addWidget(self.speck_check)
@@ -518,9 +516,8 @@ class LabelPanel(QWidget):
         self.timeline = FrameTimeline()
         self.timeline.setToolTip(
             "The images of this lamella worth proofreading, in order.\nThe thin "
-            "line shows each label: bright means annotated, dim means an empty "
-            "placeholder, and nothing means no label file.\nClick or drag to "
-            "jump to one; Left/Right arrow keys step one."
+            "line is each label, bright where it holds an annotation.\nClick or "
+            "drag to jump to one; Left and Right step."
         )
         self.timeline.frame_selected.connect(self.select_frame)
         row.addWidget(self.timeline, stretch=1)

@@ -276,6 +276,12 @@ that palette still reads back as the value it was set to, so a test asserting on
 passes while the screen shows something else. **Anything about how something
 *renders* is asserted on the pixels**, for that reason.
 
+It also suppresses what Qt draws by itself. Qt tints a dialog's default button and
+marks a checked one; the `QPushButton` and `QToolButton` rules overrode both, so the
+save dialog offered two very different choices as two identical buttons and the class
+being painted was marked by a fill nobody could see across a desk. Both are re-stated
+in `theme.py` — anything that relied on Qt's own emphasis has to be.
+
 **A locked editor keeps its normal text colour.** The Add data tab opens locked and is
 mostly used for reading, and Qt's disabled grey puts every value at low contrast. The
 stylesheet dulls the *background* of a disabled input instead and leaves the text dark,
@@ -288,6 +294,14 @@ of eliding — which cut a session's projects off into identical-looking rows.
 `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends, and the tooltip carries the
 whole label. Applies to the metadata panel's project list and to the Export tab's
 project, lamella and stage filters.
+
+**The image panes have no scrollbars, and their scene is bigger than the image.**
+Annotation is easiest to leave a pixel short at the edges, and both limits stopped
+exactly there: the zoom floor was the fit scale, pressing the frame against the border,
+and the scene was the image, so an edge could never be dragged away from it. The scene
+now carries a quarter of the image as slack on every side and the zoom goes two steps
+below fit. Scrollbars go because a scene deliberately larger than its content leaves
+them permanently visible and permanently not full.
 
 **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under
 PyQt5 it returns the proportional `.AppleSystemUIFont` while reporting the family it
@@ -311,10 +325,12 @@ column a widget to hold its spare height: a layout shares that height between wh
 is still visible, and a stretch cannot be hidden again.
 
 **A tooltip says what a control does, in under 200 characters**, and a test holds the
-ceiling. They had grown to five lines apiece explaining *why* the software works as it
-does, which belongs here rather than in a hover nobody finishes. Every control in the
-Filters box also says what it narrows: that it decides the breakdown *and* the exports
-is not visible from the box's title.
+ceiling across the whole window. They had grown to five lines apiece explaining *why*
+the software works as it does, which belongs here rather than in a hover nobody
+finishes. The ceiling was enforced on one tab for a while, and in the gap the curation
+timeline grew a 488-character legend. Every control in the Filters box also says what
+it narrows: that it decides the breakdown *and* the exports is not visible from the
+box's title.
 
 **A long operation runs on a thread, and there is nothing to cancel.** Recompressing
 a project's labels is minutes, and Qt draws nothing while the thread owning the
@@ -376,6 +392,20 @@ indefinitely on the first test to run a real background operation, with no trace
 because the failure path opens a modal box nobody is there to dismiss. Connect once
 and track what is pending in an attribute. The same shape hides in any
 connect-per-call pattern.
+
+**`QProxyStyle.styleHint` segfaults PySide6.** Overriding it to answer
+`SH_DialogButtonLayout` — to fix the button order in every dialog at once, since Fusion
+reports the Windows order wherever it runs and ends a row with *Cancel* — crashes the
+process while a `QMessageBox` is being built. Returning the enum rather than an `int`
+is separately wrong and only warns. The save dialog lays its own buttons out instead;
+any dialog that cares about the order has to.
+
+**An offscreen window cannot answer three questions**, and asking anyway produces tests
+that pass on nothing. It is never activated, so `hasFocus()` is False for every widget
+and `focusWidget()` is what records who asked. Nothing is shown, so `isVisible()` is
+False whatever the code did and `isHidden()` is the state to assert. And a modal dialog
+has nobody to dismiss it, so its `exec_` must be intercepted — per dialog class, not
+just `QMessageBox` — or the suite hangs rather than fails.
 
 **Never mix conda-forge with Anaconda `defaults`.** `environment.yml` pins
 `nodefaults` for this reason: a mixed environment paired Anaconda's OpenCV with
