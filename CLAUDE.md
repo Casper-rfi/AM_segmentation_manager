@@ -35,13 +35,14 @@ Code quality, maintainability and extensibility therefore matter.
 	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
 	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
 	3. `edit-metadata` is used to add any missing metadata or make corrections
-1. Curating data and proofreading pseudo-labels:
+	4. import legacy projects (not yet implemented)
+	5. `compress-labels` reduces the disk space labels occupy of legacy projects (still in GUI under curate)
+1. View & curate data and create predictions:
 	1. The `gui` is used to set the state of FIB and SEM images to `deselect` (don't create and proofread labels), `select` (create pseudolabels and proofread) or `correct` (has proofread pseudolabels)
-	2. `convert-predictions` creates pseudo-labels from the predictions
-	3. Or predictions are created with the Adaptive Milling ML training package (planned, not yet ready to implement)
-	4. `compress-labels` reduces the disk space labels occupy
-3. proofread and correct labels manually in the GUI
-2. Quantify metadata and labels:
+	2. Create predictions (planned, not yet implemented)
+	3. `convert-predictions` creates pseudo-labels from the predictions
+2. create labels & correct predictions manually in the GUI
+3. Quantify metadata and labels & export:
 	1. `stats` quantifies the proportion of images with given project and image metadata
 	2. `quantify-labels` measures label surface areas
 	3. The GUI provides basic visualisation

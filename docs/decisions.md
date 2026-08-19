@@ -11,12 +11,6 @@ here. If something below becomes wrong, correct it in place.
 
 ## Architecture
 
-**Qt via `qtpy`, not napari.** napari is the obvious choice in this domain and is
-wrong for the main viewer: an image layer wants a uniform `(N, Y, X)` stack, but stage
-image dimensions are not equal across a lamella, and the plot PNGs have a different
-aspect ratio again. `qtpy` rather than a binding directly, because loading two Qt
-bindings into one process crashes in hard-to-debug ways.
-
 **No Qt below `gui/widgets/`.** Everything the GUI knows lives in plain Python
 controllers. This is what makes navigation, cache eviction and state expansion
 testable without a display server. It is the one structural rule of the UI; adding a
@@ -52,10 +46,6 @@ with its own scope selectors, and `quantify-labels` keeps the per-lamella table:
 of numbers per class per lamella is not something anyone acts on one row at a time, and
 a spreadsheet reads it better from the CSV.
 
-**Label editing is out of scope.** Proofreading stays in the external segmentation
-software; this package decides *which* images get proofread and records when they are
-done.
-
 **What a measured number means is set beside the breakdown, not among the filters.**
 The crack threshold and the area bin resolution change how a measurement is *read*, not
 which images are in play, so a Filters box promising to narrow something is the wrong
@@ -63,16 +53,6 @@ home. Changing the threshold re-measures at once rather than spending the Measur
 again: `read_label_pixels` caches component pixel counts *without* the threshold, so a
 new one costs arithmetic — 11-70 ms against 7.7 s for the first pass. `load_measurements`
 keeps the headers it reads for the same reason.
-
-**The area bins are fixed edges cut more or less finely, never fitted to the data.**
-Fitting them would make a bin mean something different after a filter changed, and stop
-the classes being read against each other, which is the point of one shared log scale.
-So the knob is how finely each decade is cut — 1, 2, 3 or 6, on the standard 1-3, 1-2-5
-and E6 subdivisions, which keeps every edge round and splits a bin rather than moving
-it. Six exists because a class can span less than a decade and still want a
-distribution: the corrected lamellae run 58 to 495 um^2, so at three per decade they
-fall in two bins however the rest of the scale is cut. Cracks span 3.6 decades and read
-well at one. The control cannot manufacture spread that is not in the data.
 
 **No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few
 lines with no dependency, over thousands of records rather than millions. pandas belongs
@@ -186,11 +166,6 @@ means a different lamella as soon as the project changes; frame indices clear wi
 lamella, because that is all an index means here. Everything reaches
 `transition_records` through `scoped_records()`, so group expansion and the
 corrected-data guard apply to a ticked selection unchanged.
-
-**A tick is Qt's own checkbox, not the status chip.** Curation progress and "I am about
-to change this" are orthogonal — a finished lamella can be ticked and an untouched one
-need not be — so one mark cannot carry both without becoming ambiguous in exactly the
-situation that matters. Two marks side by side also gets keyboard toggling for free.
 
 **Reading a label gives three answers, not two.** `is_label_file_empty()` is
 tri-state, and **None means "cannot tell"** — deliberately distinct from True, because
@@ -335,14 +310,6 @@ were visible before there was anything to put in them. Hide the scroller, and gi
 column a widget to hold its spare height: a layout shares that height between whatever
 is still visible, and a stretch cannot be hidden again.
 
-**The breakdown pane shows a table or a chart, never both, and draws the chart only
-while it is showing.** They are the same numbers, and half of each reads worse than
-either whole; a figure costs real time, so a pane nobody is looking at does not get one
-on every filter change. There is no second chart in a window of its own: the pane takes
-the bulk of the tab and carries matplotlib's own toolbar, so zooming and saving work
-there, and a button called "Chart" beside a *Table/Chart* switch is the one anyone
-presses — which made the tab look as though it had no inline chart at all.
-
 **A tooltip says what a control does, in under 200 characters**, and a test holds the
 ceiling. They had grown to five lines apiece explaining *why* the software works as it
 does, which belongs here rather than in a hover nobody finishes. Every control in the
@@ -355,14 +322,6 @@ widgets is busy — so the work goes to `gui/worker.py` and the window shows a b
 dialog. No cancel button: these operations validate the complete set of changes before
 performing any of them, and stopping one halfway leaves exactly the half-applied
 collection that rule exists to prevent.
-
-**Timeline label lines are violet (`#a78bfa`); empty placeholders are grey
-(`#8a8a8a`).** Each modality's label line sits outside its state row so the two state
-rows stay adjacent for comparison. The placeholder must be *lighter* than the
-background, not a dim version of the annotation colour: against a near-black
-background a dark colour is indistinguishable from nothing drawn, which collapses
-"placeholder" into "no label" — the exact distinction the line exists to make. A test
-asserts the lightness ordering (background < empty < annotated).
 
 ---
 
@@ -417,11 +376,6 @@ indefinitely on the first test to run a real background operation, with no trace
 because the failure path opens a modal box nobody is there to dismiss. Connect once
 and track what is pending in an attribute. The same shape hides in any
 connect-per-call pattern.
-
-**The development and user environments differ** — PyQt5 here, PySide6 there, and a
-different macOS. Bugs keep reaching the user through that gap, which is why the entries
-above prefer one code path over a platform's own. Run the suite under both bindings and
-a non-English locale before releasing.
 
 **Never mix conda-forge with Anaconda `defaults`.** `environment.yml` pins
 `nodefaults` for this reason: a mixed environment paired Anaconda's OpenCV with

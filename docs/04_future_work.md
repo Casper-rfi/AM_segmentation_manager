@@ -15,7 +15,9 @@ is needed becomes detail that has to be maintained and re-argued.
 from the CLI and then the GUI, closing the loop — predict, convert to labels,
 proofread, export, retrain. Raw predictions are what matters here: this package
 converts only those, for the reason in [`decisions.md`](decisions.md) §
-Filesystem conventions.
+Filesystem conventions. --> Strongly considering to build inference function
+based off standalone scripts now, which are functionally equivalent to inference
+in AM training package.
 
 The output side is done: `operations/predictions.py` converts predictions into
 labels, resizing where dimensions differ. What is missing is producing them.
@@ -66,25 +68,7 @@ specified once there is a real input to look at.
 
 ---
 
-## 5. Jumping from the Export tab to the images it names
-
-**What you want:** the Export tab finds the empty and unlabelled images and names
-the lamella holding them — by filter and breakdown, and outright for the
-corrected ones when marking a set corrected or exporting. Fixing them happens in
-the Curate tab, and the only thing missing is being carried there: switching tabs
-and navigating by hand is the whole of it.
-
-**Why it is not designed yet:** the two tabs hold different kinds of selection.
-Curate's is a ticked *set* of projects, lamellae or frames, and is the target of
-an operation that writes to disk; Export's is a *predicate* over images. Handing
-a predicate to a ticked set means choosing what it becomes on arrival — tick
-every project containing a match, every lamella, or jump to the first frame and
-tick nothing? Each is defensible, and the wrong one silently widens what a later
-state change applies to, which is what the ticked set exists to prevent.
-
----
-
-## 6. Label quantification in the window
+## 5. Label quantification in the window
 
 **What you want:** `quantify-labels` where the labels are on screen, so a surface
 area can be looked at against the image it was measured from.
@@ -97,4 +81,4 @@ and which a spreadsheet reads better from the CSV than any pane here would.
 
 **The question to answer first:** is the wanted thing that table, or a per-frame
 number beside the image being looked at? The second is much cheaper, and may be
-the actual need.
+the actual need. --> per-frame number beside the image
