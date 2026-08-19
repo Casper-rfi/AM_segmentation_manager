@@ -13,6 +13,7 @@ decided against, and stepping through it wastes the reviewer's attention.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 
 from ..config import SegmentationConfig
@@ -368,9 +369,9 @@ class LabelController:
     def records_for(self, keys) -> list:
         """Return every record in the lamella proofread through one of *keys*.
 
-Every record of every frame is considered:
-        pending edits are not confined to the modality on screen, and imaging
-        conditions of one scene share a label and so share its state.
+        Every record of every frame is considered: pending edits are not
+        confined to the modality on screen, and imaging conditions of one scene
+        share a label and so share its state.
         """
         wanted = set(keys)
         found = []
@@ -427,6 +428,7 @@ Every record of every frame is considered:
                 *allow_corrected*.
         """
         report = save_labels(self.pending_saves(), allow_corrected=allow_corrected)
+        self._attach_created_labels(report.created)
         headline = report.headline()
 
         if mark_corrected:
@@ -438,6 +440,21 @@ Every record of every frame is considered:
         self.session.discard()
         self._label_states.clear()
         return headline
+
+    def _attach_created_labels(self, created: Iterable[Path]) -> None:
+        """Name each newly written label on the records proofread through it.
+
+        A record the scan built before its label existed carries no label path,
+        and a state change moves the files a record names. Without this the
+        image moves into ``corrected/`` while the label just written stays
+        behind, leaving the group inconsistent.
+        """
+        wanted = set(created)
+        if not wanted:
+            return
+        for record in self.records_for(wanted):
+            if not record.labels:
+                record.labels = [self.key_for(record)]
 
     def discard_edits(self) -> None:
         """Throw away every pending edit in this lamella."""

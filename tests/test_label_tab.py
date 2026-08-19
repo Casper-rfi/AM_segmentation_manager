@@ -792,6 +792,7 @@ def test_saving_alone_does_not_move_anything(qt_app, window):
 def test_marking_corrected_moves_the_image_and_its_label(qt_app, window):
     window.controller.set_editing_enabled(True)
     image = window.label_controller.record.image_path
+    label = window.label_controller.current_key
     paint_on(window)
 
     save_with(window, mark_corrected=True)
@@ -799,6 +800,9 @@ def test_marking_corrected_moves_the_image_and_its_label(qt_app, window):
 
     assert not image.exists(), "the image should have moved into corrected/"
     assert (image.parent / "corrected" / image.name).exists()
+    assert (label.parent / "corrected" / label.name).exists(), (
+        "a label left behind leaves the group disagreeing about its state"
+    )
 
 
 def test_a_saved_lamella_is_rescanned(qt_app, window):

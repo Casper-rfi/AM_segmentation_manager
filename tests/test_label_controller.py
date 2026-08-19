@@ -360,3 +360,83 @@ def test_the_status_line_says_where_the_reviewer_is(controller):
 
     assert "SEM 1 / 4" in text
     assert "selected" in text
+
+
+# ---------------------------------------------------------------------------
+# Saving
+# ---------------------------------------------------------------------------
+
+def unlabelled_controller(root: Path):
+    """A controller on a lamella whose images have no label file yet.
+
+    Named by the current convention, because with no label files on disk there
+    is no legacy directory for the layout to resolve to.
+    """
+    dataset = build_dataset(
+        root, acquisitions=2, labels="none", label_naming="convention"
+    )
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(root))
+    return controller, dataset
+
+
+def annotate(controller) -> None:
+    """Paint one pixel on the frame the controller is showing."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    controller.current_image()  # the working label comes from the prepared frame
+    label = controller.working_label()
+    controller.record_edit(paint(label, [(1, 1)], 0, 2))
+
+
+def test_saving_names_a_created_label_on_its_records(tmp_path: Path):
+    controller, dataset = unlabelled_controller(tmp_path)
+    record = controller.record
+    assert not record.labels, "the scan found no label to start from"
+
+    annotate(controller)
+    controller.save()
+
+    assert record.labels == [dataset.label("SEM", 0)], (
+        "a record that does not name its label cannot have it moved with the image"
+    )
+
+
+def test_marking_corrected_moves_a_label_created_while_proofreading(tmp_path: Path):
+    controller, dataset = unlabelled_controller(tmp_path)
+    image, label = dataset.image("SEM", 0), dataset.label("SEM", 0)
+
+    annotate(controller)
+    controller.save(mark_corrected=True)
+
+    assert (image.parent / "corrected" / image.name).exists()
+    assert (label.parent / "corrected" / label.name).exists(), (
+        "the label holds the proofread work; leaving it behind splits the group"
+    )
+    assert not label.exists()
+
+
+def test_marking_corrected_moves_an_existing_label(tmp_path: Path):
+    build_dataset(tmp_path, acquisitions=2)
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    image = controller.record.image_path
+    label = controller.current_key
+
+    annotate(controller)
+    controller.save(mark_corrected=True)
+
+    assert (image.parent / "corrected" / image.name).exists()
+    assert (label.parent / "corrected" / label.name).exists()
+
+
+def test_a_moved_label_is_looked_up_where_it_now_is(tmp_path: Path):
+    controller, dataset = unlabelled_controller(tmp_path)
+
+    annotate(controller)
+    controller.save(mark_corrected=True)
+
+    label = dataset.label("SEM", 0)
+    assert controller.key_for(controller.record) == label.parent / "corrected" / label.name, (
+        "a destination worked out before the move would write a second label"
+    )
