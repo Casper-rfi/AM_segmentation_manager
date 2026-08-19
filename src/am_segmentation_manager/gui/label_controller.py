@@ -95,6 +95,10 @@ class LabelController:
         self._positions: tuple[int, ...] = ()
         self._cursor = 0
         self._modality = MODALITIES[0]
+        #: The imaging condition on screen, per modality. Purely a view choice:
+        #: the conditions of one acquisition share a label, so which one is
+        #: being looked at never decides what an edit or a state change touches.
+        self._variants: dict[str, str | None] = {}
         self._label_states: dict[object, str] = {}
         self.session = LabelSession()
         self._keys: dict[Path, Path] = {}
@@ -218,9 +222,38 @@ class LabelController:
 
     @property
     def record(self):
-        """Return the image record on screen, or None."""
+        """Return the image record on screen, or None.
+
+        The frame's base image where this frame was not captured under the
+        chosen condition, on the same reasoning as the curation view: stepping
+        through a lamella where only some acquisitions have a condition should
+        keep showing something rather than blanking the pane.
+        """
         frame = self.frame
-        return frame.record(self._modality) if frame is not None else None
+        if frame is None:
+            return None
+        record = frame.record(self._modality, self.variant)
+        return record if record is not None else frame.record(self._modality)
+
+    @property
+    def variant(self) -> str | None:
+        """Return the imaging condition on screen, or None for the base image."""
+        return self._variants.get(self._modality)
+
+    def set_variant(self, variant: str | None) -> None:
+        """Show *variant* of the modality on screen.
+
+        Which frames are worth proofreading is unchanged: the conditions of one
+        acquisition share a label and therefore share its state, so the set is
+        read from the base image whichever condition is being looked at.
+        """
+        self._variants[self._modality] = variant or None
+        logger.debug("Proofreading %s variant %s", self._modality, variant or "base")
+
+    def available_variants(self) -> list[str | None]:
+        """Return the conditions the frame on screen was captured under."""
+        frame = self.frame
+        return frame.variants(self._modality) if frame is not None else []
 
     def select(self, position: int) -> None:
         """Move to *position* among the proofreadable frames, clamped."""
@@ -240,7 +273,7 @@ class LabelController:
         index = self.frame_index
         if index is None:
             return None
-        return self.cache.image(index, self._modality)
+        return self.cache.image(index, self._modality, self.variant)
 
     def cached_image(self) -> FrameImage | None:
         """Return the prepared frame only if it is already held.
@@ -251,7 +284,7 @@ class LabelController:
         index = self.frame_index
         if index is None:
             return None
-        return self.cache.cached_image(index, self._modality)
+        return self.cache.cached_image(index, self._modality, self.variant)
 
     def pending_loads(self, *, radius: int | None = DEFAULT_RADIUS) -> list[LoadRequest]:
         """Return the frames to prepare, current first then outwards.
@@ -264,9 +297,9 @@ class LabelController:
         requests = []
         for cursor in prefetch_order(self._cursor, len(self._positions), radius):
             index = self._positions[cursor]
-            if self.cache.holds(index, self._modality):
+            if self.cache.holds(index, self._modality, self.variant):
                 continue
-            requests.append(LoadRequest(index, self._modality))
+            requests.append(LoadRequest(index, self._modality, self.variant))
         return requests
 
     # -- editing ------------------------------------------------------------

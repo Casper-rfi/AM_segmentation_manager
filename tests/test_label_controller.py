@@ -440,3 +440,85 @@ def test_a_moved_label_is_looked_up_where_it_now_is(tmp_path: Path):
     assert controller.key_for(controller.record) == label.parent / "corrected" / label.name, (
         "a destination worked out before the move would write a second label"
     )
+
+
+# ---------------------------------------------------------------------------
+# Imaging conditions
+# ---------------------------------------------------------------------------
+
+def variant_controller(root: Path):
+    """A controller on a lamella whose SEM images have two extra conditions."""
+    build_dataset(
+        root, acquisitions=2, modalities=("SEM",),
+        sem_variants=("sem_8_fi_1", "sem_8_fi_4"),
+    )
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(root))
+    return controller
+
+
+def test_the_base_image_is_what_opens(tmp_path: Path):
+    controller = variant_controller(tmp_path)
+
+    assert controller.variant is None
+    assert controller.available_variants()[0] is None
+
+
+def test_every_condition_of_the_acquisition_is_offered(tmp_path: Path):
+    controller = variant_controller(tmp_path)
+
+    assert set(controller.available_variants()) == {None, "8_fi_1", "8_fi_4"}
+
+
+def test_choosing_a_condition_changes_the_image_read(tmp_path: Path):
+    controller = variant_controller(tmp_path)
+    base = controller.record.image_path
+
+    controller.set_variant("8_fi_4")
+
+    assert controller.record.image_path != base
+    assert "8_fi_4" in str(controller.record.image_path)
+
+
+def test_a_condition_is_proofread_through_the_same_label(tmp_path: Path):
+    controller = variant_controller(tmp_path)
+    label = controller.current_key
+
+    controller.set_variant("8_fi_1")
+
+    assert controller.current_key == label, (
+        "the conditions of one acquisition are one segmentation"
+    )
+
+
+def test_choosing_a_condition_leaves_the_frames_alone(tmp_path: Path):
+    controller = variant_controller(tmp_path)
+    controller.step(1)
+
+    controller.set_variant("8_fi_1")
+
+    assert controller.count == 2, "state follows the label, not the condition"
+    assert controller.position == 1, "and the reviewer stays where they were"
+
+
+def test_a_frame_without_the_condition_shows_its_base_image(tmp_path: Path):
+    dataset = build_dataset(
+        tmp_path, acquisitions=2, modalities=("SEM",), sem_variants=("sem_8_fi_1",),
+    )
+    # Only the first acquisition was captured under the condition.
+    # Keyed by directory name here; the scanner parses that to the variant.
+    dataset.image("SEM", 1, variant="sem_8_fi_1").unlink()
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    controller.set_variant("8_fi_1")
+
+    controller.select(1)
+
+    assert controller.record.variant is None, "blanking the pane helps nobody"
+
+
+def test_the_loads_asked_for_name_the_condition(tmp_path: Path):
+    controller = variant_controller(tmp_path)
+    controller.set_variant("8_fi_4")
+
+    assert all(request.variant == "8_fi_4" for request in controller.pending_loads())

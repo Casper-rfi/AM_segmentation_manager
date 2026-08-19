@@ -1528,6 +1528,7 @@ class CurationWindow(QMainWindow):
             self.label_panel.refresh()
             return
         self.label_controller.set_lamella(wanted)
+        self.label_panel.set_variant_descriptions(self._variant_descriptions())
         self.label_panel.refresh()
 
     def _step_label_lamella(self, delta: int) -> None:

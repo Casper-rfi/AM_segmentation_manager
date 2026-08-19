@@ -326,6 +326,52 @@ def test_the_tools_do_not_take_the_keyboard(window):
     assert taking == [], "a control holding focus swallows the space that pans"
 
 
+@pytest.fixture
+def variants(qt_app, config, tmp_path: Path):
+    """A window on a lamella whose SEM images have a second condition."""
+    root = tmp_path / "conditions"
+    build_dataset(
+        root, acquisitions=2, modalities=("SEM",), sem_variants=("sem_8_fi_1",),
+    )
+    for tiff in root.rglob("*.tif"):
+        tifffile.imwrite(str(tiff), np.zeros((32, 40), dtype=np.uint8))
+
+    controller = CurationController(cache=FrameCache(), config=config)
+    window = CurationWindow(
+        controller, settings=QSettings(str(tmp_path / "v.ini"), QSettings.IniFormat)
+    )
+    window.scan(str(root))
+    window.tabs.setCurrentWidget(window.label_panel)
+    _settle(qt_app, lambda: drawn(window))
+    yield window
+    window.label_controller.discard_edits()
+    window.close()
+
+
+def test_the_condition_control_is_hidden_when_there_is_no_choice(window):
+    # isHidden() rather than isVisible(): a child of a window that was never
+    # shown is not visible either way, which would pass whatever the code did.
+    assert window.label_panel.variant_combo.isHidden() is True
+    assert window.label_panel.variant_label.isHidden() is True
+
+
+def test_the_conditions_of_an_acquisition_are_offered(variants):
+    combo = variants.label_panel.variant_combo
+
+    assert combo.isHidden() is False
+    assert [combo.itemData(i) for i in range(combo.count())] == [None, "8_fi_1"]
+    assert combo.itemText(0) == "base"
+
+
+def test_choosing_a_condition_draws_it(qt_app, variants):
+    panel = variants.label_panel
+    panel.variant_combo.setCurrentIndex(1)
+    _settle(qt_app, lambda: variants.label_controller.cached_image() is not None)
+
+    assert variants.label_controller.variant == "8_fi_1"
+    assert "8_fi_1" in str(variants.label_controller.record.image_path)
+
+
 def test_the_frame_is_drawn_at_full_resolution(window):
     prepared = window.label_controller.cached_image()
 

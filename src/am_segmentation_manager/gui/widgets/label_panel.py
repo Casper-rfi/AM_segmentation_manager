@@ -16,6 +16,7 @@ from qtpy.QtGui import QColor, QPainter, QPixmap, QPolygonF
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -161,6 +162,9 @@ class LabelPanel(QWidget):
         self.controller = controller
         #: The classes to offer, in the order they are shown and keyed.
         self._classes = list(controller.config.classes)
+        #: Condition names from the project metadata; see
+        #: :meth:`set_variant_descriptions`.
+        self._variant_descriptions: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -218,6 +222,22 @@ class LabelPanel(QWidget):
         first.blockSignals(True)
         first.setChecked(True)
         first.blockSignals(False)
+
+        # A dropdown rather than buttons, as in the curation view: variant names
+        # run long, and most projects have none to choose between.
+        self.variant_label = QLabel("Variant")
+        self.variant_combo = QComboBox()
+        self.variant_combo.setMinimumWidth(110)
+        self.variant_combo.setToolTip(
+            "Which imaging condition of this acquisition to proofread on.\n"
+            "They share one label, so an edit reaches all of them."
+        )
+        self.variant_label.setToolTip(self.variant_combo.toolTip())
+        self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
+        controls.addSpacing(12)
+        controls.addWidget(self.variant_label)
+        controls.addWidget(self.variant_combo)
+        self._show_variant_controls(False)
 
         controls.addSpacing(20)
         self.overlay_check = QCheckBox("Show label")
@@ -458,6 +478,26 @@ class LabelPanel(QWidget):
         self.controller.set_modality(modality)
         self.refresh()
 
+    def _variant_chosen(self, index: int) -> None:
+        """Show the chosen imaging condition."""
+        if index < 0:
+            return
+        self.controller.set_variant(self.variant_combo.itemData(index))
+        self.refresh()
+
+    def _show_variant_controls(self, visible: bool) -> None:
+        self.variant_label.setVisible(visible)
+        self.variant_combo.setVisible(visible)
+
+    def set_variant_descriptions(self, descriptions: dict[str, str]) -> None:
+        """Take the human-readable condition names from the project metadata.
+
+        Handed in rather than read here: the panel has a controller, and the
+        controller has the scan, but neither reads project metadata -- the
+        window does, for the curation view, and this is the same answer.
+        """
+        self._variant_descriptions = descriptions
+
     def _overlay_toggled(self, shown: bool) -> None:
         self.controller.show_overlay = shown
         self.canvas.set_label_shown(shown)
@@ -594,6 +634,7 @@ class LabelPanel(QWidget):
     def refresh(self) -> None:
         """Redraw everything from the controller, and ask for what is missing."""
         self._refresh_modalities()
+        self._refresh_variants()
         self._refresh_timeline()
         self.status.setText(self.controller.status_text())
         self._refresh_edit_state()
@@ -611,6 +652,31 @@ class LabelPanel(QWidget):
             f"{pending} label{'s' if pending != 1 else ''} waiting - {UNSAVED_NOTE}"
             if pending else ""
         )
+
+    def _refresh_variants(self) -> None:
+        """Offer the conditions this acquisition has, or hide the control.
+
+        Hidden unless there is a genuine choice, so a lamella with one condition
+        per modality -- every Autolamella project so far -- shows nothing extra.
+        """
+        variants = self.controller.available_variants()
+        if len(variants) < 2:
+            self._show_variant_controls(False)
+            return
+        current = self.controller.variant
+        self.variant_combo.blockSignals(True)
+        self.variant_combo.clear()
+        for variant in variants:
+            caption = (
+                "base" if variant is None
+                else self._variant_descriptions.get(variant, variant)
+            )
+            self.variant_combo.addItem(caption, variant)
+        self.variant_combo.setCurrentIndex(
+            variants.index(current) if current in variants else 0
+        )
+        self.variant_combo.blockSignals(False)
+        self._show_variant_controls(True)
 
     def _refresh_modalities(self) -> None:
         """Enable only the modalities this lamella has anything to proofread in."""
