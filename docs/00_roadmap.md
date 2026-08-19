@@ -53,10 +53,6 @@ carry hand-built trees: `test_selection.py`, `test_selection_state.py` and
 **Before publishing**, several packaging gaps are open by decision rather than
 oversight, and all of them become necessary at the same moment:
 
-* No git remote. The repository is backed up via OneDrive only. `.git` is thousands
-  of small files and sync services occasionally write "conflicted copy" duplicates,
-  which git cannot read. `git bundle create ~/am_seg_manager_$(date +%Y%m%d).bundle --all`
-  is the cheap mitigation until then.
 * No `LICENSE`. `pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier.
 * No CI, no `CHANGELOG.md`, and no `[project.urls]`.
