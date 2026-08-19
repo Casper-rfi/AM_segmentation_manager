@@ -64,6 +64,44 @@ gui = [
   "opencv-python",
   "matplotlib",
 ]
+# The window's Qt binding without the image stack, for an environment that
+# already has one. `gui` names opencv-python, and an environment holding
+# opencv-python-headless (which albumentations requires, so every inference
+# environment has it) must not also get that: two providers of cv2 is the
+# hazard this file warns about throughout. So the inference environment takes
+# `ml` for the image stack and `qt` for the window.
+#
+# Headless is in fact the better pairing with PySide6: opencv-python bundles Qt
+# plugins of its own, and headless is the build with those left out.
+qt = [
+  "qtpy",
+  "PySide6",
+  "matplotlib",
+]
+# Inference: producing predictions from a trained model. Several gigabytes,
+# which is why it is an extra and why scripts/setup_ml.sh puts it in its own
+# environment rather than adding it to the one you curate in.
+#
+# NEVER install this beside `all`, `gui`, or conda's `opencv`. albumentations
+# requires opencv-python-headless, which provides cv2 just as opencv-python
+# does; an environment holding both has an import that fails. The image stack
+# is listed here rather than reused from `all` precisely so that this extra
+# names the headless build and can stand alone.
+#
+# Deliberately unpinned. Which torch build is right depends on the machine's
+# GPU, so pinning one here would be wrong somewhere; setup_ml.sh takes an
+# index URL instead. The architecture a checkpoint was trained with is
+# recovered from the checkpoint, not from a version pin.
+ml = [
+  "numpy",
+  "tifffile",
+  "imagecodecs",
+  "opencv-python-headless",
+  "torch",
+  "torchvision",
+  "segmentation-models-pytorch",
+  "albumentations",
+]
 
 [project.scripts]
 am-seg = "am_segmentation_manager.cli:main"
@@ -94,6 +132,16 @@ testpaths = ["tests"]
 line-length = 100
 src = ["src", "tests"]
 target-version = "py311"
+
+# Verbatim copies of AM_training's code, kept byte-identical so they can be
+# diffed against upstream. Linting them would report import order and trailing
+# whitespace we must not fix: the moment this package reformats them, "is this
+# still the same preprocessing the model was trained with?" stops being a
+# question `diff` can answer. Not ours to lint, so not linted.
+extend-exclude = [
+  "src/am_segmentation_manager/ml/preprocessing.py",
+  "scripts/sem_prediction_pseudolabels_V4.py",
+]
 
 [tool.ruff.lint]
 # Deliberately a small set. Starting from "every rule ruff has" produces

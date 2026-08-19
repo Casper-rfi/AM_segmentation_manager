@@ -1,0 +1,28 @@
+name: am_segmentation_manager_ml
+channels:
+  - conda-forge
+  # Same reason as environment.yml: mixing conda-forge with Anaconda's
+  # defaults produced an environment whose cv2 would not load at all.
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  # So the suite can be run in this environment too. The package must keep
+  # working here, not only in the main environment.
+  - pytest
+  - ruff
+  #
+  # Everything else comes from pip, via the [ml] extra in pyproject.toml.
+  # This environment is deliberately pip-first, where the main one is
+  # conda-first, for two reasons:
+  #
+  #   1. albumentations depends on opencv-python-headless. Installing it
+  #      beside conda's `opencv` gives one environment two cv2 installations,
+  #      which is the failure environment.yml warns about at length. Taking
+  #      the whole image stack from pip here means there is only ever one.
+  #   2. Which torch build you want depends on your GPU, and conda-forge
+  #      cannot express that choice. PyTorch's own wheel indexes can:
+  #      set AM_SEG_TORCH_INDEX_URL before running scripts/setup_ml.sh.
+  #
+  # So do NOT add numpy, opencv, tifffile or pytorch here. They are declared
+  # once, as the [ml] extra, and pip installs them together.

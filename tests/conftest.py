@@ -154,6 +154,25 @@ class Dataset:
         return self.label_dir(modality, variant) / self.filenames[modality.upper()][index]
 
 
+def break_import(monkeypatch, module: str, error: Exception) -> None:
+    """Make importing *module* raise, leaving every other import alone.
+
+    How both optional stacks -- the image one and the inference one -- are
+    tested for what they say when a dependency is missing or broken, without
+    an environment that actually lacks it.
+    """
+    import builtins
+
+    real = builtins.__import__
+
+    def fake(name, *args, **kwargs):
+        if name == module:
+            raise error
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake)
+
+
 def write_marker(project: Path, kind: str = "experiment", *, name: str = "project",
                  method: str | None = "AutoLamella-OnGrid") -> None:
     """Write the file that makes *project* a project.

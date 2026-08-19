@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 
 from . import __version__
@@ -97,6 +98,19 @@ def _add_scope_arguments(
             help="Image modality to operate on; specify 'all' for both SEM and FIB",
         )
 
+
+
+def _format_duration(seconds: float) -> str:
+    """Return a rough human-readable duration.
+
+    Rough on purpose: this reports how long a run of thousands of images has
+    left, where minutes are the unit anyone acts on.
+    """
+    if seconds < 90:
+        return f"{seconds:.0f}s"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds / 3600:.1f}h"
 
 
 def _add_metadata_filters(parser: argparse.ArgumentParser) -> None:
@@ -381,6 +395,51 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # -- convert-predictions ------------------------------------------------
+    # -- predict -------------------------------------------------------------
+    predict_cmd = sub.add_parser(
+        "predict",
+        help="Create predictions for selected images with a trained model",
+        description=(
+            "Run a segmentation model over the selected images and write the "
+            "result to the predictions directory each image set resolves to, "
+            "under am_seg/ -- the only prediction directory this package "
+            "writes, so a run can never touch the segmentation pipeline's own "
+            "raw/ or clean/ output. One prediction is made per label group, "
+            "from the group's primary imaging condition, because the other "
+            "conditions of a scene share that one label. Predictions are "
+            "written at the model's resolution; 'convert-predictions' resizes "
+            "them to the image when it makes the label. Needs the inference "
+            "dependencies: see scripts/setup_ml.sh."
+        ),
+    )
+    _add_scope_arguments(predict_cmd, default_modality="SEM")
+    predict_cmd.add_argument(
+        "--model", required=True, metavar="PATH",
+        help=(
+            "Trained model weights (.pth). Settings that the weights do not "
+            "record are read from <PATH>.yaml beside them, if it exists"
+        ),
+    )
+    predict_cmd.add_argument(
+        "--device", default="auto",
+        help=(
+            "Torch device: 'auto' for the fastest available (default), or "
+            "'cpu', 'mps', 'cuda:0'. CPU always works and is several times slower"
+        ),
+    )
+    predict_cmd.add_argument(
+        "--dry-run", action="store_true",
+        help="List the predictions that would be written without loading the model",
+    )
+    predict_cmd.add_argument(
+        "--overwrite", action="store_true",
+        help=(
+            "Predict again even where this same model already has. Without it a "
+            "re-run costs only what an interrupted one did not reach"
+        ),
+    )
+
+    # -- convert-predictions -------------------------------------------------
     convert_predictions = sub.add_parser(
         "convert-predictions",
         help="Convert predictions into labels for explicitly selected images",
@@ -1210,6 +1269,100 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         except RuntimeError as exc:
             logger.error("%s", exc)
             return 2
+
+    if args.command == "predict":
+        from .operations.predict import (
+            PredictionSource,
+            plan_predictions,
+            run_predictions,
+        )
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.info("No matching images found to predict")
+            return 2
+
+        weights = Path(args.model)
+        # The description is read before the model, so a typo in it costs
+        # nothing and a mismatch is reported before anything heavy loads.
+        try:
+            from .ml.model import read_model_description, run_name_of
+
+            description = read_model_description(weights)
+        except ValueError as exc:
+            logger.error("%s", exc)
+            return 2
+        source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
+
+        plan = plan_predictions(records, source, overwrite=args.overwrite)
+        if plan.is_refused:
+            logger.error(
+                "This selection holds %s images. A model is trained on one "
+                "modality and nothing here can tell which, so predict one at a "
+                "time: pass --modality SEM or --modality FIB",
+                " and ".join(plan.modalities),
+            )
+            return 2
+
+        if plan.represented:
+            logger.info(
+                "%d image(s) share a label with one being predicted and are "
+                "covered by it", plan.represented,
+            )
+        if plan.up_to_date:
+            logger.info(
+                "%d prediction(s) were already made by this model and are kept; "
+                "pass --overwrite to make them again", len(plan.up_to_date),
+            )
+        if args.dry_run:
+            for item in plan.predictions:
+                logger.info(
+                    "%s %s", item.describe(),
+                    make_path_relative(item.destination, start_path),
+                )
+            logger.info(
+                "Would predict: %d %s image(s) (dry run, nothing written and no "
+                "model loaded)", len(plan.predictions), plan.modality,
+            )
+            return 0
+        if not plan.predictions:
+            logger.info("Nothing to predict")
+            return 0
+
+        try:
+            from .ml.environment import resolve_device
+            from .ml.model import load_model
+
+            device = resolve_device(args.device)
+            logger.info("Loading %s onto %s", weights.name, device)
+            loaded = load_model(weights, description, device=device)
+        except (RuntimeError, FileNotFoundError) as exc:
+            logger.error("%s", exc)
+            return 2
+
+        total = len(plan.predictions)
+        started = time.monotonic()
+
+        def report(index: int, item) -> None:
+            elapsed = time.monotonic() - started
+            logger.info(
+                "[%d/%d] %s (%.2fs each, %s remaining)",
+                index, total,
+                make_path_relative(item.destination, start_path),
+                elapsed / index,
+                _format_duration(elapsed / index * (total - index)),
+            )
+
+        try:
+            written = run_predictions(plan, loaded.predict, source, on_progress=report)
+        except KeyboardInterrupt:
+            # Each prediction is written and recorded before the next starts, so
+            # what finished is kept and the next run resumes from it.
+            logger.warning("Interrupted. Re-run to continue where this stopped")
+            return 130
+        logger.info("Total predicted: %d %s image(s) in %s", written, plan.modality,
+                    _format_duration(time.monotonic() - started))
+        return 0
 
     if args.command == "convert-predictions":
         records, start_path = _resolve_records(args)

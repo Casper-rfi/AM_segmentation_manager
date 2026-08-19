@@ -50,9 +50,20 @@ PREDICTIONS_SUFFIX: Final[str] = "_predictions"
 PLOTS_DIRECTORY: Final[str] = "plots"
 
 #: Subdirectories of a predictions directory holding different prediction sets.
-#: Both are indexed; only one may become a label. See
-#: :func:`is_convertible_prediction`.
-PREDICTION_KINDS: Final[tuple[str, ...]] = ("raw", "clean")
+#: All are indexed; not all may become a label. See
+#: :func:`is_convertible_prediction` and :func:`prediction_precedence`.
+PREDICTION_KINDS: Final[tuple[str, ...]] = ("am_seg", "raw", "clean")
+
+#: The prediction subdirectory this package writes, and the only one it may
+#: overwrite. ``raw`` and ``clean`` are the segmentation pipeline's own output
+#: and are never written to here: an operation may replace what it produced,
+#: not what something else did.
+OWN_PREDICTION_KIND: Final[str] = "am_seg"
+
+#: Records which model produced each prediction in an :data:`OWN_PREDICTION_KIND`
+#: directory. A predictions directory with no account of what filled it is a
+#: problem that worsens with time.
+PREDICTION_PROVENANCE_FILENAME: Final[str] = "am_seg_predictions.yaml"
 
 #: The prediction subdirectory whose values do not survive post-processing, and
 #: which therefore may never be converted into a label.
@@ -293,6 +304,22 @@ def is_convertible_prediction(prediction_path: Path) -> bool:
     return not any(part.lower() == POST_PROCESSED_KIND for part in prediction_path.parts[:-1])
 
 
+def prediction_precedence(prediction_path: Path) -> int:
+    """Return how strongly a prediction claims to be the one converted.
+
+    Lower wins. A prediction this package made outranks the segmentation
+    pipeline's, because it was asked for deliberately and is therefore the more
+    current of the two; the pipeline's ``raw`` output is what the milling run
+    happened to leave behind. Stated as an ordering rather than left to the
+    order directories are listed in, since which file becomes a label is not a
+    thing to decide by accident.
+    """
+    kinds = {part.lower() for part in prediction_path.parts[:-1]}
+    if OWN_PREDICTION_KIND in kinds:
+        return 0
+    return 2 if POST_PROCESSED_KIND in kinds else 1
+
+
 def candidate_predictions_directory_names(image_directory_name: str, modality: str) -> list[str]:
     """Return the prediction directory names to try, most specific first.
 
@@ -317,6 +344,39 @@ def candidate_predictions_directory_names(image_directory_name: str, modality: s
             seen.add(key)
             ordered.append(name)
     return ordered
+
+
+def resolve_predictions_directory(
+    image_directory: Path,
+    modality: str,
+    siblings: Mapping[str, Path],
+) -> tuple[Path, bool, bool]:
+    """Return where an image directory's predictions live.
+
+    The counterpart of :func:`resolve_labels_directory`, and shared by reading
+    and writing. A directory shared with another image set is accepted, because
+    only one image of a label group is ever predicted -- see
+    :mod:`..operations.predict` -- so two conditions cannot claim one filename.
+
+    Args:
+        image_directory: The image directory whose predictions are wanted.
+        modality: ``"SEM"`` or ``"FIB"``.
+        siblings: Existing sibling directories, keyed by lowercased name, as
+            :func:`subdirectories_by_name` returns them. Matching through this
+            rather than :meth:`Path.exists` keeps resolution case-insensitive,
+            which the legacy ``predictions_FIB`` needs.
+
+    Returns:
+        A tuple of ``(directory, exists, is_legacy)``. When no candidate
+        exists, the private directory name is returned with ``exists=False``:
+        that is where a prediction would be written.
+    """
+    for name in candidate_predictions_directory_names(image_directory.name, modality):
+        existing = siblings.get(name.lower())
+        if existing is not None:
+            return existing, True, name.lower() in LEGACY_PREDICTION_DIRECTORIES
+    private = predictions_directory_name(image_directory.name)
+    return image_directory.parent / private, False, False
 
 
 # ---------------------------------------------------------------------------

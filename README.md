@@ -68,6 +68,30 @@ the box. `[plots]` installs it alone, for a command-line-only environment that
 wants `stats --plot` and nothing else. Without it everything still runs and the
 charts decline to draw.
 
+**Inference is a separate environment.** `am-seg predict` needs torch and
+several gigabytes of dependencies, so it is not installed alongside the curation
+environment:
+
+    ./scripts/setup_ml.sh
+
+This builds `am_segmentation_manager_ml` from `environment-ml.yml`, installs the
+package with the `[ml]` and `[qt]` extras, and reports which devices torch can
+see. It is a second environment rather than an addition to the first because
+albumentations requires `opencv-python-headless`, which cannot share an
+environment with conda's `opencv` — the two-cv2 hazard above, in a form you
+cannot avoid by being careful.
+
+**This environment does the whole workflow**, window included, so predicting
+does not mean switching environments mid-task. The curation environment is the
+lighter one for anyone who never predicts; it is not the more capable one. Note
+that predicting is a command — `am-seg predict` — and not yet an action in the
+window.
+
+pip's default torch build is CUDA-enabled on Linux and Windows and CPU/MPS on
+macOS. To choose another, set an index URL first:
+
+    AM_SEG_TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu ./scripts/setup_ml.sh
+
 To check an environment at any time:
 
     python -c "from am_segmentation_manager.io.image import image_stack_problems; print(image_stack_problems() or 'image stack OK')"
@@ -83,7 +107,7 @@ is equivalent and needs no installation.
 
 **The window is the primary interface.** Four tabs in workflow order — *Add
 data* to describe projects so they can be indexed and grouped, *Curate* to
-review images against their labels and set their state, *Label* to proofread one
+review images against their labels, set their state, and predict them, *Label* to proofread one
 lamella's selected images at full resolution, and *Export* to choose a subset and
 write it out. Proofreading holds a lamella's edits until you save them, saving
 offers to mark the reviewed set corrected, and the Label tab will ring the stray
@@ -99,6 +123,7 @@ is the place for anything scripted:
 | See how a folder is interpreted | `inspect-layout` |
 | Make a pre-Autolamella dataset indexable | `init-project` |
 | Read or edit project metadata | `show-metadata` / `edit-metadata` |
+| Predict labels with a trained model | `predict` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `deselect` / `select` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |

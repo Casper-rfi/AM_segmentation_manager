@@ -21,6 +21,7 @@ from ..io.image import to_2d
 from ..layout import (
     MODALITIES,
     is_convertible_prediction,
+    prediction_precedence,
     state_of_path,
 )
 from ..models import ImageRecord
@@ -263,9 +264,11 @@ def plan_conversions(
 ) -> ConversionPlan:
     """Return the conversions that would run for *records*, and what they do not.
 
-    Sources are whatever :func:`~..layout.is_convertible_prediction` allows. An
-    existing label is replaced only when *overwrite* is set, and a proofread one
-    not even then. The whole set is resolved before any of it is written, and no
+    Sources are whatever :func:`~..layout.is_convertible_prediction` allows,
+    and where an image has more than one, :func:`~..layout.prediction_precedence`
+    chooses: a prediction this package made outranks the pipeline's. An existing
+    label is replaced only when *overwrite* is set, and a proofread one not even
+    then. The whole set is resolved before any of it is written, and no
     destination appears twice -- conditions of one scene share a label file, and
     listing it twice would have the second write silently replace the first.
     """
@@ -277,10 +280,13 @@ def plan_conversions(
     for record in records:
         if record.modality not in MODALITIES:
             continue
-        convertible = [
-            prediction for prediction in record.predictions
-            if is_convertible_prediction(prediction)
-        ]
+        convertible = sorted(
+            (
+                prediction for prediction in record.predictions
+                if is_convertible_prediction(prediction)
+            ),
+            key=prediction_precedence,
+        )
         if not convertible:
             # Distinguished so the report can say which of the two it is: one
             # means the pipeline has not run, the other that it ran and its

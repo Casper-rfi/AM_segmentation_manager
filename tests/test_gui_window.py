@@ -55,6 +55,7 @@ if HAS_QT and HAS_IMAGE_STACK:
         build_experiment_metadata,
     )
     from am_segmentation_manager.models import Project
+    from am_segmentation_manager.progress import Cancellation
 
 CONFIG = None
 
@@ -1032,7 +1033,7 @@ def inline_operations(window, monkeypatch):
     """
     monkeypatch.setattr(
         window, "_run_operation",
-        lambda description, work, on_done: on_done(work()),
+        lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     monkeypatch.setattr(window, "_show_report", lambda title, report: None)
     asked: list[tuple[str, str]] = []
@@ -1051,6 +1052,109 @@ def test_compressing_acts_on_the_ticked_lamella(window, inline_operations):
 
     assert inline_operations == [("Compress labels", "Apply")]
     assert "Compress labels" in window.changes_log.text()
+
+
+def test_the_predict_button_is_withheld_where_inference_is_not_installed(window):
+    """A separate install, so the window must say so on the button rather than
+    at the end of a dialog opened expecting it to work."""
+    window.operations_panel.set_prediction_available(False)
+
+    assert not window.operations_panel.predict_button.isEnabled()
+    assert "setup_ml.sh" in window.operations_panel.predict_button.toolTip()
+
+
+def test_browsing_for_a_model_predicts_nothing_by_itself(window):
+    """Choosing a model fills the box. Nothing runs until Predict is pressed,
+    which is what lets the window check that editing is on before a file is
+    ever asked for."""
+    started: list[str] = []
+    window.operations_panel.predict_requested.connect(started.append)
+
+    window.operations_panel.set_model("/models/AM_SEM_All_V01.pth")
+
+    assert window.operations_panel.model() == "/models/AM_SEM_All_V01.pth"
+    assert started == []
+
+
+def test_predicting_with_editing_off_says_so_without_asking_for_anything(
+    window, monkeypatch
+):
+    """The complaint this order exists to prevent: being asked for a model
+    before being told the operation was never going to run."""
+    window.state_panel.enable_check.setChecked(False)
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda parent, title, text, *a, **k: shown.append(title),
+    )
+
+    window._predict("")
+
+    assert shown == ["Editing is off"]
+
+
+def test_pressing_predict_with_an_empty_box_asks_for_a_model_last(window, monkeypatch):
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+    monkeypatch.setattr(
+        "am_segmentation_manager.ml.environment.ml_stack_problems", lambda: []
+    )
+    flashed: list[str] = []
+    monkeypatch.setattr(window, "_flash", flashed.append)
+
+    window._predict("")
+
+    assert flashed == ["Choose a model to predict with"]
+
+
+def test_pressing_predict_without_the_dependencies_explains_rather_than_raising(
+    window, monkeypatch, inline_operations
+):
+    """The cheap probe decides whether to offer the button; the full check runs
+    on the press, because an installed torch that will not load reads as
+    present to the first and fails on the second."""
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+    monkeypatch.setattr(
+        "am_segmentation_manager.ml.environment.ml_stack_problems",
+        lambda: [("torch", "not installed")],
+    )
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda parent, title, text, *a, **k: shown.append(title),
+    )
+
+    window._predict("/some/model.pth")
+
+    assert shown == ["Inference is not installed"]
+    assert inline_operations == []
+
+
+def test_only_the_applying_run_is_given_something_to_stop(window, monkeypatch):
+    """A preview opens no file and answers in milliseconds, so a Stop button on
+    one is a button with nothing to stop."""
+    from am_segmentation_manager.gui.operations_controller import OperationReport
+
+    given: list[object] = []
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: (
+            given.append(cancellation) or on_done(work())
+        ),
+    )
+    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
+    monkeypatch.setattr(window, "_confirm_report", lambda title, report, action: True)
+    monkeypatch.setattr(window, "_operation_applied", lambda *a, **k: None)
+    cancellation = Cancellation()
+
+    window._operate(
+        "Predict labels",
+        lambda allow, dry: OperationReport("preview" if dry else "applied", count=1),
+        cancellation=cancellation,
+    )
+
+    assert given == [None, cancellation]
 
 
 def test_writing_metadata_files_rescans_so_the_new_projects_appear(
@@ -1082,7 +1186,7 @@ def test_an_operation_previews_before_it_applies(window, monkeypatch):
     reports: list = []
     monkeypatch.setattr(
         window, "_run_operation",
-        lambda description, work, on_done: on_done(work()),
+        lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     monkeypatch.setattr(window, "_show_report", lambda title, report: None)
     monkeypatch.setattr(
@@ -1117,7 +1221,7 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
 
     monkeypatch.setattr(
         window, "_run_operation",
-        lambda description, work, on_done: on_done(work()),
+        lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     monkeypatch.setattr(window, "_show_report", lambda title, report: None)
     asked: list[str] = []

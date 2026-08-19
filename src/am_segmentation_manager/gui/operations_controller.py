@@ -12,7 +12,7 @@ scan root: an absolute path eight directories deep is unreadable in a dialog.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +21,11 @@ from ..layout import state_of_path
 from ..models import ImageRecord
 from ..operations.label_compression import compress_labels, existing_labels
 from ..operations.label_groups import describe_group
+from ..operations.predict import (
+    PredictionSource,
+    plan_predictions,
+    run_predictions,
+)
 from ..operations.predictions import (
     SKIP_DESCRIPTIONS,
     ConversionPlan,
@@ -29,6 +34,7 @@ from ..operations.predictions import (
     plan_conversions,
 )
 from ..operations.selection import repair_group_states
+from ..progress import Cancellation, OperationCancelled
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +215,140 @@ class OperationsController:
             written,
             applied=True,
         )
+
+    # -- predicting ---------------------------------------------------------
+
+    def predict(
+        self,
+        records: Iterable[ImageRecord],
+        weights: Path,
+        *,
+        device: str = "auto",
+        dry_run: bool = False,
+        cancellation: Cancellation | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> OperationReport:
+        """Predict the selection with the model at *weights*.
+
+        A preview neither loads the model nor imports torch: what a run would
+        write is a question about the filesystem, and answering it in
+        milliseconds is what lets the count be shown before anything heavy
+        starts. Applying re-resolves the plan rather than reusing the preview's,
+        as every operation here does.
+
+        Stopping is reported rather than raised: a run cancelled after ten of a
+        hundred images did write ten, and they are kept.
+        """
+        records = list(records)
+        try:
+            description, source = self._describe_model(weights)
+        except (ValueError, FileNotFoundError) as error:
+            # Not `blocked`: that is for what the user can confirm past, and
+            # a model that is not there or not described is not that. A report
+            # with no count is shown and dismissed.
+            return OperationReport(str(error))
+
+        plan = plan_predictions(records, source, overwrite=False)
+        if plan.is_refused:
+            return OperationReport(
+                f"This selection holds both {' and '.join(plan.modalities)} "
+                f"images. A model is trained on one of them, and nothing here "
+                f"can tell which, so predict one at a time: set the edit target "
+                f"to SEM or to FIB.",
+            )
+
+        context = self._prediction_context(plan, source)
+        if not plan.predictions:
+            return OperationReport("Nothing to predict.", context)
+
+        lines = tuple(
+            f"{self._relative(item.destination)}: {item.describe()}"
+            for item in plan.predictions
+        )
+        if dry_run:
+            return OperationReport(
+                f"Would predict {len(plan.predictions)} {plan.modality} image(s) "
+                f"with {weights.name}.",
+                lines + context,
+                len(plan.predictions),
+            )
+
+        from ..ml.environment import resolve_device
+        from ..ml.model import load_model
+
+        # "auto" is this package's word, not torch's: passing it through
+        # reaches model.to("auto") and fails there, naming every device torch
+        # knows except the one that was asked for.
+        loaded = load_model(weights, description, device=resolve_device(device))
+        total = len(plan.predictions)
+
+        def report(index: int, _planned) -> None:
+            if on_progress is not None:
+                on_progress(index, total)
+            if cancellation is not None:
+                cancellation.check()
+
+        try:
+            written = run_predictions(plan, loaded.predict, source, on_progress=report)
+        except OperationCancelled:
+            written = self._written_before_stopping(plan)
+            return OperationReport(
+                f"Stopped after {written} of {total} {plan.modality} image(s). "
+                f"What was predicted is kept; run it again to continue.",
+                lines[:written] + context,
+                written,
+                applied=True,
+            )
+        return OperationReport(
+            f"Predicted {written} {plan.modality} image(s) with {weights.name}.",
+            lines + context,
+            written,
+            applied=True,
+        )
+
+    def _describe_model(self, weights: Path):
+        """Return the model's description and the source recording it.
+
+        Reads the description file and the checkpoint's archive header only --
+        no torch, and none of the 170 MB of weights -- so a preview costs
+        nothing and a typo in the description is reported before anything loads.
+        """
+        from ..ml.model import read_model_description, run_name_of
+
+        if not weights.exists():
+            raise FileNotFoundError(f"No model at {weights}")
+        description = read_model_description(weights)
+        source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
+        return description, source
+
+    @staticmethod
+    def _written_before_stopping(plan) -> int:
+        """Return how many of *plan*'s predictions reached the disk.
+
+        Counted from the files rather than from the progress callback, so a run
+        that stopped reports what is actually there.
+        """
+        return sum(1 for item in plan.predictions if item.destination.exists())
+
+    def _prediction_context(self, plan, source: PredictionSource) -> tuple[str, ...]:
+        """Return the lines explaining what a run leaves out, and why.
+
+        A run that predicts nothing is the case most in need of an explanation,
+        and the three reasons need different actions: nothing, wait, or pass
+        --overwrite.
+        """
+        lines: list[str] = []
+        if plan.represented:
+            lines.append(
+                f"{plan.represented} image(s) share a label with one being "
+                f"predicted and are covered by it."
+            )
+        if plan.up_to_date:
+            lines.append(
+                f"{len(plan.up_to_date)} image(s) were already predicted by "
+                f"this model and are left alone."
+            )
+        return tuple(lines)
 
     # -- recompressing labels ----------------------------------------------
 

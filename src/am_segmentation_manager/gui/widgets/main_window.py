@@ -33,6 +33,7 @@ from qtpy.QtWidgets import (
 )
 
 from ...operations.selection import RecordState, current_state
+from ...progress import Cancellation
 from ..controller import CurationController, EditingDisabled
 from ..export_controller import ExportController
 from ..label_controller import LabelController
@@ -58,6 +59,8 @@ logger = logging.getLogger(__name__)
 SETTINGS_ORGANISATION = "am_segmentation_manager"
 SETTINGS_APPLICATION = "curation"
 SETTING_SCAN_ROOT = "scan_root"
+#: Where the model chooser last opened, so a second run does not navigate again.
+SETTING_MODEL = "model_directory"
 SETTING_GEOMETRY = "geometry"
 SETTING_SPLITTER = "splitter"
 
@@ -296,6 +299,15 @@ class CurationWindow(QMainWindow):
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
         self.operations_panel = OperationsPanel()
+        # Located, not imported: importing torch to grey out a button would add
+        # seconds to every start of a window that may never predict anything.
+        # The full check runs when the button is pressed.
+        from ...ml.environment import ml_stack_present
+
+        self.operations_panel.set_prediction_available(ml_stack_present())
+        self.operations_panel.set_model(
+            self.settings.value(SETTING_MODEL, "", type=str)
+        )
         self.changes_log = ChangesLog()
 
         # The other tabs get their own Qt-free controllers, and are handed the
@@ -335,6 +347,7 @@ class CurationWindow(QMainWindow):
         self.request_operation.connect(self.operations.worker.run)
         self.operations.worker.finished.connect(self._operation_finished)
         self.operations.worker.failed.connect(self._operation_failed)
+        self.operations.worker.progressed.connect(self._operation_progressed)
         self._pending_operation: tuple | None = None
         self._busy: QProgressDialog | None = None
 
@@ -466,6 +479,7 @@ class CurationWindow(QMainWindow):
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.state_requested.connect(self.apply_state)
 
+        self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
         self.operations_panel.compress_requested.connect(self._compress_labels)
         self.operations_panel.repair_requested.connect(self._repair_state)
@@ -561,23 +575,48 @@ class CurationWindow(QMainWindow):
 
     # -- operations that change files --------------------------------------
 
-    def _run_operation(self, description: str, work, on_done) -> None:
+    def _run_operation(
+        self, description: str, work, on_done, *, cancellation: Cancellation | None = None
+    ) -> None:
         """Run *work* off the interface thread, then hand its result to *on_done*.
 
         The one seam through which every operation reaches its thread, so a test
         can substitute an inline call and still exercise the rest of the flow.
+
+        Args:
+            cancellation: Pass one to give the dialog a Cancel button and a
+                progress bar. Without it the dialog is the indeterminate,
+                unstoppable one every operation short enough not to need either
+                still gets -- an empty cancel label is how Qt is told to leave
+                the button out.
         """
-        # An empty cancel button label is how Qt is told there is no cancel
-        # button; see worker.py for why there is nothing to cancel.
-        self._busy = QProgressDialog(f"{description}...", "", 0, 0, self)
+        self._busy = QProgressDialog(
+            f"{description}...", "Stop" if cancellation else "", 0, 0, self
+        )
         self._busy.setWindowTitle(description)
         self._busy.setWindowModality(Qt.ApplicationModal)
         self._busy.setMinimumDuration(0)
+        if cancellation is not None:
+            # Qt would otherwise close the dialog itself on Cancel, leaving the
+            # operation running behind a window that says it stopped. The
+            # dialog closes when the work returns, like every other one here.
+            self._busy.setAutoClose(False)
+            self._busy.setAutoReset(False)
+            self._busy.canceled.connect(cancellation.request)
         self._busy.show()
         self.operations_panel.set_busy(True)
 
         self._pending_operation = (description, on_done)
         self.request_operation.emit(work)
+
+    def _operation_progressed(self, done: int, total: int) -> None:
+        """Move the busy dialog's bar, on the thread that owns it."""
+        if self._busy is None:
+            return
+        if self._busy.maximum() != total:
+            self._busy.setRange(0, total)
+        self._busy.setValue(done)
+        self._busy.setLabelText(f"{done} of {total}...")
 
     def _operation_finished(self, result) -> None:
         """Hand a finished operation's result to whatever asked for it."""
@@ -608,7 +647,10 @@ class CurationWindow(QMainWindow):
         self.operations_panel.set_busy(False)
         return pending
 
-    def _operate(self, title: str, run, *, rescan: bool = False) -> None:
+    def _operate(
+        self, title: str, run, *, rescan: bool = False,
+        cancellation: Cancellation | None = None,
+    ) -> None:
         """Preview an operation, confirm it, then apply what was previewed.
 
         Args:
@@ -621,6 +663,9 @@ class CurationWindow(QMainWindow):
                 indexed -- a new label, a new project. A refresh recounts what
                 is already in memory, which cannot show a file that was not
                 there when the scan ran.
+            cancellation: Makes the applying run stoppable. The previews are
+                not: they open no file and answer in milliseconds, so a Stop
+                button on one is a button with nothing to stop.
 
         Preview and apply are two runs of the same function rather than one run
         whose result is replayed: a preview held across a dialog describes a
@@ -645,6 +690,7 @@ class CurationWindow(QMainWindow):
                 title,
                 lambda: run(allowed, False),
                 lambda applied: self._operation_applied(title, applied, rescan),
+                cancellation=cancellation,
             )
 
         self._run_operation(title, lambda: run(False, True), previewed)
@@ -687,6 +733,60 @@ class CurationWindow(QMainWindow):
             self._flash("Nothing selected")
             return None
         return records
+
+    def _predict(self, model: str) -> None:
+        """Predict the selection with the model named in the panel.
+
+        Guarded in the order the answers are needed: whether this window may
+        write at all, then whether it can predict, then whether it was told
+        what with. Asking for a model first would ask for a file before saying
+        the operation was never going to run.
+        """
+        records = self._editable_records()
+        if records is None:
+            return
+
+        # The full check, not the cheap one that decided whether to offer the
+        # button: a torch that is installed and will not load reads as present.
+        from ...ml.environment import ml_stack_problems
+
+        problems = ml_stack_problems()
+        if problems:
+            QMessageBox.information(
+                self, "Inference is not installed",
+                "Predicting needs "
+                + "; ".join(f"{name} ({reason})" for name, reason in problems)
+                + ".\n\nInstall them with scripts/setup_ml.sh, which builds a "
+                "separate environment for them.",
+            )
+            return
+
+        if not model:
+            self._flash("Choose a model to predict with")
+            return
+        weights = Path(model)
+        # Remembered whole: the next session opens with the same model already
+        # in the box, which is the usual case -- one model, many runs.
+        self.settings.setValue(SETTING_MODEL, model)
+
+        # Created here rather than in _operate so the work closure and the
+        # dialog share one: the closure polls it on the worker thread, the
+        # dialog's Stop button sets it on this one.
+        cancellation = Cancellation()
+        progressed = self.operations.worker.progressed
+
+        # Rescanned afterwards: a prediction that did not exist when the scan
+        # ran is not in the index, so nothing would offer to convert it.
+        self._operate(
+            "Predict labels",
+            lambda allow, dry: self.operations_controller.predict(
+                records, weights, dry_run=dry,
+                cancellation=None if dry else cancellation,
+                on_progress=None if dry else progressed.emit,
+            ),
+            rescan=True,
+            cancellation=cancellation,
+        )
 
     def _convert_predictions(self) -> None:
         records = self._editable_records()

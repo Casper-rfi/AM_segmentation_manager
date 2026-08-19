@@ -24,9 +24,9 @@ from .io.yaml import read_yaml
 from .layout import (
     PREDICTION_KINDS,
     build_image_sets,
-    candidate_predictions_directory_names,
     image_files,
     image_files_by_name,
+    resolve_predictions_directory,
     state_of_path,
     subdirectories_by_name,
 )
@@ -385,15 +385,14 @@ class Scanner:
         optionally split into ``raw/`` and ``clean/`` subdirectories. A filename
         may appear in more than one of those, so every match is kept and the
         caller chooses by kind.
+
+        Resolved for reading, which accepts a directory shared with another
+        image set: that is where the pipeline's own output sits.
         """
-        siblings = subdirectories_by_name(stage_path)
-        directory: Path | None = None
-        for name in candidate_predictions_directory_names(image_set.name, image_set.modality):
-            found = siblings.get(name.lower())
-            if found is not None:
-                directory = found
-                break
-        if directory is None:
+        directory, exists, _ = resolve_predictions_directory(
+            image_set.directory, image_set.modality, subdirectories_by_name(stage_path)
+        )
+        if not exists:
             return {}
 
         collected: dict[str, list[Path]] = {}

@@ -9,45 +9,6 @@ is needed becomes detail that has to be maintained and re-argued.
 
 ---
 
-## 2. ML inference to generate predictions
-
-**What you want:** create predictions using the existing `AM_training` package,
-from the CLI and then the GUI, closing the loop — predict, convert to labels,
-proofread, export, retrain. Raw predictions are what matters here: this package
-converts only those, for the reason in [`decisions.md`](decisions.md) §
-Filesystem conventions. The leaning is to build the inference function from the
-standalone scripts, which are functionally equivalent to `AM_training`'s.
-
-The output side is done: `operations/predictions.py` converts predictions into
-labels, resizing where dimensions differ. What is missing is producing them.
-
-**Questions to answer before designing:**
-
-1. **Is `AM_training` a dependency or a peer?** Importing it pulls a training
-   stack (torch and friends) into a file-management tool — an optional extra at
-   minimum. A subprocess keeps them independent, and is the way this is leaning,
-   for the same reason as §1: a stable interface beats a shared schema in code.
-2. **Where do model weights live, and how is the model recorded?** A prediction
-   is only interpretable if you know which model made it. This provenance
-   question matters more than the mechanics — a `predictions/` directory with no
-   record of what filled it is a problem that worsens with time — and may deserve
-   a sidecar file, in the spirit of `AM_metadata.yaml`.
-3. **GPU availability and runtime.** Inference over thousands of images is
-   minutes to hours, so it needs progress, interruption and resumption, none of
-   which any existing operation here needs. It will not fit the current
-   validate-then-act shape without thought.
-4. **Does it overwrite existing predictions?** By `CLAUDE.md`'s rules, not
-   without an explicit flag, and label conversion set the precedent: tier the
-   answer by what replacing the file would cost. [`decisions.md`](decisions.md)
-   § Workflow state.
-
-**Why it is last:** everything else improves work you do today; this adds a
-capability you already have elsewhere. It is the largest piece and the one most
-likely to pull a training stack into a near-stdlib package. Its one prerequisite
-— being able to *select* the training sets it would feed — is now met.
-
----
-
 ## 4. Importing existing labels into the project hierarchy
 
 **What you want:** the labels that live in folder structures you created by hand,

@@ -9,10 +9,10 @@ are the catalogue of what each command does.
 
 ## What the software does today
 
-Four of the five main functions in `CLAUDE.md` are built: curating which data to use,
-preparing labels from predictions, exporting filtered training lists, and quantifying
-the collection through its metadata and its labels. `README.md` says what each command
-and tab does. What is worth knowing beyond that:
+All five main functions in `CLAUDE.md` are built: curating which data to use,
+predicting and preparing labels from predictions, exporting filtered training lists,
+and quantifying the collection through its metadata and its labels. `README.md` says
+what each command and tab does. What is worth knowing beyond that:
 
 * **Every state change expands across the label group** and validates the whole batch
   before moving anything. Marking a set corrected, and exporting a training CSV, both
@@ -31,6 +31,15 @@ and tab does. What is worth knowing beyond that:
   has rewritten since it was opened. On request it rings the components of a few pixels
   -- the stray spots that otherwise reach a training set as annotation, and the holes
   that size inside one -- which `find-specks` reports across the collection.
+* **Predictions are made in the window or on the command line**, in an
+  environment installed separately: the inference stack is several gigabytes, so
+  `scripts/setup_ml.sh` builds its own, which runs the window too. `am-seg
+  predict` and the Curate tab's *Predict labels* both write to
+  `<predictions>/am_seg/`, the only prediction directory this package writes.
+  One prediction per label group, one modality per run — a selection holding
+  both is refused, since a model is for one and nothing can tell which — and
+  resumable, which is also what lets the window offer a Stop button that no
+  other operation here can.
 * **Export filters, counts and writes, and every filter narrows all three.** Its filter
   lists are derived from the breakdowns, so a property can be counted by and filtered
   on without being declared twice; the breakdown reads as a table or a chart in the

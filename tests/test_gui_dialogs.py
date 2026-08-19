@@ -51,11 +51,19 @@ def open_dialog(**kwargs) -> QFileDialog:
     )
 
 
+# Built conditionally: parametrize arguments are evaluated when the module is
+# imported, which happens before pytestmark can skip anything. Naming a Qt enum
+# at module level is what stops the whole file collecting in an environment
+# without a Qt binding -- the inference environment is one.
+DIALOG_MODES = (
+    [QFileDialog.ExistingFile, QFileDialog.AnyFile, QFileDialog.Directory]
+    if HAS_QT else []
+)
+
+
 # -- configuration ----------------------------------------------------------
 
-@pytest.mark.parametrize(
-    "mode", [QFileDialog.ExistingFile, QFileDialog.AnyFile, QFileDialog.Directory]
-)
+@pytest.mark.parametrize("mode", DIALOG_MODES)
 def test_no_dialog_is_left_to_the_platform(qt_app, mode):
     """The reason this helper exists: the macOS panel under Qt 5 offered no
     files at all, whatever name filter it was given."""

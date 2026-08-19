@@ -16,18 +16,7 @@ import builtins
 import pytest
 
 from am_segmentation_manager.io import image as image_io
-
-
-def break_import(monkeypatch, module: str, error: Exception) -> None:
-    """Make importing *module* raise, leaving every other import alone."""
-    real = builtins.__import__
-
-    def fake(name, *args, **kwargs):
-        if name == module:
-            raise error
-        return real(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake)
+from conftest import break_import
 
 
 def test_no_problems_when_everything_imports():

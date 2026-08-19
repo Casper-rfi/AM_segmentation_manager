@@ -1104,8 +1104,13 @@ def test_a_sideways_shifted_wheel_still_resizes_the_brush(window):
     assert panel.brush_width > before
 
 
-def wheel_event(position, delta, modifiers=Qt.NoModifier, *, sideways=False):
-    """Build a wheel event, under either Qt version."""
+def wheel_event(position, delta, modifiers=None, *, sideways=False):
+    """Build a wheel event, under either Qt version.
+
+    *modifiers* defaults to none held. Spelling that as ``Qt.NoModifier`` in the
+    signature would evaluate it at import, before the file's own skip applies.
+    """
+    modifiers = Qt.NoModifier if modifiers is None else modifiers
     angle = QPoint(delta, 0) if sideways else QPoint(0, delta)
     point = QPointF(position)
     try:  # Qt 6 wants the phase and the inversion as well.

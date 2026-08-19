@@ -46,6 +46,7 @@ WORKFLOW_ORDER = [
     "edit-metadata",
     "list-projects",
     "gui",
+    "predict",
     "convert-predictions",
     "deselect",
     "select",

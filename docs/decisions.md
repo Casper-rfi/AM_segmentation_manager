@@ -332,12 +332,28 @@ timeline grew a 488-character legend. Every control in the Filters box also says
 it narrows: that it decides the breakdown *and* the exports is not visible from the
 box's title.
 
-**A long operation runs on a thread, and there is nothing to cancel.** Recompressing
-a project's labels is minutes, and Qt draws nothing while the thread owning the
-widgets is busy — so the work goes to `gui/worker.py` and the window shows a busy
-dialog. No cancel button: these operations validate the complete set of changes before
-performing any of them, and stopping one halfway leaves exactly the half-applied
-collection that rule exists to prevent.
+**A long operation runs on a thread, and most of them cannot be cancelled.**
+Recompressing a project's labels is minutes, and Qt draws nothing while the thread
+owning the widgets is busy — so the work goes to `gui/worker.py` and the window shows
+a busy dialog. No cancel button on those: they validate the complete set of changes
+before performing any of them, and stopping one halfway leaves exactly the
+half-applied collection that rule exists to prevent.
+
+**Predicting is the exception, because stopping it leaves nothing half-applied.**
+Each prediction is written atomically and recorded as this model's work before the
+next begins, so a stopped run has produced finished files and an accurate account of
+them, and the next run resumes from there. That is what earns it a Stop button and a
+progress bar where an hour of work would otherwise be a frozen window. Cancellation
+is a `threading.Event` in `progress.py`, polled by the work closure, rather than a Qt
+signal: a queued signal reaches the worker when it next returns to its event loop,
+which inside a long call is never. It is offered only on the applying run — a preview
+opens no file and answers in milliseconds.
+
+**Whether to offer the predict button is decided by locating torch, not importing
+it.** An import costs seconds at every window start, including for someone who never
+predicts. `ml_stack_present` uses `find_spec`; the press then runs the full check,
+because a torch that is installed and will not load reads as present to the first and
+fails on the second.
 
 ---
 
@@ -410,3 +426,85 @@ just `QMessageBox` — or the suite hangs rather than fails.
 **Never mix conda-forge with Anaconda `defaults`.** `environment.yml` pins
 `nodefaults` for this reason: a mixed environment paired Anaconda's OpenCV with
 conda-forge's protobuf and `cv2` would not load at all.
+
+**Inference lives in a second environment, and that one is pip-first.** The main
+environment is conda-first because conda's OpenCV and pip's cannot coexist.
+albumentations, which the vendored preprocessing imports, requires
+`opencv-python-headless` — a third provider of `cv2`, and one no ordering of install
+commands avoids. So `environment-ml.yml` takes only python and pip from conda and the
+whole stack from the `[ml]` extra, where there is exactly one OpenCV. It also lets the
+torch build be chosen per machine, which conda-forge cannot express:
+`AM_SEG_TORCH_INDEX_URL` selects a wheel index. `scripts/setup_ml.sh` builds it.
+
+**The inference environment is a superset, not a peer.** It gets the window too,
+via the `qt` extra — Qt binding and matplotlib, no OpenCV, since it already has the
+headless one. Built first without it, which was wrong: it forced a switch of
+environment in the middle of the workflow, between curating a set and predicting
+it. The curation environment is the *lighter* one, for someone who never predicts;
+it is not the more capable one. Headless OpenCV is also the better partner for
+PySide6, `opencv-python` carrying Qt plugins of its own.
+
+**Nothing outside `ml/` may import torch.** The subpackage is the boundary, and
+`ml/environment.py` answers "is inference possible here" without importing it, the way
+`io/image.py` does for the image stack. `ml/preprocessing.py` is a verbatim copy of
+AM_training's module, excluded from ruff: reformatting it would destroy the only cheap
+answer to "is this still the preprocessing the model was trained with" — `diff`.
+
+---
+
+## Inference
+
+**A fact recoverable from the weights is never declared.** A checkpoint is a bare
+`state_dict`, and its class count, input channels and tensor names are all readable
+from it. Declaring those in a file beside it adds a second statement that can
+disagree with the first, and the disagreement would be invisible: a description
+naming four classes over a five-class head loads whatever fits. So `ml/model.py`
+reads them, and `load_state_dict(strict=True)` is what proves the description's
+architecture and the weights are the same model. A mismatch stops at the load
+rather than at the first odd-looking label.
+
+**What the weights cannot state is declared in a `.yaml` beside them.**
+Preprocessing settings and the architecture name are not in the file, and every one
+of them shows itself immediately if wrong, which is what makes a default safe.
+
+**Which modality a model is for is not recorded anywhere, deliberately.** Nothing in
+a checkpoint says, and `AM_SEM_All_V01.pth` is whatever whoever trained it chose to
+type — it is not evidence, and reading it as evidence would make the software's
+answer depend on someone else's file-naming habit. Recording it in the sidecar
+instead was tried and dropped: it moves the guess rather than removing it, and a
+declaration nothing can check is a claim wearing the clothes of a fact.
+
+**So the selection states it, and a selection spanning both modalities is refused.**
+One model is for one modality; a selection naming both names nothing, and the run
+stops with the two it found. This is a better guard than the one it replaced, because
+it is about something the window can show you — the edit target and the images under
+it — rather than a line in a file you would have to open. Every report leads with the
+modality, so what is about to be predicted is never left to be inferred from a list
+of paths.
+
+**Predicting with the wrong model is cheap to undo**, which is what makes that guard
+sufficient rather than merely defensible. Resumption keys on the model and run name,
+so predicting the same images with the right model replaces the wrong ones without
+`--overwrite`: an accident costs the inference time and nothing else.
+
+**`decoder_attention_type="scse"` is not part of these models.** The training call
+passes it, smp's `FPN` has no such parameter, and it is swallowed into `**kwargs` and
+forwarded to the encoder, which ignores it. The checkpoints contain no attention
+tensors, and a plain FPN strict-loads all 1015 of them. Build plain FPN; do not carry
+the argument over on the assumption that it did something.
+
+**One prediction per label group, not per image.** The label is the unit of
+workflow state everywhere else here, and a prediction exists to become a label, so
+a group gets one — made from `label_groups.primary_record`, the same image the
+curation window shows and a training export keeps. Predicting the other conditions
+would cost inference to produce worse pseudo-labels: `SEM_8_fi_1` is one frame
+integration and far noisier than the `SEM_8` it shares a label with. It also removes
+a hazard rather than managing one — conditions carry identical filenames into a
+shared predictions directory, so predicting all of them would have each write
+replace the last. On one lamella of the reference collection this is 6 predictions
+instead of 15.
+
+**Predictions are written at model resolution.** A 2048x3072 image yields a 1024x1536
+prediction — which is what the segmentation pipeline's own `raw/` already holds, at
+12 kB against the 6 MB an upsampled one would cost. `convert-predictions` resizes to
+the image when it makes the label, so upsampling earlier would only be undone.
