@@ -59,6 +59,7 @@ oversight, and all of them become necessary at the same moment:
 * The version is pinned at `0.0.0`.
 * `mypy` is not configured. `ruff` does not check types, so the annotations are
   currently unverified.
-* The suite has not been run under PySide6 or a non-English locale. Do both before any
-  release: [`decisions.md`](decisions.md) § Environment has what it catches, and why
-  `LC_ALL=` is not sufficient.
+* The suite has not been run under a non-English locale. Do it before any release:
+  [`decisions.md`](decisions.md) § Environment has what it catches, and why `LC_ALL=`
+  is not sufficient. It does now pass under PySide6 6.11.1, which is what the
+  development environment resolves to.

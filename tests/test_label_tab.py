@@ -98,10 +98,34 @@ def window(qt_app, project: Path, config, tmp_path: Path):
     )
     window.scan(str(project))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: window.label_panel.controller.cached_image() is not None)
+    _settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
     window.close()
+
+
+def drawn(window) -> bool:
+    """Whether a frame has reached the canvas, rather than merely the cache.
+
+    The loader fills the cache on its own thread and *then* reports the frame
+    with a queued signal that the window turns into a draw, so a cached frame
+    is not yet a drawn one. Waiting on the cache is what made these tests
+    flaky.
+    """
+    return not window.label_panel.canvas._item.pixmap().isNull()
+
+
+def draws(window):
+    """Return a counter of the frames delivered to the Label tab.
+
+    Connected after the window's own handler, so Qt runs it second: once this
+    has counted a frame, the canvas has already been given it. For a redraw,
+    where the canvas holds the previous frame's pixmap and :func:`drawn`
+    therefore answers True before anything has changed.
+    """
+    seen: list[object] = []
+    window.label_loader.worker.loaded.connect(lambda *_: seen.append(None))
+    return lambda: len(seen)
 
 
 def _settle(app, condition=None, timeout: float = 10.0) -> None:
@@ -292,8 +316,10 @@ def test_stepping_past_the_end_stays_on_the_last_frame(window):
 
 
 def test_switching_modality_redraws(qt_app, window):
+    delivered = draws(window)
+
     window.label_panel.set_modality("FIB")
-    _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
+    _settle(qt_app, delivered)
 
     assert window.label_controller.modality == "FIB"
     assert not window.label_panel.canvas._item.pixmap().isNull()
@@ -653,7 +679,7 @@ def two_lamellae(qt_app, config, tmp_path):
     )
     window.scan(str(root))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
+    _settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
     window.close()
