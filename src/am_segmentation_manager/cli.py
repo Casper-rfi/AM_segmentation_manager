@@ -466,9 +466,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Find labels holding components too small to be real",
         description=(
             "List every label containing a connected component of a few pixels, "
-            "whatever class it claims to be. These are the stray spots that "
-            "reach a training set as annotation and teach a model to find "
-            "nothing. Read-only, and it reports rather than repairs: a small "
+            "whatever class it is. These are the stray spots that reach a "
+            "training set as annotation and teach a model to find nothing -- "
+            "and, where the class is background, the holes of that size left "
+            "inside an annotation. Read-only, and it reports rather than "
+            "repairs: a small "
             "structure can be genuine, so which ones to remove is a judgement "
             "made by looking at the image. Open the flagged labels in the "
             "window to see them in place. Reads every label in scope, which is "

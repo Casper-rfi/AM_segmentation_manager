@@ -28,9 +28,9 @@ and tab does. What is worth knowing beyond that:
   brush and a flood fill, and saves the lamella's edits in one action that offers to
   mark the reviewed set corrected. A save refuses the whole batch rather than
   overwrite a label something else has rewritten since it was opened. On request
-  it rings the annotated components of a few pixels -- the stray spots that
-  otherwise reach a training set as annotation -- which `find-specks` reports
-  across the whole collection.
+  it rings the components of a few pixels -- the stray spots that otherwise
+  reach a training set as annotation, and the holes that size left inside one --
+  which `find-specks` reports across the whole collection.
 * **Export filters, counts and writes, and every filter narrows all three.** Its filter
   lists are derived from the breakdowns, so a property can be counted by and filtered
   on without being declared twice; the breakdown reads as a table or a chart in the

@@ -295,8 +295,9 @@ class LabelPanel(QWidget):
         controls.addSpacing(20)
         self.speck_check = QCheckBox("Find specks")
         self.speck_check.setToolTip(
-            "Ring every annotated component of a few pixels, whatever class it "
-            "is.\nSwitching it on sets the view that makes them findable, and "
+            "Ring every component of a few pixels: a stray annotation, or a "
+            "hole that size inside one.\nSwitching it on sets the view that "
+            "makes them findable, and "
             "switching it off puts your own back.\nShortcut: X, and N steps to "
             "the next one"
         )

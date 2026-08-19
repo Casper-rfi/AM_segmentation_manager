@@ -69,8 +69,9 @@ DEFAULT_SPECK_PIXELS = 4
 class Speck:
     """One connected component small enough to be worth questioning.
 
-    Not a finding of fact: a small structure can be real, which is why nothing
-    here removes one. It is somewhere to look.
+    Either a stray annotation, or -- where its class is background -- a hole of
+    that size inside one. Not a finding of fact: a small structure can be real,
+    which is why nothing here removes one. It is somewhere to look.
 
     Attributes:
         class_index: The class the component belongs to.
@@ -325,12 +326,13 @@ def _components(mask) -> tuple[int, ...]:
     return tuple(sorted((size for size, _, _ in _component_stats(mask)), reverse=True))
 
 
-def _component_stats(mask) -> list[tuple[int, int, int]]:
+def _component_stats(mask, connectivity: int = 8) -> list[tuple[int, int, int]]:
     """Return ``(pixels, x, y)`` for each connected component of *mask*.
 
-    Eight-connected, so a component is not split by a one-pixel diagonal --
-    a crack is a physical feature, and a diagonal step across it is a rendering
-    artefact of the pixel grid rather than a second crack.
+    Eight-connected by default, so a component is not split by a one-pixel
+    diagonal -- a crack is a physical feature, and a diagonal step across it is
+    a rendering artefact of the pixel grid rather than a second crack. Holes
+    are counted four-connected instead; see :func:`find_specks`.
 
     The centroid comes back with the size because the two callers want
     different halves of the same cv2 call: the crack statistics need only how
@@ -342,7 +344,7 @@ def _component_stats(mask) -> list[tuple[int, int, int]]:
     if not mask.any():
         return []
     count, _, stats, centroids = cv2.connectedComponentsWithStats(
-        mask.astype(np.uint8), connectivity=8
+        mask.astype(np.uint8), connectivity=connectivity
     )
     # Row 0 is the background of the mask, which is everything that is not the
     # class being measured.
@@ -360,9 +362,23 @@ def find_specks(
     label,
     *,
     at_most: int = DEFAULT_SPECK_PIXELS,
-    ignore: Collection[int] = (BACKGROUND_CLASS,),
+    ignore: Collection[int] = (),
 ) -> tuple[Speck, ...]:
     """Return every component of *label* covering at most *at_most* pixels.
+
+    Background is included, and a small background component is a *hole*: the
+    background of a frame is one enormous component, so the only way a few
+    background pixels can stand alone is by being enclosed in an annotation.
+    Both are errors and neither is more forgivable -- a stray pixel of GIS in
+    the vacuum and a stray pixel of vacuum in the GIS are the same mistake seen
+    from either side.
+
+    Holes are counted **four-connected** while annotations are counted
+    eight-connected, which is the pairing that makes an enclosed region stay
+    enclosed. With both eight-connected, a diagonal staircase of single-pixel
+    holes joins up and leaks out into the background around it, and stops being
+    reported: in one real label that was the difference between finding seven
+    and finding four.
 
     Takes the array rather than a path, so it can be asked of a label being
     edited as well as one on disk, and so it never consults the cache above --
@@ -371,8 +387,7 @@ def find_specks(
     Args:
         label: 2D array of class indices.
         at_most: Largest component still reported, in pixels.
-        ignore: Classes not worth reporting. Background by default: it is the
-            absence of an annotation, not a small one.
+        ignore: Classes not worth reporting. Nothing by default.
 
     Returns:
         The specks found, smallest first, then by position. Ordered so that
@@ -385,7 +400,10 @@ def find_specks(
         Speck(class_index=int(class_index), pixels=pixels, x=x, y=y)
         for class_index in np.unique(label)
         if int(class_index) not in ignored
-        for pixels, x, y in _component_stats(label == class_index)
+        for pixels, x, y in _component_stats(
+            label == class_index,
+            connectivity=4 if int(class_index) == BACKGROUND_CLASS else 8,
+        )
         if pixels <= at_most
     ]
     return tuple(sorted(found, key=lambda speck: (speck.pixels, speck.y, speck.x)))

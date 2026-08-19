@@ -101,7 +101,7 @@ is the place for anything scripted:
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `deselect` / `select` / `correct` |
 | Fix images that disagree with their shared label | `repair-state` |
-| Find labels holding components too small to be real | `find-specks` |
+| Find stray spots and holes too small to be real | `find-specks` |
 | Shrink label files on disk | `compress-labels` |
 | Count images by one or two properties, and chart them | `stats` |
 | Measure what the labels contain, in um^2 | `quantify-labels` |

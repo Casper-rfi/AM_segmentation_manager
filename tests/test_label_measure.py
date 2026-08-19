@@ -350,11 +350,38 @@ def test_the_class_does_not_decide_whether_it_is_a_speck():
     assert {speck.class_index for speck in specks} == {CRACK_CLASS, LAMELLA_CLASS}
 
 
-def test_background_is_not_a_speck():
+def test_a_hole_inside_an_annotation_is_a_speck():
     label = np.full((20, 20), LAMELLA_CLASS, dtype=np.uint8)
     label[5, 5] = 0
 
-    assert find_specks(label) == (), "background is the absence of an annotation"
+    specks = find_specks(label)
+
+    assert [(speck.class_index, speck.pixels) for speck in specks] == [(0, 1)], (
+        "a stray pixel of vacuum in the lamella is the same mistake, seen from "
+        "the other side"
+    )
+
+
+def test_the_background_of_a_frame_is_not_a_speck():
+    label = np.zeros((20, 20), dtype=np.uint8)
+    label[5:10, 5:10] = LAMELLA_CLASS
+
+    assert find_specks(label) == (), (
+        "the background around an annotation is one enormous component"
+    )
+
+
+def test_a_diagonal_staircase_of_holes_is_found():
+    """Eight-connected background would join these up and leak them out to the
+    background around the block, which is how they went unreported."""
+    label = np.full((20, 20), LAMELLA_CLASS, dtype=np.uint8)
+    for step in range(5):
+        label[5 + step, 5 + step] = 0
+
+    specks = find_specks(label)
+
+    assert len(specks) == 5
+    assert all(speck.pixels == 1 for speck in specks)
 
 
 def test_the_threshold_includes_its_own_size():
