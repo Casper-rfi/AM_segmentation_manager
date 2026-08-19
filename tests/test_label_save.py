@@ -7,6 +7,9 @@ already marked corrected.
 from __future__ import annotations
 
 import importlib.util
+import os
+import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -221,3 +224,38 @@ def test_a_failed_write_leaves_the_previous_label_intact(tmp_path: Path, monkeyp
 
 def test_a_fingerprint_of_a_missing_file_is_nothing(tmp_path: Path):
     assert fingerprint_of(tmp_path / "absent.tif") is None
+
+
+# ---------------------------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def umask():
+    """Set a known umask for one test, and put the process's own back."""
+    previous = os.umask(0o022)
+    yield
+    os.umask(previous)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_a_new_label_is_written_readable(tmp_path: Path, umask):
+    destination = tmp_path / "labels" / "img.tif"
+
+    save_labels([item(destination, created=True)])
+
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o644, (
+        "a label only its author can read is one nobody else can train on"
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_replacing_a_label_keeps_its_permissions(tmp_path: Path, umask):
+    destination = existing(tmp_path / "labels" / "img.tif")
+    os.chmod(destination, 0o640)
+
+    save_labels([item(destination)])
+
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o640, (
+        "replacing a label is not a decision about who may read it"
+    )
