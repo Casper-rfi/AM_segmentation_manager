@@ -32,8 +32,18 @@ if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
     from qtpy.QtCore import QEvent, QPoint, QPointF, QSettings, Qt
-    from qtpy.QtGui import QImage, QMouseEvent
-    from qtpy.QtWidgets import QApplication, QGraphicsView, QMessageBox
+    from qtpy.QtGui import (
+        QEnterEvent,
+        QFocusEvent,
+        QImage,
+        QMouseEvent,
+    )
+    from qtpy.QtWidgets import (
+        QApplication,
+        QGraphicsView,
+        QMessageBox,
+        QWidget,
+    )
 
     from am_segmentation_manager.config import (
         BACKGROUND_CLASS,
@@ -294,6 +304,26 @@ def test_the_tab_shows_the_lamella_the_curation_view_is_on(window):
     assert not window.label_panel.canvas._item.pixmap().isNull()
 
 
+def test_opening_the_tab_gives_the_canvas_the_keyboard(window):
+    window.tabs.setCurrentWidget(window.image_panel)
+    window.tabs.setCurrentWidget(window.label_panel)
+
+    assert window.focusWidget() is window.label_panel.canvas, (
+        "space has to pan without clicking the pane first"
+    )
+
+
+def test_the_tools_do_not_take_the_keyboard(window):
+    panel = window.label_panel
+
+    taking = [
+        widget for widget in panel.findChildren(QWidget)
+        if widget is not panel.canvas and widget.focusPolicy() != Qt.NoFocus
+    ]
+
+    assert taking == [], "a control holding focus swallows the space that pans"
+
+
 def test_the_frame_is_drawn_at_full_resolution(window):
     prepared = window.label_controller.cached_image()
 
@@ -534,6 +564,57 @@ def test_the_brush_size_is_bounded(canvas):
 
     canvas.set_brush_radius(-5)
     assert canvas.brush_radius == 0
+
+
+def test_the_brush_appears_where_the_pointer_already_is(canvas):
+    canvas.set_editable(False)
+    canvas._pointer_position = lambda: QPoint(100, 100)
+
+    canvas.set_editable(True)
+
+    assert canvas._brush_item.isVisible(), (
+        "a frame finishes loading under a pointer that is not moving"
+    )
+
+
+def test_the_brush_stays_hidden_when_the_pointer_is_elsewhere(canvas):
+    canvas.set_editable(False)
+    canvas._pointer_position = lambda: QPoint(-40, -40)
+
+    canvas.set_editable(True)
+
+    assert not canvas._brush_item.isVisible()
+
+
+def test_the_pointer_arriving_takes_the_keyboard_and_shows_the_brush(canvas):
+    canvas.clearFocus()
+
+    canvas.enterEvent(enter_event(QPoint(90, 90)))
+
+    # focusWidget rather than hasFocus: an offscreen window is never activated,
+    # so Qt records which widget asked for the keyboard but grants it to none.
+    assert canvas.focusWidget() is canvas, "space pans, and this widget reads it"
+    assert canvas._brush_item.isVisible()
+
+
+def test_losing_the_keyboard_stops_a_pan(canvas):
+    canvas.keyPressEvent(key_event(QEvent.KeyPress, Qt.Key_Space))
+    assert canvas.dragMode() == QGraphicsView.ScrollHandDrag
+
+    canvas.focusOutEvent(QFocusEvent(QEvent.FocusOut))
+
+    assert canvas.dragMode() == QGraphicsView.NoDrag, (
+        "the release of a held space arrives wherever focus went"
+    )
+
+
+def enter_event(position):
+    """Build a pointer-entered event, under either Qt version."""
+    point = QPointF(position)
+    try:  # Qt 6 wants the position three times over.
+        return QEnterEvent(point, point, point)
+    except TypeError:  # pragma: no cover - depends on the installed binding
+        return QEnterEvent(position, point, point)
 
 
 def key_event(kind, key):

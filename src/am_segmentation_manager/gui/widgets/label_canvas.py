@@ -19,7 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QImage, QPen, QPixmap
+from qtpy.QtGui import QCursor, QImage, QPen, QPixmap
 from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsView
 
 from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
@@ -228,6 +228,11 @@ class LabelCanvas(ImageView):
         if not editable:
             self._cancel_stroke()
             self._brush_item.setVisible(False)
+        else:
+            # A frame is prepared on another thread, so editing usually becomes
+            # possible while the pointer is already sitting still over the pane.
+            # Without this the brush is invisible until it is moved.
+            self._show_brush_at_pointer()
         self._apply_drag_mode()
         self._apply_tool_cursor()
 
@@ -328,10 +333,42 @@ class LabelCanvas(ImageView):
         )
         self._brush_item.setVisible(True)
 
+    def enterEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Take the keyboard and show the brush when the pointer arrives.
+
+        Focus follows the pointer here because the keys that matter while
+        painting -- space to pan above all -- are read by this widget, and a
+        tool button clicked a moment ago would otherwise still hold the
+        keyboard and swallow them.
+        """
+        self.setFocus(Qt.MouseFocusReason)
+        self._move_brush_cursor(event_position(event))
+        super().enterEvent(event)
+
+    def _pointer_position(self):
+        """Return where the pointer is, in viewport coordinates."""
+        return self.viewport().mapFromGlobal(QCursor.pos())
+
+    def _show_brush_at_pointer(self) -> None:
+        """Draw the brush outline where the pointer is, if it is over the pane."""
+        position = self._pointer_position()
+        if self.viewport().rect().contains(position):
+            self._move_brush_cursor(position)
+
     def leaveEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Hide the brush outline when the pointer leaves the pane."""
         self._brush_item.setVisible(False)
         super().leaveEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Stop panning when the keyboard goes elsewhere.
+
+        The release of a held space arrives at whatever has focus, so without
+        this a window switch mid-pan leaves the left button panning with no
+        key held down and no way to get the brush back.
+        """
+        self._release_space()
+        super().focusOutEvent(event)
 
     # -- painting ----------------------------------------------------------
 
@@ -483,9 +520,15 @@ class LabelCanvas(ImageView):
     def keyReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Give the left button back to the brush."""
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
-            self._space_held = False
-            self._apply_drag_mode()
-            self._apply_tool_cursor()
+            self._release_space()
             event.accept()
             return
         super().keyReleaseEvent(event)
+
+    def _release_space(self) -> None:
+        """Give the left button back to the brush, however space was let go."""
+        if not self._space_held:
+            return
+        self._space_held = False
+        self._apply_drag_mode()
+        self._apply_tool_cursor()

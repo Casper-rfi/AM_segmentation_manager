@@ -426,6 +426,9 @@ class CurationWindow(QMainWindow):
             self.export_panel.refresh()
         elif widget is self.label_panel:
             self._point_label_tab()
+            # Space pans, and it is read by the canvas as a key press, so the
+            # canvas has to hold the keyboard before the pointer arrives.
+            self.label_panel.focus_canvas()
         elif widget is self.metadata_panel:
             self.metadata_panel.refresh()
             # The arrow keys here are scoped to the project list, so they only

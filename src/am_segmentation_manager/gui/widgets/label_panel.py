@@ -94,6 +94,14 @@ class LabelPanel(QWidget):
 
         layout.addLayout(self._build_timeline())
 
+        # Every control here has a shortcut, and none of them needs the
+        # keyboard: what does is the canvas, whose space-to-pan is read as a
+        # key press. A radio button that kept focus after being clicked would
+        # take that space and toggle itself instead.
+        for widget in self.findChildren(QWidget):
+            if widget is not self.canvas:
+                widget.setFocusPolicy(Qt.NoFocus)
+
     # -- construction ------------------------------------------------------
 
     def _build_controls(self) -> QHBoxLayout:
@@ -340,6 +348,10 @@ class LabelPanel(QWidget):
             self.canvas.refresh_label()
             self._refresh_timeline()
             self._refresh_edit_state()
+
+    def focus_canvas(self) -> None:
+        """Give the canvas the keyboard, so space pans without a click first."""
+        self.canvas.setFocus(Qt.OtherFocusReason)
 
     def canvas_fit(self) -> None:
         """Scale the image to the pane."""
