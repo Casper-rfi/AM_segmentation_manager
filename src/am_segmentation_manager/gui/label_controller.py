@@ -23,6 +23,7 @@ from ..layout import MODALITIES
 from ..models import Lamella
 from ..operations import label_io
 from ..operations.label_edit import EditPatch, new_label
+from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
     LabelToSave,
     SavePlan,
@@ -92,6 +93,10 @@ class LabelController:
         self.show_overlay = True
         #: Whether the acquisition is drawn under the label.
         self.show_image = True
+        #: Whether components of a few pixels are being pointed out.
+        self.finding_specks = False
+        self._speck_size = DEFAULT_SPECK_PIXELS
+        self._specks: dict[Path, tuple[Speck, ...]] = {}
         self._lamella: Lamella | None = None
         self._frames: tuple[LamellaFrame, ...] = ()
         self._positions: tuple[int, ...] = ()
@@ -132,6 +137,7 @@ class LabelController:
         if not same:
             self._label_states.clear()
             self._keys.clear()
+            self._specks.clear()
             self.session.discard()
         self.cache.set_frames(self._frames)
         self._refresh_positions(keep_frame=keep_frame)
@@ -371,6 +377,42 @@ class LabelController:
     def record_edit(self, patch: EditPatch | None) -> None:
         """Record a completed stroke against the label on screen."""
         self.session.record(patch)
+        # The specks were counted on the label as it was a stroke ago. Dropped
+        # rather than recounted: recounting belongs to whoever decides when the
+        # reviewer has stopped drawing.
+        self._specks.pop(self.current_key, None)
+
+    @property
+    def speck_size(self) -> int:
+        """Return the largest component still pointed out, in pixels."""
+        return self._speck_size
+
+    def set_speck_size(self, pixels: int) -> None:
+        """Point out components of at most *pixels*, forgetting the old count."""
+        pixels = max(1, int(pixels))
+        if pixels == self._speck_size:
+            return
+        self._speck_size = pixels
+        self._specks.clear()
+
+    def specks(self) -> tuple[Speck, ...]:
+        """Return the components of a few pixels in the label on screen.
+
+        Measured on the array being edited, unsaved strokes included, so a
+        speck painted out stops being reported and one just painted starts.
+        Held per label until a stroke changes it, so stepping back and forth
+        across a lamella measures each frame once.
+        """
+        key = self.current_key
+        if key is None:
+            return ()
+        held = self._specks.get(key)
+        if held is not None:
+            return held
+        label = self.working_label()
+        found = () if label is None else find_specks(label, at_most=self._speck_size)
+        self._specks[key] = found
+        return found
 
     def mark_reviewed(self, reviewed: bool = True) -> None:
         """Record that the label on screen has been proofread, edited or not."""

@@ -522,3 +522,73 @@ def test_the_loads_asked_for_name_the_condition(tmp_path: Path):
     controller.set_variant("8_fi_4")
 
     assert all(request.variant == "8_fi_4" for request in controller.pending_loads())
+
+
+# ---------------------------------------------------------------------------
+# Specks
+# ---------------------------------------------------------------------------
+
+def paint_speck(controller, value: int = 2) -> None:
+    """Put a single stray pixel on the label on screen."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    controller.current_image()
+    label = controller.working_label()
+    controller.record_edit(paint(label, [(3, 3)], 0, value))
+
+
+def test_a_speck_painted_by_hand_is_found(controller):
+    assert controller.specks() == ()
+
+    paint_speck(controller)
+
+    specks = controller.specks()
+    assert [(speck.pixels, speck.x, speck.y) for speck in specks] == [(1, 3, 3)], (
+        "measured on the array being edited, not on the file"
+    )
+
+
+def test_a_speck_painted_out_stops_being_reported(controller):
+    from am_segmentation_manager.operations.label_edit import paint
+
+    paint_speck(controller)
+    assert controller.specks()
+
+    label = controller.working_label()
+    controller.record_edit(paint(label, [(3, 3)], 0, 0))
+
+    assert controller.specks() == (), "an edit drops what was counted before it"
+
+
+def test_the_count_is_held_until_something_changes_it(controller, monkeypatch):
+    calls = []
+    import am_segmentation_manager.gui.label_controller as module
+
+    original = module.find_specks
+    monkeypatch.setattr(
+        module, "find_specks",
+        lambda label, **kwargs: calls.append(1) or original(label, **kwargs),
+    )
+    paint_speck(controller)
+
+    controller.specks()
+    controller.specks()
+
+    assert len(calls) == 1, "stepping back and forth must not re-measure"
+
+
+def test_changing_the_size_measures_again(controller):
+    paint_speck(controller)
+    assert controller.specks()
+
+    controller.set_speck_size(1)
+    assert controller.specks(), "a one-pixel speck is still a speck at one pixel"
+
+    controller.set_speck_size(64)
+    assert controller.specks()
+
+
+def test_the_size_is_at_least_one_pixel(controller):
+    controller.set_speck_size(0)
+
+    assert controller.speck_size == 1

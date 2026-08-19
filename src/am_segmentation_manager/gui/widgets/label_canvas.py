@@ -19,7 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QCursor, QImage, QPen, QPixmap
+from qtpy.QtGui import QColor, QCursor, QImage, QPen, QPixmap
 from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsView
 
 from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
@@ -36,9 +36,24 @@ logger = logging.getLogger(__name__)
 COLOUR_TABLE_SIZE = 256
 
 #: Drawn above the image, which sits at the default zero. The brush outline goes
-#: above both, so it stays visible over an opaque label.
+#: above both, so it stays visible over an opaque label. Speck rings sit between
+#: them: over the annotation they point at, under the tool doing the work.
 LABEL_Z = 1.0
+SPECK_Z = 1.5
 BRUSH_Z = 2.0
+
+#: The ring drawn around a speck, in **screen** pixels.
+#:
+#: Screen rather than image pixels because the thing being pointed at is four
+#: pixels or fewer: at a zoom that fits a 3000-pixel acquisition in a pane, a
+#: ring scaled with the image would be smaller than the speck inside it.
+SPECK_RING = 9.0
+SPECK_PEN = 2.0
+
+#: Magenta, which is the one hue not already spoken for. The classes use
+#: orange, green, red and yellow, the workflow states grey, blue and teal, the
+#: label lines violet, and white is the cursor and the selection.
+SPECK_COLOUR = "#ff2fd0"
 
 #: The two ways of writing a class. The brush draws where it is dragged; the
 #: fill floods the run of one class under the pointer, which is how an area
@@ -156,6 +171,9 @@ class LabelCanvas(ImageView):
         self._brush_item.setVisible(False)
         self.scene().addItem(self._brush_item)
 
+        #: One ring per speck, rebuilt whenever the specks change.
+        self._speck_items: list[QGraphicsEllipseItem] = []
+
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -213,6 +231,37 @@ class LabelCanvas(ImageView):
         """Return whether the label layer is being drawn."""
         return self._label_shown
 
+    def show_specks(self, specks) -> None:
+        """Ring each of *specks*, replacing whatever was ringed before.
+
+        The rings ignore the view transform, so each stays the same size on
+        screen at any zoom -- see :data:`SPECK_RING`. Passing nothing clears
+        them, which is what switching the filter off does.
+        """
+        for item in self._speck_items:
+            self.scene().removeItem(item)
+        self._speck_items.clear()
+
+        pen = QPen(QColor(SPECK_COLOUR))
+        pen.setWidthF(SPECK_PEN)
+        pen.setCosmetic(True)
+        for speck in specks:
+            ring = QGraphicsEllipseItem(
+                -SPECK_RING, -SPECK_RING, 2 * SPECK_RING, 2 * SPECK_RING
+            )
+            ring.setPen(pen)
+            ring.setBrush(Qt.NoBrush)
+            ring.setZValue(SPECK_Z)
+            ring.setFlag(QGraphicsEllipseItem.ItemIgnoresTransformations, True)
+            # The middle of the pixel, not its corner.
+            ring.setPos(speck.x + 0.5, speck.y + 0.5)
+            self.scene().addItem(ring)
+            self._speck_items.append(ring)
+
+    def centre_on(self, x: float, y: float) -> None:
+        """Bring a point of the label into the middle of the pane."""
+        self.centerOn(x + 0.5, y + 0.5)
+
     def clear(self) -> None:
         """Show nothing, in every layer."""
         super().clear()
@@ -220,6 +269,7 @@ class LabelCanvas(ImageView):
         self._label_item.setPixmap(QPixmap())
         self._label_item.setVisible(False)
         self._brush_item.setVisible(False)
+        self.show_specks(())
 
     # -- the tools ---------------------------------------------------------
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from qtpy.QtCore import QPointF, Qt, Signal
+from qtpy.QtCore import QPointF, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPainter, QPixmap, QPolygonF
 from qtpy.QtWidgets import (
     QButtonGroup,
@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
 from ...config import BACKGROUND_CLASS
 from ...display import DEFAULT_ALPHA
 from ...layout import MODALITIES
+from ...operations.label_measure import DEFAULT_SPECK_PIXELS
 from ..label_controller import LabelController
 from .common import LABEL_BADGES, chip_icon
 from .frame_strip import FrameTimeline
@@ -51,6 +52,16 @@ UNSAVED_NOTE = "not yet written to disk"
 
 #: The swatch drawn on each class's paint button.
 SWATCH = 12
+
+#: How long after the last stroke the specks are counted again. Long enough
+#: that a pause between strokes is not one, short enough that a speck painted
+#: out stops being ringed while the reviewer is still looking at it.
+SPECK_RECOUNT_MS = 400
+
+#: The sizes the speck slider offers, in pixels. One pixel is the smallest
+#: thing there is; the top is where "small component" stops meaning anything.
+MIN_SPECK_PIXELS = 1
+MAX_SPECK_PIXELS = 64
 
 #: The keys that choose a class to paint, one per button in the order the
 #: classes are shown.
@@ -165,6 +176,10 @@ class LabelPanel(QWidget):
         #: Condition names from the project metadata; see
         #: :meth:`set_variant_descriptions`.
         self._variant_descriptions: dict[str, str] = {}
+        #: The view to put back when the speck filter is switched off.
+        self._view_before: tuple[bool, bool, int] | None = None
+        #: Which speck the stepping key is on.
+        self._speck_position = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -188,6 +203,10 @@ class LabelPanel(QWidget):
         layout.addWidget(self.status)
 
         layout.addLayout(self._build_timeline())
+
+        self._speck_timer = QTimer(self)
+        self._speck_timer.setSingleShot(True)
+        self._speck_timer.timeout.connect(self._refresh_specks)
 
         # Every control here has a shortcut, and none of them needs the
         # keyboard: what does is the canvas, whose space-to-pan is read as a
@@ -272,6 +291,36 @@ class LabelPanel(QWidget):
         self.fit_button.setToolTip("Scale the image to the pane\nShortcut: 0")
         self.fit_button.clicked.connect(self.canvas_fit)
         controls.addWidget(self.fit_button)
+
+        controls.addSpacing(20)
+        self.speck_check = QCheckBox("Find specks")
+        self.speck_check.setToolTip(
+            "Ring every annotated component of a few pixels, whatever class it "
+            "is.\nSwitching it on sets the view that makes them findable, and "
+            "switching it off puts your own back.\nShortcut: X, and N steps to "
+            "the next one"
+        )
+        self.speck_check.toggled.connect(self._finding_toggled)
+        controls.addWidget(self.speck_check)
+
+        self.speck_slider = QSlider(Qt.Horizontal)
+        self.speck_slider.setRange(MIN_SPECK_PIXELS, MAX_SPECK_PIXELS)
+        self.speck_slider.setValue(self.controller.speck_size)
+        self.speck_slider.setFixedWidth(90)
+        self.speck_slider.setToolTip(
+            "Largest component still ringed.\n"
+            f"{DEFAULT_SPECK_PIXELS} is one pixel of a prediction: labels "
+            "converted from predictions are upscaled from half resolution, so "
+            "anything smaller was painted by hand."
+        )
+        self.speck_slider.valueChanged.connect(self._speck_size_changed)
+        controls.addWidget(self.speck_slider)
+
+        self.speck_count = QLabel("")
+        self.speck_count.setMinimumWidth(96)
+        self.speck_count.setToolTip(self.speck_check.toolTip())
+        controls.addWidget(self.speck_count)
+        self._show_speck_controls(False)
 
         controls.addStretch()
         return controls
@@ -512,6 +561,71 @@ class LabelPanel(QWidget):
         self.controller.show_overlay = shown
         self.canvas.set_label_shown(shown)
 
+    def _show_speck_controls(self, visible: bool) -> None:
+        """Show the size and the count only while anything is being looked for."""
+        self.speck_slider.setVisible(visible)
+        self.speck_count.setVisible(visible)
+
+    def _finding_toggled(self, finding: bool) -> None:
+        """Start or stop pointing out specks, and set the view for it.
+
+        Switching on takes the view the reviewer had and replaces it with the
+        one that makes a four-pixel annotation visible: the label alone,
+        opaque, against black. Switching off puts theirs back -- a filter that
+        leaves the window rearranged is one you stop using.
+        """
+        if finding:
+            self._view_before = (
+                self.overlay_check.isChecked(),
+                self.image_check.isChecked(),
+                self.alpha_slider.value(),
+            )
+            self.overlay_check.setChecked(True)
+            self.image_check.setChecked(False)
+            self.alpha_slider.setValue(100)
+        elif self._view_before is not None:
+            overlay, image, alpha = self._view_before
+            self._view_before = None
+            self.overlay_check.setChecked(overlay)
+            self.image_check.setChecked(image)
+            self.alpha_slider.setValue(alpha)
+
+        self.controller.finding_specks = finding
+        self._show_speck_controls(finding)
+        self._refresh_specks()
+
+    def toggle_specks(self) -> None:
+        """Start or stop looking for specks, from the keyboard."""
+        self.speck_check.toggle()
+
+    def _speck_size_changed(self, pixels: int) -> None:
+        self.controller.set_speck_size(pixels)
+        self._refresh_specks()
+
+    def _refresh_specks(self) -> None:
+        """Ring what is there now, and say how much of it there is."""
+        if not self.controller.finding_specks:
+            self.canvas.show_specks(())
+            self.speck_count.setText("")
+            self._speck_position = 0
+            return
+        specks = self.controller.specks()
+        self.canvas.show_specks(specks)
+        size = self.controller.speck_size
+        self.speck_count.setText(
+            f"{len(specks)} at {size}px or less" if specks else f"none at {size}px or less"
+        )
+        self._speck_position = 0
+
+    def step_speck(self, delta: int) -> None:
+        """Bring the next speck into the middle of the pane, wrapping round."""
+        specks = self.controller.specks()
+        if not self.controller.finding_specks or not specks:
+            return
+        self._speck_position = (self._speck_position + delta) % len(specks)
+        speck = specks[self._speck_position]
+        self.canvas.centre_on(speck.x, speck.y)
+
     def _image_toggled(self, shown: bool) -> None:
         self.controller.show_image = shown
         self.canvas.set_image_shown(shown)
@@ -600,6 +714,10 @@ class LabelPanel(QWidget):
         self.controller.record_edit(patch)
         self._refresh_timeline()
         self._refresh_edit_state()
+        if self.controller.finding_specks:
+            # Counting takes tens of milliseconds, which is nothing in a pause
+            # and everything mid-drag, so it waits for the drawing to stop.
+            self._speck_timer.start(SPECK_RECOUNT_MS)
 
     def undo(self) -> None:
         """Reverse the last stroke on the label on screen."""
@@ -742,6 +860,7 @@ class LabelPanel(QWidget):
         self.canvas.set_frame(display.image, self.controller.working_label())
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_image_shown(self.controller.show_image)
+        self._refresh_specks()
         self.canvas.set_editable(self.controller.editable)
         self._set_badges(self._label_badges(display))
 

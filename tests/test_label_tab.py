@@ -407,6 +407,104 @@ def test_the_hidden_image_survives_stepping_to_another_frame(qt_app, window):
     )
 
 
+def test_finding_specks_sets_the_view_that_shows_them(window):
+    panel = window.label_panel
+    panel.alpha_slider.setValue(40)
+
+    panel.speck_check.setChecked(True)
+
+    assert panel.image_check.isChecked() is False, "the label alone, against black"
+    assert panel.overlay_check.isChecked() is True
+    assert panel.alpha_slider.value() == 100
+
+
+def test_switching_the_filter_off_puts_the_view_back(window):
+    panel = window.label_panel
+    panel.alpha_slider.setValue(40)
+    panel.image_check.setChecked(True)
+
+    panel.speck_check.setChecked(True)
+    panel.speck_check.setChecked(False)
+
+    assert panel.image_check.isChecked() is True
+    assert panel.alpha_slider.value() == 40, (
+        "a filter that leaves the window rearranged is one you stop using"
+    )
+
+
+def test_a_speck_is_ringed_where_it_is(window):
+    panel = window.label_panel
+    paint_on(window, value=2)   # a stroke, not a speck
+    panel.canvas.set_paint_value(1)
+    stray(panel, 7, 9)
+
+    panel.speck_check.setChecked(True)
+
+    rings = panel.canvas._speck_items
+    assert len(rings) == 1
+    assert (rings[0].pos().x(), rings[0].pos().y()) == (7.5, 9.5)
+
+
+def test_a_ring_keeps_its_size_on_screen_at_any_zoom(window):
+    panel = window.label_panel
+    stray(panel, 7, 9)
+    panel.speck_check.setChecked(True)
+    ring = panel.canvas._speck_items[0]
+    before = ring.deviceTransform(panel.canvas.viewportTransform()).mapRect(
+        ring.boundingRect()
+    ).width()
+
+    panel.canvas.zoom_by(4.0)
+
+    after = ring.deviceTransform(panel.canvas.viewportTransform()).mapRect(
+        ring.boundingRect()
+    ).width()
+    assert after == pytest.approx(before), (
+        "a ring scaled with the image would be smaller than the speck inside it"
+    )
+
+
+def test_switching_the_filter_off_takes_the_rings_away(window):
+    panel = window.label_panel
+    stray(panel, 7, 9)
+
+    panel.speck_check.setChecked(True)
+    panel.speck_check.setChecked(False)
+
+    assert panel.canvas._speck_items == []
+
+
+def test_the_count_says_what_was_looked_for(window):
+    panel = window.label_panel
+    stray(panel, 7, 9)
+
+    panel.speck_check.setChecked(True)
+
+    assert "1" in panel.speck_count.text()
+    assert "4px" in panel.speck_count.text().replace(" ", "")
+
+
+def test_stepping_brings_a_speck_into_the_middle(window):
+    panel = window.label_panel
+    stray(panel, 40, 30)
+    panel.speck_check.setChecked(True)
+    panel.canvas.zoom_by(8.0)
+
+    panel.step_speck(1)
+
+    centre = panel.canvas.mapToScene(panel.canvas.viewport().rect().center())
+    assert centre.x() == pytest.approx(40.5, abs=1.5)
+    assert centre.y() == pytest.approx(30.5, abs=1.5)
+
+
+def stray(panel, x, y):
+    """Paint a single pixel, which is what a speck is."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    label = panel.controller.working_label()
+    panel.controller.record_edit(paint(label, [(x, y)], 0, 1))
+
+
 def test_the_frame_is_drawn_at_full_resolution(window):
     prepared = window.label_controller.cached_image()
 

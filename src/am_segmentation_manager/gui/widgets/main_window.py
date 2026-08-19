@@ -1000,6 +1000,14 @@ class CurationWindow(QMainWindow):
                 "A", "Lock or unlock every class",
                 self.label_panel.toggle_all_locks, TAB_LABEL,
             ),
+            Binding(
+                "X", "Find specks: ring the small components",
+                self.label_panel.toggle_specks, TAB_LABEL,
+            ),
+            Binding(
+                "N", "Go to the next speck",
+                lambda: self.label_panel.step_speck(1), TAB_LABEL,
+            ),
             Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-1), TAB_LABEL),
             Binding("]", "Larger brush", lambda: self.label_panel.step_brush(1), TAB_LABEL),
             Binding("Ctrl+S", "Save this lamella's labels", self.save_labels, TAB_LABEL),
