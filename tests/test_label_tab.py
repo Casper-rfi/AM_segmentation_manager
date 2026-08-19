@@ -805,6 +805,21 @@ def test_marking_corrected_moves_the_image_and_its_label(qt_app, window):
     )
 
 
+def test_saving_leaves_the_reviewer_on_the_lamella_they_saved(qt_app, two_lamellae):
+    two_lamellae._step_label_lamella(1)
+    _settle(qt_app, lambda: drawn(two_lamellae))
+    lamella = two_lamellae.label_controller.lamella.path
+    paint_on(two_lamellae)
+
+    save_with(two_lamellae, mark_corrected=False)
+    _settle(qt_app, lambda: saved(two_lamellae))
+
+    assert two_lamellae.label_controller.lamella.path == lamella, (
+        "a save re-reads the collection; it is not a request to start over"
+    )
+    assert two_lamellae.controller.lamella.path == lamella
+
+
 def test_a_saved_lamella_is_rescanned(qt_app, window):
     paint_on(window)
 

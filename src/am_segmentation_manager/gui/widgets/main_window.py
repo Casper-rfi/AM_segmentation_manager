@@ -543,8 +543,8 @@ class CurationWindow(QMainWindow):
         self.changes_log.append(f"{title}: {report.headline}")
         logger.info("%s: %s", title, report.headline)
         self._show_report(title, report)
-        if rescan and self.controller.start_path is not None:
-            self.scan(str(self.controller.start_path))
+        if rescan:
+            self.rescan()
         else:
             self.refresh(reload_lists=True)
 
@@ -960,11 +960,10 @@ class CurationWindow(QMainWindow):
     # -- user actions ------------------------------------------------------
 
     def scan(self, path: str) -> None:
-        """Scan *path* for projects and show what was found.
+        """Scan *path* for projects, starting at the first one found.
 
-        Under a wait cursor throughout: scanning a collection is the slowest
-        thing the window does, and until it finishes there is nothing on screen
-        to say anything is happening.
+        For a folder the reviewer chose. Re-reading the folder already open
+        goes through :meth:`rescan`, which keeps their place.
         """
         if not path:
             return
@@ -973,16 +972,37 @@ class CurationWindow(QMainWindow):
             QMessageBox.warning(self, "Scan", f"Not a folder: {directory}")
             return
 
+        if self._reading(lambda: self.controller.scan(directory)):
+            self.project_panel.set_path(str(directory))
+            self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
+
+    def rescan(self) -> None:
+        """Read the same folder again, staying on the lamella being reviewed.
+
+        What follows anything that moved files. Scanning again is how the
+        window learns what an operation did; going back to where the reviewer
+        was is what stops that costing them their place.
+        """
+        if self.controller.start_path is None:  # pragma: no cover - always set by here
+            self.refresh(reload_lists=True)
+            return
+        self._reading(self.controller.rescan)
+
+    def _reading(self, read: Callable[[], object]) -> bool:
+        """Run *read* under a wait cursor and redraw; return whether it worked.
+
+        Under a wait cursor throughout: scanning a collection is the slowest
+        thing the window does, and until it finishes there is nothing on screen
+        to say anything is happening.
+        """
         failure: Exception | None = None
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            self.controller.scan(directory)
+            read()
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
             logger.exception("Scan failed")
             failure = exc
         else:
-            self.project_panel.set_path(str(directory))
-            self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
             self._share_scan()
             self.refresh(reload_lists=True)
         finally:
@@ -992,6 +1012,7 @@ class CurationWindow(QMainWindow):
         # looks like the window is still working on something.
         if failure is not None:
             QMessageBox.critical(self, "Scan failed", str(failure))
+        return failure is None
 
     def _select_project(self, row: int) -> None:
         self.controller.select_project(row)
@@ -1568,10 +1589,7 @@ class CurationWindow(QMainWindow):
         self._flash(headline, 4000)
         # Rescanned rather than refreshed: a save writes labels that were not
         # there when the scan ran, and marking corrected moves the files.
-        if self.controller.start_path is not None:
-            self.scan(str(self.controller.start_path))
-        else:  # pragma: no cover - the window always has a scan root by here
-            self.refresh(reload_lists=True)
+        self.rescan()
         self._point_label_tab()
 
     def _schedule_label_loads(self) -> None:

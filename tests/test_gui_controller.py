@@ -124,6 +124,64 @@ def test_lamella_with_no_frames_is_handled():
 
 
 # ---------------------------------------------------------------------------
+# Rescanning
+# ---------------------------------------------------------------------------
+#
+# The stub scanner reads the list it was given on every call, so a test changes
+# what the next scan finds by changing that list.
+
+def test_rescanning_stays_where_the_view_was():
+    controller = make_controller()
+    controller.select_project(1)
+    controller.step_frame(2)
+
+    controller.rescan()
+
+    assert controller.project.name == "project-b"
+    assert controller.lamella.name == "01-gamma"
+    assert controller.frame_position == 2
+
+
+def test_rescanning_follows_a_project_that_has_been_renumbered():
+    projects = [
+        make_project("project-a", [("01-alpha", 4)]),
+        make_project("project-b", [("01-gamma", 3)]),
+    ]
+    controller = make_controller(projects)
+    controller.select_project(1)
+    projects.insert(0, make_project("project-new", [("01-delta", 2)]))
+
+    controller.rescan()
+
+    assert controller.project_position == 2, "the index moved; the project did not"
+    assert controller.project.name == "project-b"
+
+
+def test_rescanning_starts_over_when_what_was_selected_has_gone():
+    projects = [
+        make_project("project-a", [("01-alpha", 4)]),
+        make_project("project-b", [("01-gamma", 3)]),
+    ]
+    controller = make_controller(projects)
+    controller.select_project(1)
+    del projects[1]
+
+    controller.rescan()
+
+    assert controller.project.name == "project-a", (
+        "a lamella that has gone is one the reviewer has to be shown they left"
+    )
+    assert controller.lamella.name == "01-alpha"
+
+
+def test_rescanning_before_anything_was_scanned_is_refused():
+    controller = CurationController(cache=FrameCache(), config=CONFIG)
+
+    with pytest.raises(RuntimeError, match="Nothing has been scanned"):
+        controller.rescan()
+
+
+# ---------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------
 

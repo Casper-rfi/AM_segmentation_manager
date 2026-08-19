@@ -58,6 +58,34 @@ MODE_MODALITIES: dict[DisplayMode, str] = {"sem": "SEM", "fib": "FIB"}
 ProjectScanner = Callable[[Path], ProjectIndex]
 
 
+@dataclass(frozen=True)
+class ViewPosition:
+    """Where the view is, in terms that survive a rescan.
+
+    Projects and lamellae are named by path because a rescan rebuilds every
+    object and can renumber them: a project added or removed on disk shifts
+    every index after it. The frame keeps its index, which is all a frame has.
+
+    Attributes:
+        project: Path of the selected project, or None if there was none.
+        lamella: Path of the selected lamella, or None.
+        frame: Index of the frame within the lamella.
+    """
+
+    project: Path | None
+    lamella: Path | None
+    frame: int
+
+
+def _index_of(items: Sequence, path: Path | None) -> int | None:
+    """Return the position of the item at *path*, or None if it is not there."""
+    if path is None:
+        return None
+    return next(
+        (index for index, item in enumerate(items) if item.path == path), None
+    )
+
+
 #: How far curation has progressed for one modality, in one lamella or project.
 #:
 #: Derived from the records every time it is asked for; nothing is stored. A
@@ -309,6 +337,51 @@ class CurationController:
         logger.info("Found %d project(s) under %s", len(self._projects), self.start_path)
         self.select_project(0)
         return self._projects
+
+    def rescan(self) -> list[Project]:
+        """Read the same root again, staying where the view is.
+
+        What follows an operation that moved files. The index is derived from
+        the filesystem rather than patched, because the filesystem is what the
+        operation changed -- but where the reviewer had got to is not a fact
+        about the filesystem, and starting them at the first project again
+        after every save makes a long session unworkable.
+
+        Raises:
+            RuntimeError: If nothing has been scanned yet.
+        """
+        if self.start_path is None:
+            raise RuntimeError("Nothing has been scanned yet")
+        position = self.position()
+        projects = self.scan(self.start_path)
+        self.restore(position)
+        return projects
+
+    def position(self) -> ViewPosition:
+        """Return where the view is, named by path rather than by index."""
+        project, lamella = self.project, self.lamella
+        return ViewPosition(
+            project=project.path if project is not None else None,
+            lamella=lamella.path if lamella is not None else None,
+            frame=self._frame_position,
+        )
+
+    def restore(self, position: ViewPosition) -> None:
+        """Move back to *position*, as nearly as what was found allows.
+
+        Anything that has gone since is dropped rather than searched for: a
+        lamella that is no longer there is one the reviewer has to be told
+        about by seeing where they now are.
+        """
+        project = _index_of(self._projects, position.project)
+        if project is None:
+            return
+        self.select_project(project)
+        lamella = _index_of(self._lamellae, position.lamella)
+        if lamella is None:
+            return
+        self.select_lamella(lamella)
+        self.select_frame(position.frame)
 
     # -- selection ---------------------------------------------------------
 
