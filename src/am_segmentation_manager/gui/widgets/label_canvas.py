@@ -264,16 +264,28 @@ class LabelCanvas(ImageView):
         return self._tool
 
     def _apply_tool_cursor(self) -> None:
-        """Show the brush outline for the brush, and a crosshair for the fill."""
+        """Show the cursor for whatever the left button will do.
+
+        Set on the **viewport**, and set for every state rather than left to
+        ``setDragMode``. Qt puts the panning hand on the viewport as a side
+        effect of the drag mode *changing* -- so it does nothing at all when the
+        mode is already what it is being set to -- and ``QGraphicsView`` puts a
+        stored cursor back whenever the pointer moves across a scene whose items
+        carry no cursor of their own. Naming the cursor here, at the level Qt
+        manipulates, is what keeps the hand on screen for as long as space is
+        held.
+        """
+        viewport = self.viewport()
         if not self.editable or self._space_held:
+            # The left button pans in both cases, so the hand is the truth.
             self._brush_item.setVisible(False)
-            self.unsetCursor()
+            viewport.setCursor(Qt.OpenHandCursor)
             return
         if self._tool == TOOL_FILL:
             self._brush_item.setVisible(False)
-            self.setCursor(Qt.CrossCursor)
+            viewport.setCursor(Qt.CrossCursor)
         else:
-            self.unsetCursor()
+            viewport.unsetCursor()
 
     def set_brush_radius(self, radius: int) -> None:
         """Set the brush radius in label pixels."""
@@ -381,7 +393,7 @@ class LabelCanvas(ImageView):
         """Start a stroke, or start panning."""
         if event.button() == Qt.MiddleButton:
             self._pan_from = event_position(event)
-            self.setCursor(Qt.ClosedHandCursor)
+            self.viewport().setCursor(Qt.ClosedHandCursor)
             event.accept()
             return
         if event.button() == Qt.LeftButton and self.editable and not self._space_held:
@@ -408,6 +420,7 @@ class LabelCanvas(ImageView):
             event.accept()
             return
         super().mouseMoveEvent(event)
+        self._keep_pan_cursor()
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Finish a stroke or a pan, reporting the stroke as one edit."""
@@ -421,6 +434,22 @@ class LabelCanvas(ImageView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def _keep_pan_cursor(self) -> None:
+        """Put the panning hand back if Qt has just taken it off.
+
+        ``QGraphicsView`` restores a stored viewport cursor as the pointer moves
+        across a scene whose items carry no cursor of their own, so a hand set
+        when space went down does not survive the drag that follows. Nothing
+        changes state during a drag, so this is the only place left to say it.
+        Qt's own closed hand, shown while the button is down, is left alone.
+        """
+        if not self._space_held:
+            return
+        if self.viewport().cursor().shape() not in (
+            Qt.OpenHandCursor, Qt.ClosedHandCursor
+        ):
+            self.viewport().setCursor(Qt.OpenHandCursor)
 
     def _pan_by(self, position) -> None:
         """Scroll by how far the pointer moved since the last report."""

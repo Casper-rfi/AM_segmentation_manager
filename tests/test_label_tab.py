@@ -542,6 +542,46 @@ def test_releasing_space_gives_the_brush_back(canvas):
     assert len(patches) == 1
 
 
+def test_holding_space_shows_the_panning_hand(canvas):
+    canvas.keyPressEvent(key_event(QEvent.KeyPress, Qt.Key_Space))
+
+    assert canvas.viewport().cursor().shape() == Qt.OpenHandCursor
+
+
+def test_the_panning_hand_survives_a_drag_across_the_frame(canvas):
+    canvas.keyPressEvent(key_event(QEvent.KeyPress, Qt.Key_Space))
+    # What Qt does as the pointer crosses a scene with no item cursor of its
+    # own, which is what took the hand away mid-pan.
+    canvas.viewport().setCursor(Qt.ArrowCursor)
+
+    canvas.mouseMoveEvent(
+        mouse_event(QEvent.MouseMove, QPoint(100, 100), Qt.NoButton)
+    )
+
+    assert canvas.viewport().cursor().shape() == Qt.OpenHandCursor
+
+
+def test_releasing_space_takes_the_hand_away(canvas):
+    canvas.keyPressEvent(key_event(QEvent.KeyPress, Qt.Key_Space))
+    canvas.keyReleaseEvent(key_event(QEvent.KeyRelease, Qt.Key_Space))
+
+    assert canvas.viewport().cursor().shape() != Qt.OpenHandCursor
+
+
+def test_a_frame_that_cannot_be_painted_on_shows_the_hand(canvas):
+    canvas.set_editable(False)
+
+    assert canvas.viewport().cursor().shape() == Qt.OpenHandCursor, (
+        "the left button pans there, so the hand is what it does"
+    )
+
+
+def test_the_fill_tool_shows_a_crosshair(canvas):
+    canvas.set_tool(TOOL_FILL)
+
+    assert canvas.viewport().cursor().shape() == Qt.CrossCursor
+
+
 def test_the_middle_button_pans_without_painting(canvas):
     patches = []
     canvas.edited.connect(patches.append)
