@@ -85,6 +85,13 @@ TAB_EXPORT = "export"
 #: A key that works everywhere, whatever is showing.
 ANY_TAB = "any"
 
+#: The keys that choose a class to paint, in the order the classes are listed.
+#:
+#: The row above the tools, so the hand that reaches D and F reaches these
+#: without moving. Five because that is what the segmentation config declares;
+#: a longer config leaves the rest without a key rather than borrowing one.
+CLASS_KEYS = ("Q", "W", "E", "R", "T")
+
 #: What the confirm button says for each thing an operation can be blocked on.
 #: The generic wording is right for including corrected files in a batch;
 #: replacing a label needs the destructive word, because it is one.
@@ -829,6 +836,19 @@ class CurationWindow(QMainWindow):
         window and is switched on and off as tabs change.
         """
         curate = TAB_CURATE
+        # Built first so they can sit beside the tools in the F1 list, which is
+        # read top to bottom and groups by what the keys are for.
+        paint_keys = [
+            Binding(
+                key,
+                f"Paint {name}",
+                lambda position=position: self.label_panel.select_class_at(position),
+                TAB_LABEL,
+            )
+            for position, (key, name) in enumerate(
+                zip(CLASS_KEYS, self.label_panel.class_names())
+            )
+        ]
         self._bindings = [
             Binding("Right", "Next frame", lambda: self._step_frame(1), curate),
             Binding("Left", "Previous frame", lambda: self._step_frame(-1), curate),
@@ -837,11 +857,11 @@ class CurationWindow(QMainWindow):
             Binding("1", "SEM view", lambda: self._set_mode("sem", from_user=True), curate),
             Binding("2", "FIB view", lambda: self._set_mode("fib", from_user=True), curate),
             Binding("3", "Plot view", lambda: self._set_mode("plot", from_user=True), curate),
-            Binding("Space", "Show / hide the label overlay", self._toggle_overlay, curate),
+            Binding("V", "Show / hide the label overlay", self._toggle_overlay, curate),
             Binding("D", "Set state: deselected", lambda: self.apply_state("deselected"), curate),
             Binding("S", "Set state: selected", lambda: self.apply_state("selected"), curate),
             Binding("C", "Set state: corrected", lambda: self.apply_state("corrected"), curate),
-            Binding("F", "Fit the images to the panes", self.image_panel.pair.fit, curate),
+            Binding("G", "Fit the images to the panes", self.image_panel.pair.fit, curate),
             Binding(
                 "Esc", "Clear the picked-out frames", self._clear_frame_selection, curate
             ),
@@ -866,17 +886,18 @@ class CurationWindow(QMainWindow):
             Binding("1", "SEM images", lambda: self.label_panel.set_modality("SEM"), TAB_LABEL),
             Binding("2", "FIB images", lambda: self.label_panel.set_modality("FIB"), TAB_LABEL),
             Binding("V", "Show / hide the label", self.label_panel.toggle_label, TAB_LABEL),
-            # D and F step the class, as they do in the labelling UI this tab
-            # replaces. Fit moves to 0 here rather than take one of them.
-            Binding("0", "Fit the image to the pane", self.label_panel.canvas_fit, TAB_LABEL),
+            Binding("G", "Fit the image to the pane", self.label_panel.canvas_fit, TAB_LABEL),
             Binding(
-                "B", "Brush tool", lambda: self.label_panel.set_tool("brush"), TAB_LABEL
+                "D", "Brush tool", lambda: self.label_panel.set_tool("brush"), TAB_LABEL
             ),
             Binding(
-                "G", "Fill tool", lambda: self.label_panel.set_tool("fill"), TAB_LABEL
+                "F", "Fill tool", lambda: self.label_panel.set_tool("fill"), TAB_LABEL
             ),
-            Binding("D", "Previous class", lambda: self.label_panel.step_class(-1), TAB_LABEL),
-            Binding("F", "Next class", lambda: self.label_panel.step_class(1), TAB_LABEL),
+            *paint_keys,
+            Binding(
+                "A", "Lock or unlock every class",
+                self.label_panel.toggle_all_locks, TAB_LABEL,
+            ),
             Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-1), TAB_LABEL),
             Binding("]", "Larger brush", lambda: self.label_panel.step_brush(1), TAB_LABEL),
             Binding("Ctrl+S", "Save this lamella's labels", self.save_labels, TAB_LABEL),

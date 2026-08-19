@@ -348,13 +348,18 @@ class LabelPanel(QWidget):
         if position >= 0:
             self.class_combo.setCurrentIndex(position)
 
-    def step_class(self, delta: int) -> None:
-        """Move to the next or previous class, from the keyboard."""
-        count = self.class_combo.count()
-        if count:
-            self.class_combo.setCurrentIndex(
-                (self.class_combo.currentIndex() + delta) % count
-            )
+    def class_names(self) -> list[str]:
+        """Return the classes that can be painted, in the order they are shown."""
+        return [self.class_combo.itemText(index) for index in range(self.class_combo.count())]
+
+    def select_class_at(self, position: int) -> None:
+        """Paint the class at *position* in the list, from the keyboard.
+
+        Out of range does nothing: the keys are laid out for the classes a
+        config declares, and a config with fewer leaves the last of them idle.
+        """
+        if 0 <= position < self.class_combo.count():
+            self.class_combo.setCurrentIndex(position)
 
     def _brush_resized(self, position: int) -> None:
         """Set the brush to the width at *position* in :data:`BRUSH_WIDTHS`."""
@@ -372,6 +377,20 @@ class LabelPanel(QWidget):
     def step_brush(self, delta: int) -> None:
         """Grow or shrink the brush by one offered size, from the keyboard."""
         self.brush_slider.setValue(self.brush_slider.value() + delta)
+
+    def toggle_all_locks(self, locked: bool | None = None) -> None:
+        """Lock every class, or unlock every class, from the keyboard.
+
+        One key rather than two, because the question being asked is "protect
+        what is already there while I work" and the answer is on or off. With
+        anything unlocked it locks the lot; only when everything is already
+        locked does it let go. Background has no lock: painting it is how a
+        stroke erases, so locking it would take the eraser away.
+        """
+        if locked is None:
+            locked = not all(check.isChecked() for check in self.lock_checks.values())
+        for check in self.lock_checks.values():
+            check.setChecked(locked)
 
     def _locks_changed(self) -> None:
         self.canvas.set_protected(

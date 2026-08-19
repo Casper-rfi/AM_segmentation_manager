@@ -426,6 +426,57 @@ def test_the_tab_s_keys_are_live_only_on_it(window):
     )
 
 
+def keys_of(window, tab):
+    """Return the keys bound on *tab*, by what they do."""
+    return {b.description: b.key for b in window._bindings if b.tab == tab}
+
+
+def test_the_tools_sit_under_the_hand_that_paints(window):
+    keys = keys_of(window, TAB_LABEL)
+
+    assert keys["Brush tool"] == "D"
+    assert keys["Fill tool"] == "F"
+
+
+def test_the_overlay_and_fit_use_the_same_keys_in_both_tabs(window):
+    label, curate = keys_of(window, TAB_LABEL), keys_of(window, TAB_CURATE)
+
+    assert label["Show / hide the label"] == curate["Show / hide the label overlay"]
+    assert label["Fit the image to the pane"] == curate["Fit the images to the panes"]
+
+
+def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):
+    from am_segmentation_manager.gui.widgets.main_window import CLASS_KEYS
+
+    panel = window.label_panel
+    bound = [b for b in window._bindings if b.tab == TAB_LABEL and b.key in CLASS_KEYS]
+
+    assert len(bound) == len(panel.class_names())
+    for binding in bound:
+        binding.action()
+        assert panel.class_combo.currentText() in binding.description
+
+
+def test_one_key_locks_and_unlocks_every_class(window):
+    panel = window.label_panel
+
+    panel.toggle_all_locks()
+    assert panel.canvas.protected == set(panel.lock_checks)
+
+    panel.toggle_all_locks()
+    assert panel.canvas.protected == frozenset()
+
+
+def test_locking_everything_leaves_the_eraser_alone(window):
+    panel = window.label_panel
+
+    panel.toggle_all_locks()
+
+    assert BACKGROUND_CLASS not in panel.canvas.protected, (
+        "painting background is how a stroke erases"
+    )
+
+
 def test_the_help_lists_the_tab_s_own_keys(window):
     help_text = window.shortcut_help(TAB_LABEL)
 

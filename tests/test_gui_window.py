@@ -654,7 +654,7 @@ def test_curate_keys_come_back_with_the_curate_tab(window):
 
     live = {b.key for b, s in zip(window._bindings, window._shortcuts) if s.isEnabled()}
 
-    assert {"Left", "Right", "Space", "D", "F1"} <= live
+    assert {"Left", "Right", "V", "D", "F1"} <= live
 
 
 def _curate_tab(window) -> int:
