@@ -23,7 +23,9 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressDialog,
+    QPushButton,
     QSplitter,
+    QStyle,
     QTabWidget,
     QToolTip,
     QVBoxLayout,
@@ -181,6 +183,79 @@ class ShortcutHelp(QDialog):
         self.adjustSize()
         self.show()
         self.raise_()
+
+
+class SaveLabelsDialog(QDialog):
+    """The one dialog that writes proofread work, laid out on purpose.
+
+    Not a message box. Fusion reports the Windows button order wherever it runs,
+    so a message box ends the row with *Cancel* -- the button that changes
+    nothing sitting where the eye lands last, past both ways of saving. The
+    order here is the shape of the choice: leave, save, save and finish. The
+    last is the default, and therefore the accented one, because proofreading a
+    label and not marking it is the exception.
+
+    Overriding the style hint that decides the order would fix every dialog at
+    once, and was tried: ``QProxyStyle.styleHint`` segfaults PySide6 while a
+    message box is being built.
+    """
+
+    def __init__(
+        self, parent, message: str, note: str, *, offer_corrected: bool
+    ) -> None:
+        """Ask how to save.
+
+        Args:
+            parent: The window the save belongs to.
+            message: What the save would do.
+            note: A second line, or empty. Says how to reach what is not on
+                offer when *offer_corrected* is False.
+            offer_corrected: Whether marking the reviewed set corrected is
+                available, which follows the editing guard.
+        """
+        super().__init__(parent)
+        self.setWindowTitle(SAVE_TITLE)
+        self.mark_corrected = False
+
+        layout = QVBoxLayout(self)
+        said = QHBoxLayout()
+        icon = QLabel()
+        icon.setPixmap(
+            self.style().standardIcon(QStyle.SP_MessageBoxQuestion).pixmap(40, 40)
+        )
+        icon.setAlignment(Qt.AlignTop)
+        said.addWidget(icon)
+        said.addSpacing(8)
+
+        text = QLabel(message if not note else f"{message}\n\n{note}")
+        text.setWordWrap(True)
+        said.addWidget(text, stretch=1)
+        layout.addLayout(said)
+
+        buttons = QHBoxLayout()
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        buttons.addWidget(cancel)
+        buttons.addStretch()
+
+        # "Save only" only means something against a second way of saving.
+        save_only = QPushButton("Save only" if offer_corrected else "Save")
+        save_only.clicked.connect(self.accept)
+        buttons.addWidget(save_only)
+
+        if offer_corrected:
+            mark = QPushButton("Save and mark corrected")
+            mark.clicked.connect(self._mark_and_accept)
+            mark.setDefault(True)
+            buttons.addWidget(mark)
+        else:
+            save_only.setDefault(True)
+        layout.addLayout(buttons)
+
+    def _mark_and_accept(self) -> None:
+        """Accept, having chosen to mark the reviewed set corrected."""
+        self.mark_corrected = True
+        self.accept()
 
 
 class CurationWindow(QMainWindow):
@@ -1602,44 +1677,51 @@ class CurationWindow(QMainWindow):
 
         Marking corrected is a state change, so it is offered only while editing
         is switched on -- the same guard every other state change is behind.
+        With it switched off the dialog says nothing about what marking would
+        move: describing an option that is not on offer is what made this ask
+        three questions at once.
         """
-        approved = len(self.label_controller.approved_records())
+        editing = self.controller.editing_enabled
         lines = [f"Save {plan.summary()} in this lamella?"]
+        spread = self._modality_note()
+        if spread:
+            lines.append(spread)
         if plan.corrected:
             lines.append(
                 f"{len(plan.corrected)} of them replace a label already marked "
                 "corrected."
             )
+        approved = len(self.label_controller.approved_records()) if editing else 0
         if approved:
             lines.append(
                 f"Marking corrected would move {approved} image(s), and the "
                 "labels they share."
             )
 
-        box = QMessageBox(self)
-        box.setWindowTitle(SAVE_TITLE)
-        box.setIcon(QMessageBox.Question)
-        box.setText("\n\n".join(lines))
-        save_only = box.addButton("Save only", QMessageBox.AcceptRole)
-        mark = None
-        if self.controller.editing_enabled:
-            mark = box.addButton("Save and mark corrected", QMessageBox.AcceptRole)
-            box.setDefaultButton(mark)
-        else:
-            box.setInformativeText(
-                "Switch on Enable editing in the Curate tab to mark them "
-                "corrected as well."
-            )
-            box.setDefaultButton(save_only)
-        box.addButton(QMessageBox.Cancel)
-        box.exec_()
+        note = "" if editing else (
+            "To set their state to corrected as well, switch on Enable editing "
+            "in the Curate tab."
+        )
+        dialog = SaveLabelsDialog(
+            self, "\n\n".join(lines), note, offer_corrected=editing
+        )
+        if dialog.exec_() != QDialog.Accepted:
+            return None
+        return dialog.mark_corrected
 
-        clicked = box.clickedButton()
-        if clicked is save_only:
-            return False
-        if mark is not None and clicked is mark:
-            return True
-        return None
+    def _modality_note(self) -> str:
+        """Return the line naming what is waiting per modality, or nothing.
+
+        Only when more than one is involved. A save writes the whole lamella's
+        edits, so the reviewer working through the SEM images has to be told
+        that the FIB labels they touched an hour ago are going out too.
+        """
+        counts = self.label_controller.pending_modalities()
+        if len(counts) < 2:
+            return ""
+        return "They are " + " and ".join(
+            f"{count} {modality}" for modality, count in sorted(counts.items())
+        ) + "."
 
     def _labels_saved(self, headline: str) -> None:
         """Record what a save did and bring the window back in step."""

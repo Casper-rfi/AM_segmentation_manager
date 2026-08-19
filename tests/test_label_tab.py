@@ -42,7 +42,9 @@ if HAS_QT and HAS_IMAGE_STACK:
     from qtpy.QtWidgets import (
         QApplication,
         QGraphicsView,
+        QLabel,
         QMessageBox,
+        QPushButton,
         QWidget,
     )
 
@@ -1187,16 +1189,38 @@ def test_saving_nothing_writes_nothing(window, monkeypatch):
     assert not asked, "there was nothing to ask about"
 
 
+def save_dialogs(window, monkeypatch):
+    """Open the save dialog without waiting for anyone to answer it.
+
+    Returns a list the opened dialogs are appended to. Modal, so exec_ has to
+    be intercepted: offscreen there is nobody to press a button, and the run
+    would hang rather than fail.
+    """
+    opened = []
+
+    def captured(dialog):
+        opened.append(dialog)
+        return 0  # QDialog.Rejected
+
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.main_window.SaveLabelsDialog.exec_",
+        captured,
+    )
+    return opened
+
+
+def button_texts(dialog):
+    """Return the dialog's buttons, left to right as laid out."""
+    return [
+        button.text()
+        for button in sorted(dialog.findChildren(QPushButton), key=lambda b: b.x())
+    ]
+
+
 def test_the_save_dialog_offers_marking_corrected_only_when_editing_is_on(
     window, monkeypatch
 ):
-    boxes = []
-
-    def captured(box):
-        boxes.append([button.text() for button in box.buttons()])
-        return 0
-
-    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.exec_", captured)
+    opened = save_dialogs(window, monkeypatch)
     paint_on(window)
 
     window.controller.set_editing_enabled(False)
@@ -1204,9 +1228,45 @@ def test_the_save_dialog_offers_marking_corrected_only_when_editing_is_on(
     window.controller.set_editing_enabled(True)
     window._ask_how_to_save(window.label_controller.save_plan())
 
-    locked, unlocked = boxes
+    locked, unlocked = (button_texts(dialog) for dialog in opened)
     assert not any("mark corrected" in text for text in locked)
     assert any("mark corrected" in text for text in unlocked)
+
+
+def test_the_save_dialog_ends_on_the_button_to_press(window, monkeypatch):
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(True)
+    paint_on(window)
+
+    window._ask_how_to_save(window.label_controller.save_plan())
+    opened[0].show()
+
+    assert button_texts(opened[0]) == [
+        "Cancel", "Save only", "Save and mark corrected",
+    ], "the row ends with the button the reviewer almost always wants"
+
+
+def test_the_save_dialog_recommends_marking_corrected(window, monkeypatch):
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(True)
+    paint_on(window)
+
+    window._ask_how_to_save(window.label_controller.save_plan())
+
+    default = [b for b in opened[0].findChildren(QPushButton) if b.isDefault()]
+    assert [b.text() for b in default] == ["Save and mark corrected"]
+
+
+def test_a_locked_save_does_not_describe_what_it_cannot_do(window, monkeypatch):
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(False)
+    paint_on(window)
+
+    window._ask_how_to_save(window.label_controller.save_plan())
+
+    said = " ".join(label.text() for label in opened[0].findChildren(QLabel))
+    assert "would move" not in said, "that describes an option not on offer"
+    assert "Enable editing" in said, "but it says how to reach it"
 
 
 def test_a_label_changed_on_disk_stops_the_save(qt_app, window, monkeypatch):

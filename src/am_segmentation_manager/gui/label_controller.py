@@ -427,6 +427,26 @@ class LabelController:
             if entry.edited
         ]
 
+    def pending_modalities(self) -> dict[str, int]:
+        """Return how many labels are waiting, per modality.
+
+        What a save is about to write is not confined to the modality on
+        screen: proofreading holds a whole lamella's edits, so someone working
+        through the SEM images can have FIB edits waiting from earlier without
+        the dialog saying so. A label whose images span both modalities counts
+        under each, which overstates the total rather than hiding half of it.
+        """
+        counts: dict[str, int] = {}
+        for entry, _ in self.session.labels():
+            if not entry.edited:
+                continue
+            for modality in {
+                record.modality for record in self.records_for([entry.key])
+                if record.modality
+            }:
+                counts[modality] = counts.get(modality, 0) + 1
+        return counts
+
     def save_plan(self) -> SavePlan:
         """Return what a save would write, and what is holding it up."""
         return plan_saves(self.pending_saves())

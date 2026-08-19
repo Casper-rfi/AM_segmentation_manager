@@ -37,6 +37,10 @@ PRESSED = "#e2e6ee"
 #: workflow colours.
 ACCENT = "#2f6feb"
 ACCENT_TEXT = "#ffffff"
+#: The same accent under the pointer or the finger. Not a second colour: a
+#: darker cut of the one above, so a filled button can react without the window
+#: gaining a hue that would have to mean something.
+ACCENT_STRONG = "#2258c4"
 
 #: The row being looked at, in a list whose rows also carry a checkbox and a
 #: status chip. A tint rather than a solid accent fill: Qt draws the check
@@ -169,6 +173,22 @@ def stylesheet() -> str:
     QPushButton:hover {{ border-color: {ACCENT}; }}
     QPushButton:pressed {{ background: {PRESSED}; }}
     QPushButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
+    /* The button a dialog expects you to press. Qt tints it itself, but the
+       rule above overrides that -- so a dialog offering two ways to save
+       showed them as two identical buttons, with nothing saying which one the
+       reviewer almost always wants. */
+    QPushButton:default {{
+        background: {ACCENT};
+        color: {ACCENT_TEXT};
+        border-color: {ACCENT};
+    }}
+    QPushButton:default:hover {{ background: {ACCENT_STRONG}; }}
+    QPushButton:default:pressed {{ background: {ACCENT_STRONG}; }}
+    QPushButton:default:disabled {{
+        background: {BASE};
+        color: {DISABLED_TEXT};
+        border-color: {BORDER_LIGHT};
+    }}
 
     QToolButton {{
         background: {BASE};
