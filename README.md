@@ -112,6 +112,7 @@ Getting help
 * `am-seg --help` lists every command in workflow order; `am-seg <command>
   --help` explains one, including how to read its output.
 * **`F1`** in the window lists the keys and gestures available on that tab.
+  It stays open beside the window while you try them, and `F1` puts it away.
 * [`docs/00_roadmap.md`](docs/00_roadmap.md) — what is built and what is next.
 * [`docs/decisions.md`](docs/decisions.md) — why it works this way, and the
   environment traps worth knowing.

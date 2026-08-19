@@ -17,6 +17,7 @@ from qtpy.QtGui import QCursor, QDesktopServices
 from qtpy.QtWidgets import (
     QApplication,
     QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -161,6 +162,34 @@ class Binding:
     scope: QWidget | None = None
 
 
+class ShortcutHelp(QDialog):
+    """The keys for the tab in front, listed beside the window.
+
+    Deliberately not modal, and closed by the key that opened it. A reference
+    you have to dismiss before you can try what it just told you is a reference
+    read once and then guessed at.
+    """
+
+    def __init__(self, parent) -> None:
+        """Build the dialog against the window it belongs to."""
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        self._text = QLabel()
+        self._text.setTextFormat(Qt.RichText)
+        layout.addWidget(self._text)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.close)
+        layout.addWidget(buttons)
+
+    def show_for(self, tab_name: str, help_text: str) -> None:
+        """List *tab_name*'s keys, replacing whatever was listed before."""
+        self.setWindowTitle(f"Keyboard shortcuts: {tab_name}")
+        self._text.setText(help_text)
+        self.adjustSize()
+        self.show()
+        self.raise_()
+
+
 class CurationWindow(QMainWindow):
     """Main window for reviewing and curating adaptive milling data."""
 
@@ -217,6 +246,8 @@ class CurationWindow(QMainWindow):
 
         self._build_layout()
         self._connect()
+        #: The shortcut list, built the first time F1 asks for it.
+        self._help: ShortcutHelp | None = None
         self._add_shortcuts()
         self._restore_layout()
 
@@ -444,6 +475,8 @@ class CurationWindow(QMainWindow):
             # is what makes them work without a click first.
             self.metadata_panel.projects.setFocus()
         self._apply_tab_shortcuts(self._current_tab())
+        if self._help is not None and self._help.isVisible():
+            self._show_help()
 
     def _share_scan(self) -> None:
         """Hand the scanned projects to the other tabs."""
@@ -969,17 +1002,24 @@ class CurationWindow(QMainWindow):
         return help_text
 
     def show_shortcuts(self) -> None:
-        """List the keys that work on the tab now showing.
+        """List the keys for the tab now showing, or put the list away.
 
         Tooltips only help someone who already suspects a control exists; this
         is the one place that answers "what can I press?". Only the active tab's
         keys are listed, because the others are switched off and pressing one
         does nothing.
         """
-        QMessageBox.information(
-            self,
-            f"Keyboard shortcuts: {self.tabs.tabText(self.tabs.currentIndex())}",
-            self.shortcut_help(),
+        if self._help is not None and self._help.isVisible():
+            self._help.close()
+            return
+        if self._help is None:
+            self._help = ShortcutHelp(self)
+        self._show_help()
+
+    def _show_help(self) -> None:
+        """Fill the shortcut list with the keys of the tab in front."""
+        self._help.show_for(
+            self.tabs.tabText(self.tabs.currentIndex()), self.shortcut_help()
         )
 
     # -- user actions ------------------------------------------------------

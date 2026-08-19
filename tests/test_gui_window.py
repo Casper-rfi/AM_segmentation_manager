@@ -666,6 +666,32 @@ def _curate_tab(window) -> int:
     )
 
 
+def test_f1_puts_the_list_away_again(window):
+    window.show_shortcuts()
+    assert window._help.isVisible()
+
+    window.show_shortcuts()
+
+    assert not window._help.isVisible(), "the key that opened it closes it"
+
+
+def test_the_shortcut_list_does_not_block_the_window(window):
+    window.show_shortcuts()
+
+    assert not window._help.isModal(), (
+        "a list you must dismiss before trying what it says is read once"
+    )
+
+
+def test_the_shortcut_list_follows_the_tab(window):
+    from am_segmentation_manager.gui.widgets.main_window import TAB_LABEL
+
+    window.show_shortcuts()
+    window.tabs.setCurrentWidget(window.label_panel)
+
+    assert window._help._text.text() == window.shortcut_help(TAB_LABEL)
+
+
 def test_the_help_lists_only_the_active_tab(window):
     from am_segmentation_manager.gui.widgets.main_window import TAB_ADD_DATA, TAB_CURATE
 
