@@ -341,6 +341,50 @@ def format_cross_tabulation(
     return lines
 
 
+def format_speck_report(
+    found: dict, root: Path, config, *, at_most: int, labels_read: int
+) -> list[str]:
+    """Return the small-component sweep as lines, one per label that has any.
+
+    Grouped by label rather than by component: the label is the file somebody
+    has to open and fix, and the sizes are short enough to sit on its line.
+    The class is named for each component because it says what you are looking
+    at, but it is not part of the test -- a stray pixel is a stray pixel
+    whichever class it claims to be.
+
+    Args:
+        found: Label path to its specks, from
+            :func:`~am_segmentation_manager.operations.label_measure.records_with_specks`.
+        root: Scan root, so the paths print short.
+        config: The segmentation config, for class names.
+        at_most: The threshold that was applied, in pixels.
+        labels_read: How many labels were looked at, so a clean sweep says what
+            it covered rather than only that it found nothing.
+    """
+    if not found:
+        return [
+            f"No component of {at_most} pixel(s) or less in "
+            f"{labels_read} label(s)"
+        ]
+
+    components = sum(len(specks) for specks in found.values())
+    lines = [
+        f"{components} component(s) of {at_most} pixel(s) or less, "
+        f"in {len(found)} of {labels_read} label(s)",
+        "",
+    ]
+    for label in sorted(found):
+        specks = found[label]
+        sizes = ", ".join(
+            f"{config.name(speck.class_index)} {speck.pixels}px "
+            f"at ({speck.x}, {speck.y})"
+            for speck in specks
+        )
+        lines.append(f"  {make_path_relative(label, root)}")
+        lines.append(f"      {sizes}")
+    return lines
+
+
 def format_label_quantification(
     summaries: list, config, *, detail: bool = True
 ) -> list[str]:

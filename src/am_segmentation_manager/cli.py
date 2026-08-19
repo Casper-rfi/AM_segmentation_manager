@@ -29,6 +29,7 @@ from .filtering import (
 )
 from .io.path import make_path_relative
 from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
+from .operations.label_measure import DEFAULT_SPECK_PIXELS
 from .operations.predictions import convert_record_predictions, plan_conversions
 from .reporting import print_project_summary, print_survey
 from .scanner import Scanner
@@ -457,6 +458,37 @@ def build_parser() -> argparse.ArgumentParser:
     repair_state.add_argument(
         "--dry-run", action="store_true",
         help="Show the files that would move without changing anything",
+    )
+
+    # -- find-specks ---------------------------------------------------------
+    find_specks_cmd = sub.add_parser(
+        "find-specks",
+        help="Find labels holding components too small to be real",
+        description=(
+            "List every label containing a connected component of a few pixels, "
+            "whatever class it claims to be. These are the stray spots that "
+            "reach a training set as annotation and teach a model to find "
+            "nothing. Read-only, and it reports rather than repairs: a small "
+            "structure can be genuine, so which ones to remove is a judgement "
+            "made by looking at the image. Open the flagged labels in the "
+            "window to see them in place. Reads every label in scope, which is "
+            "far slower than reading headers."
+        ),
+    )
+    _add_scope_arguments(find_specks_cmd, default_modality="all")
+    find_specks_cmd.add_argument(
+        "--at-most", type=int, default=DEFAULT_SPECK_PIXELS, metavar="PIXELS",
+        help=(
+            f"Largest component still reported (default: {DEFAULT_SPECK_PIXELS}). "
+            "The default is one pixel of a prediction: labels converted from "
+            "predictions are upscaled from half resolution, so the smallest "
+            "area one can hold is a 2x2 block. Raising it finds more, and "
+            "flags more small structures that are real"
+        ),
+    )
+    find_specks_cmd.add_argument(
+        "--config", default=None,
+        help="Segmentation config file naming the classes",
     )
 
     # -- compress-labels ------------------------------------------------------
@@ -1035,6 +1067,44 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             export_lamella_quantification_csv(
                 summaries, config, Path(args.lamella_output)
             )
+        return 0
+
+    if args.command == "find-specks":
+        from .config import load_segmentation_config
+        from .operations.csv import find_matching_label
+        from .operations.label_measure import records_with_specks
+        from .reporting import format_speck_report
+
+        records, start_path = _resolve_records(args)
+        if not records:
+            logger.warning("No images matched")
+            return 0
+
+        if args.at_most < 1:
+            logger.error("--at-most must be at least 1, got %d", args.at_most)
+            return 2
+
+        try:
+            config = load_segmentation_config(
+                explicit_path=Path(args.config) if args.config else None,
+                start_path=start_path,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            logger.error("%s", exc)
+            return 2
+
+        logger.info("Reading labels for %d image(s)", len(records))
+        found = records_with_specks(records, at_most=args.at_most)
+        # Counted from the records, not from what was found: a sweep that says
+        # "nothing in 248 labels" is a different statement from "nothing".
+        labels_read = len({
+            label for label in (find_matching_label(record) for record in records)
+            if label is not None
+        })
+        for line in format_speck_report(
+            found, start_path, config, at_most=args.at_most, labels_read=labels_read
+        ):
+            print(line)
         return 0
 
     if args.command in {"show-metadata", "edit-metadata"}:

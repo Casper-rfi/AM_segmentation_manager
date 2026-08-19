@@ -20,7 +20,7 @@ from ..config import BACKGROUND_CLASS, SegmentationConfig
 from ..io.image import has_image_stack_support
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Collection, Iterable, Mapping
 
     from ..image_metadata import ImageMetadata
     from ..models import ImageRecord
@@ -28,13 +28,17 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DEFAULT_SPECK_PIXELS",
     "LabelMeasurement",
     "LabelPixels",
     "clear_cache",
     "label_pixel_size_nm",
     "measure_label",
+    "Speck",
+    "find_specks",
     "measure_records",
     "measurement_status",
+    "records_with_specks",
     "read_label_pixels",
 ]
 
@@ -49,6 +53,36 @@ __all__ = [
 #: hidden persistent state this package avoids, and for repeated analysis the
 #: answer is to export the measurements once and work from the CSV.
 _CACHE: dict[tuple[Path, int, int, int | None], LabelPixels] = {}
+
+
+#: Components at or below this many pixels are suspect by default.
+#:
+#: One pixel of a prediction. The labels this package converts are predicted at
+#: half resolution and upscaled by nearest neighbour, so the smallest area such
+#: a label can hold is a 2x2 block -- which is why every small component in the
+#: reference collection covers a multiple of four pixels, and why anything
+#: below that was put there by hand.
+DEFAULT_SPECK_PIXELS = 4
+
+
+@dataclass(frozen=True)
+class Speck:
+    """One connected component small enough to be worth questioning.
+
+    Not a finding of fact: a small structure can be real, which is why nothing
+    here removes one. It is somewhere to look.
+
+    Attributes:
+        class_index: The class the component belongs to.
+        pixels: How many pixels it covers.
+        x: Column of its centroid, for bringing it into view.
+        y: Row of its centroid.
+    """
+
+    class_index: int
+    pixels: int
+    x: int
+    y: int
 
 
 @dataclass(frozen=True)
@@ -287,24 +321,108 @@ def _class_pixels(array) -> dict[int, int]:
 
 
 def _components(mask) -> tuple[int, ...]:
-    """Return the pixel size of each connected component of *mask*, largest first.
+    """Return the pixel size of each connected component of *mask*, largest first."""
+    return tuple(sorted((size for size, _, _ in _component_stats(mask)), reverse=True))
+
+
+def _component_stats(mask) -> list[tuple[int, int, int]]:
+    """Return ``(pixels, x, y)`` for each connected component of *mask*.
 
     Eight-connected, so a component is not split by a one-pixel diagonal --
     a crack is a physical feature, and a diagonal step across it is a rendering
     artefact of the pixel grid rather than a second crack.
+
+    The centroid comes back with the size because the two callers want
+    different halves of the same cv2 call: the crack statistics need only how
+    big each component is, and finding specks needs somewhere to look.
     """
     import cv2
     import numpy as np
 
     if not mask.any():
-        return ()
-    count, _, stats, _ = cv2.connectedComponentsWithStats(
+        return []
+    count, _, stats, centroids = cv2.connectedComponentsWithStats(
         mask.astype(np.uint8), connectivity=8
     )
     # Row 0 is the background of the mask, which is everything that is not the
     # class being measured.
-    areas = [int(stats[index, cv2.CC_STAT_AREA]) for index in range(1, count)]
-    return tuple(sorted(areas, reverse=True))
+    return [
+        (
+            int(stats[index, cv2.CC_STAT_AREA]),
+            int(round(float(centroids[index][0]))),
+            int(round(float(centroids[index][1]))),
+        )
+        for index in range(1, count)
+    ]
+
+
+def find_specks(
+    label,
+    *,
+    at_most: int = DEFAULT_SPECK_PIXELS,
+    ignore: Collection[int] = (BACKGROUND_CLASS,),
+) -> tuple[Speck, ...]:
+    """Return every component of *label* covering at most *at_most* pixels.
+
+    Takes the array rather than a path, so it can be asked of a label being
+    edited as well as one on disk, and so it never consults the cache above --
+    which is keyed by what a *file* looked like.
+
+    Args:
+        label: 2D array of class indices.
+        at_most: Largest component still reported, in pixels.
+        ignore: Classes not worth reporting. Background by default: it is the
+            absence of an annotation, not a small one.
+
+    Returns:
+        The specks found, smallest first, then by position. Ordered so that
+        stepping through them is stable and starts with the least defensible.
+    """
+    import numpy as np
+
+    ignored = set(ignore)
+    found = [
+        Speck(class_index=int(class_index), pixels=pixels, x=x, y=y)
+        for class_index in np.unique(label)
+        if int(class_index) not in ignored
+        for pixels, x, y in _component_stats(label == class_index)
+        if pixels <= at_most
+    ]
+    return tuple(sorted(found, key=lambda speck: (speck.pixels, speck.y, speck.x)))
+
+
+def records_with_specks(
+    records: Iterable[ImageRecord],
+    *,
+    at_most: int = DEFAULT_SPECK_PIXELS,
+) -> dict[Path, tuple[Speck, ...]]:
+    """Return the specks in every label the records point at, keyed by label.
+
+    Keyed by the label rather than by the image, so a label shared by several
+    imaging conditions is read once and reported once -- it is one
+    segmentation, and it is the file somebody has to go and fix.
+
+    Labels that do not exist, and labels that cannot be read, are absent: this
+    reports what was found, and :func:`classify_labels` is what reports what is
+    missing.
+    """
+    from ..io.image import read_array, to_2d
+    from .csv import find_matching_label
+
+    found: dict[Path, tuple[Speck, ...]] = {}
+    for record in records:
+        label = find_matching_label(record)
+        if label is None or label in found:
+            continue
+        try:
+            array = to_2d(read_array(label))
+        except Exception as exc:  # noqa: BLE001 - an unreadable label must not stop the sweep
+            logger.warning("Could not read label %s: %s", label, exc)
+            continue
+        specks = find_specks(array, at_most=at_most)
+        if specks:
+            found[label] = specks
+    return found
 
 
 def label_pixel_size_nm(metadata: ImageMetadata | None, label_width: int) -> float | None:

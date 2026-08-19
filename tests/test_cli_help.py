@@ -51,6 +51,7 @@ WORKFLOW_ORDER = [
     "select",
     "correct",
     "repair-state",
+    "find-specks",
     "compress-labels",
     "stats",
     "quantify-labels",

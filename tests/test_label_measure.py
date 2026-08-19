@@ -20,10 +20,14 @@ from am_segmentation_manager.config import (
 from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.operations.label_measure import (
     clear_cache,
+    find_specks,
     label_pixel_size_nm,
     measure_label,
     read_label_pixels,
+    records_with_specks,
 )
+from am_segmentation_manager.scanner import Scanner
+from conftest import build_dataset
 
 HAS_IMAGE_STACK = all(
     importlib.util.find_spec(name) is not None for name in ("numpy", "tifffile", "cv2")
@@ -312,3 +316,99 @@ def test_cache_can_be_bypassed(tmp_path: Path):
 
     assert first is not second
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# Specks: components too small to be real
+# ---------------------------------------------------------------------------
+
+def speckled():
+    """A label holding one real structure and two components of a few pixels."""
+    label = np.zeros((60, 80), dtype=np.uint8)
+    label[10:40, 10:40] = LAMELLA_CLASS   # a real structure
+    label[50, 70] = CRACK_CLASS           # one stray pixel
+    label[52:54, 60:62] = LAMELLA_CLASS   # one pixel of an upscaled prediction
+    return label
+
+
+def test_a_stray_pixel_is_found():
+    specks = find_specks(speckled())
+
+    assert [(speck.class_index, speck.pixels) for speck in specks] == [
+        (CRACK_CLASS, 1), (LAMELLA_CLASS, 4)
+    ], "smallest first, so the least defensible is looked at first"
+
+
+def test_a_real_structure_is_not_a_speck():
+    assert all(speck.pixels <= 4 for speck in find_specks(speckled()))
+
+
+def test_the_class_does_not_decide_whether_it_is_a_speck():
+    """A stray pixel is a stray pixel whichever class it claims to be."""
+    specks = find_specks(speckled())
+
+    assert {speck.class_index for speck in specks} == {CRACK_CLASS, LAMELLA_CLASS}
+
+
+def test_background_is_not_a_speck():
+    label = np.full((20, 20), LAMELLA_CLASS, dtype=np.uint8)
+    label[5, 5] = 0
+
+    assert find_specks(label) == (), "background is the absence of an annotation"
+
+
+def test_the_threshold_includes_its_own_size():
+    label = np.zeros((20, 20), dtype=np.uint8)
+    label[5:7, 5:7] = LAMELLA_CLASS
+
+    assert len(find_specks(label, at_most=4)) == 1
+    assert find_specks(label, at_most=3) == ()
+
+
+def test_a_speck_says_where_to_look():
+    label = np.zeros((60, 80), dtype=np.uint8)
+    label[30, 50] = LAMELLA_CLASS
+
+    speck = find_specks(label)[0]
+
+    assert (speck.x, speck.y) == (50, 30)
+
+
+def test_a_diagonal_pair_is_one_speck_not_two():
+    """Eight-connected, as the crack statistics already are."""
+    label = np.zeros((20, 20), dtype=np.uint8)
+    label[5, 5] = LAMELLA_CLASS
+    label[6, 6] = LAMELLA_CLASS
+
+    assert [speck.pixels for speck in find_specks(label)] == [2]
+
+
+def test_a_label_is_swept_once_however_many_images_share_it(tmp_path: Path):
+    dataset = build_dataset(tmp_path, acquisitions=1, sem_variants=("sem_8_fi_1",))
+    label = np.zeros((32, 40), dtype=np.uint8)
+    label[10, 10] = LAMELLA_CLASS
+    for path in (dataset.label("SEM", 0), dataset.label("FIB", 0)):
+        tifffile.imwrite(str(path), label)
+    records = [
+        record for project in Scanner(tmp_path).build_index().all_projects()
+        for lamella in project.lamellae
+        for stage in lamella.stages
+        for record in stage.images
+    ]
+
+    found = records_with_specks(records)
+
+    assert len(records) > len(found), "the conditions of one scene share a label"
+    assert set(found) == {dataset.label("SEM", 0), dataset.label("FIB", 0)}
+
+
+def test_a_record_with_no_label_is_absent(tmp_path: Path):
+    build_dataset(tmp_path, acquisitions=1, labels="none")
+    records = [
+        record for project in Scanner(tmp_path).build_index().all_projects()
+        for lamella in project.lamellae
+        for stage in lamella.stages
+        for record in stage.images
+    ]
+
+    assert records_with_specks(records) == {}
