@@ -246,6 +246,16 @@ class LabelPanel(QWidget):
         self.overlay_check.toggled.connect(self._overlay_toggled)
         controls.addWidget(self.overlay_check)
 
+        self.image_check = QCheckBox("Show image")
+        self.image_check.setChecked(True)
+        self.image_check.setToolTip(
+            "Draw the acquisition under the label, or leave the label alone "
+            "against black.\nOver black is how an annotation of a few pixels "
+            "is found."
+        )
+        self.image_check.toggled.connect(self._image_toggled)
+        controls.addWidget(self.image_check)
+
         opacity_label = QLabel("Opacity")
         controls.addWidget(opacity_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
@@ -502,6 +512,10 @@ class LabelPanel(QWidget):
         self.controller.show_overlay = shown
         self.canvas.set_label_shown(shown)
 
+    def _image_toggled(self, shown: bool) -> None:
+        self.controller.show_image = shown
+        self.canvas.set_image_shown(shown)
+
     def _alpha_moved(self, value: int) -> None:
         self.canvas.set_label_opacity(value / 100.0)
 
@@ -727,6 +741,7 @@ class LabelPanel(QWidget):
         display = prepared.display
         self.canvas.set_frame(display.image, self.controller.working_label())
         self.canvas.set_label_shown(self.controller.show_overlay)
+        self.canvas.set_image_shown(self.controller.show_image)
         self.canvas.set_editable(self.controller.editable)
         self._set_badges(self._label_badges(display))
 

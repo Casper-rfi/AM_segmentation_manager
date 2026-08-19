@@ -90,6 +90,8 @@ class LabelController:
             load_image=load_full_resolution, image_limit=DEFAULT_IMAGE_LIMIT
         )
         self.show_overlay = True
+        #: Whether the acquisition is drawn under the label.
+        self.show_image = True
         self._lamella: Lamella | None = None
         self._frames: tuple[LamellaFrame, ...] = ()
         self._positions: tuple[int, ...] = ()

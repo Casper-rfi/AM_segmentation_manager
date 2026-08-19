@@ -209,6 +209,19 @@ def test_overlay_can_be_switched_off(window):
     assert not window.image_panel.pair.right._item.pixmap().isNull()
 
 
+def test_the_overlay_pane_can_drop_the_image_under_the_label(window):
+    window.image_panel.image_check.setChecked(False)
+
+    assert window.controller.show_image is False
+    left = window.image_panel.pair.left._item.pixmap()
+    right = window.image_panel.pair.right._item.pixmap()
+    assert not left.isNull(), "the left pane is the acquisition as recorded"
+    assert not right.isNull()
+    assert right.toImage() != left.toImage(), (
+        "the overlay pane draws the label against black instead"
+    )
+
+
 # ---------------------------------------------------------------------------
 # The editing guard
 # ---------------------------------------------------------------------------

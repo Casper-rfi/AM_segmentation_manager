@@ -306,6 +306,8 @@ class CurationController:
 
         self.mode: DisplayMode = "sem"
         self.show_overlay = True
+        #: Whether the label is drawn over the acquisition or over black.
+        self.show_image = True
         #: Which imaging condition is on screen for each modality. None means
         #: the base image. This is display state only: a state change follows
         #: the label, so which condition is being viewed never decides what

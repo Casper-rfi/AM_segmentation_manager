@@ -47,6 +47,9 @@ class ImagePanel(QWidget):
     overlay_toggled = Signal(bool)
     #: Emitted with the new label opacity, 0.0-1.0.
     alpha_changed = Signal(float)
+
+    #: Emitted when the acquisition under the label is shown or hidden.
+    image_toggled = Signal(bool)
     #: Emitted with the imaging condition to display; empty string means base.
     variant_changed = Signal(str)
     #: Emitted when the user asks for the displayed file's path, or to open its
@@ -111,6 +114,16 @@ class ImagePanel(QWidget):
         )
         self.overlay_check.toggled.connect(self.overlay_toggled.emit)
         controls.addWidget(self.overlay_check)
+
+        self.image_check = QCheckBox("Show image")
+        self.image_check.setChecked(True)
+        self.image_check.setToolTip(
+            "Draw the label over the acquisition, or over black.\n"
+            "Over black is how an annotation of a few pixels is found; the "
+            "left pane still shows the image."
+        )
+        self.image_check.toggled.connect(self.image_toggled.emit)
+        controls.addWidget(self.image_check)
 
         opacity_label = QLabel("Opacity")
         controls.addWidget(opacity_label)
@@ -236,8 +249,17 @@ class ImagePanel(QWidget):
 
     # -- rendering ---------------------------------------------------------
 
-    def show_image(self, frame_image: FrameImage | None, show_overlay: bool) -> None:
-        """Draw an acquisition, or explain why there is nothing to draw."""
+    def show_image(
+        self,
+        frame_image: FrameImage | None,
+        show_overlay: bool,
+        with_image: bool = True,
+    ) -> None:
+        """Draw an acquisition, or explain why there is nothing to draw.
+
+        *with_image* governs the overlay pane only. The left pane is the
+        acquisition as recorded, which is the whole reason there are two.
+        """
         if frame_image is None:
             self.pair.clear()
             self._set_badges([("no image for this modality", "warning")])
@@ -252,7 +274,8 @@ class ImagePanel(QWidget):
 
         if display.label is not None and show_overlay:
             overlay = compose_overlay(
-                display.image, display.label, self.config, alpha=self._alpha
+                display.image, display.label, self.config,
+                alpha=self._alpha, hide_image=not with_image,
             )
             self.pair.right.set_array(overlay)
         else:

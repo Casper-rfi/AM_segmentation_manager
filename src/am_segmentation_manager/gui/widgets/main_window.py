@@ -454,6 +454,7 @@ class CurationWindow(QMainWindow):
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
         self.image_panel.overlay_toggled.connect(self._set_overlay)
+        self.image_panel.image_toggled.connect(self._set_image_shown)
         self.image_panel.alpha_changed.connect(lambda _alpha: self._render())
         self.image_panel.path_requested.connect(
             lambda: self._copy_path(self._displayed_path(), "Image")
@@ -1181,6 +1182,10 @@ class CurationWindow(QMainWindow):
         self.controller.show_overlay = show
         self._render()
 
+    def _set_image_shown(self, show: bool) -> None:
+        self.controller.show_image = show
+        self._render()
+
     def _toggle_overlay(self) -> None:
         self.image_panel.overlay_check.toggle()
 
@@ -1513,7 +1518,9 @@ class CurationWindow(QMainWindow):
         modality = "SEM" if self.controller.mode == "sem" else "FIB"
         variant = self.controller.current_variant(modality)
         if frame.record(modality, variant) is None and frame.record(modality) is None:
-            self.image_panel.show_image(None, self.controller.show_overlay)
+            self.image_panel.show_image(
+                None, self.controller.show_overlay, self.controller.show_image
+            )
             return
         # Only read what is already prepared: a miss means the loader is still
         # working, and blocking here would freeze the window on a slow read.
@@ -1523,7 +1530,9 @@ class CurationWindow(QMainWindow):
         if cached is None:
             self.image_panel.show_loading()
         else:
-            self.image_panel.show_image(cached, self.controller.show_overlay)
+            self.image_panel.show_image(
+                cached, self.controller.show_overlay, self.controller.show_image
+            )
 
     def _variant_descriptions(self) -> dict[str, str]:
         """Return human-readable names for the project's imaging conditions.

@@ -260,6 +260,28 @@ def test_overlay_accepts_an_rgb_image(config):
     assert tuple(result[0, 0]) == (255, 0, 0)
 
 
+def test_hiding_the_image_leaves_only_the_label(config):
+    image = np.full((2, 2), 200, dtype=np.uint8)
+    label = np.zeros((2, 2), dtype=np.uint8)
+    label[0, 0] = 1
+
+    result = compose_overlay(image, label, config, alpha=1.0, hide_image=True)
+
+    assert tuple(result[0, 0]) == (255, 0, 0), "the annotation still draws"
+    assert tuple(result[1, 1]) == (0, 0, 0), (
+        "and everything else is black, so a speck is the only thing on screen"
+    )
+
+
+def test_hiding_the_image_still_respects_the_opacity(config):
+    image = np.full((2, 2), 200, dtype=np.uint8)
+    label = np.ones((2, 2), dtype=np.uint8)
+
+    result = compose_overlay(image, label, config, alpha=0.5, hide_image=True)
+
+    assert tuple(result[0, 0]) == (128, 0, 0), "half of the class colour over black"
+
+
 @pytest.mark.parametrize("alpha", [-0.1, 1.1])
 def test_invalid_alpha_raises(config, alpha):
     with pytest.raises(ValueError, match="alpha"):

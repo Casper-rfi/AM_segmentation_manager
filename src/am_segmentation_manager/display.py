@@ -292,6 +292,7 @@ def compose_overlay(
     *,
     alpha: float = DEFAULT_ALPHA,
     hide_background: bool = True,
+    hide_image: bool = False,
 ) -> np.ndarray:
     """Draw a label over an image using the configured class colours.
 
@@ -303,6 +304,11 @@ def compose_overlay(
         hide_background: Leave the background class undrawn. On by default:
             background covers most of the image, and colouring it would hide
             the data being reviewed.
+        hide_image: Draw the label over black rather than over the image. What
+            makes a stray annotation of a few pixels findable -- against the
+            data it is a speck on grey, and against nothing it is the only
+            thing on screen. *alpha* still applies, so a label drawn faintly
+            over black is faint.
 
     Returns:
         An ``(H, W, 3)`` uint8 RGB array.
@@ -322,7 +328,9 @@ def compose_overlay(
             f"Image shape {image.shape[:2]} does not match label shape {label.shape[:2]}"
         )
 
-    if image.ndim == 2:
+    if hide_image:
+        result = np.zeros((*image.shape[:2], 3), dtype=np.uint8)
+    elif image.ndim == 2:
         result = np.repeat(image[:, :, np.newaxis], 3, axis=2)
     else:
         # Copy, so blending never writes through to the caller's array.

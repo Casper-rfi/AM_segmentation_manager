@@ -374,6 +374,39 @@ def test_choosing_a_condition_draws_it(qt_app, variants):
     assert "8_fi_1" in str(variants.label_controller.record.image_path)
 
 
+def test_hiding_the_image_leaves_the_label_on_screen(window):
+    panel = window.label_panel
+
+    panel.image_check.setChecked(False)
+
+    assert not panel.canvas._item.isVisible(), "the acquisition is hidden"
+    assert panel.canvas._label_item.isVisible(), (
+        "the label is what you are looking for against the black"
+    )
+
+
+def test_the_image_comes_back(window):
+    panel = window.label_panel
+    panel.image_check.setChecked(False)
+
+    panel.image_check.setChecked(True)
+
+    assert panel.canvas._item.isVisible()
+
+
+def test_the_hidden_image_survives_stepping_to_another_frame(qt_app, window):
+    panel = window.label_panel
+    panel.image_check.setChecked(False)
+
+    panel.step_frame(1)
+    _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
+    panel.draw_current()
+
+    assert not panel.canvas._item.isVisible(), (
+        "a view choice is not undone by moving through the lamella"
+    )
+
+
 def test_the_frame_is_drawn_at_full_resolution(window):
     prepared = window.label_controller.cached_image()
 

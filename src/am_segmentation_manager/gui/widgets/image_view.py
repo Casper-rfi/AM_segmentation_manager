@@ -99,6 +99,7 @@ class ImageView(QGraphicsView):
         self.setBackgroundBrush(Qt.black)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._shape: tuple[int, int] | None = None
+        self._image_shown = True
 
     def set_array(
         self,
@@ -138,6 +139,21 @@ class ImageView(QGraphicsView):
                 self.zoomed.emit()
             else:
                 self.fit()
+
+    def set_image_shown(self, shown: bool) -> None:
+        """Show or hide the image, keeping what it holds and where it sits.
+
+        Hiding it leaves anything drawn above it -- the label layer of the
+        proofreading canvas -- alone against the pane's black, which is what
+        makes an annotation of a few pixels findable.
+        """
+        self._image_shown = shown
+        self._item.setVisible(shown)
+
+    @property
+    def image_shown(self) -> bool:
+        """Return whether the image is being drawn."""
+        return self._image_shown
 
     def clear(self) -> None:
         """Show nothing."""
