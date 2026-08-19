@@ -31,6 +31,18 @@ ZOOM_STEP = 1.25
 MIN_SCALE = 0.05
 MAX_SCALE = 40.0
 
+#: How far below the fit scale the view may be zoomed out, as a fraction of it:
+#: two wheel steps. Stopping exactly at fit presses the frame's edges against
+#: the border of the pane, and an edge you cannot see clearly is an edge whose
+#: annotation you cannot check.
+MIN_FIT_FRACTION = 1 / (ZOOM_STEP ** 2)
+
+#: Room around the image to scroll into, as a fraction of its size. Without it
+#: the furthest an edge can be brought is the border of the pane, where half the
+#: brush is off-screen -- and the edges are exactly where an annotation is
+#: easiest to leave a pixel short.
+SCENE_MARGIN = 0.25
+
 
 def to_qimage(array: np.ndarray) -> QImage:
     """Convert a display array to a QImage.
@@ -53,6 +65,14 @@ def to_qimage(array: np.ndarray) -> QImage:
     return image.copy()
 
 
+def _with_margin(rect):
+    """Return *rect* with :data:`SCENE_MARGIN` of room added on every side."""
+    return rect.adjusted(
+        -SCENE_MARGIN * rect.width(), -SCENE_MARGIN * rect.height(),
+        SCENE_MARGIN * rect.width(), SCENE_MARGIN * rect.height(),
+    )
+
+
 class ImageView(QGraphicsView):
     """A single pane showing one image, with wheel zoom and drag panning."""
 
@@ -69,6 +89,11 @@ class ImageView(QGraphicsView):
         self.setScene(self._scene)
 
         self.setDragMode(QGraphicsView.ScrollHandDrag)
+        # No scrollbars: the pane is driven by dragging and the wheel, and the
+        # scrollable area is deliberately larger than the image (SCENE_MARGIN),
+        # so bars would be permanently visible and permanently not full.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setRenderHints(QPainter.SmoothPixmapTransform)
         self.setBackgroundBrush(Qt.black)
@@ -102,7 +127,7 @@ class ImageView(QGraphicsView):
         if device_pixel_ratio and device_pixel_ratio != 1.0:
             pixmap.setDevicePixelRatio(device_pixel_ratio)
         self._item.setPixmap(pixmap)
-        self._scene.setSceneRect(self._item.boundingRect())
+        self._scene.setSceneRect(_with_margin(self._item.boundingRect()))
         if shape != self._shape:
             self._shape = shape
             if native:
@@ -136,15 +161,16 @@ class ImageView(QGraphicsView):
     def zoom_by(self, factor: float) -> None:
         """Scale the view by *factor*, within limits, and report the change.
 
-        Zooming out stops once the image fits the pane: shrinking it further
-        only strands it in a corner of an empty view. Zooming *in* is limited
-        only by :data:`MAX_SCALE`.
+        Zooming out stops a little below the fit scale -- see
+        :data:`MIN_FIT_FRACTION` -- rather than at it, so the whole frame can be
+        seen with a margin around it. Below that there is nothing to gain:
+        shrinking further only strands the image in an empty view. Zooming *in*
+        is limited only by :data:`MAX_SCALE`.
 
-        The fit limit deliberately applies to one direction only. Applying it to
-        both blocks zooming in whenever the current scale happens to sit below
-        the fit scale -- which it does after every :meth:`fit`, because
-        ``fitInView`` leaves room for the frame -- and the view then refuses to
-        zoom at all.
+        The lower limit deliberately applies to one direction only. Applying it
+        to both blocks zooming in whenever the current scale happens to sit
+        below it -- which it does after every :meth:`fit`, because ``fitInView``
+        leaves room for the frame -- and the view then refuses to zoom at all.
 
         Separate from :meth:`wheelEvent` so the limits can be exercised without
         synthesising wheel events.
@@ -153,12 +179,13 @@ class ImageView(QGraphicsView):
         target = current * factor
 
         if factor < 1.0:
-            minimum = max(MIN_SCALE, self.fit_scale())
+            minimum = max(MIN_SCALE, self.fit_scale() * MIN_FIT_FRACTION)
             if target < minimum:
-                # Snap to fit rather than overshooting past it; if already
+                # Snap to the limit rather than overshooting past it; if already
                 # there, there is nothing left to do.
                 if current > minimum:
-                    self.fit()
+                    self.scale(minimum / current, minimum / current)
+                    self.zoomed.emit()
                 return
         elif target > MAX_SCALE:
             return

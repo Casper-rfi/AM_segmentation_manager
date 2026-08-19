@@ -42,6 +42,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
+    from am_segmentation_manager.gui.widgets.image_view import MIN_FIT_FRACTION
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
     from am_segmentation_manager.gui.widgets.metadata_panel import (
         MetadataPanel,
@@ -321,12 +322,32 @@ def test_zoom_stays_linked_when_the_image_fits_its_pane(window):
     assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
 
 
-def test_zoom_out_stops_at_fit(window):
+def test_zoom_out_stops_just_below_fit(window):
     view = window.image_panel.pair.left
     for _ in range(10):
         view.zoom_by(0.5)
 
-    assert view.transform().m11() == pytest.approx(view.fit_scale(), rel=0.02)
+    assert view.transform().m11() == pytest.approx(
+        view.fit_scale() * MIN_FIT_FRACTION, rel=0.02
+    ), "the frame stops with a margin round it, not pressed against the pane"
+
+
+def test_the_pane_can_be_scrolled_past_the_edges_of_the_frame(window):
+    view = window.image_panel.pair.left
+    image = view._item.boundingRect()
+    scene = view.sceneRect()
+
+    assert scene.left() < image.left() and scene.right() > image.right()
+    assert scene.top() < image.top() and scene.bottom() > image.bottom(), (
+        "an edge that cannot leave the border of the pane is one you paint blind"
+    )
+
+
+def test_the_panes_have_no_scrollbars(window):
+    view = window.image_panel.pair.left
+
+    assert view.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert view.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
 
 
 # ---------------------------------------------------------------------------
