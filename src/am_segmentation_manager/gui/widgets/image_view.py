@@ -169,6 +169,23 @@ class ImageView(QGraphicsView):
             self.fitInView(self._item, Qt.KeepAspectRatio)
             self.zoomed.emit()
 
+    def fit_native(self) -> None:
+        """Show one array pixel per physical pixel, or fit if that overflows.
+
+        What a plot wants from "fit": the array was prepared for this pane, so
+        an identity transform *is* fit, and it is the only scale that does not
+        resample text rendered to be read. A pane that has shrunk since the
+        array was prepared is the exception, and there seeing the whole figure
+        matters more than the last of its sharpness.
+        """
+        if self._item.pixmap().isNull():
+            return
+        if self.fit_scale() < 1.0:
+            self.fit()
+            return
+        self.resetTransform()
+        self.zoomed.emit()
+
     def fit_scale(self) -> float:
         """Return the scale at which the image exactly fills the pane."""
         rect = self._item.boundingRect()

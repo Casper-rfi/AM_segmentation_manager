@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QPushButton,
     QRadioButton,
     QSlider,
     QStackedWidget,
@@ -135,6 +136,13 @@ class ImagePanel(QWidget):
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
         controls.addWidget(self.alpha_slider)
+
+        controls.addSpacing(20)
+        self.fit_button = QPushButton("Fit")
+        self.fit_button.setToolTip("Scale the view to the pane\nShortcut: G")
+        self.fit_button.clicked.connect(self.fit)
+        controls.addWidget(self.fit_button)
+
         controls.addStretch()
         layout.addLayout(controls)
 
@@ -246,6 +254,18 @@ class ImagePanel(QWidget):
     def _build_legend(self) -> None:
         """Render a colour swatch and name for each foreground class."""
         self.legend.setText(class_legend_html(self.config))
+
+    def fit(self) -> None:
+        """Fit whichever view is on screen.
+
+        The panel holds two of them and only one is ever visible, so a caller
+        that reaches for a particular view fits the one the user is not looking
+        at half the time.
+        """
+        if self.stack.currentWidget() is self.plot_view:
+            self.plot_view.fit_native()
+        else:
+            self.pair.fit()
 
     # -- rendering ---------------------------------------------------------
 

@@ -621,7 +621,7 @@ def test_the_overlay_and_fit_use_the_same_keys_in_both_tabs(window):
     label, curate = keys_of(window, TAB_LABEL), keys_of(window, TAB_CURATE)
 
     assert label["Show / hide the label"] == curate["Show / hide the label overlay"]
-    assert label["Fit the image to the pane"] == curate["Fit the images to the panes"]
+    assert label["Fit the image to the pane"] == curate["Fit the view to the pane"]
 
 
 def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):

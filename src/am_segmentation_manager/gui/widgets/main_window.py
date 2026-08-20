@@ -1056,7 +1056,7 @@ class CurationWindow(QMainWindow):
             Binding("D", "Set state: deselected", lambda: self.apply_state("deselected"), curate),
             Binding("S", "Set state: selected", lambda: self.apply_state("selected"), curate),
             Binding("C", "Set state: corrected", lambda: self.apply_state("corrected"), curate),
-            Binding("G", "Fit the images to the panes", self.image_panel.pair.fit, curate),
+            Binding("G", "Fit the view to the pane", self.image_panel.fit, curate),
             Binding(
                 "Esc", "Clear the picked-out frames", self._clear_frame_selection, curate
             ),

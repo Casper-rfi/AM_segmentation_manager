@@ -1456,6 +1456,43 @@ def test_plot_is_not_resampled_again_by_the_view(qt_app, window):
     assert window.image_panel.plot_view.transform().m11() == pytest.approx(1.0, abs=0.05)
 
 
+def test_fit_reaches_the_plot_view(qt_app, window):
+    """The key was bound to the image pair, so in the plot view it fitted two
+    panes nobody was looking at and left the plot wherever it had been zoomed."""
+    window._set_mode("plot")
+    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    view = window.image_panel.plot_view
+    view.zoom_by(1.25)
+    assert view.transform().m11() != pytest.approx(1.0, abs=0.05)
+
+    window.image_panel.fit()
+
+    assert view.transform().m11() == pytest.approx(1.0, abs=0.05)
+
+
+def test_fitting_a_plot_keeps_it_unresampled(qt_app, window):
+    """Fit on a plot means one array pixel per physical pixel, not fitInView:
+    the array was prepared for this pane, and rescaling it blurs its text."""
+    window._set_mode("plot")
+    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    view = window.image_panel.plot_view
+
+    view.fit_native()
+
+    assert view.transform().isIdentity()
+
+
+def test_fit_reaches_the_image_panes_in_the_image_views(qt_app, window):
+    window._set_mode("sem")
+    _settle(qt_app, lambda: not window.image_panel.pair.left._item.pixmap().isNull())
+    window.image_panel.pair.left.zoom_by(1.25)
+    zoomed = window.image_panel.pair.left.transform().m11()
+
+    window.image_panel.fit()
+
+    assert window.image_panel.pair.left.transform().m11() != zoomed
+
+
 def test_stepping_through_plots_finds_them_ready(qt_app, window):
     """The behaviour that was stuttering: holding an arrow key through plots."""
     window._set_mode("plot")
