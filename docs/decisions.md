@@ -206,6 +206,13 @@ place.
   conversion replaces proofread work with a machine guess. A dialog is the right guard for
   the first and too weak for the second, so re-converting a corrected label means setting
   that group back to selected first.
+- **That is also why compressing is not scoped to a selection.** Preserving the pixels
+  exactly means there is no label recompression should be withheld from, so choosing which
+  ones to shrink is not a decision worth a control — and a per-selection button leaves
+  exactly the labels nobody happened to tick uncompressed, which is the opposite of what
+  the operation is for. In the window it acts on the whole scanned folder from the Add data
+  tab. The command line keeps its `--project` and `--lamella` filters, which cost nothing
+  and answer the rare case where one project is the whole question.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
   workflow-state filter starts on "all" rather than on *corrected*, matching the rest of the
   tab: it is narrowed towards an export rather than opening on one and hiding the archive.

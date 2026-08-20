@@ -878,8 +878,7 @@ class CurationController:
         return [
             record
             for lamella in lamellae
-            for stage in lamella.stages
-            for record in stage.images
+            for record in lamella.image_records
             if record.modality in modalities
         ]
 

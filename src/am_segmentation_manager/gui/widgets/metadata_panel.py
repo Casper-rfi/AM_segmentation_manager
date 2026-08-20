@@ -124,6 +124,8 @@ class MetadataPanel(QWidget):
     #: scanned collection, so the window supplies the root.
     survey_requested = Signal()
     init_requested = Signal()
+    #: Emitted when the user asks to recompress every label in the collection.
+    compress_requested = Signal()
 
     def __init__(self, controller: MetadataController) -> None:
         super().__init__()
@@ -168,11 +170,12 @@ class MetadataPanel(QWidget):
         return box
 
     def _build_collection_actions(self) -> QWidget:
-        """Return the two steps that come before this list has rows in it.
+        """Return the steps that act on the folder rather than on one project.
 
-        Both act on the whole scanned folder rather than on a selected project,
-        which is why they sit under the list rather than beside the fields: a
-        collection with no metadata files has nothing to select.
+        The first two come before this list has rows in it, which is why they
+        sit under the list rather than beside the fields: a collection with no
+        metadata files has nothing to select. Compressing joins them because it
+        has no reason to be narrower -- see its tooltip.
         """
         self.collection_box = box = QGroupBox("Whole collection")
         row = QHBoxLayout(box)
@@ -193,6 +196,16 @@ class MetadataPanel(QWidget):
         )
         self.init_button.clicked.connect(self.init_requested.emit)
         row.addWidget(self.init_button)
+
+        self.compress_button = QPushButton("Compress labels...")
+        self.compress_button.setToolTip(
+            "Re-encode every label under this folder so it takes less disk "
+            "space. Pixel values and dimensions are unchanged, and a file that "
+            "would not shrink is left alone."
+        )
+        self.compress_button.clicked.connect(self.compress_requested.emit)
+        row.addWidget(self.compress_button)
+
         self._update_collection_buttons()
         return box
 
@@ -211,12 +224,14 @@ class MetadataPanel(QWidget):
     def _update_collection_buttons(self) -> None:
         """Offer the collection actions only when they have a folder to act on.
 
-        Writing metadata files also waits on the editing guard, matching the
-        fields beside it; inspecting the layout changes nothing and does not.
+        The two that write also wait on the editing guard, matching the fields
+        beside them; inspecting the layout changes nothing and does not.
         """
         has_root = self.root is not None
+        editable = has_root and self.controller.editing_enabled
         self.survey_button.setEnabled(has_root)
-        self.init_button.setEnabled(has_root and self.controller.editing_enabled)
+        self.init_button.setEnabled(editable)
+        self.compress_button.setEnabled(editable)
 
     def _build_folder_button(self) -> QPushButton:
         """Return the button that copies the project's own directory name across.

@@ -475,10 +475,10 @@ class CurationWindow(QMainWindow):
 
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
-        self.operations_panel.compress_requested.connect(self._compress_labels)
 
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
         self.metadata_panel.init_requested.connect(self._add_metadata_files)
+        self.metadata_panel.compress_requested.connect(self._compress_labels)
         self.export_panel.csv_check_requested.connect(self._check_csv)
         self.export_panel.measure_requested.connect(self._measure_labels)
 
@@ -795,8 +795,27 @@ class CurationWindow(QMainWindow):
         )
 
     def _compress_labels(self) -> None:
-        records = self._editable_records()
-        if records is None:
+        """Recompress every label under the scanned folder.
+
+        The whole collection rather than a selection: recompression preserves
+        the pixels exactly, so there is no label it should be withheld from,
+        and choosing which ones to shrink is not a decision worth a control.
+        The corrected-label confirmation still applies -- rewriting the file is
+        what needs the yes, not changing what is in it.
+        """
+        if not self.metadata_controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' before recompressing labels.",
+            )
+            return
+        records = [
+            record
+            for project in self.controller.projects
+            for record in project.image_records
+        ]
+        if not records:
+            self._flash("Scan a folder first")
             return
         self._operate(
             "Compress labels",

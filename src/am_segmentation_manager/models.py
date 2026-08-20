@@ -124,6 +124,11 @@ class Lamella:
         """Return the folder name, which already includes its lamella number."""
         return f"{self.name} (no lamella folder)" if self.synthetic else self.name
 
+    @property
+    def image_records(self) -> list[ImageRecord]:
+        """Return every image of this lamella's stages, in scan order."""
+        return [record for stage in self.stages for record in stage.images]
+
 
 @dataclass
 class Project:
@@ -154,6 +159,13 @@ class Project:
     def key(self) -> str:
         """Return the project's identity within an index."""
         return self.relative_path or self.name
+
+    @property
+    def image_records(self) -> list[ImageRecord]:
+        """Return every image of this project's lamellae, in scan order."""
+        return [
+            record for lamella in self.lamellae for record in lamella.image_records
+        ]
 
     @property
     def display_name(self) -> str:

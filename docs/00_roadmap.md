@@ -20,10 +20,12 @@ what each command and tab does. What is worth knowing beyond that:
   both stop to name any image whose label holds no annotation.
 * **Each tab has a controller holding no Qt**, which is what makes navigation, cache
   eviction and state expansion testable without a display.
-* **An operation is in the window when its input is the selection on screen.** Curate
-  runs `convert-predictions` and `compress-labels` against the ticked set; Add data
-  runs `inspect-layout` and `init-project` over the scanned folder. Each
-  previews first and applies only what the preview showed, on a worker thread.
+* **Where an operation sits says what it acts on.** Curate runs `predict` and
+  `convert-predictions` against the ticked set, because choosing which images to
+  predict is the decision; Add data runs `inspect-layout`, `init-project` and
+  `compress-labels` over the whole scanned folder, because none of the three has a
+  reason to be narrower. Each previews first and applies only what the preview
+  showed, on a worker thread.
 * **Labels are proofread in the window**, not in external software. A save writes one
   lamella's edits in a single action, offers to mark the reviewed set corrected, and
   refuses the whole batch rather than overwrite a label something else has rewritten

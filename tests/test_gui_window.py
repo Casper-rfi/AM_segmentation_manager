@@ -985,6 +985,7 @@ def test_a_ticked_selection_is_confirmed_before_anything_moves(qt_app, window, m
 def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, monkeypatch):
     window.state_panel.enable_check.setChecked(True)
     window.state_panel.target_buttons["both"].setChecked(True)
+    window.metadata_panel.enable.setChecked(True)
     _tick_lamella(window)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
 
@@ -1107,14 +1108,47 @@ def inline_operations(window, monkeypatch):
     return asked
 
 
-def test_compressing_acts_on_the_ticked_lamella(window, inline_operations):
-    window.state_panel.enable_check.setChecked(True)
-    _tick_lamella(window)
+def test_compressing_acts_on_the_whole_collection(window, inline_operations):
+    """Recompression preserves the pixels exactly, so there is no label it
+    should be withheld from and nothing to select."""
+    window.metadata_panel.enable.setChecked(True)
 
     window._compress_labels()
 
     assert inline_operations == [("Compress labels", "Apply")]
     assert "Compress labels" in window.state_panel.last_change.text()
+
+
+def test_compressing_reaches_a_lamella_that_is_not_on_screen(
+    window, inline_operations, monkeypatch
+):
+    """The fixture's second lamella is never selected, and its labels are
+    exactly the ones a per-selection button would have left uncompressed."""
+    window.metadata_panel.enable.setChecked(True)
+    seen: list = []
+    real = window.operations_controller.compress_labels
+    monkeypatch.setattr(
+        window.operations_controller, "compress_labels",
+        lambda records, **kwargs: seen.append(list(records)) or real(records, **kwargs),
+    )
+
+    window._compress_labels()
+
+    assert seen, "the operation never ran"
+    assert {image.lamella for image in seen[0]} == {"01-alpha", "02-beta"}
+
+
+def test_compressing_waits_for_the_add_data_guard(window, monkeypatch):
+    """It writes files, and it is offered on the tab whose guard governs
+    writing to the collection."""
+    monkeypatch.setattr(
+        window, "_run_operation", lambda *args: pytest.fail("should not have started")
+    )
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information", lambda *args, **kwargs: None
+    )
+
+    window._compress_labels()
 
 
 def test_the_predict_button_is_withheld_where_inference_is_not_installed(window):
@@ -1244,8 +1278,7 @@ def test_writing_metadata_files_rescans_so_the_new_projects_appear(
 
 def test_an_operation_previews_before_it_applies(window, monkeypatch):
     """The preview must be a real run of the operation, not a guess at one."""
-    window.state_panel.enable_check.setChecked(True)
-    _tick_lamella(window)
+    window.metadata_panel.enable.setChecked(True)
     reports: list = []
     monkeypatch.setattr(
         window, "_run_operation",
@@ -1275,6 +1308,7 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     """
     window.state_panel.enable_check.setChecked(True)
     window.state_panel.target_buttons["both"].setChecked(True)
+    window.metadata_panel.enable.setChecked(True)
     _tick_lamella(window)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
     # The fixture's FIB images have no labels, which this ladder is not about.
@@ -1319,7 +1353,7 @@ def test_an_operation_will_not_run_with_editing_off(window, monkeypatch):
         "qtpy.QtWidgets.QMessageBox.information", lambda *args, **kwargs: None
     )
 
-    window._compress_labels()
+    window._convert_predictions()
 
 
 def test_an_operation_needs_something_selected(window, monkeypatch):
@@ -1331,7 +1365,7 @@ def test_an_operation_needs_something_selected(window, monkeypatch):
         lambda *args: pytest.fail("should not have started"),
     )
 
-    window._compress_labels()
+    window._convert_predictions()
 
 
 def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings):
@@ -1342,14 +1376,17 @@ def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings
         panel = fresh.metadata_panel
         assert not panel.survey_button.isEnabled()
         assert not panel.init_button.isEnabled()
+        assert not panel.compress_button.isEnabled()
 
         panel.set_root(Path("/somewhere"))
         assert panel.survey_button.isEnabled()
-        # Inspecting changes nothing; writing metadata files still waits.
+        # Inspecting changes nothing; the two that write still wait.
         assert not panel.init_button.isEnabled()
+        assert not panel.compress_button.isEnabled()
 
         panel.enable.setChecked(True)
         assert panel.init_button.isEnabled()
+        assert panel.compress_button.isEnabled()
     finally:
         fresh.close()
 

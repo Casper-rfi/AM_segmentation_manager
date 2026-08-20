@@ -2,9 +2,10 @@
 
 These are here rather than only on the command line because their input is the
 selection on screen: the same ticks that decide what a state change moves decide
-what gets converted or recompressed. Running one from a terminal means
-naming that selection again in filters, which is the part the window has already
-done.
+what gets predicted or converted. Running one from a terminal means naming that
+selection again in filters, which is the part the window has already done. An
+operation with no reason to be narrowed does not belong here at all; compressing
+labels is on the Add data tab, over the whole collection.
 
 Each button previews first and applies only after the preview is accepted, so
 nothing here is a single click away from changing files.
@@ -32,14 +33,12 @@ MODEL_FILTER = "Model weights (*.pth *.pt)"
 
 
 class OperationsPanel(QWidget):
-    """Convert predictions, compress labels, state: preview then apply."""
+    """Predict and convert the ticked selection: preview, then apply."""
 
     #: Emitted with the chosen weights file when the user asks to predict.
     predict_requested = Signal(str)
     #: Emitted when the user asks to convert the selection's predictions.
     convert_requested = Signal()
-    #: Emitted when the user asks to recompress the selection's labels.
-    compress_requested = Signal()
     #: Emitted when the user asks to repair inconsistent groups.
     repair_requested = Signal()
 
@@ -117,18 +116,9 @@ class OperationsPanel(QWidget):
         )
         column.addWidget(self.predictions)
 
-        self.compress_button = QPushButton("Compress labels...")
-        self.compress_button.setToolTip(
-            "Re-encode the selection's labels so they take less disk space. "
-            "Pixel values and dimensions are unchanged."
-        )
-        self.compress_button.clicked.connect(self.compress_requested.emit)
-        column.addWidget(self.compress_button)
-
         layout.addWidget(box)
         self.buttons = (
             self.predict_button, self.browse_button, self.convert_button,
-            self.compress_button,
         )
 
     def show_selection(self, description: str) -> None:

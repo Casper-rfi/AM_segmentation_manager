@@ -294,11 +294,7 @@ class ExportController:
         if start_path is not None:
             self.start_path = start_path
         self._records = [
-            record
-            for project in self._projects
-            for lamella in project.lamellae
-            for stage in lamella.stages
-            for record in stage.images
+            record for project in self._projects for record in project.image_records
         ]
         self._metadata = {}
         self._metadata_loaded = False
