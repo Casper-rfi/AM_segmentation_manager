@@ -46,7 +46,6 @@ from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
-from .changes_log import ChangesLog
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
@@ -313,7 +312,6 @@ class CurationWindow(QMainWindow):
         self.operations_panel.set_model(
             self.settings.value(SETTING_MODEL, "", type=str)
         )
-        self.changes_log = ChangesLog()
 
         # The other tabs get their own Qt-free controllers, and are handed the
         # projects from the curation scan rather than scanning again: a second
@@ -387,22 +385,13 @@ class CurationWindow(QMainWindow):
         right_column.addWidget(self.state_panel, stretch=1)
         right_column.addWidget(self.operations_panel)
 
-        self.splitter = splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(3)
-        splitter.addWidget(self.project_panel)
-        splitter.addWidget(centre)
-        splitter.addWidget(right)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([300, 1080, 260])
-
-        # The log spans the window under everything else, and can be dragged
-        # shut. See changes_log.py for why it is not in the right-hand column.
-        self.curate = QSplitter(Qt.Vertical)
+        self.curate = QSplitter(Qt.Horizontal)
         self.curate.setHandleWidth(3)
-        self.curate.addWidget(splitter)
-        self.curate.addWidget(self.changes_log)
-        self.curate.setStretchFactor(0, 1)
-        self.curate.setSizes([800, 120])
+        self.curate.addWidget(self.project_panel)
+        self.curate.addWidget(centre)
+        self.curate.addWidget(right)
+        self.curate.setStretchFactor(1, 1)
+        self.curate.setSizes([300, 1080, 260])
 
         # Left to right in workflow order: describe the data, curate it,
         # proofread its labels, export it. Curate opens, because it is where the
@@ -515,8 +504,7 @@ class CurationWindow(QMainWindow):
         moving one, cannot silently restore the wrong sizes into it.
         """
         return {
-            "curate": self.splitter,
-            "changes": self.curate,
+            "curate": self.curate,
             "lists": self.project_panel.lists,
             "add_data": self.metadata_panel.panes,
         }
@@ -703,7 +691,7 @@ class CurationWindow(QMainWindow):
         self, title: str, report: OperationReport, rescan: bool = False
     ) -> None:
         """Record what an operation did and bring the window back in step."""
-        self.changes_log.append(f"{title}: {report.headline}")
+        self.state_panel.show_last_change(f"{title}: {report.headline}")
         logger.info("%s: %s", title, report.headline)
         self._show_report(title, report)
         if rescan:
@@ -1414,7 +1402,7 @@ class CurationWindow(QMainWindow):
             where = self.controller.describe_selection()
             if self.controller.selection.is_empty and frame is not None:
                 where = frame.display_name
-            self.changes_log.append(
+            self.state_panel.show_last_change(
                 f"{where}: {changed} image(s) -> {state} ({self.controller.target})"
             )
         # Rebuild the lists too: a state change is exactly what moves a lamella
@@ -1861,7 +1849,7 @@ class CurationWindow(QMainWindow):
 
     def _labels_saved(self, headline: str) -> None:
         """Record what a save did and bring the window back in step."""
-        self.changes_log.append(f"{SAVE_TITLE}: {headline}")
+        self.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
         logger.info("%s: %s", SAVE_TITLE, headline)
         self._flash(headline, 4000)
         # Rescanned rather than refreshed: a save writes labels that were not

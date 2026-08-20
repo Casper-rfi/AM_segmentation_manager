@@ -29,7 +29,7 @@ from qtpy.QtWidgets import (
 from ...operations.selection import RecordState
 from ..controller import MIXED
 from .frame_strip import STATE_COLOURS
-from .theme import SHARED_NOTE_STYLE
+from .theme import BADGE_STYLES, SHARED_NOTE_STYLE
 
 #: Workflow order, which is also the order of the rows in the timeline: data is
 #: excluded, or queued for proofreading, or finished.
@@ -131,6 +131,21 @@ class StatePanel(QWidget):
         self.readout = QLabel("")
         self.readout.setWordWrap(True)
         layout.addWidget(self.readout)
+
+        # -- what was last written -------------------------------------------
+        # The one thing on this tab that changes files without a dialog to
+        # report it is a state change from these buttons, so the answer to
+        # "what did that just do" belongs beside them. Everything else --
+        # converting, compressing, saving labels -- reports in its own dialog
+        # and is repeated here only so the last thing written is on screen.
+        self.last_change = QLabel("")
+        self.last_change.setWordWrap(True)
+        self.last_change.setStyleSheet(BADGE_STYLES["info"])
+        self.last_change.setToolTip(
+            "The last change written to disk this session. Nothing here is "
+            "itself written down -- the record is what the files say."
+        )
+        layout.addWidget(self.last_change)
         layout.addStretch(1)
 
         self.set_editing_enabled(False)
@@ -209,6 +224,11 @@ class StatePanel(QWidget):
         if target_state == MIXED:
             parts.append("(modalities differ)")
         self.readout.setText("\n".join(parts))
+
+    def show_last_change(self, description: str) -> None:
+        """Say what was last written, or clear the line with an empty string."""
+        self.last_change.setText(description)
+        self.last_change.setVisible(bool(description))
 
     def show_reach(self, summary: str, shared_note: str = "") -> None:
         """Show how far the next state change would reach.

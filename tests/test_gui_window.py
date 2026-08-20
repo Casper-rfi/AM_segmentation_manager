@@ -281,12 +281,14 @@ def test_applying_to_both_declares_both_modalities(qt_app, window):
         assert record.image_path.exists()
 
 
-def test_the_change_is_logged(window):
+def test_the_change_is_reported_where_it_was_made(window):
+    """A state change is the one thing on this tab that writes without a dialog
+    to report it, so the buttons say what they just did."""
     window.state_panel.enable_check.setChecked(True)
 
     window.apply_state("deselected")
 
-    assert "deselected" in window.changes_log.text()
+    assert "deselected" in window.state_panel.last_change.text()
 
 
 def test_timeline_reflects_the_lamella(qt_app, window):
@@ -625,15 +627,15 @@ def test_the_splitter_positions_survive_closing_the_window(qt_app, project, sett
     first = CurationWindow(
         CurationController(cache=FrameCache(), config=config), settings=settings
     )
-    first.splitter.setSizes([400, 800, 400])
-    sizes = first.splitter.sizes()
+    first.curate.setSizes([400, 800, 400])
+    sizes = first.curate.sizes()
     first.close()
 
     second = CurationWindow(
         CurationController(cache=FrameCache(), config=config), settings=settings
     )
     try:
-        assert second.splitter.sizes() == sizes
+        assert second.curate.sizes() == sizes
     finally:
         second.close()
 
@@ -648,7 +650,7 @@ def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
         CurationController(cache=FrameCache(), config=config), settings=settings
     )
     try:
-        assert all(size > 0 for size in fresh.splitter.sizes())
+        assert all(size > 0 for size in fresh.curate.sizes())
     finally:
         fresh.close()
 
@@ -990,7 +992,7 @@ def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, 
     _settle(qt_app, lambda: window.controller.frame_states()[0] == "deselected")
 
     assert all(state == "deselected" for state in window.controller.frame_states())
-    assert "deselected" in window.changes_log.text()
+    assert "deselected" in window.state_panel.last_change.text()
 
 
 def test_nothing_ticked_is_not_confirmed(window, monkeypatch):
@@ -1112,7 +1114,7 @@ def test_compressing_acts_on_the_ticked_lamella(window, inline_operations):
     window._compress_labels()
 
     assert inline_operations == [("Compress labels", "Apply")]
-    assert "Compress labels" in window.changes_log.text()
+    assert "Compress labels" in window.state_panel.last_change.text()
 
 
 def test_the_predict_button_is_withheld_where_inference_is_not_installed(window):

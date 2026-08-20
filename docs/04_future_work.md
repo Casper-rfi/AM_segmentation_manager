@@ -34,8 +34,8 @@ specified once there is a real input to look at.
 **What is missing:** `corrected` asserts that a person proofread a label. It is the
 most load-bearing claim in the collection — a training export trusts it, and a
 deposit publishes it — and nothing records who made it or when. `AM_state.yaml`
-holds only the current state, `write_state` logs at DEBUG, and the window's
-changes log dies with the session. So the claim cannot be audited, and a
+holds only the current state, `write_state` logs at DEBUG, and the window
+reports only the last change it made. So the claim cannot be audited, and a
 disagreement about whether something was really proofread has no evidence to
 settle it. This is the FAIR-R gap: the data is reusable, its curation history is
 not.
