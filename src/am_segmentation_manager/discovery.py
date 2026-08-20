@@ -140,7 +140,7 @@ def find_dataset_candidates(
         return []
     if project_markers(root):
         return []
-    if not _contains_marked_project(root, max_depth) and _contains_images(root, max_depth):
+    if not contains_marked_project(root, max_depth) and _contains_images(root, max_depth):
         return [root]
 
     candidates: list[Path] = []
@@ -149,8 +149,13 @@ def find_dataset_candidates(
     return candidates
 
 
-def _contains_marked_project(directory: Path, max_depth: int) -> bool:
-    """Return whether any project marker exists below *directory*."""
+def contains_marked_project(directory: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> bool:
+    """Return whether any project marker exists at or below *directory*.
+
+    What separates a collection directory from a project: a collection holds
+    projects, and writing a marker into one would make every unmarked dataset
+    beneath it a *lamella* of a single project spanning several samples.
+    """
     return bool(find_project_roots(directory, max_depth=max_depth))
 
 

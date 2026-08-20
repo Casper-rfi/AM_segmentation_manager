@@ -16,10 +16,7 @@ from typing import TYPE_CHECKING
 
 from ..io.image import has_image_stack_support
 from ..layout import (
-    base_path,
     resolve_labels_directory,
-    state_of_path,
-    state_path,
     subdirectories_by_name,
 )
 
@@ -61,11 +58,10 @@ __all__ = [
 def label_destination(record: ImageRecord) -> Path:
     """Return where *record*'s label is, or where one would be written.
 
-    An existing label is answered with its own path wherever it lies: its state
-    folder can differ from the image's -- a disagreement ``repair-state``
-    resolves -- and computing a fresh destination would name a second label
-    beside the one that is really there. A record with no label yet is answered
-    with the path the layout gives it, in the image's own workflow state.
+    An existing label is answered with its own path, so nothing computes a
+    fresh destination that would name a second label beside the one really
+    there. A record with no label yet is answered with the path the layout
+    gives it.
 
     Asked by everything that writes a label: prediction conversion, and
     proofreading a label that does not exist yet.
@@ -73,15 +69,13 @@ def label_destination(record: ImageRecord) -> Path:
     if record.labels:
         return record.labels[0]
 
-    image_directory = base_path(record.image_path).parent
+    image_directory = record.image_path.parent
     labels_directory, _, _ = resolve_labels_directory(
         image_directory,
         record.modality,
         subdirectories_by_name(image_directory.parent),
     )
-    return state_path(
-        labels_directory / record.image_path.name, state_of_path(record.image_path)
-    )
+    return labels_directory / record.image_path.name
 
 
 def is_label_file_empty(path: Path) -> bool | None:

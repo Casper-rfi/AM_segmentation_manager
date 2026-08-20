@@ -12,7 +12,6 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from ..io.path import make_path_relative
-from ..layout import base_path, state_of_path
 from ..models import ImageRecord
 from .label_groups import condition_sort_key
 from .label_io import is_label_file_empty
@@ -21,24 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 def find_matching_label(record: ImageRecord) -> Path | None:
-    """Find the matching label file path for an ImageRecord.
+    """Return the record's label, or None if it has none on disk.
 
-    Prefers the label whose workflow state matches the record's own, so an
-    export reflects the state the record is actually in. Falls back to any
-    label that exists. Returns None if none do.
+    A group has one label in one place, so there is nothing to choose between.
     """
-    if not record.labels:
-        return None
-
-    wanted = "corrected" if record.corrected else "selected" if record.selected else "deselected"
-    for label in record.labels:
-        if state_of_path(label) == wanted and label.exists():
-            return label
-
     for label in record.labels:
         if label.exists():
             return label
-
     return None
 
 
@@ -58,7 +46,7 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
     for record in candidates:
         if not record.labels:
             continue
-        key = str(base_path(record.labels[0]))
+        key = str(record.labels[0])
         current = primary.get(key)
         if current is None or condition_sort_key(record) < condition_sort_key(current):
             primary[key] = record

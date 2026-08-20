@@ -73,17 +73,17 @@ def test_cli_keeps_an_existing_label_without_the_overwrite_flag(tmp_path: Path) 
 
 def test_cli_refuses_a_proofread_label_even_with_overwrite(tmp_path: Path) -> None:
     """`--overwrite` reaches pseudo-labels, never proofread ones."""
+    from am_segmentation_manager.state import read_state, write_state
+
     stage, _, fib_image = _build_project(tmp_path)
-    label = stage / "fib_labels" / "corrected" / fib_image.name
+    label = stage / "fib_labels" / fib_image.name
     label.parent.mkdir(parents=True)
     label.write_bytes(b"proofread")
+    write_state(read_state(stage), {f"fib_labels/{fib_image.name}": "corrected"})
 
     _convert(tmp_path, "FIB", "--overwrite")
 
     assert label.read_bytes() == b"proofread"
-    # Nor is it sidestepped by writing a second label beside the corrected one,
-    # which would leave the group with two and no way to tell which is current.
-    assert not (stage / "fib_labels" / fib_image.name).exists()
 
 
 def test_cli_never_converts_post_processed_predictions(tmp_path: Path) -> None:

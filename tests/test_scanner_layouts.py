@@ -60,7 +60,9 @@ def test_labels_are_matched_under_every_naming_convention(tmp_path, sem_labels, 
         assert record.labels[0].name == record.image_path.name
 
 
-def test_state_is_read_from_the_directory_a_file_sits_in(tmp_path: Path):
+def test_a_nested_file_is_not_indexed_at_all(tmp_path: Path):
+    """It belongs to a dataset that has not been migrated. Indexing it would
+    report a deselected image as selected; inspect-layout says so instead."""
     project = _build(tmp_path, "sem_labels", "fib_labels")
     stage = project / "01-lamella" / "adaptive_polish_2025-04-15-02-48-15AM"
     for directory in ("sem", "sem_labels"):
@@ -71,24 +73,22 @@ def test_state_is_read_from_the_directory_a_file_sits_in(tmp_path: Path):
 
     records = {record.modality: record for record in _records(tmp_path)}
 
-    assert records["SEM"].selected is False
-    assert records["SEM"].corrected is False
-    assert records["SEM"].labels[0].parent.name == "deselected"
+    assert "SEM" not in records
     assert records["FIB"].selected is True
 
 
-def test_a_corrected_label_marks_its_image_corrected(tmp_path: Path):
+def test_state_comes_from_the_stage_file(tmp_path: Path):
+    from am_segmentation_manager.state import read_state, write_state
+
     project = _build(tmp_path, "sem_labels", "fib_labels")
     stage = project / "01-lamella" / "adaptive_polish_2025-04-15-02-48-15AM"
-    (stage / "sem_labels" / "corrected").mkdir()
-    (stage / "sem_labels" / "img_000_SEM.tif").rename(
-        stage / "sem_labels" / "corrected" / "img_000_SEM.tif"
-    )
+    write_state(read_state(stage), {"sem_labels/img_000_SEM.tif": "corrected"})
 
     records = {record.modality: record for record in _records(tmp_path)}
 
     assert records["SEM"].corrected is True
     assert records["SEM"].selected is False
+    assert records["FIB"].selected is True
 
 
 def test_predictions_are_matched_from_raw_and_clean(tmp_path: Path):

@@ -9,40 +9,31 @@ import pytest
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.csv import export_training_csv, find_matching_label
+from am_segmentation_manager.state import read_state, write_state
+
+
+def _declare_corrected(stage: Path, names: list[str]) -> None:
+    """Declare a stage's groups corrected, as the window would."""
+    write_state(read_state(stage), {f"labels/{name}": "corrected" for name in names})
 
 
 def test_find_matching_label(tmp_path: Path):
+    """A group has one label in one place, so there is nothing to choose."""
     stage = tmp_path / "stage"
     sem = stage / "sem"
-    labels_norm = stage / "labels"
-    labels_corr = stage / "labels" / "corrected"
-    labels_norm.mkdir(parents=True)
-    labels_corr.mkdir(parents=True)
+    labels = stage / "labels"
+    sem.mkdir(parents=True)
+    labels.mkdir(parents=True)
 
     img = sem / "img1.tif"
-    lbl_norm = labels_norm / "img1.tif"
-    lbl_corr = labels_corr / "img1.tif"
+    label = labels / "img1.tif"
+    label.write_text("lbl")
 
-    lbl_norm.write_text("norm")
-    lbl_corr.write_text("corr")
+    record = ImageRecord(image_path=img, labels=[label], corrected=True, selected=False)
+    assert find_matching_label(record) == label
 
-    # Corrected record -> should match label in corrected folder
-    rec_corr = ImageRecord(
-        image_path=img,
-        labels=[lbl_norm, lbl_corr],
-        corrected=True,
-        selected=False,
-    )
-    assert find_matching_label(rec_corr) == lbl_corr
-
-    # Selected record -> should match normal label folder
-    rec_sel = ImageRecord(
-        image_path=img,
-        labels=[lbl_norm, lbl_corr],
-        corrected=False,
-        selected=True,
-    )
-    assert find_matching_label(rec_sel) == lbl_norm
+    absent = ImageRecord(image_path=img, labels=[labels / "gone.tif"])
+    assert find_matching_label(absent) is None
 
 
 def test_export_training_csv_full_split(tmp_path: Path):
@@ -88,7 +79,7 @@ def test_export_training_csv_full_split(tmp_path: Path):
         assert reader[0] == ["image", "label"]
         assert len(reader) == 9  # 1 header + 8 rows
         # Check relative paths format
-        assert reader[1][0].startswith("01-lamella/Adaptive_polish_1/sem/corrected/")
+        assert reader[1][0].startswith("01-lamella/Adaptive_polish_1/sem/")
 
     with val_path.open("r", encoding="utf-8") as fh:
         reader = list(csv.reader(fh))
@@ -136,16 +127,15 @@ def test_cli_create_training_csv_integration(tmp_path: Path):
     (project / "experiment.yaml").write_text("name: projX")
 
     stage = project / "L1" / "stage1"
-    sem_corr = stage / "sem" / "corrected"
-    labels_corr = stage / "labels" / "corrected"
-    sem_corr.mkdir(parents=True)
-    labels_corr.mkdir(parents=True)
+    sem = stage / "sem"
+    labels = stage / "labels"
+    sem.mkdir(parents=True)
+    labels.mkdir(parents=True)
 
     for i in range(5):
-        img = sem_corr / f"img{i}.tif"
-        lbl = labels_corr / f"img{i}.tif"
-        img.write_text("img")
-        lbl.write_text("lbl")
+        (sem / f"img{i}.tif").write_text("img")
+        (labels / f"img{i}.tif").write_text("lbl")
+    _declare_corrected(stage, [f"img{i}.tif" for i in range(5)])
 
     out_dir = tmp_path / "csv_output"
 
@@ -172,23 +162,23 @@ def test_cli_create_training_csv_integration(tmp_path: Path):
     assert "image,label" in content_train
     assert "image,label" in content_val
     combined = content_train + content_val
-    assert "projX/L1/stage1/sem/corrected/img0.tif" in combined
+    assert "projX/L1/stage1/sem/img0.tif" in combined
 
 
 def test_cli_create_training_csv_positional_scan_dir(tmp_path: Path):
     scan_dir = tmp_path / "20260728_CB_AM_bitmap_overnight"
     project = scan_dir / "AutoLamella-2026-07-28-10-31"
     stage = project / "01-ruling-ibex" / "Adaptive_polish_1"
-    sem_corr = stage / "sem" / "corrected"
-    labels_corr = stage / "labels" / "corrected"
-    sem_corr.mkdir(parents=True)
-    labels_corr.mkdir(parents=True)
+    sem = stage / "sem"
+    labels = stage / "labels"
+    sem.mkdir(parents=True)
+    labels.mkdir(parents=True)
     (project / "experiment.yaml").write_text("name: AutoLamella-2026-07-28-10-31")
 
-    img = sem_corr / "01-ruling-ibex_AP_img_013_SEM.tif"
-    lbl = labels_corr / "01-ruling-ibex_AP_img_013_SEM.tif"
-    img.write_text("img")
-    lbl.write_text("lbl")
+    name = "01-ruling-ibex_AP_img_013_SEM.tif"
+    (sem / name).write_text("img")
+    (labels / name).write_text("lbl")
+    _declare_corrected(stage, [name])
 
     out_dir = tmp_path / "csv_out"
 
@@ -209,8 +199,8 @@ def test_cli_create_training_csv_positional_scan_dir(tmp_path: Path):
     assert train_csv.exists()
     content = train_csv.read_text()
     # Paths MUST start with AutoLamella-2026-07-28-10-31 relative to the scan directory 20260728_CB_AM_bitmap_overnight
-    assert "AutoLamella-2026-07-28-10-31/01-ruling-ibex/Adaptive_polish_1/sem/corrected/01-ruling-ibex_AP_img_013_SEM.tif" in content
-    assert "AutoLamella-2026-07-28-10-31/01-ruling-ibex/Adaptive_polish_1/labels/corrected/01-ruling-ibex_AP_img_013_SEM.tif" in content
+    assert "AutoLamella-2026-07-28-10-31/01-ruling-ibex/Adaptive_polish_1/sem/01-ruling-ibex_AP_img_013_SEM.tif" in content
+    assert "AutoLamella-2026-07-28-10-31/01-ruling-ibex/Adaptive_polish_1/labels/01-ruling-ibex_AP_img_013_SEM.tif" in content
 
 
 def test_cli_create_training_csv_requires_explicit_state(tmp_path: Path):

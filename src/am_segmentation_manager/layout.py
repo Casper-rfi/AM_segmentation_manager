@@ -5,9 +5,9 @@ rather than embedding string literals. Image directories are ``<modality>`` or
 ``<modality>_<variant>``, the variant opaque and never parsed. Label directories
 are ``<image-directory>_labels`` beside them, resolved most-specific-first, then
 the shared ``<modality>_labels``, then legacy names. Workflow state is declared
-in :mod:`~am_segmentation_manager.state`, not implied here; what remains is the
-naming of the ``deselected/`` and ``corrected/`` folders, which stay reserved so
-an unmigrated dataset is never read as selected.
+in :mod:`~am_segmentation_manager.state` and nothing here reads it; the
+``deselected/`` and ``corrected/`` names stay reserved so an unmigrated dataset
+is never read as selected.
 
 Except for :func:`build_image_sets`, nothing here touches the filesystem.
 """
@@ -25,27 +25,11 @@ logger = logging.getLogger(__name__)
 #: The imaging modalities this package indexes, in display order.
 MODALITIES: Final[tuple[str, ...]] = ("SEM", "FIB")
 
-#: A file's workflow state, which is determined by the directory it sits in.
-RecordState = Literal["selected", "deselected", "corrected"]
-
-#: State to the subdirectory name that holds it. ``None`` means the base
-#: directory itself, so the selected state adds no nesting.
-STATE_DIRECTORIES: Final[dict[str, str | None]] = {
-    "selected": None,
-    "deselected": "deselected",
-    "corrected": "corrected",
-}
-
-#: The subdirectory names that carry a non-default state.
-STATE_FOLDER_NAMES: Final[frozenset[str]] = frozenset(
-    name for name in STATE_DIRECTORIES.values() if name is not None
-)
-
-#: The inverse of :data:`STATE_DIRECTORIES`: subdirectory name to the state it
-#: represents. A directory not listed here means the selected state.
-FOLDER_STATES: Final[dict[str, str]] = {
-    folder: state for state, folder in STATE_DIRECTORIES.items() if folder is not None
-}
+#: The subdirectory names a pre-declaration dataset kept its state in. Nothing
+#: reads state from them any more -- :mod:`~..operations.migrate_state` does
+#: that, once -- but they stay reserved so an unmigrated dataset reads as
+#: *missing* those images rather than as holding selected ones.
+STATE_FOLDER_NAMES: Final[frozenset[str]] = frozenset({"deselected", "corrected"})
 
 LABELS_SUFFIX: Final[str] = "_labels"
 PREDICTIONS_SUFFIX: Final[str] = "_predictions"
@@ -385,49 +369,13 @@ def resolve_predictions_directory(
 # Workflow state locations
 # ---------------------------------------------------------------------------
 
-def state_of_path(path: Path) -> RecordState:
-    """Return the workflow state implied by the directory *path* sits in.
-
-    The pre-migration answer, for a stage whose state is not declared yet.
-    Everything else reads the record.
-    """
-    return FOLDER_STATES.get(path.parent.name, "selected")  # type: ignore[return-value]
-
-
-def base_path(path: Path) -> Path:
-    """Return *path* with any state subdirectory stripped.
-
-    ``sem/deselected/img.tif`` and ``sem/img.tif`` both resolve to
-    ``sem/img.tif``: the shared identity used to find a file's other possible
-    state locations.
-    """
-    if path.parent.name in STATE_FOLDER_NAMES:
-        return path.parent.parent / path.name
-    return path
-
-
-def state_path(path: Path, state: str) -> Path:
-    """Return where *path* would live in *state*."""
-    if state not in STATE_DIRECTORIES:
-        raise ValueError(f"Unknown workflow state: {state}")
-    base = base_path(path)
-    folder = STATE_DIRECTORIES[state]
-    return base if folder is None else base.parent / folder / base.name
-
-
 def state_directories(directory: Path) -> list[Path]:
-    """Return *directory* and its state subdirectories, selected state first."""
-    return [directory, *(directory / name for name in sorted(STATE_FOLDER_NAMES))]
+    """Return *directory* and the state subdirectories it may still have.
 
-
-def state_variants(path: Path) -> list[Path]:
-    """Return every location *path* could occupy, one per workflow state.
-
-    The selected location comes first. Used to find where a file actually is
-    when the recorded path may be stale.
+    Only migration and the survey look inside those: an unmigrated dataset is
+    something to report, not something to read.
     """
-    base = base_path(path)
-    return [base, *(base.parent / folder / base.name for folder in sorted(STATE_FOLDER_NAMES))]
+    return [directory, *(directory / name for name in sorted(STATE_FOLDER_NAMES))]
 
 
 # ---------------------------------------------------------------------------
@@ -534,17 +482,14 @@ def image_files(directory: Path) -> list[Path]:
 
 
 def image_files_by_name(directory: Path) -> dict[str, Path]:
-    """Return image files in *directory* and its state subdirectories.
+    """Return the image files directly in *directory*, keyed by filename.
 
-    Keyed by filename, which is the identity an image and its label share. A
-    file present in more than one state directory is a fault the caller should
-    report; the first found wins here so that counting cannot raise.
+    The filename is the identity an image and its label share. State
+    subdirectories are **not** looked in: a file still sitting in one belongs
+    to a dataset that has not been migrated, and reading it here would report
+    it as selected. ``inspect-layout`` says so instead.
     """
-    found: dict[str, Path] = {}
-    for candidate in state_directories(directory):
-        for path in image_files(candidate):
-            found.setdefault(path.name, path)
-    return found
+    return {path.name: path for path in image_files(directory)}
 
 
 def _is_file(path: Path) -> bool:

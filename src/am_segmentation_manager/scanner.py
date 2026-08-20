@@ -27,7 +27,6 @@ from .layout import (
     image_files,
     image_files_by_name,
     resolve_predictions_directory,
-    state_of_path,
     subdirectories_by_name,
 )
 from .metadata import (
@@ -40,19 +39,6 @@ from .models import AdaptiveMillingStage, ImageRecord, Lamella, Project
 from .state import StageState, StateFileError, read_state, state_key
 
 logger = logging.getLogger(__name__)
-
-
-def _folder_state(image_path: Path, labels: list[Path]) -> str:
-    """Return the state a stage's folders imply, for one not yet migrated.
-
-    A label in ``corrected/`` makes its images corrected even when they have
-    not been moved yet, which is the disagreement ``repair-state`` resolves.
-    """
-    if state_of_path(image_path) == "corrected" or any(
-        state_of_path(path) == "corrected" for path in labels
-    ):
-        return "corrected"
-    return state_of_path(image_path)
 
 
 class ProjectIndex:
@@ -351,10 +337,11 @@ class Scanner:
         or any legacy name it recognises, and images in ``deselected/`` and
         ``corrected/`` subfolders are included.
 
-        Workflow state is read from the stage's ``AM_state.yaml`` where it has
-        one, and from the folders the files sit in where it does not. The two
-        agree on a migrated stage, which is what lets a collection be migrated
-        one stage at a time.
+        Workflow state comes from the stage's ``AM_state.yaml``; a stage
+        without one has every group selected, which is the same answer. Files
+        still sitting in ``deselected/`` or ``corrected/`` are not indexed at
+        all -- ``inspect-layout`` reports them as needing migration, where
+        reading them here would report them as selected.
 
         Labels and predictions are matched by filename **within an image set**
         rather than across the whole stage: several image directories in one
@@ -387,11 +374,8 @@ class Scanner:
                 record.predictions = list(prediction) if prediction else []
                 label = labels_map.get(name)
                 record.labels = [label] if label is not None else []
-                if declared is not None:
-                    key = state_key(image_set.labels_directory / name, stage_path)
-                    state = declared.state_of(key)
-                else:
-                    state = _folder_state(image_path, record.labels)
+                key = state_key(image_set.labels_directory / name, stage_path)
+                state = declared.state_of(key)
                 # States are mutually exclusive: a record is in exactly one.
                 record.corrected = state == "corrected"
                 record.selected = state == "selected"
@@ -400,21 +384,18 @@ class Scanner:
         return image_records
 
     @staticmethod
-    def _declared_state(stage_path: Path) -> StageState | None:
-        """Return a stage's declared states, or None to read its folders.
+    def _declared_state(stage_path: Path) -> StageState:
+        """Return a stage's declared states, or none at all if unreadable.
 
-        A stage with no state file has not been migrated, and its folders are
-        still the record of what was decided. One whose file will not parse is
-        reported and read from its folders too -- refusing to open a collection
-        because one file in it is damaged helps nobody, and until the files are
-        un-nested the folders still hold the answer.
+        A damaged file is reported and read as empty rather than raised:
+        refusing to open a whole collection because one file in it is damaged
+        helps nobody, and ``inspect-layout`` names the file.
         """
         try:
-            declared = read_state(stage_path)
+            return read_state(stage_path)
         except StateFileError as exc:
-            logger.error("%s; reading workflow state from the folders instead", exc)
-            return None
-        return declared if declared.fingerprint is not None else None
+            logger.error("%s; treating this stage as selected throughout", exc)
+            return StageState(path=stage_path, states={}, fingerprint=None)
 
     @staticmethod
     def _collect_predictions(stage_path: Path, image_set) -> dict[str, list[Path]]:

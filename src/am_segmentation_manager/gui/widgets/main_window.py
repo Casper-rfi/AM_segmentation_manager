@@ -482,7 +482,6 @@ class CurationWindow(QMainWindow):
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
         self.operations_panel.compress_requested.connect(self._compress_labels)
-        self.operations_panel.repair_requested.connect(self._repair_state)
 
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
         self.metadata_panel.init_requested.connect(self._add_metadata_files)
@@ -809,17 +808,6 @@ class CurationWindow(QMainWindow):
         self._operate(
             "Compress labels",
             lambda allow, dry: self.operations_controller.compress_labels(
-                records, allow_corrected=allow, dry_run=dry
-            ),
-        )
-
-    def _repair_state(self) -> None:
-        records = self._editable_records()
-        if records is None:
-            return
-        self._operate(
-            "Repair state",
-            lambda allow, dry: self.operations_controller.repair_state(
                 records, allow_corrected=allow, dry_run=dry
             ),
         )
@@ -1589,7 +1577,6 @@ class CurationWindow(QMainWindow):
         self.timeline.set_states(
             self.controller.modality_states(),
             self.controller.frame_position,
-            self.controller.mismatched_frames(),
             self.controller.label_states(),
             selected,
         )

@@ -73,10 +73,10 @@ def test_current_state_tracks_transitions(record: ImageRecord):
     deselect_records([record])
     assert current_state(record) == "deselected"
 
-    mark_corrected_records([record], allow_move_from_corrected=True)
+    mark_corrected_records([record], allow_leaving_corrected=True)
     assert current_state(record) == "corrected"
 
-    select_records([record], allow_move_from_corrected=True)
+    select_records([record], allow_leaving_corrected=True)
     assert current_state(record) == "selected"
 
 
@@ -117,7 +117,7 @@ def test_nothing_moves(dataset, record: ImageRecord):
     before = sorted(str(p.relative_to(dataset.root)) for p in dataset.root.rglob("*.tif"))
 
     deselect_records([record])
-    mark_corrected_records([record], allow_move_from_corrected=True)
+    mark_corrected_records([record], allow_leaving_corrected=True)
 
     after = sorted(str(p.relative_to(dataset.root)) for p in dataset.root.rglob("*.tif"))
     assert after == before
@@ -127,7 +127,7 @@ def test_nothing_moves(dataset, record: ImageRecord):
 
 @pytest.mark.parametrize("state", ["selected", "deselected", "corrected"])
 def test_record_paths_stay_real_after_any_transition(record: ImageRecord, state):
-    transition_records([record], state, allow_move_from_corrected=True)
+    transition_records([record], state, allow_leaving_corrected=True)
 
     assert record.image_path.exists()
     assert all(label.exists() for label in record.labels)

@@ -48,7 +48,7 @@ def test_mark_corrected_records_and_restore_by_selecting(tmp_path: Path) -> None
     assert list(read_state(stage).states.values()) == ["corrected"]
 
     # Selecting with confirmation clears the corrected state.
-    select_records([rec], allow_move_from_corrected=True)
+    select_records([rec], allow_leaving_corrected=True)
 
     assert rec.corrected is False
     assert rec.selected is True

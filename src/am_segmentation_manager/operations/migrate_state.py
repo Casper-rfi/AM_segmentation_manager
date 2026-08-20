@@ -1,15 +1,20 @@
 """Recording the workflow state a stage's folders currently imply.
 
-A one-shot transcription. Every label group's state is read from where its
-files sit and written into the stage's ``AM_state.yaml``. Nothing moves, nothing
-is deleted and nothing existing is overwritten, so a run is undone by deleting
-the files it wrote.
+A one-shot transcription for datasets curated before state was declared, and
+the only place in the package that still reads state from a folder name. It
+walks the filesystem itself rather than working from the index, because the
+scanner no longer looks inside ``deselected/`` and ``corrected/`` at all --
+which is what keeps a nested image invisible and reported rather than readable
+as selected.
+
+Nothing moves, nothing is deleted and nothing existing is overwritten, so a run
+is undone by deleting the files it wrote.
 
 **A stage is migrated whole or not at all.** Writing part of one leaves the
 groups it skipped with no entry, and no entry reads as selected -- a deselected
 image silently promoted into a training set, which is the one migration failure
 with no visible symptom. So a stage holding anything ambiguous is reported and
-left alone, and its folders stay authoritative until someone resolves it.
+left alone.
 """
 from __future__ import annotations
 
@@ -21,16 +26,16 @@ from pathlib import Path
 from typing import Literal
 
 from ..layout import (
-    RecordState,
-    base_path,
+    STATE_FOLDER_NAMES,
+    ImageSet,
+    build_image_sets,
     image_files,
     state_directories,
-    state_of_path,
-    subdirectories_by_name,
 )
-from ..models import AdaptiveMillingStage, ImageRecord, Project
+from ..models import Project
 from ..state import (
     AM_STATE_FILENAME,
+    RecordState,
     StateFileError,
     read_state,
     state_key,
@@ -74,15 +79,12 @@ UnnestingOutcome = Literal[
 
 @dataclass(frozen=True)
 class GroupProblem:
-    """One reason a stage cannot be transcribed.
+    """One reason a stage cannot be transcribed, or its files moved.
 
     Attributes:
-        key: The group's state-file key, or the state file's name where the
-            problem is with the file rather than a group.
-        kind: ``"inconsistent"`` for images disagreeing with their label,
-            ``"duplicate"`` for a file present in more than one state folder,
-            ``"existing"`` for a state file already declaring something else,
-            ``"unreadable"`` for a state file that will not parse.
+        key: The group's state-file key, or a filename where the problem is
+            not about a group.
+        kind: What is wrong.
         detail: What to say to whoever has to resolve it.
     """
 
@@ -113,48 +115,42 @@ class StageMigration:
 
 
 def stage_group_states(
-    stage: AdaptiveMillingStage,
+    stage_directory: Path,
 ) -> tuple[dict[str, RecordState], list[GroupProblem]]:
-    """Return the state each of *stage*'s groups is in, and what is ambiguous.
+    """Return the state each of the stage's groups is in, and what is ambiguous.
 
-    The label's location decides where there is one, and the images' own
-    location where there is not -- the rule that already governs every read.
-    Nothing here resolves a disagreement: a group whose images contradict their
-    label, or whose file sits in two state folders at once, is returned as a
-    problem instead of as a state.
+    The label's folder decides where there is one, and the images' own folder
+    where there is not. Nothing here resolves a disagreement: a group whose
+    images contradict their label, or whose file sits in two state folders at
+    once, is returned as a problem instead of as a state.
     """
-    labels_by_image_directory = {
-        image_set.directory: image_set.labels_directory
-        for image_set in stage.image_sets
+    image_sets = build_image_sets(stage_directory)
+    labels_by_directory = {
+        image_set.labels_directory: _locations(image_set.labels_directory)
+        for image_set in image_sets
     }
-    duplicated = _duplicated_names(stage, labels_by_image_directory)
 
-    grouped: dict[str, list[ImageRecord]] = {}
-    for record in stage.images:
-        labels_directory = labels_by_image_directory.get(
-            base_path(record.image_path).parent
-        )
-        if labels_directory is None:
-            # An image the stage's image sets do not account for cannot be
-            # keyed, and guessing a key would put its state on another group.
-            logger.warning("No image set for %s; skipping", record.image_path)
-            continue
-        key = state_key(labels_directory / record.image_path.name, stage.path)
-        grouped.setdefault(key, []).append(record)
+    grouped: dict[str, list[tuple[ImageSet, str, list[Path]]]] = {}
+    for image_set in image_sets:
+        for name, paths in _locations(image_set.directory).items():
+            key = state_key(image_set.labels_directory / name, stage_directory)
+            grouped.setdefault(key, []).append((image_set, name, paths))
 
     states: dict[str, RecordState] = {}
     problems: list[GroupProblem] = []
-    for key, records in grouped.items():
-        problem = _group_problem(key, records, duplicated)
+    for key, members in sorted(grouped.items()):
+        image_set, name, _ = members[0]
+        label_paths = labels_by_directory[image_set.labels_directory].get(name, [])
+        problem = _group_problem(key, members, label_paths)
         if problem is not None:
             problems.append(problem)
             continue
-        states[key] = _group_state(records)
+        states[key] = _group_state(members, label_paths)
     return states, problems
 
 
 def migrate_stage(
-    stage: AdaptiveMillingStage, *, dry_run: bool = False
+    stage_directory: Path, *, dry_run: bool = False
 ) -> StageMigration:
     """Transcribe one stage's folder states into its state file.
 
@@ -162,41 +158,41 @@ def migrate_stage(
     alone, and one that says anything else is reported as a conflict, because
     the only thing that could have written it is somebody's curation.
     """
-    states, problems = stage_group_states(stage)
+    states, problems = stage_group_states(stage_directory)
     if problems:
-        return StageMigration(stage.path, {}, "blocked", problems=tuple(problems))
+        return StageMigration(stage_directory, {}, "blocked", problems=tuple(problems))
 
     try:
-        existing = read_state(stage.path)
+        existing = read_state(stage_directory)
     except StateFileError as exc:
         return StageMigration(
-            stage.path, {}, "conflict",
+            stage_directory, {}, "conflict",
             problems=(GroupProblem(AM_STATE_FILENAME, "unreadable", str(exc)),),
         )
 
     declared = {key: state for key, state in states.items() if state != "selected"}
     if dict(existing.states) == declared:
         return StageMigration(
-            stage.path, declared,
+            stage_directory, declared,
             "unchanged" if existing.fingerprint is not None else "nothing-to-declare",
         )
     if existing.fingerprint is not None:
         return StageMigration(
-            stage.path, declared, "conflict",
+            stage_directory, declared, "conflict",
             problems=(
                 GroupProblem(
-                    existing.path.name, "existing",
-                    f"{existing.path.name} already declares "
+                    AM_STATE_FILENAME, "existing",
+                    f"{AM_STATE_FILENAME} already declares "
                     f"{len(existing.states)} group(s); leaving it alone",
                 ),
             ),
         )
 
     if dry_run:
-        return StageMigration(stage.path, declared, "migrated")
+        return StageMigration(stage_directory, declared, "migrated")
     write_state(existing, declared)
-    logger.debug("Migrated %s: %d group(s) declared", stage.path, len(declared))
-    return StageMigration(stage.path, declared, "migrated", applied=True)
+    logger.debug("Migrated %s: %d group(s) declared", stage_directory, len(declared))
+    return StageMigration(stage_directory, declared, "migrated", applied=True)
 
 
 def migrate_projects(
@@ -204,93 +200,79 @@ def migrate_projects(
 ) -> list[StageMigration]:
     """Transcribe every stage of every project, in index order."""
     return [
-        migrate_stage(stage, dry_run=dry_run)
-        for project in projects
-        for lamella in project.lamellae
-        for stage in lamella.stages
+        migrate_stage(stage.path, dry_run=dry_run)
+        for stage in _stages_of(projects)
     ]
 
 
 # ---------------------------------------------------------------------------
-# What makes a group ambiguous
+# Reading state from a folder name -- confined to this module
 # ---------------------------------------------------------------------------
 
-def _group_state(records: list[ImageRecord]) -> RecordState:
+def _folder_state(path: Path) -> RecordState:
+    """Return the state *path*'s containing folder implies."""
+    name = path.parent.name
+    return name if name in STATE_FOLDER_NAMES else "selected"  # type: ignore[return-value]
+
+
+def _locations(directory: Path) -> dict[str, list[Path]]:
+    """Return each filename in *directory*, with every state folder holding it.
+
+    A name mapping to more than one path is a file in two states at once.
+    """
+    found: dict[str, list[Path]] = {}
+    for candidate in state_directories(directory):
+        for path in image_files(candidate):
+            found.setdefault(path.name, []).append(path)
+    return found
+
+
+def _group_state(
+    members: list[tuple[ImageSet, str, list[Path]]], label_paths: list[Path]
+) -> RecordState:
     """Return a consistent group's state, the label deciding where there is one."""
-    label = _located_label(records)
-    if label is not None:
-        return state_of_path(label)
-    return state_of_path(records[0].image_path)
-
-
-def _located_label(records: list[ImageRecord]) -> Path | None:
-    """Return the group's label wherever the scan found it, or None."""
-    for record in records:
-        if record.labels:
-            return record.labels[0]
-    return None
+    if label_paths:
+        return _folder_state(label_paths[0])
+    return _folder_state(members[0][2][0])
 
 
 def _group_problem(
-    key: str, records: list[ImageRecord], duplicated: Mapping[Path, set[str]]
+    key: str,
+    members: list[tuple[ImageSet, str, list[Path]]],
+    label_paths: list[Path],
 ) -> GroupProblem | None:
     """Return why *key* cannot be transcribed, or None if it can."""
-    label = _located_label(records)
-    copies = [
-        directory
-        for directory, names in duplicated.items()
-        if any(
-            base_path(record.image_path).parent == directory
-            and record.image_path.name in names
-            for record in records
+    duplicated = [
+        paths for _, _, paths in members if len(paths) > 1
+    ] + ([label_paths] if len(label_paths) > 1 else [])
+    if duplicated:
+        folders = sorted(
+            {path.parent.name for paths in duplicated for path in paths}
         )
-        or (label is not None and base_path(label).parent == directory
-            and label.name in names)
-    ]
-    if copies:
         return GroupProblem(
             key, "duplicate",
-            "the same filename sits in more than one state folder of "
-            + ", ".join(sorted(directory.name for directory in copies)),
+            f"the same filename sits in more than one of {', '.join(folders)}",
         )
 
-    state = _group_state(records)
+    state = _group_state(members, label_paths)
     disagreeing = [
-        record for record in records if state_of_path(record.image_path) != state
+        path for _, _, paths in members for path in paths
+        if _folder_state(path) != state
     ]
     if disagreeing:
         return GroupProblem(
             key, "inconsistent",
             f"{len(disagreeing)} image(s) are not {state} like their label; "
-            "run repair-state first",
+            "move them to match before migrating",
         )
     return None
 
 
-def _duplicated_names(
-    stage: AdaptiveMillingStage, labels_by_image_directory: Mapping[Path, Path]
-) -> dict[Path, set[str]]:
-    """Return, per directory, the filenames present in more than one of its
-    state folders.
-
-    Listed per directory rather than probed per file: the three state folders
-    of an image set are three listings, where asking each file where else it
-    might be is three stat calls per file.
-    """
-    directories = {
-        *labels_by_image_directory.keys(),
-        *labels_by_image_directory.values(),
-    }
-    duplicated: dict[Path, set[str]] = {}
-    for directory in directories:
-        seen: dict[str, int] = {}
-        for candidate in state_directories(directory):
-            for path in image_files(candidate):
-                seen[path.name] = seen.get(path.name, 0) + 1
-        repeated = {name for name, count in seen.items() if count > 1}
-        if repeated:
-            duplicated[directory] = repeated
-    return duplicated
+def _stages_of(projects: Iterable[Project]):
+    """Yield every stage of every project, in index order."""
+    for project in projects:
+        for lamella in project.lamellae:
+            yield from lamella.stages
 
 
 # ---------------------------------------------------------------------------
@@ -320,12 +302,12 @@ class StageUnnesting:
 
 
 def unnest_stage(
-    stage: AdaptiveMillingStage,
+    stage_directory: Path,
     *,
     dry_run: bool = False,
     remove_empty_directories: bool = False,
 ) -> StageUnnesting:
-    """Move *stage*'s files out of ``deselected/`` and ``corrected/``.
+    """Move a stage's files out of ``deselected/`` and ``corrected/``.
 
     Only once its state is declared. A stage with nested files and no state
     file is refused: there the folders are the only record of what was decided,
@@ -341,16 +323,16 @@ def unnest_stage(
     """
     tidy = remove_empty_directories
 
-    moves = _nested_files(stage.path)
+    moves = _nested_files(stage_directory)
     if not moves:
         return StageUnnesting(
-            stage.path, (), "nothing-nested",
-            removed=_empty_state_directories(stage.path, remove=tidy) if tidy else (),
+            stage_directory, (), "nothing-nested",
+            removed=_empty_state_directories(stage_directory, remove=tidy) if tidy else (),
         )
 
-    if read_state(stage.path).fingerprint is None:
+    if read_state(stage_directory).fingerprint is None:
         return StageUnnesting(
-            stage.path, moves, "blocked",
+            stage_directory, moves, "blocked",
             problems=(
                 GroupProblem(
                     AM_STATE_FILENAME, "unmigrated",
@@ -362,24 +344,26 @@ def unnest_stage(
 
     problems = _collisions(moves)
     if problems:
-        return StageUnnesting(stage.path, moves, "blocked", problems=problems)
+        return StageUnnesting(stage_directory, moves, "blocked", problems=problems)
 
     if dry_run:
         # The directories a real run would clear are the ones holding nothing
         # but the files about to leave them.
         leaving = {source for source, _ in moves}
         would_remove = (
-            _empty_state_directories(stage.path, remove=False, ignoring=leaving)
+            _empty_state_directories(stage_directory, remove=False, ignoring=leaving)
             if tidy else ()
         )
-        return StageUnnesting(stage.path, moves, "moved", removed=would_remove)
+        return StageUnnesting(stage_directory, moves, "moved", removed=would_remove)
 
     for source, destination in moves:
         shutil.move(str(source), str(destination))
-    logger.debug("Un-nested %s: %d file(s) moved", stage.path, len(moves))
+    logger.debug("Un-nested %s: %d file(s) moved", stage_directory, len(moves))
 
-    removed = _empty_state_directories(stage.path, remove=True) if tidy else ()
-    return StageUnnesting(stage.path, moves, "moved", applied=True, removed=removed)
+    removed = _empty_state_directories(stage_directory, remove=True) if tidy else ()
+    return StageUnnesting(
+        stage_directory, moves, "moved", applied=True, removed=removed
+    )
 
 
 def unnest_projects(
@@ -391,22 +375,35 @@ def unnest_projects(
     """Un-nest every stage of every project, in index order."""
     return [
         unnest_stage(
-            stage, dry_run=dry_run, remove_empty_directories=remove_empty_directories
+            stage.path,
+            dry_run=dry_run,
+            remove_empty_directories=remove_empty_directories,
         )
-        for project in projects
-        for lamella in project.lamellae
-        for stage in lamella.stages
+        for stage in _stages_of(projects)
+    ]
+
+
+def _state_folders(stage_directory: Path) -> list[Path]:
+    """Return every state folder of every image and label directory."""
+    directories = {
+        directory
+        for image_set in build_image_sets(stage_directory)
+        for directory in (image_set.directory, image_set.labels_directory)
+    }
+    return [
+        candidate
+        for directory in sorted(directories)
+        for candidate in state_directories(directory)[1:]
     ]
 
 
 def _nested_files(stage_directory: Path) -> tuple[tuple[Path, Path], ...]:
     """Return every file in a state folder, with where it belongs."""
-    moves: list[tuple[Path, Path]] = []
-    for directory in sorted(subdirectories_by_name(stage_directory).values()):
-        for candidate in state_directories(directory)[1:]:
-            for path in image_files(candidate):
-                moves.append((path, directory / path.name))
-    return tuple(moves)
+    return tuple(
+        (path, candidate.parent / path.name)
+        for candidate in _state_folders(stage_directory)
+        for path in image_files(candidate)
+    )
 
 
 def _collisions(moves: tuple[tuple[Path, Path], ...]) -> tuple[GroupProblem, ...]:
@@ -455,20 +452,19 @@ def _empty_state_directories(
     """
     ignored = ignoring or set()
     empty: list[Path] = []
-    for directory in sorted(subdirectories_by_name(stage_directory).values()):
-        for candidate in state_directories(directory)[1:]:
-            if not candidate.is_dir():
-                continue
-            remaining = [path for path in candidate.iterdir() if path not in ignored]
-            if remaining:
-                logger.warning(
-                    "%s still holds %s; leaving it",
-                    candidate,
-                    ", ".join(sorted(path.name for path in remaining[:5]))
-                    + (" and more" if len(remaining) > 5 else ""),
-                )
-                continue
-            if remove:
-                candidate.rmdir()
-            empty.append(candidate)
+    for candidate in _state_folders(stage_directory):
+        if not candidate.is_dir():
+            continue
+        remaining = [path for path in candidate.iterdir() if path not in ignored]
+        if remaining:
+            logger.warning(
+                "%s still holds %s; leaving it",
+                candidate,
+                ", ".join(sorted(path.name for path in remaining[:5]))
+                + (" and more" if len(remaining) > 5 else ""),
+            )
+            continue
+        if remove:
+            candidate.rmdir()
+        empty.append(candidate)
     return tuple(empty)

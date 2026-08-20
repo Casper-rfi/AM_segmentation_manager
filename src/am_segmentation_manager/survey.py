@@ -37,7 +37,6 @@ from .layout import (
     image_files_by_name,
     shared_labels_directory_name,
     state_directories,
-    state_of_path,
     subdirectories_by_name,
 )
 from .metadata import (
@@ -380,34 +379,6 @@ def survey_project(
     )
 
 
-def _state_findings(
-    image_set: ImageSet, images: dict[str, Path], labels: dict[str, Path]
-) -> list[Finding]:
-    """Report images whose workflow state disagrees with their label's.
-
-    The label is authoritative, so a disagreement means files were moved
-    outside this package or an operation was interrupted. ``repair-state``
-    resolves it by moving the images to follow the label.
-    """
-    disagreeing = [
-        name for name, image_path in images.items()
-        if name in labels and state_of_path(image_path) != state_of_path(labels[name])
-    ]
-    if not disagreeing:
-        return []
-    return [
-        Finding(
-            severity="warning",
-            category="state-mismatch",
-            path=image_set.directory,
-            message=(
-                f"{len(disagreeing)} image(s) are in a different workflow state from "
-                f"their label; run 'am-seg repair-state' to move them to match"
-            ),
-        )
-    ]
-
-
 def _clean_method(value: object) -> str | None:
     """Return Autolamella's ``method`` value as a string, if it has one."""
     if value is None:
@@ -663,7 +634,6 @@ def _survey_image_set(
             )
         )
 
-    findings.extend(_state_findings(image_set, images, labels))
 
     empty_labels = _count_empty_labels(labels) if check_labels else None
     if empty_labels:

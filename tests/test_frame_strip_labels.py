@@ -189,36 +189,6 @@ def test_omitting_labels_entirely_still_draws_the_states(timeline):
 # The mismatch wash
 # ---------------------------------------------------------------------------
 
-def test_a_mismatched_frame_is_tinted_across_its_whole_column(timeline):
-    timeline.set_states(
-        {"SEM": ["selected", "selected"], "FIB": ["selected", "selected"]}, 0,
-        mismatched={1},
-        labels={"SEM": ["present", "present"], "FIB": ["present", "present"]},
-    )
-    image = _render(timeline)
-
-    row_y = FrameTimeline._row_top(0) + ROW_HEIGHT // 2
-    clean = image.pixelColor(_column(0, timeline), row_y)
-    tinted = image.pixelColor(_column(1, timeline), row_y)
-
-    assert clean == STATE_COLOURS["selected"]
-    assert tinted != clean
-    # Warmer than the untinted cell, since the wash is amber.
-    assert tinted.red() > clean.red()
-
-
-def test_the_wash_covers_the_label_lines_too(timeline):
-    """A mismatch is about the frame, not about one row."""
-    timeline.set_states(
-        {"SEM": ["selected"], "FIB": ["selected"]}, 0,
-        mismatched={0},
-        labels={"SEM": ["present"], "FIB": ["present"]},
-    )
-    image = _render(timeline)
-
-    y = FrameTimeline._label_line_top(1) + 1
-    assert image.pixelColor(_column(0, timeline), y) != LABEL_COLOURS["present"]
-
 
 def test_no_mismatch_leaves_the_strip_untinted(timeline):
     timeline.set_states({"SEM": ["selected"], "FIB": ["selected"]}, 0)

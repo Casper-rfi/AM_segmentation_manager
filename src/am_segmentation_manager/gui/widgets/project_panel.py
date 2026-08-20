@@ -29,7 +29,7 @@ from qtpy.QtWidgets import (
 
 from ..controller import CurationStatus
 from .common import add_path_menu, chip_icon, choose_directory
-from .frame_strip import MISMATCH, STATE_COLOURS
+from .frame_strip import STATE_COLOURS
 from .theme import (
     SWATCH_BAND,
     SWATCH_GAP,
@@ -401,7 +401,6 @@ class ProjectPanel(QWidget):
 STATUS_COLOURS = {
     "not started": STATE_COLOURS["selected"],
     "done": STATE_COLOURS["corrected"],
-    "needs repair": MISMATCH,
 }
 
 #: Nothing is drawn for a modality with no images. An absent modality should

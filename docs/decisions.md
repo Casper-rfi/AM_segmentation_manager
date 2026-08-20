@@ -167,9 +167,17 @@ as *selected*. For the same reason a state change refuses a stage that still kee
 state in folders. Promoting a deselected image into a training set is the one failure here
 with no visible symptom, so both paths are shut rather than guarded.
 
-`repair-state` is now about where files sit rather than what state they are in: it makes a
-stage's folders self-consistent so `migrate-state` can transcribe them. It moves images to
-follow their label and never the reverse, the label holding the proofreading work.
+**`migrate-state` walks the filesystem itself, and is the only thing that reads a folder
+name as a state.** The scanner does not look inside `deselected/` or `corrected/` at all,
+so a nested file is not indexed: it is *missing and reported* rather than present and
+wrong. That is also why nothing repairs a group any more -- images cannot disagree with
+their label when one entry covers them all, so `repair-state` and the consistency
+machinery went with the folders.
+
+**`init-project` refuses a directory that holds projects of its own.** That is a
+collection, and a marker there makes every unmarked dataset beneath it a *lamella* of one
+project -- several samples under one metadata record, invisible in the output. `--recursive`
+is one flag away and does the right thing, so refusing costs nothing.
 
 **A stale entry is reported, never repaired.** Declared state can disagree with the
 filesystem in ways location could not, and each needs a different action, so

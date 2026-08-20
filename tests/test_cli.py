@@ -27,13 +27,20 @@ def test_list_projects_includes_image_and_label_counts(capfd, tmp_path: Path):
     labels_fib = stage / "labels_fib"
 
     _write_file(sem / "selected.tif")
-    _write_file(sem / "deselected" / "deselected.tif")
-    _write_file(sem / "corrected" / "corrected.tif")
+    _write_file(sem / "deselected.tif")
+    _write_file(sem / "corrected.tif")
     _write_file(fib / "selected.tif")
     _write_file(labels / "selected.tif")
-    _write_file(labels / "deselected" / "deselected.tif")
-    _write_file(labels / "corrected" / "corrected.tif")
+    _write_file(labels / "deselected.tif")
+    _write_file(labels / "corrected.tif")
     _write_file(labels_fib / "selected.tif")
+
+    from am_segmentation_manager.state import read_state, write_state
+
+    write_state(read_state(stage), {
+        "labels/deselected.tif": "deselected",
+        "labels/corrected.tif": "corrected",
+    })
 
     result = main(["list-projects", str(tmp_path)])
     captured = capfd.readouterr()

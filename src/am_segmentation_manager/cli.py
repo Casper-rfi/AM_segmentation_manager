@@ -498,28 +498,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="Show the files that would move without changing anything",
         )
 
-    # -- repair-state -------------------------------------------------------
-    repair_state = sub.add_parser(
-        "repair-state",
-        help="Move images to agree with the state of the label they share",
-        description=(
-            "Find images whose workflow state disagrees with the label they "
-            "share, and move the images to match. The label is authoritative "
-            "because it holds the proofreading work. Groups become inconsistent "
-            "when files are moved outside this package, or when an operation is "
-            "interrupted partway."
-        ),
-    )
-    _add_scope_arguments(repair_state, default_modality="all")
-    repair_state.add_argument(
-        "--confirm-corrected", action="store_true",
-        help="Confirm moving images out of a corrected folder to match their label",
-    )
-    repair_state.add_argument(
-        "--dry-run", action="store_true",
-        help="Show the files that would move without changing anything",
-    )
-
     # -- migrate-state ------------------------------------------------------
     migrate_state_cmd = sub.add_parser(
         "migrate-state",
@@ -531,8 +509,8 @@ def build_parser() -> argparse.ArgumentParser:
             "deleting the files it wrote, and a stage that already has one is "
             "left alone. A stage is transcribed whole or not at all, so one "
             "holding images that disagree with their label, or a file sitting "
-            "in two state folders at once, is reported instead -- resolve it "
-            "with repair-state and run this again."
+            "in two state folders at once, is reported instead -- put those "
+            "files right and run it again."
         ),
     )
     migrate_state_cmd.add_argument(
@@ -884,6 +862,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
 
     if args.command == "init-project":
         from .discovery import (
+            contains_marked_project,
             find_dataset_candidates,
             find_project_roots,
             project_markers,
@@ -909,6 +888,18 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         else:
             if not start_path.is_dir():
                 logger.error("Not a directory: %s", start_path)
+                return 2
+            if not project_markers(start_path) and contains_marked_project(start_path):
+                # A marker here would make every unmarked dataset beneath it a
+                # lamella of one project, merging samples under one metadata
+                # record -- wrong in a way nothing downstream can see.
+                logger.error(
+                    "%s holds projects of its own, so it is a collection rather "
+                    "than a project. Writing a marker here would merge every "
+                    "dataset under it into one project. Use --recursive to write "
+                    "a file into each project instead.",
+                    start_path,
+                )
                 return 2
             roots = [start_path]
             if not project_markers(start_path):
@@ -1439,7 +1430,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         ]
         try:
             plan = plan_transition(
-                records, state, allow_move_from_corrected=args.confirm_corrected
+                records, state, allow_leaving_corrected=args.confirm_corrected
             )
         except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
             logger.error("Could not %s matching images: %s", args.command, exc)
@@ -1483,45 +1474,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
 
         try:
             changed = transition_records(
-                records, state, allow_move_from_corrected=args.confirm_corrected
+                records, state, allow_leaving_corrected=args.confirm_corrected
             )
         except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
             logger.error("Could not %s matching images: %s", args.command, exc)
             return 2
         logger.info("Total %s: %d", args.command, changed)
-        return 0
-
-    if args.command == "repair-state":
-        from .operations.selection import repair_group_states
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.info("No matching images found to check")
-            return 2
-
-        try:
-            repaired = repair_group_states(
-                records,
-                allow_move_from_corrected=args.confirm_corrected,
-                dry_run=args.dry_run,
-            )
-        except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
-            logger.error("Could not repair state: %s", exc)
-            return 2
-
-        if not repaired:
-            logger.info("Every image agrees with the label it shares; nothing to repair")
-            return 0
-        for group, moved in repaired:
-            logger.info(
-                "%s: %d image(s) moved to %s",
-                make_path_relative(group.label_path, start_path) if group.label_path else "(no label)",
-                moved, group.state(),
-            )
-        logger.info(
-            "%s: %d group(s)",
-            "Would repair" if args.dry_run else "Repaired", len(repaired),
-        )
         return 0
 
     if args.command == "migrate-state":

@@ -2,7 +2,7 @@
 
 These are here rather than only on the command line because their input is the
 selection on screen: the same ticks that decide what a state change moves decide
-what gets converted, recompressed or repaired. Running one from a terminal means
+what gets converted or recompressed. Running one from a terminal means
 naming that selection again in filters, which is the part the window has already
 done.
 
@@ -32,7 +32,7 @@ MODEL_FILTER = "Model weights (*.pth *.pt)"
 
 
 class OperationsPanel(QWidget):
-    """Convert predictions, compress labels, repair state: preview then apply."""
+    """Convert predictions, compress labels, state: preview then apply."""
 
     #: Emitted with the chosen weights file when the user asks to predict.
     predict_requested = Signal(str)
@@ -125,18 +125,10 @@ class OperationsPanel(QWidget):
         self.compress_button.clicked.connect(self.compress_requested.emit)
         column.addWidget(self.compress_button)
 
-        self.repair_button = QPushButton("Repair state...")
-        self.repair_button.setToolTip(
-            "Move images to agree with the label they share, for the frames the "
-            "timeline marks in amber. The label is never moved."
-        )
-        self.repair_button.clicked.connect(self.repair_requested.emit)
-        column.addWidget(self.repair_button)
-
         layout.addWidget(box)
         self.buttons = (
             self.predict_button, self.browse_button, self.convert_button,
-            self.compress_button, self.repair_button,
+            self.compress_button,
         )
 
     def show_selection(self, description: str) -> None:

@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.layout import state_path
 from am_segmentation_manager.operations.migrate_state import (
     migrate_projects,
     migrate_stage,
@@ -35,6 +34,11 @@ def move_state(path: Path, state: str) -> Path:
     return destination
 
 
+def state_path(path: Path, state: str) -> Path:
+    """Where *path* would sit in *state*, as a pre-declaration dataset had it."""
+    return path.parent / state / path.name
+
+
 def _duplicate_into(path: Path, state: str) -> Path:
     """Leave *path* where it is and put a second copy in a state folder."""
     destination = state_path(path, state)
@@ -43,8 +47,8 @@ def _duplicate_into(path: Path, state: str) -> Path:
     return destination
 
 
-def only_stage(root: Path):
-    """Return the single stage under *root*, scanned fresh."""
+def only_stage(root: Path) -> Path:
+    """Return the single stage directory under *root*, scanned fresh."""
     projects = Scanner(root).build_index().all_projects()
     stages = [
         stage
@@ -53,7 +57,18 @@ def only_stage(root: Path):
         for stage in lamella.stages
     ]
     assert len(stages) == 1, f"expected one stage, found {len(stages)}"
-    return stages[0]
+    return stages[0].path
+
+
+def _records_of(root: Path) -> list:
+    """Return every record the scanner indexes under *root*."""
+    return [
+        record
+        for project in Scanner(root).build_index().all_projects()
+        for lamella in project.lamellae
+        for stage in lamella.stages
+        for record in stage.images
+    ]
 
 
 def deselect_group(dataset, index: int = 0, modality: str = "SEM") -> None:
@@ -172,7 +187,7 @@ def test_images_disagreeing_with_their_label_block_the_stage(tmp_path: Path):
 
     assert result.outcome == "blocked"
     assert [problem.kind for problem in result.problems] == ["inconsistent"]
-    assert "repair-state" in result.problems[0].detail
+    assert "move them to match" in result.problems[0].detail
     assert not state_file_path(dataset.stage).exists()
 
 
@@ -392,7 +407,7 @@ def test_the_declared_state_survives_un_nesting(tmp_path: Path):
 
     unnest_stage(only_stage(dataset.root))
 
-    records = only_stage(dataset.root).images
+    records = _records_of(dataset.root)
     deselected = [record for record in records if not record.selected]
     assert len(deselected) == 1
     assert deselected[0].image_path.parent == dataset.image_dir("SEM")

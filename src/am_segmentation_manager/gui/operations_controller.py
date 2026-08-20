@@ -19,7 +19,6 @@ from pathlib import Path
 from ..io.path import make_path_relative
 from ..models import ImageRecord
 from ..operations.label_compression import compress_labels, existing_labels
-from ..operations.label_groups import describe_group
 from ..operations.predict import (
     PredictionSource,
     plan_predictions,
@@ -32,7 +31,6 @@ from ..operations.predictions import (
     count_convertible,
     plan_conversions,
 )
-from ..operations.selection import repair_group_states
 from ..progress import Cancellation, OperationCancelled
 
 logger = logging.getLogger(__name__)
@@ -414,49 +412,6 @@ class OperationsController:
             applied=True,
         )
 
-    # -- repairing group state ---------------------------------------------
-
-    def repair_state(
-        self,
-        records: Iterable[ImageRecord],
-        *,
-        allow_corrected: bool = False,
-        dry_run: bool = False,
-    ) -> OperationReport:
-        """Move images to agree with the state of the label they share.
-
-        The label is authoritative, so this moves images and never labels. A
-        group needing an image moved *out* of ``corrected/`` is refused until
-        that is confirmed, and the refusal is reported rather than raised.
-        """
-        records = list(records)
-        try:
-            repaired = repair_group_states(
-                records, allow_move_from_corrected=allow_corrected, dry_run=dry_run
-            )
-        except PermissionError as error:
-            return OperationReport(
-                "Repairing this would move images out of a corrected folder.",
-                (str(error),),
-                blocked="corrected",
-            )
-        if not repaired:
-            return OperationReport(
-                "Nothing to repair: every image agrees with the label it shares."
-            )
-
-        lines = tuple(
-            f"{self._relative(group.label_path)} -> {group.state()} "
-            f"({moved} image(s)): {describe_group(group)}"
-            for group, moved in repaired
-        )
-        verb = "Would repair" if dry_run else "Repaired"
-        return OperationReport(
-            f"{verb} {len(repaired)} group(s).",
-            lines,
-            len(repaired),
-            applied=not dry_run,
-        )
 
     # -- describing and indexing a collection ------------------------------
 

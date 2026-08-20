@@ -8,7 +8,7 @@ a collection in a state neither the caller nor the files describe.
 
 **A corrected group is never left without confirmation**: an operation that
 would take one out of the corrected state refuses unless the caller passes
-``allow_move_from_corrected``.
+``allow_leaving_corrected``.
 
 **A stage that has not been migrated is refused.** Declaring one group's state
 there would leave every other group unlisted, and unlisted reads as selected --
@@ -23,33 +23,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..layout import (
-    RecordState,
-    base_path,
     classify_image_directory,
     image_files,
     resolve_labels_directory,
     state_directories,
-    state_of_path,
-    state_path,
-    state_variants,
     subdirectories_by_name,
 )
 from ..models import ImageRecord
 from ..state import (
     STATE_VALUES,
+    RecordState,
     StageState,
     read_state,
     state_key,
     write_state,
 )
-from .label_groups import (
-    LabelGroup,
-    describe_group,
-    expand_to_groups,
-    find_inconsistent_groups,
-    group_identity,
-)
-from .labels import move_to_state
+from .label_groups import expand_to_groups, group_identity
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +46,8 @@ __all__ = [
     "RecordState",
     "TransitionPlan",
     "UnmigratedStage",
-    "base_path",
     "current_state",
-    "existing_variant",
     "plan_transition",
-    "repair_group_states",
     "transition_records",
     "deselect_records",
     "select_records",
@@ -116,14 +102,6 @@ def current_state(record: ImageRecord) -> RecordState:
     if record.corrected:
         return "corrected"
     return "selected" if record.selected else "deselected"
-
-
-def existing_variant(path: Path) -> Path | None:
-    """Find a file's sole on-disk state variant, rejecting ambiguous copies."""
-    existing = [candidate for candidate in state_variants(path) if candidate.exists()]
-    if len(existing) > 1:
-        raise FileExistsError(f"Multiple state copies found for {base_path(path)}: {existing}")
-    return existing[0] if existing else None
 
 
 @dataclass(frozen=True)
@@ -204,7 +182,7 @@ def plan_transition(
     records: Iterable[ImageRecord],
     state: RecordState,
     *,
-    allow_move_from_corrected: bool = False,
+    allow_leaving_corrected: bool = False,
 ) -> TransitionPlan:
     """Validate a state change without performing it.
 
@@ -230,10 +208,10 @@ def plan_transition(
 
     requested = list(records)
     expanded = expand_to_groups(requested)
-    requested_paths = {str(base_path(record.image_path)) for record in requested}
+    requested_paths = {str(record.image_path) for record in requested}
     added = tuple(
         record for record in expanded
-        if str(base_path(record.image_path)) not in requested_paths
+        if str(record.image_path) not in requested_paths
     )
 
     stage_states: dict[Path, StageState] = {}
@@ -242,7 +220,7 @@ def plan_transition(
     seen_keys: set[tuple[Path, str]] = set()
 
     for record in expanded:
-        if existing_variant(record.image_path) is None:
+        if not record.image_path.exists():
             raise FileNotFoundError(record.image_path)
 
         stage_directory, key = _stage_and_key(record)
@@ -260,7 +238,7 @@ def plan_transition(
         pending[stage_directory][key] = state
         changes.append(StateChange(stage_directory, key, old, state))
 
-    if not allow_move_from_corrected:
+    if not allow_leaving_corrected:
         leaving_corrected = [
             change.key for change in changes if change.old == "corrected"
         ]
@@ -288,14 +266,14 @@ def transition_records(
     records: Iterable[ImageRecord],
     state: RecordState,
     *,
-    allow_move_from_corrected: bool = False,
+    allow_leaving_corrected: bool = False,
     dry_run: bool = False,
 ) -> int:
     """Declare *records* to be in ``state`` after validating the whole batch.
 
     The states are mutually exclusive, so this replaces whatever each group was
     in. Selecting can restore a corrected group, but requires
-    ``allow_move_from_corrected=True`` to protect proofread labels.
+    ``allow_leaving_corrected=True`` to protect proofread labels.
 
     Records sharing a label change together: the label is the unit of
     proofreading, so a state change applies to every image of the same scene.
@@ -309,12 +287,12 @@ def transition_records(
     Args:
         records: The records to change.
         state: The state to declare.
-        allow_move_from_corrected: Confirm taking data out of the corrected
+        allow_leaving_corrected: Confirm taking data out of the corrected
             state.
         dry_run: Validate everything and report the count without writing.
     """
     plan = plan_transition(
-        records, state, allow_move_from_corrected=allow_move_from_corrected
+        records, state, allow_leaving_corrected=allow_leaving_corrected
     )
     if dry_run:
         for line in plan.describe():
@@ -332,118 +310,51 @@ def transition_records(
 def deselect_records(
     records: Iterable[ImageRecord],
     *,
-    allow_move_from_corrected: bool = False,
+    allow_leaving_corrected: bool = False,
     dry_run: bool = False,
 ) -> int:
     """Move records into the deselected state."""
     return transition_records(
         records, "deselected",
-        allow_move_from_corrected=allow_move_from_corrected, dry_run=dry_run,
+        allow_leaving_corrected=allow_leaving_corrected, dry_run=dry_run,
     )
 
 
 def select_records(
     records: Iterable[ImageRecord],
     *,
-    allow_move_from_corrected: bool = False,
+    allow_leaving_corrected: bool = False,
     dry_run: bool = False,
 ) -> int:
     """Move records into the normal selected state."""
     return transition_records(
         records, "selected",
-        allow_move_from_corrected=allow_move_from_corrected, dry_run=dry_run,
+        allow_leaving_corrected=allow_leaving_corrected, dry_run=dry_run,
     )
 
 
 def mark_corrected_records(
     records: Iterable[ImageRecord],
     *,
-    allow_move_from_corrected: bool = False,
+    allow_leaving_corrected: bool = False,
     dry_run: bool = False,
 ) -> int:
     """Move records into the corrected state."""
     return transition_records(
         records, "corrected",
-        allow_move_from_corrected=allow_move_from_corrected, dry_run=dry_run,
+        allow_leaving_corrected=allow_leaving_corrected, dry_run=dry_run,
     )
-
-
-def repair_group_states(
-    records: Iterable[ImageRecord],
-    *,
-    allow_move_from_corrected: bool = False,
-    dry_run: bool = False,
-) -> list[tuple[LabelGroup, int]]:
-    """Move images to agree with the state of the label they share.
-
-    This is about where files sit, not about declared state: it exists to make
-    a stage's folders self-consistent so ``migrate-state`` can transcribe them.
-    The label is authoritative, so repair moves the *images* to match it and
-    never the other way round -- the label holds the proofreading work.
-
-    A group becomes inconsistent when files are moved by something other than
-    this package, or when an operation is interrupted partway.
-
-    Args:
-        records: Records to check. Their groups are read from disk, so passing
-            one image of a group is enough.
-        allow_move_from_corrected: Confirm moving images out of a corrected
-            folder, which is needed when a group's label is *not* corrected but
-            one of its images sits in ``corrected/``.
-        dry_run: Report what would move without moving anything.
-
-    Returns:
-        One ``(group, moved_count)`` pair per repaired group, in the order the
-        groups were found. Empty when everything already agrees.
-    """
-    repaired: list[tuple[LabelGroup, int]] = []
-    for group in find_inconsistent_groups(records):
-        state = group.state()
-        disagreeing = group.inconsistent_records()
-        logger.info(
-            "Group %s is %s; moving %d image(s) to match",
-            describe_group(group), state, len(disagreeing),
-        )
-        for record in disagreeing:
-            source = existing_variant(record.image_path)
-            if source is None:
-                raise FileNotFoundError(record.image_path)
-            # Checked here as well as in move_to_state, so a dry run refuses
-            # what the real run would refuse rather than previewing it.
-            if (
-                state_of_path(source) == "corrected"
-                and state != "corrected"
-                and not allow_move_from_corrected
-            ):
-                raise PermissionError(
-                    "Refusing to move corrected artifact without explicit "
-                    f"confirmation: {source}"
-                )
-            destination = state_path(source, state)
-            if destination.exists():
-                raise FileExistsError(
-                    f"Refusing to overwrite existing file: {destination}"
-                )
-            if not dry_run:
-                move_to_state(
-                    source, state,
-                    allow_move_from_corrected=allow_move_from_corrected,
-                )
-                record.image_path = destination
-        repaired.append((group, len(disagreeing)))
-    return repaired
 
 
 def record_from_image_path(path: Path) -> ImageRecord:
     """Build a record for direct-path use, including an associated label.
 
-    The image directory is found by walking up from the file, so a path inside
-    a state subfolder resolves the same as one beside it. Resolution goes
+    The image directory is found by walking up from the file. Resolution goes
     through :mod:`am_segmentation_manager.layout`, so a path in any supported
     layout -- including a variant directory such as ``sem_5kv/`` -- finds the
     right label directory.
     """
-    image_path = base_path(path)
+    image_path = path
     image_directory: Path | None = None
     classification = None
     for parent in image_path.parents:
@@ -462,7 +373,7 @@ def record_from_image_path(path: Path) -> ImageRecord:
     )
     labels: list[Path] = []
     label_path = labels_directory / image_path.name
-    if existing_variant(label_path) is not None:
+    if label_path.exists():
         labels.append(label_path)
     return ImageRecord(
         image_path=image_path,

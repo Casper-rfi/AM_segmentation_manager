@@ -12,19 +12,16 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.cli import main
-from am_segmentation_manager.layout import base_path
 from am_segmentation_manager.operations.label_groups import (
     build_group,
     build_groups,
     expand_to_groups,
-    find_inconsistent_groups,
     group_key,
 )
 from am_segmentation_manager.operations.selection import (
     deselect_records,
     mark_corrected_records,
     plan_transition,
-    repair_group_states,
     select_records,
     transition_records,
 )
@@ -55,7 +52,7 @@ def scan(root: Path) -> dict[str, object]:
     """
     index = Scanner(root).build_index()
     return {
-        base_path(record.image_path).parent.name: record
+        record.image_path.parent.name: record
         for project in index.all_projects()
         for lamella in project.lamellae
         for stage in lamella.stages
@@ -107,8 +104,8 @@ def test_an_image_without_a_label_forms_a_group_of_one(tmp_path: Path):
     group = build_group(scan(tmp_path)["sem"])
 
     assert group.label_path is None
+    assert group.identity == stage / "sem_labels" / "img.tif"
     assert len(group.records) == 1
-    assert group.state() == "selected"
 
 
 def test_the_groups_of_a_whole_scan_collapse_by_label(tmp_path: Path):
@@ -246,7 +243,7 @@ def test_corrected_data_changes_only_with_explicit_confirmation(tmp_path: Path):
     project = make_project(tmp_path)
     mark_corrected_records([scan(tmp_path)["SEM_8"]])
 
-    deselect_records([scan(tmp_path)["SEM_8"]], allow_move_from_corrected=True)
+    deselect_records([scan(tmp_path)["SEM_8"]], allow_leaving_corrected=True)
 
     assert read_state(project / "lam_010").states == {
         "labels/img_0004.tif": "deselected"
@@ -278,92 +275,18 @@ def test_a_dry_run_still_refuses_what_the_real_run_would(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# State authority and repair
+# Describing a group
 # ---------------------------------------------------------------------------
 
-def _desync(project: Path) -> None:
-    """Move one image out of step with its label, as an interrupted run would."""
-    lamella = project / "lam_010"
-    (lamella / "SEM_8" / "deselected").mkdir()
-    (lamella / "SEM_8" / "img_0004.tif").rename(
-        lamella / "SEM_8" / "deselected" / "img_0004.tif"
-    )
-
-
-def test_group_state_comes_from_the_label_not_the_image(tmp_path: Path):
-    project = make_project(tmp_path)
-    _desync(project)
-
-    group = build_group(scan(tmp_path)["SEM_8"])
-
-    # The label never moved, so the scene is still selected.
-    assert group.state() == "selected"
-    assert group.is_consistent is False
-
-
-def test_an_inconsistent_group_is_found(tmp_path: Path):
-    project = make_project(tmp_path)
-    _desync(project)
-
-    groups = find_inconsistent_groups(scan(tmp_path).values())
-
-    assert len(groups) == 1
-    assert [
-        base_path(record.image_path).parent.name
-        for record in groups[0].inconsistent_records()
-    ] == ["SEM_8"]
-
-
-def test_repair_moves_the_image_to_follow_the_label(tmp_path: Path):
-    project = make_project(tmp_path)
-    _desync(project)
-
-    repaired = repair_group_states(scan(tmp_path).values())
-
-    assert len(repaired) == 1
-    assert (project / "lam_010" / "SEM_8" / "img_0004.tif").exists()
-    assert not (project / "lam_010" / "SEM_8" / "deselected" / "img_0004.tif").exists()
-
-
-def test_repair_is_a_no_op_when_everything_agrees(tmp_path: Path):
-    make_project(tmp_path)
-    assert repair_group_states(scan(tmp_path).values()) == []
-
-
 def test_a_group_description_names_the_image_directories(tmp_path: Path):
-    """Even when an image has moved into a state folder."""
     from am_segmentation_manager.operations.label_groups import describe_group
 
-    project = make_project(tmp_path)
-    _desync(project)
+    make_project(tmp_path)
 
     description = describe_group(build_group(scan(tmp_path)["SEM_8"]))
 
-    assert "deselected" not in description
     for name in SEM_VARIANTS:
         assert name in description
-
-
-def test_repair_dry_run_changes_nothing(tmp_path: Path):
-    project = make_project(tmp_path)
-    _desync(project)
-
-    repair_group_states(scan(tmp_path).values(), dry_run=True)
-
-    assert (project / "lam_010" / "SEM_8" / "deselected" / "img_0004.tif").exists()
-
-
-def test_the_survey_reports_a_state_mismatch(tmp_path: Path):
-    from am_segmentation_manager.survey import survey_collection
-
-    project = make_project(tmp_path)
-    _desync(project)
-
-    survey = survey_collection(tmp_path)
-    mismatches = [f for f in survey.all_findings if f.category == "state-mismatch"]
-
-    assert len(mismatches) == 1
-    assert mismatches[0].severity == "warning"
 
 
 # ---------------------------------------------------------------------------
@@ -400,13 +323,3 @@ def test_cli_deselect_declares_the_whole_group(tmp_path: Path):
     assert {record.selected for record in scan(tmp_path).values() if record.variant} == {False}
 
 
-def test_cli_repair_state(tmp_path: Path):
-    project = make_project(tmp_path)
-    _desync(project)
-
-    assert main([
-        "repair-state", "--start-path", str(tmp_path), "--project", "all",
-        "--lamella", "all", "--stage", "all", "--image", "all",
-    ]) == 0
-
-    assert (project / "lam_010" / "SEM_8" / "img_0004.tif").exists()

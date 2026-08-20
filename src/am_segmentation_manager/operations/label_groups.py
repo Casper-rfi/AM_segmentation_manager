@@ -9,7 +9,8 @@ A group is identified by where its label lives *or would live*, so images
 sharing a label directory are one group before any label exists -- keying on the
 image instead would split them, then merge them the moment a label appeared.
 Groups are built from the filesystem rather than a scanned index, so a command
-given one file path expands correctly.
+given one file path expands correctly. The state itself is declared, not read
+from here.
 """
 from __future__ import annotations
 
@@ -19,13 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..layout import (
-    RecordState,
-    base_path,
     build_image_sets,
     classify_image_directory,
     image_files_by_name,
     resolve_labels_directory,
-    state_of_path,
     subdirectories_by_name,
 )
 from ..models import ImageRecord
@@ -38,8 +36,7 @@ class LabelGroup:
     """A label and every image that shares it.
 
     Attributes:
-        label_path: The label's location with any state folder stripped, or
-            None when the group's images have no label yet.
+        label_path: Where the label is, or None when there is none yet.
         identity: Where the label lives or would live. Unlike *label_path* this
             is set whether or not the file exists, and it is what the group is
             keyed by. None only when the image sits in no recognised image
@@ -57,58 +54,6 @@ class LabelGroup:
         """Return whether more than one image shares this label."""
         return len(self.records) > 1
 
-    def state(self) -> RecordState:
-        """Return the group's workflow state.
-
-        The label's location is authoritative: it is the thing being
-        proofread, and it is what a state change is ultimately about. Without a
-        label, the image's own location is all there is to go on.
-        """
-        located = self.located_label()
-        if located is not None:
-            return state_of_path(located)
-        return state_of_path(self.records[0].image_path)
-
-    def located_label(self) -> Path | None:
-        """Return where the label actually is on disk, or None if absent."""
-        if self.label_path is None:
-            return None
-        return _existing_state_variant(self.label_path)
-
-    def inconsistent_records(self) -> list[ImageRecord]:
-        """Return images whose own state disagrees with the group's.
-
-        Normally empty. A non-empty result means files were moved by something
-        other than this package, or an operation was interrupted partway.
-        """
-        state = self.state()
-        return [
-            record for record in self.records
-            if state_of_path(record.image_path) != state
-        ]
-
-    @property
-    def is_consistent(self) -> bool:
-        """Return whether every image agrees with the group's state."""
-        return not self.inconsistent_records()
-
-
-def _existing_state_variant(path: Path) -> Path | None:
-    """Return where a file is, across its possible state locations.
-
-    Unlike :func:`~am_segmentation_manager.operations.selection.existing_variant`
-    this does not reject a file present in several states: reporting a group's
-    state must never raise, and duplicate state copies are surfaced separately
-    as their own finding.
-    """
-    from ..layout import state_variants
-
-    for candidate in state_variants(path):
-        if candidate.exists():
-            return candidate
-    return None
-
-
 def labels_directory_for(
     image_path: Path, cache: dict[Path, Path | None] | None = None
 ) -> Path | None:
@@ -123,7 +68,7 @@ def labels_directory_for(
             subdirectories, which is one listing per image directory rather
             than per image.
     """
-    image_directory = base_path(image_path).parent
+    image_directory = image_path.parent
     if cache is not None and image_directory in cache:
         return cache[image_directory]
 
@@ -145,11 +90,11 @@ def group_identity(
 ) -> Path | None:
     """Return the label path identifying *record*'s group, existing or not."""
     if record.labels:
-        return base_path(record.labels[0])
+        return record.labels[0]
     labels_directory = labels_directory_for(record.image_path, cache)
     if labels_directory is None:
         return None
-    return labels_directory / base_path(record.image_path).name
+    return labels_directory / record.image_path.name
 
 
 def group_key(
@@ -163,7 +108,7 @@ def group_key(
     """
     identity = group_identity(record, cache)
     if identity is None:
-        return str(base_path(record.image_path))
+        return str(record.image_path)
     return str(identity)
 
 
@@ -182,7 +127,7 @@ def build_group(record: ImageRecord) -> LabelGroup:
     labels_directory = identity.parent
     stage_directory = labels_directory.parent
     filename = identity.name
-    label_path = identity if _existing_state_variant(identity) is not None else None
+    label_path = identity if identity.exists() else None
 
     siblings: list[ImageRecord] = []
     for image_set in build_image_sets(stage_directory):
@@ -191,7 +136,7 @@ def build_group(record: ImageRecord) -> LabelGroup:
         found = image_files_by_name(image_set.directory).get(filename)
         if found is None:
             continue
-        if base_path(found) == base_path(record.image_path):
+        if found == record.image_path:
             siblings.append(record)
             continue
         siblings.append(
@@ -204,8 +149,6 @@ def build_group(record: ImageRecord) -> LabelGroup:
                 modality=image_set.modality,
                 variant=image_set.variant,
                 label_shared=image_set.labels_are_shared,
-                selected=state_of_path(found) == "selected",
-                corrected=state_of_path(found) == "corrected",
             )
         )
 
@@ -266,14 +209,14 @@ def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
     expanded: list[ImageRecord] = []
 
     for record in supplied:
-        key = str(base_path(record.image_path))
+        key = str(record.image_path)
         if key not in seen:
             seen.add(key)
             expanded.append(record)
 
     for group in build_groups(supplied):
         for record in group.records:
-            key = str(base_path(record.image_path))
+            key = str(record.image_path)
             if key not in seen:
                 seen.add(key)
                 expanded.append(record)
@@ -286,11 +229,6 @@ def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
     return expanded
 
 
-def find_inconsistent_groups(records: Iterable[ImageRecord]) -> list[LabelGroup]:
-    """Return the groups among *records* whose images disagree with their label."""
-    return [group for group in build_groups(records) if not group.is_consistent]
-
-
 def describe_group(group: LabelGroup) -> str:
     """Return a one-line description of a group, for confirmation prompts.
 
@@ -301,6 +239,6 @@ def describe_group(group: LabelGroup) -> str:
     if group.label_path is None:
         return f"{len(group.records)} image(s), no label yet"
     names = ", ".join(
-        sorted(base_path(record.image_path).parent.name for record in group.records)
+        sorted(record.image_path.parent.name for record in group.records)
     )
     return f"{group.label_path.name} shared by {len(group.records)} image(s): {names}"

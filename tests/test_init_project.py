@@ -237,3 +237,56 @@ def test_generated_templates_are_reported_as_a_checklist(tmp_path: Path):
 
     assert len(todo) == 1
     assert "sample" in todo[0].message
+
+
+def test_init_project_refuses_a_collection_directory(tmp_path: Path, capsys):
+    """A marker here would make every dataset under it one project's lamellae,
+    merging several samples under one metadata record."""
+    from am_segmentation_manager.cli import main
+
+    collection = tmp_path / "collection"
+    project = collection / "AutoLamella-2026-01-01-00-00"
+    (project / "01-lamella" / "stage" / "sem").mkdir(parents=True)
+    (project / "01-lamella" / "stage" / "sem" / "img.tif").write_bytes(b"")
+    (project / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    legacy = collection / "20240101_legacy" / "lam_001" / "sem"
+    legacy.mkdir(parents=True)
+    (legacy / "img.tif").write_bytes(b"")
+
+    assert main(["init-project", str(collection)]) == 2
+
+    assert not (collection / "AM_metadata.yaml").exists()
+    assert "collection rather than a project" in capsys.readouterr().out
+
+
+def test_init_project_recursive_reaches_the_datasets_inside(tmp_path: Path):
+    """What the refusal points at: each dataset gets its own file."""
+    from am_segmentation_manager.cli import main
+
+    collection = tmp_path / "collection"
+    project = collection / "AutoLamella-2026-01-01-00-00"
+    (project / "01-lamella" / "stage" / "sem").mkdir(parents=True)
+    (project / "01-lamella" / "stage" / "sem" / "img.tif").write_bytes(b"")
+    (project / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    legacy = collection / "20240101_legacy" / "lam_001" / "sem"
+    legacy.mkdir(parents=True)
+    (legacy / "img.tif").write_bytes(b"")
+
+    assert main(["init-project", str(collection), "--recursive"]) == 0
+
+    assert not (collection / "AM_metadata.yaml").exists()
+    assert (collection / "20240101_legacy" / "AM_metadata.yaml").exists()
+    assert (project / "AM_metadata.yaml").exists()
+
+
+def test_init_project_still_writes_into_a_plain_project(tmp_path: Path):
+    """The refusal must not catch a directory that really is one project."""
+    from am_segmentation_manager.cli import main
+
+    dataset = tmp_path / "20240101_legacy"
+    (dataset / "lam_001" / "sem").mkdir(parents=True)
+    (dataset / "lam_001" / "sem" / "img.tif").write_bytes(b"")
+
+    assert main(["init-project", str(dataset)]) == 0
+
+    assert (dataset / "AM_metadata.yaml").exists()

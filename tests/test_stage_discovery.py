@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from am_segmentation_manager.operations.labels import move_to_state
 from am_segmentation_manager.scanner import Scanner
 
 
@@ -164,16 +163,3 @@ def test_scanner_orders_stages_by_timestamp_in_folder_name(tmp_path: Path):
     assert [stage.number for stage in stages] == ["01", "02"]
 
 
-def test_move_to_deselected_and_back(tmp_path: Path):
-    folder = tmp_path / "folder"
-    folder.mkdir()
-    f = folder / "test.tif"
-    f.write_bytes(b"data")
-
-    dest = move_to_state(f, "deselected")
-    assert dest.exists()
-    assert not f.exists()
-    # move back
-    back = move_to_state(dest, "selected")
-    assert back.exists()
-    assert not dest.exists()

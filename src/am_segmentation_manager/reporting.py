@@ -15,7 +15,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .io.path import make_path_relative
-from .layout import MODALITIES, state_of_path
+from .layout import MODALITIES
+from .operations.selection import current_state
 from .survey import SEVERITY_ORDER, CollectionSurvey, Finding, ProjectSurvey
 
 logger = logging.getLogger(__name__)
@@ -37,13 +38,13 @@ def _summary_categories() -> tuple[str, ...]:
     )
 
 
-def filesystem_state(path: Path) -> str:
-    """Return an artifact's workflow state from its containing directory.
+def record_state(record) -> str:
+    """Return a record's declared workflow state.
 
-    Files under a ``deselected/`` or ``corrected/`` parent are reported
-    as such; everything else is ``"selected"``.
+    A label takes its group's state rather than having one of its own, which
+    is what makes the image and label counts agree.
     """
-    return state_of_path(path)
+    return current_state(record)
 
 
 def summarize_lamella(lamella) -> dict[str, dict[str, int]]:
@@ -59,11 +60,11 @@ def summarize_lamella(lamella) -> dict[str, dict[str, int]]:
             if record.modality not in MODALITIES:
                 continue
             image_counts = summary[f"{record.modality} images"]
-            image_counts[filesystem_state(record.image_path)] += 1
+            image_counts[record_state(record)] += 1
             image_counts["all"] += 1
             label_counts = summary[f"{record.modality} labels"]
             for label in record.labels:
-                label_counts[filesystem_state(label)] += 1
+                label_counts[record_state(record)] += 1
                 label_counts["all"] += 1
     return summary
 

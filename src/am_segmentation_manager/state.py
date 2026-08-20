@@ -19,15 +19,15 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, get_args
+from typing import Any, Final, Literal, get_args
 
 from .io.atomic import fingerprint_of, write_atomically
-from .layout import RecordState
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "AM_STATE_FILENAME",
+    "RecordState",
     "DEFAULT_STATE",
     "STATE_VALUES",
     "StageState",
@@ -39,6 +39,9 @@ __all__ = [
     "state_key",
     "write_state",
 ]
+
+#: A label group's workflow state. The three are mutually exclusive.
+RecordState = Literal["selected", "deselected", "corrected"]
 
 #: The file declaring workflow state, one per directory holding image and label
 #: directories.

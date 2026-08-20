@@ -5,22 +5,30 @@ from pathlib import Path
 
 from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella, Project
 from am_segmentation_manager.reporting import (
-    filesystem_state,
     print_project_summary,
+    record_state,
     summarize_lamella,
 )
 
 
-def test_filesystem_state():
-    assert filesystem_state(Path("/stage/sem/deselected/img.tif")) == "deselected"
-    assert filesystem_state(Path("/stage/sem/corrected/img.tif")) == "corrected"
-    assert filesystem_state(Path("/stage/sem/img.tif")) == "selected"
+def test_record_state():
+    def record(**kwargs):
+        return ImageRecord(image_path=Path("/stage/sem/img.tif"), **kwargs)
+
+    assert record_state(record()) == "selected"
+    assert record_state(record(selected=False)) == "deselected"
+    assert record_state(record(selected=False, corrected=True)) == "corrected"
 
 
 def test_summarize_lamella():
     img_sel = ImageRecord(image_path=Path("/stage/sem/img1.tif"), modality="SEM")
-    img_des = ImageRecord(image_path=Path("/stage/sem/deselected/img2.tif"), modality="SEM")
-    img_cor = ImageRecord(image_path=Path("/stage/sem/corrected/img3.tif"), modality="SEM", corrected=True)
+    img_des = ImageRecord(
+        image_path=Path("/stage/sem/img2.tif"), modality="SEM", selected=False
+    )
+    img_cor = ImageRecord(
+        image_path=Path("/stage/sem/img3.tif"), modality="SEM",
+        selected=False, corrected=True,
+    )
 
     stage = AdaptiveMillingStage(name="stage1", path=Path("/stage"), images=[img_sel, img_des, img_cor])
     lamella = Lamella(name="lam1", path=Path("/lam1"), stages=[stage])

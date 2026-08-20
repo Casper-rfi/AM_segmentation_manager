@@ -105,11 +105,13 @@ def test_deselected_frames_are_not_visited(tmp_path: Path):
 
 
 def test_corrected_frames_stay_visitable(tmp_path: Path):
+    from am_segmentation_manager.state import read_state, write_state
+
     dataset = build_dataset(tmp_path, acquisitions=2)
-    image = dataset.image("SEM", 0)
-    corrected = image.parent / "corrected" / image.name
-    corrected.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(image), str(corrected))
+    label = dataset.label("SEM", 0)
+    write_state(
+        read_state(dataset.stage), {f"{label.parent.name}/{label.name}": "corrected"}
+    )
 
     controller = LabelController(CONFIG, cache=stub_cache())
     controller.set_lamella(scan_lamella(tmp_path))

@@ -21,8 +21,8 @@ what each command and tab does. What is worth knowing beyond that:
 * **Each tab has a controller holding no Qt**, which is what makes navigation, cache
   eviction and state expansion testable without a display.
 * **An operation is in the window when its input is the selection on screen.** Curate
-  runs `convert-predictions`, `compress-labels` and `repair-state` against the ticked
-  set; Add data runs `inspect-layout` and `init-project` over the scanned folder. Each
+  runs `convert-predictions` and `compress-labels` against the ticked set; Add data
+  runs `inspect-layout` and `init-project` over the scanned folder. Each
   previews first and applies only what the preview showed, on a worker thread.
 * **Labels are proofread in the window**, not in external software. A save writes one
   lamella's edits in a single action, offers to mark the reviewed set corrected, and
@@ -49,19 +49,6 @@ Why each of these is so is in [`decisions.md`](decisions.md).
 ## What to pick up next
 
 In no particular order.
-
-**Finishing declared workflow state.** State lives in each stage's `AM_state.yaml`,
-`migrate-state` transcribes a collection's folders into one, `--move-files` takes the
-files back out, `inspect-layout` reports whatever is out of step, and
-`check-training-csv` has lost its path rewriting. What is left is removing the folder
-reading itself: `repair-state` and the group-consistency machinery, `layout.py`'s state
-helpers, and the state-subdirectory scan in `image_files_by_name`. **That last one is not
-a free deletion** -- it is what lets `migrate-state` see nested files at all, so either
-the scanner keeps the fallback permanently or migration grows its own traversal. Decide
-which before deleting anything, and do it only once the working collection is migrated.
-Keep `deselected` and `corrected` reserved as directory names whichever way it goes:
-reading an unmigrated one as selected is the only failure here with no visible symptom.
-Why it is built this way is in [`decisions.md`](decisions.md) § Workflow state.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.

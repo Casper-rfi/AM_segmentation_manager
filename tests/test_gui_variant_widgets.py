@@ -239,24 +239,4 @@ def test_the_reach_line_follows_the_selection(qt_app, variant_project: Path):
 # Mismatch marking
 # ---------------------------------------------------------------------------
 
-def test_a_state_mismatch_is_marked_on_the_timeline(qt_app, variant_project: Path):
-    lamella = variant_project / "20240228_adaptive_milling_ai" / "lam_010"
-    (lamella / "SEM_8" / "deselected").mkdir()
-    (lamella / "SEM_8" / "img_0000.tif").rename(
-        lamella / "SEM_8" / "deselected" / "img_0000.tif"
-    )
 
-    window = _window(qt_app, variant_project)
-    try:
-        assert window.controller.mismatched_frames() == {0}
-        assert window.timeline._mismatched == {0}
-    finally:
-        window.close()
-
-
-def test_a_consistent_project_marks_nothing(qt_app, variant_project: Path):
-    window = _window(qt_app, variant_project)
-    try:
-        assert window.timeline._mismatched == set()
-    finally:
-        window.close()

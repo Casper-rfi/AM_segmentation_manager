@@ -126,7 +126,6 @@ is the place for anything scripted:
 | Predict labels with a trained model | `predict` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `deselect` / `select` / `correct` |
-| Fix images that disagree with their shared label | `repair-state` |
 | Move a collection onto declared state files | `migrate-state` |
 | Find stray spots and holes too small to be real | `find-specks` |
 | Shrink label files on disk | `compress-labels` |

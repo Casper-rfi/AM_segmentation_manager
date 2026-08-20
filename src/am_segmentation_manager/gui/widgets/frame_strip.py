@@ -44,7 +44,6 @@ CURSOR = QColor("#f5f5f5")
 #: mismatch is "do not trust this frame", which needs to read differently and
 #: has nowhere of its own to sit now the label lines occupy both edges.
 MISMATCH = QColor("#d08c00")
-MISMATCH_ALPHA = 90
 
 #: Whether each modality's label exists, and whether it holds an annotation.
 #:
@@ -122,7 +121,6 @@ class FrameTimeline(QWidget):
         super().__init__()
         self._rows: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._labels: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
-        self._mismatched: set[int] = set()
         self._selected: set[int] = set()
         self._count = 0
         self._current = 0
@@ -147,7 +145,6 @@ class FrameTimeline(QWidget):
         self,
         rows: dict[str, list],
         current: int,
-        mismatched: set[int] | None = None,
         labels: dict[str, list] | None = None,
         selected: set[int] | None = None,
     ) -> None:
@@ -157,10 +154,6 @@ class FrameTimeline(QWidget):
             rows: Workflow state per frame, keyed by modality. A None entry
                 means that modality has no image in that frame.
             current: Index of the frame being viewed.
-            mismatched: Frames whose images disagree with the label they share.
-                Marked because the state drawn for them is the base image's,
-                which is not the whole truth until the disagreement is
-                resolved with ``am-seg repair-state``.
             labels: Label state per frame, keyed by modality: ``"present"``,
                 ``"empty"``, ``"missing"``, or None where that modality has no
                 image. Drawn as a thin line outside each state row, because
@@ -172,7 +165,6 @@ class FrameTimeline(QWidget):
         self._labels = {
             modality: list((labels or {}).get(modality, [])) for modality in ROW_MODALITIES
         }
-        self._mismatched = set(mismatched or ())
         self._selected = set(selected or ())
         self._count = max((len(states) for states in self._rows.values()), default=0)
         self._current = current
@@ -250,17 +242,6 @@ class FrameTimeline(QWidget):
                     painter.fillRect(
                         int(left), label_top, cell_width, LABEL_LINE_HEIGHT, label_colour
                     )
-
-        # Drawn last, over everything, so a frame that cannot be trusted is
-        # visible whichever row the disagreement is in.
-        wash = QColor(MISMATCH)
-        wash.setAlpha(MISMATCH_ALPHA)
-        for index in sorted(self._mismatched):
-            if index >= self._count:
-                continue
-            painter.fillRect(
-                int(index * width), 0, max(1, int(width) + 1), self.height(), wash
-            )
 
         for index in sorted(self._selected):
             if index >= self._count:

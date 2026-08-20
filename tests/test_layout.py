@@ -21,7 +21,6 @@ from am_segmentation_manager.layout import (
     is_labels_directory,
     labels_directory_name,
     resolve_labels_directory,
-    state_path,
     subdirectories_by_name,
 )
 
@@ -249,25 +248,9 @@ def test_build_image_sets_on_a_stage_with_no_image_directories(tmp_path: Path):
 # State locations
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(
-    "start, state, expected",
-    [
-        ("sem/img.tif", "deselected", "sem/deselected/img.tif"),
-        ("sem/deselected/img.tif", "selected", "sem/img.tif"),
-        ("sem/deselected/img.tif", "corrected", "sem/corrected/img.tif"),
-        ("sem/corrected/img.tif", "corrected", "sem/corrected/img.tif"),
-    ],
-)
-def test_state_path_moves_between_sibling_state_directories(start, state, expected, tmp_path):
-    assert state_path(tmp_path / start, state) == tmp_path / expected
-
-
-def test_state_path_rejects_an_unknown_state(tmp_path: Path):
-    with pytest.raises(ValueError):
-        state_path(tmp_path / "sem" / "img.tif", "archived")
-
-
-def test_image_files_by_name_spans_state_directories(tmp_path: Path):
+def test_image_files_by_name_does_not_look_in_state_directories(tmp_path: Path):
+    """A nested file belongs to an unmigrated dataset. Reading it here would
+    report it as selected; inspect-layout says so instead."""
     directory = tmp_path / "sem"
     _make_image(directory, "a.tif")
     _make_image(directory / "deselected", "b.tif")
@@ -275,8 +258,7 @@ def test_image_files_by_name_spans_state_directories(tmp_path: Path):
     (directory / "notes.txt").write_text("ignored")
 
     found = image_files_by_name(directory)
-    assert set(found) == {"a.tif", "b.tif", "c.tif"}
-    assert found["b.tif"] == directory / "deselected" / "b.tif"
+    assert set(found) == {"a.tif"}
 
 
 def test_subdirectories_by_name_skips_hidden_and_files(tmp_path: Path):

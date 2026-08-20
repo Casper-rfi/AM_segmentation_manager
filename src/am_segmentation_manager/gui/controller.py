@@ -18,10 +18,10 @@ from typing import Literal
 
 from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import LamellaFrame, build_lamella_frames
-from ..layout import MODALITIES, base_path
+from ..layout import MODALITIES
 from ..models import Lamella, Project
 from ..operations import label_io
-from ..operations.label_groups import build_groups, expand_to_groups
+from ..operations.label_groups import expand_to_groups
 from ..operations.label_io import LabelReadiness, classify_labels
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
@@ -91,18 +91,12 @@ def _index_of(items: Sequence, path: Path | None) -> int | None:
 #: Derived from the records every time it is asked for; nothing is stored. A
 #: stored "reviewed" flag would be a second source of truth that could disagree
 #: with the files, and this cannot: it *is* the per-image states, summarised.
-CurationState = Literal["empty", "not started", "in progress", "done", "needs repair"]
+CurationState = Literal["empty", "not started", "in progress", "done"]
 
 #: A modality with no images at all. Kept distinct from "not started": many
 #: older datasets have no FIB whatsoever, and showing those as 0% complete
 #: forever would be wrong.
 EMPTY: CurationState = "empty"
-
-#: Images disagree with the label they share. Overrides every other status,
-#: because until ``am-seg repair-state`` runs, the state shown for the group is
-#: the image's rather than the label's -- so "done" would be a claim the files
-#: do not support.
-NEEDS_REPAIR: CurationState = "needs repair"
 
 
 @dataclass(frozen=True)
@@ -135,14 +129,11 @@ class CurationStatus:
 def _modality_status(records: list) -> CurationState:
     """Return the curation status of one modality's records.
 
-    Every record is considered, not just the base image of each scene. Variants
-    share a label and so should share its state; where they do not, the group is
-    inconsistent and reported as needing repair rather than resolved silently.
+    Every record is considered, not just the base image of each scene. The
+    conditions of one scene share a state entry, so they cannot disagree.
     """
     if not records:
         return EMPTY
-    if any(not group.is_consistent for group in build_groups(records)):
-        return NEEDS_REPAIR
     states = {current_state(record) for record in records}
     if states <= {"deselected", "corrected"}:
         return "done"
@@ -178,8 +169,6 @@ def _combine(statuses: list[CurationState]) -> CurationState:
     modality contribute nothing -- a project is not part-finished because half
     its lamellae never had a FIB image.
     """
-    if NEEDS_REPAIR in statuses:
-        return NEEDS_REPAIR
     present = [status for status in statuses if status != EMPTY]
     if not present:
         return EMPTY
@@ -729,23 +718,6 @@ class CurationController:
             return None
         return LABEL_DISPLAY[self.record_label_state(record)]
 
-    def mismatched_frames(self) -> set[int]:
-        """Return frames whose images disagree with the label they share.
-
-        The timeline draws the base image's state, so a frame with a
-        disagreement is showing something that is not the whole truth. Marking
-        it is all the GUI does: repair happens through ``am-seg repair-state``,
-        which previews the moves before making them.
-        """
-        mismatched: set[int] = set()
-        for position, frame in enumerate(self._frames):
-            records = frame.records
-            if not records:
-                continue
-            if any(not group.is_consistent for group in build_groups(records)):
-                mismatched.add(position)
-        return mismatched
-
     def set_target(self, target: EditTarget) -> None:
         """Choose whether state changes apply to SEM, FIB, or both."""
         if target not in ("SEM", "FIB", "both"):
@@ -920,10 +892,10 @@ class CurationController:
         candidates = records if records is not None else self.scoped_records()
         if not candidates:
             return []
-        requested = {str(base_path(record.image_path)) for record in candidates}
+        requested = {str(record.image_path) for record in candidates}
         return [
             record for record in self.expanded_records(candidates)
-            if str(base_path(record.image_path)) not in requested
+            if str(record.image_path) not in requested
         ]
 
     def label_readiness(self, records: list | None = None) -> LabelReadiness:
@@ -955,7 +927,7 @@ class CurationController:
             return StateChangeReach(images=0, labels=0, shared=0)
         expanded = self.expanded_records(scoped)
         labels = {
-            str(base_path(label))
+            str(label)
             for record in expanded
             for label in record.labels
         }
@@ -1001,7 +973,7 @@ class CurationController:
             return 0
 
         changed = transition_records(
-            records, state, allow_move_from_corrected=confirm_corrected
+            records, state, allow_leaving_corrected=confirm_corrected
         )
         logger.info(
             "Moved %d record(s) to %s across %s",

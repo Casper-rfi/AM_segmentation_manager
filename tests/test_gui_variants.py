@@ -188,35 +188,6 @@ def test_reach_is_always_available_even_with_nothing_selected():
 # Mismatch reporting
 # ---------------------------------------------------------------------------
 
-def test_a_consistent_lamella_reports_no_mismatches(tmp_path: Path):
-    make_project(tmp_path)
-    controller = make_controller(tmp_path)
-
-    assert controller.mismatched_frames() == set()
-
-
-def test_a_frame_whose_image_disagrees_with_its_label_is_flagged(tmp_path: Path):
-    project = make_project(tmp_path)
-    lamella = project / "lam_010"
-    (lamella / "SEM_8" / "deselected").mkdir()
-    (lamella / "SEM_8" / "img_0004.tif").rename(
-        lamella / "SEM_8" / "deselected" / "img_0004.tif"
-    )
-    controller = make_controller(tmp_path)
-
-    assert controller.mismatched_frames() == {0}
-
-
-def test_a_deselected_scene_is_consistent_and_not_flagged(tmp_path: Path):
-    """Everything moved together, so nothing disagrees."""
-    from am_segmentation_manager.operations.selection import deselect_records
-
-    make_project(tmp_path)
-    controller = make_controller(tmp_path)
-    deselect_records([controller.frame.record("SEM")])
-
-    assert make_controller(tmp_path).mismatched_frames() == set()
-
 
 # ---------------------------------------------------------------------------
 # Variant descriptions from project metadata
