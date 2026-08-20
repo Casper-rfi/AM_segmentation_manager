@@ -5,9 +5,9 @@ files. It is now declared once as ``pythonpath = ["src"]`` in
 ``pyproject.toml``, so the tests run against the source tree whether or not the
 package is installed.
 
-What lives here instead is :func:`build_dataset`, which constructs the layouts
-of ``docs/reference_layouts.md`` on disk. The layout variety is the risk this
-package exists to manage, so a new layout era found in the wild should be a new
+What lives here instead is :func:`build_dataset`, which constructs on disk the
+real layouts this collection has been seen in. That variety is the risk this
+package exists to manage, so a new layout found in the wild should be a new
 branch *here* rather than another hand-built tree in another test file.
 
 **These builders spell out real-world paths literally, and must keep doing so.**

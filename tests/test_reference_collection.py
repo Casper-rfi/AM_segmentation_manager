@@ -223,8 +223,7 @@ def test_the_collection_still_covers_the_awkward_layouts(index):
     still has these, or accept the reduced coverage deliberately.
 
     Only properties the current collection actually has are required. It has no
-    dataset lacking a *lamella* directory, so that is not asserted: see
-    docs/reference_layouts.md sections 4 and 5.
+    dataset lacking a *lamella* directory, so that is not asserted.
     """
     projects = index.all_projects()
     records = records_of(index)

@@ -32,7 +32,7 @@ Code quality, maintainability and extensibility therefore matter.
 
 # Workflow
 
-0. New data gets added to the collection manually (not done by this software):
+0. New data gets added to the collection manually:
 	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
 	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
 	3. `edit-metadata` is used to add any missing metadata or make corrections
@@ -142,8 +142,9 @@ class and function gets one: a summary line, `Args:`/`Returns:`/`Raises:` only w
 the signature does not already say it, and at most one sentence of constraint or
 invariant.
 
-A module docstring orients a reader in a few sentences: what the module is for, and any invariant holding across it. Keep it under ten lines. 
-Detail about one function belongs on that function; reasoning about why the design is this way belongs in docs/decisions.md.
+A module docstring orients a reader in a few sentences: what the module is for, and 
+any invariant holding across it. Keep it under ten lines. Detail about one function belongs 
+on that function; reasoning about why the design is this way belongs in docs/decisions.md.
 
 **Do not put in a docstring or a comment:** rejected alternatives, what an earlier
 version did, benchmark results, plan or phase references, or anything a reader could
@@ -161,14 +162,13 @@ correction to it.
 A fact belongs in exactly one place. Before writing something down, check whether a
 module docstring, the README or `docs/` already says it, and update that instead.
 
-**`docs/` holds four files. Adding a fifth is a decision, not a default.**
+**`docs/` holds three files. Adding a fourth is a decision, not a default.**
 
 | File | Holds |
 |---|---|
 | `00_roadmap.md` | What the software does today, and what to pick up next |
 | `decisions.md` | Why the built software is the way it is, and environment traps |
 | `04_future_work.md` | What is not built, and the questions to answer before designing it |
-| `reference_layouts.md` | Real dataset layouts, and the axes they vary along |
 
 Place a fact before writing it: how one module behaves goes in that module's
 docstring; why the design is this way goes in `decisions.md`; work not yet built

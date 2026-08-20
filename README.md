@@ -39,7 +39,6 @@ than invented:
 
 Run `am-seg inspect-layout` on a folder to see how it is read and what does not
 fit. It is read-only and the right place to start on unfamiliar data.
-Real examples are in [`docs/reference_layouts.md`](docs/reference_layouts.md).
 
 Installation
 ------------

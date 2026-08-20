@@ -72,8 +72,7 @@ def test_every_era_finds_both_modalities(tmp_path: Path, era: str):
 def test_a_dataset_lacking_a_modality_does_not_have_one_invented(tmp_path: Path, era: str):
     """Whether a dataset has FIB is independent of which layout it uses.
 
-    Two documented pre-Autolamella datasets have SEM only
-    (``docs/reference_layouts.md`` sections 4 and 5), but that is a property of
+    Two of the pre-Autolamella datasets have SEM only, but that is a property of
     those datasets rather than of the collapsed layout -- every lamella of the
     oldest dataset in the current collection has FIB. So this is asserted for
     every era: a survey must report the modality that is absent as absent, and

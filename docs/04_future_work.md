@@ -25,18 +25,3 @@ than trusted.
 selected scope, refusing to overwrite, never deleting from the source, and
 reporting unmatched and ambiguous cases before writing anything. Much better
 specified once there is a real input to look at.
-
----
-
-## 5. Label areas beside the image
-
-**What you want, now decided:** the area of each class in the frame on screen, in
-um^2, beside the frame — not a per-lamella table. A spreadsheet reads that table
-better from `quantify-labels`' CSV than any pane here would, and the Export tab
-already counts and groups across the collection.
-
-**What is left is where to put the number.** The measurement is there:
-`label_measure` counts class pixels, `label_pixel_size_nm` scales them, and the
-Label tab already measures each frame once while the speck filter is on. The open
-question is whether it belongs under the badges, beside the timeline, or only on
-request.
