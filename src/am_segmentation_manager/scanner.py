@@ -37,8 +37,22 @@ from .metadata import (
     merge_metadata,
 )
 from .models import AdaptiveMillingStage, ImageRecord, Lamella, Project
+from .state import StageState, StateFileError, read_state, state_key
 
 logger = logging.getLogger(__name__)
+
+
+def _folder_state(image_path: Path, labels: list[Path]) -> str:
+    """Return the state a stage's folders imply, for one not yet migrated.
+
+    A label in ``corrected/`` makes its images corrected even when they have
+    not been moved yet, which is the disagreement ``repair-state`` resolves.
+    """
+    if state_of_path(image_path) == "corrected" or any(
+        state_of_path(path) == "corrected" for path in labels
+    ):
+        return "corrected"
+    return state_of_path(image_path)
 
 
 class ProjectIndex:
@@ -337,6 +351,11 @@ class Scanner:
         or any legacy name it recognises, and images in ``deselected/`` and
         ``corrected/`` subfolders are included.
 
+        Workflow state is read from the stage's ``AM_state.yaml`` where it has
+        one, and from the folders the files sit in where it does not. The two
+        agree on a migrated stage, which is what lets a collection be migrated
+        one stage at a time.
+
         Labels and predictions are matched by filename **within an image set**
         rather than across the whole stage: several image directories in one
         stage can hold the same filename, so a stage-wide filename map would be
@@ -348,6 +367,7 @@ class Scanner:
         records whether its label is shared.
         """
         image_records: list[ImageRecord] = []
+        declared = self._declared_state(stage_path)
 
         for image_set in build_image_sets(stage_path):
             labels_map = image_files_by_name(image_set.labels_directory)
@@ -367,15 +387,34 @@ class Scanner:
                 record.predictions = list(prediction) if prediction else []
                 label = labels_map.get(name)
                 record.labels = [label] if label is not None else []
-                record.corrected = state_of_path(image_path) == "corrected" or any(
-                    state_of_path(path) == "corrected" for path in record.labels
-                )
-                # States are mutually exclusive: corrected records are not
-                # also reported as selected.
-                record.selected = not record.corrected and state_of_path(image_path) == "selected"
+                if declared is not None:
+                    key = state_key(image_set.labels_directory / name, stage_path)
+                    state = declared.state_of(key)
+                else:
+                    state = _folder_state(image_path, record.labels)
+                # States are mutually exclusive: a record is in exactly one.
+                record.corrected = state == "corrected"
+                record.selected = state == "selected"
                 image_records.append(record)
 
         return image_records
+
+    @staticmethod
+    def _declared_state(stage_path: Path) -> StageState | None:
+        """Return a stage's declared states, or None to read its folders.
+
+        A stage with no state file has not been migrated, and its folders are
+        still the record of what was decided. One whose file will not parse is
+        reported and read from its folders too -- refusing to open a collection
+        because one file in it is damaged helps nobody, and until the files are
+        un-nested the folders still hold the answer.
+        """
+        try:
+            declared = read_state(stage_path)
+        except StateFileError as exc:
+            logger.error("%s; reading workflow state from the folders instead", exc)
+            return None
+        return declared if declared.fingerprint is not None else None
 
     @staticmethod
     def _collect_predictions(stage_path: Path, image_set) -> dict[str, list[Path]]:

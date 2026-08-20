@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..layout import state_of_path
-from .label_io import save_label_image, write_atomically
+from ..io.atomic import fingerprint_of, write_atomically
+from .label_io import save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -30,7 +30,6 @@ __all__ = [
     "SavePlan",
     "SaveReport",
     "StaleLabels",
-    "fingerprint_of",
     "plan_saves",
     "save_labels",
 ]
@@ -57,12 +56,15 @@ class LabelToSave:
         fingerprint: The destination's size and modification time when it was
             read, or None if it did not exist. Compared before writing, so a
             file something else has changed since is not overwritten blind.
+        corrected: Whether the group owning this label is declared corrected.
+            Carried on the item because the destination path no longer says.
     """
 
     destination: Path
     label: np.ndarray
     created: bool = False
     fingerprint: tuple[int, int] | None = None
+    corrected: bool = False
 
 
 @dataclass(frozen=True)
@@ -129,19 +131,6 @@ class SaveReport:
         return f"wrote {len(self.written)} label{'s' if self.count != 1 else ''}{new}"
 
 
-def fingerprint_of(path: Path) -> tuple[int, int] | None:
-    """Return *path*'s size and modification time, or None if it is not there.
-
-    Enough to notice that something else rewrote a label while it was being
-    proofread, without reading the file.
-    """
-    try:
-        status = path.stat()
-    except OSError:
-        return None
-    return (status.st_size, status.st_mtime_ns)
-
-
 def plan_saves(items) -> SavePlan:
     """Sort *items* into what can be written, what needs consent, and what cannot.
 
@@ -158,7 +147,7 @@ def plan_saves(items) -> SavePlan:
                 "Label %s changed on disk since it was opened", item.destination
             )
             stale.append(item)
-        elif state_of_path(item.destination) == "corrected":
+        elif item.corrected:
             corrected.append(item)
         else:
             writes.append(item)

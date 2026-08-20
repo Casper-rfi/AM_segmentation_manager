@@ -21,6 +21,7 @@ from am_segmentation_manager.operations.label_io import (
     classify_labels,
     is_label_file_empty,
 )
+from am_segmentation_manager.state import read_state
 from am_segmentation_manager.survey import survey_collection
 
 HAS_IMAGE_STACK = all(
@@ -216,7 +217,8 @@ def test_cli_correct_warns_about_an_empty_label_but_goes_ahead(tmp_path: Path, c
     output = capsys.readouterr().out
     assert "1 with an empty label" in output
     assert "img_000_ion.tif" in output
-    assert not (tmp_path / "project/01-lamella/adaptive_polish/fib/img_000_ion.tif").exists()
+    stage = tmp_path / "project/01-lamella/adaptive_polish"
+    assert read_state(stage).states == {"fib_labels/img_000_ion.tif": "corrected"}
 
 
 def test_cli_correct_says_nothing_about_an_annotated_label(tmp_path: Path, capsys):

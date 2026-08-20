@@ -17,12 +17,13 @@ The purpose of this package is to manage large collections of SEM and FIB images
 segmentation labels, predictions and metadata from image headers and Autolamella
 files. Its main functions are to:
 
-1. View and curate which data to use for preparing image labels
-2. Prepare labels from predictions for manual proofreading
-3. Prepare filtered data lists for ML model training
-4. Quantify the data, through its metadata and through measurements on the labels
-5. Export metadata file lists for inclusion with the data in scientific data
-   repositories
+1. Correct and extend project-based metadata
+2. View and curate which data to use for preparing image labels
+3. Prepare labels from predictions for manual proofreading
+4. Manually Proofread and correct labels and create new labels
+5. Quantify the data, through its project and image metadata and through measurements on the labels
+5. Export filtered CSV files containing per-project and per-image metadata for deposition of the data in scientific repositories
+6. Export filtered CSV files with image and label file paths for ML model training
 
 The package will initially be used by me, and will be made open source in the future.
 Code quality, maintainability and extensibility therefore matter.
@@ -196,18 +197,22 @@ explicitly enables overwriting.
 **Corrected labels are valuable user-generated data.** No automated operation may
 overwrite or delete one. An operation that could modify a corrected label must fail
 safely and require explicit user confirmation. Where practical, corrected status
-should be detectable from the filesystem rather than from an external database or
-transient application state.
+should be detectable from a file within the dataset rather than from an external 
+database or transient application state.
 
 Batch filesystem operations validate the complete set of intended changes before
 performing any of them, rather than discovering an error partway through. Where
 practical, operations support a dry-run/preview mode and log enough to reconstruct
 what was changed.
 
-**The package MUST physically move selected and deselected images and labels between
-folders.**  Do not replace this with logical selection flags or
-database-only selection unless explicitly requested. Expose it through clean
-high-level functions rather than spreading file-moving logic through the package.
+**A group is in exactly one state.** selected, deselected and corrected are mutually 
+exclusive. The state file maps each group to exactly one of them, and any representation 
+that could express two at once is wrong. Deselecting a group that was corrected 
+discards the corrected claim; the proofreading itself survives in the label's contents, 
+which is what an export checks anyway. Expose it through clean high-level functions 
+rather than spreading knowledge of how state is stored through the package. One 
+function answers what state a record is in and one operation changes it; nothing 
+else reads or writes the state file, and nothing re-derives a record's state for itself.
 
 **The label is the unit of workflow state, not the image.** Several imaging
 conditions of one acquisition share a single label, because they are a single

@@ -186,10 +186,11 @@ def test_a_corrected_label_is_refused_even_with_overwrite(tmp_path: Path) -> Non
     from am_segmentation_manager.operations.predictions import plan_conversions
 
     record = _record_with_prediction(tmp_path, "raw")
-    label = record.image_path.parent.parent / "sem_labels" / "corrected" / "img.tif"
+    label = record.image_path.parent.parent / "sem_labels" / "img.tif"
     label.parent.mkdir(parents=True)
     label.write_bytes(b"proofread")
     record.labels = [label]
+    record.selected, record.corrected = False, True
 
     plan = plan_conversions([record], overwrite=True)
 

@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from ..io.atomic import write_atomically
 from ..io.image import read_array, to_2d
 from ..io.yaml import read_yaml
 from ..layout import (
@@ -29,7 +30,7 @@ from ..layout import (
 )
 from ..models import ImageRecord
 from .label_groups import build_groups, primary_record
-from .label_io import save_label_image, write_atomically
+from .label_io import save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np

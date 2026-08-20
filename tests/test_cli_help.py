@@ -52,6 +52,7 @@ WORKFLOW_ORDER = [
     "select",
     "correct",
     "repair-state",
+    "migrate-state",
     "find-specks",
     "compress-labels",
     "stats",

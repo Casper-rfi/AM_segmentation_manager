@@ -4,11 +4,12 @@ import pytest
 
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.selection import deselect_records, select_records
+from am_segmentation_manager.state import read_state
 
 
 def test_deselect_and_select_records(tmp_path: Path) -> None:
-    """Ensure deselect_records moves image and label files into 'deselected' and
-    select_records moves them back and updates the ImageRecord.selected flag.
+    """Deselecting declares the group deselected and selecting clears it, in
+    both cases updating the record and leaving every file where it is.
     """
     project = tmp_path / "project1"
     lamella = project / "LAM1"
@@ -35,39 +36,36 @@ def test_deselect_and_select_records(tmp_path: Path) -> None:
         selected=True,
     )
 
-    # Deselect: moves files into deselected/ subfolders and marks record.selected False
+    # Deselect: declares the group deselected and marks record.selected False
     deselect_records([rec])
 
     assert rec.selected is False
-    assert not img.exists()
-    assert (sem / "deselected" / "img1.tif").exists()
-    assert (labels_dir / "deselected" / "img1.tif").exists()
+    assert img.exists()
+    assert lbl.exists()
+    assert list(read_state(stage).states.values()) == ["deselected"]
 
-    # Select: should move files back and set selected True
+    # Select: clears the declaration and sets selected True
     select_records([rec])
 
     assert rec.selected is True
     assert img.exists()
-    assert (sem / "deselected" / "img1.tif").exists() is False
-    assert (labels_dir / "deselected" / "img1.tif").exists() is False
+    assert read_state(stage).states == {}
 
 
-def test_transition_validates_the_entire_batch_before_moving(tmp_path: Path) -> None:
-    sem = tmp_path / "sem"
+def test_transition_validates_the_entire_batch_before_writing(tmp_path: Path) -> None:
+    """One record that cannot be resolved stops the whole batch."""
+    stage = tmp_path / "stageA"
+    sem = stage / "sem"
     safe_image = sem / "safe.tif"
-    duplicate_image = sem / "duplicate.tif"
-    safe_image.parent.mkdir()
+    sem.mkdir(parents=True)
     safe_image.write_text("safe")
-    duplicate_image.write_text("normal copy")
-    (sem / "deselected").mkdir()
-    (sem / "deselected" / duplicate_image.name).write_text("deselected copy")
 
     safe_record = ImageRecord(image_path=safe_image)
-    conflicting_record = ImageRecord(image_path=duplicate_image)
+    missing_record = ImageRecord(image_path=sem / "absent.tif")
 
-    with pytest.raises(FileExistsError, match="Multiple state copies"):
-        deselect_records([safe_record, conflicting_record])
+    with pytest.raises(FileNotFoundError):
+        deselect_records([safe_record, missing_record])
 
-    # The safe record is untouched because validation completed before moves.
-    assert safe_image.exists()
-    assert not (sem / "deselected" / safe_image.name).exists()
+    # The safe record is untouched because validation completed before writing.
+    assert safe_record.selected is True
+    assert read_state(stage).states == {}

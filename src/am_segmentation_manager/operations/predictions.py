@@ -17,12 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
+from ..io.atomic import write_atomically
 from ..io.image import to_2d
 from ..layout import (
     MODALITIES,
     is_convertible_prediction,
     prediction_precedence,
-    state_of_path,
 )
 from ..models import ImageRecord
 from .label_io import (
@@ -30,7 +30,6 @@ from .label_io import (
     is_label_file_empty,
     label_destination,
     save_label_image,
-    write_atomically,
 )
 
 logger = logging.getLogger(__name__)
@@ -238,7 +237,7 @@ def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
             key = "post_processed" if record.predictions else "no_prediction"
         elif not record.labels:
             key = "ready"
-        elif state_of_path(record.labels[0]) == "corrected":
+        elif record.corrected:
             key = "corrected"
         else:
             key = "labelled"
@@ -246,15 +245,21 @@ def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
     return ConversionCounts(total=total, **counts)
 
 
-def classify_destination(label_path: Path | None) -> ExistingLabel:
+def classify_destination(
+    label_path: Path | None, *, corrected: bool = False
+) -> ExistingLabel:
     """Return what replacing *label_path* would cost.
 
     A label that cannot be read counts as annotated, being the last thing to
     overwrite on an assumption.
+
+    Args:
+        corrected: Whether the group owning this label is declared corrected.
+            Passed in rather than read from the path, which no longer says.
     """
     if label_path is None or not label_path.exists():
         return "none"
-    if state_of_path(label_path) == "corrected":
+    if corrected:
         return "corrected"
     return "placeholder" if is_label_file_empty(label_path) is True else "annotated"
 
@@ -300,7 +305,7 @@ def plan_conversions(
             continue
         claimed.add(destination)
 
-        existing = classify_destination(destination)
+        existing = classify_destination(destination, corrected=record.corrected)
         conversion = PlannedConversion(record, convertible[0], destination, existing)
         if existing == "corrected":
             refused.append(conversion)

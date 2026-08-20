@@ -248,7 +248,9 @@ def test_enabling_editing_unlocks_the_controls(window):
     assert window.controller.editing_enabled is True
 
 
-def test_state_change_moves_files_and_updates_the_readout(qt_app, window):
+def test_a_state_change_is_declared_and_shown_in_the_readout(qt_app, window):
+    from am_segmentation_manager.state import read_state
+
     window.state_panel.enable_check.setChecked(True)
     window.project_panel.target_buttons["SEM"].setChecked(True)
     record = window.controller.frame.record("SEM")
@@ -258,14 +260,16 @@ def test_state_change_moves_files_and_updates_the_readout(qt_app, window):
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.state_of("SEM") == "deselected")
 
-    assert not original.exists()
-    assert record.image_path.parent.name == "deselected"
-    assert record.image_path.exists()
+    assert original.exists(), "declaring a state moves nothing"
+    assert record.image_path == original
     assert "SEM: deselected" in window.state_panel.readout.text()
     assert "FIB: selected" in window.state_panel.readout.text()
 
+    stage = original.parent.parent
+    assert list(read_state(stage).states.values()) == ["deselected"]
 
-def test_applying_to_both_moves_both_modalities(qt_app, window):
+
+def test_applying_to_both_declares_both_modalities(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
     window.project_panel.target_buttons["both"].setChecked(True)
 
@@ -273,7 +277,8 @@ def test_applying_to_both_moves_both_modalities(qt_app, window):
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
     for record in window.controller.frame.records:
-        assert record.image_path.parent.name == "deselected"
+        assert record.selected is False
+        assert record.image_path.exists()
 
 
 def test_the_change_is_logged(window):

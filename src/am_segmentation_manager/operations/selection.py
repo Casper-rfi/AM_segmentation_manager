@@ -1,45 +1,62 @@
-"""Filesystem transitions for selected, deselected, and corrected records.
+"""Workflow state changes for selected, deselected and corrected records.
 
-State is physical location, so changing it means moving files. Two rules govern
-every function here.
+State is declared in a stage's ``AM_state.yaml``, so changing it means editing
+that file rather than moving anything. Three rules govern every function here.
 
 **Validate the whole batch, then act**, so a batch cannot fail partway and leave
-the tree in a state neither the caller nor the filesystem describes.
+a collection in a state neither the caller nor the files describe.
 
-**Corrected labels are never moved without confirmation**: an operation that
-would move one refuses unless the caller passes ``allow_move_from_corrected``.
+**A corrected group is never left without confirmation**: an operation that
+would take one out of the corrected state refuses unless the caller passes
+``allow_move_from_corrected``.
+
+**A stage that has not been migrated is refused.** Declaring one group's state
+there would leave every other group unlisted, and unlisted reads as selected --
+promoting deselected images into a training set. Such a stage keeps its folders
+until ``migrate-state`` transcribes them.
 """
 from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..layout import (
     RecordState,
     base_path,
     classify_image_directory,
+    image_files,
     resolve_labels_directory,
+    state_directories,
     state_of_path,
     state_path,
     state_variants,
     subdirectories_by_name,
 )
 from ..models import ImageRecord
+from ..state import (
+    STATE_VALUES,
+    StageState,
+    read_state,
+    state_key,
+    write_state,
+)
 from .label_groups import (
     LabelGroup,
     describe_group,
     expand_to_groups,
     find_inconsistent_groups,
+    group_identity,
 )
-from .labels import STATE_DIRECTORIES, move_to_state
+from .labels import move_to_state
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "RecordState",
     "TransitionPlan",
+    "UnmigratedStage",
     "base_path",
     "current_state",
     "existing_variant",
@@ -53,35 +70,52 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class _Move:
-    source: Path
-    destination: Path
+class UnmigratedStage(ValueError):
+    """Raised when a stage's folders still hold its state.
 
-
-@dataclass(frozen=True)
-class _RecordPlan:
-    """The validated result of transitioning one record to a new state.
-
-    Holds both the moves to perform and the paths the record's files will
-    occupy afterwards, so the record can be brought up to date once every move
-    in the batch has succeeded.
+    A :class:`ValueError` so that callers already handling one keep working:
+    from their point of view this is a request that cannot be carried out.
     """
 
-    record: ImageRecord
-    moves: tuple[_Move, ...]
-    image_path: Path
-    labels: tuple[Path, ...]
+
+@dataclass(frozen=True)
+class StateChange:
+    """One label group moving from one state to another.
+
+    Attributes:
+        stage_directory: Where the state file declaring it lives.
+        key: The group's entry in that file.
+        old: The state it is in now.
+        new: The state it is moving to.
+    """
+
+    stage_directory: Path
+    key: str
+    old: RecordState
+    new: RecordState
+
+    def describe(self) -> str:
+        """Return a one-line description, for a preview or a log."""
+        return f"{self.key}: {self.old} -> {self.new}"
+
+
+@dataclass(frozen=True)
+class _StageWrite:
+    """Everything one stage's file should declare after the change."""
+
+    previous: StageState
+    states: dict[str, RecordState]
 
 
 def current_state(record: ImageRecord) -> RecordState:
-    """Return the workflow state implied by a record's image path.
+    """Return the workflow state *record* is in.
 
-    Note that this reflects the path the record currently holds. After a
-    successful :func:`transition_records` that path is up to date; if files have
-    been moved by something else since the record was built, re-scan first.
+    Read from the record rather than from the filesystem: the scanner sets it
+    from the stage's declared state, and a successful transition updates it.
     """
-    return state_of_path(record.image_path)
+    if record.corrected:
+        return "corrected"
+    return "selected" if record.selected else "deselected"
 
 
 def existing_variant(path: Path) -> Path | None:
@@ -90,37 +124,6 @@ def existing_variant(path: Path) -> Path | None:
     if len(existing) > 1:
         raise FileExistsError(f"Multiple state copies found for {base_path(path)}: {existing}")
     return existing[0] if existing else None
-
-
-def _plan_record_transition(record: ImageRecord, state: RecordState) -> _RecordPlan:
-    """Work out the moves and the resulting paths for one record.
-
-    A destination is recorded for every file that exists on disk, whether or not
-    it needs moving: a file may already be in the target state while the record
-    still refers to it by a path in a different state folder, and that stale
-    path should be corrected too. Labels that cannot be found anywhere keep the
-    path the record already had, since nothing about them has changed.
-    """
-    moves: list[_Move] = []
-    resolved: list[Path] = []
-    for index, path in enumerate([record.image_path, *record.labels]):
-        source = existing_variant(path)
-        if source is None:
-            if index == 0:
-                raise FileNotFoundError(path)
-            logger.warning("Associated label not found: %s", path)
-            resolved.append(path)
-            continue
-        destination = state_path(path, state)
-        if source != destination:
-            moves.append(_Move(source, destination))
-        resolved.append(destination)
-    return _RecordPlan(
-        record=record,
-        moves=tuple(moves),
-        image_path=resolved[0],
-        labels=tuple(resolved[1:]),
-    )
 
 
 @dataclass(frozen=True)
@@ -133,16 +136,16 @@ class TransitionPlan:
             shared labels. This can be larger than what the caller asked for.
         added: The records that expansion added, so a caller can say how far
             the change actually reaches before performing it.
-        moves: The file moves to perform, deduplicated.
+        changes: One entry per group whose state actually changes. A record
+            already in the target state contributes none.
     """
 
     state: RecordState
     records: tuple[ImageRecord, ...]
     added: tuple[ImageRecord, ...]
-    moves: tuple[_Move, ...]
-    #: Per-record outcomes, computed before anything moved, so the records can
-    #: be brought up to date afterwards without re-reading the filesystem.
-    record_plans: tuple[_RecordPlan, ...] = ()
+    changes: tuple[StateChange, ...]
+    #: What to write, per stage, computed before anything is written.
+    writes: tuple[_StageWrite, ...] = field(default_factory=tuple)
 
     @property
     def reaches_beyond_request(self) -> bool:
@@ -150,8 +153,51 @@ class TransitionPlan:
         return bool(self.added)
 
     def describe(self) -> list[str]:
-        """Return one line per move, for a preview or a log."""
-        return [f"{move.source} -> {move.destination}" for move in self.moves]
+        """Return one line per changed group, for a preview or a log."""
+        return [change.describe() for change in self.changes]
+
+
+def _stage_and_key(record: ImageRecord) -> tuple[Path, str]:
+    """Return the state file and entry naming *record*'s group.
+
+    Raises:
+        ValueError: If the image sits in no recognised image directory, and so
+            belongs to no stage whose state could be declared.
+    """
+    identity = group_identity(record)
+    if identity is None:
+        raise ValueError(
+            f"{record.image_path} is not in a recognised image directory, "
+            "so its workflow state cannot be declared"
+        )
+    stage_directory = identity.parent.parent
+    return stage_directory, state_key(identity, stage_directory)
+
+
+def _has_nested_files(stage_directory: Path) -> bool:
+    """Return whether any file still sits in one of *stage_directory*'s state folders."""
+    for directory in subdirectories_by_name(stage_directory).values():
+        for candidate in state_directories(directory)[1:]:
+            if image_files(candidate):
+                return True
+    return False
+
+
+def _stage_state(stage_directory: Path) -> StageState:
+    """Return a stage's declared state, refusing one that has not been migrated.
+
+    Raises:
+        UnmigratedStage: If the stage has no state file but does have files in
+            its state folders, which are then the only record of what was
+            decided about them.
+    """
+    declared = read_state(stage_directory)
+    if declared.fingerprint is None and _has_nested_files(stage_directory):
+        raise UnmigratedStage(
+            f"{stage_directory} still keeps its workflow state in folders; "
+            "run migrate-state on it first"
+        )
+    return declared
 
 
 def plan_transition(
@@ -162,23 +208,24 @@ def plan_transition(
 ) -> TransitionPlan:
     """Validate a state change without performing it.
 
-    The whole batch is checked before anything moves: every file is located,
-    destinations are checked for collisions and for existing files, and
-    corrected data is refused unless explicitly confirmed. The same validation
-    runs whether or not the plan is executed, so a dry run is a genuine
-    rehearsal rather than a guess.
+    The whole batch is checked before anything is written: every image is
+    located, every stage is checked for having been migrated, and corrected
+    data is refused unless explicitly confirmed. The same validation runs
+    whether or not the plan is carried out, so a dry run is a genuine rehearsal.
 
-    Records are expanded across shared labels first. Moving a shared label
-    without moving the images that share it would silently change their state.
+    Records are expanded across shared labels first. Declaring a state for a
+    shared label without covering the images that share it would silently
+    change their state too.
 
     Raises:
-        ValueError: If *state* is not a workflow state.
+        ValueError: If *state* is not a workflow state, or a record belongs to
+            no recognised image directory.
+        UnmigratedStage: If a stage still keeps its state in folders.
         FileNotFoundError: If a record's image cannot be found in any state.
-        FileExistsError: If two files would land on the same destination, or a
-            destination is already occupied.
-        PermissionError: If corrected data would be moved without confirmation.
+        FileExistsError: If a file sits in more than one state folder at once.
+        PermissionError: If corrected data would be changed without confirmation.
     """
-    if state not in STATE_DIRECTORIES:
+    if state not in STATE_VALUES:
         raise ValueError(f"Unknown workflow state: {state}")
 
     requested = list(records)
@@ -189,42 +236,51 @@ def plan_transition(
         if str(base_path(record.image_path)) not in requested_paths
     )
 
-    plans = [_plan_record_transition(record, state) for record in expanded]
+    stage_states: dict[Path, StageState] = {}
+    pending: dict[Path, dict[str, RecordState]] = {}
+    changes: list[StateChange] = []
+    seen_keys: set[tuple[Path, str]] = set()
 
-    # A shared label is referenced by every image that shares it, so the same
-    # move is planned several times. Identical moves collapse; two *different*
-    # files heading for one destination remains an error.
-    moves: list[_Move] = []
-    by_destination: dict[Path, Path] = {}
-    for move in (move for plan in plans for move in plan.moves):
-        existing = by_destination.get(move.destination)
-        if existing is not None:
-            if existing == move.source:
-                continue
-            raise FileExistsError(f"Multiple files would be moved to {move.destination}")
-        by_destination[move.destination] = move.source
-        moves.append(move)
+    for record in expanded:
+        if existing_variant(record.image_path) is None:
+            raise FileNotFoundError(record.image_path)
+
+        stage_directory, key = _stage_and_key(record)
+        if stage_directory not in stage_states:
+            stage_states[stage_directory] = _stage_state(stage_directory)
+            pending[stage_directory] = dict(stage_states[stage_directory].states)
+
+        if (stage_directory, key) in seen_keys:
+            continue
+        seen_keys.add((stage_directory, key))
+
+        old = stage_states[stage_directory].state_of(key)
+        if old == state:
+            continue
+        pending[stage_directory][key] = state
+        changes.append(StateChange(stage_directory, key, old, state))
 
     if not allow_move_from_corrected:
-        corrected_sources = [
-            move.source for move in moves if state_of_path(move.source) == "corrected"
+        leaving_corrected = [
+            change.key for change in changes if change.old == "corrected"
         ]
-        if corrected_sources:
+        if leaving_corrected:
             raise PermissionError(
-                "Refusing to move corrected artifacts without explicit confirmation: "
-                f"{corrected_sources}"
+                "Refusing to change corrected artifacts without explicit "
+                f"confirmation: {leaving_corrected}"
             )
 
-    for move in moves:
-        if move.destination.exists():
-            raise FileExistsError(f"Refusing to overwrite existing file: {move.destination}")
-
+    writes = tuple(
+        _StageWrite(previous=stage_states[stage_directory], states=states)
+        for stage_directory, states in pending.items()
+        if any(change.stage_directory == stage_directory for change in changes)
+    )
     return TransitionPlan(
         state=state,
         records=tuple(expanded),
         added=added,
-        moves=tuple(moves),
-        record_plans=tuple(plans),
+        changes=tuple(changes),
+        writes=writes,
     )
 
 
@@ -235,54 +291,42 @@ def transition_records(
     allow_move_from_corrected: bool = False,
     dry_run: bool = False,
 ) -> int:
-    """Move records into ``state`` after validating the whole batch.
+    """Declare *records* to be in ``state`` after validating the whole batch.
 
-    The state locations are mutually exclusive. Selecting can restore a
-    corrected record, but requires ``allow_move_from_corrected=True`` to
-    protect manually corrected labels.
+    The states are mutually exclusive, so this replaces whatever each group was
+    in. Selecting can restore a corrected group, but requires
+    ``allow_move_from_corrected=True`` to protect proofread labels.
 
-    Records sharing a label move together: the label is the unit of
+    Records sharing a label change together: the label is the unit of
     proofreading, so a state change applies to every image of the same scene.
     The return value counts the expanded set, which can exceed what was asked
     for; use :func:`plan_transition` when the difference needs reporting first.
 
-    On success each record is updated to refer to its new location, so callers
-    that keep records alive across several operations -- a long-running UI, for
-    example -- continue to hold valid paths.
+    On success each record is updated, so callers that keep records alive across
+    several operations -- a long-running UI, for example -- stay in step. No
+    file moves, so the paths a record holds stay valid either way.
 
     Args:
-        records: The records to move.
-        state: The state to move into.
-        allow_move_from_corrected: Confirm moving data out of the corrected
+        records: The records to change.
+        state: The state to declare.
+        allow_move_from_corrected: Confirm taking data out of the corrected
             state.
-        dry_run: Validate everything and report the count without moving any
-            file.
+        dry_run: Validate everything and report the count without writing.
     """
     plan = plan_transition(
         records, state, allow_move_from_corrected=allow_move_from_corrected
     )
     if dry_run:
         for line in plan.describe():
-            logger.info("Would move %s", line)
+            logger.info("Would declare %s", line)
         return len(plan.records)
 
-    for move in plan.moves:
-        move_to_state(
-            move.source,
-            state,
-            allow_move_from_corrected=allow_move_from_corrected,
-        )
-    for record_plan in plan.record_plans:
-        _apply_plan(record_plan, state)
+    for write in plan.writes:
+        write_state(write.previous, write.states)
+    for record in plan.records:
+        record.selected = state == "selected"
+        record.corrected = state == "corrected"
     return len(plan.records)
-
-
-def _apply_plan(plan: _RecordPlan, state: RecordState) -> None:
-    """Update a record to reflect where its files now live and their state."""
-    plan.record.image_path = plan.image_path
-    plan.record.labels = list(plan.labels)
-    plan.record.selected = state == "selected"
-    plan.record.corrected = state == "corrected"
 
 
 def deselect_records(
@@ -332,11 +376,13 @@ def repair_group_states(
 ) -> list[tuple[LabelGroup, int]]:
     """Move images to agree with the state of the label they share.
 
+    This is about where files sit, not about declared state: it exists to make
+    a stage's folders self-consistent so ``migrate-state`` can transcribe them.
+    The label is authoritative, so repair moves the *images* to match it and
+    never the other way round -- the label holds the proofreading work.
+
     A group becomes inconsistent when files are moved by something other than
-    this package, or when an operation is interrupted partway. The label is
-    authoritative, so repair moves the *images* to match it and never the other
-    way round -- the label holds the proofreading work, and its location is the
-    record of what was decided about the scene.
+    this package, or when an operation is interrupted partway.
 
     Args:
         records: Records to check. Their groups are read from disk, so passing
@@ -353,17 +399,38 @@ def repair_group_states(
     repaired: list[tuple[LabelGroup, int]] = []
     for group in find_inconsistent_groups(records):
         state = group.state()
+        disagreeing = group.inconsistent_records()
         logger.info(
             "Group %s is %s; moving %d image(s) to match",
-            describe_group(group), state, len(group.inconsistent_records()),
+            describe_group(group), state, len(disagreeing),
         )
-        moved = transition_records(
-            group.records,
-            state,
-            allow_move_from_corrected=allow_move_from_corrected,
-            dry_run=dry_run,
-        )
-        repaired.append((group, moved))
+        for record in disagreeing:
+            source = existing_variant(record.image_path)
+            if source is None:
+                raise FileNotFoundError(record.image_path)
+            # Checked here as well as in move_to_state, so a dry run refuses
+            # what the real run would refuse rather than previewing it.
+            if (
+                state_of_path(source) == "corrected"
+                and state != "corrected"
+                and not allow_move_from_corrected
+            ):
+                raise PermissionError(
+                    "Refusing to move corrected artifact without explicit "
+                    f"confirmation: {source}"
+                )
+            destination = state_path(source, state)
+            if destination.exists():
+                raise FileExistsError(
+                    f"Refusing to overwrite existing file: {destination}"
+                )
+            if not dry_run:
+                move_to_state(
+                    source, state,
+                    allow_move_from_corrected=allow_move_from_corrected,
+                )
+                record.image_path = destination
+        repaired.append((group, len(disagreeing)))
     return repaired
 
 

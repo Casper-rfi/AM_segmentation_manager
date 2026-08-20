@@ -13,6 +13,7 @@ from pathlib import Path
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.operations.csv import split_pairs
+from am_segmentation_manager.state import read_state
 
 SEM_VARIANTS = ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4")
 
@@ -98,8 +99,8 @@ def test_state_changes_still_cover_every_condition_by_default(tmp_path: Path):
         "--lamella", "all", "--stage", "all", "--image", "all", "--modality", "SEM",
     ]) == 0
 
-    for name in SEM_VARIANTS:
-        assert (project / "lam_010" / name / "deselected" / "img_0000.tif").exists()
+    declared = read_state(project / "lam_010").states
+    assert declared == {"labels/img_0000.tif": "deselected"}
 
 
 # ---------------------------------------------------------------------------

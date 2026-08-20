@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..io.path import make_path_relative
-from ..layout import state_of_path
 from ..models import ImageRecord
 from ..operations.label_compression import compress_labels, existing_labels
 from ..operations.label_groups import describe_group
@@ -371,7 +370,13 @@ class OperationsController:
         if not labels:
             return OperationReport("Nothing to compress: the selection has no labels.")
 
-        corrected = [label for label in labels if state_of_path(label) == "corrected"]
+        corrected_labels = {
+            label
+            for record in records
+            if record.corrected
+            for label in record.labels
+        }
+        corrected = [label for label in labels if label in corrected_labels]
         if corrected and not allow_corrected:
             # The refusal itself lives in compress_labels and still fires; asking
             # here is what lets the window say how much is at stake in advance.

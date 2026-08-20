@@ -13,6 +13,7 @@ import pytest
 
 from am_segmentation_manager.config import SegmentationConfig
 from am_segmentation_manager.scanner import Scanner
+from am_segmentation_manager.state import read_state
 from conftest import build_dataset
 
 HAS_IMAGE_STACK = all(
@@ -402,22 +403,23 @@ def test_saving_names_a_created_label_on_its_records(tmp_path: Path):
     )
 
 
-def test_marking_corrected_moves_a_label_created_while_proofreading(tmp_path: Path):
+def test_marking_corrected_declares_a_label_created_while_proofreading(tmp_path: Path):
     controller, dataset = unlabelled_controller(tmp_path)
     image, label = dataset.image("SEM", 0), dataset.label("SEM", 0)
 
     annotate(controller)
     controller.save(mark_corrected=True)
 
-    assert (image.parent / "corrected" / image.name).exists()
-    assert (label.parent / "corrected" / label.name).exists(), (
-        "the label holds the proofread work; leaving it behind splits the group"
+    assert read_state(dataset.stage).states == {
+        f"{label.parent.name}/{label.name}": "corrected"
+    }
+    assert image.exists() and label.exists(), (
+        "declaring a state must not disturb the proofread work"
     )
-    assert not label.exists()
 
 
-def test_marking_corrected_moves_an_existing_label(tmp_path: Path):
-    build_dataset(tmp_path, acquisitions=2)
+def test_marking_corrected_declares_an_existing_label(tmp_path: Path):
+    dataset = build_dataset(tmp_path, acquisitions=2)
     controller = LabelController(CONFIG, cache=stub_cache())
     controller.set_lamella(scan_lamella(tmp_path))
     image = controller.record.image_path
@@ -426,20 +428,18 @@ def test_marking_corrected_moves_an_existing_label(tmp_path: Path):
     annotate(controller)
     controller.save(mark_corrected=True)
 
-    assert (image.parent / "corrected" / image.name).exists()
-    assert (label.parent / "corrected" / label.name).exists()
+    assert read_state(dataset.stage).states[f"{label.parent.name}/{label.name}"] == "corrected"
+    assert image.exists() and label.exists()
 
 
-def test_a_moved_label_is_looked_up_where_it_now_is(tmp_path: Path):
+def test_a_corrected_label_is_still_looked_up_where_it_was_written(tmp_path: Path):
+    """Nothing moves, so a destination worked out before the change stays right."""
     controller, dataset = unlabelled_controller(tmp_path)
 
     annotate(controller)
     controller.save(mark_corrected=True)
 
-    label = dataset.label("SEM", 0)
-    assert controller.key_for(controller.record) == label.parent / "corrected" / label.name, (
-        "a destination worked out before the move would write a second label"
-    )
+    assert controller.key_for(controller.record) == dataset.label("SEM", 0)
 
 
 # ---------------------------------------------------------------------------

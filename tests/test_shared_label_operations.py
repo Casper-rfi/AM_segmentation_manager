@@ -101,12 +101,14 @@ def _write_csv(path: Path, rows: list[tuple[str, str]]) -> Path:
     return path
 
 
-def test_csv_check_follows_a_shared_label_into_its_new_state(tmp_path: Path):
-    """Deselecting one condition moves the whole group, including the label."""
-    project = make_project(tmp_path)
-    csv_path = _write_csv(tmp_path / "dataset.csv", [
+def test_an_exported_row_survives_a_state_change(tmp_path: Path):
+    """The reason state stopped being a folder: curating an image used to
+    rewrite the very path a training CSV had already recorded."""
+    make_project(tmp_path)
+    _write_csv(tmp_path / "dataset.csv", [
         ("project/lam_010/SEM_8/img_0004.tif", "project/lam_010/labels/img_0004.tif"),
     ])
+    csv_path = tmp_path / "dataset.csv"
 
     records = [r for r in scan(tmp_path) if r.image_path.parent.name == "SEM_8"]
     deselect_records(records)
@@ -114,31 +116,22 @@ def test_csv_check_follows_a_shared_label_into_its_new_state(tmp_path: Path):
     results = check_csv_paths(csv_path, tmp_path)
 
     assert len(results) == 1
-    assert results[0].image.status == "moved"
-    assert results[0].label.status == "moved"
-    assert results[0].image.resolved_path == project / "lam_010/SEM_8/deselected/img_0004.tif"
-    assert results[0].label.resolved_path == project / "lam_010/labels/deselected/img_0004.tif"
+    assert results[0].ok
+    assert results[0].image.status == "ok"
+    assert results[0].label.status == "ok"
 
 
-def test_csv_check_follows_a_variant_pulled_in_by_a_shared_label(tmp_path: Path):
-    """A row naming a condition the user never selected still resolves.
-
-    The group moved as a unit, so a CSV row for any of its members has to
-    follow -- otherwise a training list silently loses rows after curation.
-    """
-    project = make_project(tmp_path)
-    csv_path = _write_csv(tmp_path / "dataset.csv", [
+def test_a_row_naming_a_pulled_in_variant_survives_too(tmp_path: Path):
+    """The whole group changed state, and not one of its files moved."""
+    make_project(tmp_path)
+    _write_csv(tmp_path / "dataset.csv", [
         ("project/lam_010/SEM_8_fi_4/img_0004.tif", "project/lam_010/labels/img_0004.tif"),
     ])
+    csv_path = tmp_path / "dataset.csv"
 
     deselect_records([r for r in scan(tmp_path) if r.image_path.parent.name == "SEM_8"])
 
-    results = check_csv_paths(csv_path, tmp_path)
-
-    assert results[0].image.status == "moved"
-    assert results[0].image.resolved_path == (
-        project / "lam_010/SEM_8_fi_4/deselected/img_0004.tif"
-    )
+    assert check_csv_paths(csv_path, tmp_path)[0].ok
 
 
 def test_csv_check_reports_a_genuinely_missing_file(tmp_path: Path):

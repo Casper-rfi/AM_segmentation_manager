@@ -4,8 +4,10 @@ The single source of truth for what directories are called; resolve names here
 rather than embedding string literals. Image directories are ``<modality>`` or
 ``<modality>_<variant>``, the variant opaque and never parsed. Label directories
 are ``<image-directory>_labels`` beside them, resolved most-specific-first, then
-the shared ``<modality>_labels``, then legacy names. Workflow state is physical
-location: a file under ``deselected/`` or ``corrected/`` is in that state.
+the shared ``<modality>_labels``, then legacy names. Workflow state is declared
+in :mod:`~am_segmentation_manager.state`, not implied here; what remains is the
+naming of the ``deselected/`` and ``corrected/`` folders, which stay reserved so
+an unmigrated dataset is never read as selected.
 
 Except for :func:`build_image_sets`, nothing here touches the filesystem.
 """
@@ -386,8 +388,8 @@ def resolve_predictions_directory(
 def state_of_path(path: Path) -> RecordState:
     """Return the workflow state implied by the directory *path* sits in.
 
-    The state folder a file sits in *is* its state; there is no separate store
-    to consult.
+    The pre-migration answer, for a stage whose state is not declared yet.
+    Everything else reads the record.
     """
     return FOLDER_STATES.get(path.parent.name, "selected")  # type: ignore[return-value]
 

@@ -92,7 +92,13 @@ def test_converting_writes_the_labels_the_preview_listed(controller, tmp_path: P
     assert (stage / "sem_labels" / "img.tif").exists()
 
 
-def _record(stage: Path, kind: str | None = "raw", label: Path | None = None) -> ImageRecord:
+def _record(
+    stage: Path,
+    kind: str | None = "raw",
+    label: Path | None = None,
+    *,
+    corrected: bool = False,
+) -> ImageRecord:
     """Return a record whose prediction is of *kind*, with an optional label.
 
     Nothing is written: the summary line is counted from the scanned index, and
@@ -103,6 +109,8 @@ def _record(stage: Path, kind: str | None = "raw", label: Path | None = None) ->
         image_path=stage / "sem" / "img.tif", modality="SEM",
         predictions=[(directory / kind if kind else directory) / "img.tif"] if kind else [],
         labels=[label] if label else [],
+        selected=not corrected,
+        corrected=corrected,
     )
 
 
@@ -126,7 +134,7 @@ def test_the_summary_separates_the_reasons_nothing_is_ready(tmp_path: Path):
 
     summary = controller.describe_predictions([
         _record(stage, "clean"), _record(stage, None),
-        _record(stage, "raw", stage / "sem_labels" / "corrected" / "img.tif"),
+        _record(stage, "raw", stage / "sem_labels" / "img.tif", corrected=True),
     ])
 
     assert "Nothing to convert" in summary
@@ -153,16 +161,16 @@ def test_an_empty_selection_reports_nothing_at_all(tmp_path: Path):
 
 
 def _labelled_record(stage: Path, image: Path, label_state: str, content) -> ImageRecord:
-    """Return a record whose label sits in *label_state* holding *content*."""
+    """Return a record declared to be in *label_state*, its label holding *content*."""
     directory = stage / "sem_labels"
-    if label_state != "selected":
-        directory = directory / label_state
     directory.mkdir(parents=True, exist_ok=True)
     label = directory / "img.tif"
     tifffile.imwrite(str(label), content)
     return ImageRecord(
         image_path=image, modality="SEM", labels=[label],
         predictions=[stage / "predictions" / "raw" / "img.tif"],
+        selected=label_state == "selected",
+        corrected=label_state == "corrected",
     )
 
 
@@ -239,11 +247,18 @@ def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
 # Compressing labels
 # ---------------------------------------------------------------------------
 
-def _record_with_label(tmp_path: Path, folder: str = "labels") -> ImageRecord:
+def _record_with_label(
+    tmp_path: Path, folder: str = "labels", *, corrected: bool = False
+) -> ImageRecord:
     label = tmp_path / folder / "img.tif"
     label.parent.mkdir(parents=True, exist_ok=True)
     tifffile.imwrite(str(label), _sparse_label())
-    return ImageRecord(image_path=tmp_path / "img.tif", labels=[label])
+    return ImageRecord(
+        image_path=tmp_path / "img.tif",
+        labels=[label],
+        selected=not corrected,
+        corrected=corrected,
+    )
 
 
 def test_a_compression_preview_does_not_touch_the_files(controller, tmp_path: Path):
@@ -274,18 +289,20 @@ def test_compressing_reports_what_it_saved(controller, tmp_path: Path):
 
 
 def test_corrected_labels_block_compression_and_are_named(controller, tmp_path: Path):
-    record = _record_with_label(tmp_path, folder="labels/corrected")
+    record = _record_with_label(tmp_path, corrected=True)
     original = record.labels[0].read_bytes()
 
     report = controller.compress_labels([record], dry_run=True)
 
     assert report.blocked == "corrected"
-    assert any("corrected" in line for line in report.lines)
+    assert any(record.labels[0].name in line for line in report.lines), (
+        "the labels at stake have to be named, not just counted"
+    )
     assert record.labels[0].read_bytes() == original
 
 
 def test_confirming_lets_a_corrected_label_be_compressed(controller, tmp_path: Path):
-    record = _record_with_label(tmp_path, folder="labels/corrected")
+    record = _record_with_label(tmp_path, corrected=True)
 
     report = controller.compress_labels([record], allow_corrected=True)
 

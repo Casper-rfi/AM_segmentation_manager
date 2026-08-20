@@ -14,32 +14,28 @@ predicting and preparing labels from predictions, exporting filtered training li
 and quantifying the collection through its metadata and its labels. `README.md` says
 what each command and tab does. What is worth knowing beyond that:
 
-* **Every state change expands across the label group** and validates the whole batch
-  before moving anything. Marking a set corrected, and exporting a training CSV, both
-  stop to name any image whose label holds no annotation.
+* **Workflow state is declared in each stage's `AM_state.yaml`**, not implied by which
+  folder a file sits in. A change expands across the label group, validates the whole
+  batch, and writes one entry. Marking a set corrected, and exporting a training CSV,
+  both stop to name any image whose label holds no annotation.
 * **Each tab has a controller holding no Qt**, which is what makes navigation, cache
   eviction and state expansion testable without a display.
 * **An operation is in the window when its input is the selection on screen.** Curate
   runs `convert-predictions`, `compress-labels` and `repair-state` against the ticked
   set; Add data runs `inspect-layout` and `init-project` over the scanned folder. Each
   previews first and applies only what the preview showed, on a worker thread.
-* **Labels are proofread in the window**, not in external software. The Label tab
-  reads one lamella's selected and corrected frames at full resolution, under whichever
-  imaging condition they were captured in, and paints with a brush and a flood fill. A
-  save writes the lamella's edits in one action, offers to mark the reviewed set
-  corrected, and refuses the whole batch rather than overwrite a label something else
-  has rewritten since it was opened. On request it rings the components of a few pixels
-  -- the stray spots that otherwise reach a training set as annotation, and the holes
-  that size inside one -- which `find-specks` reports across the collection.
-* **Predictions are made in the window or on the command line**, in an
-  environment installed separately: the inference stack is several gigabytes, so
-  `scripts/setup_ml.sh` builds its own, which runs the window too. `am-seg
-  predict` and the Curate tab's *Predict labels* both write to
-  `<predictions>/am_seg/`, the only prediction directory this package writes.
-  One prediction per label group, one modality per run — a selection holding
-  both is refused, since a model is for one and nothing can tell which — and
-  resumable, which is also what lets the window offer a Stop button that no
-  other operation here can.
+* **Labels are proofread in the window**, not in external software. A save writes one
+  lamella's edits in a single action, offers to mark the reviewed set corrected, and
+  refuses the whole batch rather than overwrite a label something else has rewritten
+  since it was opened. On request it rings the components of a few pixels -- the stray
+  spots that otherwise reach a training set as annotation, and the holes that size
+  inside one -- which `find-specks` reports across the collection.
+* **Predictions need an environment installed separately**: the inference stack is
+  several gigabytes, so `scripts/setup_ml.sh` builds its own, which runs the window too.
+  Writes go to `<predictions>/am_seg/`, the only prediction directory this package
+  writes. One prediction per label group, one modality per run — a selection holding
+  both is refused, since a model is for one and nothing can tell which — and resumable,
+  which is what lets the window offer a Stop button no other operation here can.
 * **Export filters, counts and writes, and every filter narrows all three.** Its filter
   lists are derived from the breakdowns, so a property can be counted by and filtered
   on without being declared twice; the breakdown reads as a table or a chart in the
@@ -53,6 +49,19 @@ Why each of these is so is in [`decisions.md`](decisions.md).
 ## What to pick up next
 
 In no particular order.
+
+**Finishing declared workflow state.** State lives in each stage's `AM_state.yaml`,
+`migrate-state` transcribes a collection's folders into one, `--move-files` takes the
+files back out, `inspect-layout` reports whatever is out of step, and
+`check-training-csv` has lost its path rewriting. What is left is removing the folder
+reading itself: `repair-state` and the group-consistency machinery, `layout.py`'s state
+helpers, and the state-subdirectory scan in `image_files_by_name`. **That last one is not
+a free deletion** -- it is what lets `migrate-state` see nested files at all, so either
+the scanner keeps the fallback permanently or migration grows its own traversal. Decide
+which before deleting anything, and do it only once the working collection is migrated.
+Keep `deselected` and `corrected` reserved as directory names whichever way it goes:
+reading an unmigrated one as selected is the only failure here with no visible symptom.
+Why it is built this way is in [`decisions.md`](decisions.md) § Workflow state.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.

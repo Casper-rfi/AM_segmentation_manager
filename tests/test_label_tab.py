@@ -1273,20 +1273,22 @@ def test_saving_alone_does_not_move_anything(qt_app, window):
     assert "corrected" not in str(image)
 
 
-def test_marking_corrected_moves_the_image_and_its_label(qt_app, window):
+def test_marking_corrected_declares_the_whole_group(qt_app, window):
+    from am_segmentation_manager.state import read_state
+
     window.controller.set_editing_enabled(True)
-    image = window.label_controller.record.image_path
+    record = window.label_controller.record
+    image = record.image_path
     label = window.label_controller.current_key
     paint_on(window)
 
     save_with(window, mark_corrected=True)
     _settle(qt_app, lambda: saved(window))
 
-    assert not image.exists(), "the image should have moved into corrected/"
-    assert (image.parent / "corrected" / image.name).exists()
-    assert (label.parent / "corrected" / label.name).exists(), (
-        "a label left behind leaves the group disagreeing about its state"
-    )
+    assert image.exists() and label.exists(), "declaring a state moves nothing"
+    assert record.corrected is True
+    stage = image.parent.parent
+    assert read_state(stage).states[f"{label.parent.name}/{label.name}"] == "corrected"
 
 
 def test_saving_leaves_the_reviewer_on_the_lamella_they_saved(qt_app, two_lamellae):

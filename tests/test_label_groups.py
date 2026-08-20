@@ -29,6 +29,7 @@ from am_segmentation_manager.operations.selection import (
     transition_records,
 )
 from am_segmentation_manager.scanner import Scanner
+from am_segmentation_manager.state import read_state
 
 #: The legacy multi-condition layout: several SEM sets sharing one label set.
 SEM_VARIANTS = ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4")
@@ -165,29 +166,29 @@ def test_expansion_leaves_unshared_records_alone(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 def test_deselecting_one_condition_deselects_the_whole_scene(tmp_path: Path):
-    """The label is the unit of proofreading, so the scene moves together."""
+    """The label is the unit of proofreading, so the scene changes together."""
     project = make_project(tmp_path)
     records = scan(tmp_path)
 
-    moved = deselect_records([records["SEM_8"]])
+    changed = deselect_records([records["SEM_8"]])
 
-    assert moved == len(SEM_VARIANTS)
-    for name in SEM_VARIANTS:
-        assert (project / "lam_010" / name / "deselected" / "img_0004.tif").exists()
-    assert (project / "lam_010" / "labels" / "deselected" / "img_0004.tif").exists()
+    assert changed == len(SEM_VARIANTS)
+    assert {record.selected for record in scan(tmp_path).values() if record.variant} == {False}
+    assert read_state(project / "lam_010").states == {
+        "labels/img_0004.tif": "deselected"
+    }
 
 
-def test_the_shared_label_is_moved_exactly_once(tmp_path: Path):
-    """Three records reference the same label, which must not be moved thrice."""
+def test_the_shared_label_is_declared_exactly_once(tmp_path: Path):
+    """Three records reference the same label, which is one entry, not three."""
     make_project(tmp_path)
     records = scan(tmp_path)
 
     plan = plan_transition([records["SEM_8"]], "deselected")
 
-    label_moves = [move for move in plan.moves if move.source.parent.name == "labels"]
-    assert len(label_moves) == 1
-    # One move per image, plus the single shared label.
-    assert len(plan.moves) == len(SEM_VARIANTS) + 1
+    assert len(plan.changes) == 1
+    assert plan.changes[0].key == "labels/img_0004.tif"
+    assert len(plan.records) == len(SEM_VARIANTS)
 
 
 def test_an_unshared_modality_is_unaffected(tmp_path: Path):
@@ -219,16 +220,15 @@ def test_a_plan_on_an_unshared_record_reaches_no_further(tmp_path: Path):
     assert plan.reaches_beyond_request is False
 
 
-def test_a_round_trip_restores_every_image(tmp_path: Path):
+def test_a_round_trip_leaves_nothing_declared(tmp_path: Path):
     project = make_project(tmp_path)
 
     deselect_records([scan(tmp_path)["SEM_8"]])
     select_records([scan(tmp_path)["SEM_8"]])
 
+    assert read_state(project / "lam_010").states == {}
     for name in SEM_VARIANTS:
         assert (project / "lam_010" / name / "img_0004.tif").exists()
-        assert not (project / "lam_010" / name / "deselected" / "img_0004.tif").exists()
-    assert (project / "lam_010" / "labels" / "img_0004.tif").exists()
 
 
 def test_correcting_the_scene_protects_it_from_a_later_move(tmp_path: Path):
@@ -242,13 +242,15 @@ def test_correcting_the_scene_protects_it_from_a_later_move(tmp_path: Path):
         deselect_records([rescanned["SEM_8_fi_1"]])
 
 
-def test_corrected_data_moves_only_with_explicit_confirmation(tmp_path: Path):
+def test_corrected_data_changes_only_with_explicit_confirmation(tmp_path: Path):
     project = make_project(tmp_path)
     mark_corrected_records([scan(tmp_path)["SEM_8"]])
 
     deselect_records([scan(tmp_path)["SEM_8"]], allow_move_from_corrected=True)
 
-    assert (project / "lam_010" / "labels" / "deselected" / "img_0004.tif").exists()
+    assert read_state(project / "lam_010").states == {
+        "labels/img_0004.tif": "deselected"
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +377,7 @@ def _cli(tmp_path: Path, command: str, *extra: str) -> int:
     ])
 
 
-def test_cli_dry_run_reports_without_moving(tmp_path: Path, capsys):
+def test_cli_dry_run_reports_without_writing(tmp_path: Path, capsys):
     """The reach of the change must be visible before it is made."""
     project = make_project(tmp_path)
 
@@ -387,13 +389,15 @@ def test_cli_dry_run_reports_without_moving(tmp_path: Path, capsys):
     assert "SEM_8_fi_1" in output and "SEM_8_fi_4" in output
 
 
-def test_cli_deselect_moves_the_whole_group(tmp_path: Path):
+def test_cli_deselect_declares_the_whole_group(tmp_path: Path):
     project = make_project(tmp_path)
 
     assert _cli(tmp_path, "deselect") == 0
 
-    for name in SEM_VARIANTS:
-        assert (project / "lam_010" / name / "deselected" / "img_0004.tif").exists()
+    assert read_state(project / "lam_010").states == {
+        "labels/img_0004.tif": "deselected"
+    }
+    assert {record.selected for record in scan(tmp_path).values() if record.variant} == {False}
 
 
 def test_cli_repair_state(tmp_path: Path):

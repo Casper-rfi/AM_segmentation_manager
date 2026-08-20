@@ -27,10 +27,10 @@ if HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
 
+    from am_segmentation_manager.io.atomic import fingerprint_of
     from am_segmentation_manager.operations.label_save import (
         LabelToSave,
         StaleLabels,
-        fingerprint_of,
         plan_saves,
         save_labels,
     )
@@ -163,37 +163,37 @@ def test_the_plan_names_what_changed(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 def test_a_corrected_label_is_not_replaced_without_consent(tmp_path: Path):
-    destination = existing(tmp_path / "labels" / "corrected" / "img.tif")
+    destination = existing(tmp_path / "labels" / "img.tif")
 
     with pytest.raises(PermissionError, match="proofread"):
-        save_labels([item(destination)])
+        save_labels([item(destination, corrected=True)])
 
     assert (tifffile.imread(str(destination)) == 1).all()
 
 
 def test_a_corrected_label_is_replaced_once_confirmed(tmp_path: Path):
-    destination = existing(tmp_path / "labels" / "corrected" / "img.tif")
+    destination = existing(tmp_path / "labels" / "img.tif")
 
-    save_labels([item(destination)], allow_corrected=True)
+    save_labels([item(destination, corrected=True)], allow_corrected=True)
 
     np.testing.assert_array_equal(tifffile.imread(str(destination)), annotated())
 
 
 def test_one_corrected_label_holds_up_the_whole_batch(tmp_path: Path):
-    plain = existing(tmp_path / "labels" / "img.tif")
-    proofread = existing(tmp_path / "labels" / "corrected" / "img.tif")
+    plain = existing(tmp_path / "labels" / "plain.tif")
+    proofread = existing(tmp_path / "labels" / "proofread.tif")
 
     with pytest.raises(PermissionError):
-        save_labels([item(plain), item(proofread)])
+        save_labels([item(plain), item(proofread, corrected=True)])
 
     assert (tifffile.imread(str(plain)) == 1).all(), "a batch must not write partway"
 
 
 def test_the_plan_separates_the_corrected_ones(tmp_path: Path):
-    plain = existing(tmp_path / "labels" / "img.tif")
-    proofread = existing(tmp_path / "labels" / "corrected" / "img.tif")
+    plain = existing(tmp_path / "labels" / "plain.tif")
+    proofread = existing(tmp_path / "labels" / "proofread.tif")
 
-    plan = plan_saves([item(plain), item(proofread)])
+    plan = plan_saves([item(plain), item(proofread, corrected=True)])
 
     assert len(plan.writes) == 1
     assert len(plan.corrected) == 1

@@ -5,9 +5,11 @@ the label -- not the image -- the unit of proofreading. A :class:`LabelGroup` is
 one label file and every image referencing it; a private label forms a group of
 one, keeping this a single code path.
 
-The label's on-disk location determines the group's state, and where no label
-exists yet the image's own location does. Groups are built from the filesystem
-rather than a scanned index, so a command given one file path expands correctly.
+A group is identified by where its label lives *or would live*, so images
+sharing a label directory are one group before any label exists -- keying on the
+image instead would split them, then merge them the moment a label appeared.
+Groups are built from the filesystem rather than a scanned index, so a command
+given one file path expands correctly.
 """
 from __future__ import annotations
 
@@ -20,8 +22,11 @@ from ..layout import (
     RecordState,
     base_path,
     build_image_sets,
+    classify_image_directory,
     image_files_by_name,
+    resolve_labels_directory,
     state_of_path,
+    subdirectories_by_name,
 )
 from ..models import ImageRecord
 
@@ -35,12 +40,17 @@ class LabelGroup:
     Attributes:
         label_path: The label's location with any state folder stripped, or
             None when the group's images have no label yet.
+        identity: Where the label lives or would live. Unlike *label_path* this
+            is set whether or not the file exists, and it is what the group is
+            keyed by. None only when the image sits in no recognised image
+            directory.
         records: The images referencing that label, in a stable order. Always
             at least one.
     """
 
     label_path: Path | None
     records: tuple[ImageRecord, ...]
+    identity: Path | None = None
 
     @property
     def is_shared(self) -> bool:
@@ -99,15 +109,62 @@ def _existing_state_variant(path: Path) -> Path | None:
     return None
 
 
-def group_key(record: ImageRecord) -> str:
+def labels_directory_for(
+    image_path: Path, cache: dict[Path, Path | None] | None = None
+) -> Path | None:
+    """Return where *image_path*'s label lives or would live.
+
+    Answers for a label directory that does not exist yet, which is what lets a
+    group be identified before anything has been annotated. Returns None when
+    the image sits in no recognised image directory.
+
+    Args:
+        cache: Reused across a batch. Resolution lists the stage's
+            subdirectories, which is one listing per image directory rather
+            than per image.
+    """
+    image_directory = base_path(image_path).parent
+    if cache is not None and image_directory in cache:
+        return cache[image_directory]
+
+    classification = classify_image_directory(image_directory.name)
+    resolved: Path | None = None
+    if classification is not None:
+        resolved, _, _ = resolve_labels_directory(
+            image_directory,
+            classification.modality,
+            subdirectories_by_name(image_directory.parent),
+        )
+    if cache is not None:
+        cache[image_directory] = resolved
+    return resolved
+
+
+def group_identity(
+    record: ImageRecord, cache: dict[Path, Path | None] | None = None
+) -> Path | None:
+    """Return the label path identifying *record*'s group, existing or not."""
+    if record.labels:
+        return base_path(record.labels[0])
+    labels_directory = labels_directory_for(record.image_path, cache)
+    if labels_directory is None:
+        return None
+    return labels_directory / base_path(record.image_path).name
+
+
+def group_key(
+    record: ImageRecord, cache: dict[Path, Path | None] | None = None
+) -> str:
     """Return the identity of the group *record* belongs to.
 
-    Records sharing a label share a key. A record with no label is keyed by its
-    own image path, so it forms a group of one.
+    Records resolving to the same label share a key, whether or not that label
+    exists yet. An image in no recognised image directory has no label to be
+    keyed by, so it is keyed by itself and forms a group of one.
     """
-    if record.labels:
-        return str(base_path(record.labels[0]))
-    return str(base_path(record.image_path))
+    identity = group_identity(record, cache)
+    if identity is None:
+        return str(base_path(record.image_path))
+    return str(identity)
 
 
 def build_group(record: ImageRecord) -> LabelGroup:
@@ -118,13 +175,14 @@ def build_group(record: ImageRecord) -> LabelGroup:
     each. Reading from disk rather than from a scanned index means a command
     given one file path still expands to the whole group.
     """
-    if not record.labels:
-        return LabelGroup(label_path=None, records=(record,))
+    identity = group_identity(record)
+    if identity is None:
+        return LabelGroup(label_path=None, records=(record,), identity=None)
 
-    label_path = base_path(record.labels[0])
-    labels_directory = label_path.parent
+    labels_directory = identity.parent
     stage_directory = labels_directory.parent
-    filename = label_path.name
+    filename = identity.name
+    label_path = identity if _existing_state_variant(identity) is not None else None
 
     siblings: list[ImageRecord] = []
     for image_set in build_image_sets(stage_directory):
@@ -139,7 +197,7 @@ def build_group(record: ImageRecord) -> LabelGroup:
         siblings.append(
             ImageRecord(
                 image_path=found,
-                labels=[label_path],
+                labels=[label_path] if label_path is not None else [],
                 project=record.project,
                 lamella=record.lamella,
                 stage=record.stage,
@@ -153,7 +211,9 @@ def build_group(record: ImageRecord) -> LabelGroup:
 
     if not siblings:  # pragma: no cover - defensive; the record's own image is missing
         siblings = [record]
-    return LabelGroup(label_path=label_path, records=tuple(siblings))
+    return LabelGroup(
+        label_path=label_path, records=tuple(siblings), identity=identity
+    )
 
 
 def build_groups(records: Iterable[ImageRecord]) -> list[LabelGroup]:
@@ -163,8 +223,9 @@ def build_groups(records: Iterable[ImageRecord]) -> list[LabelGroup]:
     all five conditions of a scene gets one group back, not five.
     """
     groups: dict[str, LabelGroup] = {}
+    cache: dict[Path, Path | None] = {}
     for record in records:
-        key = group_key(record)
+        key = group_key(record, cache)
         if key in groups:
             continue
         groups[key] = build_group(record)

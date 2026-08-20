@@ -16,7 +16,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..layout import state_of_path
 from ..models import ImageRecord
 from .label_io import has_image_stack_support, save_label_image
 
@@ -82,8 +81,8 @@ def compress_labels(
     Args:
         records: Records whose labels should be checked (as produced by the
             scanner / filtering module).
-        allow_corrected: Set True to permit recompressing labels that live
-            in a ``corrected`` folder.
+        allow_corrected: Set True to permit recompressing labels whose group
+            is declared corrected.
         dry_run: If True, measure potential savings without modifying any
             files.
 
@@ -96,9 +95,13 @@ def compress_labels(
         )
     import tifffile
 
+    records = list(records)
     labels = existing_labels(records)
     if not allow_corrected:
-        corrected = [label for label in labels if state_of_path(label) == "corrected"]
+        declared_corrected = {
+            label for record in records if record.corrected for label in record.labels
+        }
+        corrected = [label for label in labels if label in declared_corrected]
         if corrected:
             raise PermissionError(
                 "Refusing to recompress corrected labels without explicit "

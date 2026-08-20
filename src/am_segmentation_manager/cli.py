@@ -13,6 +13,7 @@ import argparse
 import logging
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 from . import __version__
@@ -519,6 +520,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show the files that would move without changing anything",
     )
 
+    # -- migrate-state ------------------------------------------------------
+    migrate_state_cmd = sub.add_parser(
+        "migrate-state",
+        help="Record each stage's workflow state in an AM_state.yaml file",
+        description=(
+            "Read the workflow state every label group's files currently imply "
+            "and write it into an AM_state.yaml beside the image directories. "
+            "Nothing is moved, deleted or overwritten: a run is undone by "
+            "deleting the files it wrote, and a stage that already has one is "
+            "left alone. A stage is transcribed whole or not at all, so one "
+            "holding images that disagree with their label, or a file sitting "
+            "in two state folders at once, is reported instead -- resolve it "
+            "with repair-state and run this again."
+        ),
+    )
+    migrate_state_cmd.add_argument(
+        "start_path", nargs="?", default=".",
+        help="Directory to migrate (default: current directory)",
+    )
+    migrate_state_cmd.add_argument(
+        "--move-files", action="store_true",
+        help=(
+            "After the state is declared, move images and labels out of the "
+            "deselected/ and corrected/ folders they no longer need. A stage "
+            "whose state is not declared yet is left alone, since there the "
+            "folders are the only record of it"
+        ),
+    )
+    migrate_state_cmd.add_argument(
+        "--remove-empty-dirs", action="store_true",
+        help=(
+            "With --move-files, remove the state folders once they are empty. "
+            "One still holding anything is reported, never cleared"
+        ),
+    )
+    migrate_state_cmd.add_argument(
+        "--dry-run", action="store_true",
+        help="Report what would be written and moved without changing anything",
+    )
+
     # -- find-specks ---------------------------------------------------------
     find_specks_cmd = sub.add_parser(
         "find-specks",
@@ -778,8 +819,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Check that image/label paths recorded in a training CSV still exist",
         description=(
             "Re-check every image/label path in a CSV exported by "
-            "create-training-csv against the current filesystem state, and "
-            "optionally write a corrected copy."
+            "create-training-csv, and optionally write a copy without the rows "
+            "that no longer resolve. Curation cannot move a file, so a path "
+            "that does not resolve means the file is gone -- deleted, renamed, "
+            "or on a drive that is not mounted. Exits 1 when any row has one."
         ),
     )
     check_training_csv.add_argument("csv_path", help="Path to the CSV file to check")
@@ -788,24 +831,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Scan directory the CSV paths are relative to (default: current directory)",
     )
     check_training_csv.add_argument(
-        "--fix", action="store_true",
-        help="Write a corrected CSV with updated paths for files that moved between states",
+        "--prune", action="store_true",
+        help=(
+            "Write a copy without the rows whose image or label is missing, "
+            "keeping the split the CSV already records"
+        ),
     )
     check_training_csv.add_argument(
         "-o", "--output", default=None,
-        help="Output path for the fixed CSV (default: '<name>_checked.csv'); requires --fix",
+        help="Where to write it (default: '<name>_checked.csv'); requires --prune",
     )
     check_training_csv.add_argument(
         "--in-place", action="store_true",
-        help="Overwrite the original CSV instead of writing a new file; requires --fix",
-    )
-    check_training_csv.add_argument(
-        "--drop-missing", action="store_true",
-        help="With --fix, omit rows whose image or label cannot be found in any workflow state",
-    )
-    check_training_csv.add_argument(
-        "--keep-missing", action="store_true",
-        help="With --fix, keep rows with unresolved paths unchanged instead of aborting",
+        help="Overwrite the original CSV instead of writing a new file; requires --prune",
     )
 
     return parser
@@ -1436,10 +1474,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
 
         if args.dry_run:
             for line in plan.describe():
-                logger.info("Would move %s", line)
+                logger.info("Would declare %s", line)
             logger.info(
-                "Dry run: %d file(s) would move, affecting %d image(s)",
-                len(plan.moves), len(plan.records),
+                "Dry run: %d group(s) would change, affecting %d image(s)",
+                len(plan.changes), len(plan.records),
             )
             return 0
 
@@ -1486,6 +1524,80 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         )
         return 0
 
+    if args.command == "migrate-state":
+        from .operations.migrate_state import migrate_projects
+
+        start_path = Path(args.start_path)
+        projects = Scanner(start_path).build_index().all_projects()
+        if not projects:
+            logger.error("No projects found under %s", start_path)
+            return 2
+
+        results = migrate_projects(projects, dry_run=args.dry_run)
+        for result in results:
+            location = make_path_relative(result.stage_directory, start_path)
+            if result.outcome in ("blocked", "conflict"):
+                logger.warning("%s: not migrated", location)
+                for problem in result.problems:
+                    logger.warning("    %s: %s", problem.key, problem.detail)
+            elif result.outcome == "migrated":
+                logger.info(
+                    "%s %s: %d group(s) declared",
+                    "Would migrate" if args.dry_run else "Migrated",
+                    location, len(result.declared),
+                )
+
+        counted = Counter(result.outcome for result in results)
+        logger.info(
+            "Total: %d stage(s), %d %s, %d already selected throughout, "
+            "%d already had a file, %d left alone",
+            len(results), counted["migrated"],
+            "would be migrated" if args.dry_run else "migrated",
+            counted["nothing-to-declare"],
+            counted["unchanged"],
+            counted["blocked"] + counted["conflict"],
+        )
+        left_alone = counted["blocked"] + counted["conflict"]
+
+        if args.move_files:
+            from .operations.migrate_state import unnest_projects
+
+            moved = unnest_projects(
+                projects,
+                dry_run=args.dry_run,
+                remove_empty_directories=args.remove_empty_dirs,
+            )
+            for result in moved:
+                location = make_path_relative(result.stage_directory, start_path)
+                if result.outcome == "blocked":
+                    logger.warning("%s: nothing moved", location)
+                    for problem in result.problems:
+                        logger.warning("    %s: %s", problem.key, problem.detail)
+                elif result.outcome == "moved":
+                    logger.info(
+                        "%s %s: %d file(s) out of state folders",
+                        "Would move" if args.dry_run else "Moved",
+                        location, len(result.moves),
+                    )
+            counted_moves = Counter(result.outcome for result in moved)
+            cleared = sum(len(result.removed) for result in moved)
+            logger.info(
+                "Files: %d stage(s) %s, %d already flat, %d left alone",
+                counted_moves["moved"],
+                "would be un-nested" if args.dry_run else "un-nested",
+                counted_moves["nothing-nested"],
+                counted_moves["blocked"],
+            )
+            if args.remove_empty_dirs:
+                logger.info(
+                    "State folders: %d %s. Any still holding something is "
+                    "named above and left alone.",
+                    cleared, "would be removed" if args.dry_run else "removed",
+                )
+            left_alone += counted_moves["blocked"]
+
+        return 1 if left_alone else 0
+
     if args.command == "create-training-csv":
         from .operations.csv import export_training_csv
 
@@ -1522,16 +1634,17 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 0
 
     if args.command == "check-training-csv":
-        from .operations.csv_check import check_csv_paths, summarize_results, write_fixed_csv
+        from .operations.csv_check import (
+            check_csv_paths,
+            summarize_results,
+            write_pruned_csv,
+        )
 
         if args.in_place and args.output:
             logger.error("--in-place and --output are mutually exclusive")
             return 2
-        if args.drop_missing and args.keep_missing:
-            logger.error("--drop-missing and --keep-missing are mutually exclusive")
-            return 2
-        if not args.fix and (args.output or args.in_place or args.drop_missing or args.keep_missing):
-            logger.error("--output/--in-place/--drop-missing/--keep-missing require --fix")
+        if not args.prune and (args.output or args.in_place):
+            logger.error("--output/--in-place require --prune")
             return 2
 
         start_path = Path(args.start_path)
@@ -1541,7 +1654,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         for line in lines:
             logger.info(line)
 
-        if not args.fix:
+        if not args.prune:
             return 0 if problem_count == 0 else 1
 
         if args.in_place:
@@ -1550,14 +1663,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             output_path = Path(args.output)
         else:
             output_path = csv_path.with_name(f"{csv_path.stem}_checked{csv_path.suffix}")
-        missing_policy = "drop" if args.drop_missing else "keep" if args.keep_missing else "abort"
 
-        try:
-            written_path = write_fixed_csv(results, start_path, output_path, missing_policy=missing_policy)
-        except ValueError as exc:
-            logger.error(str(exc))
-            return 2
-        logger.info("Wrote fixed CSV: %s", written_path)
+        written_path, dropped = write_pruned_csv(results, output_path)
+        logger.info("Wrote %s, dropping %d row(s)", written_path, dropped)
         return 0
 
     if args.command == "compress-labels":

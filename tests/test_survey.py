@@ -379,3 +379,115 @@ def test_survey_never_modifies_the_filesystem(tmp_path: Path):
 
     after = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
     assert before == after
+
+
+# ---------------------------------------------------------------------------
+# Declared workflow state
+# ---------------------------------------------------------------------------
+
+def _findings_for(root: Path, category: str) -> list:
+    """Return the findings of one category from a survey of *root*."""
+    from am_segmentation_manager.survey import survey_collection
+
+    return [
+        finding
+        for finding in survey_collection(root).all_findings
+        if finding.category == category
+    ]
+
+
+def test_a_stage_still_keeping_state_in_folders_is_reported(tmp_path: Path):
+    from conftest import build_dataset
+
+    dataset = build_dataset(tmp_path, modalities=("SEM",))
+    name = dataset.filenames["SEM"][0]
+    nested = dataset.image_dir("SEM") / "deselected"
+    nested.mkdir()
+    (dataset.image_dir("SEM") / name).rename(nested / name)
+
+    findings = _findings_for(tmp_path, "unmigrated-state")
+
+    assert len(findings) == 1
+    assert "migrate-state" in findings[0].message
+
+
+def test_nested_files_after_migration_ask_for_the_move(tmp_path: Path):
+    from am_segmentation_manager.state import read_state, write_state
+    from conftest import build_dataset
+
+    dataset = build_dataset(tmp_path, modalities=("SEM",))
+    name = dataset.filenames["SEM"][0]
+    nested = dataset.image_dir("SEM") / "deselected"
+    nested.mkdir()
+    (dataset.image_dir("SEM") / name).rename(nested / name)
+    write_state(
+        read_state(dataset.stage),
+        {f"{dataset.label_dir('SEM').name}/{name}": "deselected"},
+    )
+
+    findings = _findings_for(tmp_path, "nested-files")
+
+    assert len(findings) == 1
+    assert "--move-files" in findings[0].message
+
+
+def test_empty_state_folders_are_noted_as_clutter(tmp_path: Path):
+    from am_segmentation_manager.state import read_state, write_state
+    from conftest import build_dataset
+
+    dataset = build_dataset(tmp_path, modalities=("SEM",))
+    (dataset.image_dir("SEM") / "corrected").mkdir()
+    write_state(read_state(dataset.stage), {})
+
+    findings = _findings_for(tmp_path, "empty-state-folders")
+
+    assert len(findings) == 1
+    assert findings[0].severity == "info"
+
+
+def test_an_entry_naming_a_group_that_is_gone_is_reported(tmp_path: Path):
+    """A drive that was not mounted must not have its curation deleted for it."""
+    from am_segmentation_manager.state import read_state, write_state
+    from conftest import build_dataset
+
+    dataset = build_dataset(tmp_path, modalities=("SEM",))
+    write_state(
+        read_state(dataset.stage),
+        {f"{dataset.label_dir('SEM').name}/vanished.tif": "corrected"},
+    )
+
+    findings = _findings_for(tmp_path, "orphaned-state")
+
+    assert len(findings) == 1
+    assert "vanished.tif" in findings[0].message
+
+
+def test_a_clean_migrated_stage_reports_nothing_about_state(tmp_path: Path):
+    from am_segmentation_manager.state import read_state, write_state
+    from conftest import build_dataset
+
+    dataset = build_dataset(tmp_path, modalities=("SEM",))
+    name = dataset.filenames["SEM"][0]
+    write_state(
+        read_state(dataset.stage),
+        {f"{dataset.label_dir('SEM').name}/{name}": "deselected"},
+    )
+
+    for category in (
+        "unmigrated-state", "nested-files", "empty-state-folders",
+        "orphaned-state", "unreadable-state",
+    ):
+        assert _findings_for(tmp_path, category) == [], category
+
+
+def test_an_unreadable_state_file_is_an_error(tmp_path: Path):
+    from am_segmentation_manager.state import state_file_path
+    from conftest import build_dataset
+
+    dataset = build_dataset(tmp_path, modalities=("SEM",))
+    state_file_path(dataset.stage).write_text("state:\n  - [\n", encoding="utf-8")
+
+    findings = _findings_for(tmp_path, "unreadable-state")
+
+    assert len(findings) == 1
+    assert findings[0].severity == "error"

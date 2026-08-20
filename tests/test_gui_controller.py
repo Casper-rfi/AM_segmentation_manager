@@ -339,7 +339,7 @@ def test_state_of_each_modality():
 def test_mixed_state_is_reported_rather_than_picking_a_side():
     """Curation deselects one modality at a time, so this is a normal state."""
     controller = make_controller()
-    controller.frame.record("SEM").image_path = Path("sem/deselected/img_000_SEM.tif")
+    declare(controller.frame.record("SEM"), "deselected")
 
     assert controller.state_of("SEM") == "deselected"
     assert controller.combined_state() == MIXED
@@ -347,7 +347,7 @@ def test_mixed_state_is_reported_rather_than_picking_a_side():
 
 def test_target_state_follows_the_target():
     controller = make_controller()
-    controller.frame.record("SEM").image_path = Path("sem/corrected/img_000_SEM.tif")
+    declare(controller.frame.record("SEM"), "corrected")
 
     controller.set_target("SEM")
     assert controller.target_state() == "corrected"
@@ -361,8 +361,8 @@ def test_target_state_follows_the_target():
 
 def test_frame_states_cover_the_whole_lamella():
     controller = make_controller()
-    controller.frames[2].record("SEM").image_path = Path("sem/deselected/img_002_SEM.tif")
-    controller.frames[2].record("FIB").image_path = Path("fib/deselected/img_002_FIB.tif")
+    declare(controller.frames[2].record("SEM"), "deselected")
+    declare(controller.frames[2].record("FIB"), "deselected")
 
     assert controller.frame_states() == ["selected", "selected", "deselected", "selected"]
 
@@ -824,15 +824,23 @@ def status_lamella(name: str, records: list[ImageRecord]) -> Lamella:
     )
 
 
+def declare(record: ImageRecord, state: str) -> ImageRecord:
+    """Put *record* into *state*, as the scanner does from the state file."""
+    record.selected = state == "selected"
+    record.corrected = state == "corrected"
+    return record
+
+
 def image(state: str, modality: str = "SEM", *, name: str = "img_000") -> ImageRecord:
-    """A record whose on-disk location puts it in *state*."""
-    suffix = "" if state == "selected" else f"/{state}"
+    """A record declared to be in *state*."""
     directory = "sem" if modality == "SEM" else "fib"
     labels = "sem_labels" if modality == "SEM" else "fib_labels"
     return ImageRecord(
-        image_path=Path(f"lam/stage/{directory}{suffix}/{name}.tif"),
-        labels=[Path(f"lam/stage/{labels}{suffix}/{name}.tif")],
+        image_path=Path(f"lam/stage/{directory}/{name}.tif"),
+        labels=[Path(f"lam/stage/{labels}/{name}.tif")],
         modality=modality,
+        selected=state == "selected",
+        corrected=state == "corrected",
     )
 
 

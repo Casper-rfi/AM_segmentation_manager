@@ -65,9 +65,7 @@ here only once something genuinely needs it.
 **A label directory is `<image-directory>_labels`, a sibling of the image directory.**
 `layout.py` states the resolution order; what it cannot say is why that shape. It makes
 image-dir → label-dir a pure string function both ways with no lookup table, which is
-what lets one module hold the convention. A `labels/<image-dir>/` subtree would push the
-`deselected/` and `corrected/` folders three deep and gain nothing. Conditions share a
-label by default; giving one its own means creating the directory, not configuring
+what lets one module hold the convention. Conditions share a label by default; giving one its own means creating the directory, not configuring
 anything. `sem/` is no special case: its private and shared names coincide, so one rule
 covers the plain layout and the five-condition one alike.
 
@@ -129,67 +127,124 @@ never reached, when those need opposite actions. Conversion counts the two separ
 
 ## Workflow state
 
-**The label is the unit of state, and its location is authoritative.** A state change
-expands to the whole label group before anything moves. Where a group has no label
-yet, the image's own location decides. A group whose images disagree with its label is
-reported as inconsistent, never silently resolved; `repair-state` moves the images to
-follow the label, never the reverse, because the label holds the proofread work.
+**State is declared in a file, not implied by location.** Every directory holding image
+and label directories carries an `AM_state.yaml` naming the groups that are not selected.
+A file's directory used to *be* its state, because the external annotation tool wrote an
+empty label for every image in its input folder and keeping images out of that folder was
+the only way to say "not this one". Nothing requires it now, and it was expensive: a state
+change was a batch of moves that could half-succeed, a label could exist in two state
+folders at once, and curating an image rewrote a path a training CSV had already
+recorded.
 
-Group expansion sits in front of the existing `transition_records` logic, so every
-safety property applies unchanged — only the set they apply to grows. Callers get the
-expanded set back, because with expansion the blast radius of a state change is no
-longer obvious from the command line.
+**The label is the unit of state, and the key names the label.** An entry is keyed by the
+group's label path -- `<label-directory>/<filename>`, relative to the state file --
+whether or not that label exists yet. Keying on the label rather than the image is what
+makes an image disagreeing with its label *unrepresentable* rather than merely
+detectable: the several conditions of one scene resolve to one key, so a change reaches
+all of them or none. Resolved rather than located, so the key survives annotation
+beginning -- which also makes images sharing a label directory one group before any label
+exists, where they used to be independent until one appeared.
 
-**Overwriting a label is tiered by what replacing it would cost, not by one flag.** A
-run that writes nothing has to say why, or it cannot be told from a broken one. So
-conversion sorts destinations three ways: an empty placeholder costs nothing to
-replace (nothing was in it); a pseudo-label holding annotation is regenerable machine
-output, replaced once the user confirms; a label in `corrected/` is refused, and no
-argument to `plan_conversions` reaches it.
+**Anything not listed is selected.** An absent entry and an absent file give the same
+answer, so images dropped into a stage tomorrow arrive selected with no reconciliation --
+exactly as they did when the base directory meant selected, and most stages then carry a
+short file or none at all. The cost is that "reviewed and kept" cannot be told from "not
+yet looked at", which the folders could not tell apart either.
 
-That last tier is stricter than `compress-labels`, which *can* be confirmed for
-corrected labels. The difference is what each does to the pixels: compression
-preserves them exactly, conversion replaces proofread work with a machine guess. A
-dialog is the right guard for the first and too weak for the second, so re-converting
-a corrected label means moving the image out of `corrected/` by hand.
+**The three states are mutually exclusive, and the file's shape enforces it.** A mapping
+of key to state cannot express two states for one group, where a file grouping keys under
+state headings could. That is why the file is not the more readable-looking `corrected:` /
+`deselected:` lists. Duplicate keys are rejected on read rather than resolved last-wins,
+since a silent winner is the same failure the mapping was chosen to prevent. Deselecting a
+group that was corrected discards the corrected claim; the proofreading itself survives in
+the label's pixels, which is what an export checks.
 
-Conversion writes to a temporary file and renames it into place, as
-`label_compression` already did. Now that a write can land on a file that exists,
-failing part way through would truncate a readable label.
+**A stage is transcribed whole or not at all, and one that has not been is refused.** The
+two rules are the same rule. `migrate-state` leaves a stage alone if anything in it is
+ambiguous -- images disagreeing with their label, or a file sitting in two state folders --
+because writing the groups that were fine would leave the rest unlisted, and unlisted reads
+as *selected*. For the same reason a state change refuses a stage that still keeps its
+state in folders. Promoting a deselected image into a training set is the one failure here
+with no visible symptom, so both paths are shut rather than guarded.
+
+`repair-state` is now about where files sit rather than what state they are in: it makes a
+stage's folders self-consistent so `migrate-state` can transcribe them. It moves images to
+follow their label and never the reverse, the label holding the proofreading work.
+
+**A stale entry is reported, never repaired.** Declared state can disagree with the
+filesystem in ways location could not, and each needs a different action, so
+`inspect-layout` separates them: a stage whose folders still hold its state has not been
+migrated; nested files after migration want `--move-files`; an empty state folder is
+clutter; an entry naming a group that is not there was left behind by a rename or a
+deletion. That last one is kept rather than dropped -- a group that vanished because a
+drive was not mounted must not have its curation deleted for it.
+
+**A recorded path cannot go stale, so `check-training-csv` only checks.** It existed to
+rewrite paths that curation had moved; nothing moves, so a path that does not resolve
+means the file is gone. What survives is the check and a `--prune` that drops the dead
+rows, because a CSV holds a particular train/validation split and losing a few images is
+not a reason to regenerate it.
+
+**A write is read-modify-write, and refuses a file that changed underneath it.** Two
+windows on one collection, or a window and a command line, would otherwise discard each
+other's curation with no error. Under folders that could not happen, two moves of different
+files never colliding; it is the one failure mode this design adds, and it is guarded at
+the write, which is atomic.
+
+**The state folder names stay reserved**, so an unmigrated dataset reads as *missing*
+those images rather than as holding selected ones. Reading a deselected image as selected
+is the one migration failure that would reach a training set unnoticed.
+
+**Whether a group is corrected is asked of the record, never of a path.** Every guard that
+protects proofread work -- conversion, compression, label saving -- reads the declared
+state the scanner put on the record. A path stopped answering that question the moment the
+files left their folders, and a guard that quietly stops firing is worse than none.
+
+**Overwriting a label is tiered by what replacing it would cost, not by one flag.** A run
+that writes nothing has to say why, or it cannot be told from a broken one. So conversion
+sorts destinations three ways: an empty placeholder costs nothing to replace (nothing was
+in it); a pseudo-label holding annotation is regenerable machine output, replaced once the
+user confirms; a label whose group is corrected is refused, and no argument to
+`plan_conversions` reaches it.
+
+That last tier is stricter than `compress-labels`, which *can* be confirmed for corrected
+labels. The difference is what each does to the pixels: compression preserves them exactly,
+conversion replaces proofread work with a machine guess. A dialog is the right guard for the
+first and too weak for the second, so re-converting a corrected label means setting that
+group back to selected first.
 
 **What a state change applies to is a set the user builds, and the finest level present
-wins.** Picked-out frames beat ticked lamellae, which beat ticked projects, and with
-none of them it is the frame on screen. Finest-first is chosen for its failure mode: a
-selection the user has forgotten makes the next change *smaller* than intended, where
-the opposite order would make it larger. Ticks are keyed by resolved path, since a row
-means a different lamella as soon as the project changes; frame indices clear with the
-lamella, because that is all an index means here. Everything reaches
-`transition_records` through `scoped_records()`, so group expansion and the
-corrected-data guard apply to a ticked selection unchanged.
+wins.** Picked-out frames beat ticked lamellae, which beat ticked projects, and with none of
+them it is the frame on screen. Finest-first is chosen for its failure mode: a selection the
+user has forgotten makes the next change *smaller* than intended, where the opposite order
+would make it larger. Ticks are keyed by resolved path, since a row means a different
+lamella as soon as the project changes; frame indices clear with the lamella, because that
+is all an index means here. Everything reaches `transition_records` through
+`scoped_records()`, so group expansion and the corrected-data guard apply to a ticked
+selection unchanged.
 
-**Reading a label gives three answers, not two.** `is_label_file_empty()` is
-tri-state, and **None means "cannot tell"** — deliberately distinct from True, because
-reporting "not annotated" for a label nobody could read would be a guess presented as
-a fact. Every caller that groups labels keeps the two apart.
+**Reading a label gives three answers, not two.** `is_label_file_empty()` is tri-state, and
+**None means "cannot tell"** -- deliberately distinct from True, because reporting "not
+annotated" for a label nobody could read would be a guess presented as a fact. Every caller
+that groups labels keeps the two apart.
 
-**Corrected is a claim, and it is checked where it is made.** Marking an image
-corrected asserts somebody proofread its label, and a training export trusts that. An
-image reaching `corrected/` with no label or with a placeholder breaks the claim, and
-the export is *right* to drop it — what was wrong was doing so in silence, leaving a
-training set short of exactly the images you believe you annotated, discoverable only
-by counting CSV rows months later. So the window asks on either side of the gap:
-before marking a set corrected, and before writing a training CSV that would drop one.
-Both read `classify_labels`, so the two dialogs cannot disagree about a label.
+**Corrected is a claim, and it is checked where it is made.** Marking a group corrected
+asserts somebody proofread its label, and a training export trusts that. A group marked
+corrected with no label or with a placeholder breaks the claim, and the export is *right* to
+drop it -- what was wrong was doing so in silence, leaving a training set short of exactly
+the images you believe you annotated, discoverable only by counting CSV rows months later.
+So the window asks on either side of the gap: before marking a set corrected, and before
+writing a training CSV that would drop one. Both read `classify_labels`, so the two dialogs
+cannot disagree about a label.
 
-The export side asks only about *corrected* images: an unlabelled selected image is
-the ordinary condition of an archive being worked through, and a warning firing on
-every export is one nobody reads by the third time. `repair-state` cannot cover any of
-this — it moves images to follow their label, and here there is no label to follow.
+The export side asks only about *corrected* groups: an unlabelled selected image is the
+ordinary condition of an archive being worked through, and a warning firing on every export
+is one nobody reads by the third time.
 
-**The command line warns and proceeds where the window asks.** `correct` lists the
-images whose label holds nothing and moves them anyway. The window is the primary
-interface and the place for a guard; a flag to override a refusal would be a flag that
-lives in everybody's shell history.
+**The command line warns and proceeds where the window asks.** `correct` lists the groups
+whose label holds nothing and marks them anyway. The window is the primary interface and the
+place for a guard; a flag to override a refusal would be a flag that lives in everybody's
+shell history.
 
 ---
 

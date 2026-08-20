@@ -20,6 +20,7 @@ from pathlib import Path
 from ..config import SegmentationConfig
 from ..display import prepare_display_image
 from ..frames import LamellaFrame, build_lamella_frames
+from ..io.atomic import fingerprint_of
 from ..layout import MODALITIES
 from ..models import Lamella
 from ..operations import label_io
@@ -28,7 +29,6 @@ from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
     LabelToSave,
     SavePlan,
-    fingerprint_of,
     plan_saves,
     save_labels,
 )
@@ -333,6 +333,19 @@ class LabelController:
         """Return the label the frame on screen is proofread through."""
         return self.key_for(self.record)
 
+    def _is_corrected(self, key: Path) -> bool:
+        """Return whether the group owning the label at *key* is corrected.
+
+        Read from the records rather than from the path, which no longer says.
+        Several conditions share one label, so any of them answering is enough.
+        """
+        return any(
+            record.corrected
+            for frame in self._frames
+            for record in frame.records
+            if self.key_for(record) == key
+        )
+
     @property
     def editable(self) -> bool:
         """Return whether the frame on screen may be painted on.
@@ -467,6 +480,7 @@ class LabelController:
                 label=label,
                 created=entry.created,
                 fingerprint=entry.fingerprint,
+                corrected=self._is_corrected(entry.key),
             )
             for entry, label in self.session.labels()
             if entry.edited
