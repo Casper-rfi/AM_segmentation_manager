@@ -329,12 +329,18 @@ place.
   plus `ScrollBarAlwaysOff` keeps both ends, and the tooltip carries the whole label. Applies
   to the metadata panel's project list and to the Export tab's project, lamella and stage
   filters.
-- **The image panes have no scrollbars, and their scene is bigger than the image.**
-  Annotation is easiest to leave a pixel short at the edges, so the scene carries a quarter
-  of the image as slack on every side and the zoom goes two steps below fit — a fit-scale
-  floor presses the frame against the border, where an edge cannot be dragged clear of it.
-  Scrollbars go because a scene deliberately larger than its content leaves them permanently
-  visible and permanently not full.
+- **The image panes have no scrollbars, and their scene is bigger than the image.** The
+  scene carries a quarter of the image as slack on every side, so an edge can be dragged into
+  the middle of the pane to be worked on. Scrollbars go because a scene deliberately larger
+  than its content leaves them permanently visible and permanently not full.
+- **How far a pane zooms out is the view's to say, not the module's.** Reviewing is done at
+  fit, so the curation panes stop there and land exactly where the Fit button lands —
+  `fitInView` keeps a two-pixel border of its own that snapping to the computed scale would
+  crop, and "zoomed all the way out" has to be the same picture as "fitted". The
+  proofreading canvas is the exception, because checking that a label runs to the edge of
+  the frame means seeing that edge clear of the border: it allows one step out, and since
+  `zoom_by` snaps to the floor rather than overshooting it, a floor of 1/1.1 turns that
+  0.8 step into a band of a twentieth of the pane on each side.
 - **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under PyQt5
   it returns the proportional `.AppleSystemUIFont` while reporting the family it was asked
   for, so a table padded into columns comes out unaligned with nothing saying why. A style

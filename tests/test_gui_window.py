@@ -341,14 +341,20 @@ def test_zoom_stays_linked_when_the_image_fits_its_pane(window):
     assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
 
 
-def test_zoom_out_stops_just_below_fit(window):
+def test_zoom_out_stops_at_fit(window):
+    """Reviewing is done at fit, so there is nothing below it to see: shrinking
+    the frame further only strands it in an empty pane."""
     view = window.image_panel.pair.left
+    view.fit()
+    fitted = view.transform().m11()
+
     for _ in range(10):
         view.zoom_by(0.5)
 
-    assert view.transform().m11() == pytest.approx(
-        view.fit_scale() * MIN_FIT_FRACTION, rel=0.02
-    ), "the frame stops with a margin round it, not pressed against the pane"
+    assert view.transform().m11() == pytest.approx(fitted, rel=0.001), (
+        "zoomed all the way out and fitted have to be the same picture"
+    )
+    assert view.min_fit_fraction == MIN_FIT_FRACTION
 
 
 def test_the_pane_can_be_scrolled_past_the_edges_of_the_frame(window):

@@ -25,7 +25,7 @@ from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsV
 from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
 from ...display import DEFAULT_ALPHA
 from ...operations.label_edit import fill, paint, patch_between
-from .image_view import ImageView
+from .image_view import LABEL_MIN_FIT_FRACTION, ImageView
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -151,6 +151,11 @@ class LabelCanvas(ImageView):
     def __init__(self, config: SegmentationConfig) -> None:
         """Create a canvas drawing classes from *config*."""
         super().__init__()
+        # One step out from fit, unlike the curation panes: an annotation is
+        # easiest to leave a pixel short at the frame's edge, and that edge has
+        # to be clear of the pane's border to be checked. See
+        # :data:`LABEL_MIN_FIT_FRACTION`.
+        self.min_fit_fraction = LABEL_MIN_FIT_FRACTION
         self.config = config
         self._colour_table = label_colour_table(config)
 

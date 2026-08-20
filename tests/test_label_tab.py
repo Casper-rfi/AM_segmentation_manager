@@ -445,6 +445,27 @@ def test_a_speck_is_ringed_where_it_is(window):
     assert (rings[0].pos().x(), rings[0].pos().y()) == (7.5, 9.5)
 
 
+def test_the_canvas_zooms_one_step_out_past_fit(window):
+    """A label is easiest to leave a pixel short at the frame's edge, so that
+    edge has to come clear of the pane's border -- but only just clear."""
+    from am_segmentation_manager.gui.widgets.image_view import (
+        LABEL_MIN_FIT_FRACTION,
+    )
+
+    canvas = window.label_panel.canvas
+    canvas.fit()
+
+    for _ in range(10):
+        canvas.zoom_by(0.5)
+
+    assert canvas.transform().m11() == pytest.approx(
+        canvas.fit_scale() * LABEL_MIN_FIT_FRACTION, rel=0.02
+    )
+    # About a twentieth of the pane on each side: enough to see the edge, and
+    # not the fifth of it the curation panes used to leave.
+    assert LABEL_MIN_FIT_FRACTION == pytest.approx(1 / 1.1)
+
+
 def test_a_ring_keeps_its_size_on_screen_at_any_zoom(window):
     panel = window.label_panel
     stray(panel, 7, 9)

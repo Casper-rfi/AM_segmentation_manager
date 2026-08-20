@@ -34,11 +34,18 @@ ZOOM_STEP = 1.25
 MIN_SCALE = 0.05
 MAX_SCALE = 40.0
 
-#: How far below the fit scale the view may be zoomed out, as a fraction of it:
-#: two wheel steps. Stopping exactly at fit presses the frame's edges against
-#: the border of the pane, and an edge you cannot see clearly is an edge whose
-#: annotation you cannot check.
-MIN_FIT_FRACTION = 1 / (ZOOM_STEP ** 2)
+#: How far below the fit scale a view may be zoomed out, as a fraction of it.
+#: Nothing below fit: the whole frame is already on screen, and shrinking it
+#: further only strands it in an empty pane. What a view is *for* decides
+#: whether it needs the exception below.
+MIN_FIT_FRACTION = 1.0
+
+#: The proofreading canvas's floor. Checking that a label runs all the way to
+#: the edge of the frame means seeing that edge clear of the pane's border, so
+#: one step out from fit is allowed and lands here: :meth:`ImageView.zoom_by`
+#: snaps to the floor rather than overshooting it, which makes a step of 0.8
+#: stop at a band of 5% on each side rather than the 18% two steps would leave.
+LABEL_MIN_FIT_FRACTION = 1 / 1.1
 
 #: Room around the image to scroll into, as a fraction of its size. Without it
 #: the furthest an edge can be brought is the border of the pane, where half the
@@ -103,6 +110,10 @@ class ImageView(QGraphicsView):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._shape: tuple[int, int] | None = None
         self._image_shown = True
+        #: How far below fit this view zooms out; see :data:`MIN_FIT_FRACTION`.
+        #: Per view rather than per module: the curation panes are read at fit
+        #: and the proofreading canvas is worked at its edges.
+        self.min_fit_fraction = MIN_FIT_FRACTION
 
     def set_array(
         self,
@@ -197,11 +208,10 @@ class ImageView(QGraphicsView):
     def zoom_by(self, factor: float) -> None:
         """Scale the view by *factor*, within limits, and report the change.
 
-        Zooming out stops a little below the fit scale -- see
-        :data:`MIN_FIT_FRACTION` -- rather than at it, so the whole frame can be
-        seen with a margin around it. Below that there is nothing to gain:
-        shrinking further only strands the image in an empty view. Zooming *in*
-        is limited only by :data:`MAX_SCALE`.
+        Zooming out stops at :attr:`min_fit_fraction` of the fit scale, which
+        is fit itself unless the view asked for room around the frame. Below
+        that there is nothing to gain: shrinking further only strands the image
+        in an empty view. Zooming *in* is limited only by :data:`MAX_SCALE`.
 
         The lower limit deliberately applies to one direction only. Applying it
         to both blocks zooming in whenever the current scale happens to sit
@@ -215,10 +225,18 @@ class ImageView(QGraphicsView):
         target = current * factor
 
         if factor < 1.0:
-            minimum = max(MIN_SCALE, self.fit_scale() * MIN_FIT_FRACTION)
-            if target < minimum:
+            floor = self.fit_scale() * self.min_fit_fraction
+            if target < floor:
+                if self.min_fit_fraction >= 1.0:
+                    # The floor is fit, so land where the Fit button lands
+                    # rather than on the computed scale: ``fitInView`` keeps a
+                    # two-pixel border that scale would crop, and "zoomed all
+                    # the way out" and "fitted" have to be the same picture.
+                    self.fit()
+                    return
                 # Snap to the limit rather than overshooting past it; if already
                 # there, there is nothing left to do.
+                minimum = max(MIN_SCALE, floor)
                 if current > minimum:
                     self.scale(minimum / current, minimum / current)
                     self.zoomed.emit()
