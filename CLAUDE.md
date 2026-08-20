@@ -129,6 +129,9 @@ additional dependency without explaining why it is beneficial and asking permiss
 Every module should be testable. Suggest pytest tests for every major function. Avoid
 writing code that is difficult to test because of tightly coupled filesystem access.
 
+Use as testing environments:
+am_segmentation_manager (without ml)
+am_segmentation_manager_ml (with ml)
 ---
 
 # Documentation
