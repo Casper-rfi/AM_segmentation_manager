@@ -16,14 +16,13 @@ controllers. This is what makes navigation, cache eviction and state expansion
 testable without a display server. It is the one structural rule of the UI; adding a
 tab is not a reason to bend it.
 
-**An operation belongs in the window when its input is the selection on screen; it
-stays on the command line when it is a sweep over the whole collection.** Naming a
-selection twice — once by ticking it, once as command-line filters — is where the two
-diverge and the wrong data gets moved. The Add data commands are in the window despite
-being sweeps, because there the sweep *is* the collection and there is nothing to select.
-Each previews and then applies what it previewed, as two runs of the same function
-rather than one run replayed: a preview held across a dialog describes a filesystem the
-user has had time to change.
+**An operation belongs in the window when its input is the selection on screen; it stays
+on the command line when it is a sweep over the whole collection.** Naming a selection
+twice — once by ticking it, once as command-line filters — is where the two diverge and the
+wrong data is acted on. The Add data commands are in the window despite being sweeps:
+there the sweep *is* the collection and there is nothing to select. Each previews and then
+applies what it previewed, as two runs of the same function rather than one replayed — a
+preview held across a dialog describes a filesystem the user has had time to change.
 
 **A filter and a breakdown are one declaration in the Export tab.** They are the same
 key function used two ways — group by it, or keep the records whose group was chosen —
@@ -50,9 +49,9 @@ a spreadsheet reads it better from the CSV.
 The crack threshold and the area bin resolution change how a measurement is *read*, not
 which images are in play, so a Filters box promising to narrow something is the wrong
 home. Changing the threshold re-measures at once rather than spending the Measure button
-again: `read_label_pixels` caches component pixel counts *without* the threshold, so a
-new one costs arithmetic — 11-70 ms against 7.7 s for the first pass. `load_measurements`
-keeps the headers it reads for the same reason.
+again: `read_label_pixels` caches component pixel counts *without* the threshold, so a new
+one costs arithmetic rather than a second pass. `load_measurements` keeps the headers it
+reads for the same reason.
 
 **No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few
 lines with no dependency, over thousands of records rather than millions. pandas belongs
@@ -276,13 +275,13 @@ keeps the recorded name of the first location.
 one of them.** `microscope_state.*` describes the beam that took the image; `system.*`
 holds both beams' configured defaults, so reading `system.ion.voltage` from an SEM image
 yields the FIB's 30 kV — plausible and wrong. `image_metadata.FIELDS` therefore confines
-beam-specific fields, including the fallback search, to the beam that fired, and
-declares which beams a value exists for at all. A plasma gas belongs to an ion column
-and an emitter type to an electron one, which is why they are two fields rather than one
-"beam source": one field for the two reported the FIB's Argon for SEM images, and the
-SEM's `FEG` emitter as if it were a plasma gas. Each stays blank on the other beam, and
-on an image whose beam the header does not state. A blank `plasma_gas` on a FIB image is
-therefore a real answer — a gallium column has no plasma and records no gas.
+beam-specific fields, including the fallback search, to the beam that fired, and declares
+which beams a value exists for at all. A plasma gas belongs to an ion column and an
+emitter type to an electron one, so they are two fields rather than one "beam source":
+one field for the two reports the FIB's Argon on SEM images, and the SEM's `FEG` emitter
+as a plasma gas. Each stays blank on the other beam, and on an image whose beam the
+header does not state — so a blank `plasma_gas` on a FIB image is a real answer, a
+gallium column having no plasma to record.
 
 **A value is stored in the unit its field name states, converted where the header is
 read.** So `acceleration_voltage_kv` is kV even though both dialects record volts, and
@@ -339,11 +338,9 @@ that palette still reads back as the value it was set to, so a test asserting on
 passes while the screen shows something else. **Anything about how something
 *renders* is asserted on the pixels**, for that reason.
 
-It also suppresses what Qt draws by itself. Qt tints a dialog's default button and
-marks a checked one; the `QPushButton` and `QToolButton` rules overrode both, so the
-save dialog offered two very different choices as two identical buttons and the class
-being painted was marked by a fill nobody could see across a desk. Both are re-stated
-in `theme.py` — anything that relied on Qt's own emphasis has to be.
+It also suppresses what Qt draws by itself: the `QPushButton` and `QToolButton` rules
+override the tint on a dialog's default button and the mark on a checked one, so both are
+re-stated in `theme.py`. Anything relying on Qt's own emphasis has to be.
 
 **A locked editor keeps its normal text colour.** The Add data tab opens locked and is
 mostly used for reading, and Qt's disabled grey puts every value at low contrast. The
@@ -359,12 +356,11 @@ whole label. Applies to the metadata panel's project list and to the Export tab'
 project, lamella and stage filters.
 
 **The image panes have no scrollbars, and their scene is bigger than the image.**
-Annotation is easiest to leave a pixel short at the edges, and both limits stopped
-exactly there: the zoom floor was the fit scale, pressing the frame against the border,
-and the scene was the image, so an edge could never be dragged away from it. The scene
-now carries a quarter of the image as slack on every side and the zoom goes two steps
-below fit. Scrollbars go because a scene deliberately larger than its content leaves
-them permanently visible and permanently not full.
+Annotation is easiest to leave a pixel short at the edges, so the scene carries a quarter
+of the image as slack on every side and the zoom goes two steps below fit — a fit-scale
+floor presses the frame against the border, where an edge cannot be dragged clear of it.
+Scrollbars go because a scene deliberately larger than its content leaves them
+permanently visible and permanently not full.
 
 **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under
 PyQt5 it returns the proportional `.AppleSystemUIFont` while reporting the family it
@@ -382,18 +378,15 @@ for every mode and state, which leaves Qt nothing to generate. Any future icon c
 meaning rather than decoration has to go through it.
 
 **`QScrollArea.setWidget` shows whatever it is handed**, so hiding a widget and then
-putting it in a scroller leaves it on screen — which is how the Export tab's filters
-were visible before there was anything to put in them. Hide the scroller, and give the
-column a widget to hold its spare height: a layout shares that height between whatever
-is still visible, and a stretch cannot be hidden again.
+putting it in a scroller leaves it on screen. Hide the scroller instead, and give the
+column a widget to hold its spare height: a layout shares that height between whatever is
+still visible, and a stretch cannot be hidden again.
 
 **A tooltip says what a control does, in under 200 characters**, and a test holds the
-ceiling across the whole window. They had grown to five lines apiece explaining *why*
-the software works as it does, which belongs here rather than in a hover nobody
-finishes. The ceiling was enforced on one tab for a while, and in the gap the curation
-timeline grew a 488-character legend. Every control in the Filters box also says what
-it narrows: that it decides the breakdown *and* the exports is not visible from the
-box's title.
+ceiling across the whole window rather than one tab — enforced narrowly, the ones out of
+scope grow. Why the software works as it does belongs here, not in a hover nobody
+finishes. Every control in the Filters box also says what it narrows: that it decides
+the breakdown *and* the exports is not visible from the box's title.
 
 **A long operation runs on a thread, and most of them cannot be cancelled.**
 Recompressing a project's labels is minutes, and Qt draws nothing while the thread
@@ -434,9 +427,10 @@ is not a question this package can answer, and overwriting is the answer that
 cannot be undone.
 
 **The reference collection is at
-`<collection>/`** — 21 projects, 2670
-indexed images, 40 GB, three microscopes. Treat it as read-only. Point the smoke test
-at it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
+`<collection>/`** — 12 projects, ~3500
+indexed images, 52 GB, spanning Autolamella and pre-Autolamella layouts. Treat it as
+read-only. Point the smoke test at it with
+`AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
 
 **Every file dialog is Qt's own, never the platform's.** The macOS panel under PyQt5
 5.15.2 offered no selectable files at all for a `*.csv` filter — only folders to
@@ -499,13 +493,12 @@ whole stack from the `[ml]` extra, where there is exactly one OpenCV. It also le
 torch build be chosen per machine, which conda-forge cannot express:
 `AM_SEG_TORCH_INDEX_URL` selects a wheel index. `scripts/setup_ml.sh` builds it.
 
-**The inference environment is a superset, not a peer.** It gets the window too,
-via the `qt` extra — Qt binding and matplotlib, no OpenCV, since it already has the
-headless one. Built first without it, which was wrong: it forced a switch of
-environment in the middle of the workflow, between curating a set and predicting
-it. The curation environment is the *lighter* one, for someone who never predicts;
-it is not the more capable one. Headless OpenCV is also the better partner for
-PySide6, `opencv-python` carrying Qt plugins of its own.
+**The inference environment is a superset, not a peer.** It gets the window too, via
+the `qt` extra — Qt binding and matplotlib, no OpenCV, since it already has the headless
+one, which is also the better partner for PySide6 (`opencv-python` carries Qt plugins of
+its own). The curation environment is the *lighter* of the two, for someone who never
+predicts; splitting them the other way forces an environment switch mid-workflow,
+between curating a set and predicting it.
 
 **Nothing outside `ml/` may import torch.** The subpackage is the boundary, and
 `ml/environment.py` answers "is inference possible here" without importing it, the way
@@ -532,18 +525,15 @@ of them shows itself immediately if wrong, which is what makes a default safe.
 
 **Which modality a model is for is not recorded anywhere, deliberately.** Nothing in
 a checkpoint says, and `AM_SEM_All_V01.pth` is whatever whoever trained it chose to
-type — it is not evidence, and reading it as evidence would make the software's
-answer depend on someone else's file-naming habit. Recording it in the sidecar
-instead was tried and dropped: it moves the guess rather than removing it, and a
+type — reading that as evidence would make the software's answer depend on someone
+else's file-naming habit. Declaring it in the sidecar only moves the guess: a
 declaration nothing can check is a claim wearing the clothes of a fact.
 
 **So the selection states it, and a selection spanning both modalities is refused.**
-One model is for one modality; a selection naming both names nothing, and the run
-stops with the two it found. This is a better guard than the one it replaced, because
-it is about something the window can show you — the edit target and the images under
-it — rather than a line in a file you would have to open. Every report leads with the
-modality, so what is about to be predicted is never left to be inferred from a list
-of paths.
+One model is for one modality; a selection naming both names nothing, and the run stops
+with the two it found. The guard is about something the window can show you — the edit
+target and the images under it — rather than a line in a file you would have to open.
+Every report leads with the modality.
 
 **Predicting with the wrong model is cheap to undo**, which is what makes that guard
 sufficient rather than merely defensible. Resumption keys on the model and run name,
@@ -563,9 +553,8 @@ curation window shows and a training export keeps. Predicting the other conditio
 would cost inference to produce worse pseudo-labels: `SEM_8_fi_1` is one frame
 integration and far noisier than the `SEM_8` it shares a label with. It also removes
 a hazard rather than managing one — conditions carry identical filenames into a
-shared predictions directory, so predicting all of them would have each write
-replace the last. On one lamella of the reference collection this is 6 predictions
-instead of 15.
+shared predictions directory, so predicting all of them would have each write replace
+the last.
 
 **Predictions are written at model resolution.** A 2048x3072 image yields a 1024x1536
 prediction — which is what the segmentation pipeline's own `raw/` already holds, at

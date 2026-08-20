@@ -1,6 +1,6 @@
 # Future work
 
-Status: **sketches, not designs.** Last reviewed 2026-08-19.
+Status: **sketches, not designs.** Last reviewed 2026-08-20.
 
 A holding area for things deliberately not being designed yet. Each entry
 records enough to stop the idea being lost, and the questions that would have to

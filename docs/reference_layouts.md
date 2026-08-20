@@ -33,8 +33,9 @@ All paths are relative to the Autolamella project, and show an example SEM and
 FIB image with its corresponding label. How each of these layouts is resolved is
 in [`decisions.md`](decisions.md) § Filesystem conventions.
 
-Note that §4 and §5 are **not** in the current working collection at
-`20260807_lamella_segmentations_new`; they are recorded here from elsewhere.
+These are recorded from datasets seen over time, not from a snapshot of the
+working collection — which of them it holds changes whenever data is copied into
+it, so do not read this as an inventory of what is on disk.
 
 ---
 
@@ -85,9 +86,9 @@ label AutoLamella-2025-04-14-20-54/06-kind-moray/adaptive_polish_2025-04-15-04-2
 
 ## 4. Pre-Autolamella data — no lamella or stage directory
 
-These have neither `experiment.yaml` nor `protocol.yaml`. This particular
-dataset has no FIB images — a property of *it*, not of the collapsed layout;
-compare §6, which is older still and has FIB throughout.
+Neither `experiment.yaml` nor `protocol.yaml`. This dataset has no FIB images —
+a property of *it*, not of the collapsed layout; compare §6, older still and with
+FIB throughout.
 
 ```
 SEM   20231102/SEM/SEM_1.tif
@@ -96,7 +97,7 @@ label 20231102/labels/SEM_1.tif
 
 ## 5. Pre-Autolamella data — lamella directory, no stage directory
 
-No FIB images in this dataset. See the note in §4.
+No FIB images in this dataset either; see §4.
 
 ```
 SEM   20240223_adaptive_milling_ai/lamella_01/SEM/lamella01_09.tif

@@ -54,9 +54,8 @@ In no particular order.
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py`
-builders when editing them for other reasons, never as a sweep. Three files still
-carry hand-built trees: `test_selection.py`, `test_selection_state.py` and
-`test_cli_selection_integration.py`.
+builders when editing them for other reasons, never as a sweep. `test_selection.py`
+still carries a hand-built tree.
 
 **Before publishing**, several packaging gaps are open by decision rather than
 oversight, and all of them become necessary at the same moment:
