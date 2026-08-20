@@ -1,4 +1,4 @@
-"""What has been moved this session, kept where it can be read.
+"""What has been changed this session, kept where it can be read.
 
 Across the foot of the window rather than in a column beside the images. Two
 landscape images sit side by side above it, so width is the scarce resource

@@ -1286,7 +1286,7 @@ def test_marking_corrected_declares_the_whole_group(qt_app, window):
     _settle(qt_app, lambda: saved(window))
 
     assert image.exists() and label.exists(), "declaring a state moves nothing"
-    assert record.corrected is True
+    assert record.state == "corrected"
     stage = image.parent.parent
     assert read_state(stage).states[f"{label.parent.name}/{label.name}"] == "corrected"
 

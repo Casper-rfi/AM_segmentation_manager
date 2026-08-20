@@ -109,8 +109,7 @@ def _record(
         image_path=stage / "sem" / "img.tif", modality="SEM",
         predictions=[(directory / kind if kind else directory) / "img.tif"] if kind else [],
         labels=[label] if label else [],
-        selected=not corrected,
-        corrected=corrected,
+        state="corrected" if corrected else "selected",
     )
 
 
@@ -169,8 +168,7 @@ def _labelled_record(stage: Path, image: Path, label_state: str, content) -> Ima
     return ImageRecord(
         image_path=image, modality="SEM", labels=[label],
         predictions=[stage / "predictions" / "raw" / "img.tif"],
-        selected=label_state == "selected",
-        corrected=label_state == "corrected",
+        state=label_state,
     )
 
 
@@ -229,7 +227,7 @@ def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
 
     Compression can be confirmed for corrected labels because it preserves pixel
     values. Conversion replaces them with a machine guess, so there is no
-    setting that reaches one -- the report says which images to move instead.
+    setting that reaches one -- the report names them and says what to do instead.
     """
     stage, image = _project_with_prediction(tmp_path)
     record = _labelled_record(stage, image, "corrected", _sparse_label())
@@ -240,7 +238,7 @@ def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
     assert report.count == 0
     assert record.labels[0].read_bytes() == original
     assert any("refused" in line for line in report.lines)
-    assert any("corrected/" in line for line in report.lines)
+    assert any("back to selected" in line for line in report.lines)
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +254,7 @@ def _record_with_label(
     return ImageRecord(
         image_path=tmp_path / "img.tif",
         labels=[label],
-        selected=not corrected,
-        corrected=corrected,
+        state="corrected" if corrected else "selected",
     )
 
 

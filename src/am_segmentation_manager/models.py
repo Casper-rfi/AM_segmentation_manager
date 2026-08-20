@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .state import DEFAULT_STATE, RecordState
+
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .layout import ImageSet
     from .metadata import ExperimentMetadata
@@ -38,7 +40,12 @@ class ImageRecord:
             the base directory. An opaque key, never parsed.
         label_shared: whether this record's label directory is shared with
             another image set, so its label also belongs to other images
-        selected: whether the image is currently selected for annotation
+        state: the workflow state of the label group this image belongs to.
+            One field rather than a flag per state, so the three cannot
+            contradict each other. Read it through
+            :func:`~am_segmentation_manager.operations.selection.current_state`
+            and change it through
+            :func:`~am_segmentation_manager.operations.selection.transition_records`.
     """
 
     image_path: Path
@@ -51,8 +58,7 @@ class ImageRecord:
     modality: str | None = None
     variant: str | None = None
     label_shared: bool = False
-    selected: bool = True
-    corrected: bool = False
+    state: RecordState = DEFAULT_STATE
 
 
 @dataclass

@@ -31,6 +31,7 @@ from ..operations.predictions import (
     count_convertible,
     plan_conversions,
 )
+from ..operations.selection import current_state
 from ..progress import Cancellation, OperationCancelled
 
 logger = logging.getLogger(__name__)
@@ -150,14 +151,14 @@ class OperationsController:
         """Return the lines naming proofread labels that stopped a conversion.
 
         Named individually rather than counted: this is the one outcome the user
-        cannot unblock from the dialog, so it has to say which images to move
-        out of ``corrected/`` if they really are to be re-converted.
+        cannot unblock from the dialog, so it has to say which groups to set
+        back to selected if they really are to be re-converted.
         """
         if not plan.refused:
             return ()
         return (
             f"{len(plan.refused)} image(s) refused: a proofread label is already "
-            f"there. Move the image out of corrected/ to re-convert it.",
+            f"there. Set the group back to selected to re-convert it.",
         ) + tuple(f"  {self._relative(item.destination)}" for item in plan.refused)
 
     def convert_predictions(
@@ -371,7 +372,7 @@ class OperationsController:
         corrected_labels = {
             label
             for record in records
-            if record.corrected
+            if current_state(record) == "corrected"
             for label in record.labels
         }
         corrected = [label for label in labels if label in corrected_labels]
@@ -404,10 +405,21 @@ class OperationsController:
             f"{format_bytes(result.original_size)} -> {format_bytes(result.new_size)}"
             for result in applied
         )
-        return OperationReport(
+        # Named rather than counted: a label something else rewrote mid-run is
+        # the one outcome here that is not simply "nothing to gain".
+        stale = tuple(
+            f"{self._relative(result.label_path)}: changed on disk, left alone"
+            for result in results if result.stale
+        )
+        headline = (
             f"Compressed {len(applied)} of {len(results)} label(s), saving "
-            f"{format_bytes(saved)}.",
-            lines,
+            f"{format_bytes(saved)}."
+        )
+        if stale:
+            headline += f" {len(stale)} changed on disk and were left alone."
+        return OperationReport(
+            headline,
+            lines + stale,
             len(applied),
             applied=True,
         )

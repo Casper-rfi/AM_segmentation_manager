@@ -14,6 +14,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from .models import ImageRecord
+from .operations.selection import current_state
 from .scanner import ProjectIndex
 
 logger = logging.getLogger(__name__)
@@ -185,21 +186,11 @@ def matches_variant(record: ImageRecord, selectors: list[str] | None) -> bool:
 def matches_state(record: ImageRecord, state: str) -> bool:
     """Return whether *record* matches the requested workflow state.
 
-    States:
-    * ``"corrected"``: record was marked corrected
-    * ``"selected"``: record is selected and not corrected
-    * ``"deselected"``: record is deselected and not corrected
-    * ``"all"``: matches any workflow state
+    An equality test rather than a set of rules: the three states are mutually
+    exclusive and a record carries exactly one, so ``"all"`` is the only
+    special case. Anything that is not a state matches nothing.
     """
-    if state == "all":
-        return True
-    if state == "corrected":
-        return record.corrected
-    if state == "selected":
-        return record.selected and not record.corrected
-    if state == "deselected":
-        return not record.selected and not record.corrected
-    return False
+    return state == "all" or current_state(record) == state
 
 
 # ---------------------------------------------------------------------------

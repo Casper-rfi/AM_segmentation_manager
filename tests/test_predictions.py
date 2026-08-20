@@ -161,17 +161,20 @@ def test_raw_predictions_convert(tmp_path: Path) -> None:
     assert plan.skipped == ()
 
 
-def test_a_label_is_replaced_where_it_lies_not_where_the_image_is(tmp_path: Path) -> None:
-    """An image and its label can sit in different state folders.
+def test_a_label_is_replaced_where_it_lies_not_where_it_would_be_put(tmp_path: Path) -> None:
+    """A record's existing label wins over a freshly resolved directory.
 
-    That disagreement is `repair-state`'s to fix. Computing a destination from
-    the image's state would write a *second* label in another folder while the
-    real one stayed put, which is worse than either overwriting or refusing.
+    A stage can hold both a legacy `labels/` and a current `sem_labels/`, and
+    resolution prefers the latter. Computing the destination that way would
+    write a *second* label beside the one really there while the real one
+    stayed put -- worse than either overwriting or refusing.
     """
     from am_segmentation_manager.operations.predictions import plan_conversions
 
     record = _record_with_prediction(tmp_path, "raw")
-    label = record.image_path.parent.parent / "sem_labels" / "deselected" / "img.tif"
+    stage = record.image_path.parent.parent
+    (stage / "sem_labels").mkdir(parents=True)  # preferred by resolution
+    label = stage / "labels" / "img.tif"        # but the label is really here
     label.parent.mkdir(parents=True)
     label.write_bytes(b"label")
     record.labels = [label]
@@ -190,7 +193,7 @@ def test_a_corrected_label_is_refused_even_with_overwrite(tmp_path: Path) -> Non
     label.parent.mkdir(parents=True)
     label.write_bytes(b"proofread")
     record.labels = [label]
-    record.selected, record.corrected = False, True
+    record.state = "corrected"
 
     plan = plan_conversions([record], overwrite=True)
 

@@ -6,8 +6,8 @@ file is then written through a temporary and renamed into place, so an
 interrupted run leaves the label that was there untouched rather than truncated.
 
 Two things stop a write on their own. A label whose file has changed on disk
-since it was read would be overwritten blind, and a label already in
-``corrected/`` is proofread work, which nothing here touches without the
+since it was read would be overwritten blind, and a label whose group is
+declared corrected is proofread work, which nothing here touches without the
 reviewer saying so.
 """
 from __future__ import annotations

@@ -27,6 +27,7 @@ from ..layout import (
     OWN_PREDICTION_KIND,
     PREDICTION_PROVENANCE_FILENAME,
     resolve_predictions_directory,
+    subdirectories_by_name,
 )
 from ..models import ImageRecord
 from .label_groups import build_groups, primary_record
@@ -128,13 +129,10 @@ def prediction_destination(record: ImageRecord) -> Path:
     this package owns. Creating no directory and touching no file.
     """
     image_directory = record.image_path.parent
-    if image_directory.name.lower() in {"deselected", "corrected"}:
-        # The state folder is not the image set; its parent is.
-        image_directory = image_directory.parent
-    stage = image_directory.parent
-    siblings = {child.name.lower(): child for child in stage.iterdir() if child.is_dir()}
     directory, _, _ = resolve_predictions_directory(
-        image_directory, record.modality or MODALITIES[0], siblings
+        image_directory,
+        record.modality or MODALITIES[0],
+        subdirectories_by_name(image_directory.parent),
     )
     return directory / OWN_PREDICTION_KIND / record.image_path.name
 

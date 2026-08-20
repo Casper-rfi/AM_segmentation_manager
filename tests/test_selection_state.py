@@ -14,15 +14,18 @@ import pytest
 
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.selection import (
+    StaleState,
     UnmigratedStage,
+    apply_plan,
     current_state,
     deselect_records,
     mark_corrected_records,
+    plan_transition,
     select_records,
     transition_records,
 )
 from am_segmentation_manager.scanner import Scanner
-from am_segmentation_manager.state import read_state, state_file_path
+from am_segmentation_manager.state import read_state, state_file_path, write_state
 from conftest import build_dataset
 
 
@@ -50,21 +53,18 @@ def declared(dataset) -> dict[str, str]:
 # current_state
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(
-    "selected, corrected, expected",
-    [
-        (True, False, "selected"),
-        (False, False, "deselected"),
-        (False, True, "corrected"),
-    ],
-)
-def test_current_state_reads_the_record(selected, corrected, expected):
+@pytest.mark.parametrize("state", ["selected", "deselected", "corrected"])
+def test_current_state_reads_the_record(state):
     """The record carries the state the scanner read; nothing re-derives it."""
-    record = ImageRecord(
-        image_path=Path("sem/img1.tif"), selected=selected, corrected=corrected
-    )
+    record = ImageRecord(image_path=Path("sem/img1.tif"), state=state)
 
-    assert current_state(record) == expected
+    assert current_state(record) == state
+
+
+def test_a_record_starts_selected():
+    """An image nothing has declared anything about is selected, matching the
+    state file, where an absent entry means the same."""
+    assert current_state(ImageRecord(image_path=Path("sem/img1.tif"))) == "selected"
 
 
 def test_current_state_tracks_transitions(record: ImageRecord):
@@ -215,3 +215,115 @@ def test_curating_a_frame_from_a_scanned_project(tmp_path: Path):
     for record in frame.records:
         assert record.image_path.exists()
         assert all(label.exists() for label in record.labels)
+
+
+# ---------------------------------------------------------------------------
+# A batch holds together across stages
+# ---------------------------------------------------------------------------
+
+def _two_stage_records(tmp_path: Path) -> list[ImageRecord]:
+    """One acquisition in each of two lamellae, so a change spans two files."""
+    build_dataset(tmp_path, modalities=("SEM",), acquisitions=1, lamellae=2)
+    projects = Scanner(tmp_path).build_index().all_projects()
+    records = [
+        record
+        for project in projects
+        for lamella in project.lamellae
+        for stage in lamella.stages
+        for record in stage.images
+    ]
+    assert len({record.image_path.parent.parent for record in records}) == 2
+    return records
+
+
+def _stage_files(records: list[ImageRecord]) -> list[Path]:
+    return sorted({record.image_path.parent.parent for record in records})
+
+
+def _curated_elsewhere(plan, stage: Path) -> None:
+    """Declare *stage*'s group corrected, as another window would.
+
+    The key comes from the plan rather than being spelled out, so this really
+    is the entry the batch is about rather than an unrelated one that merely
+    changes the file.
+    """
+    key = next(
+        change.key for change in plan.changes if change.stage_directory == stage
+    )
+    write_state(read_state(stage), {key: "corrected"})
+
+
+def test_a_change_spanning_stages_writes_every_one(tmp_path: Path):
+    records = _two_stage_records(tmp_path)
+
+    deselect_records(records)
+
+    for stage in _stage_files(records):
+        assert list(read_state(stage).states.values()) == ["deselected"]
+    assert {record.state for record in records} == {"deselected"}
+
+
+def test_a_stage_changed_since_planning_stops_the_whole_batch(tmp_path: Path):
+    """Two windows on one collection would otherwise discard each other's
+    curation, half a batch at a time.
+
+    The stage that goes stale is the *last* one written, so without a check
+    over the whole batch first the earlier stage is already on disk by the time
+    anything notices.
+    """
+    records = _two_stage_records(tmp_path)
+    plan = plan_transition(records, "deselected")
+    first, second = _stage_files(records)
+    _curated_elsewhere(plan, second)
+
+    with pytest.raises(StaleState):
+        apply_plan(plan)
+
+    assert read_state(first).states == {}
+    assert not state_file_path(first).exists()
+
+
+def test_a_refused_batch_leaves_the_records_alone(tmp_path: Path):
+    """A record saying 'deselected' for a change that never happened would send
+    the next export off what is in memory rather than what is on disk."""
+    records = _two_stage_records(tmp_path)
+    plan = plan_transition(records, "deselected")
+    _curated_elsewhere(plan, _stage_files(records)[1])
+
+    with pytest.raises(StaleState):
+        apply_plan(plan)
+
+    assert {record.state for record in records} == {"selected"}
+
+
+def test_a_refused_batch_leaves_the_other_curation_alone(tmp_path: Path):
+    """Guarded twice: the batch check here, and write_state's own per-file one."""
+    records = _two_stage_records(tmp_path)
+    plan = plan_transition(records, "deselected")
+    second = _stage_files(records)[1]
+    _curated_elsewhere(plan, second)
+
+    with pytest.raises(StaleState):
+        apply_plan(plan)
+
+    assert list(read_state(second).states.values()) == ["corrected"]
+
+
+def test_the_refusal_names_the_file_that_moved(tmp_path: Path):
+    records = _two_stage_records(tmp_path)
+    plan = plan_transition(records, "deselected")
+    second = _stage_files(records)[1]
+    _curated_elsewhere(plan, second)
+
+    with pytest.raises(StaleState, match=second.name):
+        apply_plan(plan)
+
+
+def test_a_plan_can_be_carried_out_after_being_looked_at(tmp_path: Path):
+    """The point of splitting the two: what was previewed is what runs."""
+    records = _two_stage_records(tmp_path)
+    plan = plan_transition(records, "deselected")
+
+    assert plan.describe()  # the preview a caller would show
+    assert apply_plan(plan) == len(records)
+    assert {record.state for record in records} == {"deselected"}

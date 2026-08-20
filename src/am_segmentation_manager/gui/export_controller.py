@@ -125,6 +125,11 @@ class ExportPreview:
     Attributes:
         matched: Images passing every filter, dedup included.
         corrected: How many of those are corrected.
+        deselected: How many of the *exportable* ones were decided against.
+            Shown because the workflow-state filter opens on "all", so a
+            training set can quietly include images somebody rejected -- the
+            empty-label rule catches most of them, but not one that was
+            labelled and deselected afterwards.
         annotated: How many have a label holding an annotation.
         empty_labels: Images excluded because their label holds nothing but
             background.
@@ -139,6 +144,7 @@ class ExportPreview:
 
     matched: int = 0
     corrected: int = 0
+    deselected: int = 0
     annotated: int = 0
     empty_labels: int = 0
     missing_labels: int = 0
@@ -151,6 +157,8 @@ class ExportPreview:
         if not self.matched:
             return "Nothing matches these filters"
         parts = [f"{self.matched} image(s) match", f"{self.corrected} corrected"]
+        if self.deselected:
+            parts.append(f"{self.deselected} deselected")
         if self.missing_labels:
             parts.append(f"{self.missing_labels} without a label")
         if self.empty_labels:
@@ -566,6 +574,10 @@ class ExportController:
         return ExportPreview(
             matched=len(matched),
             corrected=sum(1 for record in matched if current_state(record) == "corrected"),
+            deselected=sum(
+                1 for record, _ in sifted.pairs
+                if current_state(record) == "deselected"
+            ),
             annotated=sifted.annotated,
             empty_labels=sifted.empty_labels,
             missing_labels=sifted.missing_labels,

@@ -53,7 +53,7 @@ def test_stage_discovery_detects_sem_and_fib(tmp_path: Path):
     assert img_paths["img_sem.tif"].project == project.name
     assert img_paths["img_sem.tif"].lamella == lam.name
     assert img_paths["img_sem.tif"].stage == stage.name
-    assert img_paths["img_sem.tif"].selected is True
+    assert img_paths["img_sem.tif"].state == "selected"
 
 
 def test_image_record_pred_label_matching(tmp_path: Path):

@@ -74,7 +74,7 @@ def test_a_nested_file_is_not_indexed_at_all(tmp_path: Path):
     records = {record.modality: record for record in _records(tmp_path)}
 
     assert "SEM" not in records
-    assert records["FIB"].selected is True
+    assert records["FIB"].state == "selected"
 
 
 def test_state_comes_from_the_stage_file(tmp_path: Path):
@@ -86,9 +86,8 @@ def test_state_comes_from_the_stage_file(tmp_path: Path):
 
     records = {record.modality: record for record in _records(tmp_path)}
 
-    assert records["SEM"].corrected is True
-    assert records["SEM"].selected is False
-    assert records["FIB"].selected is True
+    assert records["SEM"].state == "corrected"
+    assert records["FIB"].state == "selected"
 
 
 def test_predictions_are_matched_from_raw_and_clean(tmp_path: Path):

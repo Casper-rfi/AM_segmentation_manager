@@ -23,6 +23,7 @@ from am_segmentation_manager.image_metadata import ELECTRON, ION, ImageMetadata
 from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, build_experiment_metadata
 from am_segmentation_manager.models import Project
 from am_segmentation_manager.operations.csv import export_training_csv
+from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
 
@@ -75,6 +76,41 @@ def test_the_preview_counts_what_would_be_exported(exporter: ExportController):
     assert preview.matched == 4          # two acquisitions, two modalities
     assert preview.annotated == 4
     assert preview.exportable == 4
+
+
+def test_a_deselected_image_that_would_be_exported_is_counted(tmp_path: Path):
+    """The state filter opens on "all", so an image somebody decided against can
+    reach a training set if it was labelled before being deselected. The
+    empty-label rule does not catch that one, so the count has to show it."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, modalities=("SEM",), labels="annotated")
+    projects = scanned(tmp_path)
+    records = [
+        record
+        for project in projects
+        for lamella in project.lamellae
+        for stage in lamella.stages
+        for record in stage.images
+    ]
+    deselect_records(records[:1])
+
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    preview = controller.preview()
+
+    assert preview.deselected == 1
+    assert "1 deselected" in preview.summary()
+
+
+def test_nothing_deselected_says_nothing_about_it(tmp_path: Path):
+    """A line that always appears is a line nobody reads."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, modalities=("SEM",), labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert controller.preview().deselected == 0
+    assert "deselected" not in controller.preview().summary()
 
 
 def test_empty_labels_are_shown_as_excluded_rather_than_silently_dropped(tmp_path: Path):
@@ -137,8 +173,8 @@ def test_a_corrected_image_with_an_empty_label_is_flagged_before_export(
 
 
 def test_a_corrected_image_with_no_label_is_flagged_before_export(tmp_path: Path):
-    """repair-state moves images to follow their label; with no label there is
-    nothing to follow, so this is the only place it surfaces."""
+    """A group with no label at all cannot be caught by looking inside one, so
+    the export's own check is the only place it surfaces."""
     build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="none")
     _mark_corrected(tmp_path)
     controller = ExportController()
@@ -170,11 +206,10 @@ def test_a_corrected_annotated_image_is_not_flagged(tmp_path: Path):
 
 
 def _mark_corrected(root: Path) -> None:
-    """Move everything under *root* into corrected/, as the window would.
+    """Declare everything under *root* corrected, as the window would.
 
-    State is physical location, so this moves the files rather than setting a
-    flag -- anything reading the flag alone would pass while the tree said
-    otherwise.
+    Through the real operation rather than by setting the field, so what the
+    export reads is what a state change actually wrote.
     """
     from am_segmentation_manager.operations.selection import mark_corrected_records
 

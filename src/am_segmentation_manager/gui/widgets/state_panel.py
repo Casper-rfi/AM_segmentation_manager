@@ -1,13 +1,13 @@
-"""Right panel: which state to move to, and how far that reaches.
+"""Right panel: which state to change to, and how far that reaches.
 
 *What* a change applies to is chosen on the left; this panel answers the other
-half, and reports how much would move before it is made. Everything that writes
+half, and reports how far it reaches before it is made. Everything that writes
 stays disabled until editing is switched on, so reviewing data cannot change it
 by a stray click.
 
-The states are mutually exclusive because the filesystem makes them so -- an
-image lives in exactly one of the three locations. A frame whose acquisitions
-disagree therefore shows no option chosen.
+The states are mutually exclusive because a group has exactly one entry in its
+stage's state file. A frame whose acquisitions disagree therefore shows no
+option chosen.
 """
 from __future__ import annotations
 
@@ -35,11 +35,11 @@ STATES: tuple[RecordState, ...] = ("deselected", "selected", "corrected")
 STATE_KEYS = {"deselected": "D", "selected": "S", "corrected": "C"}
 
 STATE_HELP = {
-    "deselected": "Exclude from proofreading. Moves files into deselected/, "
-                  "which stops the segmentation software generating labels for them.",
-    "selected": "Queue for proofreading. Files sit in the normal folder.",
-    "corrected": "Mark proofreading finished. Moves files into corrected/; "
-                 "moving them back out asks for confirmation.",
+    "deselected": "Exclude from proofreading. No label is created or measured "
+                  "for these, and a training export leaves them out.",
+    "selected": "Queue for proofreading. This is what an image starts as.",
+    "corrected": "Mark proofreading finished, which a training export trusts. "
+                 "Leaving this state again asks for confirmation.",
 }
 
 SWATCH_SIZE = 12
@@ -84,12 +84,12 @@ class StatePanel(QWidget):
         # -- reach -----------------------------------------------------------
         # Above the state controls, because it describes what is about to
         # happen; below them it would read as a report of what already did.
-        # Always shown, even when it says "Moves 1 image + 1 label": a line
+        # Always shown, even when it says "Covers 1 image + 1 label": a line
         # that appears only sometimes is a line nobody has learned to read.
         self.reach = QLabel("")
         self.reach.setWordWrap(True)
         self.reach.setToolTip(
-            "How much this state change moves. Images that share a label move "
+            "How far this state change reaches. Images that share a label change "
             "together, so this can be more than the images you selected."
         )
         layout.addWidget(self.reach)
@@ -164,10 +164,10 @@ class StatePanel(QWidget):
         self.readout.setText("\n".join(parts))
 
     def show_reach(self, summary: str, shared_note: str = "") -> None:
-        """Show how much the next state change would move.
+        """Show how far the next state change would reach.
 
         Args:
-            summary: The always-present line, e.g. ``"Moves 4 images + 1 label"``.
+            summary: The always-present line, e.g. ``"Covers 4 images + 1 label"``.
             shared_note: The extra line naming images pulled in by a shared
                 label, or empty when nothing is shared.
         """

@@ -32,7 +32,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...operations.selection import RecordState, current_state
+from ...operations.selection import (
+    RecordState,
+    StaleState,
+    UnmigratedStage,
+    current_state,
+)
 from ...progress import Cancellation
 from ..controller import CurationController, EditingDisabled
 from ..export_controller import ExportController
@@ -1361,11 +1366,12 @@ class CurationWindow(QMainWindow):
         self.refresh()
 
     def apply_state(self, state: RecordState) -> None:
-        """Move the targeted records into *state*, confirming where required.
+        """Declare the targeted records to be in *state*, confirming where required.
 
         Two confirmations can apply, and they are asked in order of how much is
         at stake: first whether the user really means to change more than the
-        current frame, then whether proofread work may be moved.
+        current frame, then whether proofread work may leave the corrected
+        state.
         """
         if self.controller.editing_enabled and not self.controller.selection.is_empty:
             if not self._confirm_bulk(state):
@@ -1387,10 +1393,16 @@ class CurationWindow(QMainWindow):
                 return
             try:
                 changed = self.controller.apply_state(state, confirm_corrected=True)
-            except OSError as exc:
+            except StaleState as exc:
+                self._report_stale(exc)
+                return
+            except (UnmigratedStage, OSError) as exc:
                 self._report_failure(exc)
                 return
-        except OSError as exc:
+        except StaleState as exc:
+            self._report_stale(exc)
+            return
+        except (UnmigratedStage, OSError) as exc:
             self._report_failure(exc)
             return
 
@@ -1400,13 +1412,13 @@ class CurationWindow(QMainWindow):
             if self.controller.selection.is_empty and frame is not None:
                 where = frame.display_name
             self.changes_log.append(
-                f"{where}: {changed} file(s) -> {state} ({self.controller.target})"
+                f"{where}: {changed} image(s) -> {state} ({self.controller.target})"
             )
         # Rebuild the lists too: a state change is exactly what moves a lamella
         # or project between "not started", "in progress" and "done", so leaving
         # the status chips alone here would leave them stale at the one moment
         # they are meant to report on. Recomputing every status costs ~60ms on a
-        # 21-project collection, against a change that has just moved files.
+        # 21-project collection, against a change that has just been written.
         self.refresh(reload_lists=True)
 
     def _confirm_bulk(self, state: str) -> bool:
@@ -1433,8 +1445,8 @@ class CurationWindow(QMainWindow):
         )
         if shared:
             message += (
-                f"<p>{shared} of them share a label with your selection and move "
-                f"with it.</p>"
+                f"<p>{shared} of them share a label with your selection and "
+                f"change with it.</p>"
             )
         if unchanged:
             message += f"<p>{unchanged} of them are already {state}.</p>"
@@ -1517,6 +1529,21 @@ class CurationWindow(QMainWindow):
     def _report_failure(self, exc: Exception) -> None:
         logger.warning("State change refused: %s", exc)
         QMessageBox.critical(self, "Could not change state", str(exc))
+
+    def _report_stale(self, exc: Exception) -> None:
+        """Say that the collection moved underneath the window, and re-read it.
+
+        Nothing was written, so there is nothing to undo -- but what is on
+        screen is now describing a collection that has changed, and the next
+        thing the reviewer does would be decided from it. Scanning again is
+        the whole remedy, so it happens rather than being offered.
+        """
+        logger.warning("State change refused: %s", exc)
+        QMessageBox.warning(
+            self, "Somebody else changed this collection",
+            f"{exc}\n\nNothing was changed. Reading the folder again now.",
+        )
+        self.rescan()
 
     # -- rendering ---------------------------------------------------------
 
@@ -1798,7 +1825,7 @@ class CurationWindow(QMainWindow):
         approved = len(self.label_controller.approved_records()) if editing else 0
         if approved:
             lines.append(
-                f"Marking corrected would move {approved} image(s), and the "
+                f"Marking corrected would cover {approved} image(s), and the "
                 "labels they share."
             )
 

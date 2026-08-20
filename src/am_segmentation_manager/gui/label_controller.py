@@ -119,8 +119,8 @@ class LabelController:
         Re-pointing at the same lamella happens every time the tab comes forward,
         and resetting to its first frame then would throw away the place the
         reviewer had got to. The frames are rebuilt regardless, because the
-        records may have moved between state folders since -- and what is
-        rebuilt is a pure transformation of the scan, costing nothing.
+        records may have changed state since -- and what is rebuilt is a pure
+        transformation of the scan, costing nothing.
 
         Prepared frames are discarded either way, so returning to the tab
         re-reads the frame on screen. Keeping them would mean holding pixels
@@ -340,7 +340,7 @@ class LabelController:
         Several conditions share one label, so any of them answering is enough.
         """
         return any(
-            record.corrected
+            current_state(record) == "corrected"
             for frame in self._frames
             for record in frame.records
             if self.key_for(record) == key
@@ -513,7 +513,7 @@ class LabelController:
     def approved_records(self) -> list:
         """Return the records whose label the reviewer has passed.
 
-        What "mark corrected" would move. Edited and approved-unchanged alike:
+        What "mark corrected" would cover. Edited and approved-unchanged alike:
         both are a judgement that the label is right.
         """
         return self.records_for(self.session.reviewed_keys())
@@ -527,7 +527,7 @@ class LabelController:
 
         Args:
             mark_corrected: Also move the reviewed labels, and the images
-                sharing them, into ``corrected/``.
+                sharing them, as corrected.
             allow_corrected: Confirm replacing labels that are already
                 proofread.
 
@@ -546,8 +546,8 @@ class LabelController:
         if mark_corrected:
             records = self.approved_records()
             if records:
-                moved = transition_records(records, "corrected")
-                headline += f", marked {moved} image(s) corrected"
+                declared = transition_records(records, "corrected")
+                headline += f", marked {declared} image(s) corrected"
 
         self.session.discard()
         self._label_states.clear()
@@ -556,10 +556,11 @@ class LabelController:
     def _attach_created_labels(self, created: Iterable[Path]) -> None:
         """Name each newly written label on the records proofread through it.
 
-        A record the scan built before its label existed carries no label path,
-        and a state change moves the files a record names. Without this the
-        image moves into ``corrected/`` while the label just written stays
-        behind, leaving the group inconsistent.
+        A group is keyed by its label, and a record the scan built before that
+        label existed carries no label path -- so it would be keyed by where a
+        label *would* go. That resolves to the same place, but only while the
+        record is asked afresh; naming the label now keeps the key stable for
+        the state change that follows the save.
         """
         wanted = set(created)
         if not wanted:

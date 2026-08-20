@@ -826,8 +826,7 @@ def status_lamella(name: str, records: list[ImageRecord]) -> Lamella:
 
 def declare(record: ImageRecord, state: str) -> ImageRecord:
     """Put *record* into *state*, as the scanner does from the state file."""
-    record.selected = state == "selected"
-    record.corrected = state == "corrected"
+    record.state = state
     return record
 
 
@@ -839,8 +838,7 @@ def image(state: str, modality: str = "SEM", *, name: str = "img_000") -> ImageR
         image_path=Path(f"lam/stage/{directory}/{name}.tif"),
         labels=[Path(f"lam/stage/{labels}/{name}.tif")],
         modality=modality,
-        selected=state == "selected",
-        corrected=state == "corrected",
+        state=state,
     )
 
 

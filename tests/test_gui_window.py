@@ -277,7 +277,7 @@ def test_applying_to_both_declares_both_modalities(qt_app, window):
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
     for record in window.controller.frame.records:
-        assert record.selected is False
+        assert record.state != "selected"
         assert record.image_path.exists()
 
 

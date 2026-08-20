@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 __all__ = ["file_mode_for", "fingerprint_of", "write_atomically"]
 
 
-def write_atomically(destination: Path, write: Callable[[Path], None]) -> None:
+def write_atomically(
+    destination: Path,
+    write: Callable[[Path], None],
+    *,
+    commit_if: Callable[[Path], bool] | None = None,
+) -> bool:
     """Have *write* produce a temporary file, then move it onto *destination*.
 
     The rename is what makes a write whole or absent: an interrupted run leaves
@@ -37,6 +42,15 @@ def write_atomically(destination: Path, write: Callable[[Path], None]) -> None:
         destination: Where the file should end up. Its directory is created if
             it does not exist.
         write: Called with the temporary path to write.
+        commit_if: Asked, with the written temporary, whether to go ahead. A
+            caller that can only tell once the file exists -- whether the new
+            encoding is actually smaller, whether the destination changed while
+            it was being written -- decides here rather than beforehand, which
+            is what keeps the decision inside the window the rename closes.
+            Returning False leaves *destination* as it was.
+
+    Returns:
+        Whether *destination* was replaced.
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     mode = file_mode_for(destination)
@@ -51,7 +65,10 @@ def write_atomically(destination: Path, write: Callable[[Path], None]) -> None:
         # After the write: a writer that recreates the file rather than
         # truncating it brings its own permissions with it.
         os.chmod(temporary, mode)
+        if commit_if is not None and not commit_if(temporary):
+            return False
         os.replace(temporary, destination)
+        return True
     finally:
         if temporary.exists():
             temporary.unlink()

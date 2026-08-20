@@ -29,7 +29,7 @@ def test_find_matching_label(tmp_path: Path):
     label = labels / "img1.tif"
     label.write_text("lbl")
 
-    record = ImageRecord(image_path=img, labels=[label], corrected=True, selected=False)
+    record = ImageRecord(image_path=img, labels=[label], state="corrected")
     assert find_matching_label(record) == label
 
     absent = ImageRecord(image_path=img, labels=[labels / "gone.tif"])
@@ -54,8 +54,7 @@ def test_export_training_csv_full_split(tmp_path: Path):
             ImageRecord(
                 image_path=img,
                 labels=[lbl],
-                corrected=True,
-                selected=False,
+                state="corrected",
                 modality="SEM",
             )
         )
@@ -105,8 +104,7 @@ def test_export_training_csv_reproducibility(tmp_path: Path):
             ImageRecord(
                 image_path=img,
                 labels=[lbl],
-                corrected=False,
-                selected=True,
+                state="selected",
                 modality="SEM",
             )
         )

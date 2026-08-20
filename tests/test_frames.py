@@ -87,11 +87,11 @@ def test_frame_with_only_one_modality():
 
 def test_modalities_in_different_states_still_share_a_frame():
     """Curation deselects one modality at a time, so a frame's SEM and FIB
-    images are often in different state folders. Grouping must not split them."""
+    images are often in different states. Grouping must not split them."""
     stage = make_stage("adaptive_polish_1", "01", [
         ImageRecord(
-            image_path=Path("sem/deselected/lam_AP_img_000_SEM.tif"),
-            modality="SEM", selected=False,
+            image_path=Path("sem/lam_AP_img_000_SEM.tif"),
+            modality="SEM", state="deselected",
         ),
         ImageRecord(
             image_path=Path("fib/lam_AP_img_000_FIB.tif"), modality="FIB",
@@ -101,8 +101,8 @@ def test_modalities_in_different_states_still_share_a_frame():
     frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
-    assert frames[0].record("SEM").selected is False
-    assert frames[0].record("FIB").selected is True
+    assert frames[0].record("SEM").state == "deselected"
+    assert frames[0].record("FIB").state == "selected"
 
 
 def test_records_property_lists_present_modalities():

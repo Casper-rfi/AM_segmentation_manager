@@ -190,11 +190,14 @@ def project_status(project: Project) -> CurationStatus:
 
 @dataclass(frozen=True)
 class StateChangeReach:
-    """How much a state change would move, counted before it is made.
+    """How far a state change would reach, counted before it is made.
 
     Attributes:
-        images: Images that would move, after expanding across shared labels.
-        labels: Distinct label files that would move with them.
+        images: Images the change would cover, after expanding across shared
+            labels.
+        labels: Distinct label groups those images fall into. Nothing is done
+            to the label files themselves; the count says how many separate
+            entries the change writes.
         shared: How many of *images* were pulled in by a shared label rather
             than named by the current scope.
     """
@@ -214,8 +217,8 @@ class StateChangeReach:
             f"{self.images} image" if self.images == 1 else f"{self.images} images"
         )
         if not self.labels:
-            return f"Moves {image_part}, no label yet"
-        return f"Moves {image_part} + {label_part}"
+            return f"Covers {image_part}, no label yet"
+        return f"Covers {image_part} + {label_part}"
 
     def shared_note(self) -> str:
         """Return the second line, or an empty string when nothing is shared."""
@@ -332,7 +335,7 @@ class CurationController:
     def rescan(self) -> list[Project]:
         """Read the same root again, staying where the view is.
 
-        What follows an operation that moved files. The index is derived from
+        What follows an operation that changed the collection. The index is derived from
         the filesystem rather than patched, because the filesystem is what the
         operation changed -- but where the reviewer had got to is not a fact
         about the filesystem, and starting them at the first project again
@@ -920,7 +923,7 @@ class CurationController:
         """Return how far a state change would go, for display before it is made.
 
         Counted from the same expansion the operation performs, so the number
-        shown cannot drift from the number of files moved.
+        shown cannot drift from the number of records declared.
         """
         scoped = self.scoped_records()
         if not scoped:
@@ -938,26 +941,29 @@ class CurationController:
         )
 
     def apply_state(self, state: RecordState, *, confirm_corrected: bool = False) -> int:
-        """Move the current frame's targeted records into *state*.
+        """Declare the current frame's targeted records to be in *state*.
 
         Delegates to :func:`transition_records`, which validates the whole set
-        before moving anything and refuses to move corrected data unless
-        *confirm_corrected* is set. Both behaviours are deliberately left
-        intact: this method adds the editing guard and nothing else.
+        before writing anything and refuses to take data out of the corrected
+        state unless *confirm_corrected* is set. Both behaviours are
+        deliberately left intact: this method adds the editing guard and
+        nothing else.
 
         Args:
-            state: The workflow state to move into.
-            confirm_corrected: Pass on the user's explicit confirmation to move
+            state: The workflow state to declare.
+            confirm_corrected: Pass on the user's explicit confirmation to take
                 data out of the corrected state.
 
         Returns:
-            The number of records moved.
+            The number of records declared.
 
         Raises:
             EditingDisabled: If editing has not been switched on.
-            PermissionError: If corrected data would be moved without
+            PermissionError: If corrected data would be changed without
                 confirmation.
-            FileExistsError, FileNotFoundError: Propagated unchanged so the
+            StaleState: If the collection was curated somewhere else since this
+                window read it. Nothing is written.
+            UnmigratedStage, FileNotFoundError: Propagated unchanged so the
                 window can report exactly what went wrong.
         """
         if not self.editing_enabled:
@@ -976,7 +982,7 @@ class CurationController:
             records, state, allow_leaving_corrected=confirm_corrected
         )
         logger.info(
-            "Moved %d record(s) to %s across %s",
+            "Declared %d record(s) %s across %s",
             changed, state, self.selection.describe(),
         )
         return changed

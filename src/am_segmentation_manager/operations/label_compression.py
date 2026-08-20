@@ -10,14 +10,14 @@ pixel dimensions and label values are never altered.
 from __future__ import annotations
 
 import logging
-import os
-import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..io.atomic import fingerprint_of, write_atomically
 from ..models import ImageRecord
 from .label_io import has_image_stack_support, save_label_image
+from .selection import current_state
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,18 @@ class LabelCompressionResult:
             if applied) in bytes.
         applied: Whether the file on disk was actually replaced. False for
             dry runs, and also False when recompression would not have made
-            the file smaller.
+            the file smaller, or when the file changed underneath the run.
+        stale: Whether something else rewrote the label while it was being
+            recompressed, so it was left alone. Distinguished from the other
+            reasons for not applying: those mean there was nothing to gain,
+            this one means somebody else's write was nearly overwritten.
     """
 
     label_path: Path
     original_size: int
     new_size: int
     applied: bool
+    stale: bool = False
 
 
 def existing_labels(records: Iterable[ImageRecord]) -> list[Path]:
@@ -67,16 +72,18 @@ def compress_labels(
 ) -> list[LabelCompressionResult]:
     """Recompress every on-disk label referenced by *records*.
 
-    Validates the whole batch before changing anything: if any label lives
-    under a ``corrected`` folder, the whole call is refused unless
+    Validates the whole batch before changing anything: if any label belongs to
+    a group declared corrected, the whole call is refused unless
     *allow_corrected* is True, since corrected labels are user-generated
     data that must never be modified without explicit confirmation.
 
-    Each file is re-encoded into a temporary file in the same directory
-    first, so a crash mid-write can never leave a truncated label; the
-    temporary file only replaces the original once it has been written
-    successfully. When *dry_run* is True, or when recompression would not
-    shrink the file, the original is left untouched.
+    Each file is written through :func:`~..io.atomic.write_atomically`, so a
+    crash mid-write can never leave a truncated label, and the label keeps the
+    permissions it had rather than the owner-only ones a temporary file is
+    created with. The original is left untouched when *dry_run* is True, when
+    recompression would not shrink the file, and when the label changed on disk
+    while it was being re-encoded -- recompressing pixels that have since been
+    replaced would put the old ones back.
 
     Args:
         records: Records whose labels should be checked (as produced by the
@@ -93,13 +100,15 @@ def compress_labels(
         raise RuntimeError(
             "tifffile/numpy/cv2 are required to compress labels: install the 'all' extra"
         )
-    import tifffile
 
     records = list(records)
     labels = existing_labels(records)
     if not allow_corrected:
         declared_corrected = {
-            label for record in records if record.corrected for label in record.labels
+            label
+            for record in records
+            if current_state(record) == "corrected"
+            for label in record.labels
         }
         corrected = [label for label in labels if label in declared_corrected]
         if corrected:
@@ -108,26 +117,49 @@ def compress_labels(
                 f"confirmation: {corrected}"
             )
 
-    results: list[LabelCompressionResult] = []
-    for label_path in labels:
-        original_size = label_path.stat().st_size
-        array = tifffile.imread(str(label_path))
+    return [_recompress(label_path, dry_run=dry_run) for label_path in labels]
 
-        fd, tmp_name = tempfile.mkstemp(dir=label_path.parent, suffix=label_path.suffix)
-        os.close(fd)
-        tmp_path = Path(tmp_name)
-        try:
-            save_label_image(array, tmp_path, array.dtype)
-            new_size = tmp_path.stat().st_size
-            applied = not dry_run and new_size < original_size
-            if applied:
-                os.replace(tmp_path, label_path)
-        finally:
-            if tmp_path.exists():
-                tmp_path.unlink()
 
-        results.append(LabelCompressionResult(label_path, original_size, new_size, applied))
-        if applied:
-            logger.info("Compressed %s: %d -> %d bytes", label_path, original_size, new_size)
+def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
+    """Re-encode one label, keeping the result only if it is worth keeping.
 
-    return results
+    The encoding always happens -- there is no way to know what it would save
+    without doing it -- so a dry run is the same work as a real run, minus the
+    rename. Three things stop the rename: the new encoding is no smaller, the
+    caller only asked what would happen, or the label changed on disk while it
+    was being re-encoded. That last one would put the old pixels back over
+    somebody else's write, so it is reported rather than passed over.
+    """
+    import tifffile
+
+    original_size = label_path.stat().st_size
+    before = fingerprint_of(label_path)
+    array = tifffile.imread(str(label_path))
+
+    new_size = original_size
+    stale = False
+
+    def commit(temporary: Path) -> bool:
+        nonlocal new_size, stale
+        new_size = temporary.stat().st_size
+        if new_size >= original_size:
+            return False
+        if dry_run:
+            return False
+        if fingerprint_of(label_path) != before:
+            logger.warning(
+                "%s changed on disk while it was being recompressed; "
+                "leaving it as it now is", label_path,
+            )
+            stale = True
+            return False
+        return True
+
+    applied = write_atomically(
+        label_path,
+        lambda temporary: save_label_image(array, temporary, array.dtype),
+        commit_if=commit,
+    )
+    if applied:
+        logger.info("Compressed %s: %d -> %d bytes", label_path, original_size, new_size)
+    return LabelCompressionResult(label_path, original_size, new_size, applied, stale=stale)

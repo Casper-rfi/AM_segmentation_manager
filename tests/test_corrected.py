@@ -30,14 +30,12 @@ def test_mark_corrected_records_and_restore_by_selecting(tmp_path: Path) -> None
         lamella="LAM1",
         stage="stageA",
         modality="SEM",
-        selected=True,
     )
 
     # Mark corrected: declares the group corrected and leaves the files alone.
     mark_corrected_records([rec])
 
-    assert rec.corrected is True
-    assert rec.selected is False
+    assert rec.state == "corrected"
     assert img.exists()
     assert lbl.exists()
     assert list(read_state(stage).states.values()) == ["corrected"]
@@ -50,7 +48,6 @@ def test_mark_corrected_records_and_restore_by_selecting(tmp_path: Path) -> None
     # Selecting with confirmation clears the corrected state.
     select_records([rec], allow_leaving_corrected=True)
 
-    assert rec.corrected is False
-    assert rec.selected is True
+    assert rec.state == "selected"
     assert img.exists()
     assert read_state(stage).states == {}

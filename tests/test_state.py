@@ -17,7 +17,6 @@ from am_segmentation_manager.state import (
     StageState,
     StaleState,
     StateFileError,
-    key_label_path,
     read_state,
     state_file_path,
     state_key,
@@ -37,11 +36,6 @@ def written(stage: Path, states: dict[str, str]) -> StageState:
 def test_a_key_is_the_label_path_relative_to_the_stage(tmp_path: Path):
     key = state_key(tmp_path / "labels" / "img_000_SEM.tif", tmp_path)
     assert key == "labels/img_000_SEM.tif"
-
-
-def test_a_key_round_trips_to_the_label_path(tmp_path: Path):
-    label = tmp_path / "labels_fib" / "img_000_FIB.tif"
-    assert key_label_path(state_key(label, tmp_path), tmp_path) == label
 
 
 def test_conditions_sharing_a_label_directory_share_one_key(tmp_path: Path):
@@ -67,9 +61,16 @@ def test_a_label_outside_the_stage_has_no_key(tmp_path: Path):
     ["../other/img.tif", "/absolute/img.tif", "labels\\img.tif", "", " labels/img.tif"],
 )
 def test_a_key_may_not_leave_the_stage(tmp_path: Path, key: str):
-    """A hand-edited key must not be able to name a file in another dataset."""
+    """A hand-edited key must not be able to name a file in another dataset.
+
+    Checked through :func:`read_state`, which is how a hand-edited key really
+    arrives, rather than through the validator on its own.
+    """
+    state_file_path(tmp_path).write_text(
+        f"version: 1\nstate:\n  {key!r}: deselected\n", encoding="utf-8"
+    )
     with pytest.raises(StateFileError):
-        key_label_path(key, tmp_path)
+        read_state(tmp_path)
 
 
 # ---------------------------------------------------------------------------

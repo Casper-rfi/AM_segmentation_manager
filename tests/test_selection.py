@@ -33,13 +33,12 @@ def test_deselect_and_select_records(tmp_path: Path) -> None:
         lamella="LAM1",
         stage="stageA",
         modality="SEM",
-        selected=True,
     )
 
-    # Deselect: declares the group deselected and marks record.selected False
+    # Deselect: declares the group deselected and sets record.state
     deselect_records([rec])
 
-    assert rec.selected is False
+    assert rec.state != "selected"
     assert img.exists()
     assert lbl.exists()
     assert list(read_state(stage).states.values()) == ["deselected"]
@@ -47,7 +46,7 @@ def test_deselect_and_select_records(tmp_path: Path) -> None:
     # Select: clears the declaration and sets selected True
     select_records([rec])
 
-    assert rec.selected is True
+    assert rec.state == "selected"
     assert img.exists()
     assert read_state(stage).states == {}
 
@@ -67,5 +66,5 @@ def test_transition_validates_the_entire_batch_before_writing(tmp_path: Path) ->
         deselect_records([safe_record, missing_record])
 
     # The safe record is untouched because validation completed before writing.
-    assert safe_record.selected is True
+    assert safe_record.state == "selected"
     assert read_state(stage).states == {}

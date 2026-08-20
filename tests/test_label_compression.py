@@ -64,7 +64,7 @@ def test_compress_labels_refuses_corrected_without_confirmation(tmp_path: Path):
     label_path = labels_dir / "img1.tif"
     tifffile.imwrite(str(label_path), _sparse_label())
 
-    record = ImageRecord(image_path=tmp_path / "img1.tif", labels=[label_path], corrected=True)
+    record = ImageRecord(image_path=tmp_path / "img1.tif", labels=[label_path], state="corrected")
 
     with pytest.raises(PermissionError):
         compress_labels([record])
@@ -79,7 +79,7 @@ def test_compress_labels_allows_corrected_with_confirmation(tmp_path: Path):
     label_path = labels_dir / "img1.tif"
     tifffile.imwrite(str(label_path), _sparse_label())
 
-    record = ImageRecord(image_path=tmp_path / "img1.tif", labels=[label_path], corrected=True)
+    record = ImageRecord(image_path=tmp_path / "img1.tif", labels=[label_path], state="corrected")
     results = compress_labels([record], allow_corrected=True)
 
     assert len(results) == 1

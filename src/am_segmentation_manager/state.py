@@ -33,7 +33,6 @@ __all__ = [
     "StageState",
     "StaleState",
     "StateFileError",
-    "key_label_path",
     "read_state",
     "state_file_path",
     "state_key",
@@ -123,11 +122,6 @@ def state_key(label_path: Path, stage_directory: Path) -> str:
             f"{label_path} is not inside the stage directory {stage_directory}"
         ) from exc
     return relative.as_posix()
-
-
-def key_label_path(key: str, stage_directory: Path) -> Path:
-    """Return the label path *key* names, inside *stage_directory*."""
-    return stage_directory.joinpath(*_checked_key(key, stage_directory).split("/"))
 
 
 def read_state(stage_directory: Path) -> StageState:

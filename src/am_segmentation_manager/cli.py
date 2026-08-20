@@ -466,36 +466,37 @@ def build_parser() -> argparse.ArgumentParser:
     convert_predictions.add_argument(
         "--overwrite", action="store_true",
         help=(
-            "Replace labels that already exist. Proofread labels in corrected/ "
-            "are refused even with this flag; move the image out of corrected/ "
-            "first if one really is to be re-converted"
+            "Replace labels that already exist. A label whose group is "
+            "corrected is refused even with this flag; set that group back to "
+            "selected first if one really is to be re-converted"
         ),
     )
 
     # -- deselect / select / correct ----------------------------------------
     for name, help_text in (
-        ("deselect", "Move images and labels into the deselected state"),
-        ("select", "Move images and labels into the selected state"),
-        ("correct", "Move images and labels into the corrected state"),
+        ("deselect", "Declare label groups to be in the deselected state"),
+        ("select", "Declare label groups to be in the selected state"),
+        ("correct", "Declare label groups to be in the corrected state"),
     ):
         cmd = sub.add_parser(
             name,
             help=help_text,
             description=(
-                f"{help_text}. Images sharing a label move together: the label "
-                "is the unit of proofreading, so the change applies to every "
-                "image of the same scene. Use --dry-run to see exactly which "
-                "files would move first."
+                f"{help_text}. Nothing on disk moves: the state is written "
+                "into the stage's AM_state.yaml. Images sharing a label change "
+                "together, the label being the unit of proofreading, so the "
+                "change applies to every image of the same scene. Use --dry-run "
+                "to see exactly which groups would change first."
             ),
         )
         _add_scope_arguments(cmd)
         cmd.add_argument(
             "--confirm-corrected", action="store_true",
-            help="Confirm moving artifacts out of the corrected state",
+            help="Confirm taking label groups out of the corrected state",
         )
         cmd.add_argument(
             "--dry-run", action="store_true",
-            help="Show the files that would move without changing anything",
+            help="Show the groups that would change without writing anything",
         )
 
     # -- migrate-state ------------------------------------------------------
@@ -584,7 +585,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_scope_arguments(compress_labels_cmd, default_modality="all")
     compress_labels_cmd.add_argument(
         "--confirm-corrected", action="store_true",
-        help="Allow recompressing labels that live in a corrected/ folder",
+        help="Allow recompressing labels whose group is declared corrected",
     )
     compress_labels_cmd.add_argument(
         "--dry-run", action="store_true",
@@ -1418,7 +1419,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
 
     if args.command in {"deselect", "select", "correct"}:
         from .operations.label_io import classify_labels
-        from .operations.selection import plan_transition, transition_records
+        from .operations.selection import StaleState, apply_plan, plan_transition
 
         records, start_path = _resolve_records(args)
         if not records:
@@ -1432,7 +1433,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             plan = plan_transition(
                 records, state, allow_leaving_corrected=args.confirm_corrected
             )
-        except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
+        except (FileNotFoundError, PermissionError, ValueError) as exc:
             logger.error("Could not %s matching images: %s", args.command, exc)
             return 2
 
@@ -1440,8 +1441,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         # asked for, which the user must be able to see.
         if plan.reaches_beyond_request:
             logger.info(
-                "%d further image(s) share a label with your selection and will "
-                "also be moved:", len(plan.added),
+                "%d further image(s) share a label with your selection and "
+                "change with it:", len(plan.added),
             )
             for record in plan.added:
                 logger.info("  %s", make_path_relative(record.image_path, start_path))
@@ -1472,11 +1473,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             )
             return 0
 
+        # The plan that was previewed is the one carried out, rather than one
+        # worked out again from the same arguments. Its freshness is checked
+        # against the files as it is applied.
         try:
-            changed = transition_records(
-                records, state, allow_leaving_corrected=args.confirm_corrected
-            )
-        except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as exc:
+            changed = apply_plan(plan)
+        except (StaleState, OSError, ValueError) as exc:
             logger.error("Could not %s matching images: %s", args.command, exc)
             return 2
         logger.info("Total %s: %d", args.command, changed)
@@ -1650,6 +1652,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
                 logger.info("Would compress %s: %d -> %d bytes", rel, result.original_size, result.new_size)
             elif result.applied:
                 logger.info("Compressed %s: %d -> %d bytes", rel, result.original_size, result.new_size)
+            elif result.stale:
+                logger.warning(
+                    "Left %s alone: it changed on disk while being recompressed", rel
+                )
             else:
                 logger.info("No savings for %s (%d bytes), left unchanged", rel, result.original_size)
 
@@ -1661,6 +1667,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             len(results), applied_count, "would compress" if args.dry_run else "compressed",
             total_before, total_after,
         )
+        stale = [r for r in results if r.stale]
+        if stale:
+            logger.warning(
+                "%d label(s) changed on disk during the run and were left alone; "
+                "re-run to compress them", len(stale),
+            )
         return 0
 
     parser.print_help()

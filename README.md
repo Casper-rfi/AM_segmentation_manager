@@ -16,12 +16,12 @@ public data deposit.
   datasets have no project structure at all. All of them are indexed as they
   are — nothing on disk is reorganised to fit a newer convention.
 * **The filesystem stays the source of truth.** There is no database and no
-  hidden state. Workflow state *is* the folder a file sits in, so the same
-  answer comes back whether you ask this package, `ls`, or the segmentation
-  software.
+  hidden state. Workflow state is declared in an `AM_state.yaml` beside the
+  image directories, so the same answer comes back whether you ask this
+  package or `cat` the file.
 * **It is careful with proofread work.** Manual annotation is never deleted or
-  overwritten by an automated operation. Anything that moves files validates
-  the whole batch first, shows you what it would do, and takes `--dry-run`.
+  overwritten by an automated operation. Anything that changes a batch
+  validates all of it first, shows you what it would do, and takes `--dry-run`.
 
 Supported layouts
 -----------------

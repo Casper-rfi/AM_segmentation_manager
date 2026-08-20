@@ -3,8 +3,11 @@
 State is declared in a stage's ``AM_state.yaml``, so changing it means editing
 that file rather than moving anything. Three rules govern every function here.
 
-**Validate the whole batch, then act**, so a batch cannot fail partway and leave
-a collection in a state neither the caller nor the files describe.
+**Validate the whole batch, then act.** Everything is located, checked and
+resolved into per-stage writes before the first one happens, and every stage
+file is re-checked against what the plan read immediately before writing. A
+collection curated in two places at once therefore fails with nothing written
+rather than half of it.
 
 **A corrected group is never left without confirmation**: an operation that
 would take one out of the corrected state refuses unless the caller passes
@@ -22,6 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..io.atomic import fingerprint_of
 from ..layout import (
     classify_image_directory,
     image_files,
@@ -34,6 +38,7 @@ from ..state import (
     STATE_VALUES,
     RecordState,
     StageState,
+    StaleState,
     read_state,
     state_key,
     write_state,
@@ -44,8 +49,10 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "RecordState",
+    "StaleState",
     "TransitionPlan",
     "UnmigratedStage",
+    "apply_plan",
     "current_state",
     "plan_transition",
     "transition_records",
@@ -87,10 +94,20 @@ class StateChange:
 
 @dataclass(frozen=True)
 class _StageWrite:
-    """Everything one stage's file should declare after the change."""
+    """Everything one stage's file should declare after the change.
+
+    Attributes:
+        previous: The file as it was read, holding the fingerprint the write
+            refuses to go ahead without.
+        states: What the file should declare afterwards.
+        records: The records this stage's write accounts for, so each one is
+            brought into step as its own stage lands rather than after the
+            whole batch.
+    """
 
     previous: StageState
     states: dict[str, RecordState]
+    records: tuple[ImageRecord, ...] = ()
 
 
 def current_state(record: ImageRecord) -> RecordState:
@@ -98,10 +115,10 @@ def current_state(record: ImageRecord) -> RecordState:
 
     Read from the record rather than from the filesystem: the scanner sets it
     from the stage's declared state, and a successful transition updates it.
+    The one place the package asks this question, so how a record carries its
+    state stays a detail of :class:`~..models.ImageRecord`.
     """
-    if record.corrected:
-        return "corrected"
-    return "selected" if record.selected else "deselected"
+    return record.state
 
 
 @dataclass(frozen=True)
@@ -115,6 +132,8 @@ class TransitionPlan:
         added: The records that expansion added, so a caller can say how far
             the change actually reaches before performing it.
         changes: One entry per group whose state actually changes. A record
+    The one place the package asks this question, so how a record carries its
+    state stays a detail of :class:`~..models.ImageRecord`.
             already in the target state contributes none.
     """
 
@@ -199,8 +218,7 @@ def plan_transition(
         ValueError: If *state* is not a workflow state, or a record belongs to
             no recognised image directory.
         UnmigratedStage: If a stage still keeps its state in folders.
-        FileNotFoundError: If a record's image cannot be found in any state.
-        FileExistsError: If a file sits in more than one state folder at once.
+        FileNotFoundError: If a record's image is not on disk.
         PermissionError: If corrected data would be changed without confirmation.
     """
     if state not in STATE_VALUES:
@@ -216,6 +234,7 @@ def plan_transition(
 
     stage_states: dict[Path, StageState] = {}
     pending: dict[Path, dict[str, RecordState]] = {}
+    stage_records: dict[Path, list[ImageRecord]] = {}
     changes: list[StateChange] = []
     seen_keys: set[tuple[Path, str]] = set()
 
@@ -227,6 +246,7 @@ def plan_transition(
         if stage_directory not in stage_states:
             stage_states[stage_directory] = _stage_state(stage_directory)
             pending[stage_directory] = dict(stage_states[stage_directory].states)
+        stage_records.setdefault(stage_directory, []).append(record)
 
         if (stage_directory, key) in seen_keys:
             continue
@@ -248,10 +268,15 @@ def plan_transition(
                 f"confirmation: {leaving_corrected}"
             )
 
+    changed_stages = {change.stage_directory for change in changes}
     writes = tuple(
-        _StageWrite(previous=stage_states[stage_directory], states=states)
+        _StageWrite(
+            previous=stage_states[stage_directory],
+            states=states,
+            records=tuple(stage_records.get(stage_directory, ())),
+        )
         for stage_directory, states in pending.items()
-        if any(change.stage_directory == stage_directory for change in changes)
+        if stage_directory in changed_stages
     )
     return TransitionPlan(
         state=state,
@@ -298,13 +323,65 @@ def transition_records(
         for line in plan.describe():
             logger.info("Would declare %s", line)
         return len(plan.records)
+    return apply_plan(plan)
+
+
+def apply_plan(plan: TransitionPlan) -> int:
+    """Carry out a validated plan, or none of it.
+
+    Every stage file is compared against what the plan read before any of them
+    is written, so a collection being curated somewhere else at the same time
+    stops the batch with nothing changed. That check is what lets a plan be
+    shown to somebody, waited on, and then carried out: the decisions are the
+    ones that were previewed, while the safety check is taken fresh.
+
+    This is not a transaction. Between the check and the writes there is a
+    window of microseconds, against the seconds or minutes a preview takes, and
+    a write failing for a reason no check can anticipate -- a full disk -- can
+    still stop the batch partway. Each stage's records are brought into step as
+    that stage lands rather than at the end, so what is in memory describes what
+    is on disk either way.
+
+    Args:
+        plan: A plan from :func:`plan_transition`.
+
+    Returns:
+        How many records were declared, counting the whole expanded set.
+
+    Raises:
+        StaleState: If any stage's file changed since the plan read it.
+    """
+    _refuse_if_stale(plan)
 
     for write in plan.writes:
         write_state(write.previous, write.states)
+        for record in write.records:
+            record.state = plan.state
+    # Records whose group was already in the target state belong to no write.
     for record in plan.records:
-        record.selected = state == "selected"
-        record.corrected = state == "corrected"
+        record.state = plan.state
     return len(plan.records)
+
+
+def _refuse_if_stale(plan: TransitionPlan) -> None:
+    """Raise unless every stage the plan writes is as the plan read it.
+
+    Checked over the whole batch first, so the answer is "nothing happened"
+    rather than "some of it happened"; :func:`~..state.write_state` checks the
+    same thing again per file, which is what closes the remaining window.
+    """
+    changed = [
+        write.previous.path
+        for write in plan.writes
+        if fingerprint_of(write.previous.path) != write.previous.fingerprint
+    ]
+    if changed:
+        listed = ", ".join(str(path) for path in changed)
+        raise StaleState(
+            f"{len(changed)} state file(s) changed since this change was worked "
+            f"out, so none of it was applied ({listed}). Something else is "
+            "curating this collection; look again and repeat the change."
+        )
 
 
 def deselect_records(

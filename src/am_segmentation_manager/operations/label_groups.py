@@ -201,8 +201,8 @@ def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
     updated when a transition succeeds. Siblings discovered on disk are added as
     new records.
 
-    Deduplication is by image path with any state folder stripped, so the same
-    file can never appear twice and be moved twice.
+    Deduplication is by image path, so a file named twice -- once directly and
+    once through its group -- is declared once.
     """
     supplied = list(records)
     seen: set[str] = set()
@@ -232,9 +232,9 @@ def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
 def describe_group(group: LabelGroup) -> str:
     """Return a one-line description of a group, for confirmation prompts.
 
-    Images are named by their image directory rather than their immediate
-    parent, so one that has moved into a state folder is still reported under
-    the directory a reader recognises.
+    Images are named by the directory holding them, which is the imaging
+    condition -- ``sem``, ``sem_5kv`` -- and so is what distinguishes the
+    members of a shared group from each other.
     """
     if group.label_path is None:
         return f"{len(group.records)} image(s), no label yet"

@@ -334,8 +334,7 @@ class Scanner:
 
         Directory names are resolved through :mod:`am_segmentation_manager.layout`,
         so labels are found under the current ``<image-dir>_labels`` convention
-        or any legacy name it recognises, and images in ``deselected/`` and
-        ``corrected/`` subfolders are included.
+        or any legacy name it recognises.
 
         Workflow state comes from the stage's ``AM_state.yaml``; a stage
         without one has every group selected, which is the same answer. Files
@@ -361,6 +360,7 @@ class Scanner:
             predictions_map = self._collect_predictions(stage_path, image_set)
 
             for name, image_path in sorted(image_files_by_name(image_set.directory).items()):
+                key = state_key(image_set.labels_directory / name, stage_path)
                 record = ImageRecord(
                     image_path=image_path,
                     project=project_name,
@@ -369,16 +369,12 @@ class Scanner:
                     modality=image_set.modality,
                     variant=image_set.variant,
                     label_shared=image_set.labels_are_shared,
+                    state=declared.state_of(key),
                 )
                 prediction = predictions_map.get(name)
                 record.predictions = list(prediction) if prediction else []
                 label = labels_map.get(name)
                 record.labels = [label] if label is not None else []
-                key = state_key(image_set.labels_directory / name, stage_path)
-                state = declared.state_of(key)
-                # States are mutually exclusive: a record is in exactly one.
-                record.corrected = state == "corrected"
-                record.selected = state == "selected"
                 image_records.append(record)
 
         return image_records

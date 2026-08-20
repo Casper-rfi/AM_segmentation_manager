@@ -72,7 +72,11 @@ def _records_of(root: Path) -> list:
 
 
 def deselect_group(dataset, index: int = 0, modality: str = "SEM") -> None:
-    """Move an image and the label it owns into ``deselected/``, as a pair."""
+    """Put an image and the label it owns in ``deselected/``, as a pair.
+
+    Building the pre-migration layout that ``migrate-state`` reads, which is the
+    one place folders still mean anything.
+    """
     name = dataset.filenames[modality][index]
     move_state(dataset.image_dir(modality) / name, "deselected")
     label = dataset.label_dir(modality) / name
@@ -408,7 +412,7 @@ def test_the_declared_state_survives_un_nesting(tmp_path: Path):
     unnest_stage(only_stage(dataset.root))
 
     records = _records_of(dataset.root)
-    deselected = [record for record in records if not record.selected]
+    deselected = [record for record in records if record.state != "selected"]
     assert len(deselected) == 1
     assert deselected[0].image_path.parent == dataset.image_dir("SEM")
 

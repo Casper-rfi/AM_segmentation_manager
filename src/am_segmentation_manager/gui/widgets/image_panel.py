@@ -98,7 +98,7 @@ class ImagePanel(QWidget):
         self.variant_combo.setToolTip(
             "Which imaging condition to display. This is a view choice only: a "
             "state change follows the label, so images sharing a label always "
-            "move together whichever one you are looking at."
+            "change together whichever one you are looking at."
         )
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._variant_chosen)

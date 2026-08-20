@@ -31,6 +31,7 @@ from .label_io import (
     label_destination,
     save_label_image,
 )
+from .selection import current_state
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,7 @@ class ConversionPlan:
     """Everything a conversion run would and would not do.
 
     Split four ways because each needs a different answer: run it, confirm the
-    loss, move the image out of ``corrected/`` by hand, or wait for a prediction.
+    loss, set the group back to selected first, or wait for a prediction.
 
     Attributes:
         conversions: The labels that would be written now, in record order.
@@ -237,7 +238,7 @@ def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
             key = "post_processed" if record.predictions else "no_prediction"
         elif not record.labels:
             key = "ready"
-        elif record.corrected:
+        elif current_state(record) == "corrected":
             key = "corrected"
         else:
             key = "labelled"
@@ -305,7 +306,9 @@ def plan_conversions(
             continue
         claimed.add(destination)
 
-        existing = classify_destination(destination, corrected=record.corrected)
+        existing = classify_destination(
+            destination, corrected=current_state(record) == "corrected"
+        )
         conversion = PlannedConversion(record, convertible[0], destination, existing)
         if existing == "corrected":
             refused.append(conversion)
@@ -323,9 +326,9 @@ def convert_record_predictions(
 ) -> int:
     """Convert predictions for explicitly selected image records.
 
-    Corrected labels are never overwritten, whatever *overwrite* is set to. The
-    generated label follows the image's selected/deselected/corrected folder,
-    unless it is replacing a label, which is rewritten where it lies.
+    Corrected labels are never overwritten, whatever *overwrite* is set to. A
+    label is written to the directory its image set resolves to, which is also
+    where an existing one is replaced.
     """
     plan = plan_conversions(records, overwrite=overwrite)
     for conversion in plan.conversions:

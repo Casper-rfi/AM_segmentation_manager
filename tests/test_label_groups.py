@@ -170,7 +170,7 @@ def test_deselecting_one_condition_deselects_the_whole_scene(tmp_path: Path):
     changed = deselect_records([records["SEM_8"]])
 
     assert changed == len(SEM_VARIANTS)
-    assert {record.selected for record in scan(tmp_path).values() if record.variant} == {False}
+    assert {record.state for record in scan(tmp_path).values() if record.variant} == {"deselected"}
     assert read_state(project / "lam_010").states == {
         "labels/img_0004.tif": "deselected"
     }
@@ -320,6 +320,6 @@ def test_cli_deselect_declares_the_whole_group(tmp_path: Path):
     assert read_state(project / "lam_010").states == {
         "labels/img_0004.tif": "deselected"
     }
-    assert {record.selected for record in scan(tmp_path).values() if record.variant} == {False}
+    assert {record.state for record in scan(tmp_path).values() if record.variant} == {"deselected"}
 
 

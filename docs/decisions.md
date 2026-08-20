@@ -127,13 +127,17 @@ place.
   exactly as they did when the base directory meant selected, and most stages then carry a
   short file or none at all. The cost is that "reviewed and kept" cannot be told from "not
   yet looked at", which the folders could not tell apart either.
-- **The three states are mutually exclusive, and the file's shape enforces it.** A mapping
+- **The three states are mutually exclusive, and both representations enforce it.** A mapping
   of key to state cannot express two states for one group, where a file grouping keys under
   state headings could. That is why the file is not the more readable-looking `corrected:` /
-  `deselected:` lists. Duplicate keys are rejected on read rather than resolved last-wins,
-  since a silent winner is the same failure the mapping was chosen to prevent. Deselecting a
-  group that was corrected discards the corrected claim; the proofreading itself survives in
-  the label's pixels, which is what an export checks.
+  `deselected:` lists. In memory, for the same reason, `ImageRecord` carries one `state` field
+  rather than a `selected` and a `corrected` flag: two booleans have a fourth combination that
+  means nothing, and every reader then has to spell out `selected and not corrected` and be
+  trusted to get it right. One field makes the filter an equality test. Duplicate keys are
+  rejected on read rather than resolved last-wins, since a silent winner is the same failure
+  the mapping was chosen to prevent. Deselecting a group that was corrected discards the
+  corrected claim; the proofreading itself survives in the label's pixels, which is what an
+  export checks.
 - **A stage is transcribed whole or not at all, and one that has not been is refused.** The
   two rules are the same rule. `migrate-state` leaves a stage alone if anything in it is
   ambiguous — images disagreeing with their label, or a file sitting in two state folders —
@@ -165,8 +169,29 @@ place.
 - **A write is read-modify-write, and refuses a file that changed underneath it.** Two
   windows on one collection, or a window and a command line, would otherwise discard each
   other's curation with no error. Under folders that could not happen, two moves of different
-  files never colliding; it is the one failure mode this design adds, and it is guarded at
-  the write, which is atomic.
+  files never colliding; it is the one failure mode this design adds, so it is guarded twice.
+  Every file the batch will touch is compared against what the plan read *before the first
+  one is written*, so the answer is "nothing happened" rather than "some of it happened" —
+  a batch spans as many state files as it does stages, and half a curation applied is worse
+  than none. Each write then checks the same thing again for itself, which closes the window
+  the first check leaves open. That is what lets `plan_transition` and `apply_plan` be
+  separate: the decisions are the ones that were previewed, however long ago, while the
+  safety check is taken fresh. It is not a transaction — a full disk can still stop a batch
+  partway — so each stage's records are brought into step as that stage lands, and what is in
+  memory describes what is on disk either way.
+- **Every label write goes through `io/atomic.py`, including compression.** The helper exists
+  for two things a hand-rolled `mkstemp` + `os.replace` silently loses. It restores the
+  destination's own permissions before the rename, because `mkstemp` creates owner-only and
+  OpenCV truncates rather than recreates — so a recompressed label kept `0o600` and became
+  unreadable to everyone but its author, which on a shared archive is the same as losing it.
+  And it takes a fingerprint, so a label something else rewrote mid-run is left as it now is
+  rather than having the old pixels put back over it. Compression needs to decide *after*
+  encoding — the saving cannot be known any other way — so `write_atomically` takes a
+  `commit_if` predicate and returns whether it committed, which keeps that decision inside the
+  window the rename closes instead of measuring first and replacing later.
+- **A compression run that skips a file says which of the three reasons applied.** No saving,
+  a dry run, and "somebody else rewrote it" are one `applied=False` otherwise, and only the
+  third is worth acting on — so `stale` is its own field, reported by both front ends.
 - **Whether a group is corrected is asked of the record, never of a path.** Every guard that
   protects proofread work — conversion, compression, label saving — reads the declared state
   the scanner put on the record. A path stopped answering that question the moment the files
@@ -181,6 +206,14 @@ place.
   conversion replaces proofread work with a machine guess. A dialog is the right guard for
   the first and too weak for the second, so re-converting a corrected label means setting
   that group back to selected first.
+- **The Export tab opens on the whole collection, so it counts what that admits.** The
+  workflow-state filter starts on "all" rather than on *corrected*, matching the rest of the
+  tab: it is narrowed towards an export rather than opening on one and hiding the archive.
+  The cost is that an image somebody decided against can reach a training set — only if it
+  was labelled and deselected afterwards, since the empty-label rule catches every other
+  case — so the summary line counts the deselected images that would actually be written.
+  Made visible rather than made impossible, because "show me everything I rejected" is a
+  real question and the count is what stops it being answered by accident.
 - **What a state change applies to is a set the user builds, and the finest level present
   wins.** Picked-out frames beat ticked lamellae, which beat ticked projects, and with none
   of them it is the frame on screen. Finest-first is chosen for its failure mode: a selection
@@ -349,6 +382,17 @@ place.
   writing, and a mismatch stops the entire batch rather than the one file — which of the two
   versions is wanted is not a question this package can answer, and overwriting is the answer
   that cannot be undone.
+- **Run the suite from the repository root, in `am_segmentation_manager` or
+  `am_segmentation_manager_ml`.** Two ways to get this wrong, and neither announces itself.
+  Run `pytest` from *outside* the repository and there is no `pyproject.toml` above the
+  working directory, so rootdir becomes that directory, `testpaths` never applies, and pytest
+  recurses into everything below it — from `$HOME` that means importing every `.py` under
+  `Library/`, `Dropbox/` and a 52 GB `Data/`, which looks exactly like a hang. Anywhere
+  *inside* the repository is safe; rootdir discovery walks up. Run it in conda's `base` and
+  the imports resolve to a different stack entirely — PyQt5 rather than PySide6, and whatever
+  `cv2` base happens to have — giving several hundred failures that are all one wrong
+  interpreter. `pytest.importorskip("cv2")` does not protect against a half-removed OpenCV,
+  because the shell package still imports; only the attribute access fails.
 - **The reference collection is at
   `<collection>/`** — 12 projects, ~3500 indexed
   images, 52 GB, spanning Autolamella and pre-Autolamella layouts. Treat it as read-only.

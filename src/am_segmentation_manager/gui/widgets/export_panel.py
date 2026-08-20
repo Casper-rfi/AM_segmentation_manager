@@ -427,13 +427,13 @@ class ExportPanel(QWidget):
             column.addWidget(button)
 
         # Beside the buttons that write the CSVs, because it answers the
-        # question they raise later: a training CSV records paths, and curating
-        # the collection afterwards moves the files they point at.
+        # question they raise later: a training CSV records paths, and a file
+        # can be renamed, archived or lost between writing one and using it.
         column.addSpacing(8)
         self.check_button = QPushButton("Check exported CSV...")
         self.check_button.setToolTip(
-            "Read a CSV written earlier and report which recorded paths have "
-            "moved or disappeared. Changes nothing."
+            "Read a CSV written earlier and report which recorded paths no "
+            "longer resolve. Changes nothing."
         )
         self.check_button.clicked.connect(self._check)
         column.addWidget(self.check_button)

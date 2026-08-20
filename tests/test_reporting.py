@@ -16,18 +16,18 @@ def test_record_state():
         return ImageRecord(image_path=Path("/stage/sem/img.tif"), **kwargs)
 
     assert record_state(record()) == "selected"
-    assert record_state(record(selected=False)) == "deselected"
-    assert record_state(record(selected=False, corrected=True)) == "corrected"
+    assert record_state(record(state="deselected")) == "deselected"
+    assert record_state(record(state="corrected")) == "corrected"
 
 
 def test_summarize_lamella():
     img_sel = ImageRecord(image_path=Path("/stage/sem/img1.tif"), modality="SEM")
     img_des = ImageRecord(
-        image_path=Path("/stage/sem/img2.tif"), modality="SEM", selected=False
+        image_path=Path("/stage/sem/img2.tif"), modality="SEM", state="deselected"
     )
     img_cor = ImageRecord(
         image_path=Path("/stage/sem/img3.tif"), modality="SEM",
-        selected=False, corrected=True,
+        state="corrected",
     )
 
     stage = AdaptiveMillingStage(name="stage1", path=Path("/stage"), images=[img_sel, img_des, img_cor])

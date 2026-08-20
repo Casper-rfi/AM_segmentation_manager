@@ -153,10 +153,10 @@ def test_reach_on_an_unshared_modality_reports_no_sharing(tmp_path: Path):
     "reach, expected",
     [
         (StateChangeReach(images=0, labels=0, shared=0), "Nothing selected"),
-        (StateChangeReach(images=1, labels=1, shared=0), "Moves 1 image + 1 label"),
-        (StateChangeReach(images=4, labels=1, shared=3), "Moves 4 images + 1 label"),
-        (StateChangeReach(images=2, labels=2, shared=0), "Moves 2 images + 2 labels"),
-        (StateChangeReach(images=1, labels=0, shared=0), "Moves 1 image, no label yet"),
+        (StateChangeReach(images=1, labels=1, shared=0), "Covers 1 image + 1 label"),
+        (StateChangeReach(images=4, labels=1, shared=3), "Covers 4 images + 1 label"),
+        (StateChangeReach(images=2, labels=2, shared=0), "Covers 2 images + 2 labels"),
+        (StateChangeReach(images=1, labels=0, shared=0), "Covers 1 image, no label yet"),
     ],
 )
 def test_reach_summary_wording(reach, expected):
