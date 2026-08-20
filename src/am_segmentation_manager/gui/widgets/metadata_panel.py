@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -50,6 +51,12 @@ logger = logging.getLogger(__name__)
 #: How wide the completeness bar is. The same as a curation chip in the other
 #: list, so the two line up rather than each sitting at its own size.
 COMPLETENESS_WIDTH = SWATCH_WIDTH
+
+
+#: Narrowest the project list and the actions under it are allowed to get.
+#: The rows carry paths, and the buttons under them clip rather than elide, so
+#: this is the width both are laid out to fit.
+PROJECT_PANE_MIN_WIDTH = 360
 
 
 def _completeness_icon(summary: ProjectSummary) -> QIcon:
@@ -147,7 +154,7 @@ class MetadataPanel(QWidget):
 
     def _build_projects(self) -> QWidget:
         box = QGroupBox("Projects")
-        box.setMinimumWidth(360)
+        box.setMinimumWidth(PROJECT_PANE_MIN_WIDTH)
         column = QVBoxLayout(box)
         self.projects = QListWidget()
         # Elided in the middle rather than the end: these paths differ in the
@@ -176,9 +183,15 @@ class MetadataPanel(QWidget):
         sit under the list rather than beside the fields: a collection with no
         metadata files has nothing to select. Compressing joins them because it
         has no reason to be narrower -- see its tooltip.
+
+        Two to a row rather than three across. A button clips its caption
+        rather than eliding it, and clipping takes the ends off both sides at
+        once -- so three of these in :data:`PROJECT_PANE_MIN_WIDTH` read as
+        "nspect layou". Two fit, and the grid keeps them the same width as each
+        other whatever they are called.
         """
         self.collection_box = box = QGroupBox("Whole collection")
-        row = QHBoxLayout(box)
+        grid = QGridLayout(box)
 
         self.survey_button = QPushButton("Inspect layout")
         self.survey_button.setToolTip(
@@ -186,7 +199,7 @@ class MetadataPanel(QWidget):
             "fit. Reads nothing but the directory structure, and changes nothing."
         )
         self.survey_button.clicked.connect(self.survey_requested.emit)
-        row.addWidget(self.survey_button)
+        grid.addWidget(self.survey_button, 0, 0)
 
         self.init_button = QPushButton("Add metadata files...")
         self.init_button.setToolTip(
@@ -195,7 +208,7 @@ class MetadataPanel(QWidget):
             "yet. An existing file is never overwritten."
         )
         self.init_button.clicked.connect(self.init_requested.emit)
-        row.addWidget(self.init_button)
+        grid.addWidget(self.init_button, 0, 1)
 
         self.compress_button = QPushButton("Compress labels...")
         self.compress_button.setToolTip(
@@ -204,7 +217,7 @@ class MetadataPanel(QWidget):
             "would not shrink is left alone."
         )
         self.compress_button.clicked.connect(self.compress_requested.emit)
-        row.addWidget(self.compress_button)
+        grid.addWidget(self.compress_button, 1, 0)
 
         self._update_collection_buttons()
         return box

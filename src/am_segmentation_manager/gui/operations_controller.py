@@ -356,13 +356,15 @@ class OperationsController:
         *,
         allow_corrected: bool = False,
         dry_run: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> OperationReport:
         """Re-encode the labels of *records* so they take less disk space.
 
         The preview counts the files and their current size rather than
         measuring the saving: measuring it means re-encoding every label, which
         is the whole cost of the operation, and doing that twice to show a
-        number is not worth minutes of waiting.
+        number is not worth minutes of waiting. Only the applying run is slow,
+        so only it reports progress.
         """
         records = list(records)
         labels = existing_labels(records)
@@ -397,7 +399,9 @@ class OperationsController:
                 len(labels),
             )
 
-        results = compress_labels(records, allow_corrected=allow_corrected)
+        results = compress_labels(
+            records, allow_corrected=allow_corrected, on_progress=on_progress
+        )
         applied = [result for result in results if result.applied]
         saved = sum(result.original_size - result.new_size for result in applied)
         lines = tuple(

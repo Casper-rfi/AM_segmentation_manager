@@ -1391,6 +1391,19 @@ def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings
         fresh.close()
 
 
+def test_the_collection_actions_fit_the_pane_they_sit_in(window):
+    """A QPushButton clips its caption rather than eliding it, and clipping
+    takes the ends off both sides at once -- so a row too wide for the pane
+    reads as "nspect layou" rather than as something obviously cut off."""
+    from am_segmentation_manager.gui.widgets.metadata_panel import (
+        PROJECT_PANE_MIN_WIDTH,
+    )
+
+    needed = window.metadata_panel.collection_box.minimumSizeHint().width()
+
+    assert needed <= PROJECT_PANE_MIN_WIDTH
+
+
 def test_scanning_names_the_collection_the_actions_would_write_to(window, project: Path):
     assert window.metadata_panel.root == project
     assert project.name in window.metadata_panel.collection_box.title()

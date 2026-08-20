@@ -576,11 +576,11 @@ class CurationWindow(QMainWindow):
         can substitute an inline call and still exercise the rest of the flow.
 
         Args:
-            cancellation: Pass one to give the dialog a Cancel button and a
-                progress bar. Without it the dialog is the indeterminate,
-                unstoppable one every operation short enough not to need either
-                still gets -- an empty cancel label is how Qt is told to leave
-                the button out.
+            cancellation: Pass one to give the dialog a Stop button -- an empty
+                cancel label is how Qt is told to leave it out. The bar is a
+                separate question: the dialog opens indeterminate and turns
+                into a real one as soon as the work reports progress, so an
+                operation can say how far it has got without being stoppable.
         """
         self._busy = QProgressDialog(
             f"{description}...", "Stop" if cancellation else "", 0, 0, self
@@ -817,10 +817,15 @@ class CurationWindow(QMainWindow):
         if not records:
             self._flash("Scan a folder first")
             return
+        # Only the applying run counts: the preview reads the file sizes and
+        # answers at once, where re-encoding a whole collection is minutes with
+        # nothing else on screen to say it is working.
+        progressed = self.operations.worker.progressed
         self._operate(
             "Compress labels",
             lambda allow, dry: self.operations_controller.compress_labels(
-                records, allow_corrected=allow, dry_run=dry
+                records, allow_corrected=allow, dry_run=dry,
+                on_progress=None if dry else progressed.emit,
             ),
         )
 

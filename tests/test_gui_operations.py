@@ -246,13 +246,17 @@ def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
 # ---------------------------------------------------------------------------
 
 def _record_with_label(
-    tmp_path: Path, folder: str = "labels", *, corrected: bool = False
+    tmp_path: Path,
+    folder: str = "labels",
+    *,
+    name: str = "img.tif",
+    corrected: bool = False,
 ) -> ImageRecord:
-    label = tmp_path / folder / "img.tif"
+    label = tmp_path / folder / name
     label.parent.mkdir(parents=True, exist_ok=True)
     tifffile.imwrite(str(label), _sparse_label())
     return ImageRecord(
-        image_path=tmp_path / "img.tif",
+        image_path=tmp_path / name,
         labels=[label],
         state="corrected" if corrected else "selected",
     )
@@ -283,6 +287,32 @@ def test_compressing_reports_what_it_saved(controller, tmp_path: Path):
     assert report.applied is True
     assert np.array_equal(tifffile.imread(str(record.labels[0])), _sparse_label())
     assert record.labels[0].stat().st_size <= before
+
+
+def test_compression_says_how_far_it_has_got(controller, tmp_path: Path):
+    """A whole collection is minutes, and a dialog that only spins says the
+    window is busy without saying it is advancing."""
+    records = [
+        _record_with_label(tmp_path, name=f"label_{index}.tif") for index in range(3)
+    ]
+    seen: list[tuple[int, int]] = []
+
+    controller.compress_labels(
+        records, on_progress=lambda done, total: seen.append((done, total))
+    )
+
+    assert seen == [(1, 3), (2, 3), (3, 3)]
+
+
+def test_a_compression_preview_reports_no_progress(controller, tmp_path: Path):
+    """It reads file sizes and answers at once; a bar that filled instantly
+    would be reporting on the wrong run."""
+    record = _record_with_label(tmp_path)
+    seen: list = []
+
+    controller.compress_labels([record], dry_run=True, on_progress=seen.append)
+
+    assert seen == []
 
 
 def test_corrected_labels_block_compression_and_are_named(controller, tmp_path: Path):

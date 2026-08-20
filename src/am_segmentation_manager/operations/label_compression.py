@@ -10,7 +10,7 @@ pixel dimensions and label values are never altered.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +69,7 @@ def compress_labels(
     *,
     allow_corrected: bool = False,
     dry_run: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[LabelCompressionResult]:
     """Recompress every on-disk label referenced by *records*.
 
@@ -92,6 +93,9 @@ def compress_labels(
             is declared corrected.
         dry_run: If True, measure potential savings without modifying any
             files.
+        on_progress: Called as ``on_progress(done, total)`` after each label,
+            counted in labels rather than records because a shared label is one
+            piece of work however many images reference it.
 
     Returns:
         One :class:`LabelCompressionResult` per existing label file.
@@ -117,7 +121,12 @@ def compress_labels(
                 f"confirmation: {corrected}"
             )
 
-    return [_recompress(label_path, dry_run=dry_run) for label_path in labels]
+    results = []
+    for done, label_path in enumerate(labels, start=1):
+        results.append(_recompress(label_path, dry_run=dry_run))
+        if on_progress is not None:
+            on_progress(done, len(labels))
+    return results
 
 
 def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
