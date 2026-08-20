@@ -820,13 +820,16 @@ class CurationWindow(QMainWindow):
         # Only the applying run counts: the preview reads the file sizes and
         # answers at once, where re-encoding a whole collection is minutes with
         # nothing else on screen to say it is working.
+        cancellation = Cancellation()
         progressed = self.operations.worker.progressed
         self._operate(
             "Compress labels",
             lambda allow, dry: self.operations_controller.compress_labels(
                 records, allow_corrected=allow, dry_run=dry,
                 on_progress=None if dry else progressed.emit,
+                cancellation=None if dry else cancellation,
             ),
+            cancellation=cancellation,
         )
 
     def _inspect_layout(self) -> None:
@@ -880,12 +883,14 @@ class CurationWindow(QMainWindow):
 
         The first thing in the Export tab slow enough to need the worker: it
         opens each label and labels its components, tens of milliseconds each
-        against half a millisecond for a header.
+        against half a millisecond for a header. Long enough that the dialog
+        has to say it is advancing rather than only that it is busy.
         """
         labels = self.export_controller.measurable_labels()
+        progressed = self.operations.worker.progressed
         self._run_operation(
             f"Measuring {labels} label(s)",
-            self.export_controller.load_measurements,
+            lambda: self.export_controller.load_measurements(progressed.emit),
             lambda measured: self._labels_measured(measured),
         )
 

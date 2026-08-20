@@ -11,7 +11,7 @@ decisions; the widgets render them.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -391,7 +391,9 @@ class ExportController:
         self.breakdowns = breakdowns_for(self.config, per_decade)
         self._area_bins_per_decade = per_decade
 
-    def load_measurements(self) -> int:
+    def load_measurements(
+        self, on_progress: Callable[[int, int], None] | None = None
+    ) -> int:
         """Measure every label, once per scan.
 
         Tens of milliseconds per label against half a millisecond for a header,
@@ -402,6 +404,13 @@ class ExportController:
         the scale; reading them into the mapping rather than letting
         ``measure_records`` read and discard its own is what makes a later
         change of threshold free.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` while measuring,
+                counted in label groups. Reading the headers first is not
+                counted: it is half a millisecond an image against tens of
+                milliseconds a label, so a counter covering both would sit at
+                zero and then move.
 
         Returns:
             How many images have a measured label.
@@ -415,6 +424,7 @@ class ExportController:
                 self.config,
                 self._metadata,
                 min_crack_area_um2=self._min_crack_area_um2,
+                on_progress=on_progress,
             )
             self._measurements_loaded = True
         return len(self._measurements)

@@ -357,6 +357,7 @@ class OperationsController:
         allow_corrected: bool = False,
         dry_run: bool = False,
         on_progress: Callable[[int, int], None] | None = None,
+        cancellation: Cancellation | None = None,
     ) -> OperationReport:
         """Re-encode the labels of *records* so they take less disk space.
 
@@ -364,7 +365,14 @@ class OperationsController:
         measuring the saving: measuring it means re-encoding every label, which
         is the whole cost of the operation, and doing that twice to show a
         number is not worth minutes of waiting. Only the applying run is slow,
-        so only it reports progress.
+        so only it reports progress and only it can be stopped.
+
+        Stopping is safe here for the same reason predicting's is, and for a
+        reason the other batch operations do not have: a recompressed label
+        holds the same pixels as the one it replaced, so a run stopped halfway
+        leaves a collection that differs from a finished one only in how much
+        disk it takes. There is nothing to resume and nothing to undo -- the
+        rest were never opened.
         """
         records = list(records)
         labels = existing_labels(records)
@@ -399,8 +407,14 @@ class OperationsController:
                 len(labels),
             )
 
+        def report(done: int, total: int) -> None:
+            if on_progress is not None:
+                on_progress(done, total)
+            if cancellation is not None:
+                cancellation.check()
+
         results = compress_labels(
-            records, allow_corrected=allow_corrected, on_progress=on_progress
+            records, allow_corrected=allow_corrected, on_progress=report
         )
         applied = [result for result in results if result.applied]
         saved = sum(result.original_size - result.new_size for result in applied)
@@ -415,10 +429,17 @@ class OperationsController:
             f"{self._relative(result.label_path)}: changed on disk, left alone"
             for result in results if result.stale
         )
-        headline = (
-            f"Compressed {len(applied)} of {len(results)} label(s), saving "
-            f"{format_bytes(saved)}."
-        )
+        if len(results) < len(labels):
+            headline = (
+                f"Stopped after {len(results)} of {len(labels)} label(s), having "
+                f"compressed {len(applied)} of them and saved {format_bytes(saved)}. "
+                f"The rest are untouched; run it again to finish."
+            )
+        else:
+            headline = (
+                f"Compressed {len(applied)} of {len(results)} label(s), saving "
+                f"{format_bytes(saved)}."
+            )
         if stale:
             headline += f" {len(stale)} changed on disk and were left alone."
         return OperationReport(

@@ -440,6 +440,18 @@ def test_labels_are_never_measured_without_being_asked(exporter: ExportControlle
     assert not exporter.measurements_loaded()
 
 
+def test_measuring_says_how_far_it_has_got(exporter: ExportController):
+    """Tens of milliseconds a label over a whole collection, so the dialog has
+    to say it is advancing rather than only that it is busy."""
+    seen: list[tuple[int, int]] = []
+
+    exporter.load_measurements(lambda done, total: seen.append((done, total)))
+
+    assert seen, "measuring reported nothing"
+    assert [done for done, _ in seen] == list(range(1, len(seen) + 1))
+    assert {total for _, total in seen} == {seen[-1][0]}
+
+
 def test_a_crack_breakdown_counts_nothing_until_the_labels_are_measured(
     exporter: ExportController,
 ):

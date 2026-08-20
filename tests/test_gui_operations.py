@@ -304,6 +304,39 @@ def test_compression_says_how_far_it_has_got(controller, tmp_path: Path):
     assert seen == [(1, 3), (2, 3), (3, 3)]
 
 
+def test_a_stopped_compression_keeps_what_it_finished(controller, tmp_path: Path):
+    """Safe to stop for a reason the other batch operations do not share: a
+    recompressed label holds the same pixels, so a half-done run differs from a
+    finished one only in how much disk it takes."""
+    from am_segmentation_manager.progress import Cancellation
+
+    records = [
+        _record_with_label(tmp_path, name=f"label_{index}.tif") for index in range(4)
+    ]
+    cancellation = Cancellation()
+
+    report = controller.compress_labels(
+        records,
+        on_progress=lambda done, total: done == 2 and cancellation.request(),
+        cancellation=cancellation,
+    )
+
+    assert "Stopped after 2 of 4" in report.headline
+    assert "run it again to finish" in report.headline
+    assert report.applied is True
+
+
+def test_an_uninterrupted_compression_does_not_say_it_stopped(controller, tmp_path: Path):
+    records = [
+        _record_with_label(tmp_path, name=f"label_{index}.tif") for index in range(2)
+    ]
+
+    report = controller.compress_labels(records)
+
+    assert "Stopped" not in report.headline
+    assert "Compressed" in report.headline
+
+
 def test_a_compression_preview_reports_no_progress(controller, tmp_path: Path):
     """It reads file sizes and answers at once; a bar that filled instantly
     would be reporting on the wrong run."""

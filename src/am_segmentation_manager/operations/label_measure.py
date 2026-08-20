@@ -22,7 +22,7 @@ from ..config import BACKGROUND_CLASS, SegmentationConfig
 from ..io.image import has_image_stack_support
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
-    from collections.abc import Collection, Iterable, Mapping
+    from collections.abc import Callable, Collection, Iterable, Mapping
 
     from ..image_metadata import ImageMetadata
     from ..models import ImageRecord
@@ -564,6 +564,7 @@ def measure_records(
     *,
     min_crack_area_um2: float | None = None,
     use_cache: bool = True,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[Path, LabelMeasurement]:
     """Measure the label of every record, once per label.
 
@@ -585,6 +586,9 @@ def measure_records(
             here for the images that need it when not supplied.
         min_crack_area_um2: Overrides the configured threshold.
         use_cache: Whether to consult and populate the module cache.
+        on_progress: Called as ``on_progress(done, total)`` after each label
+            group. Counted in groups, not records, because the conditions of
+            one scene share a label and are measured once.
 
     Returns:
         Image path to the measurement of that image's label.
@@ -607,7 +611,12 @@ def measure_records(
         metadata = read_records_metadata(primaries)
 
     measurements: dict[Path, LabelMeasurement] = {}
-    for members in groups.values():
+    for done, members in enumerate(groups.values(), start=1):
+        if on_progress is not None:
+            # Before the work rather than after it, because a group with no
+            # label is skipped below and a counter that stepped only on the
+            # ones with work in them would stall on a stretch without any.
+            on_progress(done, len(groups))
         primary = primary_record(members)
         label = find_matching_label(primary)
         if label is None:

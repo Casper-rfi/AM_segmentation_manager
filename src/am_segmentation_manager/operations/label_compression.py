@@ -16,6 +16,7 @@ from pathlib import Path
 
 from ..io.atomic import fingerprint_of, write_atomically
 from ..models import ImageRecord
+from ..progress import OperationCancelled
 from .label_io import has_image_stack_support, save_label_image
 from .selection import current_state
 
@@ -95,10 +96,13 @@ def compress_labels(
             files.
         on_progress: Called as ``on_progress(done, total)`` after each label,
             counted in labels rather than records because a shared label is one
-            piece of work however many images reference it.
+            piece of work however many images reference it. Raising
+            :class:`~..progress.OperationCancelled` from it stops the run.
 
     Returns:
-        One :class:`LabelCompressionResult` per existing label file.
+        One :class:`LabelCompressionResult` per label file examined, in the
+        order they were examined. Shorter than :func:`existing_labels` when the
+        run was stopped through *on_progress*.
     """
     if not has_image_stack_support():
         raise RuntimeError(
@@ -122,10 +126,17 @@ def compress_labels(
             )
 
     results = []
-    for done, label_path in enumerate(labels, start=1):
-        results.append(_recompress(label_path, dry_run=dry_run))
-        if on_progress is not None:
-            on_progress(done, len(labels))
+    try:
+        for done, label_path in enumerate(labels, start=1):
+            results.append(_recompress(label_path, dry_run=dry_run))
+            if on_progress is not None:
+                on_progress(done, len(labels))
+    except OperationCancelled:
+        # Returned rather than raised: stopping lands between whole files, so
+        # what is in *results* is finished work and the rest were never opened.
+        # A caller tells a stopped run from a complete one by comparing this
+        # against :func:`existing_labels`, which is why that is public.
+        logger.info("Compression stopped after %d of %d label(s)", len(results), len(labels))
     return results
 
 

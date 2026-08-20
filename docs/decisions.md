@@ -376,20 +376,30 @@ place.
   scope grow. Why the software works as it does belongs here, not in a hover nobody finishes.
   Every control in the Filters box also says what it narrows: that it decides the breakdown
   *and* the exports is not visible from the box's title.
-- **A long operation runs on a thread, and most of them cannot be cancelled.** Recompressing
-  a project's labels is minutes, and Qt draws nothing while the thread owning the widgets is
-  busy — so the work goes to `gui/worker.py` and the window shows a busy dialog. No cancel
-  button on those: they validate the complete set of changes before performing any of them,
-  and stopping one halfway leaves exactly the half-applied collection that rule exists to
-  prevent.
-- **Predicting is the exception, because stopping it leaves nothing half-applied.** Each
-  prediction is written atomically and recorded as this model's work before the next begins,
-  so a stopped run has produced finished files and an accurate account of them, and the next
-  run resumes from there. That is what earns it a Stop button and a progress bar where an
-  hour of work would otherwise be a frozen window. Cancellation is a `threading.Event` in
-  `progress.py`, polled by the work closure, rather than a Qt signal: a queued signal reaches
-  the worker when it next returns to its event loop, which inside a long call is never. It is
-  offered only on the applying run — a preview opens no file and answers in milliseconds.
+- **A long operation runs on a thread, and says how far it has got.** Qt draws nothing while
+  the thread owning the widgets is busy, so the work goes to `gui/worker.py` and the window
+  shows a modal dialog naming it. That dialog opens indeterminate and becomes a count as soon
+  as the operation reports, through one `on_progress(done, total)` contract and one
+  `progressed` signal connected once for the whole window — so giving an operation a counter
+  is a callback in its loop, not a mechanism. Which ones have earned it is a question about
+  duration: predicting is seconds an image, measuring and recompressing are tens of
+  milliseconds a label over a whole collection, and writing a metadata file per project is
+  over before the dialog paints. Only the applying run counts, never the preview: a preview
+  that answers in milliseconds would fill a bar instantly and describe the wrong run.
+- **Whether it can be *stopped* is a different question, and the answer is what a half-done
+  run leaves behind.** Two can be. Each prediction is written atomically and recorded as this
+  model's work before the next begins, so a stopped run has produced finished files and an
+  accurate account of them, and the next run resumes from there. Recompression is safer
+  still: a re-encoded label holds the same pixels as the one it replaced, so a collection
+  stopped halfway differs from a finished one only in how much disk it takes — there is
+  nothing to resume and nothing to undo. Both stop between whole files, and both report what
+  they completed rather than raising it away. Converting predictions is the one that must
+  not: it validates the whole set of destinations before writing any of them, and stopping it
+  leaves exactly the half-applied collection that rule exists to prevent. Cancellation is a
+  `threading.Event` in `progress.py` polled by the work closure, rather than a Qt signal: a
+  queued signal reaches the worker when it next returns to its event loop, which inside a
+  long call is never. It rides in through the progress callback, so an operation that reports
+  progress needs no cancellation branch of its own.
 - **Whether to offer the predict button is decided by locating torch, not importing it.** An
   import costs seconds at every window start, including for someone who never predicts.
   `ml_stack_present` uses `find_spec`; the press then runs the full check, because a torch
