@@ -1,8 +1,8 @@
 """The selection model: what a state change applies to.
 
-Qt-free, so these run without a display. The precedence and the gesture
-arithmetic are the whole of the model; the widgets only draw it and report
-clicks, and those are covered in the window tests.
+Qt-free, so these run without a display. The one-level-at-a-time rule and the
+gesture arithmetic are the whole of the model; the widgets only draw it and
+report clicks, and those are covered in the window tests.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from am_segmentation_manager.gui.selection import (
 )
 
 # ---------------------------------------------------------------------------
-# Precedence
+# One level at a time
 # ---------------------------------------------------------------------------
 
 def test_nothing_selected_means_the_frame_on_screen():
@@ -28,28 +28,83 @@ def test_nothing_selected_means_the_frame_on_screen():
     assert Selection().is_empty is True
 
 
-def test_the_finest_level_present_wins():
-    """Finest-first is the fail-safe order: a forgotten frame selection makes a
-    change smaller than intended, where the other order would make it larger."""
+def test_ticking_a_lamella_clears_the_ticked_projects():
+    """Otherwise a change would be decided by ticks the reach line ignores."""
     selection = Selection()
     selection.check(LEVEL_PROJECTS, "/p", True)
-    assert selection.level == LEVEL_PROJECTS
 
     selection.check(LEVEL_LAMELLAE, "/p/lam", True)
+
+    assert selection.projects == set()
     assert selection.level == LEVEL_LAMELLAE
 
+
+def test_ticking_a_project_clears_the_ticked_lamellae():
+    selection = Selection()
+    selection.check(LEVEL_LAMELLAE, "/p/lam", True)
+
+    selection.check(LEVEL_PROJECTS, "/p", True)
+
+    assert selection.lamellae == set()
+    assert selection.level == LEVEL_PROJECTS
+
+
+def test_picking_a_frame_clears_both_lists():
+    selection = Selection()
+    selection.check(LEVEL_PROJECTS, "/p", True)
+    selection.check(LEVEL_LAMELLAE, "/p/lam", True)
+
     selection.toggle(3)
+
+    assert selection.projects == set()
+    assert selection.lamellae == set()
     assert selection.level == LEVEL_FRAMES
 
 
-def test_clearing_the_finest_level_falls_back_to_the_next():
+def test_extending_over_frames_clears_the_lists_too():
+    """A Shift-drag selects without ever going through toggle()."""
+    selection = Selection()
+    selection.check(LEVEL_LAMELLAE, "/p/lam", True)
+
+    selection.begin_extend(2)
+    selection.extend_to(4)
+
+    assert selection.lamellae == set()
+    assert selection.frames == {2, 3, 4}
+
+
+def test_unticking_clears_nothing_else():
+    """Taking something out can only make a change smaller, so it is not a
+    gesture that needs to reset anything."""
+    selection = Selection()
+    selection.check(LEVEL_LAMELLAE, "/a", True)
+    selection.check(LEVEL_LAMELLAE, "/b", True)
+
+    selection.check(LEVEL_PROJECTS, "/p", False)
+
+    assert selection.lamellae == {"/a", "/b"}
+
+
+def test_ticking_every_lamella_clears_the_ticked_projects():
+    selection = Selection()
+    selection.check(LEVEL_PROJECTS, "/p", True)
+
+    selection.check_all(LEVEL_LAMELLAE, ["/p/1", "/p/2"], True)
+
+    assert selection.projects == set()
+    assert selection.lamellae == {"/p/1", "/p/2"}
+
+
+def test_clearing_the_frames_leaves_nothing_selected():
+    """There is no coarser level left to fall back to: picking the frames out
+    cleared it."""
     selection = Selection()
     selection.check(LEVEL_LAMELLAE, "/p/lam", True)
     selection.toggle(3)
 
     selection.clear_frames()
 
-    assert selection.level == LEVEL_LAMELLAE
+    assert selection.is_empty
 
 
 # ---------------------------------------------------------------------------
@@ -80,16 +135,15 @@ def test_unticking_something_never_ticked_is_not_an_error():
     assert selection.lamellae == set()
 
 
-def test_ticking_all_leaves_other_projects_lamellae_alone():
-    """The list only shows one project's, and un-ticking what is not on screen
-    would be a change nobody could see."""
+def test_clearing_the_ticks_touches_only_the_keys_named():
+    """"None" clears the list on screen; nothing else is named, so nothing else
+    moves. The controller is what keeps that list the whole of the selection."""
     selection = Selection()
-    selection.check(LEVEL_LAMELLAE, "/elsewhere", True)
 
     selection.check_all(LEVEL_LAMELLAE, ["/here/1", "/here/2"], True)
-    selection.check_all(LEVEL_LAMELLAE, ["/here/1", "/here/2"], False)
+    selection.check_all(LEVEL_LAMELLAE, ["/here/1"], False)
 
-    assert selection.lamellae == {"/elsewhere"}
+    assert selection.lamellae == {"/here/2"}
 
 
 def test_an_uncheckable_level_is_refused():

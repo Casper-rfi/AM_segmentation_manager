@@ -467,7 +467,6 @@ class CurationWindow(QMainWindow):
         self.project_panel.lamella_checked.connect(self._check_lamella)
         self.project_panel.projects_check_all.connect(self._check_all_projects)
         self.project_panel.lamellae_check_all.connect(self._check_all_lamellae)
-        self.project_panel.target_changed.connect(self._set_target)
 
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
@@ -483,6 +482,7 @@ class CurationWindow(QMainWindow):
 
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.state_requested.connect(self.apply_state)
+        self.state_panel.target_changed.connect(self._set_target)
 
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
@@ -1276,7 +1276,7 @@ class CurationWindow(QMainWindow):
         self.controller.set_mode(mode)
         self.image_panel.set_mode(mode)
         # set_mode may have pointed the edit target at the new modality.
-        self.project_panel.set_target(self.controller.target)
+        self.state_panel.set_target(self.controller.target)
         self.refresh()
 
     def _set_overlay(self, show: bool) -> None:
@@ -1302,22 +1302,22 @@ class CurationWindow(QMainWindow):
 
     def _check_project(self, row: int, checked: bool) -> None:
         self.controller.set_project_checked(row, checked)
-        self._refresh_list_titles()
+        self._refresh_checks()
         self._refresh_state_panel()
 
     def _check_lamella(self, row: int, checked: bool) -> None:
         self.controller.set_lamella_checked(row, checked)
-        self._refresh_list_titles()
+        self._refresh_checks()
         self._refresh_state_panel()
 
     def _check_all_projects(self, checked: bool) -> None:
         self.controller.check_all_projects(checked)
-        self._refresh_lists()
+        self._refresh_checks()
         self._refresh_state_panel()
 
     def _check_all_lamellae(self, checked: bool) -> None:
         self.controller.check_all_lamellae(checked)
-        self._refresh_lists()
+        self._refresh_checks()
         self._refresh_state_panel()
 
     def _toggle_frame(self, position: int) -> None:
@@ -1341,18 +1341,21 @@ class CurationWindow(QMainWindow):
 
         Deliberately not the whole window: picking frames out does not move the
         view, so nothing needs re-rendering or re-loading, and a drag along the
-        timeline emits one of these per pixel.
+        timeline emits one of these per pixel. The lists are included because
+        picking a frame out clears their ticks.
         """
         self._refresh_timeline()
+        self._refresh_checks()
         self._refresh_state_panel()
 
-    def _refresh_list_titles(self) -> None:
-        """Update the counts of ticked rows without rebuilding the lists.
+    def _refresh_checks(self) -> None:
+        """Put both lists' ticks back without rebuilding them.
 
         Rebuilding would reset the row the user is on, and ticking a row is not
-        a change of what is being looked at.
+        a change of what is being looked at. Both lists every time: a tick at
+        one level clears the other, and that has to be visible.
         """
-        self.project_panel.show_check_counts(
+        self.project_panel.show_checks(
             self.controller.project_checks(), self.controller.lamella_checks()
         )
 
@@ -1551,6 +1554,9 @@ class CurationWindow(QMainWindow):
         """Bring the whole window back in step with the controller."""
         if reload_lists:
             self._refresh_lists()
+        # Outside the reload: the summary describes the lamella being looked
+        # at, so it has to follow the cursor rather than only a rescan.
+        self.project_panel.show_summary(self._summary_text())
         self._refresh_timeline()
         self._render()
         self._refresh_state_panel()
@@ -1569,7 +1575,6 @@ class CurationWindow(QMainWindow):
             self.controller.lamella_statuses(),
             self.controller.lamella_checks(),
         )
-        self.project_panel.show_summary(self._summary_text())
 
     def _summary_text(self) -> str:
         """Describe the lamella's curation progress, per modality.
@@ -1714,7 +1719,7 @@ class CurationWindow(QMainWindow):
         self.operations_panel.show_predictions(
             self.operations_controller.describe_predictions(self.controller.scoped_records())
         )
-        self.project_panel.set_target(self.controller.target)
+        self.state_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 
     def _point_label_tab(self) -> None:

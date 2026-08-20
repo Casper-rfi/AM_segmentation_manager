@@ -188,7 +188,7 @@ def test_the_reach_line_is_shown_even_when_nothing_is_shared(qt_app, plain_proje
     """Always present, so its absence never has to be interpreted."""
     window = _window(qt_app, plain_project)
     try:
-        assert window.state_panel.reach.text() == "Covers 1 image, no label yet"
+        assert window.state_panel.reach.text() == "Covers 1 image, no label yet, 1 lamella"
         assert window.state_panel.reach_shared.isHidden() is True
     finally:
         window.close()
@@ -199,7 +199,7 @@ def test_the_reach_line_reports_images_pulled_in_by_a_shared_label(
 ):
     window = _window(qt_app, variant_project)
     try:
-        assert window.state_panel.reach.text() == "Covers 3 images + 1 label"
+        assert window.state_panel.reach.text() == "Covers 3 images, 1 label, 1 lamella"
         assert window.state_panel.reach_shared.text() == (
             "2 more share a label with this one"
         )
@@ -214,7 +214,7 @@ def test_the_reach_line_follows_the_target(qt_app, variant_project: Path):
         window._set_target("FIB")
         _settle(qt_app)
 
-        assert window.state_panel.reach.text() == "Covers 1 image + 1 label"
+        assert window.state_panel.reach.text() == "Covers 1 image, 1 label, 1 lamella"
         assert window.state_panel.reach_shared.isHidden() is True
     finally:
         window.close()

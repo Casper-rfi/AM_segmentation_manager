@@ -214,15 +214,20 @@ place.
   case — so the summary line counts the deselected images that would actually be written.
   Made visible rather than made impossible, because "show me everything I rejected" is a
   real question and the count is what stops it being answered by accident.
-- **What a state change applies to is a set the user builds, and the finest level present
-  wins.** Picked-out frames beat ticked lamellae, which beat ticked projects, and with none
-  of them it is the frame on screen. Finest-first is chosen for its failure mode: a selection
-  the user has forgotten makes the next change *smaller* than intended, where the opposite
-  order would make it larger. Ticks are keyed by resolved path, since a row means a different
-  lamella as soon as the project changes; frame indices clear with the lamella, because that
-  is all an index means here. Everything reaches `transition_records` through
-  `scoped_records()`, so group expansion and the corrected-data guard apply to a ticked
-  selection unchanged.
+- **What a state change applies to is a set the user builds, at one level at a time.**
+  Ticking a project clears the ticked lamellae, ticking a lamella clears the ticked projects,
+  and picking frames out clears both — so what is ticked on screen is the whole of what a
+  change, or an operation run against the selection, will touch. Not a precedence rule between
+  the levels: that leaves ticks visible which decide nothing, and — once a tick outlives the
+  project it was made in — ticks *invisible* which decide everything, which is how an
+  operation run from this window reaches a project nobody was looking at. Ticked lamellae
+  belong to the project on screen and go
+  when it changes; ticked projects stay, because the project list still shows them. Frame
+  indices clear with the lamella, because that is all an index means here. The reach line
+  counts the lamellae and each modality separately, since the modality control decides which
+  of the two moves and one total cannot say which. Everything reaches `transition_records`
+  through `scoped_records()`, so group expansion and the corrected-data guard apply to a
+  ticked selection unchanged.
 - **Reading a label gives three answers, not two.** `is_label_file_empty()` is tri-state, and
   **None means "cannot tell"** — deliberately distinct from True, because reporting "not
   annotated" for a label nobody could read would be a guess presented as a fact. Every caller

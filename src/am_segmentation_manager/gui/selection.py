@@ -1,17 +1,19 @@
 """What a state change applies to: checked projects, lamellae or frames.
 
 A set the user builds and can see -- checkmarks in the two lists, a band over
-the frames picked out on the timeline. **The finest level present wins**, and
-nothing coarser is consulted; see `docs/decisions.md` § Workflow state for why
-that order. Qt-free, like the controllers.
+the frames picked out on the timeline. **One level at a time**: picking at any
+level clears the others, so what is ticked on screen is the whole of what a
+change will touch; see `docs/decisions.md` § Workflow state. Qt-free, like the
+controllers.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: What the selection currently rests on, finest first. Reported so the window
-#: can say which, and so a confirmation can name it.
+#: What the selection currently rests on. Reported so the window can say
+#: which, and so a confirmation can name it. At most one of the three holds
+#: anything at a time.
 LEVEL_FRAMES = "frames"
 LEVEL_LAMELLAE = "lamellae"
 LEVEL_PROJECTS = "projects"
@@ -50,7 +52,11 @@ class Selection:
 
     @property
     def level(self) -> str:
-        """Return which level the selection rests on."""
+        """Return which level the selection rests on.
+
+        Only one of the three can hold anything, so the order below is a
+        backstop rather than a precedence rule.
+        """
         if self.frames:
             return LEVEL_FRAMES
         if self.lamellae:
@@ -81,6 +87,10 @@ class Selection:
     def check(self, kind: str, key: str, checked: bool) -> None:
         """Check or uncheck one project or lamella.
 
+        Checking clears the other two levels, so the selection never holds
+        more than the one the user is looking at. Unchecking clears nothing:
+        it can only make a change smaller.
+
         Args:
             kind: ``"projects"`` or ``"lamellae"``.
             key: The directory's resolved path, from :func:`selection_key`.
@@ -88,18 +98,39 @@ class Selection:
         """
         chosen = self._set(kind)
         if checked:
+            self._keep_only(kind)
             chosen.add(key)
         else:
             chosen.discard(key)
 
     def check_all(self, kind: str, keys: list[str], checked: bool) -> None:
-        """Check or uncheck every one of *keys*.
+        """Check or uncheck every one of *keys*, clearing the other levels.
 
-        Only the keys named are touched, so checking all the lamellae of one
-        project leaves those checked in another project alone.
+        Only the keys named are touched, so clearing the ticks on one
+        project's lamellae says nothing about any other project's.
         """
+        chosen = self._set(kind)
+        if checked:
+            self._keep_only(kind)
         for key in keys:
-            self.check(kind, key, checked)
+            if checked:
+                chosen.add(key)
+            else:
+                chosen.discard(key)
+
+    def _keep_only(self, kind: str) -> None:
+        """Drop everything picked out at a level other than *kind*.
+
+        The invariant the whole model rests on: what is ticked on screen is
+        the whole of what a change will touch. Both lists are visible at once,
+        so a tick cleared here is a tick the user can see disappear.
+        """
+        if kind != LEVEL_PROJECTS:
+            self.projects.clear()
+        if kind != LEVEL_LAMELLAE:
+            self.lamellae.clear()
+        if kind != LEVEL_FRAMES:
+            self.clear_frames()
 
     def is_checked(self, kind: str, key: str) -> bool:
         """Return whether a project or lamella is checked."""
@@ -125,10 +156,14 @@ class Selection:
         self._base = set(self.frames)
 
     def toggle(self, position: int) -> None:
-        """Add a frame to the selection, or take it out again."""
+        """Add a frame to the selection, or take it out again.
+
+        Adding one clears the ticked projects and lamellae, as ticking does.
+        """
         if position in self.frames:
             self.frames.discard(position)
         else:
+            self._keep_only(LEVEL_FRAMES)
             self.frames.add(position)
         self.point_at(position)
 
@@ -144,6 +179,7 @@ class Selection:
 
     def extend_to(self, position: int) -> None:
         """Select everything between the anchor and *position*, inclusive."""
+        self._keep_only(LEVEL_FRAMES)
         if self.anchor is None:
             self.anchor = position
         low, high = sorted((self.anchor, position))
@@ -152,14 +188,17 @@ class Selection:
     def describe(self) -> str:
         """Return a short phrase naming what is selected, for a confirmation."""
         if self.frames:
-            return _counted(len(self.frames), "frame", "frames")
+            return counted(len(self.frames), "frame", "frames")
         if self.lamellae:
-            return _counted(len(self.lamellae), "lamella", "lamellae")
+            return counted(len(self.lamellae), "lamella", "lamellae")
         if self.projects:
-            return _counted(len(self.projects), "project", "projects")
+            return counted(len(self.projects), "project", "projects")
         return "this frame"
 
 
-def _counted(count: int, singular: str, plural: str) -> str:
-    """Return ``"1 lamella"`` or ``"4 lamellae"``."""
+def counted(count: int, singular: str, plural: str) -> str:
+    """Return ``"1 lamella"`` or ``"4 lamellae"``.
+
+    Shared with the reach line, so the two cannot pluralise differently.
+    """
     return f"{count} {singular if count == 1 else plural}"

@@ -237,7 +237,7 @@ def test_choosing_what_to_change_is_not_guarded(window):
     with the guard on -- and the reach line recounts as they change."""
     assert window.controller.editing_enabled is False
 
-    assert window.project_panel.target_buttons["FIB"].isEnabled() is True
+    assert window.state_panel.target_buttons["FIB"].isEnabled() is True
     assert window.project_panel.lamella_list.isEnabled() is True
 
 
@@ -252,7 +252,7 @@ def test_a_state_change_is_declared_and_shown_in_the_readout(qt_app, window):
     from am_segmentation_manager.state import read_state
 
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["SEM"].setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
     record = window.controller.frame.record("SEM")
     original = record.image_path
     assert original.exists()
@@ -271,7 +271,7 @@ def test_a_state_change_is_declared_and_shown_in_the_readout(qt_app, window):
 
 def test_applying_to_both_declares_both_modalities(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
 
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
@@ -291,7 +291,7 @@ def test_the_change_is_logged(window):
 
 def test_timeline_reflects_the_lamella(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
@@ -303,11 +303,11 @@ def test_timeline_reflects_the_lamella(qt_app, window):
 def test_mixed_state_shows_no_option_selected(qt_app, window):
     """A frame whose modalities disagree must not claim to be in one state."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["SEM"].setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.combined_state() == "mixed")
 
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     window._refresh_state_panel()
 
     assert not any(
@@ -376,7 +376,7 @@ def test_the_panes_have_no_scrollbars(window):
 def test_timeline_shows_each_modality_separately(qt_app, window):
     """A frame with one modality changed must not read as an unlabelled 'mixed'."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["SEM"].setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.timeline._rows["SEM"][0] == "deselected")
 
@@ -829,11 +829,11 @@ def test_switching_view_points_the_target_at_that_modality(window):
     window._set_mode("fib")
 
     assert window.controller.target == "FIB"
-    assert window.project_panel.target_buttons["FIB"].isChecked()
+    assert window.state_panel.target_buttons["FIB"].isChecked()
 
     window._set_mode("sem")
     assert window.controller.target == "SEM"
-    assert window.project_panel.target_buttons["SEM"].isChecked()
+    assert window.state_panel.target_buttons["SEM"].isChecked()
 
 
 # ---------------------------------------------------------------------------
@@ -843,13 +843,13 @@ def test_switching_view_points_the_target_at_that_modality(window):
 def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
     """With a corrected SEM and a deselected FIB, only the SEM is at risk."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["SEM"].setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("corrected")
-    window.project_panel.target_buttons["FIB"].setChecked(True)
+    window.state_panel.target_buttons["FIB"].setChecked(True)
     window.apply_state("deselected")
     _settle(qt_app, lambda: window.controller.state_of("FIB") == "deselected")
 
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     at_risk = window.controller.corrected_records()
 
     assert [record.modality for record in at_risk] == ["SEM"]
@@ -860,7 +860,7 @@ def test_marking_corrected_without_an_annotation_asks_first(window, monkeypatch)
     trusts it. The fixture's FIB images have no label at all, so calling them
     corrected is a claim about work that does not exist."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["FIB"].setChecked(True)
+    window.state_panel.target_buttons["FIB"].setChecked(True)
     asked: list[str] = []
     monkeypatch.setattr(
         "qtpy.QtWidgets.QMessageBox.warning",
@@ -878,7 +878,7 @@ def test_the_warning_names_the_lamella_so_it_can_be_found(window, monkeypatch):
     """Image filenames repeat between lamellae, so a list of them is not
     something anyone can act on."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["FIB"].setChecked(True)
+    window.state_panel.target_buttons["FIB"].setChecked(True)
     asked: list[str] = []
     monkeypatch.setattr(
         "qtpy.QtWidgets.QMessageBox.warning",
@@ -894,7 +894,7 @@ def test_marking_an_annotated_label_corrected_asks_nothing(window, monkeypatch):
     """The guard has to be silent in the normal case, or it becomes a dialog
     people dismiss without reading."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["SEM"].setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
     monkeypatch.setattr(
         "qtpy.QtWidgets.QMessageBox.warning",
         lambda *args, **kwargs: pytest.fail("asked about an annotated label"),
@@ -908,7 +908,7 @@ def test_marking_an_annotated_label_corrected_asks_nothing(window, monkeypatch):
 def test_the_warning_does_not_apply_to_the_other_states(window, monkeypatch):
     """Deselecting an unlabelled image is the ordinary case, not a mistake."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["FIB"].setChecked(True)
+    window.state_panel.target_buttons["FIB"].setChecked(True)
     monkeypatch.setattr(
         "qtpy.QtWidgets.QMessageBox.warning",
         lambda *args, **kwargs: pytest.fail("asked about a deselection"),
@@ -976,7 +976,7 @@ def test_a_ticked_selection_is_confirmed_before_anything_moves(qt_app, window, m
 
 def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, monkeypatch):
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     _tick_lamella(window)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
 
@@ -990,7 +990,7 @@ def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, 
 def test_nothing_ticked_is_not_confirmed(window, monkeypatch):
     """The common case -- one frame -- must not ask every time."""
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: pytest.fail("should not ask"))
 
     window.apply_state("deselected")
@@ -1021,7 +1021,57 @@ def test_the_title_says_how_many_are_ticked(window):
     """The lists scroll, so a tick out of view still has to be countable."""
     _tick_lamella(window)
 
-    assert window.project_panel.lamella_box.title() == "Lamellae (2, 1 ticked)"
+    assert window.project_panel.lamella_box.title() == "Lamellae (1 of 2 ticked)"
+
+
+def test_the_summary_follows_the_lamella_being_looked_at(window):
+    """It counts this lamella's frames, so leaving it on the previous one
+    reports a lamella nobody is looking at."""
+    assert window.project_panel.summary.text().startswith("4 frames")
+
+    window._select_lamella(1)
+
+    assert window.project_panel.summary.text().startswith("2 frames")
+
+
+def test_ticking_a_lamella_unticks_the_project_box_on_screen(window):
+    """The clearing has to reach the widget, not only the model: a box still
+    drawn ticked is exactly the tick somebody counts on."""
+    window.project_panel.project_list.item(0).setCheckState(Qt.Checked)
+
+    _tick_lamella(window)
+
+    assert window.project_panel.project_list.item(0).checkState() == Qt.Unchecked
+    assert window.project_panel.project_box.title() == "Projects (1)"
+
+
+def test_picking_a_frame_unticks_the_lamella_box_on_screen(window):
+    _tick_lamella(window)
+
+    window._toggle_frame(0)
+
+    assert window.project_panel.lamella_list.item(0).checkState() == Qt.Unchecked
+    assert window.controller.describe_selection() == "1 frame"
+
+
+def test_the_modality_control_sits_with_the_buttons_that_act(window):
+    """Which rows is chosen on the left; which modality and which state are
+    read together, beside the buttons that move them."""
+    assert window.state_panel.target_buttons["SEM"].parent() is not None
+    assert window.state_panel.isAncestorOf(window.state_panel.target_buttons["SEM"])
+    assert not hasattr(window.project_panel, "target_buttons")
+
+
+def test_the_reach_line_names_the_lamellae_and_the_modalities(window):
+    """The count the user asked for before running an operation: how many
+    lamellae, and how many images of each beam."""
+    window.state_panel.target_buttons["both"].setChecked(True)
+    _tick_lamella(window)
+
+    text = window.state_panel.reach.text()
+
+    assert "1 lamella" in text
+    assert "SEM" in text and "FIB" in text
 
 
 # ---------------------------------------------------------------------------
@@ -1216,7 +1266,7 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     file, so a corrected label must not be reached by one Apply.
     """
     window.state_panel.enable_check.setChecked(True)
-    window.project_panel.target_buttons["both"].setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
     _tick_lamella(window)
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
     # The fixture's FIB images have no labels, which this ladder is not about.

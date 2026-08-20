@@ -38,6 +38,7 @@ from .selection import (
     LEVEL_LAMELLAE,
     LEVEL_PROJECTS,
     Selection,
+    counted,
     selection_key,
 )
 
@@ -200,25 +201,37 @@ class StateChangeReach:
             entries the change writes.
         shared: How many of *images* were pulled in by a shared label rather
             than named by the current scope.
+        lamellae: Distinct lamellae those images belong to.
+        modalities: ``(modality, count)`` over *images*, in
+            :data:`~am_segmentation_manager.layout.MODALITIES` order. Reported
+            per modality because the edit target moves one or both, and a
+            single total cannot say which.
     """
 
     images: int
     labels: int
     shared: int
+    lamellae: int
+    modalities: tuple[tuple[str, int], ...] = ()
 
     def summary(self) -> str:
-        """Return the one-line description shown above the state controls."""
+        """Return the description shown above the state controls."""
         if not self.images:
             return "Nothing selected"
-        label_part = (
-            f"{self.labels} label" if self.labels == 1 else f"{self.labels} labels"
-        )
-        image_part = (
-            f"{self.images} image" if self.images == 1 else f"{self.images} images"
-        )
-        if not self.labels:
-            return f"Covers {image_part}, no label yet"
-        return f"Covers {image_part} + {label_part}"
+        parts = [
+            self._image_part(),
+            counted(self.labels, "label", "labels") if self.labels else "no label yet",
+            counted(self.lamellae, "lamella", "lamellae"),
+        ]
+        return "Covers " + ", ".join(parts)
+
+    def _image_part(self) -> str:
+        """Return the image count, split by modality where both are present."""
+        present = [(name, count) for name, count in self.modalities if count]
+        if len(present) < 2:
+            return counted(self.images, "image", "images")
+        split = " + ".join(f"{count} {name}" for name, count in present)
+        return f"{split} images"
 
     def shared_note(self) -> str:
         """Return the second line, or an empty string when nothing is shared."""
@@ -425,10 +438,17 @@ class CurationController:
         return self._frame_position
 
     def select_project(self, position: int) -> None:
-        """Select a project by index and move to its first lamella."""
+        """Select a project by index and move to its first lamella.
+
+        The ticked lamellae go with it. They belong to the project that was on
+        screen, and a tick nobody can see is one that decides what an operation
+        touches without saying so; the ticked projects stay, since the project
+        list still shows them.
+        """
         self._project_position = _clamp(position, len(self._projects))
         project = self.project
         self._lamellae = list(project.lamellae) if project is not None else []
+        self.selection.lamellae.clear()
         self.select_lamella(0)
 
     def select_lamella(self, position: int) -> None:
@@ -806,11 +826,11 @@ class CurationController:
     def scoped_records(self) -> list:
         """Return every record a state change would apply to.
 
-        The finest level the user has picked out wins, and nothing coarser is
-        consulted -- see :mod:`.selection` for why that order and not the other.
-        Everything downstream (:meth:`expanded_records`, :meth:`reach`,
-        :meth:`apply_state`) reads this one method, so label-group expansion and
-        the corrected-data guard apply to a checked selection unchanged.
+        Only one level is ever picked out at a time -- see :mod:`.selection` --
+        so this reads whichever one holds anything. Everything downstream
+        (:meth:`expanded_records`, :meth:`reach`, :meth:`apply_state`) reads
+        this one method, so label-group expansion and the corrected-data guard
+        apply to a checked selection unchanged.
 
         Whole lamellae are read straight from the scanned stages rather than
         through frames, since the chronological pairing only matters for display.
@@ -830,18 +850,18 @@ class CurationController:
         ]
 
     def _checked_lamellae(self) -> list[Lamella]:
-        """Return the lamellae the selection covers, across every project.
+        """Return the lamellae the selection covers.
 
-        Checks persist by path, so a lamella checked before the project was
-        changed is still checked -- and still has to be found, which is why this
-        searches every project rather than only the one on screen.
+        Ticked lamellae are the selected project's own: they are cleared when
+        the project changes, so this searches only what the list is showing.
+        Ticked projects are looked up across the whole scan, which is what the
+        project list shows.
         """
         if self.selection.lamellae:
             wanted = self.selection.lamellae
             return [
                 lamella
-                for project in self._projects
-                for lamella in project.lamellae
+                for lamella in self._lamellae
                 if selection_key(lamella.path) in wanted
             ]
         wanted = self.selection.projects
@@ -927,17 +947,25 @@ class CurationController:
         """
         scoped = self.scoped_records()
         if not scoped:
-            return StateChangeReach(images=0, labels=0, shared=0)
+            return StateChangeReach(images=0, labels=0, shared=0, lamellae=0)
         expanded = self.expanded_records(scoped)
         labels = {
             str(label)
             for record in expanded
             for label in record.labels
         }
+        # Qualified by project because lamella names repeat between projects,
+        # and a change over ticked projects spans several.
+        lamellae = {(record.project, record.lamella) for record in expanded}
         return StateChangeReach(
             images=len(expanded),
             labels=len(labels),
             shared=len(expanded) - len(scoped),
+            lamellae=len(lamellae),
+            modalities=tuple(
+                (modality, sum(1 for r in expanded if r.modality == modality))
+                for modality in MODALITIES
+            ),
         )
 
     def apply_state(self, state: RecordState, *, confirm_corrected: bool = False) -> int:

@@ -1,9 +1,12 @@
-"""Right panel: which state to change to, and how far that reaches.
+"""Right panel: which images to change, to which state, and how far that reaches.
 
-*What* a change applies to is chosen on the left; this panel answers the other
-half, and reports how far it reaches before it is made. Everything that writes
-stays disabled until editing is switched on, so reviewing data cannot change it
-by a stray click.
+*Which rows* a change covers is chosen on the left; this panel answers the rest
+-- which modality of them, and which state -- and reports how far it reaches
+before it is made. The modality sits here rather than beside the ticks because
+it is read together with the reach line it changes, and because both are next
+to the buttons that act on them. Everything that *writes* stays disabled until
+editing is switched on, so reviewing data cannot change it by a stray click;
+choosing what a change would cover writes nothing and stays usable.
 
 The states are mutually exclusive because a group has exactly one entry in its
 stage's state file. A frame whose acquisitions disagree therefore shows no
@@ -16,6 +19,7 @@ from qtpy.QtGui import QIcon, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QRadioButton,
     QVBoxLayout,
@@ -52,6 +56,8 @@ class StatePanel(QWidget):
     editing_toggled = Signal(bool)
     #: Emitted with the state the user asked for.
     state_requested = Signal(str)
+    #: Emitted with the modality a state change applies to.
+    target_changed = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -84,8 +90,8 @@ class StatePanel(QWidget):
         # -- reach -----------------------------------------------------------
         # Above the state controls, because it describes what is about to
         # happen; below them it would read as a report of what already did.
-        # Always shown, even when it says "Covers 1 image + 1 label": a line
-        # that appears only sometimes is a line nobody has learned to read.
+        # Always shown, even when it says "Covers 1 image, 1 label, 1 lamella":
+        # a line that appears only sometimes is one nobody has learned to read.
         self.reach = QLabel("")
         self.reach.setWordWrap(True)
         self.reach.setToolTip(
@@ -99,6 +105,8 @@ class StatePanel(QWidget):
         self.reach_shared.setStyleSheet(SHARED_NOTE_STYLE)
         self.reach_shared.setToolTip(self.reach.toolTip())
         layout.addWidget(self.reach_shared)
+
+        layout.addWidget(self._build_target())
 
         # -- state ---------------------------------------------------------
         self.state_box = QGroupBox("State")
@@ -126,6 +134,45 @@ class StatePanel(QWidget):
         layout.addStretch(1)
 
         self.set_editing_enabled(False)
+
+    def _build_target(self) -> QWidget:
+        """Return the modality control.
+
+        Above the state buttons, in the order the two are read: which images,
+        then which state. It stays usable with editing off, because choosing
+        what *would* move changes nothing on disk and the reach line above
+        recounts as you go.
+        """
+        box = QGroupBox("Apply to")
+        box.setToolTip(
+            "Which images a state change moves. The two modalities can be in "
+            "different states."
+        )
+        row = QHBoxLayout(box)
+        self.target_buttons: dict[str, QRadioButton] = {}
+        group = QButtonGroup(self)
+        for target, caption, hint in (
+            ("SEM", "SEM", "Change the SEM image only"),
+            ("FIB", "FIB", "Change the FIB image only"),
+            ("both", "Both", "Change both images together"),
+        ):
+            button = QRadioButton(caption)
+            button.setToolTip(hint)
+            button.toggled.connect(
+                lambda checked, t=target: checked and self.target_changed.emit(t)
+            )
+            group.addButton(button)
+            row.addWidget(button)
+            self.target_buttons[target] = button
+        self.target_buttons["SEM"].setChecked(True)
+        return box
+
+    def set_target(self, target: str) -> None:
+        """Reflect the current modality without re-emitting a change."""
+        button = self.target_buttons[target]
+        button.blockSignals(True)
+        button.setChecked(True)
+        button.blockSignals(False)
 
     def _editing_toggled(self, enabled: bool) -> None:
         self.set_editing_enabled(enabled)

@@ -152,11 +152,42 @@ def test_reach_on_an_unshared_modality_reports_no_sharing(tmp_path: Path):
 @pytest.mark.parametrize(
     "reach, expected",
     [
-        (StateChangeReach(images=0, labels=0, shared=0), "Nothing selected"),
-        (StateChangeReach(images=1, labels=1, shared=0), "Covers 1 image + 1 label"),
-        (StateChangeReach(images=4, labels=1, shared=3), "Covers 4 images + 1 label"),
-        (StateChangeReach(images=2, labels=2, shared=0), "Covers 2 images + 2 labels"),
-        (StateChangeReach(images=1, labels=0, shared=0), "Covers 1 image, no label yet"),
+        (
+            StateChangeReach(images=0, labels=0, shared=0, lamellae=0),
+            "Nothing selected",
+        ),
+        (
+            StateChangeReach(images=1, labels=1, shared=0, lamellae=1),
+            "Covers 1 image, 1 label, 1 lamella",
+        ),
+        (
+            StateChangeReach(images=4, labels=1, shared=3, lamellae=1),
+            "Covers 4 images, 1 label, 1 lamella",
+        ),
+        (
+            StateChangeReach(images=2, labels=2, shared=0, lamellae=2),
+            "Covers 2 images, 2 labels, 2 lamellae",
+        ),
+        (
+            StateChangeReach(images=1, labels=0, shared=0, lamellae=1),
+            "Covers 1 image, no label yet, 1 lamella",
+        ),
+        # Split by modality only when both are actually there: "12 SEM + 0 FIB"
+        # would report the edit target as though it were data.
+        (
+            StateChangeReach(
+                images=24, labels=12, shared=0, lamellae=3,
+                modalities=(("SEM", 12), ("FIB", 12)),
+            ),
+            "Covers 12 SEM + 12 FIB images, 12 labels, 3 lamellae",
+        ),
+        (
+            StateChangeReach(
+                images=12, labels=12, shared=0, lamellae=3,
+                modalities=(("SEM", 12), ("FIB", 0)),
+            ),
+            "Covers 12 images, 12 labels, 3 lamellae",
+        ),
     ],
 )
 def test_reach_summary_wording(reach, expected):
@@ -172,7 +203,8 @@ def test_reach_summary_wording(reach, expected):
     ],
 )
 def test_shared_note_wording(shared, expected):
-    assert StateChangeReach(images=4, labels=1, shared=shared).shared_note() == expected
+    reach = StateChangeReach(images=4, labels=1, shared=shared, lamellae=1)
+    assert reach.shared_note() == expected
 
 
 def test_reach_is_always_available_even_with_nothing_selected():

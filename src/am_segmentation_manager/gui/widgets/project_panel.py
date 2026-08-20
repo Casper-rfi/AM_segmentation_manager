@@ -2,26 +2,29 @@
 
 Holds the scan root, the projects found under it, and the lamellae of the
 selected project. Scanning happens on the caller's terms -- this panel only
-reports that the user asked for it.
+reports that the user asked for it. Which *rows* a change covers is chosen
+here; which modality, and which state, are chosen beside the buttons that act.
 
 The lists do two jobs at once: the *current* row is what is being looked at,
 the *checked* rows are what a state change applies to, and the chip beside them
 reports curation progress. Three separate questions, three separate marks --
 see `docs/decisions.md` § Workflow state.
+
+Only one of the two lists carries ticks at a time, and the ticked lamellae are
+the selected project's own -- so everything a change will touch is a tick
+visible on screen.
 """
 from __future__ import annotations
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
-    QButtonGroup,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QPushButton,
-    QRadioButton,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -63,8 +66,6 @@ class ProjectPanel(QWidget):
     #: Emitted with whether to tick or clear every row of that list.
     projects_check_all = Signal(bool)
     lamellae_check_all = Signal(bool)
-    #: Emitted with the modality a state change applies to.
-    target_changed = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -154,8 +155,6 @@ class ProjectPanel(QWidget):
         self.lists.setSizes([200, 300])
         layout.addWidget(self.lists, stretch=1)
 
-        layout.addWidget(self._build_target())
-
         self.summary = QLabel("No project loaded")
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
@@ -177,8 +176,9 @@ class ProjectPanel(QWidget):
 
         list_widget = QListWidget()
         list_widget.setToolTip(
-            "Click a row to look at it. Tick rows to choose what a state change "
-            "applies to; with none ticked it applies to the frame on screen."
+            "Click a row to look at it. Tick rows to choose what a change "
+            "applies to; ticking here clears the other list. With nothing "
+            "ticked it applies to the frame on screen."
         )
         list_widget.currentRowChanged.connect(on_change)
         list_widget.itemChanged.connect(
@@ -205,51 +205,11 @@ class ProjectPanel(QWidget):
         row.addStretch(1)
         return row
 
-    def _build_target(self) -> QWidget:
-        """Return the modality control.
-
-        Beside the ticks rather than beside the state buttons: both answer
-        "what does this apply to", and the state buttons answer "to what
-        state". It stays usable with editing off, because choosing what *would*
-        move changes nothing on disk and the reach line above the state buttons
-        recounts as you go.
-        """
-        box = QGroupBox("Apply to")
-        box.setToolTip(
-            "Which images a state change moves. The two modalities can be in "
-            "different states."
-        )
-        row = QHBoxLayout(box)
-        self.target_buttons: dict[str, QRadioButton] = {}
-        group = QButtonGroup(self)
-        for target, caption, hint in (
-            ("SEM", "SEM", "Change the SEM image only"),
-            ("FIB", "FIB", "Change the FIB image only"),
-            ("both", "Both", "Change both images together"),
-        ):
-            button = QRadioButton(caption)
-            button.setToolTip(hint)
-            button.toggled.connect(
-                lambda checked, t=target: checked and self.target_changed.emit(t)
-            )
-            group.addButton(button)
-            row.addWidget(button)
-            self.target_buttons[target] = button
-        self.target_buttons["SEM"].setChecked(True)
-        return box
-
     def _item_checked(self, widget: QListWidget, item, signal) -> None:
         """Report a tick, ignoring the ones the panel makes itself."""
         if self._emitting:
             return
         signal.emit(widget.row(item), item.checkState() == Qt.Checked)
-
-    def set_target(self, target: str) -> None:
-        """Reflect the current modality without re-emitting a change."""
-        button = self.target_buttons[target]
-        button.blockSignals(True)
-        button.setChecked(True)
-        button.blockSignals(False)
 
     def _browse(self) -> None:
         directory = choose_directory(
@@ -306,14 +266,29 @@ class ProjectPanel(QWidget):
         )
         self._apply_filter(self.lamella_list, self._lamella_labels, self.lamella_filter.text())
 
-    def show_check_counts(
+    def show_checks(
         self, project_checks: list[bool], lamella_checks: list[bool]
     ) -> None:
-        """Update both titles' ticked counts, leaving the rows alone.
+        """Put both lists' ticks and titles back, leaving the rows alone.
 
         Ticking a row must not rebuild the list: that would reset which row is
-        current, and ticking is not a change of what is being looked at.
+        current, and ticking is not a change of what is being looked at. Both
+        lists are refreshed on every tick because ticking in one clears the
+        other, and the user has to see that happen.
         """
+        self._emitting = True
+        try:
+            for widget, checks in (
+                (self.project_list, project_checks),
+                (self.lamella_list, lamella_checks),
+            ):
+                for row in range(widget.count()):
+                    ticked = checks[row] if row < len(checks) else False
+                    widget.item(row).setCheckState(
+                        Qt.Checked if ticked else Qt.Unchecked
+                    )
+        finally:
+            self._emitting = False
         self.project_box.setTitle(
             self._list_title("Projects", self._project_labels, project_checks)
         )
@@ -327,13 +302,14 @@ class ProjectPanel(QWidget):
 
         The ticks decide what a state change moves, and the lists are
         scrollable -- so how many are ticked has to be legible without
-        scrolling through looking for them.
+        scrolling through looking for them. Spelled as "3 of 12 ticked" rather
+        than as two bare numbers, which read as a count of something else.
         """
         if not labels:
             return noun
         ticked = sum(1 for checked in checks or [] if checked)
         if ticked:
-            return f"{noun} ({len(labels)}, {ticked} ticked)"
+            return f"{noun} ({ticked} of {len(labels)} ticked)"
         return f"{noun} ({len(labels)})"
 
     def show_summary(self, text: str) -> None:

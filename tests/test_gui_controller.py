@@ -529,8 +529,9 @@ def test_target_can_still_be_set_explicitly_after_a_mode_change():
 # ---------------------------------------------------------------------------
 # What a state change applies to
 #
-# The precedence is the whole of the model: frames beat ticked lamellae, which
-# beat ticked projects, and with none of them it is the frame on screen.
+# One level at a time is the whole of the model: picking at any level clears
+# the others, ticked lamellae belong to the project on screen, and with nothing
+# picked out it is the frame on screen.
 # ---------------------------------------------------------------------------
 
 def test_nothing_ticked_covers_only_the_current_frame():
@@ -579,24 +580,37 @@ def test_a_selection_respects_the_modality_target():
     assert {record.modality for record in records} == {"SEM"}
 
 
-def test_picked_frames_beat_a_ticked_lamella():
-    """Finest-first, because it is the fail-safe direction: a forgotten frame
-    selection makes a change smaller than intended, not larger."""
+def test_picking_a_frame_clears_the_ticked_lamella():
+    """Rather than quietly outranking it: a tick left on screen that decides
+    nothing is the one an operation is run with by accident."""
     controller = make_controller()
     controller.set_target("both")
     controller.set_lamella_checked(0, True)
     controller.selection.toggle(0)
 
+    assert controller.lamella_checks() == [False, False]
     assert len(controller.scoped_records()) == 2
 
 
-def test_a_ticked_lamella_beats_a_ticked_project():
+def test_ticking_a_lamella_clears_the_ticked_project():
     controller = make_controller()
     controller.set_target("both")
     controller.set_project_checked(0, True)
     controller.set_lamella_checked(0, True)
 
+    assert controller.project_checks() == [False, False]
     assert len(controller.scoped_records()) == 8
+
+
+def test_ticking_a_project_clears_the_ticked_lamellae():
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_lamella_checked(0, True)
+    controller.set_project_checked(0, True)
+
+    assert controller.lamella_checks() == [False, False]
+    # (4 + 2) frames x 2 modalities
+    assert len(controller.scoped_records()) == 12
 
 
 def test_picked_frames_are_dropped_when_the_lamella_changes():
@@ -609,10 +623,9 @@ def test_picked_frames_are_dropped_when_the_lamella_changes():
     assert controller.selected_frames() == set()
 
 
-def test_a_tick_survives_changing_project():
+def test_a_tick_survives_looking_at_another_lamella():
     """Ticks are keyed by path, so they outlive the row numbers they were made
-    on -- a lamella ticked in one project is still ticked after visiting
-    another."""
+    on: looking at one lamella and ticking another is a normal gesture."""
     controller = make_controller()
     controller.set_target("both")
     controller.set_lamella_checked(1, True)
@@ -626,6 +639,45 @@ def test_a_tick_survives_changing_project():
     assert all(
         str(ticked.path) in str(record.image_path) for record in records
     )
+
+
+def test_changing_project_clears_the_ticked_lamellae():
+    """A tick nobody can see is one that decides what an operation touches
+    without saying so, which is how a conversion reaches another project."""
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_lamella_checked(0, True)
+
+    controller.select_project(1)
+
+    assert controller.lamella_checks() == [False]
+    assert controller.describe_selection() == "this frame"
+    assert len(controller.scoped_records()) == 2
+
+
+def test_a_ticked_project_survives_changing_project():
+    """The project list still shows it, so nothing is hidden by keeping it."""
+    controller = make_controller()
+    controller.set_project_checked(0, True)
+
+    controller.select_project(1)
+
+    assert controller.project_checks() == [True, False]
+
+
+def test_scoped_records_never_leave_the_project_on_screen():
+    """The whole point of clearing the ticks: whatever an operation is handed
+    comes from the lamella list the user is looking at."""
+    controller = make_controller()
+    controller.set_target("both")
+    controller.set_lamella_checked(0, True)
+    controller.select_project(1)
+    controller.set_lamella_checked(0, True)
+
+    records = controller.scoped_records()
+
+    assert len(records) == 6  # project-b's only lamella: 3 frames x 2
+    assert all("01-gamma" in str(record.image_path) for record in records)
 
 
 def test_a_change_applies_across_a_ticked_lamella(tmp_path):
