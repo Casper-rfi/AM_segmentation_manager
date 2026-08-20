@@ -466,6 +466,24 @@ def test_the_canvas_zooms_one_step_out_past_fit(window):
     assert LABEL_MIN_FIT_FRACTION == pytest.approx(1 / 1.1)
 
 
+def test_zooming_fully_out_centres_the_frame(window):
+    """The wheel keeps the point under the pointer fixed, which is what makes
+    zooming *in* follow the eye -- and what left a fully zoomed-out frame in
+    whichever corner the pointer happened to be over."""
+    canvas = window.label_panel.canvas
+    for _ in range(4):
+        canvas.zoom_by(1.25)
+    canvas.horizontalScrollBar().setValue(canvas.horizontalScrollBar().maximum())
+    canvas.verticalScrollBar().setValue(canvas.verticalScrollBar().maximum())
+
+    for _ in range(20):
+        canvas.zoom_by(0.8)
+
+    image = canvas._item.sceneBoundingRect().center()
+    pane = canvas.mapToScene(canvas.viewport().rect().center())
+    assert (pane.x(), pane.y()) == pytest.approx((image.x(), image.y()), abs=1.0)
+
+
 def test_a_ring_keeps_its_size_on_screen_at_any_zoom(window):
     panel = window.label_panel
     stray(panel, 7, 9)

@@ -180,6 +180,30 @@ class ImageView(QGraphicsView):
             self.fitInView(self._item, Qt.KeepAspectRatio)
             self.zoomed.emit()
 
+    def zoom_fully_out(self) -> None:
+        """Show the whole image centred, with this view's margin around it.
+
+        The furthest out the wheel goes, and where :meth:`zoom_by` lands when
+        it reaches the floor. Centred rather than scaled in place: the anchor
+        that makes zooming *in* follow the pointer would otherwise leave a
+        frame small enough to fit the pane pushed into a corner of it.
+
+        :attr:`min_fit_fraction` sets the margin, and at 1.0 -- its largest --
+        this is exactly :meth:`fit`.
+        """
+        rect = self._item.sceneBoundingRect()
+        if rect.isEmpty():
+            return
+        margin = (1.0 / self.min_fit_fraction - 1.0) / 2.0
+        self.fitInView(
+            rect.adjusted(
+                -margin * rect.width(), -margin * rect.height(),
+                margin * rect.width(), margin * rect.height(),
+            ),
+            Qt.KeepAspectRatio,
+        )
+        self.zoomed.emit()
+
     def fit_native(self) -> None:
         """Show one array pixel per physical pixel, or fit if that overflows.
 
@@ -209,9 +233,10 @@ class ImageView(QGraphicsView):
         """Scale the view by *factor*, within limits, and report the change.
 
         Zooming out stops at :attr:`min_fit_fraction` of the fit scale, which
-        is fit itself unless the view asked for room around the frame. Below
-        that there is nothing to gain: shrinking further only strands the image
-        in an empty view. Zooming *in* is limited only by :data:`MAX_SCALE`.
+        is fit itself unless the view asked for room around the frame, and
+        lands there through :meth:`zoom_fully_out`. Below that there is nothing
+        to gain: shrinking further only strands the image in an empty view.
+        Zooming *in* is limited only by :data:`MAX_SCALE`.
 
         The lower limit deliberately applies to one direction only. Applying it
         to both blocks zooming in whenever the current scale happens to sit
@@ -225,21 +250,12 @@ class ImageView(QGraphicsView):
         target = current * factor
 
         if factor < 1.0:
-            floor = self.fit_scale() * self.min_fit_fraction
-            if target < floor:
-                if self.min_fit_fraction >= 1.0:
-                    # The floor is fit, so land where the Fit button lands
-                    # rather than on the computed scale: ``fitInView`` keeps a
-                    # two-pixel border that scale would crop, and "zoomed all
-                    # the way out" and "fitted" have to be the same picture.
-                    self.fit()
-                    return
-                # Snap to the limit rather than overshooting past it; if already
-                # there, there is nothing left to do.
-                minimum = max(MIN_SCALE, floor)
-                if current > minimum:
-                    self.scale(minimum / current, minimum / current)
-                    self.zoomed.emit()
+            if target < self.fit_scale() * self.min_fit_fraction:
+                # Land on the floor rather than overshooting past it. Through
+                # fitInView rather than by scaling, so the frame arrives
+                # centred and with the same two-pixel border fit() leaves --
+                # scaling to the computed floor would crop it.
+                self.zoom_fully_out()
                 return
         elif target > MAX_SCALE:
             return

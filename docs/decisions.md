@@ -334,13 +334,19 @@ place.
   the middle of the pane to be worked on. Scrollbars go because a scene deliberately larger
   than its content leaves them permanently visible and permanently not full.
 - **How far a pane zooms out is the view's to say, not the module's.** Reviewing is done at
-  fit, so the curation panes stop there and land exactly where the Fit button lands —
-  `fitInView` keeps a two-pixel border of its own that snapping to the computed scale would
-  crop, and "zoomed all the way out" has to be the same picture as "fitted". The
-  proofreading canvas is the exception, because checking that a label runs to the edge of
-  the frame means seeing that edge clear of the border: it allows one step out, and since
-  `zoom_by` snaps to the floor rather than overshooting it, a floor of 1/1.1 turns that
-  0.8 step into a band of a twentieth of the pane on each side.
+  fit, so the curation panes stop there. The proofreading canvas is the exception, because
+  checking that a label runs to the edge of the frame means seeing that edge clear of the
+  border: it allows one step out, and since `zoom_by` snaps to the floor rather than
+  overshooting it, a floor of 1/1.1 turns that 0.8 step into a band of a twentieth of the
+  pane on each side.
+- **Landing on that floor goes through `fitInView`, not through `scale`.** Two things come
+  with it, and both are the difference between a frame that reads as zoomed out and one that
+  reads as lost. The wheel's anchor holds the point under the pointer fixed, which is what
+  makes zooming *in* follow the eye — and what leaves a frame that now fits the pane pushed
+  into whichever corner the pointer was over; fitting centres it. And `fitInView` keeps a
+  two-pixel border of its own that scaling to the computed floor would crop, so "zoomed all
+  the way out" and "fitted" are the same picture rather than differing by the outermost
+  pixels of the frame.
 - **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under PyQt5
   it returns the proportional `.AppleSystemUIFont` while reporting the family it was asked
   for, so a table padded into columns comes out unaligned with nothing saying why. A style
