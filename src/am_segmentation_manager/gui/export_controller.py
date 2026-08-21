@@ -89,6 +89,15 @@ LABEL_FILTERS: dict[str, frozenset[str]] = {
 #: value any record carries.
 DEDICATED_CONTROLS = frozenset({"modality", "state", "label"})
 
+#: Breakdowns counted on, but never offered as a filter in the window. Each
+#: would produce a list nobody could work with: a lamella is one row per
+#: lamella and a milling stage one per timestamped folder, both running to
+#: hundreds, and an electron source does not vary across this collection at
+#: all. They stay breakdowns, and the command line still filters on
+#: ``--electron-source``; what is dropped is the value list, the window's
+#: scarcest space being the column those lists sit in.
+UNFILTERABLE = frozenset({"lamella", "stage", "electron-source"})
+
 
 #: What the label filter starts on: everything. The tab opens on the whole
 #: collection and is narrowed towards an export, rather than opening on the
@@ -660,16 +669,34 @@ class ExportController:
 
         Measurement breakdowns are left out: they cannot answer until the
         labels have been measured, and a filter that quietly keeps nothing
-        until a button elsewhere is pressed is worse than no filter.
+        until a button elsewhere is pressed is worse than no filter. So are
+        the :data:`UNFILTERABLE` ones, which can be counted on but not usefully
+        chosen from.
         """
         headings = list(GROUP_TITLES)
         rows = [
             (name, entry)
             for name, entry in self.breakdowns.items()
-            if entry.kind != "measurement" and name not in DEDICATED_CONTROLS
+            if entry.kind != "measurement"
+            and name not in DEDICATED_CONTROLS
+            and name not in UNFILTERABLE
         ]
         rows.sort(key=lambda row: (headings.index(row[1].group), row[1].label))
         return [(name, entry.label) for name, entry in rows]
+
+    def filterable_groups(self) -> list[tuple[str, list[tuple[str, str]]]]:
+        """Return the filterable breakdowns as headed groups, for a dropdown.
+
+        Grouped and ordered as the breakdown dropdown is, so a property sits in
+        the same place whether it is being counted by or filtered on.
+        """
+        offered = dict(self.filterable_breakdowns())
+        grouped = []
+        for heading, rows in grouped_breakdowns(self.breakdowns):
+            kept = [row for row in rows if row[0] in offered]
+            if kept:
+                grouped.append((heading, kept))
+        return grouped
 
     def needs_metadata(self, name: str) -> bool:
         """Return whether *name* cannot be offered until the headers are read."""

@@ -65,6 +65,11 @@ BADGE_STYLES = {
 #: is set apart rather than reading as body text.
 SHARED_NOTE_STYLE = f"color: {WARNING};"
 
+#: Object name marking a button whose label is a single character, so the
+#: stylesheet can stop the default padding swallowing it. Set with
+#: ``setObjectName``; see the rule of the same name below.
+COMPACT_BUTTON = "compactButton"
+
 #: Every chip drawn into a list row gets a dark outline. Without one a chip
 #: whose fill is near the selection highlight disappears on exactly the row the
 #: user is looking at. An outline makes it legible on any background rather than
@@ -170,6 +175,11 @@ def stylesheet() -> str:
         border-radius: 4px;
         padding: 4px 12px;
     }}
+    /* A button whose whole label is one character. The rule above spends 12px
+       a side on padding, which is more than such a button is wide -- so the
+       character is clipped away and the button draws blank. Named rather than
+       styled where it is built, because chrome is set here and nowhere else. */
+    QPushButton#{COMPACT_BUTTON} {{ padding: 4px 2px; }}
     QPushButton:hover {{ border-color: {ACCENT}; }}
     QPushButton:pressed {{ background: {PRESSED}; }}
     QPushButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}

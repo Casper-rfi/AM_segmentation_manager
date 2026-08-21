@@ -339,7 +339,25 @@ place.
   for that reason. It also suppresses what Qt draws by itself: the `QPushButton` and
   `QToolButton` rules override the tint on a dialog's default button and the mark on a
   checked one, so both are re-stated in `theme.py`. Anything relying on Qt's own emphasis has
-  to be.
+  to be. The `QPushButton` padding is 12px a side, which is wider than a button whose whole
+  label is one character — such a button clipped its label away and drew blank while
+  reporting its text correctly, so `COMPACT_BUTTON` names the exception and the pixels are
+  what a test asserts on.
+- **A filter in the Export tab is added, not permanently shown.** The breakdowns cover far
+  more properties than any one export is chosen by, so one list per property left too little
+  of each to read and buried the three that matter among a dozen nobody touches. A row
+  carries the property it is on, so a filter is put where it is wanted and removed with what
+  it kept; a property already in one row is not offered in another, which is what stops two
+  rows disagreeing about it. Removing the last row empties it instead, because a box with no
+  filter in it still says what could be filtered on where an empty column says nothing. This
+  also stopped the tab asking every property for its values on every refresh, which it did
+  whether or not anything was filtering on them.
+- **A few properties are counted by but never filtered on.** A lamella is one row per
+  lamella and a milling stage one per timestamped folder, both running to hundreds, and an
+  electron source does not vary across this collection at all — value lists nobody could
+  work with. `UNFILTERABLE` names them. They stay breakdowns, and the command line still
+  filters on `--electron-source`: what is dropped is the list in the window, the scarce
+  thing being the column it would sit in.
 - **A locked editor keeps its normal text colour.** The Add data tab opens locked and is
   mostly used for reading, and Qt's disabled grey puts every value at low contrast. The
   stylesheet dulls the *background* of a disabled input instead and leaves the text dark, so

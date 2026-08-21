@@ -39,7 +39,11 @@ if HAS_QT:
         DEFAULT_PREFIX,
         ExportController,
     )
-    from am_segmentation_manager.gui.widgets.export_panel import NO_CROSS, ExportPanel
+    from am_segmentation_manager.gui.widgets.export_panel import (
+        NO_CROSS,
+        ExportPanel,
+        FilterRow,
+    )
     from am_segmentation_manager.scanner import Scanner
     from conftest import build_dataset
 
@@ -60,6 +64,21 @@ def _tick(widget, row: int, on: bool = True) -> None:
     widget.item(row).setCheckState(Qt.Checked if on else Qt.Unchecked)
 
 
+def _choose(row: FilterRow, name: str) -> None:
+    """Put a filter row on a property, as picking it from the dropdown would."""
+    index = row.property_box.findData(name)
+    assert index != -1, f"{name} is not on offer"
+    row.property_box.setCurrentIndex(index)
+
+
+def _is_enabled(row: FilterRow, name: str) -> bool:
+    """Return whether a property can be picked from a row's dropdown."""
+    model = row.property_box.model()
+    index = row.property_box.findData(name)
+    assert index != -1, f"{name} is not on offer"
+    return bool(model.item(index).flags() & Qt.ItemIsEnabled)
+
+
 def _loaded_panel(tmp_path, **kwargs) -> ExportPanel:
     """A panel over a real two-lamella scan, as the window builds it."""
     pytest.importorskip("tifffile")
@@ -71,78 +90,166 @@ def _loaded_panel(tmp_path, **kwargs) -> ExportPanel:
     return panel
 
 
-def test_the_acquisition_filters_are_hidden_until_the_headers_are_read(
-    qt_app, tmp_path,
-):
-    """A column of empty boxes reads as broken, and none of them can be used
-    before the values exist to choose from."""
+def _varied_panel(tmp_path) -> ExportPanel:
+    """A panel over a scan where a *filterable* property has two values.
+
+    Imaging condition, because it varies within one project and survives being
+    scanned: lamella and milling stage are counted on but no longer offered as
+    filters, having one row per lamella and per timestamped folder.
+    """
+    return _loaded_panel(tmp_path, sem_variants=("SEM_8_fi_1",))
+
+
+def _only_row(panel: ExportPanel) -> FilterRow:
+    assert len(panel.filter_rows) == 1
+    return panel.filter_rows[0]
+
+
+def test_the_box_opens_with_one_filter_on_nothing(qt_app, tmp_path):
+    """The breakdowns cover far more properties than any one export is chosen
+    by, and a column holding every list left too little of each to read."""
     panel = _loaded_panel(tmp_path)
 
-    assert panel.filter_lists["microscope"].isHidden()
+    row = _only_row(panel)
+    assert row.property_name == ""
+    assert row.values.isHidden(), "an empty box under an empty dropdown reads as broken"
+    assert panel.controller.filters.choices == {}
+
+
+def test_choosing_a_property_shows_its_values(qt_app, tmp_path):
+    panel = _varied_panel(tmp_path)
+    row = _only_row(panel)
+
+    _choose(row, "variant")
+
+    assert not row.values.isHidden()
+    assert row.values.count() == 2
+
+
+def test_adding_a_filter_leaves_the_first_alone(qt_app, tmp_path):
+    panel = _varied_panel(tmp_path)
+    _choose(panel.filter_rows[0], "variant")
+    _tick(panel.filter_rows[0].values, 0)
+
+    panel.add_button.click()
+
+    assert len(panel.filter_rows) == 2
+    assert panel.filter_rows[0].property_name == "variant"
+    assert panel.controller.filters.choices["variant"]
+    assert panel.filter_rows[1].property_name == ""
+
+
+def test_a_property_already_filtered_on_is_not_offered_twice(qt_app, tmp_path):
+    """One property filtered in one place, so two rows cannot disagree about
+    what it keeps."""
+    panel = _varied_panel(tmp_path)
+    _choose(panel.filter_rows[0], "variant")
+
+    panel.add_button.click()
+
+    second = panel.filter_rows[1]
+    assert second.property_box.findData("variant") == -1
+    assert second.property_box.findData("project") != -1
+
+
+def test_removing_a_filter_removes_what_it_was_keeping(qt_app, tmp_path):
+    """A filter left behind by a control that has gone narrows every count in
+    the tab with nothing on screen to say so."""
+    panel = _varied_panel(tmp_path)
+    _choose(panel.filter_rows[0], "variant")
+    _tick(panel.filter_rows[0].values, 0)
+    panel.add_button.click()
+    narrowed = sum(panel.controller.breakdown("modality").values())
+
+    panel.filter_rows[0].remove_button.click()
+
+    assert panel.controller.filters.choices == {}
+    assert sum(panel.controller.breakdown("modality").values()) > narrowed
+
+
+def test_removing_the_last_filter_empties_it_rather_than_taking_it_away(
+    qt_app, tmp_path,
+):
+    """A box with no filter in it still says what could be filtered on; no box
+    at all leaves the column blank with nothing to explain what is missing."""
+    panel = _varied_panel(tmp_path)
+    _choose(panel.filter_rows[0], "variant")
+    _tick(panel.filter_rows[0].values, 0)
+
+    panel.filter_rows[0].remove_button.click()
+
+    assert len(panel.filter_rows) == 1
+    assert panel.filter_rows[0].property_name == ""
+    assert panel.controller.filters.choices == {}
+
+
+def test_moving_a_filter_to_another_property_clears_the_one_it_leaves(
+    qt_app, tmp_path,
+):
+    panel = _varied_panel(tmp_path)
+    row = _only_row(panel)
+    _choose(row, "variant")
+    _tick(row.values, 0)
+
+    _choose(row, "project")
+
+    assert "variant" not in panel.controller.filters.choices
+
+
+def test_the_acquisition_filters_wait_for_the_headers(qt_app, tmp_path):
+    """Their values come from the headers. Disabled rather than absent, so
+    looking for one finds it beside the button that loads them."""
+    panel = _loaded_panel(tmp_path)
+    row = _only_row(panel)
+
+    assert not _is_enabled(row, "microscope")
 
     panel._load_metadata()
 
-    # Still hidden, but now because the synthetic TIFFs all say the same thing
-    # about it rather than because the headers were never read.
-    assert panel.controller.metadata_loaded()
+    assert _is_enabled(row, "microscope")
 
 
-def test_a_filter_that_cannot_narrow_anything_is_not_shown(qt_app, tmp_path):
-    """One project and one value means a list that filters nothing. The
-    breakdowns cover far more properties than any one dataset varies along."""
-    panel = _loaded_panel(tmp_path)
-
-    assert not panel.filter_lists["lamella"].isHidden()   # two of them
-    assert panel.filter_lists["project"].isHidden()       # only one
-
-
-def test_a_ticked_filter_stays_visible_even_when_it_offers_one_value(
-    qt_app, tmp_path,
-):
-    """A list that vanished once used could not be seen or cleared, and would
-    go on narrowing everything under it."""
-    panel = _loaded_panel(tmp_path)
-    lamellae = panel.filter_lists["lamella"]
-    _tick(lamellae, 0)
-
-    assert not lamellae.isHidden()
-    assert len(panel.controller.filters.choices["lamella"]) == 1
-
-
-def test_ticking_a_lamella_narrows_the_table_under_it(qt_app, tmp_path):
+def test_ticking_a_value_narrows_the_table_under_it(qt_app, tmp_path):
     """The filter and the breakdown are one selection, so the table has to move
     when a filter does."""
-    panel = _loaded_panel(tmp_path)
+    panel = _varied_panel(tmp_path)
+    _choose(_only_row(panel), "variant")
     before = sum(panel.controller.breakdown("modality").values())
 
-    _tick(panel.filter_lists["lamella"], 0)
+    _tick(_only_row(panel).values, 0)
 
     assert sum(panel.controller.breakdown("modality").values()) < before
 
 
-def test_the_caption_says_how_much_of_a_list_is_ticked(qt_app, tmp_path):
+def test_the_count_says_how_much_of_a_list_is_ticked(qt_app, tmp_path):
     """The lists are four rows over values that run to dozens, so what is
     ticked is usually scrolled out of sight -- which is how a filter stays on
     by accident."""
-    panel = _loaded_panel(tmp_path)
+    panel = _varied_panel(tmp_path)
+    row = _only_row(panel)
+    _choose(row, "variant")
 
-    _tick(panel.filter_lists["lamella"], 0)
+    _tick(row.values, 0)
 
-    assert panel.filter_captions["lamella"].text() == "Lamella (1 of 2 ticked)"
+    assert row.count.text() == "Imaging condition (1 of 2 ticked)"
 
 
-def test_clearing_the_filters_unticks_every_list(qt_app, tmp_path):
-    """Ticks scroll out of sight, so there has to be one control that undoes
-    all of them without hunting for which are on."""
-    panel = _loaded_panel(tmp_path)
-    _tick(panel.filter_lists["lamella"], 0)
+def test_clearing_unticks_the_values_but_keeps_the_filters(qt_app, tmp_path):
+    """Ticks scroll out of sight, so one control has to undo all of them --
+    but clearing what a filter keeps and deciding not to filter on that
+    property at all are different intentions."""
+    panel = _varied_panel(tmp_path)
+    row = _only_row(panel)
+    _choose(row, "variant")
+    _tick(row.values, 0)
     assert panel.controller.filters.choices
 
     panel.clear_button.click()
 
     assert panel.controller.filters.choices == {}
-    assert panel.filter_lists["lamella"].ticked_values() == []
-    assert panel.filter_captions["lamella"].text() == "Lamella (2)"
+    assert row.property_name == "variant", "the filter stays where it was put"
+    assert row.ticked_values() == []
+    assert row.count.text() == "Imaging condition (2)"
 
 
 def test_clearing_leaves_the_named_controls_alone(qt_app, tmp_path):
@@ -158,23 +265,26 @@ def test_clearing_leaves_the_named_controls_alone(qt_app, tmp_path):
 
 
 def test_a_long_filter_row_elides_rather_than_scrolling_sideways(qt_app, tmp_path):
-    """Lamella rows are "project / lamella" and differ at the end. A list that
-    scrolls instead of eliding shows a column of identical project prefixes."""
-    panel = _loaded_panel(tmp_path)
-    lamellae = panel.filter_lists["lamella"]
+    """Project rows differ at the end. A list that scrolls instead of eliding
+    shows a column of identical prefixes."""
+    panel = _varied_panel(tmp_path)
+    row = _only_row(panel)
+    _choose(row, "variant")
 
-    assert lamellae.textElideMode() == Qt.ElideMiddle
-    assert lamellae.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
-    assert lamellae.item(0).toolTip() == lamellae.item(0).text()
+    assert row.values.textElideMode() == Qt.ElideMiddle
+    assert row.values.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert row.values.item(0).toolTip() == row.values.item(0).text()
 
 
-def test_a_filter_is_labelled_with_its_unit_spelled_properly(panel: ExportPanel):
+def test_a_filter_is_labelled_with_its_unit_spelled_properly(
+    qt_app, tmp_path,
+):
     """The label is the breakdown's own, so a property is named the same way in
-    the filter list and in the dropdown that counts by it."""
-    labels = {caption.text() for caption in panel.filter_captions.values()}
+    the filter and in the dropdown that counts by it."""
+    panel = _loaded_panel(tmp_path)
 
-    assert "Accelerating voltage (kV)" in labels
-    assert "Beam current (pA)" in labels
+    assert panel._noun("voltage") == "Accelerating voltage (kV)"
+    assert panel._noun("current") == "Beam current (pA)"
 
 
 def test_the_split_controls_start_where_the_defaults_are(panel: ExportPanel):
@@ -646,7 +756,7 @@ def test_every_filter_says_what_it_narrows(panel: ExportPanel):
     """The Filters box decides which images are in play for both the breakdown
     and the exports, and nothing on screen said so."""
     filters = [panel.modality, panel.state, panel.label_state, panel.conditions]
-    filters += list(panel.filter_lists.values())
+    filters += [row.values for row in panel.filter_rows]
 
     for widget in filters:
         assert "Narrows the breakdown and every export" in widget.toolTip()

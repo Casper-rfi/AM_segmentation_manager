@@ -43,12 +43,15 @@ what each command and tab does. What is worth knowing beyond that:
   writes. One prediction per label group, one modality per run — a selection holding
   both is refused, since a model is for one and nothing can tell which — and resumable,
   which is what earns it a Stop button.
-* **Export filters, counts and writes, and every filter narrows all three.** Its filter
-  lists are derived from the breakdowns, so a property can be counted by and filtered
-  on without being declared twice; values are ticked rather than highlighted, with the
-  count beside each list and one button that clears them all. The breakdown reads as a
-  table or a chart in the same pane, and the crack threshold and area bin resolution
-  sit beside the button that measures.
+* **Export filters, counts and writes, and every filter narrows all three.** A filter is
+  added when it is wanted: each carries a dropdown of the properties still free, the
+  values of the one it is on, and a button taking it away along with what it kept. The
+  choice of property is derived from the breakdowns, so a property can be counted by and
+  filtered on without being declared twice — bar a few that can be counted by but not
+  usefully chosen from. Values are ticked rather than highlighted, with the count beside
+  each list and one button that unticks them all. The breakdown reads as a table or a
+  chart in the same pane, and the crack threshold and area bin resolution sit beside the
+  button that measures.
 * **A project is a directory; `project` is what the work was part of.** The directory
   the scanner indexes and Curate lists is `autolamella_project` in every export; the
   metadata field called `project` names the wider project that several of those

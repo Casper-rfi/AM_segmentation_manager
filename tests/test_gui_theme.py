@@ -27,6 +27,7 @@ if importlib.util.find_spec("qtpy") is not None:
         QApplication,
         QLineEdit,
         QListWidget,
+        QPushButton,
         QSplitter,
         QWidget,
     )
@@ -91,6 +92,22 @@ def _darkest(widget) -> int:
         for y in range(image.height())
         for x in range(image.width())
     )
+
+
+def test_a_one_character_button_still_draws_its_character(themed):
+    """The stylesheet spends 12px a side on button padding, which is wider than
+    a button whose whole label is one glyph -- so the label was clipped away
+    and the button drew blank. Asserted on the pixels, because the button
+    reported its text correctly the whole time it was showing nothing."""
+    from am_segmentation_manager.gui.widgets.export_panel import REMOVE_GLYPH
+
+    plain = QPushButton(REMOVE_GLYPH)
+    plain.setFixedWidth(26)
+    compact = QPushButton(REMOVE_GLYPH)
+    compact.setObjectName(theme.COMPACT_BUTTON)
+    compact.setFixedWidth(26)
+
+    assert _darkest(compact) < _darkest(plain), "the padding is still clipping it"
 
 
 def test_a_locked_field_still_draws_its_value_darkly(themed):

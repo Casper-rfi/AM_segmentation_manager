@@ -718,13 +718,40 @@ def test_a_property_with_its_own_control_is_not_also_a_list(
     assert "label" not in offered
 
 
-def test_the_project_and_lamella_can_be_filtered_on(exporter: ExportController):
+def test_the_project_can_be_filtered_on(exporter: ExportController):
     """The last thing the command line could narrow that the window could not."""
     offered = dict(exporter.filterable_breakdowns())
 
     assert "project" in offered
-    assert "lamella" in offered
     assert "variant" in offered
+
+
+def test_a_property_whose_values_nobody_could_choose_from_is_not_offered(
+    exporter: ExportController,
+):
+    """A lamella is one row per lamella and a milling stage one per timestamped
+    folder, both running to hundreds; an electron source does not vary here at
+    all. All three stay countable, and the command line still filters on
+    them -- what goes is the list in the window."""
+    offered = dict(exporter.filterable_breakdowns())
+
+    for name in ("lamella", "stage", "electron-source"):
+        assert name not in offered
+        assert name in exporter.breakdowns, "still a breakdown, just not a filter"
+
+
+def test_the_filter_dropdown_is_grouped_as_the_breakdown_one_is(
+    exporter: ExportController,
+):
+    """A property should sit in the same place whether it is being counted by
+    or filtered on."""
+    groups = exporter.filterable_groups()
+    headings = [heading for heading, _ in groups]
+    offered = {name for _, rows in groups for name, _ in rows}
+
+    assert headings == [h for h, _ in exporter.available_breakdowns() if h in headings]
+    assert offered == set(dict(exporter.filterable_breakdowns()))
+    assert all(rows for _, rows in groups), "an empty heading is not shown"
 
 
 def test_the_export_view_reuses_the_scan_rather_than_repeating_it(exporter: ExportController):
