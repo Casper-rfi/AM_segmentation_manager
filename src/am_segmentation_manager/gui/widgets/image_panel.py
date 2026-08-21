@@ -39,6 +39,13 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
+#: How far a figure must be magnified past the pane-sized copy before the copy
+#: read whole is worth drawing instead. Not exactly 1, because returning to fit
+#: lands a floating-point hair either side of it -- and landing on the wrong
+#: side leaves the fitted view resampled, which is the one view that has to be
+#: exact. Nothing flaps at this margin: a wheel step is 25%.
+PLOT_DETAIL_MAGNIFICATION = 1.01
+
 class ImagePanel(QWidget):
     """The frame view, its mode controls, legend and badges."""
 
@@ -149,9 +156,14 @@ class ImagePanel(QWidget):
         # -- the views -----------------------------------------------------
         self.pair = LinkedImageViews("image", "image + label")
         self.plot_view = ImageView()
-        # Plots are held as rendered, which is several times the pane, so the
-        # view is always minifying one. Acquisitions keep nearest neighbour.
+        # Only ever minified when the whole copy is on screen; the pane-sized
+        # one is drawn 1:1. Acquisitions keep nearest neighbour.
         self.plot_view.set_smooth_scaling(True)
+        # The two copies of the figure on screen: prepared for this pane, and
+        # read whole where it has been read.
+        self._plot_copies: tuple = (None, None)
+        self._swapping = False
+        self.plot_view.zoomed.connect(self._plot_zoomed)
         self.stack = QStackedWidget()
         self.stack.addWidget(self.pair)
         self.stack.addWidget(self.plot_view)
@@ -258,6 +270,20 @@ class ImagePanel(QWidget):
         """Render a colour swatch and name for each foreground class."""
         self.legend.setText(class_legend_html(self.config))
 
+    def _plot_zoomed(self) -> None:
+        """Reconsider which copy to draw after the figure is zoomed.
+
+        Guarded because drawing one emits this again: the swap is a zoom in
+        every sense Qt understands.
+        """
+        if self._swapping or self._plot_copies[0] is None:
+            return
+        self._swapping = True
+        try:
+            self._draw_plot()
+        finally:
+            self._swapping = False
+
     def fit(self) -> None:
         """Fit whichever view is on screen.
 
@@ -306,27 +332,74 @@ class ImagePanel(QWidget):
 
         self._set_badges(self._label_badges(display))
 
-    def show_plot(self, frame_plot: FramePlot | None, *, detailed: bool = False) -> None:
+    def show_plot(
+        self, frame_plot: FramePlot | None, whole: FramePlot | None = None
+    ) -> None:
         """Draw a summary plot, or explain its absence.
 
         Args:
-            frame_plot: What to draw.
-            detailed: This is the same figure already on screen, read whole.
-                Swapped in without moving the view, so it arrives as the
-                picture becoming legible rather than as the pane jumping.
+            frame_plot: The copy prepared for this pane, which is what is drawn
+                until the figure is magnified past its own resolution.
+            whole: The same figure read whole, where it has been read. Used
+                only where it would show more than *frame_plot* can.
         """
         if frame_plot is None:
             self.plot_view.clear()
+            self._plot_copies = (None, None)
             self._set_badges([("no plot for this frame", "info")])
             return
         if frame_plot.failed:
             self.plot_view.clear()
+            self._plot_copies = (None, None)
             self._set_badges([(f"could not read plot: {frame_plot.error}", "error")])
             return
-        # Fitted on arrival, and left where it is when the full-resolution
-        # copy replaces it.
-        self.plot_view.set_array(frame_plot.plot, same_picture=detailed)
+        stepping = frame_plot.plot
+        # A figure of another size is another picture and is fitted; every
+        # plot of one lamella is normally the same size, which is what makes
+        # stepping leave the view alone.
+        drawn = self._plot_copies[0]
+        same = drawn is not None and drawn.shape[:2] == stepping.shape[:2]
+        self._plot_copies = (
+            stepping,
+            whole.plot if whole is not None and not whole.failed else None,
+        )
+        self._draw_plot(same_picture=same)
         self._set_badges([])
+
+    def _draw_plot(self, *, same_picture: bool = True) -> None:
+        """Draw whichever copy of the figure shows the most at this zoom.
+
+        The pane-sized copy is drawn at exactly one array pixel per physical
+        pixel, which is the only scale that does not resample it -- so at fit,
+        where a plot is nearly always looked at, nothing is filtered and the
+        figure is as sharp as the file. Past that the pane copy has nothing
+        left to show and would only be stretched, so the whole one takes over.
+        """
+        stepping, whole = self._plot_copies
+        if stepping is None:
+            return
+        ratio = self.plot_view.devicePixelRatioF() or 1.0
+        if whole is not None and self._plot_magnification() > PLOT_DETAIL_MAGNIFICATION:
+            self.plot_view.set_array(whole, same_picture=same_picture)
+            return
+        self.plot_view.set_array(
+            stepping, device_pixel_ratio=ratio, native=True, same_picture=same_picture
+        )
+
+    def _plot_magnification(self) -> float:
+        """Return how far the figure is drawn past the pane copy's resolution.
+
+        Measured against that copy rather than read off the transform, so it
+        means the same thing whichever copy is on screen -- which is what stops
+        the two swapping back and forth around the threshold.
+        """
+        stepping, _ = self._plot_copies
+        item = self.plot_view._item.boundingRect()
+        if stepping is None or not item.width():
+            return 0.0
+        ratio = self.plot_view.devicePixelRatioF() or 1.0
+        drawn = item.width() * self.plot_view.transform().m11()
+        return drawn / (stepping.shape[1] / ratio)
 
     def show_loading(self) -> None:
         """Say that the frame is still being prepared."""

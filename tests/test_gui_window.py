@@ -1595,38 +1595,96 @@ def test_the_figure_is_read_whole_for_the_frame_being_looked_at(qt_app, window):
     assert window.controller.cache.plot_detail(0).plot.shape[:2] == (1400, 2100)
 
 
-def test_the_full_resolution_copy_arrives_without_moving_the_view(qt_app, window):
-    """It lands while the user is looking at the figure, so it has to read as
-    the picture becoming legible rather than as the pane jumping."""
+def test_a_change_of_resolution_keeps_the_region_on_screen(qt_app):
+    """The mechanism the swap rests on, on its own: the same picture at more
+    pixels is the same view at a smaller scale about a larger centre."""
+    import numpy as np
+
+    from am_segmentation_manager.gui.widgets.image_view import ImageView
+
+    view = ImageView()
+    view.resize(400, 300)
+    view.show()
+    qt_app.processEvents()
+    try:
+        view.set_array(np.zeros((300, 400, 3), dtype=np.uint8))
+        view.zoom_by(1.25)
+        qt_app.processEvents()
+        drawn = view._item.boundingRect().width() * view.transform().m11()
+        centre = view.mapToScene(view.viewport().rect().center())
+
+        view.set_array(np.zeros((1200, 1600, 3), dtype=np.uint8), same_picture=True)
+
+        after = view.mapToScene(view.viewport().rect().center())
+        assert view._item.boundingRect().width() * view.transform().m11() == (
+            pytest.approx(drawn, rel=0.01)
+        )
+        assert (after.x(), after.y()) == pytest.approx(
+            (centre.x() * 4, centre.y() * 4), rel=0.01
+        )
+    finally:
+        view.close()
+
+
+def test_swapping_to_the_whole_figure_draws_it_at_the_size_the_zoom_asked_for(
+    qt_app, window
+):
+    """The swap happens inside a zoom, so it has to be invisible: the same
+    region, at the size that zoom asked for, drawn from more pixels."""
     window._set_mode("plot")
     _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
-    view = window.image_panel.plot_view
-    view.zoom_by(1.25)
-    view.zoom_by(1.25)
-    before = view.mapToScene(view.viewport().rect().center())
-    picture = view._item.boundingRect().width()
-    on_screen = view.transform().m11() * picture
-
     window._render_plot()
-
-    after = view.mapToScene(view.viewport().rect().center())
-    grown = view._item.boundingRect().width() / picture
-    # The same region of the same figure, at the same size on screen.
-    assert view.transform().m11() * view._item.boundingRect().width() == pytest.approx(
-        on_screen, rel=0.02
-    )
-    assert after.x() == pytest.approx(before.x() * grown, rel=0.02)
-
-
-def test_a_plot_opens_fitted_rather_than_at_full_size(qt_app, window):
-    """Held at 2100 across in a pane a fraction of that, so the whole figure
-    has to be brought into view before anything else."""
-    window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
     view = window.image_panel.plot_view
+    drawn = view._item.boundingRect().width() * view.transform().m11()
+    pane_copy = view._item.boundingRect().width()
 
-    assert view.transform().m11() < 1.0
-    assert view.transform().m11() == pytest.approx(view.fit_scale(), rel=0.05)
+    view.zoom_by(1.25)
+
+    assert view._item.boundingRect().width() > pane_copy, "swapped to the whole figure"
+    assert view._item.boundingRect().width() * view.transform().m11() == pytest.approx(
+        drawn * 1.25, rel=0.02
+    )
+
+
+def test_a_figure_of_another_size_starts_again_rather_than_inheriting_the_zoom(
+    qt_app, window
+):
+    """Holding the view across a change of resolution is for the same figure
+    read whole. A figure of another size is another picture, and carrying a
+    zoom onto it would show it at a scale chosen for something else."""
+    import numpy as np
+
+    from am_segmentation_manager.gui.cache import FramePlot
+
+    window._set_mode("plot")
+    _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
+    window._render_plot()
+    panel = window.image_panel
+    panel.plot_view.zoom_by(1.25)
+    panel.plot_view.zoom_by(1.25)
+    assert not panel.plot_view.transform().isIdentity()
+
+    panel.show_plot(FramePlot(plot=np.zeros((240, 320, 3), dtype=np.uint8)))
+
+    # Identity is one array pixel per physical pixel, which is what a copy
+    # prepared for this pane is drawn at.
+    assert panel.plot_view.transform().isIdentity()
+
+
+def test_stepping_to_another_plot_does_not_move_the_picture(qt_app, window):
+    """Every plot in a lamella is the same size, so a step should not disturb
+    the view at all -- it used to refit, then shift again as the whole copy
+    landed."""
+    window._set_mode("plot")
+    _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
+    window._render_plot()
+    view = window.image_panel.plot_view
+    before = view.transform().m11(), view._item.boundingRect().width()
+
+    window._step_frame(1)
+    _settle(qt_app, lambda: window.controller.frame_position == 1)
+
+    assert (view.transform().m11(), view._item.boundingRect().width()) == before
 
 
 def test_stepping_through_plots_finds_them_ready(qt_app, window):

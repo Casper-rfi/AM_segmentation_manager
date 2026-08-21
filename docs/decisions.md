@@ -380,8 +380,18 @@ place.
   are 4500x3000 and carry annotations that exist only at that resolution, so a pane-sized
   copy puts a ceiling on what zooming in can ever show, which is what a plot is opened for.
   The pane-sized copies cover the lamella; the frame being looked at also gets read whole,
-  asked for last because nothing on screen is waiting on it, and swapped in without moving
-  the view — it has to read as the picture becoming legible, not as the pane jumping.
+  asked for last because nothing on screen is waiting on it.
+- **The copy read whole is drawn only where it would show more.** At fit it would show less:
+  the pane-sized copy is prepared to fill this pane exactly and drawn at one array pixel per
+  physical pixel, which is the only scale that resamples nothing, while the whole copy at the
+  same size is a 2x minification of a figure made of one-pixel rules. So the pane copy is
+  what a fitted plot is, and the whole one takes over once the figure is magnified past what
+  the pane copy holds — a swap inside a zoom, where a change of scale is what the user just
+  asked for, and one that keeps the region on screen so it reads as detail appearing. Drawing
+  the whole copy the moment it arrived instead cost both things at once: every plot on screen
+  was a resampled one, and each step through the lamella refitted and then shifted again as
+  the copy landed. The threshold has a hair of margin on it, because returning to fit lands
+  either side of exactly 1 and the wrong side leaves the one view that must be exact filtered.
 - **Read-ahead asks for no more than the cache can keep.** Unbounded, the read that finishes
   last evicts the one that finished first, so a step in either direction lands on something
   that was prepared and then thrown away — the cache working against itself. `plot_radius`

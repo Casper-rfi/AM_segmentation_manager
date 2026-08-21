@@ -1691,19 +1691,17 @@ class CurationWindow(QMainWindow):
             self._schedule_loads()
 
     def _render_plot(self) -> None:
-        """Draw the current plot, at the best resolution that has arrived.
+        """Hand the panel both copies of the current figure, where it has both.
 
-        The pane-sized copy is what stepping through a lamella draws, because
-        it is the one that is always already there. The copy read whole
-        replaces it once it lands, which is what makes zooming into the figure
-        show the figure.
+        Which one is drawn is the panel's to decide, because it depends on how
+        far the figure is zoomed and that changes without anything reaching
+        this far.
         """
         position = self.controller.frame_position
-        detail = self.controller.cache.cached_plot_detail(position)
-        if detail is not None and not detail.failed:
-            self.image_panel.show_plot(detail, detailed=True)
-            return
-        self.image_panel.show_plot(self.controller.current_plot())
+        self.image_panel.show_plot(
+            self.controller.current_plot(),
+            self.controller.cache.cached_plot_detail(position),
+        )
 
     def _variant_descriptions(self) -> dict[str, str]:
         """Return human-readable names for the project's imaging conditions.
