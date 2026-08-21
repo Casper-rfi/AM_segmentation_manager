@@ -36,7 +36,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...aggregate import AREA_BINS_PER_DECADE
+from ...aggregate import AREA_BINS_PER_DECADE, bin_mantissas
 from ..export_controller import (
     ANY_LABEL,
     DEFAULT_PREFIX,
@@ -392,19 +392,25 @@ class ExportPanel(QWidget):
         # A combo rather than a spin box: the supported settings are 1, 2, 3
         # and 6, and a spin box spanning them would offer 4 and 5, which are
         # not subdivisions of a decade into round edges.
+        #
+        # Each row carries the values it cuts at rather than only the count.
+        # "3" is a number to look up; "3 per decade (1, 2, 5)" is a scale a
+        # reader recognises, and the choice is between scales.
         self.area_bins = StepCombo()
         for supported in AREA_BINS_PER_DECADE:
-            self.area_bins.addItem(str(supported), supported)
+            cuts = ", ".join(f"{value:g}" for value in bin_mantissas(supported))
+            self.area_bins.addItem(f"{supported} per decade ({cuts})", supported)
         self.area_bins.setCurrentIndex(
             self.area_bins.findData(self.controller.area_bins_per_decade)
         )
         self.area_bins.currentIndexChanged.connect(self._controls_changed)
         row.addWidget(
             caption_for(
-                "Area bins per decade",
+                "Area bins",
                 self.area_bins,
-                "How finely the area breakdowns cut each factor of ten. "
-                "Raise it when a class fills a single bin.",
+                "How finely each factor of ten is cut. Raising it splits a bin "
+                "rather than moving its edges, so counts stay comparable "
+                "across settings.",
             )
         )
         row.addWidget(self.area_bins)

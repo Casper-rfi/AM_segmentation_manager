@@ -368,6 +368,29 @@ def test_an_unsupported_resolution_is_rejected():
         ag.area_bin_edges(7)
 
 
+def test_a_resolution_says_what_it_cuts_a_decade_at():
+    """The control has to offer a scale rather than a number: "3" is something
+    to look up, "1, 2, 5" is something a reader recognises."""
+    assert ag.bin_mantissas(1) == (1.0,)
+    assert ag.bin_mantissas(3) == (1.0, 2.0, 5.0)
+
+    with pytest.raises(ValueError, match="Bins per decade"):
+        ag.bin_mantissas(4)
+
+
+def test_the_offered_cuts_are_the_ones_the_edges_are_built_from():
+    """Two statements of the same fact would let the control describe a scale
+    the breakdown does not use."""
+    for per_decade in ag.AREA_BINS_PER_DECADE:
+        edges = ag.area_bin_edges(per_decade)
+        mantissas = ag.bin_mantissas(per_decade)
+
+        assert len(edges) % len(mantissas) == 0
+        assert [round(edge, 10) for edge in edges[:len(mantissas)]] == [
+            round(value * 0.01, 10) for value in mantissas
+        ]
+
+
 def test_the_area_breakdowns_are_built_at_the_chosen_resolution():
     config = load_segmentation_config()
 

@@ -307,6 +307,24 @@ _BIN_MANTISSAS: dict[int, tuple[float, ...]] = {
 #: The settings :func:`area_bin_edges` accepts.
 AREA_BINS_PER_DECADE: tuple[int, ...] = tuple(sorted(_BIN_MANTISSAS))
 
+
+def bin_mantissas(per_decade: int) -> tuple[float, ...]:
+    """Return the values one decade is cut at, for a *per_decade* setting.
+
+    What the setting actually means, for a control that has to say so: at 3 it
+    is 1, 2 and 5, which is the scale a reader recognises rather than a number
+    they have to look up.
+
+    Raises:
+        ValueError: If *per_decade* is not one of :data:`AREA_BINS_PER_DECADE`.
+    """
+    if per_decade not in _BIN_MANTISSAS:
+        raise ValueError(
+            f"Bins per decade must be one of {AREA_BINS_PER_DECADE}, "
+            f"got {per_decade!r}"
+        )
+    return _BIN_MANTISSAS[per_decade]
+
 #: Decades, which is the coarsest setting. The classes differ by orders of
 #: magnitude -- a lamella is hundreds of um^2 and a crack hundredths -- so one
 #: log scale is what lets them be read against each other, and the useful knob
