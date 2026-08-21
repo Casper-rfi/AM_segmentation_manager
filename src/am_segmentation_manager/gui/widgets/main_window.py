@@ -1649,7 +1649,7 @@ class CurationWindow(QMainWindow):
             elif self.controller.cache.cached_plot(self.controller.frame_position) is None:
                 self.image_panel.show_loading()
             else:
-                self.image_panel.show_plot(self.controller.current_plot())
+                self._render_plot()
             return
 
         modality = "SEM" if self.controller.mode == "sem" else "FIB"
@@ -1670,6 +1670,40 @@ class CurationWindow(QMainWindow):
             self.image_panel.show_image(
                 cached, self.controller.show_overlay, self.controller.show_image
             )
+
+    def _match_plot_size_to_pane(self) -> None:
+        """Prepare the stepping copies at the size they are actually shown at.
+
+        Reported in *physical* pixels. On a high-resolution display a widget
+        1070 logical pixels wide occupies 2140 real ones, and a plot prepared
+        to the logical size would be magnified to fill it. The copies read
+        whole are not affected: what the pane is does not change what the file
+        holds.
+        """
+        view = self.image_panel.plot_view
+        viewport = view.viewport().rect()
+        if viewport.isEmpty():
+            return
+        ratio = view.devicePixelRatioF()
+        size = (round(viewport.width() * ratio), round(viewport.height() * ratio))
+        if self.controller.cache.set_plot_max_size(size):
+            # The prepared plots were the wrong size and have been discarded.
+            self._schedule_loads()
+
+    def _render_plot(self) -> None:
+        """Draw the current plot, at the best resolution that has arrived.
+
+        The pane-sized copy is what stepping through a lamella draws, because
+        it is the one that is always already there. The copy read whole
+        replaces it once it lands, which is what makes zooming into the figure
+        show the figure.
+        """
+        position = self.controller.frame_position
+        detail = self.controller.cache.cached_plot_detail(position)
+        if detail is not None and not detail.failed:
+            self.image_panel.show_plot(detail, detailed=True)
+            return
+        self.image_panel.show_plot(self.controller.current_plot())
 
     def _variant_descriptions(self) -> dict[str, str]:
         """Return human-readable names for the project's imaging conditions.

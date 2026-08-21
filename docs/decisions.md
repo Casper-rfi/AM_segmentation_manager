@@ -372,21 +372,29 @@ place.
   two-pixel border of its own that scaling to the computed floor would crop, so "zoomed all
   the way out" and "fitted" are the same picture rather than differing by the outermost
   pixels of the frame.
-- **A summary plot is held as it was rendered, and the view scales it.** These figures carry
-  axis labels and annotations that exist only at the resolution they were written at —
-  4500x3000 in the reference collection — so reducing one on read put a ceiling on what
-  looking closely could ever show, which is the whole reason to open a plot. Two things
-  follow. `QGraphicsPixmapItem` overrides the view's render hint with its own transformation
-  mode, whose default is nearest neighbour: the plot view has to ask for smooth scaling or
-  the pane drops one-pixel rules rather than averaging them, measurably and visibly.
-  Acquisitions keep nearest, because zoomed in on a label that is what shows where one pixel
+- **A summary plot is held twice: once for stepping, once for looking at.** They are two
+  different jobs and one copy cannot do both. A plot is ~180 ms to read however it is asked
+  for — a PNG has to be decompressed whole, so OpenCV's reduced-decode flags buy nothing —
+  which is slower than a held-down arrow key, so stepping is smooth only if every plot is
+  already in memory, which bounds those copies to the size of the pane. But these figures
+  are 4500x3000 and carry annotations that exist only at that resolution, so a pane-sized
+  copy puts a ceiling on what zooming in can ever show, which is what a plot is opened for.
+  The pane-sized copies cover the lamella; the frame being looked at also gets read whole,
+  asked for last because nothing on screen is waiting on it, and swapped in without moving
+  the view — it has to read as the picture becoming legible, not as the pane jumping.
+- **Read-ahead asks for no more than the cache can keep.** Unbounded, the read that finishes
+  last evicts the one that finished first, so a step in either direction lands on something
+  that was prepared and then thrown away — the cache working against itself. `plot_radius`
+  is derived from the entry limit, so a lamella that fits is still prepared whole (almost all
+  of them are) and one that does not is prepared around where the user is. On the longest
+  lamella in the reference collection, 61 plots against 38 that fit, this is the difference
+  between stepping end to end with no wait at all and re-reading at both extremes.
+- **`QGraphicsPixmapItem` overrides the view's render hint with its own transformation mode**,
+  and that mode defaults to nearest neighbour. A pane showing something several times its own
+  size therefore drops pixels rather than averaging them: measured against a figure of
+  one-pixel rules, nearest loses whole gridlines. The plot view asks for smooth scaling.
+  Acquisitions do not, because zoomed *in* on a label, nearest is what shows where one pixel
   ends and the next begins.
-- **Read-ahead for plots is a neighbourhood, not the lamella.** Near 40 MB each, only a
-  handful fit the memory budget, so asking for a whole lamella evicted the frame being looked
-  at to make room for one twenty steps away — the cache working against itself. The
-  proofreading view reads whole acquisitions on a radius of one and steps smoothly, which is
-  the same trade made twice. `MIN_PLOT_LIMIT` is tied to `PLOT_RADIUS` so the cache can never
-  hold less than the read-ahead asks for; a test holds the two together.
 - **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under PyQt5
   it returns the proportional `.AppleSystemUIFont` while reporting the family it was asked
   for, so a table padded into columns comes out unaligned with nothing saying why. A style

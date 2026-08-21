@@ -27,7 +27,6 @@ from ..operations.selection import RecordState, current_state, transition_record
 from ..scanner import ProjectIndex, Scanner
 from .cache import (
     DEFAULT_RADIUS,
-    PLOT_RADIUS,
     FrameCache,
     FrameImage,
     FramePlot,
@@ -633,11 +632,13 @@ class CurationController:
             self._frame_position,
             [m for m in ordered if m is not None],
             variants=dict(self.variant),
-            # A plot takes ~200 ms to decode, which is slower than a held-down
-            # arrow key. Preparing only the immediate neighbours guarantees the
-            # user outruns the loader, so in the plot view the whole lamella is
-            # prepared instead, working outwards from where they are.
-            radius=PLOT_RADIUS if showing_plots else radius,
+            # A plot takes ~180 ms to read, which is slower than a held-down
+            # arrow key, so preparing only the immediate neighbours guarantees
+            # the user outruns the loader. In the plot view everything the
+            # cache can keep is prepared instead, working outwards from where
+            # they are -- and no more than that, or the far end of a long
+            # lamella evicts the near end as it goes.
+            radius=self.cache.plot_radius if showing_plots else radius,
             include_plots=showing_plots,
         )
 

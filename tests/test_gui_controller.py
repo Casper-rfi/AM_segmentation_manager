@@ -752,12 +752,15 @@ def test_the_target_starts_on_the_modality_first_shown():
 
 def test_plot_view_prepares_the_whole_lamella():
     """Plots decode slower than a held-down arrow key, so all are prepared."""
+
     controller = make_controller()
     controller.set_mode("plot")
 
-    plot_requests = [r for r in controller.pending_loads() if r.modality is None]
+    stepping = [
+        r for r in controller.pending_loads() if r.modality is None and not r.detail
+    ]
 
-    assert len(plot_requests) == len(controller.frames)
+    assert len(stepping) == len(controller.frames)
 
 
 def test_plot_preparation_reaches_the_far_end_of_the_lamella():

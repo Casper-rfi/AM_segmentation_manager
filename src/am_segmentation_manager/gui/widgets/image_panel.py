@@ -306,8 +306,15 @@ class ImagePanel(QWidget):
 
         self._set_badges(self._label_badges(display))
 
-    def show_plot(self, frame_plot: FramePlot | None) -> None:
-        """Draw a summary plot, or explain its absence."""
+    def show_plot(self, frame_plot: FramePlot | None, *, detailed: bool = False) -> None:
+        """Draw a summary plot, or explain its absence.
+
+        Args:
+            frame_plot: What to draw.
+            detailed: This is the same figure already on screen, read whole.
+                Swapped in without moving the view, so it arrives as the
+                picture becoming legible rather than as the pane jumping.
+        """
         if frame_plot is None:
             self.plot_view.clear()
             self._set_badges([("no plot for this frame", "info")])
@@ -316,10 +323,9 @@ class ImagePanel(QWidget):
             self.plot_view.clear()
             self._set_badges([(f"could not read plot: {frame_plot.error}", "error")])
             return
-        # As rendered, and fitted: reducing it on read put a ceiling on what
-        # zooming in could ever show, which is what these figures are looked at
-        # closely for.
-        self.plot_view.set_array(frame_plot.plot)
+        # Fitted on arrival, and left where it is when the full-resolution
+        # copy replaces it.
+        self.plot_view.set_array(frame_plot.plot, same_picture=detailed)
         self._set_badges([])
 
     def show_loading(self) -> None:

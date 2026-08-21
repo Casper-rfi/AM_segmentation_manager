@@ -1572,13 +1572,50 @@ def test_a_report_dialog_shows_its_lines_and_asks_only_when_it_can_act(qt_app):
 # Plots are prepared at the size they are shown at
 # ---------------------------------------------------------------------------
 
-def test_a_plot_is_held_at_the_size_it_was_rendered(qt_app, window):
-    """The fixture writes 1400x2100. Reducing it on read would put a ceiling on
-    what zooming into the figure could ever show."""
+def test_stepping_draws_a_plot_sized_to_the_pane(qt_app, window):
+    """A plot is ~180 ms to read however it is asked for, so stepping can only
+    be smooth if every one is already held -- which bounds them to the pane."""
     window._set_mode("plot")
     _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
 
-    assert window.controller.cache.plot(0).plot.shape[:2] == (1400, 2100)
+    stepping = window.controller.cache.plot(0).plot
+
+    assert max(stepping.shape[:2]) < 2100, "the fixture writes 1400x2100"
+
+
+def test_the_figure_is_read_whole_for_the_frame_being_looked_at(qt_app, window):
+    """Reducing it on read put a ceiling on what zooming in could ever show,
+    which is what these are opened for."""
+    window._set_mode("plot")
+    _settle(
+        qt_app,
+        lambda: window.controller.cache.cached_plot_detail(0) is not None,
+    )
+
+    assert window.controller.cache.plot_detail(0).plot.shape[:2] == (1400, 2100)
+
+
+def test_the_full_resolution_copy_arrives_without_moving_the_view(qt_app, window):
+    """It lands while the user is looking at the figure, so it has to read as
+    the picture becoming legible rather than as the pane jumping."""
+    window._set_mode("plot")
+    _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
+    view = window.image_panel.plot_view
+    view.zoom_by(1.25)
+    view.zoom_by(1.25)
+    before = view.mapToScene(view.viewport().rect().center())
+    picture = view._item.boundingRect().width()
+    on_screen = view.transform().m11() * picture
+
+    window._render_plot()
+
+    after = view.mapToScene(view.viewport().rect().center())
+    grown = view._item.boundingRect().width() / picture
+    # The same region of the same figure, at the same size on screen.
+    assert view.transform().m11() * view._item.boundingRect().width() == pytest.approx(
+        on_screen, rel=0.02
+    )
+    assert after.x() == pytest.approx(before.x() * grown, rel=0.02)
 
 
 def test_a_plot_opens_fitted_rather_than_at_full_size(qt_app, window):

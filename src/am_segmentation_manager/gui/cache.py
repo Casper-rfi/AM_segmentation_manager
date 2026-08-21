@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from ..display import (
+    DEFAULT_PLOT_MAX_EDGE,
     DisplayImage,
     prepare_display_image,
     prepare_plot,
@@ -49,18 +50,15 @@ DEFAULT_PLOT_LIMIT = 64
 #: How far either side of the current frame to prepare ahead.
 DEFAULT_RADIUS = 3
 
-#: How far either side to prepare plots while the plot view is on. Plots are
-#: not prepared at all otherwise, so this costs nothing when they are not being
-#: looked at.
+#: Plots are not prepared at all unless the plot view is on, so reading ahead
+#: for them costs nothing when they are not being looked at. How far ahead is
+#: :attr:`FrameCache.plot_radius`, which is as far as the cache can keep.
 #:
-#: A neighbourhood rather than the whole lamella. Plots are held as rendered --
-#: 4500x3000 in the reference collection, near 40 MB each -- so only a handful
-#: fit the budget, and asking for a long lamella would evict the frame being
-#: looked at to make room for one twenty steps away. The proofreading view
-#: reads whole acquisitions the same way and steps smoothly on a radius of one.
-#: :data:`MIN_PLOT_LIMIT` is the floor that keeps this reachable: the cache can
-#: never hold fewer than a full neighbourhood.
-PLOT_RADIUS = 3
+#: A plot is ~180 ms to read however it is asked for -- a PNG has to be
+#: decompressed whole, so the reduced-decode flags buy nothing -- which is
+#: slower than a held-down arrow key. Nothing can be read fast enough to keep
+#: up, so every plot has to be there already. That is what bounds these entries
+#: to the pane rather than to the file.
 
 #: Roughly how much memory prepared plots may occupy. A plot is held at the
 #: resolution it was rendered at, which the package does not control -- these
@@ -68,12 +66,16 @@ PLOT_RADIUS = 3
 #: -- so the entry limit is derived from this budget rather than fixed.
 PLOT_MEMORY_BUDGET_BYTES = 320 * 1024 * 1024
 
-#: Bounds on the derived plot limit. The floor holds a whole
-#: :data:`PLOT_RADIUS` neighbourhood and the frame between, so stepping is
-#: always reading ahead rather than re-reading; the ceiling stops a collection
-#: of small figures from keeping hundreds.
-MIN_PLOT_LIMIT = 2 * PLOT_RADIUS + 2
+#: Bounds on the derived plot limit: enough to navigate comfortably at the
+#: bottom, and never so many that an unusually long lamella exhausts memory.
+MIN_PLOT_LIMIT = 8
 MAX_PLOT_LIMIT = 64
+
+#: Plots kept at the resolution they were rendered at. Only what is being
+#: looked at and what was just left, because these are near 40 MB each: they
+#: exist so that stopping on a frame and zooming in shows the figure rather
+#: than a magnified copy of the pane, which is a different job from stepping.
+DETAIL_PLOT_LIMIT = 2
 
 #: Loads one acquisition and its label into display form.
 ImageLoader = Callable[[Path, "Path | None"], DisplayImage]
@@ -119,11 +121,17 @@ class LoadRequest:
     ``modality`` names the acquisition to prepare, or is None to request the
     frame's summary plot. ``variant`` names the imaging condition, or is None
     for the frame's base image of that modality.
+
+    ``detail`` asks for the plot at the resolution it was rendered at rather
+    than at the size of the pane. Only ever asked for the frame being looked
+    at, and always last: it is the slowest thing here and nothing is waiting
+    on it.
     """
 
     frame_index: int
     modality: str | None = None
     variant: str | None = None
+    detail: bool = False
 
 
 class BoundedCache(Generic[K, V]):
@@ -249,11 +257,28 @@ class FrameCache:
             plot_limit: Maximum prepared plots to keep.
         """
         self._load_image: ImageLoader = load_image or prepare_display_image
-        self._load_plot: PlotLoader = load_plot or prepare_plot
+        self._load_plot: PlotLoader = load_plot or self._prepare_plot_for_the_pane
+        #: The size plots are prepared at for stepping through, in physical
+        #: screen pixels. Set by the window from the pane it draws them in.
+        self.plot_max_size = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE)
         self._frames: tuple[LamellaFrame, ...] = ()
         self._images: BoundedCache[tuple[int, str, str | None], FrameImage] = BoundedCache(image_limit)
         self._plots: BoundedCache[int, FramePlot] = BoundedCache(plot_limit)
+        self._details: BoundedCache[int, FramePlot] = BoundedCache(DETAIL_PLOT_LIMIT)
         self._generation = 0
+
+    @property
+    def plot_radius(self) -> int | None:
+        """Return how far either side of a frame plots are worth preparing.
+
+        As far as this cache can keep, and no further. Asking for a whole
+        lamella that does not fit is the cache working against itself: the read
+        that finishes last evicts the one that finished first, so a step in
+        either direction lands on something that was prepared and then thrown
+        away. None where nothing is evicted at all.
+        """
+        held = self._plots.max_entries
+        return None if held is None else max(1, (held - 1) // 2)
 
     @property
     def frames(self) -> tuple[LamellaFrame, ...]:
@@ -282,6 +307,7 @@ class FrameCache:
         """Discard all prepared data, keeping the current frames."""
         self._images.clear()
         self._plots.clear()
+        self._details.clear()
 
     def image(
         self, frame_index: int, modality: str, variant: str | None = None
@@ -341,6 +367,41 @@ class FrameCache:
             self._plots.put(frame_index, prepared)
         return prepared
 
+    def _prepare_plot_for_the_pane(self, path: Path) -> np.ndarray:
+        """Read a plot reduced to the size it is displayed at."""
+        return prepare_plot(path, max_size=self.plot_max_size)
+
+    def set_plot_max_size(self, size: tuple[int, int], *, tolerance: float = 0.2) -> bool:
+        """Set the size plots are prepared at, discarding any prepared otherwise.
+
+        *size* is in physical screen pixels. A plot prepared at any other size
+        has to be resampled again when it is drawn, which softens the small
+        text these figures are full of.
+
+        Changes smaller than *tolerance* are ignored, so that dragging a window
+        edge does not throw the whole lamella away repeatedly. The
+        full-resolution copies are untouched: what the pane is does not change
+        what the file holds.
+
+        Returns:
+            Whether the size changed and prepared plots were discarded.
+        """
+        width, height = size
+        if width <= 0 or height <= 0:
+            return False
+        current_width, current_height = self.plot_max_size
+        change = max(
+            abs(width - current_width) / current_width,
+            abs(height - current_height) / current_height,
+        )
+        if change < tolerance:
+            return False
+        logger.debug("Plot display size %s -> %s", self.plot_max_size, size)
+        self.plot_max_size = (width, height)
+        self._plots.max_entries = _plot_limit_for_bytes(width * height * 3)
+        self._plots.clear()
+        return True
+
     def _budget_for(self, prepared: FramePlot) -> None:
         """Set how many plots to keep, from the size of one that was read.
 
@@ -375,6 +436,37 @@ class FrameCache:
         """Return a prepared plot only if it is already held."""
         return self._plots.get(frame_index)
 
+    def plot_detail(self, frame_index: int) -> FramePlot | None:
+        """Return the plot at the resolution it was rendered at, reading it if needed.
+
+        Separate from :meth:`plot` because the two answer different questions.
+        Stepping through a lamella needs every plot small enough to be held;
+        stopping on one and looking into it needs that one whole. Reading is
+        the same ~180 ms either way, so this is asked for only where it will be
+        looked at.
+        """
+        frame = self._frame(frame_index)
+        if frame is None or frame.plot_path is None:
+            return None
+
+        cached = self._details.get(frame_index)
+        if cached is not None:
+            return cached
+
+        generation = self._generation
+        try:
+            prepared = FramePlot(plot=prepare_plot(frame.plot_path))
+        except Exception as exc:  # noqa: BLE001 - as above
+            logger.warning("Could not read %s whole: %s", frame.plot_path, exc)
+            prepared = FramePlot(error=str(exc))
+        if generation == self._generation:
+            self._details.put(frame_index, prepared)
+        return prepared
+
+    def cached_plot_detail(self, frame_index: int) -> FramePlot | None:
+        """Return the full-resolution plot only if it is already held."""
+        return self._details.get(frame_index)
+
     def holds(
         self, frame_index: int, modality: str, variant: str | None = None
     ) -> bool:
@@ -388,7 +480,9 @@ class FrameCache:
 
     def ensure(self, request: LoadRequest) -> None:
         """Prepare the data named by *request* if it is not already held."""
-        if request.modality is None:
+        if request.detail:
+            self.plot_detail(request.frame_index)
+        elif request.modality is None:
             self.plot(request.frame_index)
         else:
             self.image(request.frame_index, request.modality, request.variant)
@@ -438,6 +532,13 @@ class FrameCache:
                 if frame is not None and frame.plot_path is not None:
                     if frame_index not in self._plots:
                         requests.append(LoadRequest(frame_index, None))
+        # Last, and only where it will be looked at: it is the slowest read
+        # here, and putting it anywhere else would delay a step through the
+        # lamella for a resolution nobody is using yet.
+        if include_plots and current not in self._details:
+            frame = self._frame(current)
+            if frame is not None and frame.plot_path is not None:
+                requests.append(LoadRequest(current, None, detail=True))
         return requests
 
     def _frame(self, frame_index: int) -> LamellaFrame | None:

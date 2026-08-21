@@ -11,6 +11,7 @@ import pytest
 
 from am_segmentation_manager.frames import LamellaFrame
 from am_segmentation_manager.gui.cache import (
+    MIN_PLOT_LIMIT,
     BoundedCache,
     FrameCache,
     LoadRequest,
@@ -366,30 +367,68 @@ def test_a_plot_is_read_at_the_size_it_was_rendered(tmp_path):
     assert cache.plot(0).plot.shape[:2] == (900, 1200)
 
 
-def test_the_cache_always_holds_a_whole_neighbourhood_of_plots():
-    """What the read-ahead asks for has to fit what the cache keeps, or a step
-    forward evicts the frame being looked at to make room for one behind it."""
-    from am_segmentation_manager.gui.cache import MIN_PLOT_LIMIT, PLOT_RADIUS
+def test_whole_lamella_of_plots_can_be_held():
+    """Holding an arrow key outruns any per-plot read, so all are kept."""
+    cache, _, _ = make_cache(40)
 
-    assert MIN_PLOT_LIMIT > 2 * PLOT_RADIUS + 1
+    for index in range(40):
+        cache.plot(index)
+
+    assert cache.cached_plot(0) is not None
+    assert cache.cached_plot(39) is not None
 
 
-def test_plots_are_read_ahead_around_the_frame_rather_than_wholesale():
-    """They are held as rendered -- tens of megabytes each -- so a long lamella
-    cannot be kept, and asking for one only costs the neighbours."""
-    from am_segmentation_manager.gui.cache import PLOT_RADIUS, prefetch_order
+def test_the_read_ahead_never_asks_for_more_than_it_can_keep():
+    """The read that finishes last would evict the one that finished first, so
+    a step in either direction lands on something prepared and thrown away."""
+    cache, _, _ = make_cache(80)
+    cache.set_plot_max_size((2140, 1400))
 
-    wanted = prefetch_order(20, total=61, radius=PLOT_RADIUS)
+    wanted = cache.pending(40, [], radius=cache.plot_radius, include_plots=True)
 
-    assert len(wanted) == 2 * PLOT_RADIUS + 1
-    assert wanted[0] == 20
+    stepping = [r for r in wanted if r.modality is None and not r.detail]
+    assert len(stepping) <= cache._plots.max_entries
+
+
+def test_a_lamella_that_fits_is_still_prepared_whole():
+    """Bounding the read-ahead must not narrow the common case: almost every
+    lamella is shorter than the cache."""
+    cache, _, _ = make_cache(12)
+    cache.set_plot_max_size((2140, 1400))
+
+    wanted = cache.pending(6, [], radius=cache.plot_radius, include_plots=True)
+
+    stepping = [r for r in wanted if r.modality is None and not r.detail]
+    assert len(stepping) == 12
+
+
+def test_the_full_resolution_copy_is_asked_for_last_and_only_where_it_is_looked_at():
+    """It is the slowest read here, and nothing on screen is waiting on it --
+    so it must not come between a step and the plot that step draws."""
+    cache, _, _ = make_cache(6)
+
+    requests = cache.pending(2, [], include_plots=True)
+
+    detail = [r for r in requests if r.detail]
+    assert [r.frame_index for r in detail] == [2]
+    assert requests[-1].detail is True
+
+
+def test_only_a_couple_of_full_resolution_plots_are_kept():
+    """Near 40 MB each: what is being looked at, and what was just left."""
+    from am_segmentation_manager.gui.cache import DETAIL_PLOT_LIMIT
+
+    cache, _, _ = make_cache(6)
+
+    assert cache._details.max_entries == DETAIL_PLOT_LIMIT
+    assert DETAIL_PLOT_LIMIT < MIN_PLOT_LIMIT
 
 
 def test_plot_limit_follows_the_memory_budget():
     """Their size belongs to whatever rendered them, so a fixed count would
     either waste memory on small figures or exhaust it on large ones."""
     from am_segmentation_manager.gui.cache import (
-        MAX_PLOT_LIMIT,
+    MAX_PLOT_LIMIT,
         MIN_PLOT_LIMIT,
         _plot_limit_for_bytes,
     )
@@ -401,26 +440,12 @@ def test_plot_limit_follows_the_memory_budget():
     assert MIN_PLOT_LIMIT <= large <= MAX_PLOT_LIMIT
 
 
-def test_the_limit_is_measured_from_a_plot_that_was_read(tmp_path):
-    """Measured rather than assumed: the package does not choose how large
-    these are, so it finds out by reading one."""
-    import pytest
-
-    pytest.importorskip("cv2")
-    import cv2
-    import numpy as np
-
-    from am_segmentation_manager.frames import LamellaFrame
+def test_the_limit_follows_the_size_the_pane_asks_for(tmp_path):
+    """These are held to be stepped through, so how many fit depends on the
+    pane they are drawn in rather than on the file."""
     from am_segmentation_manager.gui.cache import _plot_limit_for_bytes
 
-    plot_path = tmp_path / "img_000_plot.png"
-    cv2.imwrite(str(plot_path), np.zeros((1800, 2400, 3), dtype=np.uint8))
-    cache = FrameCache()
-    cache.set_frames([
-        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0,
-                     plot_path=plot_path)
-    ])
+    cache, _, _ = make_cache(3)
 
-    cache.plot(0)
-
-    assert cache._plots.max_entries == _plot_limit_for_bytes(1800 * 2400 * 3)
+    assert cache.set_plot_max_size((2136, 1672)) is True
+    assert cache._plots.max_entries == _plot_limit_for_bytes(2136 * 1672 * 3)

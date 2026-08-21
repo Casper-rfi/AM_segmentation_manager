@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 #: Longest edge, in pixels, that acquisitions are reduced to for display.
 DEFAULT_MAX_EDGE = 1024
 
+#: Size the window prepares a plot at before a pane has been measured. Only a
+#: starting point: :meth:`FrameCache.set_plot_max_size` replaces it with the
+#: pane's own size, and reading a plot *whole* passes no size at all.
+DEFAULT_PLOT_MAX_EDGE = 1600
+
 #: Opacity of the label colour drawn over the image.
 DEFAULT_ALPHA = 0.4
 

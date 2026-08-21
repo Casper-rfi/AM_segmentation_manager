@@ -13,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QImage, QPainter, QPixmap
+from qtpy.QtGui import QImage, QPainter, QPixmap, QTransform
 from qtpy.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsScene,
@@ -121,6 +121,7 @@ class ImageView(QGraphicsView):
         *,
         device_pixel_ratio: float = 1.0,
         native: bool = False,
+        same_picture: bool = False,
     ) -> None:
         """Show *array*, fitting the view when the image dimensions change.
 
@@ -136,23 +137,46 @@ class ImageView(QGraphicsView):
                 of scaling to fit. Only correct when the array was prepared to
                 fit the pane; it is what removes the last resampling step for
                 content whose sharpness matters, such as rendered text.
+            same_picture: The array shows what is already on screen at a
+                different resolution. Dimensions changing normally means a new
+                subject and the view refits; here refitting would throw away
+                where the user had zoomed to, at the moment they are looking
+                at it, so the region on screen is kept instead.
         """
         shape = array.shape[:2]
+        before = self._item.boundingRect()
+        centre = self.mapToScene(self.viewport().rect().center())
         pixmap = QPixmap.fromImage(to_qimage(array))
         if device_pixel_ratio and device_pixel_ratio != 1.0:
             pixmap.setDevicePixelRatio(device_pixel_ratio)
         self._item.setPixmap(pixmap)
         self._scene.setSceneRect(_with_margin(self._item.boundingRect()))
-        if shape != self._shape:
-            self._shape = shape
-            if native:
-                # An identity transform means Qt blits the pixmap rather than
-                # resampling it; any other scale, even 0.996, filters every
-                # pixel.
-                self.resetTransform()
-                self.zoomed.emit()
-            else:
-                self.fit()
+        if shape == self._shape:
+            return
+        self._shape = shape
+        if same_picture and before.width() and self._item.boundingRect().width():
+            self._rescale_onto(before, centre)
+        elif native:
+            # An identity transform means Qt blits the pixmap rather than
+            # resampling it; any other scale, even 0.996, filters every pixel.
+            self.resetTransform()
+            self.zoomed.emit()
+        else:
+            self.fit()
+
+    def _rescale_onto(self, before, centre) -> None:
+        """Keep the region on screen across a change of resolution.
+
+        Scene coordinates are the array's own, so the same picture at twice the
+        pixels is the same view at half the scale about a doubled centre. Both
+        are recomputed from the ratio rather than remembered, which is what
+        makes this exact rather than approximately right.
+        """
+        ratio = before.width() / self._item.boundingRect().width()
+        scale = self.transform().m11() * ratio
+        self.setTransform(QTransform.fromScale(scale, scale))
+        self.centerOn(centre.x() / ratio, centre.y() / ratio)
+        self.zoomed.emit()
 
     def set_smooth_scaling(self, smooth: bool) -> None:
         """Choose how the pixmap is resampled when it is not drawn 1:1.
