@@ -152,6 +152,9 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
     """
     import tifffile
 
+    # Before the file is opened, so a run that stalls names the file it stalled
+    # on rather than the last one it finished.
+    logger.debug("Recompressing %s", label_path)
     original_size = label_path.stat().st_size
     before = fingerprint_of(label_path)
     array = tifffile.imread(str(label_path))
@@ -181,5 +184,11 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
         commit_if=commit,
     )
     if applied:
-        logger.info("Compressed %s: %d -> %d bytes", label_path, original_size, new_size)
+        # Debug, not info: this runs once per label over a whole collection,
+        # and both front ends already say the same thing in a form that suits
+        # them -- the command line prints its own line per result, the window
+        # lists every file in the report. A third copy is thousands of writes
+        # to stdout from a worker thread, which is a flood at best and back
+        # pressure on that thread at worst.
+        logger.debug("Compressed %s: %d -> %d bytes", label_path, original_size, new_size)
     return LabelCompressionResult(label_path, original_size, new_size, applied, stale=stale)
