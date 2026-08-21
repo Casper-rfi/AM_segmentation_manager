@@ -600,6 +600,43 @@ def test_curate_is_the_tab_that_opens(window):
     assert window._current_tab() == "curate"
 
 
+# ``focusWidget`` rather than ``hasFocus``: these windows are never shown, and
+# Qt defers real focus until a window is activated. What is asserted is the
+# widget that will hold the keyboard, which is the same either way.
+
+def test_curate_opens_with_the_keyboard_on_the_project_list(window):
+    """Not on the scan box. It is the first focusable widget in the tab, and a
+    focused QLineEdit claims Left and Right for its own cursor -- so the keys
+    that step through frames never reach the window until something is
+    clicked."""
+    assert window.focusWidget() is window.project_panel.project_list
+
+
+def test_returning_to_curate_takes_the_keyboard_back(window):
+    window.tabs.setCurrentWidget(window.metadata_panel)
+    window.tabs.setCurrentIndex(_curate_tab(window))
+
+    assert window.focusWidget() is window.project_panel.project_list
+
+
+def test_the_scan_box_is_what_would_have_swallowed_the_frame_keys(window):
+    """The reason the fix is a focus change rather than a rebinding. Asserted
+    on the widgets themselves so a Qt version that changed its mind about which
+    keys a line edit claims is reported here."""
+    from qtpy.QtCore import QEvent
+    from qtpy.QtGui import QKeyEvent
+
+    def claims(widget, key) -> bool:
+        event = QKeyEvent(QEvent.ShortcutOverride, key, Qt.NoModifier)
+        event.ignore()
+        QApplication.sendEvent(widget, event)
+        return event.isAccepted()
+
+    assert claims(window.project_panel.path_edit, Qt.Key_Left)
+    assert not claims(window.project_panel.project_list, Qt.Key_Left)
+    assert not claims(window.project_panel.project_list, Qt.Key_Down)
+
+
 def test_the_add_data_tab_opens_before_anything_is_scanned(qt_app, settings):
     """Reachable from a fresh window, which has no projects to describe yet."""
     controller = CurationController(cache=FrameCache(), config=SegmentationConfig(

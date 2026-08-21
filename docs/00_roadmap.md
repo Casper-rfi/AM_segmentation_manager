@@ -29,7 +29,8 @@ what each command and tab does. What is worth knowing beyond that:
   predict is the decision; Add data runs `inspect-layout`, `init-project` and
   `compress-labels` over the whole scanned folder, because none of the three has a
   reason to be narrower. Each previews first and applies only what the preview
-  showed, on a worker thread.
+  showed, on a worker thread, and what was ticked is still ticked when it
+  finishes -- so predicting and then converting run against one selection.
 * **Labels are proofread in the window**, not in external software. A save writes one
   lamella's edits in a single action, offers to mark the reviewed set corrected, and
   refuses the whole batch rather than overwrite a label something else has rewritten

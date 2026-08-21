@@ -12,6 +12,7 @@ scan root: an absolute path eight directories deep is unreadable in a dialog.
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -88,6 +89,27 @@ def format_bytes(size: int) -> str:
             return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} GB"  # pragma: no cover - unreachable, the loop ends at GB
+
+
+def peak_memory() -> str:
+    """Return the most memory this process has held, for a log line.
+
+    The *peak* since the process started, never the amount held now, so it
+    only ever rises -- which is the question worth asking of a run that ended
+    by disappearing, and not one about whether releasing something freed it.
+    ``resource`` rather than ``psutil``: this is a diagnostic, and it is not
+    worth a dependency.
+
+    Returns:
+        The peak, or ``"unknown"`` where the platform does not report one.
+    """
+    try:
+        import resource
+    except ImportError:  # pragma: no cover - Windows has no resource module
+        return "unknown"
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # Darwin reports bytes, Linux kilobytes, for the same field.
+    return format_bytes(peak if sys.platform == "darwin" else peak * 1024)
 
 
 class OperationsController:
@@ -274,11 +296,21 @@ class OperationsController:
         from ..ml.environment import resolve_device
         from ..ml.model import load_model
 
+        total = len(plan.predictions)
+        # Logged around each step of the run, and not only for the record: the
+        # window has crashed outright after a completed run, and a run whose
+        # steps are not marked cannot say which one it got to. Loading torch,
+        # predicting and releasing the model all happen on the worker thread,
+        # so the thread each line was written on is part of the evidence.
+        logger.info(
+            "Predicting %d %s image(s) with %s; peak memory %s",
+            total, plan.modality, weights.name, peak_memory(),
+        )
         # "auto" is this package's word, not torch's: passing it through
         # reaches model.to("auto") and fails there, naming every device torch
         # knows except the one that was asked for.
         loaded = load_model(weights, description, device=resolve_device(device))
-        total = len(plan.predictions)
+        logger.info("Model loaded; peak memory %s", peak_memory())
 
         def report(index: int, _planned) -> None:
             if on_progress is not None:
@@ -297,6 +329,19 @@ class OperationsController:
                 written,
                 applied=True,
             )
+        finally:
+            # Released here rather than left to fall out of scope, so there is
+            # a line on each side of it. Where the model goes is unchanged --
+            # this is still the worker thread -- but a crash between these two
+            # lines is a crash in the release rather than somewhere after the
+            # last prediction.
+            logger.info(
+                "Releasing the model after %s; peak memory %s",
+                weights.name, peak_memory(),
+            )
+            del loaded
+            logger.info("Model released; peak memory %s", peak_memory())
+
         return OperationReport(
             f"Predicted {written} {plan.modality} image(s) with {weights.name}.",
             lines + context,

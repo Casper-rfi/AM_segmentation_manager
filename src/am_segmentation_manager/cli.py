@@ -10,11 +10,13 @@ After installing the package, the ``am-seg`` entry point is also available.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import logging
 import sys
 import time
 from collections import Counter
 from pathlib import Path
+from typing import TextIO
 
 from . import __version__
 from .aggregate import (
@@ -39,6 +41,44 @@ from .survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
 from .survey import survey_collection
 
 logger = logging.getLogger(__name__)
+
+#: The open log file, held for the life of the process. ``faulthandler`` keeps
+#: only the file descriptor, so a file closed when the function that opened it
+#: returned would send the crash dump nowhere.
+_LOG_FILE: TextIO | None = None
+
+#: How a line in the log file is written. Richer than the stdout format, which
+#: stays bare because that is the command's output: a crash report needs to say
+#: when something happened and on which thread, and Qt's worker threads are
+#: foreign to Python, so they appear under their ``Dummy-N`` names rather than
+#: the object names Qt gives them.
+LOG_FILE_FORMAT = "%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"
+
+
+def open_log_file(path: Path) -> logging.Handler:
+    """Return a handler writing to *path*, with crash dumps going there too.
+
+    The Python log and the native stack trace share one file on purpose: a
+    stack trace alone does not say what the process was doing, and the log line
+    before it usually does. Records are flushed as they are written and
+    ``faulthandler`` writes to the descriptor directly, so the two interleave
+    in the order they happened.
+
+    Appends, so several runs accumulate rather than the last one erasing the
+    crash before it.
+
+    Raises:
+        OSError: If *path* cannot be opened for writing.
+    """
+    global _LOG_FILE
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _LOG_FILE = path.open("a", buffering=1, encoding="utf-8")
+    faulthandler.enable(file=_LOG_FILE, all_threads=True)
+
+    handler = logging.StreamHandler(_LOG_FILE)
+    handler.setFormatter(logging.Formatter(LOG_FILE_FORMAT))
+    return handler
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +252,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Manage Autolamella segmentation projects",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--log-file", default=None, metavar="PATH",
+        help=(
+            "Also write the log to this file, and write a native stack trace "
+            "there if the process crashes outright. Appends, so runs "
+            "accumulate. Use this to report a window that vanishes without an "
+            "error"
+        ),
+    )
     parser.add_argument(
         "--version", action="version", version=f"am-seg {__version__}",
         help="Print the installed version and exit",
@@ -835,12 +884,18 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
 
     # -- configure logging --------------------------------------------------
     level = logging.DEBUG if getattr(args, "verbose", False) else logging.INFO
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    log_file = getattr(args, "log_file", None)
+    if log_file:
+        handlers.append(open_log_file(Path(log_file)))
     logging.basicConfig(
         level=level,
         format="%(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        handlers=handlers,
         force=True,
     )
+    if log_file:
+        logger.info("Logging to %s", log_file)
 
     # -- dispatch -----------------------------------------------------------
     if args.command in {"list-projects", "scan"}:

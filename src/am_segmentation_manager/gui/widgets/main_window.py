@@ -359,6 +359,9 @@ class CurationWindow(QMainWindow):
             self.project_panel.set_path(remembered)
 
         self.refresh()
+        # The window opens on Curate, and _tab_changed does not fire for the
+        # tab that was already showing.
+        self._focus_curate()
 
     # -- construction ------------------------------------------------------
 
@@ -536,7 +539,9 @@ class CurationWindow(QMainWindow):
         which is where the keyboard-driven work happens.
         """
         widget = self.tabs.widget(index)
-        if widget is self.export_panel:
+        if widget is self.curate:
+            self._focus_curate()
+        elif widget is self.export_panel:
             self.export_panel.refresh()
         elif widget is self.label_panel:
             self._point_label_tab()
@@ -552,6 +557,18 @@ class CurationWindow(QMainWindow):
         self._apply_tab_shortcuts(self._current_tab())
         if self._help is not None and self._help.isVisible():
             self._show_help()
+
+    def _focus_curate(self) -> None:
+        """Put the keyboard on the project list, not the scan box.
+
+        The scan box is the first focusable widget in the tab, and a focused
+        ``QLineEdit`` claims Left and Right as shortcut overrides -- so the
+        keys that step through frames never reach the window while it holds
+        focus, and the tab opens unable to be driven by the keys it documents.
+        The project list claims no arrow key of its own, so the window's own
+        bindings all still fire with it focused.
+        """
+        self.project_panel.project_list.setFocus()
 
     def _share_scan(self) -> None:
         """Hand the scanned projects to the other tabs."""
@@ -688,10 +705,16 @@ class CurationWindow(QMainWindow):
         self.state_panel.show_last_change(f"{title}: {report.headline}")
         logger.info("%s: %s", title, report.headline)
         self._show_report(title, report)
+        # Marked on both sides, as the steps of a prediction run are: the last
+        # thing an operation does is read the whole collection again, and a
+        # window that disappears once the work is finished has to be placed
+        # either side of that read.
+        logger.info("%s: %s", title, "rescanning" if rescan else "refreshing")
         if rescan:
             self.rescan()
         else:
             self.refresh(reload_lists=True)
+        logger.info("%s: the window is back in step", title)
 
     def _confirm_report(self, title: str, report: OperationReport, action: str) -> bool:
         """Show a report and ask whether to go ahead."""

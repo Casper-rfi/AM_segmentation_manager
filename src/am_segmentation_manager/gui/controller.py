@@ -37,6 +37,7 @@ from .selection import (
     LEVEL_LAMELLAE,
     LEVEL_PROJECTS,
     Selection,
+    SelectionSnapshot,
     counted,
     selection_key,
 )
@@ -345,13 +346,16 @@ class CurationController:
         return self._projects
 
     def rescan(self) -> list[Project]:
-        """Read the same root again, staying where the view is.
+        """Read the same root again, keeping the view and what is ticked.
 
-        What follows an operation that changed the collection. The index is derived from
-        the filesystem rather than patched, because the filesystem is what the
-        operation changed -- but where the reviewer had got to is not a fact
-        about the filesystem, and starting them at the first project again
-        after every save makes a long session unworkable.
+        What follows an operation that changed the collection. The index is
+        derived from the filesystem rather than patched, because the filesystem
+        is what the operation changed -- but neither where the reviewer had got
+        to nor what they had picked out is a fact about the filesystem, and
+        losing either after every operation makes a long session unworkable.
+        The selection matters most between the two steps of preparing labels:
+        predicting and converting act on the same set, and a scan between them
+        that emptied it would have the second ask for the choice again.
 
         Raises:
             RuntimeError: If nothing has been scanned yet.
@@ -359,9 +363,41 @@ class CurationController:
         if self.start_path is None:
             raise RuntimeError("Nothing has been scanned yet")
         position = self.position()
+        picked = self._snapshot_selection()
         projects = self.scan(self.start_path)
         self.restore(position)
+        self._restore_selection(picked)
         return projects
+
+    def _snapshot_selection(self) -> SelectionSnapshot:
+        """Return what is ticked, named so the coming scan can put it back."""
+        return SelectionSnapshot(
+            projects=frozenset(self.selection.projects),
+            lamellae=frozenset(self.selection.lamellae),
+            frames=frozenset(
+                self._frames[position].key
+                for position in self.selection.frames
+                if position < len(self._frames)
+            ),
+        )
+
+    def _restore_selection(self, picked: SelectionSnapshot) -> None:
+        """Put back what was ticked, dropping whatever the scan no longer holds.
+
+        A directory that has gone is dropped rather than kept as a tick nobody
+        can see: what is ticked on screen has to be the whole of what a change
+        will touch. The lamellae are matched against the project now selected,
+        since that is the only one whose ticks are displayed -- the same rule
+        :meth:`select_project` applies.
+        """
+        positions = {frame.key: index for index, frame in enumerate(self._frames)}
+        self.selection.restore(
+            projects=picked.projects
+            & {selection_key(project.path) for project in self._projects},
+            lamellae=picked.lamellae
+            & {selection_key(lamella.path) for lamella in self._lamellae},
+            frames={positions[key] for key in picked.frames if key in positions},
+        )
 
     def position(self) -> ViewPosition:
         """Return where the view is, named by path rather than by index."""

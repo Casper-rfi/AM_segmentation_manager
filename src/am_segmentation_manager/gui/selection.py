@@ -8,8 +8,11 @@ controllers.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..frames import FrameIdentity
 
 #: What the selection currently rests on. Reported so the window can say
 #: which, and so a confirmation can name it. At most one of the three holds
@@ -24,6 +27,26 @@ LEVEL_CURRENT_FRAME = "frame"
 def selection_key(path: Path) -> str:
     """Return the stable identity of a project or lamella directory."""
     return str(Path(path).resolve())
+
+
+@dataclass(frozen=True)
+class SelectionSnapshot:
+    """What was picked out, named so it outlives a rescan.
+
+    An operation that writes files is followed by a scan, which rebuilds every
+    object the selection pointed at. Projects and lamellae are held as resolved
+    paths, which name the same directory before and after. Frames are held as
+    the acquisitions they are rather than as positions, because an image added
+    or removed shifts every index after it -- and a state change reaching
+    frames the reviewer did not tick is the one way this could go wrong
+    without showing it.
+
+    At most one of the three holds anything, as in :class:`Selection`.
+    """
+
+    projects: frozenset[str] = frozenset()
+    lamellae: frozenset[str] = frozenset()
+    frames: frozenset[FrameIdentity] = frozenset()
 
 
 @dataclass
@@ -81,6 +104,41 @@ class Selection:
         self.frames.clear()
         self._base.clear()
         self.anchor = None
+
+    def restore(
+        self,
+        projects: Iterable[str] = (),
+        lamellae: Iterable[str] = (),
+        frames: Iterable[int] = (),
+    ) -> None:
+        """Replace what is picked out, in one step.
+
+        What a rescan puts the selection back with. The caller resolves the
+        frame positions and drops whatever the scan no longer holds, because
+        only it knows what was found; this assigns the result and holds the
+        invariant that a caller passing two levels would break.
+
+        The gesture state is not restored. An extension measures from the last
+        frame pointed at, and after a rescan that is wherever the view landed.
+
+        Raises:
+            ValueError: If more than one level is non-empty, which would be a
+                selection showing one thing and acting on another.
+        """
+        chosen = {
+            LEVEL_PROJECTS: set(projects),
+            LEVEL_LAMELLAE: set(lamellae),
+            LEVEL_FRAMES: set(frames),
+        }
+        filled = [name for name, values in chosen.items() if values]
+        if len(filled) > 1:
+            raise ValueError(
+                f"A selection rests on one level at a time, not {' and '.join(filled)}"
+            )
+        self.projects = chosen[LEVEL_PROJECTS]
+        self.lamellae = chosen[LEVEL_LAMELLAE]
+        self.clear_frames()
+        self.frames = chosen[LEVEL_FRAMES]
 
     # -- checking projects and lamellae ------------------------------------
 

@@ -281,3 +281,50 @@ def test_the_selection_describes_itself(build, expected):
     build(selection)
 
     assert selection.describe() == expected
+
+
+# ---------------------------------------------------------------------------
+# Putting a selection back after a rescan
+# ---------------------------------------------------------------------------
+
+def test_restoring_replaces_every_level_at_once():
+    selection = Selection()
+    selection.check(LEVEL_PROJECTS, "/p", True)
+
+    selection.restore(lamellae=["/p/lam"])
+
+    assert selection.projects == set()
+    assert selection.lamellae == {"/p/lam"}
+    assert selection.level == LEVEL_LAMELLAE
+
+
+def test_restoring_nothing_leaves_the_frame_on_screen():
+    """An operation whose whole selection has gone falls back to the safest
+    reach there is, rather than to a stale one."""
+    selection = Selection()
+    selection.check(LEVEL_LAMELLAE, "/p/lam", True)
+
+    selection.restore()
+
+    assert selection.is_empty
+
+
+def test_restoring_two_levels_is_refused():
+    """The invariant the model rests on. A caller that hands over two levels
+    has produced a selection showing one thing and acting on another."""
+    selection = Selection()
+
+    with pytest.raises(ValueError, match="one level at a time"):
+        selection.restore(projects=["/p"], frames=[1])
+
+
+def test_restoring_frames_forgets_the_gesture_that_built_them():
+    """An extension measures from the last frame pointed at, and after a
+    rescan that is wherever the view landed -- not wherever it was before."""
+    selection = Selection()
+    selection.toggle(4)
+
+    selection.restore(frames=[4])
+
+    assert selection.frames == {4}
+    assert selection.anchor is None

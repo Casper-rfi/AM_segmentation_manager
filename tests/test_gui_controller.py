@@ -174,6 +174,112 @@ def test_rescanning_starts_over_when_what_was_selected_has_gone():
     assert controller.lamella.name == "01-alpha"
 
 
+def test_rescanning_keeps_the_ticked_lamellae():
+    """The reason this matters: predicting and converting act on the same set,
+    and the scan between them would otherwise ask for the choice again."""
+    controller = make_controller()
+    controller.set_lamella_checked(1, True)
+    ticked = set(controller.selection.lamellae)
+
+    controller.rescan()
+
+    assert controller.selection.lamellae == ticked
+    assert [record.image_path for record in controller.scoped_records()]
+
+
+def test_rescanning_keeps_the_ticked_projects():
+    controller = make_controller()
+    controller.set_project_checked(1, True)
+    ticked = set(controller.selection.projects)
+
+    controller.rescan()
+
+    assert controller.selection.projects == ticked
+
+
+def test_rescanning_drops_a_ticked_lamella_that_has_gone():
+    """A tick nobody can see is one that decides what an operation touches
+    without saying so."""
+    projects = [make_project("project-a", [("01-alpha", 4), ("02-beta", 2)])]
+    controller = make_controller(projects)
+    controller.set_lamella_checked(1, True)
+    projects[0] = make_project("project-a", [("01-alpha", 4)])
+
+    controller.rescan()
+
+    assert controller.selection.lamellae == set()
+    assert controller.selection.is_empty
+
+
+def test_rescanning_keeps_the_frames_that_were_picked_out():
+    controller = make_controller()
+    controller.selection.toggle(1)
+    controller.selection.toggle(2)
+
+    controller.rescan()
+
+    assert controller.selection.frames == {1, 2}
+
+
+def numbered_project(*acquisitions: int) -> Project:
+    """Build a one-lamella project holding exactly these acquisition numbers.
+
+    ``make_project`` always numbers from zero, so it can only grow a stage at
+    the end. Naming the numbers is what lets a test insert an acquisition
+    *before* the one it picked out.
+    """
+    stage = AdaptiveMillingStage(
+        name="01-alpha_stage",
+        path=Path("01-alpha_stage"),
+        number="01",
+        images=[
+            ImageRecord(
+                image_path=Path(f"01-alpha_stage/sem/img_{number:03d}_SEM.tif"),
+                modality="SEM",
+            )
+            for number in acquisitions
+        ],
+    )
+    return Project(
+        name="project-a",
+        path=Path("project-a"),
+        number="001",
+        lamellae=[
+            Lamella(
+                name="01-alpha", path=Path("01-alpha"), number="01", stages=[stage]
+            )
+        ],
+    )
+
+
+def test_rescanning_follows_frames_that_have_moved():
+    """Positions are restored by which acquisition they are, not by where they
+    sat: an image added before them shifts every index after it, and a state
+    change reaching frames nobody ticked is the one silent way to get this
+    wrong."""
+    projects = [numbered_project(1, 2, 3)]
+    controller = make_controller(projects)
+    controller.selection.toggle(2)
+    picked = controller.frames[2].key
+    projects[0] = numbered_project(0, 1, 2, 3)
+
+    controller.rescan()
+
+    assert controller.selection.frames == {3}, "the acquisition moved down one"
+    assert controller.frames[3].key == picked
+
+
+def test_rescanning_drops_a_frame_that_has_gone():
+    projects = [make_project("project-a", [("01-alpha", 4)])]
+    controller = make_controller(projects)
+    controller.selection.toggle(3)
+    projects[0] = make_project("project-a", [("01-alpha", 2)])
+
+    controller.rescan()
+
+    assert controller.selection.frames == set()
+
+
 def test_rescanning_before_anything_was_scanned_is_refused():
     controller = CurationController(cache=FrameCache(), config=CONFIG)
 

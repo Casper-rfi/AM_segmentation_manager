@@ -29,6 +29,11 @@ MODALITIES = ("SEM", "FIB")
 # number fall back to grouping by filename stem.
 FrameKey = tuple[int | None, str]
 
+#: Identity of an acquisition within its *lamella*, which spans several stages
+#: and so needs the stage as well as :data:`FrameKey`. Stable across a rescan,
+#: unlike a frame's position; see :attr:`LamellaFrame.key`.
+FrameIdentity = tuple[str, int | None, str]
+
 
 @dataclass(frozen=True)
 class LamellaFrame:
@@ -72,6 +77,22 @@ class LamellaFrame:
         else:
             image_part = f"img {self.image_number:03d}"
         return f"{stage_part} - {image_part}"
+
+    @property
+    def key(self) -> FrameIdentity:
+        """Return what identifies this acquisition within its lamella.
+
+        What a frame *is*, rather than where it sits. A position is only
+        meaningful against one build of the list: an image added or removed
+        shifts every index after it, so anything that has to name a frame
+        across a rescan names it with this.
+        """
+        primary = next(iter(self.records), None)
+        return (
+            self.stage,
+            self.image_number,
+            primary.image_path.stem if primary is not None else "",
+        )
 
     @property
     def records(self) -> list[ImageRecord]:

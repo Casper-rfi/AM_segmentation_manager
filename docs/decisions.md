@@ -233,6 +233,17 @@ place.
   modality control decides which of the two moves. Everything reaches `transition_records`
   through `scoped_records()`, so group expansion and the corrected-data guard apply to a
   ticked selection unchanged.
+- **A scan the user did not ask for keeps the selection; one they did asks again.** Every
+  operation that writes files is followed by a rescan, and preparing labels is two of them
+  against the same set — predict, then convert. A rescan that emptied the selection would
+  have the second step ask for the choice the first was just given. Pressing *Scan* still
+  starts clean, because that is the user saying the collection has moved on. What comes back
+  is filtered against what the scan found, so a directory that has gone is dropped rather than
+  kept as a tick nobody can see. **Frames come back by which acquisition they are, not by
+  where they sat** — `LamellaFrame.key` rather than an index — because an image added ahead of
+  them shifts every index after it, and a state change quietly reaching frames nobody ticked
+  is the one way this could go wrong without showing it. The *view* is still restored by
+  index: landing on a neighbouring frame is a nuisance, where acting on one is a fault.
 - **Reading a label gives three answers, not two.** `is_label_file_empty()` is tri-state, and
   **None means "cannot tell"** — deliberately distinct from True, because reporting "not
   annotated" for a label nobody could read would be a guess presented as a fact. Every caller

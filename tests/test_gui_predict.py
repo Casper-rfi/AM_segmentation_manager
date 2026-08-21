@@ -276,3 +276,77 @@ def test_a_cancellation_not_asked_for_does_not_stop_anything():
     assert cancellation.requested
     with pytest.raises(OperationCancelled):
         cancellation.check()
+
+
+# --- what a run leaves in the log -------------------------------------------
+#
+# The window has crashed outright after a completed run. A run whose steps are
+# not marked cannot say which one it reached, so these assert the marks are
+# there rather than anything about what they say.
+
+def test_a_run_marks_loading_predicting_and_releasing(
+    controller, tmp_path: Path, monkeypatch, caplog
+):
+    dataset = build_dataset(tmp_path)
+    records = real_images(records_of(dataset.root))
+    loaded_with(controller, monkeypatch, halving)
+
+    with caplog.at_level("INFO", logger="am_segmentation_manager.gui.operations_controller"):
+        controller.predict(records, weights_file(tmp_path), device="cpu")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Predicting" in message for message in messages)
+    assert any("Model loaded" in message for message in messages)
+    assert any("Releasing the model" in message for message in messages)
+    assert any("Model released" in message for message in messages)
+
+
+def test_a_stopped_run_still_marks_the_release(
+    controller, tmp_path: Path, monkeypatch, caplog
+):
+    """The release is what a crash would land in, so a run that ended early
+    must mark it too -- otherwise the log only covers the runs that finished."""
+    dataset = build_dataset(tmp_path)
+    records = real_images(records_of(dataset.root))
+    loaded_with(controller, monkeypatch, halving)
+    cancellation = Cancellation()
+
+    with caplog.at_level("INFO", logger="am_segmentation_manager.gui.operations_controller"):
+        report = controller.predict(
+            records, weights_file(tmp_path), device="cpu",
+            cancellation=cancellation,
+            on_progress=lambda done, total: cancellation.request(),
+        )
+
+    assert "Stopped after" in report.headline
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Model released" in message for message in messages)
+
+
+def test_a_model_that_never_loaded_is_not_reported_as_released(
+    controller, tmp_path: Path, monkeypatch, caplog
+):
+    """A release line with nothing loaded before it would send a reader
+    looking for a crash in a step that never ran."""
+    dataset = build_dataset(tmp_path)
+    records = real_images(records_of(dataset.root))
+    monkeypatch.setattr(
+        "am_segmentation_manager.ml.model.load_model",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("no torch")),
+    )
+
+    with caplog.at_level("INFO", logger="am_segmentation_manager.gui.operations_controller"):
+        with pytest.raises(RuntimeError):
+            controller.predict(records, weights_file(tmp_path), device="cpu")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert not any("Model released" in message for message in messages)
+
+
+def test_peak_memory_is_reported_or_says_it_is_unknown():
+    """Read from the standard library, so it must not raise where the platform
+    does not answer."""
+    from am_segmentation_manager.gui.operations_controller import peak_memory
+
+    reported = peak_memory()
+    assert reported == "unknown" or reported[-1] in "B"
