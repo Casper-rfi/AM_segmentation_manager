@@ -22,7 +22,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QProgressDialog,
     QPushButton,
     QSplitter,
     QStyle,
@@ -46,6 +45,7 @@ from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
+from .busy_dialog import BusyDialog
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
@@ -352,7 +352,7 @@ class CurationWindow(QMainWindow):
         self.operations.worker.failed.connect(self._operation_failed)
         self.operations.worker.progressed.connect(self._operation_progressed)
         self._pending_operation: tuple | None = None
-        self._busy: QProgressDialog | None = None
+        self._busy: BusyDialog | None = None
 
         remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
         if remembered:
@@ -576,25 +576,14 @@ class CurationWindow(QMainWindow):
         can substitute an inline call and still exercise the rest of the flow.
 
         Args:
-            cancellation: Pass one to give the dialog a Stop button -- an empty
-                cancel label is how Qt is told to leave it out. The bar is a
-                separate question: the dialog opens indeterminate and turns
-                into a real one as soon as the work reports progress, so an
+            cancellation: Pass one to give the dialog a Stop button. The bar is
+                a separate question: the dialog opens indeterminate and turns
+                into a count as soon as the work reports progress, so an
                 operation can say how far it has got without being stoppable.
         """
-        self._busy = QProgressDialog(
-            f"{description}...", "Stop" if cancellation else "", 0, 0, self
-        )
-        self._busy.setWindowTitle(description)
-        self._busy.setWindowModality(Qt.ApplicationModal)
-        self._busy.setMinimumDuration(0)
+        self._busy = BusyDialog(self, description, stoppable=cancellation is not None)
         if cancellation is not None:
-            # Qt would otherwise close the dialog itself on Cancel, leaving the
-            # operation running behind a window that says it stopped. The
-            # dialog closes when the work returns, like every other one here.
-            self._busy.setAutoClose(False)
-            self._busy.setAutoReset(False)
-            self._busy.canceled.connect(cancellation.request)
+            self._busy.stop_requested.connect(cancellation.request)
         self._busy.show()
         self.operations_panel.set_busy(True)
 
@@ -602,13 +591,15 @@ class CurationWindow(QMainWindow):
         self.request_operation.emit(work)
 
     def _operation_progressed(self, done: int, total: int) -> None:
-        """Move the busy dialog's bar, on the thread that owns it."""
+        """Move the busy dialog's bar, on the thread that owns it.
+
+        A report can arrive after the work has returned -- both are queued
+        signals from the same thread -- so a closed dialog is a normal outcome
+        rather than a fault.
+        """
         if self._busy is None:
             return
-        if self._busy.maximum() != total:
-            self._busy.setRange(0, total)
-        self._busy.setValue(done)
-        self._busy.setLabelText(f"{done} of {total}...")
+        self._busy.set_progress(done, total)
 
     def _operation_finished(self, result) -> None:
         """Hand a finished operation's result to whatever asked for it."""
@@ -633,9 +624,12 @@ class CurationWindow(QMainWindow):
         by the one that just finished.
         """
         pending, self._pending_operation = self._pending_operation, None
-        if self._busy is not None:
-            self._busy.close()
-            self._busy = None
+        # Detached before it is closed, so anything that runs while it closes
+        # finds no dialog rather than one that is being taken apart.
+        busy, self._busy = self._busy, None
+        if busy is not None:
+            busy.close()
+            busy.deleteLater()
         self.operations_panel.set_busy(False)
         return pending
 

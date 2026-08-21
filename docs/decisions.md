@@ -376,6 +376,18 @@ place.
   scope grow. Why the software works as it does belongs here, not in a hover nobody finishes.
   Every control in the Filters box also says what it narrows: that it decides the breakdown
   *and* the exports is not visible from the box's title.
+- **The busy dialog is not a `QProgressDialog`.** That class calls `processEvents()` from
+  inside `setValue()` whenever it is modal — which this one has to be, since its whole job is
+  to keep the window out of files that are being written. Processing events there re-enters
+  the event loop from inside a queued-signal handler, so the worker's *finished* can be
+  delivered in the middle of a progress update: the dialog is closed and its last reference
+  dropped while one of its own methods is still on the stack. It showed as the window
+  freezing on the final item of a run, which is where the two signals are most likely to
+  race. `busy_dialog.py` is a plain `QDialog` that processes nothing, and the window detaches
+  it before closing it so that anything running meanwhile finds no dialog rather than one
+  being taken apart. Escape is refused there for the same reason the close button is absent:
+  on a stoppable operation it asks it to stop, and on any other there is nothing it could
+  safely do.
 - **A long operation runs on a thread, and says how far it has got.** Qt draws nothing while
   the thread owning the widgets is busy, so the work goes to `gui/worker.py` and the window
   shows a modal dialog naming it. That dialog opens indeterminate and becomes a count as soon

@@ -1391,6 +1391,84 @@ def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings
         fresh.close()
 
 
+# ---------------------------------------------------------------------------
+# The dialog a long operation runs behind
+# ---------------------------------------------------------------------------
+
+def test_the_busy_dialog_does_not_process_events(window):
+    """QProgressDialog.setValue() calls processEvents() whenever the dialog is
+    modal, which re-enters the event loop from inside a queued-signal handler:
+    the worker's "finished" can then be delivered in the middle of a progress
+    update and close the dialog under the code still using it. It showed as a
+    freeze on the final item."""
+    from qtpy.QtWidgets import QProgressDialog
+
+    from am_segmentation_manager.gui.widgets.busy_dialog import BusyDialog
+
+    window._run_operation("Long thing", lambda: None, lambda result: None)
+    try:
+        assert isinstance(window._busy, BusyDialog)
+        assert not isinstance(window._busy, QProgressDialog)
+    finally:
+        window._take_pending_operation()
+
+
+def test_progress_arriving_after_the_work_returned_is_harmless(window):
+    """Both are queued signals from the same thread, so the last report can
+    land after the result. This is the shape of the freeze: the handler must
+    find no dialog rather than one being taken apart."""
+    window._run_operation("Long thing", lambda: None, lambda result: None)
+    window._take_pending_operation()
+
+    window._operation_progressed(9, 9)
+
+    assert window._busy is None
+
+
+def test_the_busy_dialog_reports_how_far_the_work_has_got(window):
+    window._run_operation("Long thing", lambda: None, lambda result: None)
+    try:
+        assert window._busy.bar.maximum() == 0, "opens indeterminate"
+
+        window._operation_progressed(3, 9)
+
+        assert window._busy.bar.maximum() == 9
+        assert window._busy.bar.value() == 3
+        assert "3 of 9" in window._busy.message.text()
+    finally:
+        window._take_pending_operation()
+
+
+def test_escape_does_not_dismiss_an_operation_that_cannot_be_stopped(window):
+    """The dialog is the only thing keeping the window out of files that are
+    being written."""
+    window._run_operation("Long thing", lambda: None, lambda result: None)
+    try:
+        window._busy.reject()
+
+        # isHidden() rather than isVisible(): a dialog shown on a window that
+        # was never shown is never "visible", so isVisible() would pass here
+        # whether or not Escape had dismissed it.
+        assert window._busy.isHidden() is False
+    finally:
+        window._take_pending_operation()
+
+
+def test_escape_on_a_stoppable_operation_asks_it_to_stop(window):
+    from am_segmentation_manager.progress import Cancellation
+
+    cancellation = Cancellation()
+    window._run_operation(
+        "Long thing", lambda: None, lambda result: None, cancellation=cancellation
+    )
+    try:
+        window._busy.reject()
+
+        assert cancellation.requested is True
+    finally:
+        window._take_pending_operation()
+
+
 def test_the_collection_actions_fit_the_pane_they_sit_in(window):
     """A QPushButton clips its caption rather than eliding it, and clipping
     takes the ends off both sides at once -- so a row too wide for the pane
