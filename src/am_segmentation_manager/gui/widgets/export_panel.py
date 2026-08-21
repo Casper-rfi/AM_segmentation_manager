@@ -25,8 +25,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
@@ -49,6 +47,7 @@ from ..export_controller import (
 )
 from .chart_view import ChartView
 from .common import (
+    CheckList,
     StepCombo,
     caption_for,
     choose_directory,
@@ -56,6 +55,7 @@ from .common import (
     choose_save_file,
     fill_grouped_combo,
     fixed_width_font,
+    ticked_caption,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,11 @@ NOTHING_MATCHES = "Nothing matches these filters"
 #: Item data of the second dropdown's "(none)" row, meaning no
 #: cross-tabulation. Not ``None``, which is what a group heading carries.
 NO_CROSS = ""
+
+#: How tall a filter list is, in pixels. Four ticked rows: enough to see that a
+#: list has been narrowed without any one property taking the column, and the
+#: caption says how many are ticked whether or not they are in view.
+FILTER_LIST_HEIGHT = 84
 
 
 class ExportPanel(QWidget):
@@ -187,12 +192,13 @@ class ExportPanel(QWidget):
         self.filter_box = QWidget()
         filter_column = QVBoxLayout(self.filter_box)
         filter_column.setContentsMargins(0, 0, 0, 0)
-        self.filter_lists: dict[str, QListWidget] = {}
+        self.filter_lists: dict[str, CheckList] = {}
         self.filter_captions: dict[str, QLabel] = {}
+        #: What each caption is called before its count is appended.
+        self._filter_nouns: dict[str, str] = {}
         for name, described in self.controller.filterable_breakdowns():
-            widget = QListWidget()
-            widget.setSelectionMode(QListWidget.MultiSelection)
-            widget.setMaximumHeight(64)
+            widget = CheckList()
+            widget.setMaximumHeight(FILTER_LIST_HEIGHT)
             # A lamella is named "project / lamella" and a stage one level
             # deeper, so these rows are long and differ at the *end*. A list
             # with a horizontal scrollbar scrolls rather than eliding, which
@@ -200,19 +206,27 @@ class ExportPanel(QWidget):
             # treatment the metadata panel's project list needed.
             widget.setTextElideMode(Qt.ElideMiddle)
             widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            widget.itemSelectionChanged.connect(self._controls_changed)
+            widget.row_ticked.connect(lambda _row, _on: self._controls_changed())
             # Only the first letter: capitalize() would lowercase the rest and
             # turn the units the label carries into "(pa)" and "(kv)".
+            noun = described[:1].upper() + described[1:]
             caption = caption_for(
-                described[:1].upper() + described[1:],
+                noun,
                 widget,
-                f"Keep only images with the selected {described}. Select none "
-                f"to keep them all. Narrows the breakdown and every export.",
+                f"Keep only images with the ticked {described}. Tick none to "
+                f"keep them all. Narrows the breakdown and every export.",
             )
             filter_column.addWidget(caption)
             filter_column.addWidget(widget)
             self.filter_lists[name] = widget
             self.filter_captions[name] = caption
+            self._filter_nouns[name] = noun
+
+        # The scroller stretches this column to its own height, and a layout
+        # shares the surplus between whatever is in it -- which pushed every
+        # caption a long way from the list it names. The spare height goes to
+        # the bottom instead.
+        filter_column.addStretch(1)
 
         # Scrolled, so the filter lists cannot force the window taller than the
         # screen. The scroller is what gets hidden, rather than the box inside
@@ -224,6 +238,18 @@ class ExportPanel(QWidget):
         self.filter_scroller.setWidget(self.filter_box)
         self.filter_scroller.setVisible(False)
         column.addWidget(self.filter_scroller, stretch=1)
+
+        # Under the lists rather than over them: it undoes what they hold, and
+        # a control that clears something reads best after the thing it clears.
+        # Hidden with them, because there is nothing to clear before they exist.
+        self.clear_button = QPushButton("Clear all filters")
+        self.clear_button.setToolTip(
+            "Untick every value in the lists above. The controls at the top of "
+            "the box are not touched -- they always hold one of their choices."
+        )
+        self.clear_button.clicked.connect(self._clear_filters)
+        self.clear_button.setVisible(False)
+        column.addWidget(self.clear_button)
 
         # Holds the column's spare height while the lists are hidden. A layout
         # shares that height between whatever is left, so without something to
@@ -554,8 +580,8 @@ class ExportPanel(QWidget):
 
         A list is shown only when it can narrow anything: one offering a single
         value filters nothing, and this collection holds far more properties
-        than any one dataset varies along. A list the user has already chosen
-        from stays visible whatever it now offers, so a filter cannot become
+        than any one dataset varies along. A list the user has already ticked
+        in stays visible whatever it now offers, so a filter cannot become
         impossible to clear.
         """
         self._updating = True
@@ -565,21 +591,22 @@ class ExportPanel(QWidget):
                 if self.controller.needs_metadata(name) and not self.controller.metadata_loaded():
                     self._show_filter(name, False)
                     continue
-                chosen = {item.text() for item in widget.selectedItems()}
-                widget.clear()
+                chosen = set(widget.ticked_values())
                 values = self.controller.choice_values(name)
-                for value in values:
-                    item = QListWidgetItem(value)
+                widget.set_values(
+                    values,
+                    ticked=[value in chosen for value in values],
                     # Elided rows lose their middle; the tooltip keeps it.
-                    item.setToolTip(value)
-                    widget.addItem(item)
-                    item.setSelected(value in chosen)
+                    tooltips=values,
+                )
+                self._show_count(name, len(values), len(chosen))
                 visible = len(values) > 1 or bool(chosen)
                 self._show_filter(name, visible)
                 shown = shown or visible
         finally:
             self._updating = False
         self.filter_scroller.setVisible(shown)
+        self.clear_button.setVisible(shown)
         # Something has to hold the column's spare height while the lists are
         # hidden, or the controls above drift apart down the column.
         self.filter_space.setVisible(not shown)
@@ -588,6 +615,27 @@ class ExportPanel(QWidget):
         """Show or hide one filter list and the caption naming it."""
         self.filter_lists[name].setVisible(visible)
         self.filter_captions[name].setVisible(visible)
+
+    def _show_count(self, name: str, total: int, ticked: int) -> None:
+        """Say in the caption how much of a list is ticked.
+
+        The lists are four rows tall over values that run to dozens, so what is
+        ticked is usually scrolled out of sight -- which is how a filter stays
+        on by accident.
+        """
+        self.filter_captions[name].setText(
+            ticked_caption(self._filter_nouns[name], total, ticked)
+        )
+
+    def _clear_filters(self) -> None:
+        """Untick every value list, then recount once."""
+        self._updating = True
+        try:
+            for widget in self.filter_lists.values():
+                widget.show_ticks([])
+        finally:
+            self._updating = False
+        self._controls_changed()
 
     def _controls_changed(self) -> None:
         """Copy every control into the controller, then recount."""
@@ -599,9 +647,7 @@ class ExportPanel(QWidget):
         filters.label = self.label_state.currentText()
         filters.conditions = "primary" if self.conditions.isChecked() else "all"
         for name, widget in self.filter_lists.items():
-            self.controller.set_choice_filter(
-                name, [item.text() for item in widget.selectedItems()]
-            )
+            self.controller.set_choice_filter(name, widget.ticked_values())
         # Before the refresh below: both change what the table would say, and
         # setting the threshold re-derives the measurements when there are any.
         self.controller.set_crack_threshold(self.crack_threshold.value())

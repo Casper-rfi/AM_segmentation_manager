@@ -23,7 +23,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -31,7 +30,7 @@ from qtpy.QtWidgets import (
 )
 
 from ..controller import CurationStatus
-from .common import add_path_menu, chip_icon, choose_directory
+from .common import CheckList, add_path_menu, chip_icon, choose_directory, ticked_caption
 from .frame_strip import STATE_COLOURS
 from .theme import (
     SWATCH_BAND,
@@ -69,7 +68,6 @@ class ProjectPanel(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self._emitting = False
         self._project_labels: list[str] = []
         self._lamella_labels: list[str] = []
 
@@ -174,16 +172,14 @@ class ProjectPanel(QWidget):
         filter_edit.setToolTip("Show only entries whose name contains this text")
         box_layout.addWidget(filter_edit)
 
-        list_widget = QListWidget()
+        list_widget = CheckList()
         list_widget.setToolTip(
             "Click a row to look at it. Tick rows to choose what a change "
             "applies to; ticking here clears the other list. With nothing "
             "ticked it applies to the frame on screen."
         )
         list_widget.currentRowChanged.connect(on_change)
-        list_widget.itemChanged.connect(
-            lambda item, w=list_widget, s=checked_signal: self._item_checked(w, item, s)
-        )
+        list_widget.row_ticked.connect(checked_signal)
         box_layout.addWidget(list_widget)
 
         box_layout.addLayout(self._build_check_all(check_all_signal, title.lower()))
@@ -205,12 +201,6 @@ class ProjectPanel(QWidget):
         row.addStretch(1)
         return row
 
-    def _item_checked(self, widget: QListWidget, item, signal) -> None:
-        """Report a tick, ignoring the ones the panel makes itself."""
-        if self._emitting:
-            return
-        signal.emit(widget.row(item), item.checkState() == Qt.Checked)
-
     def _browse(self) -> None:
         directory = choose_directory(
             self, "Choose a folder to scan", self.path_edit.text() or None
@@ -220,11 +210,11 @@ class ProjectPanel(QWidget):
             self.scan_requested.emit(str(directory))
 
     def _project_changed(self, row: int) -> None:
-        if not self._emitting and row >= 0:
+        if row >= 0:
             self.project_selected.emit(row)
 
     def _lamella_changed(self, row: int) -> None:
-        if not self._emitting and row >= 0:
+        if row >= 0:
             self.lamella_selected.emit(row)
 
     def set_path(self, path: str) -> None:
@@ -276,19 +266,8 @@ class ProjectPanel(QWidget):
         lists are refreshed on every tick because ticking in one clears the
         other, and the user has to see that happen.
         """
-        self._emitting = True
-        try:
-            for widget, checks in (
-                (self.project_list, project_checks),
-                (self.lamella_list, lamella_checks),
-            ):
-                for row in range(widget.count()):
-                    ticked = checks[row] if row < len(checks) else False
-                    widget.item(row).setCheckState(
-                        Qt.Checked if ticked else Qt.Unchecked
-                    )
-        finally:
-            self._emitting = False
+        self.project_list.show_ticks(project_checks)
+        self.lamella_list.show_ticks(lamella_checks)
         self.project_box.setTitle(
             self._list_title("Projects", self._project_labels, project_checks)
         )
@@ -298,19 +277,10 @@ class ProjectPanel(QWidget):
 
     @staticmethod
     def _list_title(noun: str, labels: list[str], checks: list[bool] | None) -> str:
-        """Return the box title, saying how many rows are ticked when any are.
-
-        The ticks decide what a state change moves, and the lists are
-        scrollable -- so how many are ticked has to be legible without
-        scrolling through looking for them. Spelled as "3 of 12 ticked" rather
-        than as two bare numbers, which read as a count of something else.
-        """
-        if not labels:
-            return noun
-        ticked = sum(1 for checked in checks or [] if checked)
-        if ticked:
-            return f"{noun} ({ticked} of {len(labels)} ticked)"
-        return f"{noun} ({len(labels)})"
+        """Return the box title, saying how many rows are ticked when any are."""
+        return ticked_caption(
+            noun, len(labels), sum(1 for checked in checks or [] if checked)
+        )
 
     def show_summary(self, text: str) -> None:
         """Show a short description of what is loaded."""
@@ -318,53 +288,32 @@ class ProjectPanel(QWidget):
 
     def _set_items(
         self,
-        widget: QListWidget,
+        widget: CheckList,
         labels: list[str],
         current: int,
         statuses: list[CurationStatus] | None = None,
         checks: list[bool] | None = None,
     ) -> None:
-        """Replace a list's contents without echoing selection signals back.
+        """Replace a list's contents, ticks and chips together.
 
-        Every refresh rebuilds the rows from scratch, so the ticks have to be
-        put back from *checks* -- they live in the controller, keyed by path,
-        precisely so that rebuilding the list cannot lose them.
+        The chip cannot carry its whole meaning on its own, so the long form
+        goes in the tooltip rather than into the row text, which is already
+        carrying a path.
         """
-        self._emitting = True
-        try:
-            widget.clear()
-            widget.addItems(labels)
-            for row in range(widget.count()):
-                item = widget.item(row)
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                ticked = checks[row] if checks and row < len(checks) else False
-                item.setCheckState(Qt.Checked if ticked else Qt.Unchecked)
-            for row, status in enumerate(statuses or []):
-                item = widget.item(row)
-                if item is None:
-                    break
-                item.setIcon(_status_icon(status))
-                # The chip cannot carry the whole meaning on its own, so the
-                # long form goes in the tooltip rather than into the row text,
-                # which is already carrying a path.
-                item.setToolTip(f"{item.text()}\n{status.summary}")
-            if labels:
-                widget.setCurrentRow(max(0, min(current, len(labels) - 1)))
-        finally:
-            self._emitting = False
+        widget.set_values(
+            labels,
+            ticked=checks or [],
+            icons=[_status_icon(status) for status in statuses or []],
+            tooltips=[
+                f"{label}\n{status.summary}"
+                for label, status in zip(labels, statuses or [])
+            ],
+            current=current,
+        )
 
-    def _apply_filter(self, widget: QListWidget, labels: list[str], text: str) -> None:
-        """Hide entries that do not match *text*.
-
-        Entries are hidden rather than removed so that a row number still means
-        the same project or lamella whether or not a filter is active; rebuilding
-        the list would require mapping filtered rows back to real indices.
-        """
-        needle = text.strip().lower()
-        for row in range(widget.count()):
-            item = widget.item(row)
-            label = labels[row] if row < len(labels) else item.text()
-            item.setHidden(bool(needle) and needle not in label.lower())
+    def _apply_filter(self, widget: CheckList, labels: list[str], text: str) -> None:
+        """Hide entries that do not match *text*."""
+        widget.hide_rows_without(text, labels)
 
 
 #: A curation status mapped to the colour that represents it.

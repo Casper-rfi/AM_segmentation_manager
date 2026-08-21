@@ -11,13 +11,14 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QFont, QIcon, QPixmap, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QComboBox,
     QFileDialog,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMenu,
     QSizePolicy,
     QWidget,
@@ -115,6 +116,142 @@ def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:
     label.setToolTip(tooltip)
     widget.setToolTip(tooltip)
     return label
+
+
+def ticked_caption(noun: str, total: int, ticked: int) -> str:
+    """Return a list's caption, saying how many of its rows are ticked.
+
+    Spelled "3 of 12 ticked" rather than as two bare numbers: the ticks decide
+    what an operation covers, the lists scroll, and a reader should not have to
+    work out which number is which.
+    """
+    if not total:
+        return noun
+    if ticked:
+        return f"{noun} ({ticked} of {total} ticked)"
+    return f"{noun} ({total})"
+
+
+class CheckList(QListWidget):
+    """A list whose rows are ticked rather than highlighted.
+
+    Highlighting cannot say what it means: it is also how Qt shows the row you
+    are looking at, it is lost the moment the list is rebuilt, and in a list
+    that scrolls there is no way to see what is chosen without scrolling
+    through looking for it. A tick is none of those things.
+
+    Rows are addressed by position, because the caller holds the mapping from a
+    row to whatever it stands for -- a path, a metadata value -- and a list
+    widget should not be a second copy of it.
+    """
+
+    #: Emitted with the row and whether it is now ticked. Not emitted for the
+    #: ticks the list puts back itself when its contents are replaced.
+    row_ticked = Signal(int, bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._filling = False
+        self.itemChanged.connect(self._item_changed)
+
+    def set_values(
+        self,
+        values: Sequence[str],
+        *,
+        ticked: Sequence[bool] = (),
+        icons: Sequence[QIcon] | None = None,
+        tooltips: Sequence[str] | None = None,
+        current: int | None = None,
+    ) -> None:
+        """Replace the rows, putting the ticks back without reporting them.
+
+        Every refresh rebuilds the rows, so the ticks have to be supplied: they
+        live in whatever holds the state, keyed by something more stable than a
+        row number, precisely so that rebuilding cannot lose them.
+
+        Args:
+            values: The row labels, in order.
+            ticked: Whether each row is ticked, by position. Missing entries
+                are unticked.
+            icons: A chip for each row, where the caller draws one.
+            tooltips: Hover text for each row. Rows carrying paths elide, so
+                this is where the whole label goes.
+            current: The row to make current, for a list where that means
+                something. None leaves it alone.
+
+        Reports nothing while it runs. Replacing the contents is a redraw, not
+        a gesture: an owner that rebuilds its list in response to the current
+        row changing would otherwise drive itself round in a circle.
+        """
+        self._filling = True
+        self.blockSignals(True)
+        try:
+            self.clear()
+            for row, value in enumerate(values):
+                item = QListWidgetItem(value)
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(
+                    Qt.Checked
+                    if row < len(ticked) and ticked[row]
+                    else Qt.Unchecked
+                )
+                if icons is not None and row < len(icons):
+                    item.setIcon(icons[row])
+                if tooltips is not None and row < len(tooltips):
+                    item.setToolTip(tooltips[row])
+                self.addItem(item)
+            if current is not None and values:
+                self.setCurrentRow(max(0, min(current, len(values) - 1)))
+        finally:
+            self.blockSignals(False)
+            self._filling = False
+
+    def show_ticks(self, ticked: Sequence[bool]) -> None:
+        """Put the ticks back without rebuilding the rows.
+
+        Rebuilding would reset which row is current, and a tick is not a change
+        of what is being looked at.
+        """
+        self._filling = True
+        try:
+            for row in range(self.count()):
+                self.item(row).setCheckState(
+                    Qt.Checked
+                    if row < len(ticked) and ticked[row]
+                    else Qt.Unchecked
+                )
+        finally:
+            self._filling = False
+
+    def ticked_rows(self) -> list[int]:
+        """Return the positions of the ticked rows."""
+        return [
+            row for row in range(self.count())
+            if self.item(row).checkState() == Qt.Checked
+        ]
+
+    def ticked_values(self) -> list[str]:
+        """Return the labels of the ticked rows."""
+        return [self.item(row).text() for row in self.ticked_rows()]
+
+    def hide_rows_without(self, text: str, labels: Sequence[str] | None = None) -> None:
+        """Hide rows not containing *text*.
+
+        Hidden rather than removed, so a row number still means the same thing
+        whether or not a filter is active. *labels* supplies what to match
+        against where the row text is elided or decorated.
+        """
+        needle = text.strip().lower()
+        for row in range(self.count()):
+            item = self.item(row)
+            label = labels[row] if labels and row < len(labels) else item.text()
+            item.setHidden(bool(needle) and needle not in label.lower())
+
+    def _item_changed(self, item) -> None:
+        """Report a tick, ignoring the ones this widget makes itself."""
+        if self._filling:
+            return
+        self.row_ticked.emit(self.row(item), item.checkState() == Qt.Checked)
 
 
 class ElidingLabel(QLabel):

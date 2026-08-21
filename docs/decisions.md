@@ -330,6 +330,16 @@ place.
   stylesheet dulls the *background* of a disabled input instead and leaves the text dark, so
   a field still reads as locked. Buttons and radio groups grey out normally: they are
   controls you cannot use, not values you are reading.
+- **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is
+  also how Qt shows the row you are looking at, it is lost whenever the list is rebuilt — and
+  these lists are rebuilt on every refresh — and in a list of four visible rows over dozens of
+  values there is no way to see what is chosen without scrolling through looking for it, which
+  is how a filter stays on by accident. `common.CheckList` is the one implementation, used by
+  the curation lists and the export filters; a caption beside each says "2 of 6 ticked",
+  because the ticks decide what an operation covers and the count has to be legible without
+  scrolling. It reports nothing while its contents are being replaced: that is a redraw rather
+  than a gesture, and an owner that rebuilds its list in response to the current row changing
+  would otherwise drive itself round in a circle.
 - **A list of paths elides; it must not scroll sideways.** Rows carrying paths differ in what
   they *end* with, and a `QListWidget` with a horizontal scrollbar scrolls instead of
   eliding — which cut a session's projects off into identical-looking rows. `ElideMiddle`

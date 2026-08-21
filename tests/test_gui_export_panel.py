@@ -55,6 +55,11 @@ def panel(qt_app) -> ExportPanel:
     return ExportPanel(ExportController())
 
 
+def _tick(widget, row: int, on: bool = True) -> None:
+    """Tick a filter row through the widget, as a user would."""
+    widget.item(row).setCheckState(Qt.Checked if on else Qt.Unchecked)
+
+
 def _loaded_panel(tmp_path, **kwargs) -> ExportPanel:
     """A panel over a real two-lamella scan, as the window builds it."""
     pytest.importorskip("tifffile")
@@ -91,28 +96,65 @@ def test_a_filter_that_cannot_narrow_anything_is_not_shown(qt_app, tmp_path):
     assert panel.filter_lists["project"].isHidden()       # only one
 
 
-def test_a_chosen_filter_stays_visible_even_when_it_offers_one_value(
+def test_a_ticked_filter_stays_visible_even_when_it_offers_one_value(
     qt_app, tmp_path,
 ):
     """A list that vanished once used could not be seen or cleared, and would
     go on narrowing everything under it."""
     panel = _loaded_panel(tmp_path)
     lamellae = panel.filter_lists["lamella"]
-    lamellae.item(0).setSelected(True)
+    _tick(lamellae, 0)
 
     assert not lamellae.isHidden()
     assert len(panel.controller.filters.choices["lamella"]) == 1
 
 
-def test_choosing_a_lamella_narrows_the_table_under_it(qt_app, tmp_path):
+def test_ticking_a_lamella_narrows_the_table_under_it(qt_app, tmp_path):
     """The filter and the breakdown are one selection, so the table has to move
     when a filter does."""
     panel = _loaded_panel(tmp_path)
     before = sum(panel.controller.breakdown("modality").values())
 
-    panel.filter_lists["lamella"].item(0).setSelected(True)
+    _tick(panel.filter_lists["lamella"], 0)
 
     assert sum(panel.controller.breakdown("modality").values()) < before
+
+
+def test_the_caption_says_how_much_of_a_list_is_ticked(qt_app, tmp_path):
+    """The lists are four rows over values that run to dozens, so what is
+    ticked is usually scrolled out of sight -- which is how a filter stays on
+    by accident."""
+    panel = _loaded_panel(tmp_path)
+
+    _tick(panel.filter_lists["lamella"], 0)
+
+    assert panel.filter_captions["lamella"].text() == "Lamella (1 of 2 ticked)"
+
+
+def test_clearing_the_filters_unticks_every_list(qt_app, tmp_path):
+    """Ticks scroll out of sight, so there has to be one control that undoes
+    all of them without hunting for which are on."""
+    panel = _loaded_panel(tmp_path)
+    _tick(panel.filter_lists["lamella"], 0)
+    assert panel.controller.filters.choices
+
+    panel.clear_button.click()
+
+    assert panel.controller.filters.choices == {}
+    assert panel.filter_lists["lamella"].ticked_values() == []
+    assert panel.filter_captions["lamella"].text() == "Lamella (2)"
+
+
+def test_clearing_leaves_the_named_controls_alone(qt_app, tmp_path):
+    """They always hold one of their choices, so there is no cleared state to
+    put them into -- and "all" is not what somebody clearing filters means to
+    lose if they had chosen corrected."""
+    panel = _loaded_panel(tmp_path)
+    panel.state.setCurrentText("corrected")
+
+    panel.clear_button.click()
+
+    assert panel.state.currentText() == "corrected"
 
 
 def test_a_long_filter_row_elides_rather_than_scrolling_sideways(qt_app, tmp_path):
