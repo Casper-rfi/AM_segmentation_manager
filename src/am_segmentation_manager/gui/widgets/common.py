@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QListWidget,
     QMenu,
+    QSizePolicy,
     QWidget,
 )
 
@@ -114,6 +115,44 @@ def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:
     label.setToolTip(tooltip)
     widget.setToolTip(tooltip)
     return label
+
+
+class ElidingLabel(QLabel):
+    """A label that shortens its text to fit rather than being cut off by it.
+
+    Qt clips a label that is too narrow, and clipping takes the ends off
+    without saying it did. This shows a middle ellipsis instead and keeps the
+    whole line in the tooltip -- the same treatment the path lists get, for the
+    same reason: the useful part of these strings is at both ends.
+
+    Set the text through :meth:`setText` as usual; :meth:`full_text` returns
+    what was set rather than what is shown.
+    """
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__()
+        self._full = ""
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt naming
+        """Keep *text* whole, and show as much of it as there is room for."""
+        self._full = text
+        self.setToolTip(text)
+        self._elide()
+
+    def full_text(self) -> str:
+        """Return the text as set, whatever is currently on screen."""
+        return self._full
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self) -> None:
+        super().setText(
+            self.fontMetrics().elidedText(self._full, Qt.ElideMiddle, self.width())
+        )
 
 
 class StepCombo(QComboBox):

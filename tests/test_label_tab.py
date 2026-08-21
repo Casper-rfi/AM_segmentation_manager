@@ -649,6 +649,51 @@ def keys_of(window, tab):
     return {b.description: b.key for b in window._bindings if b.tab == tab}
 
 
+def test_the_class_rows_read_as_one_table(window):
+    """Each class's edit button and its lock are the same size, so the two rows
+    line up as a table rather than as two bars that happen to be stacked."""
+    panel = window.label_panel
+
+    for class_index, edit in panel.paint_buttons.items():
+        lock = panel.lock_buttons.get(class_index, panel.lock_all_button)
+        assert edit.size() == lock.size(), f"class {class_index}"
+
+
+def test_the_edit_row_is_not_called_painting(window):
+    """One of its buttons erases, which is not painting by any reading."""
+    from qtpy.QtWidgets import QLabel
+
+    captions = {label.text() for label in window.label_panel.findChildren(QLabel)}
+
+    assert "Edit" in captions
+    assert "Paint" not in captions
+
+
+def test_nothing_to_say_about_the_label_takes_no_room(window):
+    """An empty badge line still holds a row of the canvas's height, which is
+    what put these in the tools row instead of on one of their own."""
+    panel = window.label_panel
+    panel._set_badges([])
+    assert panel.badges.isHidden()
+
+    panel._set_badges([("something happened", "warning")])
+
+    assert not panel.badges.isHidden()
+
+
+def test_the_status_line_elides_rather_than_being_cut_off(window):
+    """It shares a row now, and a stage name is a timestamp: clipping would
+    take the ends off without saying it had."""
+    panel = window.label_panel
+    panel.status.setFixedWidth(60)
+
+    panel.status.setText("a" * 200)
+
+    assert panel.status.full_text() == "a" * 200
+    assert len(panel.status.text()) < 200
+    assert panel.status.toolTip() == "a" * 200
+
+
 def test_the_tools_sit_under_the_hand_that_paints(window):
     keys = keys_of(window, TAB_LABEL)
 

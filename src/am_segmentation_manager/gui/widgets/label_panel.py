@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import logging
 
-from qtpy.QtCore import QPointF, Qt, QTimer, Signal
-from qtpy.QtGui import QColor, QPainter, QPixmap, QPolygonF
+from qtpy.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from qtpy.QtGui import QColor, QPainter, QPen, QPixmap, QPolygonF
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -34,7 +34,7 @@ from ...display import DEFAULT_ALPHA
 from ...layout import MODALITIES
 from ...operations.label_measure import DEFAULT_SPECK_PIXELS
 from ..label_controller import LabelController
-from .common import LABEL_BADGES, chip_icon
+from .common import LABEL_BADGES, ElidingLabel, chip_icon
 from .frame_strip import FrameTimeline
 from .label_canvas import (
     DEFAULT_BRUSH_RADIUS,
@@ -148,6 +148,110 @@ def fill_icon():
     return chip_icon(pixmap)
 
 
+def edit_icon():
+    """Return the edit row's icon: a pencil, angled as one is held.
+
+    Drawn like the tool icons and to the same weight, so the four marks on this
+    bar read as one set. A pencil rather than a brush: the row it heads chooses
+    *what* is written, where the brush and the fill choose how.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        # The body, then the tip: a quadrilateral running corner to corner and
+        # a triangle closing it, rather than one polygon, so the tip stays a
+        # clean point at sixteen pixels instead of a notch.
+        painter.drawPolygon(
+            QPolygonF([
+                QPointF(11.4, 1.6), QPointF(14.4, 4.6),
+                QPointF(6.6, 12.4), QPointF(3.6, 9.4),
+            ])
+        )
+        painter.drawPolygon(
+            QPolygonF([QPointF(2.6, 13.4), QPointF(5.8, 13.2), QPointF(2.8, 10.2)])
+        )
+    finally:
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def lock_icon(locked: bool = True):
+    """Return the lock row's icon: a padlock, its shackle open or closed.
+
+    The shackle is the whole of the difference between the two states, so it is
+    drawn as a stroke rather than filled -- at sixteen pixels a filled arch and
+    an open one are the same blob.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(TEXT))
+        pen.setWidthF(1.6)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        # Closed: the shackle sits over the body. Open: it is lifted and turned
+        # aside, which is the shape a padlock actually makes.
+        left = 4.6 if locked else 7.0
+        painter.drawArc(QRectF(left, 2.0, 6.8, 7.6), 0, 180 * 16)
+        painter.drawLine(QPointF(left, 5.8), QPointF(left, 8.4))
+        painter.drawLine(
+            QPointF(left + 6.8, 5.8), QPointF(left + 6.8, 8.4 if locked else 6.6)
+        )
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        painter.drawRoundedRect(QRectF(3.0, 8.0, 10.0, 6.6), 1.4, 1.4)
+    finally:
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def _row_header(icon, caption: str, hint: str) -> QWidget:
+    """Return a grid row's heading: a drawn mark beside its name.
+
+    A widget rather than a QLabel, because a QLabel shows either a pixmap or
+    text and this needs both -- and the mark is what ties the row to the tool
+    buttons beside it, which are drawn the same way.
+    """
+    holder = QWidget()
+    row = QHBoxLayout(holder)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(4)
+    mark = QLabel()
+    mark.setPixmap(icon.pixmap(ICON, ICON))
+    text = QLabel(caption)
+    for widget in (holder, mark, text):
+        widget.setToolTip(hint)
+    row.addWidget(mark)
+    row.addWidget(text)
+    return holder
+
+
+def _equalise(buttons) -> None:
+    """Give every one of *buttons* the width of the widest, and no more."""
+    widest = max(button.sizeHint().width() for button in buttons)
+    for button in buttons:
+        button.setMinimumWidth(widest)
+
+
+def _lock_button(caption: str) -> QToolButton:
+    """Return one cell of the lock row, built like the row above it.
+
+    Same construction as an edit button -- icon beside text, expanding to its
+    column -- so the two rows line up as a table rather than as two bars that
+    happen to be stacked.
+    """
+    button = QToolButton()
+    button.setText(caption)
+    button.setIcon(lock_icon())
+    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+    button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    return button
+
+
 def _width_position(width: int) -> int:
     """Return the slider position offering *width*, or the nearest below it."""
     return max(
@@ -193,15 +297,6 @@ class LabelPanel(QWidget):
         layout.addWidget(self.canvas, stretch=1)
 
         layout.addLayout(self._build_tools())
-
-        self.badges = QLabel("")
-        self.badges.setTextFormat(Qt.RichText)
-        layout.addWidget(self.badges)
-
-        self.status = QLabel("")
-        self.status.setStyleSheet(BADGE_STYLES["info"])
-        layout.addWidget(self.status)
-
         layout.addLayout(self._build_timeline())
 
         self._speck_timer = QTimer(self)
@@ -322,6 +417,18 @@ class LabelPanel(QWidget):
         self._show_speck_controls(False)
 
         controls.addStretch()
+
+        # Where the reviewer is, at the end of the row that decides it: the
+        # modality buttons on the left of this line are half of what it reports.
+        # On a row of its own it cost the canvas a row of height to say one
+        # short sentence, and it sat under the buttons rather than near the
+        # navigation.
+        # Elided rather than clipped: the line runs long on a project with
+        # timestamped stage names, and this row has other controls in it.
+        self.status = ElidingLabel()
+        self.status.setStyleSheet(BADGE_STYLES["info"])
+        self.status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        controls.addWidget(self.status, stretch=1)
         return controls
 
     def _build_tools(self) -> QHBoxLayout:
@@ -340,6 +447,15 @@ class LabelPanel(QWidget):
         tools.addSpacing(20)
         tools.addLayout(self._build_actions())
         tools.addStretch()
+
+        # Both say something about the label being edited, so they belong with
+        # the tools that edit it -- and in the width this row has spare, rather
+        # than each holding a row of the canvas's height for one short line.
+        self.badges = QLabel("")
+        self.badges.setTextFormat(Qt.RichText)
+        self.badges.setWordWrap(True)
+        self.badges.setVisible(False)
+        tools.addWidget(self.badges)
 
         self.pending_label = QLabel("")
         self.pending_label.setStyleSheet(BADGE_STYLES["warning"])
@@ -395,6 +511,10 @@ class LabelPanel(QWidget):
         grid.addWidget(self.brush_value, 0, 2)
         self._brush_resized(self.brush_slider.value())
 
+        # The two are a pair and read as one: the shorter caption is widened
+        # to the longer rather than both being left to their own text.
+        _equalise(self.tool_buttons.values())
+
         brush_button = self.tool_buttons[TOOL_BRUSH]
         brush_button.blockSignals(True)
         brush_button.setChecked(True)
@@ -402,22 +522,34 @@ class LabelPanel(QWidget):
         return grid
 
     def _build_class_table(self) -> QGridLayout:
-        """Build the classes to paint, above the same classes' locks.
+        """Build the classes to edit with, above the same classes' locks.
 
         One column per class, so a lock sits under the class it protects and
-        the two rows read as one table. Background's column carries the
-        lock-everything button instead of a lock of its own: painting background
-        is how a stroke erases, so locking it would take the eraser away.
+        the two rows read as one table. Every cell is the same size: the
+        columns share the width equally and each button fills its own, so a
+        class with a long name does not make its lock a different shape from
+        its neighbour's. Background's column carries the lock-everything button
+        instead of a lock of its own: painting background is how a stroke
+        erases, so locking it would take the eraser away.
         """
         self.class_grid = grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(4)
         grid.setVerticalSpacing(2)
 
-        paint_label, lock_label = QLabel("Paint"), QLabel("Lock")
-        lock_label.setToolTip("A locked class cannot be painted over by any tool")
-        grid.addWidget(paint_label, 0, 0)
-        grid.addWidget(lock_label, 1, 0)
+        # "Edit" rather than "Paint": the row chooses what a stroke writes, and
+        # one of its buttons erases -- which is not painting by any reading.
+        grid.addWidget(
+            _row_header(edit_icon(), "Edit", "Which class the brush and the fill write"),
+            0, 0,
+        )
+        grid.addWidget(
+            _row_header(
+                lock_icon(), "Lock",
+                "A locked class cannot be painted over by any tool",
+            ),
+            1, 0,
+        )
 
         self.paint_buttons: dict[int, QToolButton] = {}
         self.lock_buttons: dict[int, QToolButton] = {}
@@ -430,6 +562,7 @@ class LabelPanel(QWidget):
             button.setText(f"{name} (erase)" if erasing else name)
             button.setIcon(self._swatch(class_index))
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.setCheckable(True)
             hint = (
                 "Paint background, which is how a stroke erases" if erasing
@@ -445,12 +578,12 @@ class LabelPanel(QWidget):
             grid.addWidget(button, 0, column)
             self.paint_buttons[class_index] = button
 
+            # Equal shares, so every button in both rows is the same width
+            # whatever its class is called.
+            grid.setColumnStretch(column, 1)
+
             if erasing:
-                self.lock_all_button = QToolButton()
-                self.lock_all_button.setText("All")
-                self.lock_all_button.setSizePolicy(
-                    QSizePolicy.Expanding, QSizePolicy.Preferred
-                )
+                self.lock_all_button = _lock_button("All")
                 self.lock_all_button.setToolTip(
                     "Lock every class, or unlock them all\nShortcut: A"
                 )
@@ -458,11 +591,9 @@ class LabelPanel(QWidget):
                 grid.addWidget(self.lock_all_button, 1, column)
                 continue
 
-            lock = QToolButton()
-            lock.setText(name)
-            lock.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            lock = _lock_button(name)
             lock.setCheckable(True)
-            lock.setToolTip(lock_label.toolTip())
+            lock.setToolTip("A locked class cannot be painted over by any tool")
             lock.toggled.connect(self._locks_changed)
             grid.addWidget(lock, 1, column)
             self.lock_buttons[class_index] = lock
@@ -877,6 +1008,12 @@ class LabelPanel(QWidget):
         return badges
 
     def _set_badges(self, badges: list[tuple[str, str]]) -> None:
+        """Show what is worth saying about the label, or nothing at all.
+
+        Hidden rather than emptied: an empty label still holds its row, which
+        is the whole reason these moved off one of their own.
+        """
+        self.badges.setVisible(bool(badges))
         if not badges:
             self.badges.setText("")
             return
