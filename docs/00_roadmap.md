@@ -20,6 +20,10 @@ what each command and tab does. What is worth knowing beyond that:
   both stop to name any image whose label holds no annotation.
 * **Each tab has a controller holding no Qt**, which is what makes navigation, cache
   eviction and state expansion testable without a display.
+* **What a change applies to is one level at a time.** Ticking a project clears the
+  ticked lamellae, picking frames out clears both, and ticked lamellae belong to the
+  project on screen and go when it changes — so what is ticked on screen is the whole
+  of what a state change or an operation will touch.
 * **Where an operation sits says what it acts on.** Curate runs `predict` and
   `convert-predictions` against the ticked set, because choosing which images to
   predict is the decision; Add data runs `inspect-layout`, `init-project` and
@@ -37,12 +41,19 @@ what each command and tab does. What is worth knowing beyond that:
   Writes go to `<predictions>/am_seg/`, the only prediction directory this package
   writes. One prediction per label group, one modality per run — a selection holding
   both is refused, since a model is for one and nothing can tell which — and resumable,
-  which is what lets the window offer a Stop button no other operation here can.
+  which is what earns it a Stop button.
 * **Export filters, counts and writes, and every filter narrows all three.** Its filter
   lists are derived from the breakdowns, so a property can be counted by and filtered
-  on without being declared twice; the breakdown reads as a table or a chart in the
-  same pane, and the crack threshold and area bin resolution sit beside the button
-  that measures.
+  on without being declared twice; values are ticked rather than highlighted, with the
+  count beside each list and one button that clears them all. The breakdown reads as a
+  table or a chart in the same pane, and the crack threshold and area bin resolution
+  sit beside the button that measures.
+* **A project is a directory; `project` is what the work was part of.** The directory
+  the scanner indexes and Curate lists is `autolamella_project` in every export; the
+  metadata field called `project` names the wider project that several of those
+  directories usually share. Both can be counted and filtered on, and nothing derives
+  one from the other — the folder name is a fact about storage, and which project a
+  dataset was collected for is a question only a person can answer.
 
 Why each of these is so is in [`decisions.md`](decisions.md).
 

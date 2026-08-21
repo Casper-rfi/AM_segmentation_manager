@@ -206,13 +206,12 @@ place.
   conversion replaces proofread work with a machine guess. A dialog is the right guard for
   the first and too weak for the second, so re-converting a corrected label means setting
   that group back to selected first.
-- **That is also why compressing is not scoped to a selection.** Preserving the pixels
-  exactly means there is no label recompression should be withheld from, so choosing which
-  ones to shrink is not a decision worth a control — and a per-selection button leaves
-  exactly the labels nobody happened to tick uncompressed, which is the opposite of what
-  the operation is for. In the window it acts on the whole scanned folder from the Add data
-  tab. The command line keeps its `--project` and `--lamella` filters, which cost nothing
-  and answer the rare case where one project is the whole question.
+- **That is also why compressing is not scoped to a selection.** Preserving the pixels exactly
+  means there is no label it should be withheld from, so which ones to shrink is not a decision
+  worth a control — and a per-selection button leaves uncompressed exactly the labels nobody
+  happened to tick, which is the opposite of what the operation is for. In the window it acts
+  on the whole scanned folder, from Add data; the command line keeps its `--project` and
+  `--lamella` filters for the rare case where one project is the whole question.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
   workflow-state filter starts on "all" rather than on *corrected*, matching the rest of the
   tab: it is narrowed towards an export rather than opening on one and hiding the archive.
@@ -228,11 +227,10 @@ place.
   the levels: that leaves ticks visible which decide nothing, and — once a tick outlives the
   project it was made in — ticks *invisible* which decide everything, which is how an
   operation run from this window reaches a project nobody was looking at. Ticked lamellae
-  belong to the project on screen and go
-  when it changes; ticked projects stay, because the project list still shows them. Frame
-  indices clear with the lamella, because that is all an index means here. The reach line
-  counts the lamellae and each modality separately, since the modality control decides which
-  of the two moves and one total cannot say which. Everything reaches `transition_records`
+  belong to the project on screen and go when it changes; ticked projects stay, because the
+  project list still shows them. Frame indices clear with the lamella, because that is all an
+  index means here. The reach line counts the lamellae and each modality separately, since the
+  modality control decides which of the two moves. Everything reaches `transition_records`
   through `scoped_records()`, so group expansion and the corrected-data guard apply to a
   ticked selection unchanged.
 - **Reading a label gives three answers, not two.** `is_label_file_empty()` is tri-state, and
@@ -272,10 +270,8 @@ place.
   `project_project` column in one export and a `metadata_project` in another — two
   conventions for one collision. The directory is what the scanner indexes and Curate lists,
   so it is qualified wherever it is written; the metadata field keeps the plain name, since
-  that is what somebody filling the form means by it. Nothing derives one from the other:
-  the folder name is a fact about storage, and which project a dataset was collected for is
-  a question only a person can answer. The Add data tab used to offer the folder name for
-  that field, which is where the confusion was visible.
+  that is what somebody filling the form means by it. Neither is derived from the other, which
+  is why the Add data tab offers no button to copy the folder name into the field.
 - **Every image header carries settings for both beams, and some values exist for only one of
   them.** `microscope_state.*` describes the beam that took the image; `system.*` holds both
   beams' configured defaults, so reading `system.ion.voltage` from an SEM image yields the
@@ -339,15 +335,14 @@ place.
   a field still reads as locked. Buttons and radio groups grey out normally: they are
   controls you cannot use, not values you are reading.
 - **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is
-  also how Qt shows the row you are looking at, it is lost whenever the list is rebuilt — and
-  these lists are rebuilt on every refresh — and in a list of four visible rows over dozens of
-  values there is no way to see what is chosen without scrolling through looking for it, which
-  is how a filter stays on by accident. `common.CheckList` is the one implementation, used by
-  the curation lists and the export filters; a caption beside each says "2 of 6 ticked",
-  because the ticks decide what an operation covers and the count has to be legible without
-  scrolling. It reports nothing while its contents are being replaced: that is a redraw rather
-  than a gesture, and an owner that rebuilds its list in response to the current row changing
-  would otherwise drive itself round in a circle.
+  also how Qt marks the row you are looking at, it is lost whenever the list is rebuilt — which
+  is every refresh — and in four visible rows over dozens of values there is no seeing what is
+  chosen without scrolling for it, which is how a filter stays on by accident. `CheckList` is
+  the one implementation, used by the curation lists and the export filters, with a caption
+  saying "2 of 6 ticked" because the count has to be legible without scrolling. It reports
+  nothing while its contents are replaced: that is a redraw rather than a gesture, and an owner
+  that rebuilds its list in response to the current row changing would drive itself in a
+  circle.
 - **A list of paths elides; it must not scroll sideways.** Rows carrying paths differ in what
   they *end* with, and a `QListWidget` with a horizontal scrollbar scrolls instead of
   eliding — which cut a session's projects off into identical-looking rows. `ElideMiddle`
@@ -358,56 +353,44 @@ place.
   scene carries a quarter of the image as slack on every side, so an edge can be dragged into
   the middle of the pane to be worked on. Scrollbars go because a scene deliberately larger
   than its content leaves them permanently visible and permanently not full.
-- **How far a pane zooms out is the view's to say, not the module's.** Reviewing is done at
-  fit, so the curation panes stop there. The proofreading canvas is the exception, because
-  checking that a label runs to the edge of the frame means seeing that edge clear of the
-  border: it allows one step out, and since `zoom_by` snaps to the floor rather than
-  overshooting it, a floor of 1/1.1 turns that 0.8 step into a band of a twentieth of the
-  pane on each side.
-- **Landing on that floor goes through `fitInView`, not through `scale`.** Two things come
-  with it, and both are the difference between a frame that reads as zoomed out and one that
-  reads as lost. The wheel's anchor holds the point under the pointer fixed, which is what
-  makes zooming *in* follow the eye — and what leaves a frame that now fits the pane pushed
-  into whichever corner the pointer was over; fitting centres it. And `fitInView` keeps a
-  two-pixel border of its own that scaling to the computed floor would crop, so "zoomed all
-  the way out" and "fitted" are the same picture rather than differing by the outermost
-  pixels of the frame.
-- **A summary plot is held twice: once for stepping, once for looking at.** They are two
-  different jobs and one copy cannot do both. A plot is ~180 ms to read however it is asked
-  for — a PNG has to be decompressed whole, so OpenCV's reduced-decode flags buy nothing —
-  which is slower than a held-down arrow key, so stepping is smooth only if every plot is
-  already in memory, which bounds those copies to the size of the pane. But these figures
-  are 4500x3000 and carry annotations that exist only at that resolution, so a pane-sized
-  copy puts a ceiling on what zooming in can ever show, which is what a plot is opened for.
-  The pane-sized copies cover the lamella; the frame being looked at also gets read whole,
-  asked for last because nothing on screen is waiting on it.
-- **The copy read whole is drawn only where it would show more.** At fit it would show less:
-  the pane-sized copy is prepared to fill this pane exactly and drawn at one array pixel per
-  physical pixel, which is the only scale that resamples nothing, while the whole copy at the
-  same size is a 2x minification of a figure made of one-pixel rules. So the pane copy is
-  what a fitted plot is, and the whole one takes over once the figure is magnified past what
-  the pane copy holds — a swap inside a zoom, where a change of scale is what the user just
-  asked for, and one that keeps the region on screen so it reads as detail appearing. Drawing
-  the whole copy the moment it arrived instead cost both things at once: every plot on screen
-  was a resampled one, and each step through the lamella refitted and then shifted again as
-  the copy landed. The threshold has a hair of margin on it, because returning to fit lands
-  either side of exactly 1 and the wrong side leaves the one view that must be exact filtered.
-- **How large a pane-sized copy is drawn is read off the copy, not off the screen.** It was
-  reduced to a box measured in physical pixels, so a copy prepared while the pane reported one
-  device ratio and drawn while it reported another comes out at half or twice the size — a
-  band of empty pane above and below the figure. Whichever of the copy's edges touches that
-  box gives the ratio back exactly, so a copy prepared for a pane of another size still fills
-  the one it is drawn in. Drawing it at one array pixel per physical pixel also has to centre
-  it: resetting the transform says nothing about where the view is looking, and the scene is
-  deliberately larger than the picture.
-- **Where the view is looking is held across a change of resolution, not re-derived.**
-  Deriving it goes through the scroll position, which is a whole number, so re-deriving on
-  every swap loses a fraction of a pixel the same way each time; stepping through a series
-  while zoomed changes resolution twice a frame, and the picture crept towards one corner. It
-  is kept as a fraction of the picture and dropped the moment the user moves the view
-  themselves — which `scrollContentsBy` reports, so panning by any means counts, while the
-  scrollbar movements the widget causes itself do not. That distinction is the whole of it:
-  replacing a picture and rescaling onto it both move the scrollbars several times on the way.
+- **How far a pane zooms out is the view's to say, and it lands through `fitInView`.**
+  Reviewing is done at fit, so the curation panes stop there; the proofreading canvas allows
+  one step past it, because checking that a label runs to the edge of the frame means seeing
+  that edge clear of the border — and `zoom_by` snaps to the floor rather than overshooting,
+  so a floor of 1/1.1 turns that 0.8 step into a band of a twentieth of the pane. Landing goes
+  through `fitInView` rather than `scale` for two reasons. The wheel's anchor holds the point
+  under the pointer fixed, which is what makes zooming *in* follow the eye — and what leaves a
+  frame that now fits the pane pushed into whichever corner the pointer was over. And
+  `fitInView` keeps a two-pixel border of its own that scaling to the computed floor would
+  crop, so "zoomed all the way out" and "fitted" are the same picture.
+- **A summary plot is held twice: pane-sized to step through, whole to look into.** One copy
+  cannot do both jobs. A plot is ~180 ms to read however it is asked for — a PNG decompresses
+  whole, so OpenCV's reduced-decode flags buy nothing — which is slower than a held-down arrow
+  key, so stepping is smooth only when every plot is already in memory, and that bounds those
+  copies to the size of the pane. But these figures are 4500x3000 and carry annotations that
+  exist only at that resolution, which is what a plot is opened for. So the pane-sized copies
+  cover the lamella and are what a *fitted* plot is, drawn at one array pixel per physical
+  pixel — the only scale that resamples nothing. The frame being looked at is also read whole,
+  asked for last because nothing on screen is waiting on it, and takes over only once the
+  figure is magnified past what the pane copy holds: a swap inside a zoom, where a change of
+  scale is what the user just asked for. Drawing it on arrival instead cost both things at
+  once — every plot on screen was a resampled one, and each step refitted and then shifted
+  again as the copy landed. The threshold carries a hair of margin, because returning to fit
+  lands either side of exactly 1 and the wrong side leaves the one view that has to be exact
+  filtered.
+- **Where a copy is placed is read off the copy, and remembered across a swap.** Two faults
+  lived here, both of them placement rather than content. The copy is reduced to a box
+  measured in *physical* pixels, so drawing it at whatever device ratio the widget reports at
+  the time comes out at half or twice the size wherever the two disagree — whichever of its
+  edges touches that box gives the ratio back exactly, so a copy prepared for a pane of
+  another size still fills the one it is drawn in. And an identity transform says nothing
+  about where the view is looking, while the scene is deliberately larger than the picture, so
+  drawing 1:1 has to centre as fitting would. Where the view *is* looking is then held as a
+  fraction of the picture rather than re-derived on each swap: deriving goes through the
+  scroll position, which is a whole number, and stepping while zoomed changes resolution twice
+  a frame, so the picture crept towards one corner. It is dropped the moment the user moves
+  the view themselves, which `scrollContentsBy` reports — panning by any means counts, and the
+  scrollbar movements the widget causes itself do not.
 - **Read-ahead asks for no more than the cache can keep.** Unbounded, the read that finishes
   last evicts the one that finished first, so a step in either direction lands on something
   that was prepared and then thrown away — the cache working against itself. `plot_radius`
