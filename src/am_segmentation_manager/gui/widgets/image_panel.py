@@ -378,12 +378,34 @@ class ImagePanel(QWidget):
         stepping, whole = self._plot_copies
         if stepping is None:
             return
-        ratio = self.plot_view.devicePixelRatioF() or 1.0
+        ratio = self._plot_pixel_ratio(stepping)
         if whole is not None and self._plot_magnification() > PLOT_DETAIL_MAGNIFICATION:
             self.plot_view.set_array(whole, same_picture=same_picture)
             return
         self.plot_view.set_array(
             stepping, device_pixel_ratio=ratio, native=True, same_picture=same_picture
+        )
+
+    def _plot_pixel_ratio(self, stepping) -> float:
+        """Return the physical pixels per logical pixel this copy holds.
+
+        Read off the copy and the pane it is drawn in rather than asked of the
+        screen. The copy was reduced to fit the pane measured in physical
+        pixels, so whichever of its edges touches that box gives the ratio back
+        exactly -- and a copy prepared for a pane of another size still fills
+        the one it is drawn in, where trusting the screen would leave it at
+        half or twice the size until the copy was prepared again.
+
+        Never below 1: a figure smaller than the pane is drawn at its own
+        pixels rather than stretched to fill it.
+        """
+        viewport = self.plot_view.viewport().rect()
+        if not viewport.width() or not viewport.height():
+            return 1.0
+        return max(
+            1.0,
+            stepping.shape[1] / viewport.width(),
+            stepping.shape[0] / viewport.height(),
         )
 
     def _plot_magnification(self) -> float:
@@ -397,9 +419,8 @@ class ImagePanel(QWidget):
         item = self.plot_view._item.boundingRect()
         if stepping is None or not item.width():
             return 0.0
-        ratio = self.plot_view.devicePixelRatioF() or 1.0
         drawn = item.width() * self.plot_view.transform().m11()
-        return drawn / (stepping.shape[1] / ratio)
+        return drawn / (stepping.shape[1] / self._plot_pixel_ratio(stepping))
 
     def show_loading(self) -> None:
         """Say that the frame is still being prepared."""

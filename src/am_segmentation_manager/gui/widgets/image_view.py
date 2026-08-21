@@ -110,6 +110,14 @@ class ImageView(QGraphicsView):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._shape: tuple[int, int] | None = None
         self._image_shown = True
+        #: Where the view is looking, as a fraction of the picture, held across
+        #: a change of resolution. Kept rather than re-derived every time
+        #: because deriving it goes through the scroll position, which is a
+        #: whole number: re-deriving on every swap loses a fraction of a pixel
+        #: the same way each time, and stepping through a series drifts.
+        #: Dropped as soon as the user moves the view themselves.
+        self._anchor: tuple[float, float] | None = None
+        self._centring = False
         #: How far below fit this view zooms out; see :data:`MIN_FIT_FRACTION`.
         #: Per view rather than per module: the curation panes are read at fit
         #: and the proofreading canvas is worked at its edges.
@@ -149,6 +157,17 @@ class ImageView(QGraphicsView):
         pixmap = QPixmap.fromImage(to_qimage(array))
         if device_pixel_ratio and device_pixel_ratio != 1.0:
             pixmap.setDevicePixelRatio(device_pixel_ratio)
+        # Replacing the picture moves the scrollbars by itself, and so does
+        # every step of the rescale below. None of that is the user looking
+        # somewhere else, so the held viewpoint has to survive all of it.
+        self._centring = True
+        try:
+            self._set_pixmap(pixmap, shape, before, centre, native, same_picture)
+        finally:
+            self._centring = False
+
+    def _set_pixmap(self, pixmap, shape, before, centre, native, same_picture) -> None:
+        """Put *pixmap* on screen and decide where the view should be looking."""
         self._item.setPixmap(pixmap)
         self._scene.setSceneRect(_with_margin(self._item.boundingRect()))
         if shape == self._shape:
@@ -159,7 +178,12 @@ class ImageView(QGraphicsView):
         elif native:
             # An identity transform means Qt blits the pixmap rather than
             # resampling it; any other scale, even 0.996, filters every pixel.
+            # Centred as fitting would centre: resetting the transform says
+            # nothing about where the view is looking, and the scene is larger
+            # than the picture, so on its own it leaves the picture off to one
+            # side of the pane.
             self.resetTransform()
+            self.centerOn(self._item)
             self.zoomed.emit()
         else:
             self.fit()
@@ -168,15 +192,24 @@ class ImageView(QGraphicsView):
         """Keep the region on screen across a change of resolution.
 
         Scene coordinates are the array's own, so the same picture at twice the
-        pixels is the same view at half the scale about a doubled centre. Both
-        are recomputed from the ratio rather than remembered, which is what
-        makes this exact rather than approximately right.
+        pixels is the same view at half the scale about a doubled centre.
         """
-        ratio = before.width() / self._item.boundingRect().width()
+        after = self._item.boundingRect()
+        ratio = before.width() / after.width()
+        anchor = self._anchor or (
+            centre.x() / before.width(), centre.y() / before.height()
+        )
         scale = self.transform().m11() * ratio
         self.setTransform(QTransform.fromScale(scale, scale))
-        self.centerOn(centre.x() / ratio, centre.y() / ratio)
+        self.centerOn(anchor[0] * after.width(), anchor[1] * after.height())
+        self._anchor = anchor
         self.zoomed.emit()
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:  # noqa: N802 - Qt naming
+        """Note that the view moved, unless this widget moved it itself."""
+        super().scrollContentsBy(dx, dy)
+        if not self._centring:
+            self._anchor = None
 
     def set_smooth_scaling(self, smooth: bool) -> None:
         """Choose how the pixmap is resampled when it is not drawn 1:1.
@@ -217,6 +250,7 @@ class ImageView(QGraphicsView):
 
     def fit(self) -> None:
         """Scale so the whole image is visible."""
+        self._anchor = None
         if not self._item.pixmap().isNull():
             self.fitInView(self._item, Qt.KeepAspectRatio)
             self.zoomed.emit()
@@ -272,6 +306,9 @@ class ImageView(QGraphicsView):
         """
         current = self.transform().m11()
         target = current * factor
+        # The user is choosing where to look, so whatever was being held across
+        # a change of resolution no longer describes it.
+        self._anchor = None
 
         if factor < 1.0:
             if target < self.fit_scale() * self.min_fit_fraction:

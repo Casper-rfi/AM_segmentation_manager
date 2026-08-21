@@ -392,6 +392,22 @@ place.
   was a resampled one, and each step through the lamella refitted and then shifted again as
   the copy landed. The threshold has a hair of margin on it, because returning to fit lands
   either side of exactly 1 and the wrong side leaves the one view that must be exact filtered.
+- **How large a pane-sized copy is drawn is read off the copy, not off the screen.** It was
+  reduced to a box measured in physical pixels, so a copy prepared while the pane reported one
+  device ratio and drawn while it reported another comes out at half or twice the size — a
+  band of empty pane above and below the figure. Whichever of the copy's edges touches that
+  box gives the ratio back exactly, so a copy prepared for a pane of another size still fills
+  the one it is drawn in. Drawing it at one array pixel per physical pixel also has to centre
+  it: resetting the transform says nothing about where the view is looking, and the scene is
+  deliberately larger than the picture.
+- **Where the view is looking is held across a change of resolution, not re-derived.**
+  Deriving it goes through the scroll position, which is a whole number, so re-deriving on
+  every swap loses a fraction of a pixel the same way each time; stepping through a series
+  while zoomed changes resolution twice a frame, and the picture crept towards one corner. It
+  is kept as a fraction of the picture and dropped the moment the user moves the view
+  themselves — which `scrollContentsBy` reports, so panning by any means counts, while the
+  scrollbar movements the widget causes itself do not. That distinction is the whole of it:
+  replacing a picture and rescaling onto it both move the scrollbars several times on the way.
 - **Read-ahead asks for no more than the cache can keep.** Unbounded, the read that finishes
   last evicts the one that finished first, so a step in either direction lands on something
   that was prepared and then thrown away — the cache working against itself. `plot_radius`

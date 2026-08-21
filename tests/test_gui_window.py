@@ -1595,6 +1595,45 @@ def test_the_figure_is_read_whole_for_the_frame_being_looked_at(qt_app, window):
     assert window.controller.cache.plot_detail(0).plot.shape[:2] == (1400, 2100)
 
 
+def test_swapping_resolution_repeatedly_does_not_drift(qt_app):
+    """Stepping through a series while zoomed swaps copies twice a frame. Each
+    swap used to re-derive where the view was looking through the scroll
+    position, which is a whole number, losing a fraction of a pixel the same
+    way every time -- so the picture crept out of the pane."""
+    import numpy as np
+
+    from am_segmentation_manager.gui.widgets.image_view import ImageView
+
+    small = np.zeros((300, 400, 3), dtype=np.uint8)
+    large = np.zeros((1200, 1600, 3), dtype=np.uint8)
+    view = ImageView()
+    view.resize(400, 300)
+    view.show()
+    qt_app.processEvents()
+    try:
+        view.set_array(small)
+        view.zoom_by(1.25)
+        view.zoom_by(1.25)
+
+        def looking_at():
+            rect = view._item.boundingRect()
+            middle = view.mapToScene(view.viewport().rect().center())
+            return (middle.x() / rect.width(), middle.y() / rect.height())
+
+        for _ in range(3):                       # settles on the first swap
+            view.set_array(large, same_picture=True)
+            view.set_array(small, same_picture=True)
+        settled = looking_at()
+
+        for _ in range(20):
+            view.set_array(large, same_picture=True)
+            view.set_array(small, same_picture=True)
+
+        assert looking_at() == pytest.approx(settled, abs=0.001)
+    finally:
+        view.close()
+
+
 def test_a_change_of_resolution_keeps_the_region_on_screen(qt_app):
     """The mechanism the swap rests on, on its own: the same picture at more
     pixels is the same view at a smaller scale about a larger centre."""
@@ -1669,6 +1708,44 @@ def test_a_figure_of_another_size_starts_again_rather_than_inheriting_the_zoom(
     # Identity is one array pixel per physical pixel, which is what a copy
     # prepared for this pane is drawn at.
     assert panel.plot_view.transform().isIdentity()
+
+
+def test_a_plot_opens_centred_in_the_pane(qt_app, window):
+    """Resetting the transform says nothing about where the view is looking,
+    and the scene is deliberately larger than the picture -- so on its own it
+    left the figure off to one side with a band of empty pane beside it."""
+    window._set_mode("plot")
+    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    view = window.image_panel.plot_view
+
+    picture = view.mapFromScene(view._item.boundingRect().center())
+    pane = view.viewport().rect().center()
+
+    assert (picture.x(), picture.y()) == pytest.approx((pane.x(), pane.y()), abs=2)
+
+
+def test_a_plot_prepared_for_another_pane_still_fills_this_one(qt_app, window):
+    """The copy is reduced to a box measured in physical pixels, so trusting
+    the screen's ratio at drawing time leaves it at half or twice the size
+    whenever the two disagree -- which is what a band of empty pane above and
+    below the figure was."""
+    import numpy as np
+
+    from am_segmentation_manager.gui.cache import FramePlot
+
+    window._set_mode("plot")
+    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    panel = window.image_panel
+    viewport = panel.plot_view.viewport().rect()
+
+    for ratio in (1, 2, 3):
+        wide = round(viewport.width() * ratio)
+        tall = round(viewport.height() * ratio)
+        panel.show_plot(FramePlot(plot=np.zeros((tall, wide, 3), dtype=np.uint8)))
+
+        item = panel.plot_view._item.boundingRect()
+        drawn = item.width() * panel.plot_view.transform().m11()
+        assert drawn == pytest.approx(viewport.width(), rel=0.02), f"ratio {ratio}"
 
 
 def test_stepping_to_another_plot_does_not_move_the_picture(qt_app, window):
