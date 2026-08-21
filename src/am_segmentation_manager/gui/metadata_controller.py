@@ -40,10 +40,11 @@ __all__ = [
 ]
 
 #: Fields offered as a list of the values already in use. The others are left
-#: out deliberately: ``description`` is prose about one experiment, ``project``
-#: names this project rather than a shared one, and ``lamella_type`` has a fixed
-#: vocabulary of its own.
-SUGGESTED_FIELDS: tuple[str, ...] = ("organisation", "user", "sample")
+#: out deliberately: ``description`` is prose about one experiment, and
+#: ``lamella_type`` has a fixed vocabulary of its own. ``project`` names the
+#: wider project several datasets belong to, so it repeats across them by
+#: definition -- which is exactly what these lists are for.
+SUGGESTED_FIELDS: tuple[str, ...] = ("organisation", "project", "user", "sample")
 
 #: How many values a field offers. A collection of several hundred projects
 #: would otherwise put a list nobody can read behind every box.
@@ -168,21 +169,6 @@ class MetadataController:
         if current and current not in offered:
             offered.append(current)
         return offered
-
-    def suggested_project_name(self) -> str | None:
-        """Return the name of the directory holding the project's YAML files.
-
-        That directory is the Autolamella project, so its name is what
-        ``project`` is for. The directory is used rather than ``experiment.yaml``'s
-        own ``name`` because a project copied to a second location keeps the
-        recorded name of the first, and the directory is what is actually there.
-
-        This is a suggestion for a person to accept, never a resolved value: a
-        project nobody opens here keeps an empty field. Returns None when no
-        project is selected.
-        """
-        project = self.project
-        return project.path.name if project is not None else None
 
     def outstanding(self) -> tuple[str, ...]:
         """Return fields still marked TODO."""

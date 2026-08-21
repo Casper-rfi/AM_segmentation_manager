@@ -522,14 +522,25 @@ def by_stage(lookup: Mapping[Path, Project]) -> KeyFunction:
     return key
 
 
-def by_project(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by the project's identity, which is its relative path."""
+def by_autolamella_project(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by the project directory's identity, which is its relative path.
+
+    Distinct from :func:`by_project`, which groups by the *wider* project a
+    dataset was collected for. One is where the files are and the other is what
+    the work was part of, and several directories usually belong to one wider
+    project.
+    """
 
     def key(record: ImageRecord) -> Hashable:
         project = lookup.get(record.image_path)
         return _present(project.key if project is not None else None)
 
     return key
+
+
+def by_project(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by the wider project recorded in the project's metadata."""
+    return _project_metadata_key(lookup, "project")
 
 
 @dataclass(frozen=True)
@@ -584,6 +595,9 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "modality": Breakdown("record", by_modality, "modality (SEM / FIB)"),
     "state": Breakdown("record", by_state, "workflow state"),
     "variant": Breakdown("record", by_variant, "imaging condition"),
+    "autolamella-project": Breakdown(
+        "project", by_autolamella_project, "Autolamella project", group="record"
+    ),
     "stage": Breakdown("project", by_stage, "milling stage", group="record"),
     "lamella": Breakdown("project", by_lamella, "lamella", group="record"),
     "microscope": Breakdown("metadata", by_microscope_model, "microscope model"),

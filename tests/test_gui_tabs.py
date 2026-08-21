@@ -888,32 +888,23 @@ def at(relative: str) -> MetadataController:
     return controller
 
 
-def test_the_directory_holding_the_yaml_files_is_offered_as_the_project_name():
+def test_the_wider_project_is_not_guessed_from_the_directory():
+    """The directory *is* the Autolamella project, and every export records it
+    as one. Copying it into the field naming the wider project the work belongs
+    to would fill a human-only answer with a machine guess, and put the same
+    fact in the collection twice under two meanings."""
     controller = at("20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57")
 
-    assert controller.suggested_project_name() == "AutoLamella-2026-07-28-13-57"
-
-
-def test_the_directory_is_preferred_over_the_name_experiment_yaml_records():
-    """A project copied to a second location keeps the recorded name of the
-    first; the directory is what is actually there."""
-    controller = at("AutoLamella-2026-07-28-13-57")
-
-    assert controller.projects[0].name == "recorded-name"
-    assert controller.suggested_project_name() == "AutoLamella-2026-07-28-13-57"
-
-
-def test_nothing_is_offered_without_a_project():
-    assert MetadataController().suggested_project_name() is None
-
-
-def test_the_suggestion_is_not_a_resolved_value():
-    """It is a starting point for a person, not a value: until it is saved the
-    field is still unset, and a project nobody opens keeps it that way."""
-    controller = at("20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57")
-
-    assert controller.suggested_project_name() == "AutoLamella-2026-07-28-13-57"
     assert controller.values()["project"] == ""
+    assert not hasattr(controller, "suggested_project_name")
+
+
+def test_the_wider_project_is_offered_from_the_values_already_in_use():
+    """It repeats across the datasets of one project by definition, which is
+    what makes typing it twice the way a collection ends up with two of it."""
+    from am_segmentation_manager.gui.metadata_controller import SUGGESTED_FIELDS
+
+    assert "project" in SUGGESTED_FIELDS
 
 
 # ---------------------------------------------------------------------------

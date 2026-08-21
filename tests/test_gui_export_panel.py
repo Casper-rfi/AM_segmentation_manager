@@ -379,7 +379,12 @@ def test_stepping_passes_over_a_group_heading(panel: ExportPanel):
 
 def test_stepping_stops_at_the_ends(panel: ExportPanel):
     """Wrapping from the last row to the first loses your place."""
-    first = panel.breakdown.findData("variant")
+    # Found rather than named: which breakdown sorts first is the breakdown
+    # table's to decide, and this is about the ends, not about that one.
+    first = next(
+        row for row in range(panel.breakdown.count())
+        if panel.breakdown.itemData(row) is not None
+    )
     panel.breakdown.setCurrentIndex(first)
 
     QTest.keyClick(panel.breakdown, Qt.Key_Up)

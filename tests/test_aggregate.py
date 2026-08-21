@@ -519,11 +519,65 @@ def test_no_filters_returns_everything_untouched():
 # CSV exports
 # ---------------------------------------------------------------------------
 
+def test_the_two_projects_are_different_breakdowns():
+    """One is the directory the files are in, the other the project the work
+    was part of. Several directories usually belong to one wider project, so
+    counting by either answers a different question."""
+    assert ag.BREAKDOWNS["autolamella-project"].group == "record"
+    assert ag.BREAKDOWNS["project"].group == "project"
+
+
+def test_counting_by_the_two_projects_gives_different_answers(tmp_path: Path):
+    from am_segmentation_manager.metadata import ExperimentMetadata
+
+    projects = [
+        make_project(f"dir-{index}", f"dir-{index}", "HeLa", [record(f"a{index}")])
+        for index in range(2)
+    ]
+    for project in projects:
+        object.__setattr__(
+            project, "experiment_metadata", ExperimentMetadata(project="adaptive milling")
+        )
+    lookup = ag.project_lookup(projects)
+    records = [
+        image for project in projects for image in project.image_records
+    ]
+
+    directories = ag.count_by(records, ag.by_autolamella_project(lookup))
+    wider = ag.count_by(records, ag.by_project(lookup))
+
+    assert set(directories) == {"dir-0", "dir-1"}
+    assert wider == {"adaptive milling": 2}
+
+
+def test_the_image_export_names_both_projects_without_colliding(tmp_path: Path):
+    """project_project said nothing the shorter name does not, and there is
+    nothing left to disambiguate it from now the directory is qualified."""
+    from am_segmentation_manager.metadata import ExperimentMetadata
+
+    project = make_project("dir", "dir", "HeLa", [record("a")])
+    object.__setattr__(
+        project, "experiment_metadata",
+        ExperimentMetadata(sample="HeLa", project="adaptive milling"),
+    )
+    output = tmp_path / "images.csv"
+    export_image_metadata_csv(
+        project.image_records, tmp_path, output,
+        include_headers=False, projects=ag.project_lookup([project]),
+    )
+
+    row = next(iter(csv.DictReader(output.open(encoding="utf-8"))))
+
+    assert row["autolamella_project"] == "dir"
+    assert row["project"] == "adaptive milling"
+    assert row["project_sample"] == "HeLa"
+    assert "project_project" not in row
+
+
 def test_the_project_export_has_no_duplicate_columns(tmp_path: Path):
-    """Regression: the identity column and a descriptive field are both called
-    "project", so DictWriter let one silently win and the identity came out
-    blank. The identity keeps the plain name; the descriptive field is the one
-    qualified."""
+    """The directory and the wider project it belongs to are different facts,
+    and both are columns here. Sharing a name let DictWriter pick a winner
+    silently, and the identity came out blank."""
     projects = [make_project("p", "p", "HeLa", [record("a")])]
     output = export_project_metadata_csv(projects, tmp_path, tmp_path / "p.csv")
 
@@ -531,9 +585,9 @@ def test_the_project_export_has_no_duplicate_columns(tmp_path: Path):
 
     assert len(header) == len(set(header))
     row = next(iter(csv.DictReader(output.open(encoding="utf-8"))))
-    assert row["project"] == "p"
+    assert row["autolamella_project"] == "p"
+    assert "project" in row
     assert row["sample"] == "HeLa"
-    assert "metadata_project" in header
 
 
 def test_the_project_export_records_which_file_supplied_each_value(tmp_path: Path):

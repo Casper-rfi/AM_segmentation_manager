@@ -1789,25 +1789,16 @@ def test_a_value_not_in_the_list_can_still_be_typed(metadata_panel):
     assert box.count() == 2
 
 
-def test_the_folder_name_is_offered_but_not_filled_in(metadata_panel):
-    """Pre-filling it would save a guess nobody looked at as though someone
-    had; the placeholder shows it and the button applies it."""
+def test_the_wider_project_is_a_suggestion_box_like_the_rest(metadata_panel):
+    """It names the project several datasets belong to, so it repeats across
+    them -- which is what the value lists are for. It used to carry a button
+    copying the directory name in, which is a different fact entirely."""
+    from qtpy.QtWidgets import QComboBox
+
     editor = metadata_panel.editors["project"]
 
-    assert editor.placeholderText() == "described (folder name)"
-    assert editor_text(editor) == ""
-    assert metadata_panel._edits() == {}
-
-
-def test_the_folder_button_follows_the_editing_guard(metadata_panel):
-    assert metadata_panel.folder_button.isEnabled() is False
-
-    metadata_panel.enable.setChecked(True)
-    assert metadata_panel.folder_button.isEnabled() is True
-
-    metadata_panel.folder_button.click()
-    assert editor_text(metadata_panel.editors["project"]) == "described"
-    assert metadata_panel._edits() == {"project": "described"}
+    assert isinstance(editor, QComboBox)
+    assert not hasattr(metadata_panel, "folder_button")
 
 
 def test_the_list_says_which_projects_still_need_describing(metadata_panel):

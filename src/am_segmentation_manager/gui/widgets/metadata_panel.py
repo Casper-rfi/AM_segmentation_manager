@@ -246,20 +246,6 @@ class MetadataPanel(QWidget):
         self.init_button.setEnabled(editable)
         self.compress_button.setEnabled(editable)
 
-    def _build_folder_button(self) -> QPushButton:
-        """Return the button that copies the project's own directory name across.
-
-        A button rather than a pre-filled box: the directory name is a guess,
-        and one nobody looked at would otherwise be saved as though someone had.
-        """
-        self.folder_button = QPushButton("Use folder name")
-        self.folder_button.setToolTip(
-            "Copy the name of this project's own folder -- the one holding its "
-            "YAML files -- into the box. Nothing is written until you save."
-        )
-        self.folder_button.clicked.connect(self._use_folder_name)
-        return self.folder_button
-
     def _build_fields(self) -> QWidget:
         box = QGroupBox("Metadata")
         column = QVBoxLayout(box)
@@ -292,8 +278,6 @@ class MetadataPanel(QWidget):
             row = QHBoxLayout()
             row.addWidget(editor, stretch=1)
             row.addWidget(note)
-            if field == "project":
-                row.addWidget(self._build_folder_button())
             holder = QWidget()
             holder.setLayout(row)
             form.addRow(caption, holder)
@@ -381,23 +365,7 @@ class MetadataPanel(QWidget):
         for editor in self.editors.values():
             editor.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
-        self._update_folder_button()
         self._update_collection_buttons()
-
-    def _update_folder_button(self) -> None:
-        """Offer the folder name only when editing is on and there is one."""
-        self.folder_button.setEnabled(
-            self.controller.editing_enabled
-            and self.controller.suggested_project_name() is not None
-        )
-
-    def _use_folder_name(self) -> None:
-        """Put the project's directory name in the project box, ready to save."""
-        suggestion = self.controller.suggested_project_name()
-        if suggestion is None:
-            self.status.setText("No project selected")
-            return
-        set_editor_text(self.editors["project"], suggestion)
 
     def _edits(self) -> dict[str, str | None]:
         """Return the fields whose editor differs from the resolved value.
@@ -463,15 +431,6 @@ class MetadataPanel(QWidget):
             note.setText("")
             note.setToolTip("")
 
-    def _show_folder_suggestion(self) -> None:
-        """Show the project's directory name behind an empty box, and offer it."""
-        suggestion = self.controller.suggested_project_name()
-        editor = self.editors["project"]
-        editor.setPlaceholderText(
-            "unset" if suggestion is None else f"{suggestion} (folder name)"
-        )
-        self._update_folder_button()
-
     def refresh(self) -> None:
         """Redraw the fields from the controller."""
         self._loading = True
@@ -488,7 +447,6 @@ class MetadataPanel(QWidget):
                     editor.addItems(["", *self.controller.suggestions(field)])
                 set_editor_text(editor, value)
                 self._show_note(field, sources.get(field, ""), field in outstanding)
-            self._show_folder_suggestion()
             # Saving is exactly when a project stops being incomplete, so the
             # marks in the list must not be left describing the state before it.
             self._show_completeness(self.controller.project_summaries())

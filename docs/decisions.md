@@ -262,12 +262,20 @@ place.
   invisibly. Lamellae in one *project* do share a sample, which is why the project is the
   right level for this metadata.
 - **The Add data tab suggests, and a suggestion is never a value.** It offers the values
-  other projects use for a field, and the name of the folder a project's own YAML files sit
-  in for `project`. Both are computed in the controller and reach a file only when the user
-  saves, so `build_experiment_metadata` still resolves from the two files and nothing else —
-  the rule above is intact. The folder read is the project's own, never a parent, and is
-  preferred over `experiment.yaml`'s `name` because a project copied elsewhere keeps the
-  recorded name of the first location.
+  other projects already use for a field, computed in the controller and reaching a file only
+  when the user saves — so `build_experiment_metadata` still resolves from the two files and
+  nothing else, and the rule above is intact. `project` is on that list precisely because it
+  names something several datasets share, which is how a collection ends up holding two
+  spellings of one project.
+- **`project` names the wider project; the directory is the `autolamella_project`.** They are
+  different facts and the software held both under one word, which showed as a
+  `project_project` column in one export and a `metadata_project` in another — two
+  conventions for one collision. The directory is what the scanner indexes and Curate lists,
+  so it is qualified wherever it is written; the metadata field keeps the plain name, since
+  that is what somebody filling the form means by it. Nothing derives one from the other:
+  the folder name is a fact about storage, and which project a dataset was collected for is
+  a question only a person can answer. The Add data tab used to offer the folder name for
+  that field, which is where the confusion was visible.
 - **Every image header carries settings for both beams, and some values exist for only one of
   them.** `microscope_state.*` describes the beam that took the image; `system.*` holds both
   beams' configured defaults, so reading `system.ion.voltage` from an SEM image yields the

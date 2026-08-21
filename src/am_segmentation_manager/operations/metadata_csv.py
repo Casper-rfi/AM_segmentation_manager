@@ -26,9 +26,16 @@ from .selection import current_state
 
 logger = logging.getLogger(__name__)
 
+#: The column naming the project *directory* an image sits in -- the thing the
+#: Curate tab lists and the scanner indexes. Qualified, because the project
+#: metadata has a field called ``project`` meaning the wider project the work
+#: belongs to, and one collection's directories usually all belong to one of
+#: those. Named once here because four files carry it.
+PROJECT_IDENTITY_COLUMN = "autolamella_project"
+
 #: Columns identifying where an image sits, before any measured values.
 IDENTITY_COLUMNS = (
-    "project", "lamella", "stage", "modality", "variant",
+    PROJECT_IDENTITY_COLUMN, "lamella", "stage", "modality", "variant",
     "state", "label_state", "label_shared", "image", "label",
 )
 
@@ -37,22 +44,22 @@ METADATA_COLUMNS = tuple(
     field.name for field in dataclass_fields(ImageMetadata) if field.name != "source"
 )
 
+def image_metadata_column(field: str) -> str:
+    """Return the per-image CSV's column for a project metadata *field*.
+
+    Prefixed, because these repeat a project's values on every image row and a
+    reader has to be able to tell them from the image's own header. The field
+    already called ``project`` is left unprefixed: ``project_project`` says
+    nothing the shorter name does not, and there is nothing left to
+    disambiguate it from now the directory is
+    :data:`PROJECT_IDENTITY_COLUMN`.
+    """
+    return field if field == "project" else f"project_{field}"
+
+
 #: Project-level columns repeated on every image row, so one file answers a
 #: question without a join.
-PROJECT_COLUMNS = tuple(f"project_{name}" for name in DESCRIPTIVE_FIELDS)
-
-
-#: One descriptive field is itself called ``project`` -- "the wider project
-#: this belongs to" -- which collides with the identity column of the same
-#: name. The identity keeps the plain name, since that is what ``project``
-#: means when reading a row; the descriptive field is the one qualified.
-#: Only that field is renamed, so the common columns stay short.
-DESCRIPTIVE_COLUMN_OVERRIDES = {"project": "metadata_project"}
-
-
-def _descriptive_column(field: str) -> str:
-    """Return the CSV column a descriptive metadata field is written to."""
-    return DESCRIPTIVE_COLUMN_OVERRIDES.get(field, field)
+PROJECT_COLUMNS = tuple(image_metadata_column(name) for name in DESCRIPTIVE_FIELDS)
 
 
 def image_rows(
@@ -69,7 +76,7 @@ def image_rows(
     for record in records:
         label = find_matching_label(record)
         row: dict[str, object] = {
-            "project": record.project,
+            PROJECT_IDENTITY_COLUMN: record.project,
             "lamella": record.lamella,
             "stage": record.stage,
             "modality": record.modality,
@@ -90,9 +97,9 @@ def image_rows(
         resolved = project.experiment_metadata if project is not None else None
         for name in DESCRIPTIVE_FIELDS:
             value = getattr(resolved, name, None) if resolved is not None else None
-            row[f"project_{name}"] = "" if value is None else value
+            row[image_metadata_column(name)] = "" if value is None else value
         if project is not None:
-            row["project"] = project.key
+            row[PROJECT_IDENTITY_COLUMN] = project.key
 
         rows.append(row)
     return rows
@@ -152,7 +159,7 @@ def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str
             for record in stage.images
         ]
         row: dict[str, object] = {
-            "project": project.key,
+            PROJECT_IDENTITY_COLUMN: project.key,
             "name": project.name,
             "path": make_path_relative(project.path, start_path),
             "lamellae": len(project.lamellae),
@@ -168,12 +175,12 @@ def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str
         }
         for name in DESCRIPTIVE_FIELDS:
             value = getattr(resolved, name, None) if resolved is not None else None
-            row[_descriptive_column(name)] = "" if value is None else value
+            row[name] = "" if value is None else value
             # Which file supplied it. Bookkeeping-looking, but it is how you
             # answer "why does this project say the sample is X" without
             # opening two YAML files.
             source = resolved.sources.get(name) if resolved is not None else None
-            row[f"{_descriptive_column(name)}_source"] = source.name if source else ""
+            row[f"{name}_source"] = source.name if source else ""
         row["todo_fields"] = " ".join(resolved.todo_fields) if resolved else ""
         rows.append(row)
     return rows
@@ -186,12 +193,13 @@ def export_project_metadata_csv(
     what it holds."""
     rows = project_rows(projects, start_path)
     columns = [
-        "project", "name", "path", "lamellae", "stages",
+        PROJECT_IDENTITY_COLUMN, "name", "path", "lamellae", "stages",
         "sem_images", "fib_images", "corrected", "deselected",
     ]
+    # Unprefixed here: every column in this file is about one project already,
+    # so "project_sample" would be saying it twice.
     for name in DESCRIPTIVE_FIELDS:
-        column = _descriptive_column(name)
-        columns.extend([column, f"{column}_source"])
+        columns.extend([name, f"{name}_source"])
     columns.append("todo_fields")
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -258,7 +266,9 @@ def measurement_rows(
         label = measurement.path if measurement is not None else find_matching_label(record)
         project = projects.get(record.image_path)
         row: dict[str, object] = {
-            "project": project.key if project is not None else record.project,
+            PROJECT_IDENTITY_COLUMN: (
+                project.key if project is not None else record.project
+            ),
             "lamella": record.lamella,
             "stage": record.stage,
             "modality": record.modality,
@@ -337,7 +347,7 @@ def export_label_measurements_csv(
     measured = [record for record in records if record.image_path in measurements]
     rows = measurement_rows(measured, measurements, config, start_path, projects)
     columns = [
-        "project", "lamella", "stage", "modality", "variant",
+        PROJECT_IDENTITY_COLUMN, "lamella", "stage", "modality", "variant",
         "state", "label_shared", "image", "label",
         *(area_column(config, index) for index in config.classes_to_measure),
         *MEASUREMENT_COLUMNS,
@@ -365,7 +375,8 @@ def export_lamella_quantification_csv(
     summaries = list(summaries)
     classes = config.classes_to_measure
     columns = [
-        "project", "lamella", "labels", "measured", "empty", "unmeasurable",
+        PROJECT_IDENTITY_COLUMN, "lamella", "labels", "measured", "empty",
+        "unmeasurable",
         "has_crack", "cracked_labels", "cracks",
         "crack_area_um2", "largest_crack_um2",
         *(area_column(config, index) for index in classes),
@@ -374,7 +385,7 @@ def export_lamella_quantification_csv(
     rows = []
     for summary in summaries:
         row: dict[str, object] = {
-            "project": summary.project,
+            PROJECT_IDENTITY_COLUMN: summary.project,
             "lamella": summary.lamella,
             "labels": summary.labels,
             "measured": summary.measured,
