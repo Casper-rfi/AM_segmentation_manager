@@ -149,6 +149,9 @@ class ImagePanel(QWidget):
         # -- the views -----------------------------------------------------
         self.pair = LinkedImageViews("image", "image + label")
         self.plot_view = ImageView()
+        # Plots are held as rendered, which is several times the pane, so the
+        # view is always minifying one. Acquisitions keep nearest neighbour.
+        self.plot_view.set_smooth_scaling(True)
         self.stack = QStackedWidget()
         self.stack.addWidget(self.pair)
         self.stack.addWidget(self.plot_view)
@@ -263,7 +266,7 @@ class ImagePanel(QWidget):
         at half the time.
         """
         if self.stack.currentWidget() is self.plot_view:
-            self.plot_view.fit_native()
+            self.plot_view.fit()
         else:
             self.pair.fit()
 
@@ -313,13 +316,10 @@ class ImagePanel(QWidget):
             self.plot_view.clear()
             self._set_badges([(f"could not read plot: {frame_plot.error}", "error")])
             return
-        # Prepared to the pane's physical pixel size, so show it one pixel per
-        # physical pixel rather than letting the view rescale it.
-        self.plot_view.set_array(
-            frame_plot.plot,
-            device_pixel_ratio=self.plot_view.devicePixelRatioF(),
-            native=True,
-        )
+        # As rendered, and fitted: reducing it on read put a ceiling on what
+        # zooming in could ever show, which is what these figures are looked at
+        # closely for.
+        self.plot_view.set_array(frame_plot.plot)
         self._set_badges([])
 
     def show_loading(self) -> None:

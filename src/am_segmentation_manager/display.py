@@ -27,10 +27,6 @@ logger = logging.getLogger(__name__)
 #: Longest edge, in pixels, that acquisitions are reduced to for display.
 DEFAULT_MAX_EDGE = 1024
 
-#: Longest edge for summary plots. Larger than for images because plots contain
-#: axis labels and annotations that become unreadable when reduced too far.
-DEFAULT_PLOT_MAX_EDGE = 1600
-
 #: Opacity of the label colour drawn over the image.
 DEFAULT_ALPHA = 0.4
 
@@ -455,18 +451,17 @@ def prepare_display_image(
 def prepare_plot(
     plot_path: Path,
     *,
-    max_size: tuple[int, int] = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE),
+    max_size: tuple[int, int] | None = None,
 ) -> np.ndarray:
-    """Read a summary plot as an RGB array, reduced to display size.
-
-    Plots are rendered at several thousand pixels across, so reducing them on
-    read matters more here than for the images.
+    """Read a summary plot as an RGB array, as rendered unless bounded.
 
     Args:
         plot_path: The plot PNG to read.
-        max_size: ``(width, height)`` to fit within, in **physical screen
-            pixels**, not logical ones. Either mistake resamples the plot twice
-            and blurs its small text.
+        max_size: ``(width, height)`` to fit within, or None to read it whole.
+            A plot carries axis labels and annotations that exist only at the
+            resolution it was rendered at, so reducing it on read puts a
+            ceiling on what looking closely can ever show; a caller drawing one
+            into a fixed space says so here.
 
     Returns:
         An ``(H, W, 3)`` uint8 RGB array.
@@ -477,4 +472,5 @@ def prepare_plot(
         OSError: If the plot exists but cannot be decoded.
     """
     require_image_stack("Displaying plots")
-    return fit_within(to_rgb(read_color_array(plot_path)), max_size)
+    plot = to_rgb(read_color_array(plot_path))
+    return plot if max_size is None else fit_within(plot, max_size)

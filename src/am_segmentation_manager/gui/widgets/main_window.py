@@ -1644,7 +1644,6 @@ class CurationWindow(QMainWindow):
         self.image_panel.set_status(self._status_text())
 
         if self.controller.mode == "plot":
-            self._match_plot_size_to_pane()
             if frame.plot_path is None:
                 self.image_panel.show_plot(None)
             elif self.controller.cache.cached_plot(self.controller.frame_position) is None:
@@ -1684,24 +1683,6 @@ class CurationWindow(QMainWindow):
         if metadata is None:
             return {}
         return dict(metadata.variants)
-
-    def _match_plot_size_to_pane(self) -> None:
-        """Prepare plots at the size they are actually shown at.
-
-        Reported in *physical* pixels. On a high-resolution display a widget
-        1070 logical pixels wide occupies 2140 real ones, and a plot prepared
-        to the logical size would be magnified to fill it -- which no choice of
-        filter can undo.
-        """
-        view = self.image_panel.plot_view
-        viewport = view.viewport().rect()
-        if viewport.isEmpty():
-            return
-        ratio = view.devicePixelRatioF()
-        size = (round(viewport.width() * ratio), round(viewport.height() * ratio))
-        if self.controller.cache.set_plot_max_size(size):
-            # The prepared plots were the wrong size and have been discarded.
-            self._schedule_loads()
 
     def _status_text(self) -> str:
         frame = self.controller.frame

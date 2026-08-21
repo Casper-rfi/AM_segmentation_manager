@@ -1572,61 +1572,24 @@ def test_a_report_dialog_shows_its_lines_and_asks_only_when_it_can_act(qt_app):
 # Plots are prepared at the size they are shown at
 # ---------------------------------------------------------------------------
 
-def test_plot_view_sets_the_cache_to_the_pane_size(qt_app, window):
+def test_a_plot_is_held_at_the_size_it_was_rendered(qt_app, window):
+    """The fixture writes 1400x2100. Reducing it on read would put a ceiling on
+    what zooming into the figure could ever show."""
     window._set_mode("plot")
     _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
 
-    view = window.image_panel.plot_view
-    pane = view.viewport().rect()
-    ratio = view.devicePixelRatioF()
-    assert window.controller.cache.plot_max_size == (
-        round(pane.width() * ratio), round(pane.height() * ratio),
-    )
+    assert window.controller.cache.plot(0).plot.shape[:2] == (1400, 2100)
 
 
-def test_plot_is_not_resampled_again_by_the_view(qt_app, window):
-    """The whole point of matching the pane: the view scales by about 1.0."""
-    window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
-
-    assert window.image_panel.plot_view.transform().m11() == pytest.approx(1.0, abs=0.05)
-
-
-def test_fit_reaches_the_plot_view(qt_app, window):
-    """The key was bound to the image pair, so in the plot view it fitted two
-    panes nobody was looking at and left the plot wherever it had been zoomed."""
-    window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
-    view = window.image_panel.plot_view
-    view.zoom_by(1.25)
-    assert view.transform().m11() != pytest.approx(1.0, abs=0.05)
-
-    window.image_panel.fit()
-
-    assert view.transform().m11() == pytest.approx(1.0, abs=0.05)
-
-
-def test_fitting_a_plot_keeps_it_unresampled(qt_app, window):
-    """Fit on a plot means one array pixel per physical pixel, not fitInView:
-    the array was prepared for this pane, and rescaling it blurs its text."""
+def test_a_plot_opens_fitted_rather_than_at_full_size(qt_app, window):
+    """Held at 2100 across in a pane a fraction of that, so the whole figure
+    has to be brought into view before anything else."""
     window._set_mode("plot")
     _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
     view = window.image_panel.plot_view
 
-    view.fit_native()
-
-    assert view.transform().isIdentity()
-
-
-def test_fit_reaches_the_image_panes_in_the_image_views(qt_app, window):
-    window._set_mode("sem")
-    _settle(qt_app, lambda: not window.image_panel.pair.left._item.pixmap().isNull())
-    window.image_panel.pair.left.zoom_by(1.25)
-    zoomed = window.image_panel.pair.left.transform().m11()
-
-    window.image_panel.fit()
-
-    assert window.image_panel.pair.left.transform().m11() != zoomed
+    assert view.transform().m11() < 1.0
+    assert view.transform().m11() == pytest.approx(view.fit_scale(), rel=0.05)
 
 
 def test_stepping_through_plots_finds_them_ready(qt_app, window):

@@ -427,7 +427,9 @@ def test_missing_image_raises(tmp_path):
         prepare_display_image(tmp_path / "absent.tif")
 
 
-def test_prepare_plot_reduces_and_drops_alpha(tmp_path):
+def test_prepare_plot_drops_alpha_and_keeps_the_rendered_size(tmp_path):
+    """Read whole by default: the annotations on these figures exist only at
+    the resolution they were rendered at."""
     import cv2
 
     plot = np.zeros((3000, 4500, 4), dtype=np.uint8)
@@ -438,7 +440,7 @@ def test_prepare_plot_reduces_and_drops_alpha(tmp_path):
     result = prepare_plot(plot_path)
 
     assert result.ndim == 3 and result.shape[2] == 3
-    assert max(result.shape[:2]) == 1600
+    assert result.shape[:2] == (3000, 4500)
     assert result.dtype == np.uint8
 
 

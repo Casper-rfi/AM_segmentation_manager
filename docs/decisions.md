@@ -372,6 +372,21 @@ place.
   two-pixel border of its own that scaling to the computed floor would crop, so "zoomed all
   the way out" and "fitted" are the same picture rather than differing by the outermost
   pixels of the frame.
+- **A summary plot is held as it was rendered, and the view scales it.** These figures carry
+  axis labels and annotations that exist only at the resolution they were written at —
+  4500x3000 in the reference collection — so reducing one on read put a ceiling on what
+  looking closely could ever show, which is the whole reason to open a plot. Two things
+  follow. `QGraphicsPixmapItem` overrides the view's render hint with its own transformation
+  mode, whose default is nearest neighbour: the plot view has to ask for smooth scaling or
+  the pane drops one-pixel rules rather than averaging them, measurably and visibly.
+  Acquisitions keep nearest, because zoomed in on a label that is what shows where one pixel
+  ends and the next begins.
+- **Read-ahead for plots is a neighbourhood, not the lamella.** Near 40 MB each, only a
+  handful fit the memory budget, so asking for a whole lamella evicted the frame being looked
+  at to make room for one twenty steps away — the cache working against itself. The
+  proofreading view reads whole acquisitions on a radius of one and steps smoothly, which is
+  the same trade made twice. `MIN_PLOT_LIMIT` is tied to `PLOT_RADIUS` so the cache can never
+  hold less than the read-ahead asks for; a test holds the two together.
 - **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under PyQt5
   it returns the proportional `.AppleSystemUIFont` while reporting the family it was asked
   for, so a table padded into columns comes out unaligned with nothing saying why. A style

@@ -154,6 +154,23 @@ class ImageView(QGraphicsView):
             else:
                 self.fit()
 
+    def set_smooth_scaling(self, smooth: bool) -> None:
+        """Choose how the pixmap is resampled when it is not drawn 1:1.
+
+        ``QGraphicsPixmapItem`` overrides the view's render hint with its own
+        transformation mode, whose default is nearest-neighbour -- so a pane
+        showing something much larger than itself drops pixels rather than
+        averaging them, which on a figure full of one-pixel rules and small
+        text is the difference between reading it and not.
+
+        Off for acquisitions: zoomed *in* on a label, nearest neighbour is what
+        shows where one pixel ends and the next begins, which is the whole
+        point of looking that closely.
+        """
+        self._item.setTransformationMode(
+            Qt.SmoothTransformation if smooth else Qt.FastTransformation
+        )
+
     def set_image_shown(self, shown: bool) -> None:
         """Show or hide the image, keeping what it holds and where it sits.
 
@@ -202,23 +219,6 @@ class ImageView(QGraphicsView):
             ),
             Qt.KeepAspectRatio,
         )
-        self.zoomed.emit()
-
-    def fit_native(self) -> None:
-        """Show one array pixel per physical pixel, or fit if that overflows.
-
-        What a plot wants from "fit": the array was prepared for this pane, so
-        an identity transform *is* fit, and it is the only scale that does not
-        resample text rendered to be read. A pane that has shrunk since the
-        array was prepared is the exception, and there seeing the whole figure
-        matters more than the last of its sharpness.
-        """
-        if self._item.pixmap().isNull():
-            return
-        if self.fit_scale() < 1.0:
-            self.fit()
-            return
-        self.resetTransform()
         self.zoomed.emit()
 
     def fit_scale(self) -> float:

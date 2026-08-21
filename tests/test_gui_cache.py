@@ -343,28 +343,9 @@ def test_ensure_performs_the_requested_work():
 # Plot sizing and whole-lamella preparation
 # ---------------------------------------------------------------------------
 
-def test_plot_size_change_discards_prepared_plots():
-    """A plot prepared at the wrong size would be resampled again by the view."""
-    cache, _, plot_loader = make_cache(3)
-    cache.plot_max_size = (1600, 1600)
-    cache.plot(0)
-    assert cache.cached_plot(0) is not None
-
-    assert cache.set_plot_max_size((1070, 800)) is True
-    assert cache.cached_plot(0) is None
-
-
-def test_small_plot_size_changes_are_ignored():
-    """Dragging a window edge must not keep throwing the lamella away."""
-    cache, _, _ = make_cache(3)
-    cache.plot_max_size = (1000, 1000)
-    cache.plot(0)
-
-    assert cache.set_plot_max_size((1050, 1020)) is False
-    assert cache.cached_plot(0) is not None
-
-
-def test_plot_size_is_passed_to_the_real_loader(tmp_path):
+def test_a_plot_is_read_at_the_size_it_was_rendered(tmp_path):
+    """Reducing it on read puts a ceiling on what zooming in can ever show,
+    and these figures are looked at closely for their annotations."""
     import pytest
 
     pytest.importorskip("cv2")
@@ -381,48 +362,65 @@ def test_plot_size_is_passed_to_the_real_loader(tmp_path):
         LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0,
                      plot_path=plot_path)
     ])
-    cache.set_plot_max_size((600, 600))
 
-    assert max(cache.plot(0).plot.shape[:2]) == 600
+    assert cache.plot(0).plot.shape[:2] == (900, 1200)
 
 
-def test_whole_lamella_of_plots_can_be_held():
-    """Holding an arrow key outruns any per-plot loading, so all are kept."""
-    cache, _, _ = make_cache(40)
+def test_the_cache_always_holds_a_whole_neighbourhood_of_plots():
+    """What the read-ahead asks for has to fit what the cache keeps, or a step
+    forward evicts the frame being looked at to make room for one behind it."""
+    from am_segmentation_manager.gui.cache import MIN_PLOT_LIMIT, PLOT_RADIUS
 
-    for index in range(40):
-        cache.plot(index)
+    assert MIN_PLOT_LIMIT > 2 * PLOT_RADIUS + 1
 
-    assert cache.cached_plot(0) is not None
-    assert cache.cached_plot(39) is not None
+
+def test_plots_are_read_ahead_around_the_frame_rather_than_wholesale():
+    """They are held as rendered -- tens of megabytes each -- so a long lamella
+    cannot be kept, and asking for one only costs the neighbours."""
+    from am_segmentation_manager.gui.cache import PLOT_RADIUS, prefetch_order
+
+    wanted = prefetch_order(20, total=61, radius=PLOT_RADIUS)
+
+    assert len(wanted) == 2 * PLOT_RADIUS + 1
+    assert wanted[0] == 20
 
 
 def test_plot_limit_follows_the_memory_budget():
-    """A plot costs four times as much on a high-resolution display."""
+    """Their size belongs to whatever rendered them, so a fixed count would
+    either waste memory on small figures or exhaust it on large ones."""
     from am_segmentation_manager.gui.cache import (
         MAX_PLOT_LIMIT,
         MIN_PLOT_LIMIT,
-        _plot_limit_for,
+        _plot_limit_for_bytes,
     )
 
-    ordinary = _plot_limit_for(1068, 836)
-    high_resolution = _plot_limit_for(2136, 1672)
+    modest = _plot_limit_for_bytes(1068 * 836 * 3)
+    large = _plot_limit_for_bytes(3200 * 2400 * 3)
 
-    assert high_resolution < ordinary
-    # Still enough to hold a normal lamella at either resolution.
-    assert high_resolution >= 25
-    assert MIN_PLOT_LIMIT <= high_resolution <= MAX_PLOT_LIMIT
+    assert large < modest
+    assert MIN_PLOT_LIMIT <= large <= MAX_PLOT_LIMIT
 
 
-def test_plot_limit_is_applied_when_the_size_changes():
-    cache, _, _ = make_cache(3)
+def test_the_limit_is_measured_from_a_plot_that_was_read(tmp_path):
+    """Measured rather than assumed: the package does not choose how large
+    these are, so it finds out by reading one."""
+    import pytest
 
-    cache.set_plot_max_size((2136, 1672))
+    pytest.importorskip("cv2")
+    import cv2
+    import numpy as np
 
-    assert cache._plots.max_entries == _plot_limit()
+    from am_segmentation_manager.frames import LamellaFrame
+    from am_segmentation_manager.gui.cache import _plot_limit_for_bytes
 
+    plot_path = tmp_path / "img_000_plot.png"
+    cv2.imwrite(str(plot_path), np.zeros((1800, 2400, 3), dtype=np.uint8))
+    cache = FrameCache()
+    cache.set_frames([
+        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0,
+                     plot_path=plot_path)
+    ])
 
-def _plot_limit():
-    from am_segmentation_manager.gui.cache import _plot_limit_for
+    cache.plot(0)
 
-    return _plot_limit_for(2136, 1672)
+    assert cache._plots.max_entries == _plot_limit_for_bytes(1800 * 2400 * 3)
