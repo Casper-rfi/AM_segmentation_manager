@@ -82,9 +82,9 @@ cannot avoid by being careful.
 
 **This environment does the whole workflow**, window included, so predicting
 does not mean switching environments mid-task. The curation environment is the
-lighter one for anyone who never predicts; it is not the more capable one. Note
-that predicting is a command — `am-seg predict` — and not yet an action in the
-window.
+lighter one for anyone who never predicts; it is not the more capable one.
+Predicting is a button on the Curate tab as well as `am-seg predict`, so
+running the window from this environment is what makes it available.
 
 pip's default torch build is CUDA-enabled on Linux and Windows and CPU/MPS on
 macOS. To choose another, set an index URL first:
