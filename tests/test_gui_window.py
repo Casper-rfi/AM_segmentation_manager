@@ -2070,3 +2070,90 @@ def test_right_clicking_a_project_asks_for_its_path(metadata_panel):
 
     assert rows == [1]
     assert metadata_panel.controller.project_path(1).is_absolute()
+
+
+# ---------------------------------------------------------------------------
+# Choosing what to predict on
+# ---------------------------------------------------------------------------
+#
+# Developed on a Mac, which has MPS and a CPU. A workstation has several CUDA
+# devices and no MPS, so nothing here may assume the machine it runs on.
+
+def test_the_device_box_offers_what_every_machine_has(window):
+    """Before torch is loaded, the only honest answers are "the best one" and
+    "the one everything has". Asking torch costs an import, which a dropdown
+    may not spend."""
+    offered = [
+        window.operations_panel.device_box.itemText(index)
+        for index in range(window.operations_panel.device_box.count())
+    ]
+
+    assert offered == ["auto", "cpu"]
+    assert window.operations_panel.device() == "auto"
+
+
+def test_the_device_box_takes_the_machines_own_devices(window):
+    """A CUDA workstation, as torch would report it."""
+    window.operations_panel.show_devices(("cuda:0", "cuda:1", "cpu"))
+
+    offered = [
+        window.operations_panel.device_box.itemText(index)
+        for index in range(window.operations_panel.device_box.count())
+    ]
+
+    assert offered == ["auto", "cuda:0", "cuda:1", "cpu"]
+
+
+def test_a_device_this_package_has_never_seen_can_be_typed(window):
+    """resolve_device passes a named device through unexamined, so support for
+    a new accelerator is not something anyone has to wait for."""
+    window.operations_panel.device_box.setCurrentText("xpu:0")
+
+    assert window.operations_panel.device() == "xpu:0"
+
+
+def test_filling_the_box_keeps_what_was_chosen(window):
+    """It is filled when the box is opened, which must not undo a choice made
+    before the machine's devices were known."""
+    window.operations_panel.set_device("cuda:1")
+
+    window.operations_panel.show_devices(("cuda:0", "cuda:1", "cpu"))
+
+    assert window.operations_panel.device() == "cuda:1"
+
+
+def test_the_chosen_device_reaches_the_run(window, monkeypatch, tmp_path: Path):
+    """Every prediction from the window used to be 'auto'."""
+    seen: list[str] = []
+    monkeypatch.setattr(
+        window.operations_controller, "predict",
+        lambda records, weights, device="auto", **kwargs: seen.append(device),
+    )
+    monkeypatch.setattr(
+        "am_segmentation_manager.ml.environment.ml_stack_problems", lambda: []
+    )
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: work(),
+    )
+    window.controller.editing_enabled = True
+    window.operations_panel.set_device("cpu")
+    weights = tmp_path / "m.pth"
+    weights.write_bytes(b"x")
+
+    window._predict(str(weights))
+
+    assert seen == ["cpu"]
+    assert window.settings.value("predict_device", "", type=str) == "cpu"
+
+
+def test_predicting_stays_off_where_it_was_never_available(window):
+    """Whether the inference stack is installed is asked once. Unlocking the
+    buttons after an operation must not answer it again by accident."""
+    window.operations_panel.set_prediction_available(False)
+
+    window.operations_panel.set_busy(True)
+    window.operations_panel.set_busy(False)
+
+    assert not window.operations_panel.predict_button.isEnabled()
+    assert not window.operations_panel.device_box.isEnabled()

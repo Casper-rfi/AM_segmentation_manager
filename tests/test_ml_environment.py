@@ -99,3 +99,33 @@ def test_cpu_is_always_offered_and_offered_last():
 def test_preprocessing_returns_a_batched_rgb_tensor_preserving_aspect_ratio():
     """A 256x384 image at image_size=512 keeps its 2:3 shape, not padded square."""
     assert ml_env.verify_preprocessing(device="cpu", image_size=512) == (1, 3, 341, 512)
+
+
+def test_devices_are_not_discovered_at_the_cost_of_an_import(monkeypatch):
+    """The window offers a device to predict on and must not spend seconds
+    importing torch to build a dropdown -- the same reason ml_stack_present
+    locates the modules rather than loading them."""
+    import sys
+
+    from am_segmentation_manager.ml.environment import discovered_devices
+
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+
+    assert discovered_devices() == ()
+
+
+def test_devices_are_reported_once_torch_is_loaded(monkeypatch):
+    """Pressing Predict loads it, so the box fills in from then on -- with
+    whatever the machine has, which is several CUDA devices on a workstation
+    and an MPS one on a Mac."""
+    import sys
+    import types
+
+    from am_segmentation_manager.ml import environment
+
+    monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setattr(
+        environment, "available_devices", lambda: ("cuda:0", "cuda:1", "cpu")
+    )
+
+    assert environment.discovered_devices() == ("cuda:0", "cuda:1", "cpu")

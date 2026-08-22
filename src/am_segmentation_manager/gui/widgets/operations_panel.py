@@ -16,6 +16,7 @@ from pathlib import Path
 
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import (
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -25,11 +26,21 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .common import ALL_FILES_FILTER, choose_open_file
+from .common import ALL_FILES_FILTER, caption_for, choose_open_file
 from .theme import BADGE_STYLES
 
 #: Weights files, as PyTorch writes them.
 MODEL_FILTER = "Model weights (*.pth *.pt)"
+
+#: What the device box offers before torch has been asked. "auto" takes the
+#: most capable device the machine has, and "cpu" is the one every machine has;
+#: what lies between them differs per machine -- several CUDA devices on a
+#: workstation, an MPS one on a Mac -- so the rest is filled in from torch once
+#: asking is free. The box is editable because
+#: :func:`~am_segmentation_manager.ml.environment.resolve_device` passes a named
+#: device through unexamined, so a device this package has never seen can be
+#: typed rather than waiting for support.
+BASE_DEVICES = ("auto", "cpu")
 
 
 class OperationsPanel(QWidget):
@@ -37,6 +48,10 @@ class OperationsPanel(QWidget):
 
     #: Emitted with the chosen weights file when the user asks to predict.
     predict_requested = Signal(str)
+    #: Emitted when the device box is opened, so the window can fill it in if
+    #: torch is loaded. The widget does not ask torch itself: importing it to
+    #: populate a dropdown is what this whole arrangement exists to avoid.
+    devices_requested = Signal()
     #: Emitted when the user asks to convert the selection's predictions.
     convert_requested = Signal()
     #: Emitted when the user asks to repair inconsistent groups.
@@ -45,6 +60,7 @@ class OperationsPanel(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._last_model_directory: Path | None = None
+        self._prediction_available = True
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -80,6 +96,23 @@ class OperationsPanel(QWidget):
         self.browse_button.clicked.connect(self._choose_model)
         model_row.addWidget(self.browse_button)
         column.addLayout(model_row)
+
+        device_row = QHBoxLayout()
+        self.device_box = _DeviceCombo(self.devices_requested)
+        self.device_box.setEditable(True)
+        self.device_box.addItems(BASE_DEVICES)
+        device_row.addWidget(
+            caption_for(
+                "Device",
+                self.device_box,
+                "Where the model runs. 'auto' takes the most capable device "
+                "this machine has -- a GPU where there is one, otherwise the "
+                "CPU. Any torch device can be typed, such as cuda:1 on a "
+                "machine with several.",
+            )
+        )
+        device_row.addWidget(self.device_box, stretch=1)
+        column.addLayout(device_row)
 
         self.predict_button = QPushButton("Predict labels...")
         self.predict_button.setToolTip(
@@ -149,6 +182,37 @@ class OperationsPanel(QWidget):
         """Return the model path as typed or chosen."""
         return self.model_edit.text().strip()
 
+    def device(self) -> str:
+        """Return the device to predict on, as chosen or typed."""
+        return self.device_box.currentText().strip() or BASE_DEVICES[0]
+
+    def set_device(self, device: str) -> None:
+        """Show *device* as the one to predict on, from a previous session."""
+        if device:
+            self.device_box.setCurrentText(device)
+
+    def show_devices(self, devices) -> None:
+        """Offer the devices torch reports, keeping what is currently chosen.
+
+        Called when the box is opened and again after a run, by which time
+        torch is loaded and the real list is free to ask for. The base entries
+        stay: "auto" is not a torch device and so is never in the list, and a
+        machine whose GPU has gone missing should still be able to choose the
+        CPU.
+        """
+        chosen = self.device_box.currentText()
+        offered = list(BASE_DEVICES[:1]) + [
+            device for device in devices if device not in BASE_DEVICES[:1]
+        ]
+        for fallback in BASE_DEVICES[1:]:
+            if fallback not in offered:
+                offered.append(fallback)
+        if offered == [self.device_box.itemText(i) for i in range(self.device_box.count())]:
+            return
+        self.device_box.clear()
+        self.device_box.addItems(offered)
+        self.device_box.setCurrentText(chosen)
+
     def set_model(self, path: str) -> None:
         """Show *path* as the model to predict with, from a previous session."""
         self.model_edit.setText(path)
@@ -163,9 +227,11 @@ class OperationsPanel(QWidget):
         dialog the user opened expecting it to work. The full explanation is a
         terminal's job; this is a hover.
         """
+        self._prediction_available = available
         self.predict_button.setEnabled(available)
         self.model_edit.setEnabled(available)
         self.browse_button.setEnabled(available)
+        self.device_box.setEnabled(available)
         if not available:
             self.predict_button.setToolTip(
                 "The inference dependencies are not installed.\n"
@@ -180,3 +246,30 @@ class OperationsPanel(QWidget):
         """
         for button in self.buttons:
             button.setEnabled(not busy)
+        self.device_box.setEnabled(not busy)
+        if not self._prediction_available:
+            # Re-enabling everything after an operation would otherwise offer
+            # the Predict button on a machine with no inference stack, since
+            # whether it is installed is asked once and never again.
+            self.predict_button.setEnabled(False)
+            self.browse_button.setEnabled(False)
+            self.device_box.setEnabled(False)
+
+
+class _DeviceCombo(QComboBox):
+    """A combo that asks to be filled in the moment it is opened.
+
+    Which devices torch can see costs an import to answer, and the window
+    refuses to spend that on building a dropdown. Asking when the box is opened
+    puts the cost where the user has just expressed interest -- and by then
+    pressing Predict once has usually loaded torch already, so there is no cost
+    left to pay.
+    """
+
+    def __init__(self, asked: Signal) -> None:
+        super().__init__()
+        self._asked = asked
+
+    def showPopup(self) -> None:  # noqa: N802 - Qt's spelling
+        self._asked.emit()
+        super().showPopup()

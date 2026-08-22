@@ -375,10 +375,9 @@ place.
   is the scene, and splitting that would score the model on what it has effectively seen.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called
   `image` or `label`, or ending in `_image` or `_label`, holds a path — so one command checks
-  a single-beam export, a paired one, and a file written before either shape existed. A
-  blank cell is its own answer rather than an absent column: it records nothing, so it
-  cannot have gone missing, and keeping it in the row is what lets a pruned copy come out the
-  same shape as the original.
+  either shape and files written before both. A blank cell is its own answer rather than an
+  absent column: it records nothing, so it cannot have gone missing, and keeping it is what
+  lets a pruned copy come out the same shape.
 - **The Export tab reads every label once, before it first draws.** It cannot show a single
   number without knowing what is inside each label — a blank label is not an annotation —
   and over the reference collection that is 1,232 files and tens of seconds. Done inside the
@@ -673,6 +672,12 @@ place.
   shares a label with. It also removes a hazard rather than managing one — conditions carry
   identical filenames into a shared predictions directory, so predicting all of them would
   have each write replace the last.
+- **The device box does not import torch to fill itself.** Which devices exist differs per
+  machine — several CUDA devices on a workstation, an MPS one on a Mac — so the list cannot
+  be written down here, and asking costs the seconds `ml_stack_present` avoids. It opens on
+  `auto` and `cpu`, true everywhere, and gains the machine's own the moment anything loads
+  torch, which pressing Predict does. Editable too, since `resolve_device` passes a named
+  device through unexamined: an unheard-of accelerator can be typed rather than waited for.
 - **Predictions are written at model resolution.** A 2048x3072 image yields a 1024x1536
   prediction — which is what the segmentation pipeline's own `raw/` already holds, at 12 kB
   against the 6 MB an upsampled one would cost. `convert-predictions` resizes to the image

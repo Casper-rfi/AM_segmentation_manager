@@ -65,6 +65,9 @@ SETTINGS_APPLICATION = "curation"
 SETTING_SCAN_ROOT = "scan_root"
 #: Where the model chooser last opened, so a second run does not navigate again.
 SETTING_MODEL = "model_directory"
+#: The device last predicted on, remembered like the model: one machine
+#: usually has one answer, and re-choosing it every session is noise.
+SETTING_DEVICE = "predict_device"
 SETTING_GEOMETRY = "geometry"
 SETTING_SPLITTER = "splitter"
 
@@ -312,6 +315,9 @@ class CurationWindow(QMainWindow):
         self.operations_panel.set_model(
             self.settings.value(SETTING_MODEL, "", type=str)
         )
+        self.operations_panel.set_device(
+            self.settings.value(SETTING_DEVICE, "", type=str)
+        )
 
         # The other tabs get their own Qt-free controllers, and are handed the
         # projects from the curation scan rather than scanning again: a second
@@ -477,6 +483,7 @@ class CurationWindow(QMainWindow):
         self.state_panel.target_changed.connect(self._set_target)
 
         self.operations_panel.predict_requested.connect(self._predict)
+        self.operations_panel.devices_requested.connect(self._offer_devices)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
 
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
@@ -798,6 +805,11 @@ class CurationWindow(QMainWindow):
         # Remembered whole: the next session opens with the same model already
         # in the box, which is the usual case -- one model, many runs.
         self.settings.setValue(SETTING_MODEL, model)
+        device = self.operations_panel.device()
+        self.settings.setValue(SETTING_DEVICE, device)
+        # Torch is loaded by the check above, so the real device list is free
+        # to ask for now and the box carries it for the rest of the session.
+        self._offer_devices()
 
         # Created here rather than in _operate so the work closure and the
         # dialog share one: the closure polls it on the worker thread, the
@@ -810,13 +822,24 @@ class CurationWindow(QMainWindow):
         self._operate(
             "Predict labels",
             lambda allow, dry: self.operations_controller.predict(
-                records, weights, dry_run=dry,
+                records, weights, device=device, dry_run=dry,
                 cancellation=None if dry else cancellation,
                 on_progress=None if dry else progressed.emit,
             ),
             rescan=True,
             cancellation=cancellation,
         )
+
+    def _offer_devices(self) -> None:
+        """Fill the device box, if asking torch costs nothing right now.
+
+        Answering means importing torch where it is not already loaded, which
+        is seconds -- so the box opens on what is true everywhere and gains the
+        machine's own devices as soon as anything has paid that cost.
+        """
+        from ...ml.environment import discovered_devices
+
+        self.operations_panel.show_devices(discovered_devices())
 
     def _convert_predictions(self) -> None:
         records = self._editable_records()
