@@ -1294,28 +1294,58 @@ def test_pressing_predict_with_an_empty_box_asks_for_a_model_last(window, monkey
     assert flashed == ["Choose a model to predict with"]
 
 
-def test_pressing_predict_without_the_dependencies_explains_rather_than_raising(
-    window, monkeypatch, inline_operations
+def test_pressing_predict_does_not_import_torch_into_this_process(
+    window, monkeypatch, inline_operations, tmp_path: Path
 ):
-    """The cheap probe decides whether to offer the button; the full check runs
-    on the press, because an installed torch that will not load reads as
-    present to the first and fails on the second."""
+    """The window predicts in a child precisely so that torch is never loaded
+    here -- and asking whether torch *would* load is asking by loading it. The
+    cheap probe that greys out the button locates the modules instead."""
+    from am_segmentation_manager.gui import operations_controller
+    from am_segmentation_manager.operations.predict_process import ProcessOutcome
+
     window.state_panel.enable_check.setChecked(True)
     _tick_lamella(window)
     monkeypatch.setattr(
         "am_segmentation_manager.ml.environment.ml_stack_problems",
-        lambda: [("torch", "not installed")],
+        lambda: pytest.fail("the window must not import torch to check"),
     )
-    shown: list[str] = []
     monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda parent, title, text, *a, **k: shown.append(title),
+        operations_controller, "predict_out_of_process",
+        lambda *args, **kwargs: ProcessOutcome(written=0, total=0),
     )
+    weights = tmp_path / "model.pth"
+    weights.write_bytes(b"x")
 
-    window._predict("/some/model.pth")
+    window._predict(str(weights))
 
-    assert shown == ["Inference is not installed"]
-    assert inline_operations == []
+
+def test_a_missing_inference_stack_comes_back_from_the_child(
+    window, monkeypatch, inline_operations, tmp_path: Path
+):
+    """It is the process that has to import torch that finds out, so the news
+    arrives as a report rather than as a check this process could make."""
+    from am_segmentation_manager.gui import operations_controller
+    from am_segmentation_manager.operations.predict_process import ProcessOutcome
+
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+    monkeypatch.setattr(
+        operations_controller, "predict_out_of_process",
+        lambda *args, **kwargs: ProcessOutcome(
+            error="RuntimeError: Loading a model needs torch: not installed"
+        ),
+    )
+    reported: list[str] = []
+    monkeypatch.setattr(
+        window, "_show_report",
+        lambda title, report: reported.append(report.headline),
+    )
+    weights = tmp_path / "model.pth"
+    weights.write_bytes(b"x")
+
+    window._predict(str(weights))
+
+    assert reported and "needs torch" in reported[0]
 
 
 def test_only_the_applying_run_is_given_something_to_stop(window, monkeypatch):

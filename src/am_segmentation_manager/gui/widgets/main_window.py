@@ -359,6 +359,9 @@ class CurationWindow(QMainWindow):
         self.operations.worker.progressed.connect(self._operation_progressed)
         self._pending_operation: tuple | None = None
         self._busy: BusyDialog | None = None
+        #: The devices a child process reported, asked for once per session.
+        #: None until asked; an empty tuple is a machine that could not say.
+        self._devices: tuple[str, ...] | None = None
 
         remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
         if remembered:
@@ -783,21 +786,10 @@ class CurationWindow(QMainWindow):
         if records is None:
             return
 
-        # The full check, not the cheap one that decided whether to offer the
-        # button: a torch that is installed and will not load reads as present.
-        from ...ml.environment import ml_stack_problems
-
-        problems = ml_stack_problems()
-        if problems:
-            QMessageBox.information(
-                self, "Inference is not installed",
-                "Predicting needs "
-                + "; ".join(f"{name} ({reason})" for name, reason in problems)
-                + ".\n\nInstall them with scripts/setup_ml.sh, which builds a "
-                "separate environment for them.",
-            )
-            return
-
+        # No check that imports torch. The window predicts in a child process
+        # precisely so that torch is never loaded here, and asking whether it
+        # would load is asking by loading it. A stack that is missing or broken
+        # is reported by the child, which is the process that has to import it.
         if not model:
             self._flash("Choose a model to predict with")
             return
@@ -807,9 +799,6 @@ class CurationWindow(QMainWindow):
         self.settings.setValue(SETTING_MODEL, model)
         device = self.operations_panel.device()
         self.settings.setValue(SETTING_DEVICE, device)
-        # Torch is loaded by the check above, so the real device list is free
-        # to ask for now and the box carries it for the rest of the session.
-        self._offer_devices()
 
         # Created here rather than in _operate so the work closure and the
         # dialog share one: the closure polls it on the worker thread, the
@@ -831,15 +820,26 @@ class CurationWindow(QMainWindow):
         )
 
     def _offer_devices(self) -> None:
-        """Fill the device box, if asking torch costs nothing right now.
+        """Fill the device box with what the machine actually has.
 
-        Answering means importing torch where it is not already loaded, which
-        is seconds -- so the box opens on what is true everywhere and gains the
-        machine's own devices as soon as anything has paid that cost.
+        Asked of a separate process, because this one never imports torch --
+        that is what predicting in a child is for. It costs an interpreter
+        start and a torch import, so it is done once per session, when the box
+        is first opened: by then the user has said they want to choose one.
         """
-        from ...ml.environment import discovered_devices
+        if self._devices is not None:
+            return
+        from ...operations.predict_process import probe_devices
 
-        self.operations_panel.show_devices(discovered_devices())
+        self.project_panel.announce("Asking which devices are available...")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self._devices = probe_devices()
+        finally:
+            QApplication.restoreOverrideCursor()
+        logger.info("Devices available for prediction: %s", self._devices or "none")
+        self.operations_panel.show_devices(self._devices)
+        self.refresh()
 
     def _convert_predictions(self) -> None:
         records = self._editable_records()

@@ -12,19 +12,15 @@ scan root: an absolute path eight directories deep is unreadable in a dialog.
 from __future__ import annotations
 
 import logging
-import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..io.path import make_path_relative
 from ..models import ImageRecord
 from ..operations.label_compression import compress_labels, existing_labels
-from ..operations.predict import (
-    PredictionSource,
-    plan_predictions,
-    run_predictions,
-)
+from ..operations.predict import PredictionSource, plan_predictions
+from ..operations.predict_process import ProcessOutcome, predict_out_of_process
 from ..operations.predictions import (
     SKIP_DESCRIPTIONS,
     ConversionPlan,
@@ -33,7 +29,7 @@ from ..operations.predictions import (
     plan_conversions,
 )
 from ..operations.selection import current_state
-from ..progress import Cancellation, OperationCancelled
+from ..progress import Cancellation
 
 logger = logging.getLogger(__name__)
 
@@ -89,27 +85,6 @@ def format_bytes(size: int) -> str:
             return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} GB"  # pragma: no cover - unreachable, the loop ends at GB
-
-
-def peak_memory() -> str:
-    """Return the most memory this process has held, for a log line.
-
-    The *peak* since the process started, never the amount held now, so it
-    only ever rises -- which is the question worth asking of a run that ended
-    by disappearing, and not one about whether releasing something freed it.
-    ``resource`` rather than ``psutil``: this is a diagnostic, and it is not
-    worth a dependency.
-
-    Returns:
-        The peak, or ``"unknown"`` where the platform does not report one.
-    """
-    try:
-        import resource
-    except ImportError:  # pragma: no cover - Windows has no resource module
-        return "unknown"
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # Darwin reports bytes, Linux kilobytes, for the same field.
-    return format_bytes(peak if sys.platform == "darwin" else peak * 1024)
 
 
 class OperationsController:
@@ -247,107 +222,121 @@ class OperationsController:
         dry_run: bool = False,
         cancellation: Cancellation | None = None,
         on_progress: Callable[[int, int], None] | None = None,
+        run: Callable[..., ProcessOutcome] | None = None,
     ) -> OperationReport:
         """Predict the selection with the model at *weights*.
 
         A preview neither loads the model nor imports torch: what a run would
         write is a question about the filesystem, and answering it in
         milliseconds is what lets the count be shown before anything heavy
-        starts. Applying re-resolves the plan rather than reusing the preview's,
-        as every operation here does.
+        starts.
+
+        **The applying run happens in a child process.** Inference in this one
+        crashed the window repeatedly and the command line never once, so the
+        window holds no torch at all and the child holds all of it. Nothing is
+        lost when that child dies: each prediction is written by rename and its
+        provenance flushed before the next begins.
 
         Stopping is reported rather than raised: a run cancelled after ten of a
         hundred images did write ten, and they are kept.
+
+        Args:
+            run: How the child is run. Resolved at the call rather than bound
+                as a default, so a test can substitute it -- there being no
+                model to load and no reason to start an interpreter.
         """
         records = list(records)
         try:
-            description, source = self._describe_model(weights)
+            _description, source = self._describe_model(weights)
         except (ValueError, FileNotFoundError) as error:
             # Not `blocked`: that is for what the user can confirm past, and
             # a model that is not there or not described is not that. A report
             # with no count is shown and dismissed.
             return OperationReport(str(error))
 
-        plan = plan_predictions(records, source, overwrite=False)
-        if plan.is_refused:
-            return OperationReport(
-                f"This selection holds both {' and '.join(plan.modalities)} "
-                f"images. A model is trained on one of them, and nothing here "
-                f"can tell which, so predict one at a time: set the edit target "
-                f"to SEM or to FIB.",
-            )
-
-        context = self._prediction_context(plan, source)
-        if not plan.predictions:
-            return OperationReport("Nothing to predict.", context)
-
-        lines = tuple(
-            f"{self._relative(item.destination)}: {item.describe()}"
-            for item in plan.predictions
-        )
         if dry_run:
+            plan = plan_predictions(records, source, overwrite=False)
+            if plan.is_refused:
+                return OperationReport(self._refused_modalities(plan.modalities))
+            context = self._prediction_context(plan, source)
+            if not plan.predictions:
+                return OperationReport("Nothing to predict.", context)
             return OperationReport(
                 f"Would predict {len(plan.predictions)} {plan.modality} image(s) "
                 f"with {weights.name}.",
-                lines + context,
+                tuple(
+                    f"{self._relative(item.destination)}: {item.describe()}"
+                    for item in plan.predictions
+                ) + context,
                 len(plan.predictions),
             )
 
-        from ..ml.environment import resolve_device
-        from ..ml.model import load_model
-
-        total = len(plan.predictions)
-        # Logged around each step of the run, and not only for the record: the
-        # window has crashed outright after a completed run, and a run whose
-        # steps are not marked cannot say which one it got to. Loading torch,
-        # predicting and releasing the model all happen on the worker thread,
-        # so the thread each line was written on is part of the evidence.
-        logger.info(
-            "Predicting %d %s image(s) with %s; peak memory %s",
-            total, plan.modality, weights.name, peak_memory(),
+        runner = run or predict_out_of_process
+        outcome = runner(
+            records, weights, device,
+            on_progress=on_progress, cancellation=cancellation,
         )
-        # "auto" is this package's word, not torch's: passing it through
-        # reaches model.to("auto") and fails there, naming every device torch
-        # knows except the one that was asked for.
-        loaded = load_model(weights, description, device=resolve_device(device))
-        logger.info("Model loaded; peak memory %s", peak_memory())
+        return self._report_outcome(outcome, weights)
 
-        def report(index: int, _planned) -> None:
-            if on_progress is not None:
-                on_progress(index, total)
-            if cancellation is not None:
-                cancellation.check()
-
-        try:
-            written = run_predictions(plan, loaded.predict, source, on_progress=report)
-        except OperationCancelled:
-            written = self._written_before_stopping(plan)
+    def _report_outcome(
+        self, outcome: ProcessOutcome, weights: Path
+    ) -> OperationReport:
+        """Turn what the child reported into the report the window shows."""
+        if outcome.error:
             return OperationReport(
-                f"Stopped after {written} of {total} {plan.modality} image(s). "
-                f"What was predicted is kept; run it again to continue.",
-                lines[:written] + context,
-                written,
+                f"The prediction did not run: {outcome.error}"
+            )
+        if outcome.refused:
+            return OperationReport(self._refused_modalities(outcome.modalities))
+
+        context = self._outcome_context(outcome)
+        if not outcome.total:
+            return OperationReport("Nothing to predict.", context)
+
+        lines = tuple(
+            f"{self._relative(Path(destination))}: write"
+            for destination in outcome.destinations
+        )
+        if outcome.stopped:
+            return OperationReport(
+                f"Stopped after {outcome.written} of {outcome.total} "
+                f"{outcome.modality} image(s). What was predicted is kept; run "
+                f"it again to continue.",
+                lines[:outcome.written] + context,
+                outcome.written,
                 applied=True,
             )
-        finally:
-            # Released here rather than left to fall out of scope, so there is
-            # a line on each side of it. Where the model goes is unchanged --
-            # this is still the worker thread -- but a crash between these two
-            # lines is a crash in the release rather than somewhere after the
-            # last prediction.
-            logger.info(
-                "Releasing the model after %s; peak memory %s",
-                weights.name, peak_memory(),
-            )
-            del loaded
-            logger.info("Model released; peak memory %s", peak_memory())
-
         return OperationReport(
-            f"Predicted {written} {plan.modality} image(s) with {weights.name}.",
+            f"Predicted {outcome.written} {outcome.modality} image(s) with "
+            f"{weights.name}.",
             lines + context,
-            written,
+            outcome.written,
             applied=True,
         )
+
+    @staticmethod
+    def _refused_modalities(modalities: Sequence[str]) -> str:
+        """Return why a selection spanning both beams cannot be predicted."""
+        return (
+            f"This selection holds both {' and '.join(modalities)} images. A "
+            f"model is trained on one of them, and nothing here can tell which, "
+            f"so predict one at a time: set the edit target to SEM or to FIB."
+        )
+
+    def _outcome_context(self, outcome: ProcessOutcome) -> tuple[str, ...]:
+        """Return the lines explaining what a finished run left out, and why."""
+        lines: list[str] = []
+        if outcome.represented:
+            lines.append(
+                f"{outcome.represented} image(s) share a label with one being "
+                f"predicted and are covered by it."
+            )
+        if outcome.up_to_date:
+            lines.append(
+                f"{outcome.up_to_date} image(s) were already predicted by "
+                f"this model and are left alone."
+            )
+        return tuple(lines)
 
     def _describe_model(self, weights: Path):
         """Return the model's description and the source recording it.
@@ -363,15 +352,6 @@ class OperationsController:
         description = read_model_description(weights)
         source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
         return description, source
-
-    @staticmethod
-    def _written_before_stopping(plan) -> int:
-        """Return how many of *plan*'s predictions reached the disk.
-
-        Counted from the files rather than from the progress callback, so a run
-        that stopped reports what is actually there.
-        """
-        return sum(1 for item in plan.predictions if item.destination.exists())
 
     def _prediction_context(self, plan, source: PredictionSource) -> tuple[str, ...]:
         """Return the lines explaining what a run leaves out, and why.

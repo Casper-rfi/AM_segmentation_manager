@@ -42,7 +42,8 @@ what each command and tab does. What is worth knowing beyond that:
   Writes go to `<predictions>/am_seg/`, the only prediction directory this package
   writes. One prediction per label group, one modality per run — a selection holding
   both is refused, since a model is for one and nothing can tell which — and resumable,
-  which is what earns it a Stop button.
+  which is what earns it a Stop button. **The window runs it in a child process** and
+  imports no torch itself; which device to use is chosen beside the model.
 * **Export filters, counts and writes, and every filter narrows all three.** A filter is
   added when it is wanted: each carries a dropdown of the properties still free, the
   values of the one it is on, and a button taking it away along with what it kept. The
