@@ -23,7 +23,6 @@ from am_segmentation_manager.gui.metadata_controller import (
 from am_segmentation_manager.image_metadata import ELECTRON, ION, ImageMetadata
 from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, build_experiment_metadata
 from am_segmentation_manager.models import Project
-from am_segmentation_manager.operations.csv import export_training_csv
 from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
@@ -72,11 +71,24 @@ def headers(exporter: ExportController, monkeypatch) -> ExportController:
 # ---------------------------------------------------------------------------
 
 def test_the_preview_counts_what_would_be_exported(exporter: ExportController):
+    """Both modalities are in play, so a row carries an acquisition rather than
+    an image: four images are two acquisitions, side by side."""
     preview = exporter.preview()
 
     assert preview.matched == 4          # two acquisitions, two modalities
     assert preview.annotated == 4
-    assert preview.exportable == 4
+    assert preview.paired
+    assert preview.exportable == 2
+    assert (preview.sem_only, preview.fib_only) == (0, 0)
+
+
+def test_choosing_one_modality_counts_images_again(exporter: ExportController):
+    """A single-beam export is one row per image, as it always was."""
+    exporter.filters.modality = "SEM"
+    preview = exporter.preview()
+
+    assert not preview.paired
+    assert preview.exportable == 2
 
 
 def test_a_deselected_image_that_would_be_exported_is_counted(tmp_path: Path):
@@ -258,19 +270,12 @@ def csv_rows(path: Path | None) -> int:
 
 
 def written_split(exporter: ExportController, output: Path) -> tuple[int, int]:
-    """Export for real, and return how the two files came out."""
-    train, validation = export_training_csv(
-        records=exporter.selected_records(),
-        start_path=exporter.start_path,
-        output_dir=output,
-        prefix=exporter.training.prefix,
-        train_ratio=exporter.training.train_ratio,
-        seed=exporter.training.seed,
-        # As the window calls it: the filters have already applied the dedup
-        # rule, and the window never writes blank masks.
-        include_empty_labels=False,
-        conditions="all",
-    )
+    """Export for real, and return how the two files came out.
+
+    Through the controller, which is what the window calls: which records,
+    which shape, how split and what named are all its decisions.
+    """
+    train, validation = exporter.export_training(output)
     return csv_rows(train), csv_rows(validation)
 
 
@@ -291,7 +296,6 @@ def test_the_preview_and_the_export_agree_on_the_split(
     assert (preview.train, preview.validation) == written_split(
         exporter, tmp_path / "exported"
     )
-    assert preview.train and preview.validation   # not vacuously equal at 0
     assert preview.train + preview.validation == preview.exportable
 
 
@@ -315,7 +319,10 @@ def test_an_unseeded_split_still_places_every_pair(
 
 
 def test_the_summary_reports_the_split_it_would_write(exporter: ExportController):
-    assert "train / 1 validation" in exporter.preview().summary()
+    summary = exporter.preview().summary()
+
+    assert "paired row(s)" in summary
+    assert "train /" in summary and "validation" in summary
 
 
 def test_nothing_to_export_reports_no_split(exporter: ExportController):

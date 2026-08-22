@@ -351,6 +351,34 @@ place.
   label is one character — such a button clipped its label away and drew blank while
   reporting its text correctly, so `COMPACT_BUTTON` names the exception and the pixels are
   what a test asserts on.
+- **Both modalities means side by side, not mixed together.** A training CSV holding SEM and
+  FIB rows under one `image` column is not something anyone trains on — the two beams need
+  different models. So a selection holding both writes `sem_image, sem_label, fib_image,
+  fib_label`, one row per acquisition, which trains either beam from one file or the two
+  together; a selection naming one beam writes `image, label` as before. A cell is blank
+  where that beam has no image, or no label worth pairing with one, and a row survives only
+  if at least one beam has a label — two images and no annotation teach nothing. The
+  empty-label rule is unchanged in substance and only changes shape: it drops a row where
+  there is one beam and empties a cell where there are two, and is reported either way.
+- **What makes an SEM and a FIB image the same acquisition is stated once**, in
+  `frames.group_by_acquisition`: the number in the filename, within one stage directory.
+  They do not reliably share a stem — older projects name the file inside `fib/` with the
+  same `_SEM` suffix as the electron image. The timeline already grouped a lamella's frames
+  by that rule and the export now calls the same function rather than a second one that
+  could drift, which is why `extract_image_number` moved to `layout.py`: an acquisition
+  number is a naming rule, and leaving it in `filtering.py` kept the grouping above the
+  operations layer that needs it.
+  Conditions multiply out — five SEM conditions against one FIB image are five rows
+  repeating the FIB path, each a genuine pair that nothing here can rank — and "one image
+  per label" is the control that collapses it. The split groups by the *acquisition* rather
+  than the label, since a paired row holds two: what its beams and conditions have in common
+  is the scene, and splitting that would score the model on what it has effectively seen.
+- **`check-training-csv` reads the header rather than assuming it.** Any column called
+  `image` or `label`, or ending in `_image` or `_label`, holds a path — so one command checks
+  a single-beam export, a paired one, and a file written before either shape existed. A
+  blank cell is its own answer rather than an absent column: it records nothing, so it
+  cannot have gone missing, and keeping it in the row is what lets a pruned copy come out the
+  same shape as the original.
 - **The Export tab reads every label once, before it first draws.** It cannot show a single
   number without knowing what is inside each label — a blank label is not an annotation —
   and over the reference collection that is 1,232 files and tens of seconds. Done inside the

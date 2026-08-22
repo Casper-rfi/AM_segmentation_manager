@@ -30,11 +30,21 @@ def make_project(root: Path, acquisitions: int = 1) -> Path:
     return project
 
 
-def export(tmp_path: Path, *extra: str, split: str = "1.0") -> list[dict]:
+def export(
+    tmp_path: Path, *extra: str, split: str = "1.0", modality: str = "SEM"
+) -> list[dict]:
+    """Export and read back the training file.
+
+    One modality by default: which conditions of a scene are exported is a
+    question about one beam, and a paired export answers it in the sem_ columns
+    where a plain ``image`` column reads more clearly. The paired shape has its
+    own test below.
+    """
     output = tmp_path / "out"
     assert main([
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
         "--lamella", "all", "--stage", "all", "--image", "all", "--state", "all",
+        "--modality", modality,
         "-o", str(output), "--split", split, "--include-empty-labels", *extra,
     ]) == 0
     with (output / "dataset_train.csv").open() as handle:
@@ -51,8 +61,35 @@ def test_one_condition_per_scene_is_exported_by_default(tmp_path: Path):
 
     rows = export(tmp_path)
 
-    assert len(rows) == 2  # one SEM, one FIB
+    assert len(rows) == 1
     assert not any("fi_1" in row["image"] or "fi_4" in row["image"] for row in rows)
+
+
+def test_both_modalities_put_the_two_beams_on_one_row(tmp_path: Path):
+    """A file mixing SEM and FIB rows under one ``image`` column is not
+    something anyone trains on; side by side, either beam can be trained from
+    the one file, or the two together."""
+    make_project(tmp_path)
+
+    rows = export(tmp_path, modality="all")
+
+    assert len(rows) == 1
+    assert list(rows[0]) == ["sem_image", "sem_label", "fib_image", "fib_label"]
+    assert "SEM_8" in rows[0]["sem_image"]
+    assert "FIB" in rows[0]["fib_image"]
+
+
+def test_every_condition_repeats_the_other_beam(tmp_path: Path):
+    """The cross product. Three SEM conditions against one FIB image are three
+    rows repeating the FIB path -- which "one image per label" is there to
+    collapse where it is not wanted."""
+    make_project(tmp_path)
+
+    rows = export(tmp_path, "--conditions", "all", modality="all")
+
+    assert len(rows) == len(SEM_VARIANTS)
+    assert len({row["sem_image"] for row in rows}) == len(SEM_VARIANTS)
+    assert len({row["fib_image"] for row in rows}) == 1
 
 
 def test_the_default_works_where_no_unsuffixed_directory_exists(tmp_path: Path):
@@ -76,7 +113,7 @@ def test_every_condition_can_be_exported_deliberately(tmp_path: Path):
 
     rows = export(tmp_path, "--conditions", "all")
 
-    assert len(rows) == 4  # three SEM conditions, one FIB
+    assert len(rows) == len(SEM_VARIANTS)
     assert sum("SEM_8" in row["image"] for row in rows) == 3
 
 
@@ -171,7 +208,7 @@ def test_an_end_to_end_export_does_not_leak_a_scene_across_the_split(tmp_path: P
     assert main([
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
         "--lamella", "all", "--stage", "all", "--image", "all", "--state", "all",
-        "--conditions", "all", "--include-empty-labels",
+        "--conditions", "all", "--include-empty-labels", "--modality", "SEM",
         "-o", str(output), "--split", "0.8",
     ]) == 0
 

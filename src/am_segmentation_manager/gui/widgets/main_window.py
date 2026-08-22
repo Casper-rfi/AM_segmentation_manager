@@ -938,31 +938,13 @@ class CurationWindow(QMainWindow):
         self.export_panel.refresh()
 
     def _export_training(self, directory: str) -> None:
-        from ...operations.csv import export_training_csv
-
-        records = self.export_controller.selected_records()
-        if not records:
+        if not self.export_controller.selected_records():
             self._flash("Nothing matches these filters")
             return
         if not self._confirm_dropping_corrected():
             return
-        training = self.export_controller.training
         try:
-            train, validation = export_training_csv(
-                records=records,
-                start_path=self.controller.start_path or Path(directory),
-                output_dir=Path(directory),
-                prefix=training.prefix,
-                train_ratio=training.train_ratio,
-                seed=training.seed,
-                # The window never writes blank masks. Deliberate negative
-                # examples are a considered thing, and the command line's
-                # --include-empty-labels is where they stay.
-                include_empty_labels=False,
-                # Already applied: the filters decide which images are in play,
-                # and "one image per label" is one of them.
-                conditions="all",
-            )
+            train, validation = self.export_controller.export_training(Path(directory))
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
             return
@@ -1003,20 +985,11 @@ class CurationWindow(QMainWindow):
         return answer == QMessageBox.Yes
 
     def _export_image_metadata(self, path: str) -> None:
-        from ...aggregate import project_lookup
-        from ...operations.metadata_csv import export_image_metadata_csv
-
-        records = self.export_controller.selected_records()
-        if not records:
+        if not self.export_controller.selected_records():
             self._flash("Nothing matches these filters")
             return
         try:
-            export_image_metadata_csv(
-                records,
-                self.controller.start_path or Path(path).parent,
-                Path(path),
-                projects=project_lookup(self.export_controller.projects),
-            )
+            self.export_controller.export_image_metadata(Path(path))
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
             return

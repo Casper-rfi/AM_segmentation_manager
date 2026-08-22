@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .filtering import extract_image_number
+from .layout import extract_image_number
 from .models import AdaptiveMillingStage, ImageRecord, Lamella
 
 logger = logging.getLogger(__name__)
@@ -163,36 +163,87 @@ def build_lamella_frames(lamella: Lamella) -> list[LamellaFrame]:
 
 def _build_stage_frames(lamella: Lamella, stage: AdaptiveMillingStage) -> list[LamellaFrame]:
     """Return the frames for a single stage, ordered by acquisition number."""
-    grouped = _group_records_by_acquisition(stage.images)
     plots = _plots_by_image_number(stage.plots)
-
-    frames: list[LamellaFrame] = []
-    for key in sorted(grouped, key=_frame_sort_key):
-        image_number, _ = key
-        modalities = grouped[key]
-        frames.append(
-            LamellaFrame(
-                lamella=lamella.name,
-                stage=stage.name,
-                stage_number=stage.number,
-                image_number=image_number,
-                sem=tuple(sorted(modalities.get("SEM", []), key=_variant_sort_key)),
-                fib=tuple(sorted(modalities.get("FIB", []), key=_variant_sort_key)),
-                plot_path=plots.get(image_number) if image_number is not None else None,
-            )
+    return [
+        LamellaFrame(
+            lamella=lamella.name,
+            stage=stage.name,
+            stage_number=stage.number,
+            image_number=acquisition.image_number,
+            sem=acquisition.sem,
+            fib=acquisition.fib,
+            plot_path=(
+                plots.get(acquisition.image_number)
+                if acquisition.image_number is not None
+                else None
+            ),
         )
-    return frames
+        for acquisition in group_by_acquisition(stage.images)
+    ]
 
 
-def _group_records_by_acquisition(
-    records: Iterable[ImageRecord],
-) -> dict[FrameKey, dict[str, list[ImageRecord]]]:
-    """Group image records by acquisition, then by modality.
+@dataclass(frozen=True)
+class Acquisition:
+    """One acquisition: both beams' images of a single moment, every condition.
 
-    One acquisition can have several records of the same modality, one per
-    imaging condition, so every record is kept.
+    What :class:`LamellaFrame` is for the timeline, without the names a lamella
+    view needs -- so the same grouping serves an export over records drawn from
+    anywhere in the collection.
+
+    Attributes:
+        stage_directory: The stage the images sit in. Part of the identity
+            because acquisition numbers restart in every stage.
+        key: The acquisition's identity within that stage.
+        sem: SEM records, base condition first. Empty if there are none.
+        fib: FIB records, base condition first. Empty if there are none.
     """
-    grouped: dict[FrameKey, dict[str, list[ImageRecord]]] = {}
+
+    stage_directory: Path
+    key: FrameKey
+    sem: tuple[ImageRecord, ...] = ()
+    fib: tuple[ImageRecord, ...] = ()
+
+    @property
+    def image_number(self) -> int | None:
+        """Return the acquisition number, or None where the name carries none."""
+        return self.key[0]
+
+    @property
+    def identity(self) -> str:
+        """Return a stable name for this acquisition, across the collection.
+
+        What keeps an acquisition's rows on one side of a training split: its
+        beams and every imaging condition of them are one scene, and splitting
+        them would put near-identical images in both sets.
+        """
+        number, stem = self.key
+        return f"{self.stage_directory}|{number if number is not None else stem}"
+
+    @property
+    def records(self) -> list[ImageRecord]:
+        """Return every record in this acquisition, SEM first."""
+        return [*self.sem, *self.fib]
+
+
+def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
+    """Return one entry per acquisition, holding both beams' images.
+
+    **The one statement of what makes an SEM and a FIB image the same
+    acquisition.** They are separate records and do not reliably share a
+    filename stem -- older projects name the file inside ``fib/`` with the same
+    ``_SEM`` suffix as the electron image -- so they are matched by the number
+    in the filename, within one stage directory. Records with no parseable
+    number fall back to their filename stem.
+
+    Takes records from anywhere rather than one stage, so an export can group a
+    filtered selection spanning the collection. Ordered by stage directory,
+    then by acquisition number with the unnumbered ones after, so a CSV written
+    twice from one selection comes out the same both times.
+
+    Records of an unrecognised modality are dropped, with a warning: nothing
+    here can say which beam they belong to.
+    """
+    grouped: dict[tuple[Path, FrameKey], dict[str, list[ImageRecord]]] = {}
     for record in records:
         modality = (record.modality or "").upper()
         if modality not in MODALITIES:
@@ -200,9 +251,23 @@ def _group_records_by_acquisition(
                 "Skipping %s: unknown modality %r", record.image_path, record.modality
             )
             continue
-        key = _frame_key(record.image_path)
-        grouped.setdefault(key, {}).setdefault(modality, []).append(record)
-    return grouped
+        # The stage is the image directory's parent, for a variant directory as
+        # much as for the base one -- so conditions of one scene group together.
+        identity = (record.image_path.parent.parent, _frame_key(record.image_path))
+        grouped.setdefault(identity, {}).setdefault(modality, []).append(record)
+
+    return [
+        Acquisition(
+            stage_directory=directory,
+            key=key,
+            sem=tuple(sorted(modalities.get("SEM", []), key=_variant_sort_key)),
+            fib=tuple(sorted(modalities.get("FIB", []), key=_variant_sort_key)),
+        )
+        for directory, key in sorted(
+            grouped, key=lambda entry: (str(entry[0]), _frame_sort_key(entry[1]))
+        )
+        for modalities in [grouped[(directory, key)]]
+    ]
 
 
 def _variant_sort_key(record: ImageRecord) -> tuple[bool, str]:

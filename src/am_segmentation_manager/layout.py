@@ -14,6 +14,7 @@ Except for :func:`build_image_sets`, nothing here touches the filesystem.
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -154,6 +155,25 @@ def is_predictions_directory(name: str) -> bool:
     """Return whether *name* is a predictions directory, current or legacy."""
     lowered = name.lower()
     return lowered.endswith(PREDICTIONS_SUFFIX) or lowered in LEGACY_PREDICTION_DIRECTORIES
+
+
+def extract_image_number(image_name: str) -> int | None:
+    """Return the acquisition number an Autolamella filename carries.
+
+    Recognises ``AP_img_013`` and ``img_013``. Here with the rest of the naming
+    conventions rather than beside the filters that first needed it: it is what
+    matches an SEM image to the FIB image of the same acquisition, which
+    :func:`~am_segmentation_manager.frames.group_by_acquisition` relies on, and
+    that has to sit below the operations layer.
+
+    Returns:
+        The number, or None where the name carries none.
+    """
+    for pattern in (r"AP_img_(\d+)", r"img_(\d+)"):
+        match = re.search(pattern, image_name, re.IGNORECASE)
+        if match is not None:
+            return int(match.group(1))
+    return None
 
 
 def classify_image_directory(name: str) -> ImageDirectory | None:

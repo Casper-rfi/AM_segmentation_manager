@@ -233,34 +233,45 @@ def test_cli_correct_says_nothing_about_an_annotated_label(tmp_path: Path, capsy
 # Training export
 # ---------------------------------------------------------------------------
 
-def _export(tmp_path: Path, *extra: str) -> list[str]:
+def _export(tmp_path: Path, *extra: str, modality: str = "all") -> list[dict]:
+    import csv as csv_module
+
     output = tmp_path / "out"
     assert main([
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
         "--lamella", "all", "--stage", "all", "--image", "all", "--state", "all",
-        "--modality", "all", "-o", str(output), "--split", "1.0", *extra,
+        "--modality", modality, "-o", str(output), "--split", "1.0", *extra,
     ]) == 0
-    rows = (output / "dataset_train.csv").read_text().strip().splitlines()
-    return rows[1:]
+    with (output / "dataset_train.csv").open(encoding="utf-8") as handle:
+        return list(csv_module.DictReader(handle))
 
 
-def test_an_empty_label_is_excluded_from_training_export(tmp_path: Path):
-    """A blank mask actively teaches the model the structure is background."""
+def test_an_empty_label_is_not_paired_with_its_image(tmp_path: Path):
+    """A blank mask actively teaches the model the structure is background. In
+    a paired row that shows as an empty cell: the acquisition is still exported
+    for the beam that was annotated."""
+    (rows,) = _export(tmp_path) if make_project(tmp_path) else []
+
+    assert "electron" in rows["sem_image"]
+    assert "electron" in rows["sem_label"]
+    assert "ion" in rows["fib_image"], "the image is still recorded"
+    assert rows["fib_label"] == "", "the blank label is not"
+
+
+def test_an_empty_label_is_excluded_from_a_single_beam_export(tmp_path: Path):
+    """With only the beam whose label is blank, there is nothing left to write."""
     make_project(tmp_path)
 
-    rows = _export(tmp_path)
-
-    assert len(rows) == 1
-    assert "electron" in rows[0]
-    assert "ion" not in rows[0]
+    assert _export(tmp_path, modality="FIB") == []
+    assert len(_export(tmp_path, modality="SEM")) == 1
 
 
 def test_an_empty_label_can_be_exported_deliberately(tmp_path: Path):
     make_project(tmp_path)
 
-    rows = _export(tmp_path, "--include-empty-labels")
+    (row,) = _export(tmp_path, "--include-empty-labels")
 
-    assert len(rows) == 2
+    assert row["fib_label"] != ""
 
 
 def test_the_exclusion_is_reported_not_silent(tmp_path: Path, capsys):

@@ -145,6 +145,9 @@ def test_cli_create_training_csv_integration(tmp_path: Path):
         "--stage", "all",
         "--image", "all",
         "--state", "corrected",
+        # This project has SEM only, so a paired export would leave every FIB
+        # cell blank; the shape under test here is the single-beam one.
+        "--modality", "SEM",
         "-o", str(out_dir),
         "--output-prefix", "test_run",
     ])

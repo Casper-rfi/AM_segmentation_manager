@@ -9,6 +9,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.operations.csv_check import (
     check_csv_paths,
@@ -47,8 +49,8 @@ def test_a_row_is_either_ok_or_missing(tmp_path: Path):
 
     results = check_csv_paths(csv_path, tmp_path)
 
-    assert [result.image.status for result in results] == ["ok", "ok", "missing"]
-    assert [result.label.status for result in results] == ["ok", "missing", "ok"]
+    assert [r.columns["image"].status for r in results] == ["ok", "ok", "missing"]
+    assert [r.columns["label"].status for r in results] == ["ok", "missing", "ok"]
     assert [result.ok for result in results] == [True, False, False]
 
 
@@ -150,3 +152,88 @@ def test_output_options_need_prune(tmp_path: Path):
         "--output", str(tmp_path / "out.csv"),
     ]) == 2
     assert not (tmp_path / "out.csv").exists()
+
+
+# ---------------------------------------------------------------------------
+# Checking a paired export
+# ---------------------------------------------------------------------------
+
+def test_a_paired_csv_is_checked_by_its_own_header(tmp_path: Path):
+    """The columns are read from the file rather than assumed, so one command
+    checks a single-beam export, a paired one, and a file written before either
+    shape was settled."""
+    from am_segmentation_manager.operations.csv_check import path_columns
+
+    stage = tmp_path / "p" / "01" / "s"
+    (stage / "sem").mkdir(parents=True)
+    (stage / "sem" / "a.tif").write_bytes(b"x")
+    (stage / "sem_labels").mkdir()
+    (stage / "sem_labels" / "a.tif").write_bytes(b"x")
+
+    csv_path = tmp_path / "paired_train.csv"
+    csv_path.write_text(
+        "sem_image,sem_label,fib_image,fib_label\n"
+        "p/01/s/sem/a.tif,p/01/s/sem_labels/a.tif,,\n"
+        "p/01/s/sem/gone.tif,p/01/s/sem_labels/a.tif,,\n",
+        encoding="utf-8",
+    )
+
+    results = check_csv_paths(csv_path, tmp_path)
+
+    assert path_columns(
+        ["sem_image", "sem_label", "fib_image", "fib_label"]
+    ) == ["sem_image", "sem_label", "fib_image", "fib_label"]
+    assert [result.ok for result in results] == [True, False]
+
+
+def test_a_blank_cell_is_not_a_missing_file(tmp_path: Path):
+    """A paired export leaves one wherever a beam has no image, or no label
+    worth pairing with one. Reporting those as missing would make every
+    single-beam acquisition look like a fault."""
+    stage = tmp_path / "p" / "01" / "s"
+    (stage / "sem").mkdir(parents=True)
+    (stage / "sem" / "a.tif").write_bytes(b"x")
+
+    csv_path = tmp_path / "paired_train.csv"
+    csv_path.write_text(
+        "sem_image,sem_label,fib_image,fib_label\n"
+        "p/01/s/sem/a.tif,,,\n",
+        encoding="utf-8",
+    )
+
+    (result,) = check_csv_paths(csv_path, tmp_path)
+
+    assert result.ok
+    assert result.columns["fib_image"].status == "blank"
+    assert result.columns["sem_image"].status == "ok"
+
+
+def test_a_file_with_no_path_column_is_refused(tmp_path: Path):
+    csv_path = tmp_path / "not-an-export.csv"
+    csv_path.write_text("lamella,count\n01,3\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="no image or label column"):
+        check_csv_paths(csv_path, tmp_path)
+
+
+def test_pruning_a_paired_csv_writes_a_paired_csv(tmp_path: Path):
+    from am_segmentation_manager.operations.csv_check import write_pruned_csv
+
+    stage = tmp_path / "p" / "01" / "s"
+    (stage / "sem").mkdir(parents=True)
+    (stage / "sem" / "a.tif").write_bytes(b"x")
+    csv_path = tmp_path / "paired_train.csv"
+    csv_path.write_text(
+        "sem_image,sem_label,fib_image,fib_label\n"
+        "p/01/s/sem/a.tif,,,\n"
+        "p/01/s/sem/gone.tif,,,\n",
+        encoding="utf-8",
+    )
+    results = check_csv_paths(csv_path, tmp_path)
+
+    written, dropped = write_pruned_csv(results, tmp_path / "pruned.csv")
+
+    lines = written.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "sem_image,sem_label,fib_image,fib_label"
+    assert dropped == 1
+    assert len(lines) == 2

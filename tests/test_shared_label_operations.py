@@ -117,8 +117,8 @@ def test_an_exported_row_survives_a_state_change(tmp_path: Path):
 
     assert len(results) == 1
     assert results[0].ok
-    assert results[0].image.status == "ok"
-    assert results[0].label.status == "ok"
+    assert results[0].columns["image"].status == "ok"
+    assert results[0].columns["label"].status == "ok"
 
 
 def test_a_row_naming_a_pulled_in_variant_survives_too(tmp_path: Path):
@@ -142,8 +142,8 @@ def test_csv_check_reports_a_genuinely_missing_file(tmp_path: Path):
 
     results = check_csv_paths(csv_path, tmp_path)
 
-    assert results[0].image.status == "missing"
-    assert results[0].label.status == "missing"
+    assert results[0].columns["image"].status == "missing"
+    assert results[0].columns["label"].status == "missing"
 
 
 def test_csv_check_passes_an_untouched_export(tmp_path: Path):

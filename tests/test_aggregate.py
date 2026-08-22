@@ -759,17 +759,37 @@ def test_cli_export_projects_csv(tmp_path: Path):
 
 
 def test_cli_export_metadata_csv_without_headers(tmp_path: Path):
+    """One row per image file, which is what a repository deposition wants."""
     from am_segmentation_manager.cli import main
 
     built(tmp_path)
     output = tmp_path / "images.csv"
     assert main([
+        "export-metadata-csv", str(tmp_path), *SCOPE, "--no-headers",
+        "--modality", "SEM", "-o", str(output),
+    ]) == 0
+
+    rows = list(csv.DictReader(output.open(encoding="utf-8")))
+    assert len(rows) == 2
+    assert {row["modality"] for row in rows} == {"SEM"}
+
+
+def test_cli_export_metadata_csv_pairs_both_modalities(tmp_path: Path):
+    """Matching the training export's shape, so a row here describes a row
+    there. Each beam's own values carry which beam they came from."""
+    from am_segmentation_manager.cli import main
+
+    built(tmp_path)
+    output = tmp_path / "paired.csv"
+    assert main([
         "export-metadata-csv", str(tmp_path), *SCOPE, "--no-headers", "-o", str(output)
     ]) == 0
 
     rows = list(csv.DictReader(output.open(encoding="utf-8")))
-    assert len(rows) == 4
-    assert {row["modality"] for row in rows} == {"SEM", "FIB"}
+    assert len(rows) == 2, "two acquisitions, both beams on one row each"
+    assert "modality" not in rows[0], "a paired row has no single modality"
+    assert rows[0]["sem_image"] and rows[0]["fib_image"]
+    assert rows[0]["lamella"], "what the beams share is said once"
 
 
 def test_cli_refuses_metadata_filters_without_headers(tmp_path: Path):

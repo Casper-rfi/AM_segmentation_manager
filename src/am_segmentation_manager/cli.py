@@ -752,12 +752,16 @@ def build_parser() -> argparse.ArgumentParser:
     # -- metadata exports ----------------------------------------------------
     export_metadata = sub.add_parser(
         "export-metadata-csv",
-        help="Write one CSV row per image, with acquisition and project metadata",
+        help="Write the acquisition and project metadata of the selected images",
         description=(
             "Export the selected images with everything known about each: where "
             "it sits, its workflow and label state, the acquisition settings "
             "read from its header, and its project's metadata. One file, no "
-            "join needed. Read-only."
+            "join needed. Read-only. With --modality SEM or FIB this is one row "
+            "per image file, which is usually what a repository deposition "
+            "wants; with both in play it is one row per acquisition, each "
+            "beam's own values under a sem_ or fib_ prefix, matching what "
+            "create-training-csv writes."
         ),
     )
     _add_scope_arguments(export_metadata, default_modality="all")
@@ -786,8 +790,16 @@ def build_parser() -> argparse.ArgumentParser:
     # -- create-training-csv -----------------------------------------------
     create_training_csv = sub.add_parser(
         "create-training-csv",
-        help="Export dataset image and label pairs to CSV files for ML model training",
-        description="Filter project images/labels and export training and validation CSV files",
+        help="Export image and label paths to CSV files for ML model training",
+        description=(
+            "Filter project images and labels and export training and "
+            "validation CSV files. With --modality SEM or FIB each row is one "
+            "image and its label; with both in play each row is one "
+            "acquisition, as sem_image, sem_label, fib_image, fib_label -- so a "
+            "model can be trained on either beam from one file, or on the two "
+            "together. A cell is blank where that beam has no image, or no "
+            "label worth pairing with one."
+        ),
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
     _add_metadata_filters(create_training_csv)
@@ -1025,7 +1037,15 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         export_image_metadata_csv(
             records, start_path, Path(args.output),
             include_headers=not args.no_headers, projects=projects,
+            # The same rule the training export and the window apply.
+            paired=args.modality == "all",
         )
+        if args.modality == "all":
+            logger.info(
+                "Both modalities selected: writing one row per acquisition, "
+                "with each beam's own values under a sem_ or fib_ prefix. Pass "
+                "--modality SEM or FIB for one row per image file."
+            )
         return 0
 
     if args.command == "stats":
@@ -1642,7 +1662,16 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             seed=args.seed,
             include_empty_labels=args.include_empty_labels,
             conditions=args.conditions,
+            # The same rule the window applies, so one selection exported
+            # either way gives the same two files.
+            paired=args.modality == "all",
         )
+        if args.modality == "all":
+            logger.info(
+                "Both modalities selected: writing one row per acquisition, "
+                "with SEM and FIB side by side. Pass --modality SEM or FIB for "
+                "one row per image."
+            )
         logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
         if val_csv:
             logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))

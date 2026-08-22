@@ -34,9 +34,10 @@ from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..models import ImageRecord, Project
 from ..operations.csv import (
+    build_training_rows,
     find_matching_label,
     keep_one_condition_per_scene,
-    split_pairs,
+    split_rows,
 )
 from ..operations.label_io import (
     ANNOTATED,
@@ -143,12 +144,19 @@ class ExportPreview:
         empty_labels: Images excluded because their label holds nothing but
             background.
         missing_labels: Images excluded because they have no label at all.
-        exportable: What a training export would actually write.
+        exportable: What a training export would actually write -- images
+            where one modality is chosen, rows where both are.
         train: How many of those the split would put in the training set.
         validation: How many it would put in the validation set. The two are
-            whole label groups, so the achieved ratio is only as close to the
+            whole groups, so the achieved ratio is only as close to the
             requested one as the grouping allows -- which is the reason to show
             it before writing rather than after.
+        paired: Whether a row carries both beams, which both modalities being
+            in play is what decides.
+        sem_only: Paired rows with no FIB label to go beside the SEM one.
+        fib_only: Paired rows with no SEM label. Shown because a paired export
+            is chosen in order to have both, and how much of it is actually
+            paired is not otherwise visible until the file is open.
     """
 
     matched: int = 0
@@ -160,6 +168,9 @@ class ExportPreview:
     exportable: int = 0
     train: int = 0
     validation: int = 0
+    paired: bool = False
+    sem_only: int = 0
+    fib_only: int = 0
 
     def summary(self) -> str:
         """Return the one-line description shown above the export buttons."""
@@ -172,7 +183,14 @@ class ExportPreview:
             parts.append(f"{self.missing_labels} without a label")
         if self.empty_labels:
             parts.append(f"{self.empty_labels} with an empty label")
-        parts.append(f"{self.exportable} exportable")
+        if self.paired:
+            parts.append(f"{self.exportable} paired row(s)")
+            if self.sem_only:
+                parts.append(f"{self.sem_only} SEM only")
+            if self.fib_only:
+                parts.append(f"{self.fib_only} FIB only")
+        else:
+            parts.append(f"{self.exportable} exportable")
         if self.exportable:
             parts.append(f"{self.train} train / {self.validation} validation")
         return " · ".join(parts)
@@ -623,6 +641,86 @@ class ExportController:
         ]
         return classify_labels(corrected, self.label_state)
 
+    @property
+    def paired(self) -> bool:
+        """Return whether an export writes both beams on one row.
+
+        Both modalities being in play is the whole of the question. A file
+        mixing SEM and FIB rows under one ``image`` column is not something
+        anyone trains on, so choosing neither modality means choosing to
+        export them side by side.
+        """
+        return self.filters.modality == "all"
+
+    def training_rows(self, matched: Sequence[ImageRecord] | None = None) -> list:
+        """Return the rows a training export would write, from one builder.
+
+        The preview and the file come from the same call, so a count on screen
+        that disagreed with what was written cannot happen. The emptiness
+        answers come from this controller's cache, so building the preview
+        opens no label the tab has not already read.
+        """
+        records = self.selected_records() if matched is None else matched
+        return build_training_rows(
+            records,
+            self.start_path or Path(),
+            paired=self.paired,
+            is_empty=self._is_empty_label,
+        )
+
+    def export_training(self, output_dir: Path) -> tuple[Path, Path | None]:
+        """Write the training files for the current selection.
+
+        Here rather than in the window because every part of it is a decision
+        -- which records, which shape, how split, what named -- and the window's
+        share is only asking where to put them. The emptiness answers come from
+        this controller's cache, so writing opens no label the tab has already
+        read.
+
+        Returns:
+            ``(train_csv_path, val_csv_path)``, the second None at a full
+            training share.
+        """
+        from ..operations.csv import export_training_csv
+
+        return export_training_csv(
+            records=self.selected_records(),
+            start_path=self.start_path or output_dir,
+            output_dir=output_dir,
+            prefix=self.training.prefix,
+            train_ratio=self.training.train_ratio,
+            seed=self.training.seed,
+            # The window never writes blank masks. Deliberate negative examples
+            # are a considered thing, and the command line's
+            # --include-empty-labels is where they stay.
+            include_empty_labels=False,
+            # Already applied: the filters decide which images are in play, and
+            # "one image per label" is one of them.
+            conditions="all",
+            paired=self.paired,
+            is_empty=self._is_empty_label,
+        )
+
+    def export_image_metadata(self, output: Path) -> Path:
+        """Write the per-image metadata for the current selection.
+
+        Paired when both modalities are in play, matching the training export:
+        one row per acquisition, each beam's own values prefixed with which
+        beam. Choosing a single modality gives one row per image file, which is
+        what a repository deposition wants -- and two such exports append,
+        since they carry the same columns.
+        """
+        from ..aggregate import project_lookup
+        from ..operations.metadata_csv import export_image_metadata_csv
+
+        return export_image_metadata_csv(
+            self.selected_records(),
+            self.start_path or output.parent,
+            output,
+            projects=project_lookup(self._projects),
+            paired=self.paired,
+        )
+
     def preview(self) -> ExportPreview:
         """Return what the current filters would export."""
         from ..operations.selection import current_state
@@ -632,8 +730,9 @@ class ExportController:
             return ExportPreview()
 
         sifted = self._sift(matched)
-        train, validation = split_pairs(
-            [(str(record.image_path), str(label)) for record, label in sifted.pairs],
+        rows = self.training_rows(matched)
+        train, validation = split_rows(
+            rows,
             train_ratio=self.training.train_ratio,
             seed=self.training.seed,
         )
@@ -648,9 +747,16 @@ class ExportController:
             annotated=sifted.annotated,
             empty_labels=sifted.empty_labels,
             missing_labels=sifted.missing_labels,
-            exportable=len(sifted.pairs),
+            exportable=len(rows),
             train=len(train),
             validation=len(validation),
+            paired=self.paired,
+            # Counted off the built rows rather than re-derived, so what the
+            # line says is a fact about the file rather than a second opinion.
+            sem_only=sum(1 for row in rows if row.values[1] and not row.values[3])
+            if self.paired else 0,
+            fib_only=sum(1 for row in rows if row.values[3] and not row.values[1])
+            if self.paired else 0,
         )
 
     # -- breakdowns --------------------------------------------------------

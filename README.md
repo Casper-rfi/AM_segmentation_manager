@@ -131,6 +131,7 @@ is the place for anything scripted:
 | Count images by one or two properties, and chart them | `stats` |
 | Measure what the labels contain, in um^2 | `quantify-labels` |
 | Export metadata and training lists | `export-*-csv` / `create-training-csv` |
+| Check an exported CSV still resolves | `check-training-csv` |
 
 Getting help
 ------------

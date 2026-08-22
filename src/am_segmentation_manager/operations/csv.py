@@ -8,15 +8,42 @@ from __future__ import annotations
 import csv
 import logging
 import random
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
+from ..frames import group_by_acquisition
 from ..io.path import make_path_relative
 from ..models import ImageRecord
 from .label_groups import condition_sort_key
 from .label_io import is_label_file_empty
 
 logger = logging.getLogger(__name__)
+
+#: Header of a training CSV covering one beam.
+SINGLE_COLUMNS = ("image", "label")
+
+#: Header of a training CSV covering both. One row is one acquisition under one
+#: pair of imaging conditions, so a model can be trained on either beam from
+#: one file, or on the two together. A cell is blank where that beam has no
+#: image, or no label worth pairing with one.
+PAIRED_COLUMNS = ("sem_image", "sem_label", "fib_image", "fib_label")
+
+
+@dataclass(frozen=True)
+class TrainingRow:
+    """One row of a training CSV, and what it must not be split away from.
+
+    Attributes:
+        values: The cells, in the order of the header they are written under.
+        group: What keeps related rows on one side of the train/validation
+            split. Splitting near-identical images across the two would have
+            the validation score measure how well the model recognises images
+            it has effectively already seen.
+    """
+
+    values: tuple[str, ...]
+    group: str
 
 
 def find_matching_label(record: ImageRecord) -> Path | None:
@@ -65,6 +92,154 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
     return kept
 
 
+def _image_cell(record: ImageRecord | None, start_path: Path) -> str:
+    """Return an image's recorded path, or blank where that beam has none."""
+    return "" if record is None else make_path_relative(record.image_path, start_path)
+
+
+def _label_cell(
+    record: ImageRecord | None,
+    start_path: Path,
+    include_empty_labels: bool,
+    is_empty: Callable[[Path], bool | None],
+) -> str:
+    """Return the path of a label worth pairing with an image, or blank.
+
+    Blank covers both "no label" and "a label holding nothing but background",
+    which are different facts about the archive but the same instruction to a
+    training run: there is nothing here to learn from. Which of the two it was
+    is the preview's to report, not the file's.
+    """
+    if record is None:
+        return ""
+    label = find_matching_label(record)
+    if label is None:
+        return ""
+    if not include_empty_labels and is_empty(label) is True:
+        return ""
+    return make_path_relative(label, start_path)
+
+
+def build_training_rows(
+    records: Iterable[ImageRecord],
+    start_path: Path,
+    *,
+    paired: bool,
+    include_empty_labels: bool = False,
+    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+) -> list[TrainingRow]:
+    """Return the rows a training export would write.
+
+    One function for the preview and for the file, because a count on screen
+    that disagreed with what was written would make the preview worse than
+    useless.
+
+    Paired, a row is one acquisition under one pair of imaging conditions --
+    the cross product, so five SEM conditions against one FIB image are five
+    rows repeating the FIB path. That is what "one image per label" is for
+    where it is not wanted. A row survives only if at least one beam has a
+    label worth pairing with: a row of two images and no annotation teaches
+    nothing.
+
+    Unpaired, a row is one image and its label, exactly as before.
+
+    Args:
+        records: The images to write, already filtered.
+        start_path: Base directory paths are written relative to.
+        paired: Write both beams per row, under :data:`PAIRED_COLUMNS`.
+        include_empty_labels: Pair an image with a label holding only
+            background. Off by default; see :func:`export_training_csv`.
+        is_empty: Answers whether a label holds nothing but background. Passed
+            in so a caller holding the answers already -- the export view, which
+            reads every label once -- does not open them all again.
+    """
+    records = list(records)
+    if not paired:
+        rows = []
+        for record in records:
+            label = _label_cell(record, start_path, include_empty_labels, is_empty)
+            if not label:
+                continue
+            rows.append(
+                TrainingRow((_image_cell(record, start_path), label), group=label)
+            )
+        return rows
+
+    rows = []
+    for acquisition in group_by_acquisition(records):
+        # A beam with no image still yields one blank column rather than no
+        # row, so an acquisition captured on one beam is exported rather than
+        # dropped for what it does not have.
+        for sem in acquisition.sem or (None,):
+            for fib in acquisition.fib or (None,):
+                values = (
+                    _image_cell(sem, start_path),
+                    _label_cell(sem, start_path, include_empty_labels, is_empty),
+                    _image_cell(fib, start_path),
+                    _label_cell(fib, start_path, include_empty_labels, is_empty),
+                )
+                if values[1] or values[3]:
+                    rows.append(TrainingRow(values, group=acquisition.identity))
+    return rows
+
+
+def split_grouped(
+    items: Sequence,
+    key: Callable[[object], str],
+    train_ratio: float = 0.8,
+    seed: int | None = 42,
+) -> tuple[list, list]:
+    """Split *items* into training and validation, keeping a group together.
+
+    The general form of :func:`split_pairs`: what a group *is* differs between
+    a single-beam export, where it is the label, and a paired one, where it is
+    the acquisition -- but the arithmetic of filling to the nearest side of the
+    target without ever cutting a group is the same.
+
+    Args:
+        items: What to split.
+        key: Returns the group an item belongs to.
+        train_ratio: Share of items assigned to training.
+        seed: Seed for a reproducible shuffle, or None to leave the order.
+
+    Returns:
+        ``(training, validation)``.
+    """
+    if train_ratio >= 1.0:
+        return list(items), []
+    if train_ratio <= 0.0:
+        return [], list(items)
+
+    grouped: dict[str, list] = {}
+    for item in items:
+        grouped.setdefault(key(item), []).append(item)
+
+    groups = list(grouped.values())
+    if seed is not None:
+        random.Random(seed).shuffle(groups)
+
+    target = len(items) * train_ratio
+    training: list = []
+    validation: list = []
+    for group in groups:
+        # Whole groups only. Filling to the nearest side of the target keeps
+        # the ratio as close as the grouping allows without ever splitting one.
+        if len(training) + len(group) / 2 <= target:
+            training.extend(group)
+        else:
+            validation.extend(group)
+    return training, validation
+
+
+def split_rows(
+    rows: Sequence[TrainingRow],
+    train_ratio: float = 0.8,
+    seed: int | None = 42,
+) -> tuple[list[TrainingRow], list[TrainingRow]]:
+    """Split built rows, keeping each row's group whole."""
+    return split_grouped(rows, lambda row: row.group, train_ratio, seed)
+
+
 def split_pairs(
     pairs: list[tuple[str, str]],
     train_ratio: float = 0.8,
@@ -94,31 +269,7 @@ def split_pairs(
     Returns:
         ``(train_pairs, val_pairs)``.
     """
-    if train_ratio >= 1.0:
-        return list(pairs), []
-    if train_ratio <= 0.0:
-        return [], list(pairs)
-
-    grouped: dict[str, list[tuple[str, str]]] = {}
-    for image, label in pairs:
-        grouped.setdefault(label, []).append((image, label))
-
-    groups = list(grouped.values())
-    if seed is not None:
-        random.Random(seed).shuffle(groups)
-
-    target = len(pairs) * train_ratio
-    train_pairs: list[tuple[str, str]] = []
-    val_pairs: list[tuple[str, str]] = []
-    for group in groups:
-        # Whole groups only. Filling to the nearest side of the target keeps
-        # the ratio as close as the grouping allows without ever splitting one.
-        if len(train_pairs) + len(group) / 2 <= target:
-            train_pairs.extend(group)
-        else:
-            val_pairs.extend(group)
-
-    return train_pairs, val_pairs
+    return split_grouped(pairs, lambda pair: pair[1], train_ratio, seed)
 
 
 def export_training_csv(
@@ -130,41 +281,47 @@ def export_training_csv(
     seed: int | None = 42,
     include_empty_labels: bool = False,
     conditions: str = "primary",
+    paired: bool = False,
+    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
 ) -> tuple[Path, Path | None]:
-    """Export paired image and label paths to CSV files for ML model training.
+    """Export image and label paths to CSV files for ML model training.
 
-    Filters records for those with valid matching label files, calculates
-    relative paths from *start_path*, and splits data into training and
-    validation sets according to *train_ratio* and *seed*.
+    Writes ``<output_dir>/<prefix>_train.csv`` and, unless *train_ratio* is
+    1.0, ``<output_dir>/<prefix>_val.csv``.
 
-    Writes `<output_dir>/<prefix>_train.csv` and (if train_ratio < 1.0)
-    `<output_dir>/<prefix>_val.csv`.
+    Two shapes, decided by *paired*::
 
-    CSV format:
         image,label
         rel/path/to/image.tif,rel/path/to/label.tif
 
+        sem_image,sem_label,fib_image,fib_label
+        rel/sem.tif,rel/sem_label.tif,rel/fib.tif,rel/fib_label.tif
+
     Args:
-        records: Iterable of ImageRecord objects to process.
+        records: ImageRecords to process, already filtered.
         start_path: Base directory used to resolve relative paths.
-        output_dir: Target directory where CSV files will be written.
-        prefix: Filename prefix for output CSV files (default: "dataset").
-        train_ratio: Ratio of data assigned to training set (0.0 to 1.0).
-        seed: Optional random seed for reproducible train/val splitting.
-        include_empty_labels: Export images whose label holds nothing but
+        output_dir: Target directory where the CSV files are written.
+        prefix: Filename prefix for the output files.
+        train_ratio: Ratio of rows assigned to training (0.0 to 1.0).
+        seed: Optional seed for a reproducible split.
+        include_empty_labels: Pair an image with a label holding nothing but
             background. Off by default: the segmentation software writes an
             empty label for every image it is pointed at, so an existing label
-            file is not evidence of annotation, and exporting one pairs an
-            image with a blank mask -- which actively teaches a model that the
-            structure is background. Turn it on only to build negative examples
-            deliberately.
+            file is not evidence of annotation, and exporting one actively
+            teaches a model that the structure is background. Turn it on only
+            to build negative examples deliberately.
         conditions: ``"primary"`` (default) exports one image per scene, or
             ``"all"`` every imaging condition of it. See
             :func:`keep_one_condition_per_scene`.
+        paired: Write both beams on one row. What a selection holding both
+            modalities should produce -- a file mixing SEM and FIB rows under
+            one ``image`` column is not something anyone trains on.
+        is_empty: Answers whether a label holds only background; see
+            :func:`build_training_rows`.
 
     Returns:
-        A tuple of (train_csv_path, val_csv_path). val_csv_path is None if
-        train_ratio >= 1.0.
+        ``(train_csv_path, val_csv_path)``. The second is None when
+        *train_ratio* is 1.0.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,52 +331,59 @@ def export_training_csv(
     elif conditions != "all":
         raise ValueError(f"Unknown conditions policy: {conditions}")
 
-    pairs: list[tuple[str, str]] = []
-    empty_count = 0
-    for record in selected:
-        label_path = find_matching_label(record)
-        if label_path is None:
-            logger.warning("Skipping image without matching label: %s", record.image_path)
-            continue
-        if not include_empty_labels and is_label_file_empty(label_path) is True:
-            logger.warning(
-                "Skipping %s: its label contains only background and is not an "
-                "annotation", record.image_path,
-            )
-            empty_count += 1
-            continue
-        img_rel = make_path_relative(record.image_path, start_path)
-        lbl_rel = make_path_relative(label_path, start_path)
-        pairs.append((img_rel, lbl_rel))
-
-    if empty_count:
-        logger.info(
-            "Excluded %d image(s) whose label holds only background; pass "
-            "--include-empty-labels to export them anyway", empty_count,
-        )
-    if not pairs:
+    rows = build_training_rows(
+        selected,
+        start_path,
+        paired=paired,
+        include_empty_labels=include_empty_labels,
+        is_empty=is_empty,
+    )
+    if not rows:
         logger.warning("No image/label pairs found to export")
+    if not include_empty_labels:
+        # Reported either way, because it is the same rule with two shapes: a
+        # blank mask is never paired with an image, which drops the row where
+        # there is one beam and empties a cell where there are two. Silence
+        # would be a training set quietly short of what somebody labelled.
+        if paired:
+            blank = sum(
+                1 for row in rows for cell in (row.values[1], row.values[3]) if not cell
+            )
+            if blank:
+                logger.info(
+                    "Left %d label cell(s) blank: no label, or one holding only "
+                    "background; pass --include-empty-labels to pair the latter "
+                    "anyway", blank,
+                )
+        elif (dropped := len(selected) - len(rows)) > 0:
+            logger.info(
+                "Excluded %d image(s) with no label, or whose label holds only "
+                "background; pass --include-empty-labels to export the latter",
+                dropped,
+            )
 
-    train_pairs, val_pairs = split_pairs(pairs, train_ratio=train_ratio, seed=seed)
-    groups = {label for _, label in pairs}
-    if len(groups) < len(pairs):
+    train_rows, val_rows = split_rows(rows, train_ratio=train_ratio, seed=seed)
+    groups = {row.group for row in rows}
+    if len(groups) < len(rows):
         logger.info(
-            "Split %d pair(s) as %d label group(s) so images sharing a label stay "
-            "on the same side: %d training, %d validation",
-            len(pairs), len(groups), len(train_pairs), len(val_pairs),
+            "Split %d row(s) as %d group(s) so images of one scene stay on the "
+            "same side: %d training, %d validation",
+            len(rows), len(groups), len(train_rows), len(val_rows),
         )
 
-    def _write_csv(path: Path, rows: list[tuple[str, str]]) -> Path:
+    columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
+
+    def _write_csv(path: Path, written: list[TrainingRow]) -> Path:
         with path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow(["image", "label"])
-            writer.writerows(rows)
-        logger.info("Wrote %d pair(s) to %s", len(rows), path)
+            writer.writerow(columns)
+            writer.writerows(row.values for row in written)
+        logger.info("Wrote %d row(s) to %s", len(written), path)
         return path
 
-    train_path = _write_csv(output_dir / f"{prefix}_train.csv", train_pairs)
+    train_path = _write_csv(output_dir / f"{prefix}_train.csv", train_rows)
     val_path = None
-    if val_pairs or train_ratio < 1.0:
-        val_path = _write_csv(output_dir / f"{prefix}_val.csv", val_pairs)
+    if val_rows or train_ratio < 1.0:
+        val_path = _write_csv(output_dir / f"{prefix}_val.csv", val_rows)
 
     return train_path, val_path

@@ -51,7 +51,10 @@ what each command and tab does. What is worth knowing beyond that:
   usefully chosen from. Values are ticked rather than highlighted, with the count beside
   each list and one button that unticks them all. The breakdown reads as a table or a
   chart in the same pane, and the crack threshold and area bin resolution sit beside the
-  button that measures.
+  button that measures. **Which modality is chosen decides the shape of what is written**:
+  one beam gives one row per image, both give one row per acquisition with the beams side
+  by side, and the training and per-image-metadata exports agree on it -- as does the
+  command line, so one selection exported either way gives the same file.
 * **A project is a directory; `project` is what the work was part of.** The directory
   the scanner indexes and Curate lists is `autolamella_project` in every export; the
   metadata field called `project` names the wider project that several of those

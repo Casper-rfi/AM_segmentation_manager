@@ -13,11 +13,17 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
+from .layout import extract_image_number
 from .models import ImageRecord
 from .operations.selection import current_state
 from .scanner import ProjectIndex
 
 logger = logging.getLogger(__name__)
+
+#: Re-exported: an acquisition number is a naming rule, so it lives in
+#: :mod:`.layout` with the rest of them, but the image selectors below are
+#: the reason it exists and callers reach for it here.
+__all__ = ["extract_image_number"]
 
 
 # ---------------------------------------------------------------------------
@@ -115,20 +121,6 @@ def matches_stage(stage, selectors: list[str] | None) -> bool:
     if stage_number is not None and int(stage_number) in numeric_values:
         return True
     return False
-
-
-def extract_image_number(image_name: str) -> int | None:
-    """Extract the image number from an Autolamella image filename.
-
-    Recognises patterns like ``AP_img_013`` or ``img_013``.
-    """
-    match = re.search(r"AP_img_(\d+)", image_name, re.IGNORECASE)
-    if match is not None:
-        return int(match.group(1))
-    match = re.search(r"img_(\d+)", image_name, re.IGNORECASE)
-    if match is not None:
-        return int(match.group(1))
-    return None
 
 
 def matches_image(record, selectors: list[str] | None) -> bool:

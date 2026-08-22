@@ -15,6 +15,7 @@ from dataclasses import fields as dataclass_fields
 from pathlib import Path
 
 from ..config import SegmentationConfig
+from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.path import make_path_relative
 from ..metadata import DESCRIPTIVE_FIELDS
@@ -38,6 +39,29 @@ IDENTITY_COLUMNS = (
     PROJECT_IDENTITY_COLUMN, "lamella", "stage", "modality", "variant",
     "state", "label_state", "label_shared", "image", "label",
 )
+
+#: What a paired row says once, because both beams share it. "modality" is not
+#: among them: a paired row has no single modality, which is the point of it.
+SHARED_COLUMNS = (PROJECT_IDENTITY_COLUMN, "lamella", "stage", "acquisition")
+
+#: What a paired row says twice, once per beam, under the prefixes below.
+PER_BEAM_COLUMNS = (
+    "variant", "state", "label_state", "label_shared", "image", "label",
+)
+
+#: How a beam's own columns are marked. Every value under one of these was read
+#: from that beam's image or its label; anything unprefixed describes the
+#: acquisition or the project, which the two share.
+BEAM_PREFIXES = {"SEM": "sem", "FIB": "fib"}
+
+
+def beam_column(modality: str, field: str) -> str:
+    """Return the paired CSV's column for one beam's *field*.
+
+    Raises:
+        KeyError: If *modality* is not a beam this package knows.
+    """
+    return f"{BEAM_PREFIXES[modality]}_{field}"
 
 #: The acquisition columns, taken from the dataclass so the two cannot drift.
 METADATA_COLUMNS = tuple(
@@ -105,6 +129,98 @@ def image_rows(
     return rows
 
 
+def paired_image_rows(
+    records: Iterable[ImageRecord],
+    start_path: Path,
+    metadata: Mapping[Path, ImageMetadata] | None = None,
+    projects: Mapping[Path, Project] | None = None,
+) -> list[dict[str, object]]:
+    """Return one row per acquisition, both beams side by side.
+
+    The same shape as a paired training CSV and grouped by the same rule, so a
+    row here describes a row there. What the two beams share -- the project, the
+    lamella, the stage, the acquisition number -- is said once; everything read
+    from one beam's image or label is prefixed with which beam, because
+    ``dwell_time_ns`` alone would not say.
+
+    One row per pair of imaging conditions, as the training export writes: five
+    SEM conditions against one FIB image are five rows repeating the FIB
+    columns.
+    """
+    metadata = metadata or {}
+    projects = projects or {}
+    rows: list[dict[str, object]] = []
+
+    for acquisition in group_by_acquisition(records):
+        for sem in acquisition.sem or (None,):
+            for fib in acquisition.fib or (None,):
+                present = next(
+                    record for record in (sem, fib) if record is not None
+                )
+                row: dict[str, object] = {
+                    PROJECT_IDENTITY_COLUMN: present.project,
+                    "lamella": present.lamella,
+                    "stage": present.stage,
+                    "acquisition": (
+                        "" if acquisition.image_number is None
+                        else acquisition.image_number
+                    ),
+                }
+                for modality, record in (("SEM", sem), ("FIB", fib)):
+                    _fill_beam(row, modality, record, start_path, metadata)
+                _fill_project(row, projects.get(present.image_path))
+                rows.append(row)
+    return rows
+
+
+def _fill_beam(
+    row: dict[str, object],
+    modality: str,
+    record: ImageRecord | None,
+    start_path: Path,
+    metadata: Mapping[Path, ImageMetadata],
+) -> None:
+    """Write one beam's columns into a paired row, blank where it has none."""
+    label = find_matching_label(record) if record is not None else None
+    values: dict[str, object] = {
+        "variant": (record.variant or "base") if record is not None else "",
+        "state": current_state(record) if record is not None else "",
+        "label_state": label_state(record) if record is not None else "",
+        "label_shared": record.label_shared if record is not None else "",
+        "image": (
+            make_path_relative(record.image_path, start_path)
+            if record is not None else ""
+        ),
+        "label": make_path_relative(label, start_path) if label else "",
+    }
+    for field in PER_BEAM_COLUMNS:
+        row[beam_column(modality, field)] = values[field]
+
+    entry = metadata.get(record.image_path) if record is not None else None
+    for column in METADATA_COLUMNS:
+        value = getattr(entry, column, None) if entry is not None else None
+        row[beam_column(modality, column)] = "" if value is None else value
+
+
+def _fill_project(row: dict[str, object], project: Project | None) -> None:
+    """Write the project's own columns, which both beams share."""
+    resolved = project.experiment_metadata if project is not None else None
+    for name in DESCRIPTIVE_FIELDS:
+        value = getattr(resolved, name, None) if resolved is not None else None
+        row[image_metadata_column(name)] = "" if value is None else value
+    if project is not None:
+        row[PROJECT_IDENTITY_COLUMN] = project.key
+
+
+def paired_columns() -> list[str]:
+    """Return the header of a paired per-image metadata CSV."""
+    columns = list(SHARED_COLUMNS)
+    for modality in BEAM_PREFIXES:
+        columns += [beam_column(modality, field) for field in PER_BEAM_COLUMNS]
+        columns += [beam_column(modality, field) for field in METADATA_COLUMNS]
+    return columns + list(PROJECT_COLUMNS)
+
+
 def export_image_metadata_csv(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -112,8 +228,9 @@ def export_image_metadata_csv(
     *,
     include_headers: bool = True,
     projects: Mapping[Path, Project] | None = None,
+    paired: bool = False,
 ) -> Path:
-    """Write one row per image, with its acquisition and project metadata.
+    """Write the acquisition and project metadata of the images given.
 
     Args:
         records: The images to export, already filtered.
@@ -123,14 +240,23 @@ def export_image_metadata_csv(
             millisecond per image; turn it off for a purely structural listing.
         projects: Image path to project, from
             :func:`~am_segmentation_manager.aggregate.project_lookup`.
+        paired: Write one row per acquisition with both beams side by side,
+            rather than one row per image. What a selection holding both
+            modalities produces, matching the training export's shape. A file
+            with one row per image file -- which a repository deposition
+            usually wants -- is what choosing a single modality gives.
 
     Returns:
         The path written.
     """
     records = list(records)
     metadata = read_records_metadata(records) if include_headers else {}
-    rows = image_rows(records, start_path, metadata, projects)
-    columns = [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS]
+    if paired:
+        rows = paired_image_rows(records, start_path, metadata, projects)
+        columns = paired_columns()
+    else:
+        rows = image_rows(records, start_path, metadata, projects)
+        columns = [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS]
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
@@ -138,7 +264,7 @@ def export_image_metadata_csv(
         writer.writeheader()
         writer.writerows(rows)
 
-    logger.info("Wrote %d image row(s) to %s", len(rows), output)
+    logger.info("Wrote %d row(s) to %s", len(rows), output)
     if include_headers and len(metadata) < len(records):
         logger.warning(
             "%d image(s) had no readable header; their acquisition columns are "
