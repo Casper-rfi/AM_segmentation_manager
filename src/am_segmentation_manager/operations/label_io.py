@@ -45,6 +45,7 @@ __all__ = [
     "MISSING",
     "UNREADABLE",
     "LabelReadiness",
+    "classify_label",
     "classify_labels",
     "has_image_stack_support",
     "has_compression_support",
@@ -128,9 +129,24 @@ def label_state(record: ImageRecord) -> str:
     from .csv import find_matching_label
 
     label = find_matching_label(record)
+    return classify_label(label, is_label_file_empty(label) if label else None)
+
+
+def classify_label(label: Path | None, empty: bool | None) -> str:
+    """Return the state a label path and its emptiness amount to.
+
+    Split from :func:`label_state` so a caller that has already opened the
+    label -- reading a whole collection once, rather than a file at a time --
+    reaches the same vocabulary without a second read and without a second
+    copy of the rules.
+
+    Args:
+        label: The label file, or None where there is none.
+        empty: What :func:`is_label_file_empty` said of it, None meaning it
+            could not be read.
+    """
     if label is None:
         return MISSING
-    empty = is_label_file_empty(label)
     if empty is None:
         return UNREADABLE
     return EMPTY if empty else ANNOTATED

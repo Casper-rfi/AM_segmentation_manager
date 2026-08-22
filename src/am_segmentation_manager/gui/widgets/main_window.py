@@ -542,7 +542,7 @@ class CurationWindow(QMainWindow):
         if widget is self.curate:
             self._focus_curate()
         elif widget is self.export_panel:
-            self.export_panel.refresh()
+            self._open_export()
         elif widget is self.label_panel:
             self._point_label_tab()
             # Space pans, and it is read by the canvas as a key press, so the
@@ -557,6 +557,27 @@ class CurationWindow(QMainWindow):
         self._apply_tab_shortcuts(self._current_tab())
         if self._help is not None and self._help.isVisible():
             self._show_help()
+
+    def _open_export(self) -> None:
+        """Read every label before the tab first draws, saying that it is.
+
+        The tab cannot show a single number without knowing what is inside each
+        label -- a blank label is not an annotation -- and over a real
+        collection that is half a minute of reading. Done inside the first
+        refresh it stopped the window dead with nothing on screen to say why,
+        so it runs on the worker behind a dialog that counts. Once done it is
+        cached for the scan, and every later refresh is instant.
+        """
+        if not self.export_controller.records or self.export_controller.labels_warm():
+            self.export_panel.refresh()
+            return
+        labels = self.export_controller.measurable_labels()
+        progressed = self.operations.worker.progressed
+        self._run_operation(
+            f"Reading {labels} label(s)",
+            lambda: self.export_controller.warm_labels(progressed.emit),
+            lambda _read: self.export_panel.refresh(),
+        )
 
     def _focus_curate(self) -> None:
         """Put the keyboard on the project list, not the scan box.
@@ -1241,7 +1262,10 @@ class CurationWindow(QMainWindow):
             QMessageBox.warning(self, "Scan", f"Not a folder: {directory}")
             return
 
-        if self._reading(lambda: self.controller.scan(directory)):
+        if self._reading(
+            lambda: self.controller.scan(directory),
+            f"Scanning {directory.name} for projects...",
+        ):
             self.project_panel.set_path(str(directory))
             self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
 
@@ -1255,16 +1279,24 @@ class CurationWindow(QMainWindow):
         if self.controller.start_path is None:  # pragma: no cover - always set by here
             self.refresh(reload_lists=True)
             return
-        self._reading(self.controller.rescan)
+        self._reading(self.controller.rescan, "Reading the folder again...")
 
-    def _reading(self, read: Callable[[], object]) -> bool:
+    def _reading(self, read: Callable[[], object], announcement: str = "") -> bool:
         """Run *read* under a wait cursor and redraw; return whether it worked.
 
-        Under a wait cursor throughout: scanning a collection is the slowest
-        thing the window does, and until it finishes there is nothing on screen
-        to say anything is happening.
+        Under a wait cursor throughout, and behind a line saying what is
+        happening: scanning a collection is the slowest thing the window does
+        on its own thread, and a cursor alone does not say whether a window is
+        working or stuck. The line is painted before the read starts, because
+        the read is what stops anything else being painted.
+
+        Args:
+            announcement: Shown where the project summary goes while the read
+                runs. Empty leaves whatever is there.
         """
         failure: Exception | None = None
+        if announcement:
+            self.project_panel.announce(announcement)
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             read()

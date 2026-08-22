@@ -637,6 +637,59 @@ def test_the_scan_box_is_what_would_have_swallowed_the_frame_keys(window):
     assert not claims(window.project_panel.project_list, Qt.Key_Down)
 
 
+def test_opening_export_reads_the_labels_on_the_worker(window, monkeypatch):
+    """Half a minute of reading over a real collection. Done inside the first
+    refresh it stopped the window dead with nothing on screen to say why."""
+    submitted: list[str] = []
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: (
+            submitted.append(description), on_done(work())
+        ),
+    )
+
+    window.tabs.setCurrentWidget(window.export_panel)
+
+    assert submitted, "the tab refreshed inline instead of handing it over"
+    assert "label" in submitted[0], "the dialog has to say what is being read"
+    assert window.export_controller.labels_warm()
+
+
+def test_returning_to_export_does_not_read_them_again(window, monkeypatch):
+    """Once read they are cached for the scan, so the tab is instant after the
+    first visit -- which is what makes one wait acceptable."""
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: on_done(work()),
+    )
+    window.tabs.setCurrentWidget(window.export_panel)
+    assert window.export_controller.labels_warm()
+
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda *args, **kwargs: pytest.fail("the labels were already read"),
+    )
+    window.tabs.setCurrentWidget(window.curate)
+    window.tabs.setCurrentWidget(window.export_panel)
+
+
+def test_the_scan_says_what_it_is_doing_before_it_blocks(window, project: Path):
+    """A wait cursor does not say whether a window is working or stuck, and the
+    scan is what stops anything else being painted."""
+    announced: list[str] = []
+    original = window.project_panel.announce
+    window.project_panel.announce = lambda text: (
+        announced.append(text), original(text)
+    )
+    try:
+        window.scan(str(project))
+    finally:
+        del window.project_panel.announce
+
+    assert announced and "Scanning" in announced[0]
+    assert project.name in announced[0]
+
+
 def test_the_add_data_tab_opens_before_anything_is_scanned(qt_app, settings):
     """Reachable from a fresh window, which has no projects to describe yet."""
     controller = CurationController(cache=FrameCache(), config=SegmentationConfig(

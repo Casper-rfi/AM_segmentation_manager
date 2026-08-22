@@ -109,6 +109,7 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
         RuntimeError: If no Qt binding is installed.
     """
     try:
+        from qtpy.QtCore import QTimer
         from qtpy.QtWidgets import QApplication
     except Exception as exc:  # noqa: BLE001 - reported as a clear instruction
         raise RuntimeError(_missing_qt_message(exc)) from exc
@@ -130,6 +131,11 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
 
     if start_path is not None:
         window.project_panel.set_path(str(start_path))
-        window.scan(str(start_path))
+        # Held until the event loop is running. show() only asks for a paint;
+        # nothing is drawn until exec() below starts delivering events, so a
+        # scan started here ran against a window that had never appeared --
+        # seconds of blank grey with no way to tell it from a hang. Queued at
+        # zero delay, the window is on screen before the first file is read.
+        QTimer.singleShot(0, lambda: window.scan(str(start_path)))
 
     return application.exec_() if hasattr(application, "exec_") else application.exec()

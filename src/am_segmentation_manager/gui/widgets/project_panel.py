@@ -286,6 +286,18 @@ class ProjectPanel(QWidget):
         """Show a short description of what is loaded."""
         self.summary.setText(text)
 
+    def announce(self, text: str) -> None:
+        """Show *text* and paint it now, before the caller blocks.
+
+        Scanning holds the interface thread, so an ordinary ``setText`` would
+        not reach the screen until the scan it is announcing had finished.
+        ``repaint`` draws this one widget synchronously; it does not process
+        events, so nothing is re-entered on the way -- the distinction
+        :class:`~.busy_dialog.BusyDialog` exists to keep.
+        """
+        self.summary.setText(text)
+        self.summary.repaint()
+
     def _set_items(
         self,
         widget: CheckList,

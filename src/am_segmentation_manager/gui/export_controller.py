@@ -44,9 +44,9 @@ from ..operations.label_io import (
     MISSING,
     UNREADABLE,
     LabelReadiness,
+    classify_label,
     classify_labels,
     is_label_file_empty,
-    label_state,
 )
 from ..operations.label_measure import LabelMeasurement
 
@@ -285,6 +285,10 @@ class ExportController:
         self._metadata_loaded = False
         self._label_empty: dict[Path, bool | None] = {}
         self._label_states: dict[Path, str] = {}
+        # Whether every label has been read. Tracked rather than inferred from
+        # the caches being non-empty, which cannot tell "all of them" from
+        # "the ones some filter happened to ask about".
+        self._labels_warm = False
         self._measurements: dict[Path, LabelMeasurement] = {}
         self._measurements_loaded = False
         # Built by walking every record, and asked for once per filter list on
@@ -309,6 +313,7 @@ class ExportController:
         self._metadata_loaded = False
         self._label_empty = {}
         self._label_states = {}
+        self._labels_warm = False
         self._measurements = {}
         self._measurements_loaded = False
         self._lookup = project_lookup(self._projects)
@@ -456,12 +461,59 @@ class ExportController:
         """Return *record*'s label state, reading each label at most once.
 
         The filter and the breakdown both ask this of every record on every
-        refresh, and answering it opens a file.
+        refresh, and answering it opens a file. Answered from the same cache
+        the exportable count reads, because they are the same question about
+        the same file: keeping two caches read every label in the collection
+        twice.
         """
         path = record.image_path
         if path not in self._label_states:
-            self._label_states[path] = label_state(record)
+            label = find_matching_label(record)
+            self._label_states[path] = classify_label(
+                label, self._is_empty_label(label) if label is not None else None
+            )
         return self._label_states[path]
+
+    def labels_warm(self) -> bool:
+        """Return whether every label has been read, so counting is instant."""
+        return self._labels_warm
+
+    def warm_labels(
+        self, on_progress: Callable[[int, int], None] | None = None
+    ) -> int:
+        """Open every label once, filling the caches the whole tab counts from.
+
+        The tab cannot show a single number without knowing what is inside each
+        label -- a blank label is not an annotation -- and over a real
+        collection that is half a minute of reading. Done here, in one pass
+        that can report progress and be run off the interface thread, rather
+        than inside the first refresh, where it stopped the window dead with
+        nothing on screen to say why.
+
+        Counted in label files rather than images, because several imaging
+        conditions of one scene share one and cost one read between them.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` in label files.
+
+        Returns:
+            How many label files were read.
+        """
+        paired = [(record, find_matching_label(record)) for record in self._records]
+        labels = sorted({label for _, label in paired if label is not None})
+        for done, label in enumerate(labels, start=1):
+            self._is_empty_label(label)
+            if on_progress is not None:
+                on_progress(done, len(labels))
+        for record, label in paired:
+            self._label_states.setdefault(
+                record.image_path,
+                classify_label(
+                    label, self._label_empty[label] if label is not None else None
+                ),
+            )
+        self._labels_warm = True
+        return len(labels)
 
     def selected_records(self, ignoring: str | None = None) -> list[ImageRecord]:
         """Return the records passing the current filters.

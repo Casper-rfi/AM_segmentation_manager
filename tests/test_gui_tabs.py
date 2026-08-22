@@ -13,6 +13,7 @@ import pytest
 
 from am_segmentation_manager import aggregate as ag
 from am_segmentation_manager.aggregate import MISSING
+from am_segmentation_manager.gui import export_controller as ec
 from am_segmentation_manager.gui.export_controller import ExportController
 from am_segmentation_manager.gui.metadata_controller import (
     SUGGESTION_LIMIT,
@@ -996,3 +997,110 @@ def test_a_project_path_is_absolute():
 def test_a_path_is_not_invented_for_a_row_that_is_not_there():
     assert MetadataController().project_path(0) is None
     assert at("project").project_path(7) is None
+
+
+# ---------------------------------------------------------------------------
+# Reading the labels once, off the interface thread
+# ---------------------------------------------------------------------------
+#
+# The tab cannot show a single number without knowing what is inside each
+# label, and over a real collection that is half a minute of reading. What
+# these pin is that it happens once, is counted in files, and that nothing
+# afterwards opens a label again.
+
+def _counting_reads(monkeypatch) -> list[Path]:
+    """Record every label file opened, in order."""
+    opened: list[Path] = []
+    real = ec.is_label_file_empty
+
+    def counted(path):
+        opened.append(path)
+        return real(path)
+
+    monkeypatch.setattr(ec, "is_label_file_empty", counted)
+    return opened
+
+
+def test_warming_reports_progress_in_label_files_not_images(
+    tmp_path: Path, monkeypatch,
+):
+    """Several imaging conditions of one scene share a label and cost one read
+    between them, so a counter over images would overstate the work and then
+    jump."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=3, labels="annotated",
+                  sem_variants=("SEM_8_fi_1",))
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    seen: list[tuple[int, int]] = []
+
+    read = controller.warm_labels(lambda done, total: seen.append((done, total)))
+
+    assert seen == [(n, read) for n in range(1, read + 1)]
+    assert read < len(controller.records), "a shared label is read once"
+
+
+def test_warming_reads_each_label_once(tmp_path: Path, monkeypatch):
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=3, labels="annotated",
+                  sem_variants=("SEM_8_fi_1",))
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    opened = _counting_reads(monkeypatch)
+
+    controller.warm_labels()
+
+    assert len(opened) == len(set(opened))
+    assert controller.labels_warm()
+
+
+def test_nothing_opens_a_label_again_once_warm(tmp_path: Path, monkeypatch):
+    """The whole point: after this the tab redraws on every keystroke without
+    touching the disk."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=3, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.warm_labels()
+    opened = _counting_reads(monkeypatch)
+
+    controller.preview()
+    controller.breakdown("label")
+    controller.filters.label = "annotated"
+    controller.selected_records()
+
+    assert opened == []
+
+
+def test_counting_by_label_state_does_not_re_read_what_the_count_read(
+    tmp_path: Path, monkeypatch,
+):
+    """The exportable count and the label-state breakdown ask the same question
+    of the same file. Two caches meant every label in the collection was opened
+    twice."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=3, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    opened = _counting_reads(monkeypatch)
+
+    controller.preview()
+    after_preview = len(opened)
+    controller.breakdown("label")
+
+    assert after_preview > 0
+    assert len(opened) == after_preview
+
+
+def test_a_rescan_makes_the_labels_cold_again(tmp_path: Path):
+    """They are read from disk, and a rescan is what follows something that
+    wrote to it."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.warm_labels()
+
+    controller.set_projects(scanned(tmp_path), tmp_path)
+
+    assert not controller.labels_warm()

@@ -241,3 +241,38 @@ def test_the_icon_is_set_on_the_application_so_dialogs_inherit_it(qt_app):
     _apply_icon(qt_app)
 
     assert not qt_app.windowIcon().isNull()
+
+
+def test_the_startup_scan_waits_for_the_window_to_appear(qt_app, tmp_path, monkeypatch):
+    """``show()`` only asks for a paint. Nothing is drawn until ``exec()``
+    starts delivering events, so a scan started before it ran against a window
+    that had never appeared -- seconds of blank grey indistinguishable from a
+    hang."""
+    from am_segmentation_manager.gui import app
+
+    order: list[str] = []
+
+    class FakeWindow:
+        def __init__(self, controller):
+            self.project_panel = type("P", (), {"set_path": lambda self, p: None})()
+
+        def show(self):
+            order.append("show")
+
+        def scan(self, path):
+            order.append("scan")
+
+    monkeypatch.setattr(app, "CurationWindow", FakeWindow, raising=False)
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.main_window.CurationWindow", FakeWindow
+    )
+    monkeypatch.setattr(
+        qt_app, "exec", lambda: order.append("exec") or qt_app.processEvents() or 0
+    )
+    monkeypatch.setattr(qt_app, "exec_", qt_app.exec, raising=False)
+
+    app.run(start_path=tmp_path)
+
+    assert order == ["show", "exec", "scan"], (
+        "the scan must be queued behind the event loop, not run before it"
+    )

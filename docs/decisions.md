@@ -325,6 +325,14 @@ place.
 
 ## Display
 
+- **A window that has not been drawn cannot say it is working.** `show()` only asks for a
+  paint; nothing reaches the screen until `exec()` starts delivering events. The startup
+  scan ran between the two, so opening on a folder gave seconds of blank grey with no way
+  to tell it from a hang — it is queued at zero delay instead, and the window is up before
+  the first file is read. Where the interface thread does have to block, the line saying so
+  is `repaint`ed rather than merely set: an ordinary `setText` would reach the screen only
+  after the work it announces had finished. `repaint` draws one widget synchronously and
+  processes no events, so it is not the re-entrancy hazard `BusyDialog` exists to avoid.
 - **`downscale_to_fit` uses `min(width_ratio, height_ratio)`.** The images are landscape in a
   portrait pane, so **width binds**, and window chrome does not change how they render.
 - **One stylesheet, and it beats the palette.** `theme.py` sets the Fusion style, a palette
@@ -343,6 +351,19 @@ place.
   label is one character — such a button clipped its label away and drew blank while
   reporting its text correctly, so `COMPACT_BUTTON` names the exception and the pixels are
   what a test asserts on.
+- **The Export tab reads every label once, before it first draws.** It cannot show a single
+  number without knowing what is inside each label — a blank label is not an annotation —
+  and over the reference collection that is 1,232 files and tens of seconds. Done inside the
+  first refresh it stopped the window dead with nothing on screen to say why, so it runs on
+  the worker behind a dialog counting label *files*, not images: several conditions of one
+  scene share a label and cost one read between them, so a counter over images would
+  overstate the work and then jump. Afterwards every refresh is arithmetic, which is what
+  makes one wait acceptable. A rescan makes them cold again, the labels being on the disk
+  that the operation just wrote to.
+- **One cache answers what is in a label, not two.** The exportable count and the
+  label-state breakdown ask the same question of the same file, and each used to keep its
+  own answer — so choosing that breakdown read every label in the collection a second time.
+  `classify_label` is the shared rule and `_label_empty` the shared cache.
 - **A filter in the Export tab is added, not permanently shown.** The breakdowns cover far
   more properties than any one export is chosen by, so one list per property left too little
   of each to read and buried the three that matter among a dozen nobody touches. A row
