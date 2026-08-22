@@ -13,14 +13,6 @@ place.
   controllers, which is what makes navigation, cache eviction and state expansion testable
   without a display server. It is the one structural rule of the UI; adding a tab is not a
   reason to bend it.
-- **An operation belongs in the window when its input is the selection on screen; it stays
-  on the command line when it is a sweep over the whole collection.** Naming a selection
-  twice — once by ticking it, once as command-line filters — is where the two diverge and
-  the wrong data is acted on. The Add data commands are in the window despite being
-  sweeps: there the sweep *is* the collection and there is nothing to select. Each previews
-  and then applies what it previewed, as two runs of the same function rather than one
-  replayed — a preview held across a dialog describes a filesystem the user has had time to
-  change.
 - **A filter and a breakdown are one declaration in the Export tab.** They are the same key
   function used two ways — group by it, or keep the records whose group was chosen — so the
   filter lists come from `BREAKDOWNS` rather than a second table beside it, and cannot
@@ -29,8 +21,6 @@ place.
   to find images whose header would not read; and a measured property is not offered, since
   it cannot answer before Measure is pressed. Modality, workflow state and the label filter
   keep dedicated controls, being fixed questions rather than data.
-- **`filtering.METADATA_FILTERS` stays as it was.** It is the command line's contract, where
-  a filter is typed rather than picked and has to tolerate `30000` for a stored `30000.0`.
 - **Counting split rather than moved.** The Export tab counts and cross-tabulates the set
   its filters describe, measuring labels when asked, because choosing a training set means
   looking at what survives a filter and that loop cannot run through a command that prints
@@ -378,18 +368,25 @@ place.
   either shape and files written before both. A blank cell is its own answer rather than an
   absent column: it records nothing, so it cannot have gone missing, and keeping it is what
   lets a pruned copy come out the same shape.
-- **The Export tab reads every label once, before it first draws.** It cannot show a single
-  number without knowing what is inside each label — a blank label is not an annotation —
-  and over the reference collection that is 1,232 files and 30 seconds. Done inside the
-  first refresh it stopped the window dead with nothing on screen to say why, so it runs on
-  the worker behind a dialog counting label *files*, not images: conditions of one scene
-  share a label and cost one read between them, so a counter over images would overstate the
-  work and then jump. Afterwards every refresh is arithmetic, which is what makes one wait
-  acceptable; a rescan makes them cold again, the labels being on the disk the operation
-  just wrote to. **One cache answers what is in a label, not two** — the exportable count
-  and the label-state breakdown ask the same question of the same file, and each keeping its
-  own answer meant choosing that breakdown read every label a second time. `classify_label`
-  is the shared rule and `_label_empty` the shared cache.
+- **Opening the Export tab reads the headers and nothing else.** Half a millisecond an
+  image — two seconds over the reference collection — and it is what every acquisition
+  filter and breakdown is made of, so paying for it on arrival is what lets them simply
+  work. Offering them greyed out instead, until a button was found and pressed, was a
+  control that did nothing with no way to tell why.
+- **Opening a label is asked for, never assumed.** It is ten times the cost of a header —
+  1,232 files and 14 seconds here — and answers a different question: what is *in* the
+  label. So the summary shows what a record knows about itself and says plainly that the
+  rest needs Measure labels, rather than reading an archive to fill in a line nobody may
+  read. **Measured over what the filters match**, not the collection: an export is chosen by
+  narrowing, and measuring 1,232 labels to answer a question about the 134 in one project is
+  work nobody asked for. Widening a filter therefore asks again for what it brought in — a
+  tab still answering from an earlier measurement would be describing a different set than
+  the one on screen.
+- **Measuring answers the exportable count too.** It opens the label anyway, and whether
+  there is anything in it falls out of the class counts it already has, so the exportable
+  count, the label filter and the label-state breakdown all come out of the one pass the
+  user asked for. `classify_label` is the shared rule and `_label_empty` the shared cache;
+  keeping two of either meant every label read twice.
 - **A filter in the Export tab is added, not permanently shown.** The breakdowns cover far
   more properties than any one export is chosen by, so one list per property left too little
   of each to read and buried the three that matter among a dozen nobody touches. A row

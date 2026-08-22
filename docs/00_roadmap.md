@@ -50,7 +50,9 @@ what each command and tab does. What is worth knowing beyond that:
   choice of property is derived from the breakdowns, so a property can be counted by and
   filtered on without being declared twice — bar a few that can be counted by but not
   usefully chosen from. Values are ticked rather than highlighted, with the count beside
-  each list and one button that unticks them all. The breakdown reads as a table or a
+  each list and one button that unticks them all. Opening the tab reads the image headers,
+  which the acquisition filters are made of; opening the labels is the one slow read and
+  stays behind *Measure labels*, over whatever the filters match. The breakdown reads as a table or a
   chart in the same pane, and the crack threshold and area bin resolution sit beside the
   button that measures. **Which modality is chosen decides the shape of what is written**:
   one beam gives one row per image, both give one row per acquisition with the beams side

@@ -196,15 +196,14 @@ def test_moving_a_filter_to_another_property_clears_the_one_it_leaves(
     assert "variant" not in panel.controller.filters.choices
 
 
-def test_the_acquisition_filters_wait_for_the_headers(qt_app, tmp_path):
-    """Their values come from the headers. Disabled rather than absent, so
-    looking for one finds it beside the button that loads them."""
+def test_the_acquisition_filters_are_usable_straight_away(qt_app, tmp_path):
+    """Their values come from the headers, which the window reads on arrival --
+    so nothing here is offered in a state where picking it does nothing, which
+    is what a greyed-out row with no explanation amounts to."""
     panel = _loaded_panel(tmp_path)
+    panel.controller.load_metadata()
+    panel.refresh()
     row = _only_row(panel)
-
-    assert not _is_enabled(row, "microscope")
-
-    panel._load_metadata()
 
     assert _is_enabled(row, "microscope")
 
@@ -730,7 +729,7 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
         panel.modality, panel.state, panel.label_state, panel.breakdown,
         panel.cross, panel.conditions, panel.measure_button,
         panel.train_share, panel.seeded, panel.seed, panel.prefix,
-        panel.load_button, panel.check_button,
+        panel.check_button,
     ):
         assert widget.toolTip(), f"{widget} explains nothing"
 

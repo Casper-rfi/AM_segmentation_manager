@@ -172,7 +172,7 @@ class FilterRow(QWidget):
         """Return the values this row keeps. Empty means it narrows nothing."""
         return self.values.ticked_values()
 
-    def offer(self, groups, taken: set[str], ready: bool) -> None:
+    def offer(self, groups, taken: set[str]) -> None:
         """Fill the dropdown with the properties this row may be put on.
 
         Args:
@@ -181,11 +181,6 @@ class FilterRow(QWidget):
             taken: Properties another row already holds. Left out, so one
                 property is filtered in one place and two rows cannot disagree
                 about it.
-            ready: Whether the headers have been read. Acquisition properties
-                are shown but disabled until they have been, because their
-                values come from the headers -- disabled rather than absent so
-                that looking for one finds it, next to the button that loads
-                them.
         """
         self._filling = True
         try:
@@ -201,23 +196,10 @@ class FilterRow(QWidget):
                 [(heading, rows) for heading, rows in offered if rows],
                 first=(NO_PROPERTY, CHOOSE_PROPERTY),
             )
-            self._disable_unready(ready)
             index = self.property_box.findData(self._property)
             self.property_box.setCurrentIndex(max(index, 0))
         finally:
             self._filling = False
-
-    def _disable_unready(self, ready: bool) -> None:
-        """Grey out the properties whose values need the headers read."""
-        if ready:
-            return
-        model = self.property_box.model()
-        for position in range(model.rowCount()):
-            item = model.item(position)
-            name = item.data(Qt.UserRole)
-            if name and self.controller.needs_metadata(name):
-                item.setFlags(Qt.NoItemFlags)
-                item.setToolTip("Press Load image metadata to read the headers.")
 
     def _property_chosen(self) -> None:
         """Move this row onto another property, clearing the one it leaves."""
@@ -373,13 +355,6 @@ class ExportPanel(QWidget):
         column.addWidget(self.conditions)
 
         column.addSpacing(6)
-        self.load_button = QPushButton("Load image metadata")
-        self.load_button.setToolTip(
-            "Read every image's header, which the acquisition filters and "
-            "breakdowns need. About half a millisecond per image."
-        )
-        self.load_button.clicked.connect(self._load_metadata)
-        column.addWidget(self.load_button)
 
         # Filters are added as they are wanted rather than all shown at once.
         # Which properties are on offer comes from the breakdowns, so a property
@@ -774,25 +749,6 @@ class ExportPanel(QWidget):
         """Open the next dialog where this one left off."""
         self._last_directory = path if path.is_dir() else path.parent
 
-    def _load_metadata(self) -> None:
-        self.controller.load_metadata()
-        self._refresh_filter_rows()
-        self.refresh()
-
-    def _show_metadata_state(self) -> None:
-        """Spend the Load button once the headers have been read.
-
-        Read from the controller rather than set where the button is pressed:
-        measuring the labels needs the headers for the scale and keeps them, so
-        the button can be spent by something other than itself.
-        """
-        if not self.controller.metadata_loaded():
-            return
-        self.load_button.setText(
-            f"{len(self.controller.metadata_map)} header(s) read"
-        )
-        self.load_button.setEnabled(False)
-
     def _refresh_filter_rows(self) -> None:
         """Offer each row its choices, and fill the one it is on.
 
@@ -805,10 +761,9 @@ class ExportPanel(QWidget):
         self._updating = True
         try:
             groups = self.controller.filterable_groups()
-            ready = self.controller.metadata_loaded()
             held = {row.property_name for row in self.filter_rows if row.property_name}
             for row in self.filter_rows:
-                row.offer(groups, held - {row.property_name}, ready)
+                row.offer(groups, held - {row.property_name})
                 name = row.property_name
                 if not name:
                     row.show_empty()
@@ -874,7 +829,6 @@ class ExportPanel(QWidget):
 
         self.summary.setText(self.controller.preview().summary())
         self._show_measure_state()
-        self._show_metadata_state()
         try:
             lines = self._counted()
         except ValueError as error:  # unknown breakdown, should not happen

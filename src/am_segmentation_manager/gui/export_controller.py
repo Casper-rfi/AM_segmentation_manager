@@ -171,12 +171,19 @@ class ExportPreview:
     paired: bool = False
     sem_only: int = 0
     fib_only: int = 0
+    measured: bool = True
 
     def summary(self) -> str:
         """Return the one-line description shown above the export buttons."""
         if not self.matched:
             return "Nothing matches these filters"
         parts = [f"{self.matched} image(s) match", f"{self.corrected} corrected"]
+        if not self.measured:
+            # Everything below this line is a question about what is inside a
+            # label, which is a read per label and the one thing in this tab
+            # slow enough to be asked for rather than assumed.
+            parts.append("press Measure labels to count what can be exported")
+            return " · ".join(parts)
         if self.deselected:
             parts.append(f"{self.deselected} deselected")
         if self.missing_labels:
@@ -303,10 +310,6 @@ class ExportController:
         self._metadata_loaded = False
         self._label_empty: dict[Path, bool | None] = {}
         self._label_states: dict[Path, str] = {}
-        # Whether every label has been read. Tracked rather than inferred from
-        # the caches being non-empty, which cannot tell "all of them" from
-        # "the ones some filter happened to ask about".
-        self._labels_warm = False
         self._measurements: dict[Path, LabelMeasurement] = {}
         self._measurements_loaded = False
         # Built by walking every record, and asked for once per filter list on
@@ -331,7 +334,6 @@ class ExportController:
         self._metadata_loaded = False
         self._label_empty = {}
         self._label_states = {}
-        self._labels_warm = False
         self._measurements = {}
         self._measurements_loaded = False
         self._lookup = project_lookup(self._projects)
@@ -350,8 +352,14 @@ class ExportController:
         return self._metadata_loaded
 
     def measurements_loaded(self) -> bool:
-        """Return whether the labels have been measured."""
-        return self._measurements_loaded
+        """Return whether everything the filters match has been measured.
+
+        Asked of the selection rather than remembered as one flag: widening a
+        filter brings in labels nothing has opened, and a tab that went on
+        answering from what it measured before would be answering about a
+        different set than the one on screen.
+        """
+        return bool(self._records) and not self._unmeasured_labels()
 
     def needs_measurements(self, name: str) -> bool:
         """Return whether *name* cannot be counted until the labels are measured.
@@ -364,18 +372,25 @@ class ExportController:
         return entry is not None and entry.kind == "measurement"
 
     def measurable_labels(self) -> int:
-        """Return how many distinct labels a measurement would open.
+        """Return how many distinct labels a measurement would still open.
 
-        What the button says before it is pressed. The label is the unit, not
-        the image, so several imaging conditions of one scene cost one read
-        between them.
+        What the button says before it is pressed. Counted over what the
+        filters match rather than the whole collection -- an export is chosen
+        by narrowing, and measuring an archive to answer a question about one
+        project of it is work nobody asked for. The label is the unit, not the
+        image, so several imaging conditions of one scene cost one read
+        between them, and one already measured costs nothing.
         """
-        labels = {
+        return len(self._unmeasured_labels())
+
+    def _unmeasured_labels(self) -> set[Path]:
+        """Return the labels of the current selection not yet read."""
+        return {
             found
-            for record in self._records
+            for record in self.selected_records()
             if (found := find_matching_label(record)) is not None
+            and found not in self._label_empty
         }
-        return len(labels)
 
     @property
     def min_crack_area_um2(self) -> float:
@@ -447,19 +462,44 @@ class ExportController:
         Returns:
             How many images have a measured label.
         """
-        if not self._measurements_loaded:
-            from ..operations.label_measure import measure_records
+        from ..operations.label_measure import measure_records
 
-            self.load_metadata()
-            self._measurements = measure_records(
-                self._records,
-                self.config,
-                self._metadata,
-                min_crack_area_um2=self._min_crack_area_um2,
-                on_progress=on_progress,
-            )
-            self._measurements_loaded = True
+        self.load_metadata()
+        measured = measure_records(
+            self.selected_records(),
+            self.config,
+            self._metadata,
+            min_crack_area_um2=self._min_crack_area_um2,
+            on_progress=on_progress,
+        )
+        self._measurements.update(measured)
+        self._remember_label_states(measured)
+        self._measurements_loaded = True
         return len(self._measurements)
+
+    def _remember_label_states(self, measured: Mapping[Path, LabelMeasurement]) -> None:
+        """Record what each measured label holds, without opening it again.
+
+        Measuring reads the pixels, and whether there is anything in them is
+        the same read -- so the exportable count, the label filter and the
+        label-state breakdown are all answered by the one pass the user asked
+        for rather than by a second one they did not.
+        """
+        from ..operations.label_measure import measurement_is_empty
+
+        for image_path, measurement in measured.items():
+            self._label_empty[measurement.path] = measurement_is_empty(measurement)
+            self._label_states[image_path] = classify_label(
+                measurement.path, self._label_empty[measurement.path]
+            )
+        # An image whose label is missing is absent from the measurements, and
+        # that is an answer too: there is nothing to open and nothing to wait
+        # for. Recorded here so it is not asked again image by image.
+        for record in self.selected_records():
+            if record.image_path not in self._label_states:
+                label = find_matching_label(record)
+                if label is None:
+                    self._label_states[record.image_path] = classify_label(None, None)
 
     def load_metadata(self) -> int:
         """Read every record's header, once per scan.
@@ -492,10 +532,6 @@ class ExportController:
             )
         return self._label_states[path]
 
-    def labels_warm(self) -> bool:
-        """Return whether every label has been read, so counting is instant."""
-        return self._labels_warm
-
     def warm_labels(
         self, on_progress: Callable[[int, int], None] | None = None
     ) -> int:
@@ -509,7 +545,14 @@ class ExportController:
         nothing on screen to say why.
 
         Counted in label files rather than images, because several imaging
-        conditions of one scene share one and cost one read between them.
+        conditions of one scene share one and cost one read between them, and
+        over what the filters match rather than the whole collection -- reading
+        an archive to write an export chosen from one project of it is work
+        nobody asked for.
+
+        Cheaper than :meth:`load_measurements`, which opens the same files and
+        also counts what is in them; this only asks whether anything is. What
+        an export needs, in other words, and not what a breakdown does.
 
         Args:
             on_progress: Called as ``on_progress(done, total)`` in label files.
@@ -517,7 +560,8 @@ class ExportController:
         Returns:
             How many label files were read.
         """
-        paired = [(record, find_matching_label(record)) for record in self._records]
+        records = self.selected_records()
+        paired = [(record, find_matching_label(record)) for record in records]
         labels = sorted({label for _, label in paired if label is not None})
         for done, label in enumerate(labels, start=1):
             self._is_empty_label(label)
@@ -530,7 +574,6 @@ class ExportController:
                     label, self._label_empty[label] if label is not None else None
                 ),
             )
-        self._labels_warm = True
         return len(labels)
 
     def selected_records(self, ignoring: str | None = None) -> list[ImageRecord]:
@@ -585,6 +628,19 @@ class ExportController:
         if path not in self._label_empty:
             self._label_empty[path] = is_label_file_empty(path)
         return self._label_empty[path]
+
+    def labels_known(self, matched: Sequence[ImageRecord] | None = None) -> bool:
+        """Return whether every matched label has already been opened.
+
+        What decides whether the counts below the first two are answerable.
+        Nothing here opens one to find out: that is the cost this asks about.
+        """
+        records = self.selected_records() if matched is None else matched
+        return all(
+            (label := find_matching_label(record)) is None
+            or label in self._label_empty
+            for record in records
+        )
 
     def _sift(self, matched: Sequence[ImageRecord]) -> Sifted:
         """Separate the images that can be exported from those that cannot.
@@ -728,6 +784,17 @@ class ExportController:
         matched = self.selected_records()
         if not matched:
             return ExportPreview()
+        if not self.labels_known(matched):
+            # Cheap by construction: the two counts above the line are the
+            # record's own, and everything below one needs a label opened.
+            return ExportPreview(
+                matched=len(matched),
+                corrected=sum(
+                    1 for record in matched if current_state(record) == "corrected"
+                ),
+                paired=self.paired,
+                measured=False,
+            )
 
         sifted = self._sift(matched)
         rows = self.training_rows(matched)

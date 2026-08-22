@@ -42,6 +42,18 @@ def exporter(tmp_path: Path) -> ExportController:
 
 
 @pytest.fixture
+def measured(exporter: ExportController) -> ExportController:
+    """The same scan with its labels read, as pressing Measure labels does.
+
+    Nothing below the first two counts in the summary can be answered without
+    opening every label, so a test about those has to have paid for them --
+    which is the point of the button.
+    """
+    exporter.load_measurements()
+    return exporter
+
+
+@pytest.fixture
 def headers(exporter: ExportController, monkeypatch) -> ExportController:
     """The same scan, with headers, without writing any.
 
@@ -70,10 +82,10 @@ def headers(exporter: ExportController, monkeypatch) -> ExportController:
 # Export: the live count
 # ---------------------------------------------------------------------------
 
-def test_the_preview_counts_what_would_be_exported(exporter: ExportController):
+def test_the_preview_counts_what_would_be_exported(measured: ExportController):
     """Both modalities are in play, so a row carries an acquisition rather than
     an image: four images are two acquisitions, side by side."""
-    preview = exporter.preview()
+    preview = measured.preview()
 
     assert preview.matched == 4          # two acquisitions, two modalities
     assert preview.annotated == 4
@@ -82,10 +94,10 @@ def test_the_preview_counts_what_would_be_exported(exporter: ExportController):
     assert (preview.sem_only, preview.fib_only) == (0, 0)
 
 
-def test_choosing_one_modality_counts_images_again(exporter: ExportController):
+def test_choosing_one_modality_counts_images_again(measured: ExportController):
     """A single-beam export is one row per image, as it always was."""
-    exporter.filters.modality = "SEM"
-    preview = exporter.preview()
+    measured.filters.modality = "SEM"
+    preview = measured.preview()
 
     assert not preview.paired
     assert preview.exportable == 2
@@ -109,6 +121,7 @@ def test_a_deselected_image_that_would_be_exported_is_counted(tmp_path: Path):
 
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
     preview = controller.preview()
 
     assert preview.deselected == 1
@@ -133,6 +146,7 @@ def test_empty_labels_are_shown_as_excluded_rather_than_silently_dropped(tmp_pat
     build_dataset(tmp_path, acquisitions=2, labels="empty")
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
 
     preview = controller.preview()
 
@@ -287,14 +301,14 @@ def test_the_split_defaults_to_what_the_command_line_does(exporter: ExportContro
 
 
 def test_the_preview_and_the_export_agree_on_the_split(
-    exporter: ExportController, tmp_path: Path
+    measured: ExportController, tmp_path: Path
 ):
     """The count shown is produced by the same split as the files, which is the
     only way a preview of a shuffle can be trusted."""
-    preview = exporter.preview()
+    preview = measured.preview()
 
     assert (preview.train, preview.validation) == written_split(
-        exporter, tmp_path / "exported"
+        measured, tmp_path / "exported"
     )
     assert preview.train + preview.validation == preview.exportable
 
@@ -307,19 +321,19 @@ def test_a_full_training_share_leaves_nothing_to_validate(exporter: ExportContro
 
 
 def test_an_unseeded_split_still_places_every_pair(
-    exporter: ExportController, tmp_path: Path
+    measured: ExportController, tmp_path: Path
 ):
-    exporter.training.seed = None
-    preview = exporter.preview()
+    measured.training.seed = None
+    preview = measured.preview()
 
     assert preview.train + preview.validation == preview.exportable
     assert (preview.train, preview.validation) == written_split(
-        exporter, tmp_path / "unseeded"
+        measured, tmp_path / "unseeded"
     )
 
 
-def test_the_summary_reports_the_split_it_would_write(exporter: ExportController):
-    summary = exporter.preview().summary()
+def test_the_summary_reports_the_split_it_would_write(measured: ExportController):
+    summary = measured.preview().summary()
 
     assert "paired row(s)" in summary
     assert "train /" in summary and "validation" in summary
@@ -1058,7 +1072,7 @@ def test_warming_reads_each_label_once(tmp_path: Path, monkeypatch):
     controller.warm_labels()
 
     assert len(opened) == len(set(opened))
-    assert controller.labels_warm()
+    assert controller.labels_known()
 
 
 def test_nothing_opens_a_label_again_once_warm(tmp_path: Path, monkeypatch):
@@ -1079,25 +1093,26 @@ def test_nothing_opens_a_label_again_once_warm(tmp_path: Path, monkeypatch):
     assert opened == []
 
 
-def test_counting_by_label_state_does_not_re_read_what_the_count_read(
+def test_measuring_answers_what_is_in_a_label_without_a_second_read(
     tmp_path: Path, monkeypatch,
 ):
-    """The exportable count and the label-state breakdown ask the same question
-    of the same file. Two caches meant every label in the collection was opened
-    twice."""
+    """Measuring opens the label anyway, and whether there is anything in it is
+    the same read -- so the exportable count and the label-state breakdown come
+    out of the one pass the user asked for."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=3, labels="annotated")
     controller = ExportController()
     controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
     opened = _counting_reads(monkeypatch)
 
     controller.preview()
-    after_preview = len(opened)
     controller.breakdown("label")
+    controller.filters.label = "annotated"
+    controller.selected_records()
 
-    assert after_preview > 0
-    assert len(opened) == after_preview
-
+    assert opened == []
+    assert controller.measurements_loaded()
 
 def test_a_rescan_makes_the_labels_cold_again(tmp_path: Path):
     """They are read from disk, and a rescan is what follows something that
@@ -1110,4 +1125,77 @@ def test_a_rescan_makes_the_labels_cold_again(tmp_path: Path):
 
     controller.set_projects(scanned(tmp_path), tmp_path)
 
-    assert not controller.labels_warm()
+    assert not controller.labels_known()
+
+
+# ---------------------------------------------------------------------------
+# What opening the tab costs, and what it does not
+# ---------------------------------------------------------------------------
+
+def test_the_summary_says_what_it_cannot_answer_yet(tmp_path: Path, monkeypatch):
+    """The counts below the first two need every label opened. Showing them as
+    zero would read as a finding rather than as a question not yet asked."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    opened = _counting_reads(monkeypatch)
+
+    preview = controller.preview()
+
+    assert opened == [], "the summary must open no label"
+    assert not preview.measured
+    assert preview.matched == 4
+    assert "Measure labels" in preview.summary()
+    assert "exportable" not in preview.summary()
+
+
+def test_measuring_covers_what_the_filters_match_and_no_more(tmp_path: Path):
+    """An export is chosen by narrowing, so measuring an archive to answer a
+    question about one project of it is work nobody asked for."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, name="wanted", acquisitions=2, labels="annotated")
+    build_dataset(tmp_path, name="other", acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    everything = controller.measurable_labels()
+
+    controller.set_choice_filter("autolamella-project", ["wanted"])
+
+    assert controller.measurable_labels() < everything
+    controller.load_measurements()
+    assert controller.measurements_loaded()
+
+
+def test_widening_a_filter_asks_for_the_labels_it_brings_in(tmp_path: Path):
+    """A tab that went on answering from what it measured before would be
+    answering about a different set than the one on screen."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, name="wanted", acquisitions=2, labels="annotated")
+    build_dataset(tmp_path, name="other", acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.set_choice_filter("autolamella-project", ["wanted"])
+    controller.load_measurements()
+    assert controller.measurements_loaded()
+
+    controller.set_choice_filter("autolamella-project", [])
+
+    assert not controller.measurements_loaded()
+    assert controller.measurable_labels() > 0
+    assert not controller.preview().measured
+
+
+def test_measuring_leaves_nothing_for_an_export_to_read(tmp_path: Path, monkeypatch):
+    """Which is what makes writing the file instant once the numbers are on
+    screen: the export asks the same question of the same cache."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
+    opened = _counting_reads(monkeypatch)
+
+    controller.export_training(tmp_path / "out")
+
+    assert opened == []

@@ -637,9 +637,11 @@ def test_the_scan_box_is_what_would_have_swallowed_the_frame_keys(window):
     assert not claims(window.project_panel.project_list, Qt.Key_Down)
 
 
-def test_opening_export_reads_the_labels_on_the_worker(window, monkeypatch):
-    """Half a minute of reading over a real collection. Done inside the first
-    refresh it stopped the window dead with nothing on screen to say why."""
+def test_opening_export_reads_the_headers_and_not_the_labels(window, monkeypatch):
+    """Half a millisecond an image, against ten times that per label. The
+    headers are what the acquisition filters are made of, so they are worth
+    paying for on arrival; the labels answer a different question and stay
+    behind the button that asks it."""
     submitted: list[str] = []
     monkeypatch.setattr(
         window, "_run_operation",
@@ -650,24 +652,24 @@ def test_opening_export_reads_the_labels_on_the_worker(window, monkeypatch):
 
     window.tabs.setCurrentWidget(window.export_panel)
 
-    assert submitted, "the tab refreshed inline instead of handing it over"
-    assert "label" in submitted[0], "the dialog has to say what is being read"
-    assert window.export_controller.labels_warm()
+    assert submitted and "header" in submitted[0]
+    assert window.export_controller.metadata_loaded()
+    assert not window.export_controller.measurements_loaded(), (
+        "opening the tab must not open a single label"
+    )
 
 
-def test_returning_to_export_does_not_read_them_again(window, monkeypatch):
-    """Once read they are cached for the scan, so the tab is instant after the
-    first visit -- which is what makes one wait acceptable."""
+def test_returning_to_export_does_not_read_the_headers_again(window, monkeypatch):
     monkeypatch.setattr(
         window, "_run_operation",
         lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     window.tabs.setCurrentWidget(window.export_panel)
-    assert window.export_controller.labels_warm()
+    assert window.export_controller.metadata_loaded()
 
     monkeypatch.setattr(
         window, "_run_operation",
-        lambda *args, **kwargs: pytest.fail("the labels were already read"),
+        lambda *args, **kwargs: pytest.fail("the headers were already read"),
     )
     window.tabs.setCurrentWidget(window.curate)
     window.tabs.setCurrentWidget(window.export_panel)

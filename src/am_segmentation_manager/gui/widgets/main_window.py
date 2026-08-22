@@ -569,23 +569,24 @@ class CurationWindow(QMainWindow):
             self._show_help()
 
     def _open_export(self) -> None:
-        """Read every label before the tab first draws, saying that it is.
+        """Read the image headers before the tab first draws, and nothing else.
 
-        The tab cannot show a single number without knowing what is inside each
-        label -- a blank label is not an annotation -- and over a real
-        collection that is half a minute of reading. Done inside the first
-        refresh it stopped the window dead with nothing on screen to say why,
-        so it runs on the worker behind a dialog that counts. Once done it is
-        cached for the scan, and every later refresh is instant.
+        Half a millisecond an image -- a second or two over a real collection --
+        and it is what the acquisition filters and breakdowns are made of, so
+        paying for it on arrival is what lets them simply work rather than sit
+        there unusable with no way to tell why.
+
+        The labels are *not* read here. Opening every one is ten times the cost
+        and answers a different question, so it stays behind Measure labels
+        where the user asks for it against the selection they care about.
         """
-        if not self.export_controller.records or self.export_controller.labels_warm():
+        if not self.export_controller.records or self.export_controller.metadata_loaded():
             self.export_panel.refresh()
             return
-        labels = self.export_controller.measurable_labels()
-        progressed = self.operations.worker.progressed
+        images = len(self.export_controller.records)
         self._run_operation(
-            f"Reading {labels} label(s)",
-            lambda: self.export_controller.warm_labels(progressed.emit),
+            f"Reading {images} image header(s)",
+            self.export_controller.load_metadata,
             lambda _read: self.export_panel.refresh(),
         )
 
@@ -960,10 +961,34 @@ class CurationWindow(QMainWindow):
         logger.info("Measured labels for %d image(s)", measured)
         self.export_panel.refresh()
 
+    def _with_labels(self, then: Callable[[], None]) -> None:
+        """Read the labels this selection needs, then do the thing needing them.
+
+        An export has to know what is inside each label -- a blank mask is
+        never paired with an image -- and that is the one slow read in this
+        tab. Doing it here rather than inside the write keeps it off the
+        interface thread and behind a dialog that counts, and doing it only
+        when it has not already happened means measuring first costs the
+        export nothing.
+        """
+        if self.export_controller.labels_known():
+            then()
+            return
+        labels = self.export_controller.measurable_labels()
+        progressed = self.operations.worker.progressed
+        self._run_operation(
+            f"Reading {labels} label(s)",
+            lambda: self.export_controller.warm_labels(progressed.emit),
+            lambda _read: (self.export_panel.refresh(), then()),
+        )
+
     def _export_training(self, directory: str) -> None:
         if not self.export_controller.selected_records():
             self._flash("Nothing matches these filters")
             return
+        self._with_labels(lambda: self._write_training(directory))
+
+    def _write_training(self, directory: str) -> None:
         if not self._confirm_dropping_corrected():
             return
         try:

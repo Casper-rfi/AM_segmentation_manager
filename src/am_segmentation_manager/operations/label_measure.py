@@ -557,6 +557,24 @@ def measure_label(
 # count one crack several times in any total.
 # ---------------------------------------------------------------------------
 
+def measurement_is_empty(measurement: LabelMeasurement) -> bool:
+    """Return whether a measured label holds nothing but background.
+
+    The same question :func:`~am_segmentation_manager.display.is_empty_label`
+    answers off the pixels, answered instead off the counts a measurement
+    already carries. Measuring opens the label anyway, so a caller that has
+    measured need never read it a second time to find out whether there is
+    anything in it.
+    """
+    from ..config import BACKGROUND_CLASS
+
+    return not any(
+        count
+        for index, count in measurement.pixels.class_pixels.items()
+        if index != BACKGROUND_CLASS
+    )
+
+
 def measure_records(
     records: Iterable[ImageRecord],
     config: SegmentationConfig,
