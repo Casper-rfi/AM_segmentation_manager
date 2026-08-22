@@ -99,12 +99,7 @@ place.
 
 - **State is declared in a file, not implied by location.** Every directory holding image
   and label directories carries an `AM_state.yaml` naming the groups that are not selected.
-  A file's directory used to *be* its state, because the external annotation tool wrote an
-  empty label for every image in its input folder and keeping images out of that folder was
-  the only way to say "not this one". Nothing requires it now, and it was expensive: a state
-  change was a batch of moves that could half-succeed, a label could exist in two state
-  folders at once, and curating an image rewrote a path a training CSV had already recorded.
-- **The label is the unit of state, and the key names the label.** An entry is keyed by the
+  - **The label is the unit of state, and the key names the label.** An entry is keyed by the
   group's label path — `<label-directory>/<filename>`, relative to the state file — whether
   or not that label exists. Keying on the label rather than the image makes an image
   disagreeing with its label *unrepresentable* rather than merely detectable: the several
