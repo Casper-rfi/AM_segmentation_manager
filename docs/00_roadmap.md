@@ -23,15 +23,15 @@ tab does, and [`decisions.md`](decisions.md) why each of the following is so:
   stop to name any image whose label holds no annotation.
 * **The window is four tabs, each with a controller holding no Qt.** What a change applies
   to is one level at a time, so what is ticked on screen is the whole of what an operation
-  will touch. Curate shows one series at a time and runs `predict` and
+  will touch. Curate and Label each show one series at a time, and Curate runs `predict` and
   `convert-predictions` against the ticked set; Add data runs `inspect-layout`,
   `init-project` and `compress-labels` over the whole scanned folder. Each previews first,
   applies on a worker thread, and leaves the selection intact.
-* **Labels are proofread in the window**, not in external software. A save writes one
-  lamella's edits in a single action, offers to mark the reviewed set corrected, and
-  refuses the whole batch rather than overwrite a label something else has rewritten since
-  it was opened. It will also ring the components of a few pixels, which `find-specks`
-  reports across the collection.
+* **Labels are proofread in the window**, not in external software. One lamella and one
+  series at a time. A save writes that lamella's edits in a single action, offers to mark
+  the reviewed set corrected, and refuses the whole batch rather than overwrite a label
+  something else has rewritten since it was opened. It will also ring the components of a
+  few pixels, which `find-specks` reports across the collection.
 * **Predictions need an environment installed separately**, built by
   `scripts/setup_ml.sh`, which runs the window too. One prediction per label group, one
   modality per run, resumable, in a child process the window shares no torch with.

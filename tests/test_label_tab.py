@@ -322,7 +322,12 @@ def test_the_tools_do_not_take_the_keyboard(window):
 
     taking = [
         widget for widget in panel.findChildren(QWidget)
-        if widget is not panel.canvas and widget.focusPolicy() != Qt.NoFocus
+        if widget is not panel.canvas
+        and widget.focusPolicy() != Qt.NoFocus
+        # A dropdown's own list is exempt: it lives in a popup window of its
+        # own, exists only while that popup is open, and has to take the arrow
+        # keys while it is. Nothing on the row itself may.
+        and widget.window() is panel.window()
     ]
 
     assert taking == [], "a control holding focus swallows the space that pans"
@@ -350,11 +355,81 @@ def variants(qt_app, config, tmp_path: Path):
     window.close()
 
 
-def test_the_condition_control_is_hidden_when_there_is_no_choice(window):
+@pytest.fixture
+def three_series_window(qt_app, config, tmp_path: Path):
+    """A window whose lamella holds reference and alignment images too."""
+    dataset = build_dataset(tmp_path, acquisitions=2)
+    for modality in ("SEM", "FIB"):
+        for index in range(2):
+            tifffile.imwrite(
+                str(dataset.image(modality, index)),
+                np.full((48, 64), 120, dtype=np.uint8),
+            )
+            tifffile.imwrite(
+                str(dataset.label(modality, index)), np.zeros((48, 64), dtype=np.uint8)
+            )
+    for name in ("ref_Polishing_start_eb.tif", "ref_alignment_ib.tif"):
+        tifffile.imwrite(
+            str(dataset.lamella / name), np.full((48, 64), 90, dtype=np.uint8)
+        )
+
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config),
+        settings=QSettings(str(tmp_path / "s.ini"), QSettings.IniFormat),
+    )
+    window.scan(str(tmp_path))
+    window.tabs.setCurrentWidget(window.label_panel)
+    _settle(qt_app, lambda: drawn(window))
+    yield window
+    window.label_controller.discard_edits()
+    window.close()
+
+
+def test_the_series_control_is_greyed_when_a_lamella_holds_one(window):
+    combo = window.label_panel.series_combo
+
+    assert combo.isHidden() is False
+    assert combo.isEnabled() is False
+    assert combo.currentText() == "Adaptive Polishing"
+
+
+def test_the_tab_reviews_one_series_at_a_time(qt_app, three_series_window):
+    """It used to open every series of the lamella as one list, which is two
+    unrelated jobs to work through in one pass."""
+    window = three_series_window
+    panel = window.label_panel
+
+    assert panel.series_combo.isEnabled() is True
+    assert window.label_controller.count == 2, "the stage's frames alone"
+
+    panel.series_combo.setCurrentIndex(panel.series_combo.findData("reference"))
+    _settle(qt_app)
+
+    assert window.label_controller.series == "reference"
+    assert window.label_controller.count == 1
+
+
+def test_choosing_the_alignment_series_shows_the_beam_it_was_imaged_with(
+    qt_app, three_series_window
+):
+    window = three_series_window
+    panel = window.label_panel
+
+    panel.series_combo.setCurrentIndex(panel.series_combo.findData("alignment"))
+    _settle(qt_app)
+
+    assert window.label_controller.modality == "FIB"
+    assert panel.modality_buttons["FIB"].isChecked() is True
+
+
+def test_the_condition_control_is_greyed_when_there_is_no_choice(window):
+    """Greyed rather than hidden, as in the curation view: it still says which
+    condition is being annotated, and the row does not move."""
     # isHidden() rather than isVisible(): a child of a window that was never
     # shown is not visible either way, which would pass whatever the code did.
-    assert window.label_panel.variant_combo.isHidden() is True
-    assert window.label_panel.variant_label.isHidden() is True
+    assert window.label_panel.variant_combo.isHidden() is False
+    assert window.label_panel.variant_label.isHidden() is False
+    assert window.label_panel.variant_combo.isEnabled() is False
 
 
 def test_the_conditions_of_an_acquisition_are_offered(variants):
@@ -503,6 +578,17 @@ def test_a_ring_keeps_its_size_on_screen_at_any_zoom(window):
     )
 
 
+def test_the_filter_opens_wide_enough_to_sweep_a_label(window):
+    """The report over the collection asks a narrower question; see
+    PROOFREADING_SPECK_PIXELS."""
+    from am_segmentation_manager.operations.label_measure import (
+        PROOFREADING_SPECK_PIXELS,
+    )
+
+    assert window.label_panel.controller.speck_size == PROOFREADING_SPECK_PIXELS == 36
+    assert window.label_panel.speck_slider.value() == PROOFREADING_SPECK_PIXELS
+
+
 def test_switching_the_filter_off_takes_the_rings_away(window):
     panel = window.label_panel
     stray(panel, 7, 9)
@@ -520,7 +606,8 @@ def test_the_count_says_what_was_looked_for(window):
     panel.speck_check.setChecked(True)
 
     assert "1" in panel.speck_count.text()
-    assert "4px" in panel.speck_count.text().replace(" ", "")
+    said = panel.speck_count.text().replace(" ", "")
+    assert f"{panel.controller.speck_size}px" in said
 
 
 def test_stepping_brings_a_speck_into_the_middle(window):

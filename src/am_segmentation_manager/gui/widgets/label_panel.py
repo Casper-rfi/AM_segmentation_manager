@@ -31,10 +31,13 @@ from qtpy.QtWidgets import (
 
 from ...config import BACKGROUND_CLASS
 from ...display import DEFAULT_ALPHA
-from ...layout import MODALITIES
-from ...operations.label_measure import DEFAULT_SPECK_PIXELS
+from ...layout import MODALITIES, SERIES_LABELS
+from ...operations.label_measure import (
+    DEFAULT_SPECK_PIXELS,
+    PROOFREADING_SPECK_PIXELS,
+)
 from ..label_controller import LabelController
-from .common import LABEL_BADGES, ElidingLabel, chip_icon
+from .common import LABEL_BADGES, ElidingLabel, chip_icon, fill_choice_combo
 from .frame_strip import FrameTimeline
 from .label_canvas import (
     DEFAULT_BRUSH_RADIUS,
@@ -337,6 +340,23 @@ class LabelPanel(QWidget):
         first.setChecked(True)
         first.blockSignals(False)
 
+        # Beside the beam buttons and before the variant, in the same order and
+        # for the same reasons as the curation view: the series decides which
+        # frames there are to review, the variant only which file of one is
+        # drawn. Annotating a lamella means annotating one series of it.
+        self.series_label = QLabel("Series")
+        self.series_combo = QComboBox()
+        self.series_combo.setMinimumWidth(140)
+        self.series_combo.setToolTip(
+            "Which series to proofread. Each is its own list of frames, "
+            "reviewed one at a time."
+        )
+        self.series_label.setToolTip(self.series_combo.toolTip())
+        self.series_combo.currentIndexChanged.connect(self._series_chosen)
+        controls.addSpacing(12)
+        controls.addWidget(self.series_label)
+        controls.addWidget(self.series_combo)
+
         # A dropdown rather than buttons, as in the curation view: variant names
         # run long, and most projects have none to choose between.
         self.variant_label = QLabel("Variant")
@@ -351,7 +371,6 @@ class LabelPanel(QWidget):
         controls.addSpacing(12)
         controls.addWidget(self.variant_label)
         controls.addWidget(self.variant_combo)
-        self._show_variant_controls(False)
 
         controls.addSpacing(20)
         self.overlay_check = QCheckBox("Show label")
@@ -403,9 +422,8 @@ class LabelPanel(QWidget):
         self.speck_slider.setFixedWidth(90)
         self.speck_slider.setToolTip(
             "Largest component still ringed.\n"
-            f"{DEFAULT_SPECK_PIXELS} is one pixel of a prediction: labels "
-            "converted from predictions are upscaled from half resolution, so "
-            "anything smaller was painted by hand."
+            f"Starts at {PROOFREADING_SPECK_PIXELS}; {DEFAULT_SPECK_PIXELS} is "
+            "one pixel of a prediction, so anything smaller was painted by hand."
         )
         self.speck_slider.valueChanged.connect(self._speck_size_changed)
         controls.addWidget(self.speck_slider)
@@ -666,16 +684,19 @@ class LabelPanel(QWidget):
         self.controller.set_modality(modality)
         self.refresh()
 
+    def _series_chosen(self, index: int) -> None:
+        """Proofread the chosen series instead."""
+        if index < 0:
+            return
+        self.controller.set_series(self.series_combo.itemData(index))
+        self.refresh()
+
     def _variant_chosen(self, index: int) -> None:
         """Show the chosen imaging condition."""
         if index < 0:
             return
         self.controller.set_variant(self.variant_combo.itemData(index))
         self.refresh()
-
-    def _show_variant_controls(self, visible: bool) -> None:
-        self.variant_label.setVisible(visible)
-        self.variant_combo.setVisible(visible)
 
     def set_variant_descriptions(self, descriptions: dict[str, str]) -> None:
         """Take the human-readable condition names from the project metadata.
@@ -894,6 +915,7 @@ class LabelPanel(QWidget):
 
     def refresh(self) -> None:
         """Redraw everything from the controller, and ask for what is missing."""
+        self._refresh_series()
         self._refresh_modalities()
         self._refresh_variants()
         self._refresh_timeline()
@@ -914,30 +936,31 @@ class LabelPanel(QWidget):
             if pending else ""
         )
 
-    def _refresh_variants(self) -> None:
-        """Offer the conditions this acquisition has, or hide the control.
-
-        Hidden unless there is a genuine choice, so a lamella with one condition
-        per modality -- every Autolamella project so far -- shows nothing extra.
-        """
-        variants = self.controller.available_variants()
-        if len(variants) < 2:
-            self._show_variant_controls(False)
-            return
-        current = self.controller.variant
-        self.variant_combo.blockSignals(True)
-        self.variant_combo.clear()
-        for variant in variants:
-            caption = (
-                "base" if variant is None
-                else self._variant_descriptions.get(variant, variant)
-            )
-            self.variant_combo.addItem(caption, variant)
-        self.variant_combo.setCurrentIndex(
-            variants.index(current) if current in variants else 0
+    def _refresh_series(self) -> None:
+        """Offer the series this lamella holds, greyed where there is one."""
+        series = self.controller.available_series()
+        fill_choice_combo(
+            self.series_combo,
+            [(SERIES_LABELS.get(name, name), name) for name in series],
+            self.controller.series,
         )
-        self.variant_combo.blockSignals(False)
-        self._show_variant_controls(True)
+
+    def _refresh_variants(self) -> None:
+        """Offer the conditions this acquisition has, greyed where there is one.
+
+        On screen either way, as in the curation view: a lamella with one
+        condition per modality is every Autolamella project so far, so hiding
+        it moved this row on nearly every step.
+        """
+        described = self._variant_descriptions
+        fill_choice_combo(
+            self.variant_combo,
+            [
+                ("base" if variant is None else described.get(variant, variant), variant)
+                for variant in self.controller.available_variants()
+            ],
+            self.controller.variant,
+        )
 
     def _refresh_modalities(self) -> None:
         """Enable only the modalities this lamella has anything to proofread in."""

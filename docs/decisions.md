@@ -472,10 +472,10 @@ becomes wrong, correct it in place rather than appending a correction.
   exists to prevent. Cancellation is a `threading.Event` in `progress.py` polled by the work
   closure: a queued Qt signal reaches the worker when it next returns to its event loop, which
   inside a long call is never.
-- **Curate shows one series at a time; Export ticks several.** Different questions. A timeline
-  mixing alignment runs with polishing frames is not something anyone proofreads, and a 2026
-  lamella runs to 21 stages across three series, so the Curate control is a single choice that
-  rebuilds the frame stack — the position and the frame ticks go with it, a frame index meaning
+- **Curate and Label show one series at a time; Export ticks several.** Different questions. A
+  timeline mixing alignment runs with polishing frames is not something anyone proofreads, and a
+  2026 lamella runs to 21 stages across three series, so each of those two tabs has a single
+  choice that rebuilds its frame stack — the position and the frame ticks go with it, a frame index meaning
   anything only within one timeline. Both open on Adaptive Polishing. The control is offered
   from what the lamella *holds*, and is set before the "no frame" early return in `_render`.
   **What was chosen and what a lamella can show are two things**: `frames.resolve_series` falls
@@ -487,7 +487,10 @@ becomes wrong, correct it in place rather than appending a correction.
   imaged with the ion beam alone, so `_settle_mode` shows the other beam where the one chosen
   has no image anywhere in the stack, and the choice comes back on a timeline that holds it.
   Asked of the whole stack rather than of the frame on screen, an acquisition captured with one
-  beam being ordinary; the plot view is exempt, a figure being an image of neither beam.
+  beam being ordinary; the plot view is exempt, a figure being an image of neither beam. The
+  Label tab settles both the same way, on the frames it has to *review* rather than on every
+  frame, and holds its own choice of each: which series is being annotated is a different
+  question from which is being curated, as its modality already was.
 - **A view control with one option is greyed, not hidden.** Series and imaging condition both
   hid themselves below two entries, which is the ordinary case for both — so the row of
   controls beside them moved every time the reviewer stepped onto such a lamella, and the

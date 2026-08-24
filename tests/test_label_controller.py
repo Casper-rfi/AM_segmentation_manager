@@ -172,6 +172,98 @@ def test_positions_skip_over_a_deselected_frame(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# Which series is proofread
+# ---------------------------------------------------------------------------
+#
+# Annotating a lamella means annotating one series of it: the reference images
+# taken around a milling task are a different job from the Adaptive Polishing
+# frames, and a list holding both is not one anybody works through.
+
+@pytest.fixture
+def three_series(tmp_path: Path) -> LabelController:
+    """A lamella holding reference and alignment images beside its stage."""
+    dataset = build_dataset(tmp_path, acquisitions=2)
+    image = np.zeros((8, 8), dtype=np.uint8)
+    for name in (
+        "ref_Polishing_start_eb.tif",
+        "ref_Polishing_start_ib.tif",
+        "ref_alignment_ib.tif",
+    ):
+        tifffile.imwrite(str(dataset.lamella / name), image)
+
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    return controller
+
+
+def test_the_tab_opens_on_adaptive_polishing(three_series: LabelController):
+    assert three_series.series == "adaptive"
+    assert three_series.available_series() == ["adaptive", "reference", "alignment"]
+    assert three_series.count == 2, "the stage's frames, not the loose ones too"
+
+
+def test_choosing_a_series_reviews_that_one(three_series: LabelController):
+    three_series.set_series("reference")
+
+    assert three_series.count == 1, "one acquisition, both beams of it"
+    assert three_series.frame.series == "reference"
+
+
+def test_the_beam_follows_the_series(three_series: LabelController):
+    """An alignment run is imaged with the ion beam alone."""
+    three_series.set_series("alignment")
+
+    assert three_series.modality == "FIB"
+    assert three_series.count == 1
+
+
+def test_the_beam_that_was_chosen_comes_back(three_series: LabelController):
+    three_series.set_series("alignment")
+
+    three_series.set_series("adaptive")
+
+    assert three_series.modality == "SEM"
+
+
+def test_a_series_change_starts_at_the_first_frame(three_series: LabelController):
+    three_series.step(1)
+    assert three_series.position == 1
+
+    three_series.set_series("reference")
+
+    assert three_series.position == 0, "a frame index means nothing across lists"
+
+
+def test_a_series_change_keeps_the_edits_waiting_to_be_saved(
+    three_series: LabelController,
+):
+    """They belong to the lamella, which has not changed."""
+    annotate(three_series)
+    assert three_series.pending_count() == 1
+
+    three_series.set_series("reference")
+
+    assert three_series.pending_count() == 1
+
+
+def test_an_unknown_series_is_refused(three_series: LabelController):
+    with pytest.raises(ValueError, match="Unknown series"):
+        three_series.set_series("refrence")
+
+
+def test_a_lamella_without_the_chosen_series_shows_one_it_holds(tmp_path: Path):
+    """As in the curation view: the choice is remembered, not overwritten."""
+    build_dataset(tmp_path, acquisitions=2)
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+
+    controller.set_series("reference")
+
+    assert controller.series == "adaptive", "all this lamella holds"
+    assert controller.available_series() == ["adaptive"]
+
+
+# ---------------------------------------------------------------------------
 # Modality
 # ---------------------------------------------------------------------------
 

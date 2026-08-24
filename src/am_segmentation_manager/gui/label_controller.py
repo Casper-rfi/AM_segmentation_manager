@@ -19,13 +19,18 @@ from pathlib import Path
 
 from ..config import SegmentationConfig
 from ..display import prepare_display_image
-from ..frames import LamellaFrame, build_lamella_frames
+from ..frames import (
+    LamellaFrame,
+    build_lamella_frames,
+    resolve_series,
+    series_present,
+)
 from ..io.atomic import fingerprint_of
-from ..layout import MODALITIES
+from ..layout import MODALITIES, SERIES
 from ..models import Lamella
 from ..operations import label_io
 from ..operations.label_edit import EditPatch, new_label
-from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
+from ..operations.label_measure import PROOFREADING_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
     LabelToSave,
     SavePlan,
@@ -34,7 +39,7 @@ from ..operations.label_save import (
 )
 from ..operations.selection import RecordState, current_state, transition_records
 from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
-from .controller import LABEL_DISPLAY
+from .controller import DEFAULT_SERIES, LABEL_DISPLAY
 from .label_session import LabelSession
 
 logger = logging.getLogger(__name__)
@@ -96,13 +101,23 @@ class LabelController:
         self.show_image = True
         #: Whether components of a few pixels are being pointed out.
         self.finding_specks = False
-        self._speck_size = DEFAULT_SPECK_PIXELS
+        self._speck_size = PROOFREADING_SPECK_PIXELS
         self._specks: dict[Path, tuple[Speck, ...]] = {}
         self._lamella: Lamella | None = None
         self._frames: tuple[LamellaFrame, ...] = ()
         self._positions: tuple[int, ...] = ()
         self._cursor = 0
         self._modality = MODALITIES[0]
+        #: The beam asked for, which a series holding nothing to proofread in
+        #: it does not overwrite; see :meth:`_settled_modality`.
+        self._wanted_modality = MODALITIES[0]
+        #: Which series is being proofread, and which was asked for. One at a
+        #: time for the reason the curation timeline is: annotating a lamella
+        #: means annotating one series of it, and a list mixing an alignment
+        #: run with polishing frames is not one anybody works through. Its own
+        #: choice rather than the Curate tab's, as the modality already is.
+        self._series = DEFAULT_SERIES
+        self._wanted_series = DEFAULT_SERIES
         #: The imaging condition on screen, per modality. Purely a view choice:
         #: the conditions of one acquisition share a label, so which one is
         #: being looked at never decides what an edit or a state change touches.
@@ -134,19 +149,63 @@ class LabelController:
         keep_frame = self.frame_index if same else None
 
         self._lamella = lamella
-        self._frames = tuple(build_lamella_frames(lamella)) if lamella else ()
         if not same:
             self._label_states.clear()
             self._keys.clear()
             self._specks.clear()
             self.session.discard()
+        self._rebuild_frames(keep_frame=keep_frame)
+        logger.debug(
+            "Label view now on %s: %d %s frames, %d proofreadable %s",
+            lamella.name if lamella else "nothing",
+            len(self._frames), self._series, len(self._positions), self._modality,
+        )
+
+    def _rebuild_frames(self, *, keep_frame: int | None) -> None:
+        """Rebuild the frames of the series being proofread.
+
+        **What is shown is settled here**, as in the curation view: the series
+        falls back to one this lamella holds and the beam to one this series
+        has work in, without either overwriting what was asked for.
+        """
+        self._series = resolve_series(self._wanted_series, self.available_series())
+        self._frames = (
+            tuple(build_lamella_frames(self._lamella, series=self._series))
+            if self._lamella else ()
+        )
         self.cache.set_frames(self._frames)
         self._refresh_positions(keep_frame=keep_frame)
-        logger.debug(
-            "Label view now on %s: %d frames, %d proofreadable %s",
-            lamella.name if lamella else "nothing",
-            len(self._frames), len(self._positions), self._modality,
-        )
+
+    def available_series(self) -> list[str]:
+        """Return the series this lamella holds images of, in display order.
+
+        What it *holds*, not what it has work to do in: a series whose images
+        are all deselected is still worth being able to look at, and the tab
+        says so rather than leaving the choice out.
+        """
+        return series_present(self._lamella)
+
+    @property
+    def series(self) -> str:
+        """Return the series being proofread."""
+        return self._series
+
+    def set_series(self, series: str) -> None:
+        """Proofread *series* instead, rebuilding the frames to review.
+
+        The position goes back to the start: a frame index means nothing
+        outside the list it was taken in. Edits waiting to be saved are kept --
+        they belong to the lamella, which has not changed.
+
+        Raises:
+            ValueError: If *series* is not one this package indexes.
+        """
+        if series not in SERIES:
+            raise ValueError(f"Unknown series: {series!r}; expected one of {list(SERIES)}")
+        self._wanted_series = series
+        if series == self._series:
+            return
+        self._rebuild_frames(keep_frame=None)
 
     @property
     def lamella(self) -> Lamella | None:
@@ -168,17 +227,29 @@ class LabelController:
         wanted = modality.upper()
         if wanted not in MODALITIES:
             raise ValueError(f"Unknown modality: {modality}")
+        self._wanted_modality = wanted
         if wanted == self._modality:
             return
-        self._modality = wanted
         self._refresh_positions(keep_frame=self.frame_index)
 
     def available_modalities(self) -> list[str]:
-        """Return the modalities with anything to proofread in this lamella."""
+        """Return the modalities with anything to proofread in this series."""
         return [
             modality for modality in MODALITIES
             if any(self._is_proofreadable(frame, modality) for frame in self._frames)
         ]
+
+    def _settled_modality(self) -> str:
+        """Return the beam to proofread: the one asked for where it has work.
+
+        An alignment run is imaged with the ion beam alone, so opening one with
+        SEM chosen would offer nothing to review and say only that. The choice
+        is untouched, so a series with SEM work in it opens on SEM again.
+        """
+        available = self.available_modalities()
+        if not available or self._wanted_modality in available:
+            return self._wanted_modality
+        return available[0]
 
     def _is_proofreadable(self, frame: LamellaFrame, modality: str) -> bool:
         """Return whether *frame* has an image of *modality* worth opening."""
@@ -187,6 +258,7 @@ class LabelController:
 
     def _refresh_positions(self, *, keep_frame: int | None) -> None:
         """Recompute the visitable frames, staying as near *keep_frame* as possible."""
+        self._modality = self._settled_modality()
         self._positions = tuple(
             index for index, frame in enumerate(self._frames)
             if self._is_proofreadable(frame, self._modality)

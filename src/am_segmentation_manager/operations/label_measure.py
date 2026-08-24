@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_SPECK_PIXELS",
+    "PROOFREADING_SPECK_PIXELS",
     "LabelMeasurement",
     "LabelPixels",
     "clear_cache",
@@ -65,6 +66,15 @@ _CACHE: dict[tuple[Path, int, int, int | None], LabelPixels] = {}
 #: reference collection covers a multiple of four pixels, and why anything
 #: below that was put there by hand.
 DEFAULT_SPECK_PIXELS = 4
+
+#: Where the proofreading view's speck filter starts, in pixels.
+#:
+#: Wider than the report's default, the two asking different questions. A run
+#: of ``find-specks`` over the whole collection is looking for what could only
+#: have been put there by hand, and anything larger buries that in ordinary
+#: small structures; a reviewer sweeping one label is looking for whatever is
+#: small enough to be worth a second glance, and moves the slider from here.
+PROOFREADING_SPECK_PIXELS = 36
 
 
 @dataclass(frozen=True)
