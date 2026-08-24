@@ -79,6 +79,22 @@ becomes wrong, correct it in place rather than appending a correction.
   with a label of an entirely different scene: right dimensions, plausible shapes, wrong
   data. The name is `<series>_<modality>_labels`, built from `loose_image_set_name` through
   the same `labels_directory_name` every other label directory goes through.
+- **A series nobody has started labelling is not reported as unlabelled.** `no-labels-yet`
+  fires once per image set, and the reference and alignment images add 460 sets holding
+  5,237 images that nothing has annotated — enough to bury every finding worth acting on.
+  `layout.LABELS_EXPECTED` names the series that get the report, and a set whose label
+  directory *does* exist is reported on normally whatever its series, so starting to label
+  one needs no change there. `unexpected-stage-name` is narrowed the same way: it checks the
+  rule "a directory of image directories is a stage", so it only applies to a stage found
+  that way — a lamella or alignment run was never going to be named `adaptive_polish*`.
+- **The survey counts what it could not reach at all.** Every other finding describes
+  something the conventions recognised. `unindexed-images` counts image files no image set
+  claims, which is the failure that hides best: before this work a project holding 430
+  images surveyed as holding 100, and nothing said so. It costs a walk per project — 4.6s of
+  the reference collection's 40s, where reading labels is 38s of it — and it is what makes
+  the project-root overview images visible without indexing them as lamella data. Labels,
+  predictions and deliberately ignored names are excluded, or annotating a project would
+  report thousands.
 - **Discovery asks filenames, never headers.** 668 of the 13,221 images in the reference
   collection state no beam in their name — the three fixed names in an alignment run, and
   `ref_PositionReady.tif`. Establishing their beam means reading the header, which

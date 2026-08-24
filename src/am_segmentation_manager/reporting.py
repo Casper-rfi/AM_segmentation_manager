@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .io.path import make_path_relative
-from .layout import MODALITIES
+from .layout import MODALITIES, SERIES_LABELS
 from .operations.selection import current_state
 from .survey import SEVERITY_ORDER, CollectionSurvey, Finding, ProjectSurvey
 
@@ -174,6 +174,11 @@ def _format_project(project: ProjectSurvey, root: Path, detail: bool) -> list[st
         f"  {len(project.lamellae)} lamella(e), {project.stage_count} stage(s), "
         f"{project.image_count} image(s), {project.label_count} label(s)",
     ]
+    series = project.images_by_series
+    if len(series) > 1:
+        counts = ", ".join(f"{count} {SERIES_LABELS[name]}" for name, count in series.items())
+        lines.append(f"  series: {counts}")
+
     if project.method:
         lines.append(f"  method: {project.method}")
 

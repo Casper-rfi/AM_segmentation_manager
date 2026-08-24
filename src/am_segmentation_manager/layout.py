@@ -102,6 +102,14 @@ SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment")
 #: need a name invented for them before their labels have somewhere to go.
 LOOSE_SERIES: Final[tuple[Series, ...]] = ("reference", "alignment")
 
+#: The series whose images are expected to be labelled, so that an unlabelled
+#: one is worth reporting. Everything outside this is indexed and countable but
+#: nobody is told it has no labels yet -- there are 5,237 such images in the
+#: reference collection, and saying so once per set drowns the findings that
+#: need acting on. A set that *does* have a label directory is reported on
+#: normally whatever its series, so starting to label one needs no change here.
+LABELS_EXPECTED: Final[frozenset[Series]] = frozenset({"adaptive"})
+
 #: What to call each series where there is room to say it properly.
 SERIES_LABELS: Final[dict[Series, str]] = {
     "adaptive": "Adaptive Polishing",

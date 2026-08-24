@@ -5,21 +5,23 @@ one schema, and the older FEI vendor tag 34682, symmetric between beams with
 ``Beam.Beam`` naming which fired. Where each value lives is declared once, in
 :data:`FIELDS`.
 
-**A missing value is None, never a default. Headers are never read during
-scanning** -- metadata is a mapping keyed by image path, built by the commands
-that need it, so a scan stays a filesystem walk.
+**A missing value is None, never a default.** Metadata is a mapping keyed by
+image path, built by the commands that need it, so a scan stays a filesystem
+walk rather than an image pass. :func:`beam_resolver` is the single exception,
+and a narrow one: an image whose *filename* states no beam has nowhere else to
+get one, so a scan opens those and only those.
 """
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .io.image import require_image_stack
+from .io.image import image_stack_problems, require_image_stack
 
 logger = logging.getLogger(__name__)
 
@@ -608,6 +610,39 @@ def read_image_metadata(path: Path) -> ImageMetadata | None:
         logger.debug("No recognised metadata header in %s", path)
         return None
     return extract_metadata(document, dialect)
+
+
+def read_beam_modality(path: Path) -> str | None:
+    """Return the modality an image's header states its beam to be."""
+    metadata = read_image_metadata(path)
+    return metadata.modality if metadata is not None else None
+
+
+def beam_resolver() -> Callable[[Path], str | None] | None:
+    """Return something that can name the beam of an image, or None.
+
+    **The one thing that opens an image during a scan**, and only ever for a
+    filename that states no beam -- 668 of the 13,221 in the reference
+    collection. Reading every header would turn a scan into an image pass;
+    reading none would drop those images, since nothing else can say which beam
+    took them.
+
+    Returns None where the optional image stack is absent, so that scanning
+    keeps working in a minimal install: :func:`read_image_metadata` raises
+    there rather than returning None, and a scan is a filesystem walk that has
+    never needed the image stack. Those few images are then left out and
+    reported, instead of the whole scan failing on an import.
+
+    The scanner and the survey both take their resolver from here, so the two
+    cannot disagree about which images are indexable.
+    """
+    if image_stack_problems():
+        logger.info(
+            "No image stack installed; images whose filename states no beam "
+            "cannot be indexed. Install the [all] extra to include them"
+        )
+        return None
+    return read_beam_modality
 
 
 def read_records_metadata(records: Iterable) -> dict[Path, ImageMetadata]:

@@ -27,14 +27,21 @@ from .discovery import (
     group_stages_by_lamella,
     project_markers,
 )
+from .image_metadata import beam_resolver
 from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
+    IMAGE_EXTENSIONS,
+    LABELS_EXPECTED,
+    SERIES,
     ImageSet,
     build_image_sets,
+    build_loose_image_sets,
     directory_role,
     image_files,
     image_files_by_name,
+    image_files_of,
+    is_ignored_image_name,
     shared_labels_directory_name,
     state_directories,
     subdirectories_by_name,
@@ -227,6 +234,18 @@ class ProjectSurvey:
         """Return the number of labels across all image sets."""
         return sum(entry.label_count for entry in self.image_sets)
 
+    @property
+    def images_by_series(self) -> dict[str, int]:
+        """Return how many images each series holds, in declared order.
+
+        Only series actually present, so a project of Adaptive Polishing
+        images alone reads no differently than it used to.
+        """
+        counts = {series: 0 for series in SERIES}
+        for entry in self.image_sets:
+            counts[entry.image_set.series] += entry.image_count
+        return {series: count for series, count in counts.items() if count}
+
 
 @dataclass(frozen=True)
 class CollectionSurvey:
@@ -315,14 +334,23 @@ def survey_project(
             placeholder.
     """
     base = scan_root if scan_root is not None else project_root.parent
-    grouped = group_stages_by_lamella(discover_stages(project_root, max_depth=max_depth))
+    discovered_stages = discover_stages(project_root, max_depth=max_depth)
+    grouped = group_stages_by_lamella(discovered_stages)
+    stage_paths = frozenset(item.path for item in discovered_stages)
 
     findings: list[Finding] = []
     lamellae: list[LamellaSurvey] = []
     for lamella_path in sorted(grouped):
         discovered = grouped[lamella_path]
         stages = tuple(
-            _survey_stage(item.path, item.stage_is_synthetic, findings, check_labels)
+            _survey_stage(
+                item.path,
+                item.stage_is_synthetic,
+                findings,
+                check_labels,
+                in_alignment_run=item.in_alignment_run,
+                stage_paths=stage_paths,
+            )
             for item in sorted(discovered, key=lambda item: item.path)
         )
         lamellae.append(
@@ -368,6 +396,17 @@ def survey_project(
     )
     findings.extend(_metadata_findings(project_root, metadata))
 
+    survey = ProjectSurvey(
+        path=project_root,
+        relative_path=make_path_relative(project_root, base),
+        markers=project_markers(project_root),
+        method=_clean_method(experiment.get("method")),
+        metadata=metadata,
+        lamellae=tuple(lamellae),
+        findings=(),
+    )
+    findings.extend(_unindexed_findings(project_root, survey))
+
     return ProjectSurvey(
         path=project_root,
         relative_path=make_path_relative(project_root, base),
@@ -377,6 +416,55 @@ def survey_project(
         lamellae=tuple(lamellae),
         findings=tuple(findings),
     )
+
+
+def _unindexed_findings(project_root: Path, survey: ProjectSurvey) -> list[Finding]:
+    """Report image files in the project that no image set claims.
+
+    **The check that catches a layout nobody anticipated.** Every other finding
+    describes something the conventions recognised; this one counts what they
+    did not reach at all, which is the failure that hides best -- before
+    reference images were indexed, a project holding 430 images was surveyed as
+    holding 100, and nothing said so.
+
+    Labels and predictions are excluded by counting only what is not inside a
+    label or prediction directory, so a project is not reported as holding
+    thousands of unindexed images the moment it is annotated. Images this
+    package deliberately omits are excluded too: not indexed and not reported
+    is the whole point of :func:`is_ignored_image_name`.
+    """
+    claimed = {
+        entry.image_set.directory / name
+        for entry in survey.image_sets
+        for name in entry.image_names
+    }
+    unindexed = sorted(
+        path
+        for path in project_root.rglob("*")
+        if path.suffix.lower() in IMAGE_EXTENSIONS
+        and path not in claimed
+        and not is_ignored_image_name(path.name)
+        and not any(
+            directory_role(part) in {"labels", "predictions", "plots", "state"}
+            for part in path.parts
+        )
+        and path.is_file()
+    )
+    if not unindexed:
+        return []
+    shown = ", ".join(make_path_relative(path, project_root) for path in unindexed[:3])
+    more = "" if len(unindexed) <= 3 else f", and {len(unindexed) - 3} more"
+    return [
+        Finding(
+            severity="info",
+            category="unindexed-images",
+            path=project_root,
+            message=(
+                f"{len(unindexed)} image file(s) belong to no image set and are not "
+                f"indexed: {shown}{more}"
+            ),
+        )
+    ]
 
 
 def _clean_method(value: object) -> str | None:
@@ -422,10 +510,37 @@ def _metadata_findings(project_root: Path, metadata: ExperimentMetadata) -> list
 
 
 def _survey_stage(
-    stage_path: Path, synthetic: bool, findings: list[Finding], check_labels: bool = True
+    stage_path: Path,
+    synthetic: bool,
+    findings: list[Finding],
+    check_labels: bool = True,
+    in_alignment_run: bool = False,
+    stage_paths: frozenset[Path] = frozenset(),
 ) -> StageSurvey:
-    """Survey one stage, appending any findings to *findings*."""
-    if not stage_path.name.lower().startswith(EXPECTED_STAGE_PREFIX):
+    """Survey one stage, appending any findings to *findings*.
+
+    Args:
+        stage_path: The stage directory.
+        synthetic: Whether the lamella directory is standing in for a stage.
+        findings: Appended to.
+        check_labels: Read each label to tell an annotation from a placeholder.
+        in_alignment_run: Whether the stage is one alignment run, whose
+            filenames need that context to classify.
+        stage_paths: Every stage in the project, so a subdirectory holding one
+            is not reported as ignored -- it is descended into, not ignored.
+    """
+    directory_sets = build_image_sets(stage_path)
+    loose = build_loose_image_sets(
+        stage_path,
+        in_alignment_run=in_alignment_run,
+        resolve_modality=beam_resolver(),
+    )
+
+    # The rule this checks is "a directory holding image directories is a
+    # stage", which selects the adaptive-polish stages. A stage found by
+    # holding loose images is a lamella, milling task or alignment run, and
+    # was never expected to carry that name.
+    if directory_sets and not stage_path.name.lower().startswith(EXPECTED_STAGE_PREFIX):
         findings.append(
             Finding(
                 severity="warning",
@@ -438,20 +553,25 @@ def _survey_stage(
             )
         )
 
+    findings.extend(_loose_findings(stage_path, loose))
+
     for child in subdirectories_by_name(stage_path).values():
-        if directory_role(child.name) == "unknown":
-            findings.append(
-                Finding(
-                    severity="info",
-                    category="unrecognised-directory",
-                    path=child,
-                    message="Directory does not match any known role and was ignored",
-                )
+        if directory_role(child.name) != "unknown":
+            continue
+        if any(stage == child or child in stage.parents for stage in stage_paths):
+            continue
+        findings.append(
+            Finding(
+                severity="info",
+                category="unrecognised-directory",
+                path=child,
+                message="Directory does not match any known role and was ignored",
             )
+        )
 
     image_sets = tuple(
         _survey_image_set(image_set, findings, check_labels)
-        for image_set in build_image_sets(stage_path)
+        for image_set in [*directory_sets, *loose.sets]
     )
     findings.extend(_declared_state_findings(stage_path, image_sets))
     return StageSurvey(
@@ -459,6 +579,46 @@ def _survey_stage(
         synthetic=synthetic,
         image_sets=image_sets,
     )
+
+
+def _loose_findings(stage_path: Path, loose) -> list[Finding]:
+    """Report the loose files that could not be made into an image set.
+
+    Two different problems. A name no rule recognises may be an Autolamella
+    version writing something new, and is the reason classification returns
+    nothing rather than guessing. A beam nothing could establish means the
+    filename says none and the header would not read, which leaves no way to
+    say which column took the image -- so it is not indexed at all.
+    """
+    findings: list[Finding] = []
+    if loose.unrecognised:
+        shown = ", ".join(loose.unrecognised[:3])
+        more = "" if len(loose.unrecognised) <= 3 else f", and {len(loose.unrecognised) - 3} more"
+        findings.append(
+            Finding(
+                severity="info",
+                category="unrecognised-image",
+                path=stage_path,
+                message=(
+                    f"{len(loose.unrecognised)} image(s) match no naming rule and are "
+                    f"not indexed: {shown}{more}"
+                ),
+            )
+        )
+    if loose.unresolved:
+        findings.append(
+            Finding(
+                severity="warning",
+                category="unresolved-beam",
+                path=stage_path,
+                message=(
+                    f"{len(loose.unresolved)} image(s) state no beam in their filename "
+                    f"and none could be read from their header; not indexed, "
+                    f"starting with {loose.unresolved[0]}"
+                ),
+            )
+        )
+    return findings
 
 
 def _declared_state_findings(
@@ -558,7 +718,7 @@ def _survey_image_set(
     image_set: ImageSet, findings: list[Finding], check_labels: bool = True
 ) -> ImageSetSurvey:
     """Survey one image set, appending any findings to *findings*."""
-    images = image_files_by_name(image_set.directory)
+    images = image_files_of(image_set)
     labels = image_files_by_name(image_set.labels_directory) if image_set.labels_exist else {}
 
     unlabelled = sorted(set(images) - set(labels))
@@ -574,17 +734,22 @@ def _survey_image_set(
             )
         )
     elif not image_set.labels_exist:
-        findings.append(
-            Finding(
-                severity="info",
-                category="no-labels-yet",
-                path=image_set.directory,
-                message=(
-                    f"No labels yet; they would be written to "
-                    f"{image_set.labels_directory.name}/"
-                ),
+        # Saying this for every reference and alignment set buries the findings
+        # that need acting on; see layout.LABELS_EXPECTED. A set that *does*
+        # have a label directory is reported on normally whatever its series,
+        # so starting to label one needs no change here.
+        if image_set.series in LABELS_EXPECTED:
+            findings.append(
+                Finding(
+                    severity="info",
+                    category="no-labels-yet",
+                    path=image_set.directory,
+                    message=(
+                        f"No labels yet; they would be written to "
+                        f"{image_set.labels_directory.name}/"
+                    ),
+                )
             )
-        )
     elif unlabelled:
         findings.append(
             Finding(

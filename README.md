@@ -37,8 +37,26 @@ than invented:
     project/lamella/SEM_8/                     no stage directory
     project/SEM/                               no lamella or stage directory
 
+**Three series of images are indexed**, because Autolamella writes far more
+than the Adaptive Polishing images. The other two sit *loose* in a directory
+rather than filling one, so a lamella directory holds several at once:
+
+    Adaptive Polishing   the `sem/` and `fib/` directories above
+    reference            ref_<task>_*_eb.tif in a lamella directory, and
+                         <task>_pre-task_* / <task>-<stage>_finished_* in a
+                         milling task directory
+    alignment            beam_shift_alignment_*, ref_*_initial_alignment_*,
+                         ref_alignment_ib.tif, and the reference_image /
+                         new_image_<n> / final_image trio in an Alignment run
+
+A loose image's beam comes from its `_eb`/`_ib` suffix, and from the image
+header for the few names that carry neither. Labels for one go in
+`<series>_<modality>_labels/` beside the images.
+
 Run `am-seg inspect-layout` on a folder to see how it is read and what does not
-fit. It is read-only and the right place to start on unfamiliar data.
+fit. It is read-only and the right place to start on unfamiliar data, and it
+reports any image file that belongs to no series — which is how a naming this
+package has not seen makes itself visible.
 
 Installation
 ------------

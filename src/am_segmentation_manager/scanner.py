@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -19,8 +19,7 @@ from .discovery import (
     find_project_roots,
     group_stages_by_lamella,
 )
-from .image_metadata import read_image_metadata
-from .io.image import image_stack_problems
+from .image_metadata import beam_resolver
 from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
@@ -104,16 +103,6 @@ class ProjectIndex:
         return make_path_relative(path, self.start_path)
 
 
-def _read_beam(image_path: Path) -> str | None:
-    """Return the beam an image's header states, or None if it does not.
-
-    A module function rather than a method so it can be passed as the resolver
-    without binding a scanner into it.
-    """
-    metadata = read_image_metadata(image_path)
-    return metadata.modality if metadata is not None else None
-
-
 class Scanner:
     """Scan a starting directory for Autolamella projects.
 
@@ -130,9 +119,6 @@ class Scanner:
 
     def __init__(self, start_path: Path) -> None:
         self.start_path = start_path
-        # Resolved once per scanner: the answer cannot change mid-scan, and
-        # asking costs an import attempt per stage otherwise.
-        self._image_stack_missing: bool | None = None
 
     def find_project_roots(self) -> list[Path]:
         """Return the project roots under start_path.
@@ -276,7 +262,7 @@ class Scanner:
         loose = build_loose_image_sets(
             discovered.path,
             in_alignment_run=discovered.in_alignment_run,
-            resolve_modality=self._beam_resolver(),
+            resolve_modality=beam_resolver(),
         )
         if loose.unrecognised:
             logger.debug(
@@ -289,32 +275,6 @@ class Scanner:
                 len(loose.unresolved), discovered.path,
             )
         return sets + list(loose.sets)
-
-    def _beam_resolver(self) -> Callable[[Path], str | None] | None:
-        """Return something that can read a beam from a header, or None.
-
-        **The one place a scan opens an image**, and only for a filename that
-        states no beam -- 668 of the 13,221 in the reference collection.
-        Reading every header would turn a scan into an image pass; reading none
-        would drop those images, since nothing else can say which beam took
-        them.
-
-        Returns None where the optional image stack is absent, so that scanning
-        keeps working in a minimal install. ``read_image_metadata`` raises
-        there rather than returning None, and a scan is a filesystem walk that
-        has never needed the image stack -- so those few images are left out
-        and reported, instead of the whole scan failing on an import.
-        """
-        if self._image_stack_missing is None:
-            self._image_stack_missing = bool(image_stack_problems())
-            if self._image_stack_missing:
-                logger.info(
-                    "No image stack installed; images whose filename states no "
-                    "beam cannot be indexed. Install the [all] extra to include them"
-                )
-        if self._image_stack_missing:
-            return None
-        return _read_beam
 
     @classmethod
     def _discover_plots(cls, stage_path: Path) -> list[Path]:

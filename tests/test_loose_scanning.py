@@ -175,7 +175,7 @@ def test_scanning_works_without_the_image_stack(project, monkeypatch):
     Only images whose filename states no beam are lost, and they are logged.
     """
     monkeypatch.setattr(
-        "am_segmentation_manager.scanner.image_stack_problems",
+        "am_segmentation_manager.image_metadata.image_stack_problems",
         lambda: [("tifffile", "not installed")],
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
@@ -188,7 +188,7 @@ def test_scanning_works_without_the_image_stack(project, monkeypatch):
 
 def test_a_beam_read_from_a_header_indexes_the_image(project, monkeypatch):
     monkeypatch.setattr(
-        "am_segmentation_manager.scanner._read_beam", lambda path: "FIB"
+        "am_segmentation_manager.scanner.beam_resolver", lambda: (lambda path: "FIB")
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 
@@ -203,8 +203,8 @@ def test_only_names_stating_no_beam_are_opened(project, monkeypatch):
     """Reading every header would turn a scan into an image pass."""
     opened: list[str] = []
     monkeypatch.setattr(
-        "am_segmentation_manager.scanner._read_beam",
-        lambda path: opened.append(path.name) or "FIB",
+        "am_segmentation_manager.scanner.beam_resolver",
+        lambda: (lambda path: opened.append(path.name) or "FIB"),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 
