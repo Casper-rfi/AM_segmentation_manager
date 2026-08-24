@@ -1,13 +1,15 @@
 """Filesystem naming conventions for Autolamella and legacy datasets.
 
-The single source of truth for what directories are called; resolve names here
-rather than embedding string literals. Image directories are ``<modality>`` or
-``<modality>_<variant>``, the variant opaque and never parsed. Label directories
-are ``<image-directory>_labels`` beside them, resolved most-specific-first, then
-the shared ``<modality>_labels``, then legacy names. Workflow state is declared
-in :mod:`~am_segmentation_manager.state` and nothing here reads it; the
-``deselected/`` and ``corrected/`` names stay reserved so an unmigrated dataset
-is never read as selected.
+The single source of truth for what directories and image files are called;
+resolve names here rather than embedding string literals. Image directories are
+``<modality>`` or ``<modality>_<variant>``, the variant opaque and never parsed.
+Label directories are ``<image-directory>_labels`` beside them, resolved
+most-specific-first, then the shared ``<modality>_labels``, then legacy names.
+Images Autolamella leaves loose in a lamella or task directory instead carry
+their series and their beam in the filename, which :func:`classify_loose_image`
+reads. Workflow state is declared in :mod:`~am_segmentation_manager.state` and
+nothing here reads it; the ``deselected/`` and ``corrected/`` names stay
+reserved so an unmigrated dataset is never read as selected.
 
 Except for :func:`build_image_sets`, nothing here touches the filesystem.
 """
@@ -80,6 +82,41 @@ IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset({".tif", ".tiff"})
 
 #: What a directory inside a stage is for.
 DirectoryRole = Literal["image", "labels", "predictions", "plots", "state", "unknown"]
+
+#: What an image was taken for. Orthogonal to modality and to the
+#: imaging-condition variant: one directory holds several series, so a series is
+#: a property of an image set rather than of the directory it sits in.
+#:
+#: ``adaptive`` images fill a ``<modality>`` directory of their own and are
+#: recognised by :func:`classify_image_directory`. The other two are loose files
+#: sharing a directory with whatever else Autolamella wrote there, and are
+#: recognised by :func:`classify_loose_image`.
+Series = Literal["adaptive", "reference", "alignment"]
+
+#: The series, in display order.
+SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment")
+
+#: The series whose images sit loose in a directory rather than filling one.
+#: These are the two :func:`classify_loose_image` can return, and the two that
+#: need a name invented for them before their labels have somewhere to go.
+LOOSE_SERIES: Final[tuple[Series, ...]] = ("reference", "alignment")
+
+#: What to call each series where there is room to say it properly.
+SERIES_LABELS: Final[dict[Series, str]] = {
+    "adaptive": "Adaptive Polishing",
+    "reference": "reference",
+    "alignment": "alignment",
+}
+
+#: Filename suffix to the modality it names. Autolamella writes one on nearly
+#: every image it takes outside an Adaptive Polishing stage. A name carrying
+#: neither leaves the modality unstated, which is the header's to answer -- see
+#: :func:`beam_modality`.
+BEAM_SUFFIXES: Final[dict[str, str]] = {"_eb": "SEM", "_ib": "FIB"}
+
+#: The directory Autolamella collects its alignment runs in, one subdirectory
+#: per run. Present below a lamella and below each milling task.
+ALIGNMENT_DIRECTORY: Final[str] = "Alignment"
 
 
 @dataclass(frozen=True)
@@ -223,6 +260,175 @@ def directory_role(name: str) -> DirectoryRole:
     if name.lower() in STATE_FOLDER_NAMES:
         return "state"
     return "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Image file name classification
+# ---------------------------------------------------------------------------
+
+#: Markers making a loose image an alignment image whatever else its name says.
+#: Tested before the reference rules, because Autolamella prefixes an alignment
+#: image with ``ref_`` as readily as it does a reference image.
+_ALIGNMENT_MARKERS: Final[tuple[str, ...]] = (
+    "_initial_alignment_",
+    "_alignment_reference_",
+)
+
+#: Prefixes naming an alignment image outright.
+_ALIGNMENT_PREFIXES: Final[tuple[str, ...]] = ("beam_shift_alignment", "ref_alignment")
+
+#: The fixed names Autolamella writes inside an alignment run directory,
+#: alongside ``new_image_<n>``. They carry no marker of their own -- a bare
+#: ``final_image.tif`` could be anything -- so they are recognised only where
+#: the directory says what they are. See :func:`classify_loose_image`.
+_ALIGNMENT_RUN_STEMS: Final[frozenset[str]] = frozenset(
+    {"reference_image", "final_image"}
+)
+_ALIGNMENT_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"^new_image_\d+$")
+
+#: Markers naming a reference image taken around a milling task: one before it
+#: starts, and one after each of its milling stages finishes.
+_REFERENCE_MARKERS: Final[tuple[str, ...]] = ("_pre-task_", "_finished_")
+
+#: Everything else Autolamella prefixes ``ref_`` is a reference image, once the
+#: alignment rules above have had their say.
+_REFERENCE_PREFIX: Final[str] = "ref_"
+
+#: Images deliberately not indexed. The centring image records where the
+#: Adaptive Polishing plugin placed its field of view, which is a diagnostic of
+#: the run rather than data anybody segments. Distinguished from a name no rule
+#: recognises, which is reported so an unanticipated layout is visible.
+_IGNORED_MARKERS: Final[tuple[str, ...]] = ("_centring_",)
+
+
+@dataclass(frozen=True)
+class ImageFile:
+    """What a loose image's filename says it is.
+
+    Attributes:
+        series: ``"reference"`` or ``"alignment"``. Never ``"adaptive"``:
+            Adaptive Polishing images fill a directory of their own, which
+            :func:`classify_image_directory` recognises instead.
+        modality: ``"SEM"`` or ``"FIB"``, or ``None`` where the name carries no
+            beam suffix and only the image header can say.
+    """
+
+    series: Series
+    modality: str | None
+
+
+def beam_modality(image_name: str) -> str | None:
+    """Return the modality the filename's beam suffix names.
+
+    Returns:
+        ``"SEM"``, ``"FIB"``, or None where the name ends in neither suffix. A
+        None is not a defect to work around: roughly one image in twenty says
+        nothing about its beam, and the header states it.
+    """
+    stem = Path(image_name).stem.lower()
+    for suffix, modality in BEAM_SUFFIXES.items():
+        if stem.endswith(suffix):
+            return modality
+    return None
+
+
+def acquisition_stem(image_name: str) -> str:
+    """Return the filename stem with any beam suffix removed.
+
+    What matches the two beams' images of one moment: outside an Adaptive
+    Polishing stage the pair carries no acquisition number, and differs only in
+    the suffix -- ``ref_Polishing_start_eb`` and ``ref_Polishing_start_ib``.
+    Beside :func:`extract_image_number` because both answer the same question
+    about different eras of filename.
+    """
+    stem = Path(image_name).stem
+    for suffix in BEAM_SUFFIXES:
+        if stem.lower().endswith(suffix):
+            return stem[: -len(suffix)]
+    return stem
+
+
+def is_alignment_directory(name: str) -> bool:
+    """Return whether *name* is the directory collecting alignment runs."""
+    return name.lower() == ALIGNMENT_DIRECTORY.lower()
+
+
+def is_ignored_image_name(image_name: str) -> bool:
+    """Return whether an image is deliberately not indexed.
+
+    Separate from "no rule recognises this", which the survey reports.
+    """
+    return any(marker in Path(image_name).stem.lower() for marker in _IGNORED_MARKERS)
+
+
+def classify_loose_image(image_name: str, in_alignment_run: bool = False) -> ImageFile | None:
+    """Return what a loose image file's name says it is, or None if nothing does.
+
+    Loose meaning a file sitting directly in a lamella, milling task or
+    alignment run directory, rather than filling a ``<modality>`` directory of
+    its own. The extension is not examined; callers have already selected image
+    files with :func:`image_files`.
+
+    Args:
+        image_name: The filename, with or without its extension.
+        in_alignment_run: Whether the file sits in a subdirectory of an
+            :data:`ALIGNMENT_DIRECTORY`. The three fixed names an alignment run
+            holds are generic enough to mean anything, so they are read as
+            alignment images only where the directory vouches for them.
+
+    Returns:
+        The series and modality the name states, or None where no rule matches
+        and where the name is one :func:`is_ignored_image_name` covers. A None
+        is reported rather than guessed at: an Autolamella version naming
+        something new should be visible on the next scan.
+    """
+    if is_ignored_image_name(image_name):
+        return None
+
+    stem = Path(image_name).stem
+    lowered = stem.lower()
+    modality = beam_modality(stem)
+
+    if lowered.startswith(_ALIGNMENT_PREFIXES) or any(
+        marker in lowered for marker in _ALIGNMENT_MARKERS
+    ):
+        return ImageFile(series="alignment", modality=modality)
+
+    if in_alignment_run and (
+        lowered in _ALIGNMENT_RUN_STEMS or _ALIGNMENT_RUN_PATTERN.match(lowered)
+    ):
+        return ImageFile(series="alignment", modality=modality)
+
+    if lowered.startswith(_REFERENCE_PREFIX) or any(
+        marker in lowered for marker in _REFERENCE_MARKERS
+    ):
+        return ImageFile(series="reference", modality=modality)
+
+    return None
+
+
+def loose_image_set_name(series: Series, modality: str) -> str:
+    """Return the name identifying one series and modality of loose images.
+
+    Loose images have no image directory to take a name from, but a label
+    directory still has to be called something. Feeding this to
+    :func:`labels_directory_name` gives ``reference_sem_labels/``, keeping one
+    rule for what a label directory is called.
+
+    A modality is required: a set whose beam nothing has established gets no
+    label directory rather than one named for a guess.
+
+    Raises:
+        ValueError: If *series* is not one of :data:`LOOSE_SERIES`. Adaptive
+            Polishing images fill a directory that already has a name, so
+            asking for a loose one means the caller has lost track of which
+            kind of set it holds.
+    """
+    if series not in LOOSE_SERIES:
+        raise ValueError(
+            f"Not a loose series: {series!r}; expected one of {list(LOOSE_SERIES)}"
+        )
+    return f"{series}_{modality.lower()}"
 
 
 # ---------------------------------------------------------------------------

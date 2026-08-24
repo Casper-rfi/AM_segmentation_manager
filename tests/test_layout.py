@@ -13,13 +13,19 @@ import pytest
 
 from am_segmentation_manager.layout import (
     ImageDirectory,
+    acquisition_stem,
+    beam_modality,
     build_image_sets,
     candidate_labels_directory_names,
     classify_image_directory,
+    classify_loose_image,
     directory_role,
     image_files_by_name,
+    is_alignment_directory,
+    is_ignored_image_name,
     is_labels_directory,
     labels_directory_name,
+    loose_image_set_name,
     resolve_labels_directory,
     subdirectories_by_name,
 )
@@ -299,3 +305,207 @@ def test_is_convertible_prediction_reads_directories_not_the_filename():
     # nested any distance below a `clean` directory is still post-processed.
     assert not is_convertible_prediction(Path("/a/predictions/CLEAN/img.tif"))
     assert not is_convertible_prediction(Path("/a/clean/more/img.tif"))
+
+
+# ---------------------------------------------------------------------------
+# Image file name classification
+# ---------------------------------------------------------------------------
+
+#: Every loose-image filename form the reference collection holds, transcribed
+#: from it. Grouped by the era that writes each form, because a rule that only
+#: works on the newest naming would pass a spot check and drop four years of
+#: data.
+REFERENCE_NAMES = [
+    # 2026-07 onwards: the task name is spelled out, spaces and all.
+    "ref_Setup Lamella Position_start_eb.tif",
+    "ref_Setup Lamella Position_final_res_01_ib.tif",
+    "ref_Mill Fiducial_start_ib.tif",
+    "ref_Rough Milling_final_res_02_eb.tif",
+    "ref_Polishing_start_eb.tif",
+    # 2026-07 onwards: taken around a milling task, inside the task directory.
+    "Fiducial_pre-task_10-35-26_eb.tif",
+    "Polishing_pre-task_12-04-38_ib.tif",
+    "Rough-Milling_pre-task_10-40-02_eb.tif",
+    "Fiducial-Fiducial_finished_10-38-37_ib.tif",
+    "Polishing-Fine-1_finished_11-04-43_eb.tif",
+    "Polishing-Localised-Adaptive-Polishing_finished_12-15-12_ib.tif",
+    "Rough-Milling-Microexpansion_finished_10-41-52_eb.tif",
+    "Rough-Milling-Rough-2_finished_10-54-11_ib.tif",
+    # 2025 and 2026-04: the task name runs together, and the resolution is a
+    # word rather than a number.
+    "ref_MillRough_start_eb.tif",
+    "ref_MillRough_final_high_res_ib.tif",
+    "ref_SetupLamella_final_low_res_eb.tif",
+    "ref_SetupPolishing_final_high_res_ib.tif",
+    "ref_MillPolishing_start_eb.tif",
+    "ref_milling_Fine-1_finished_1750981637_3822749_eb.tif",
+    "ref_milling_Rough-2_finished_1750966808_398733_ib.tif",
+    # 2025 and 2026-04, and the one reference image carrying no beam suffix.
+    "ref_PositionReady.tif",
+]
+
+ALIGNMENT_NAMES = [
+    "beam_shift_alignment_1750966320_5954986_ib.tif",
+    "ref_alignment_ib.tif",
+    "ref_Fiducial_initial_alignment_1750956609_2132776_ib.tif",
+    "ref_Fine 1_initial_alignment_1750981636_6501825_ib.tif",
+    "ref_Microexpansion_initial_alignment_1775557405_57263_ib.tif",
+    "ref_Rough 1_initial_alignment_1750966458_7226627_ib.tif",
+    "Polishing_alignment_reference_10-55-27_ib.tif",
+    "Rough-Milling_alignment_reference_10-40-00_ib.tif",
+]
+
+#: The names an alignment run directory holds. Generic enough to mean anything,
+#: so they are only alignment images where the directory vouches for them.
+ALIGNMENT_RUN_NAMES = [
+    "reference_image.tif",
+    "final_image.tif",
+    "new_image_00.tif",
+    "new_image_02.tif",
+]
+
+
+@pytest.mark.parametrize("name", REFERENCE_NAMES)
+def test_reference_images_are_classified_as_reference(name):
+    classified = classify_loose_image(name)
+    assert classified is not None, name
+    assert classified.series == "reference"
+
+
+@pytest.mark.parametrize("name", ALIGNMENT_NAMES)
+def test_alignment_images_are_classified_as_alignment(name):
+    classified = classify_loose_image(name)
+    assert classified is not None, name
+    assert classified.series == "alignment"
+
+
+@pytest.mark.parametrize("name", ALIGNMENT_NAMES)
+def test_alignment_wins_over_the_reference_prefix(name):
+    """``ref_`` prefixes alignment images as readily as reference ones.
+
+    The rule order is the whole of what separates them, so it is asserted
+    rather than left to the classification tests above to imply.
+    """
+    assert classify_loose_image(name).series == "alignment"
+
+
+@pytest.mark.parametrize("name", ALIGNMENT_RUN_NAMES)
+def test_alignment_run_names_need_the_directory_to_vouch_for_them(name):
+    assert classify_loose_image(name, in_alignment_run=True).series == "alignment"
+    assert classify_loose_image(name) is None
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("ref_Polishing_start_eb.tif", "SEM"),
+        ("ref_Polishing_start_ib.tif", "FIB"),
+        ("beam_shift_alignment_1750966320_5954986_ib.tif", "FIB"),
+        ("Polishing-Fine-1_finished_11-04-43_eb.tif", "SEM"),
+        ("ref_PositionReady.tif", None),
+        ("reference_image.tif", None),
+        ("new_image_00.tif", None),
+        ("ref_Setup Lamella Position_start_EB.tif", "SEM"),
+    ],
+)
+def test_beam_modality_reads_the_suffix(name, expected):
+    assert beam_modality(name) == expected
+
+
+@pytest.mark.parametrize(
+    "sem_name, fib_name",
+    [
+        ("ref_Polishing_start_eb.tif", "ref_Polishing_start_ib.tif"),
+        (
+            "ref_Setup Lamella Position_final_res_01_eb.tif",
+            "ref_Setup Lamella Position_final_res_01_ib.tif",
+        ),
+        ("ref_MillRough_final_high_res_eb.tif", "ref_MillRough_final_high_res_ib.tif"),
+        (
+            "ref_milling_Fine-1_finished_1750981637_3822749_eb.tif",
+            "ref_milling_Fine-1_finished_1750981637_3822749_ib.tif",
+        ),
+        (
+            "Polishing-Fine-1_finished_11-04-43_eb.tif",
+            "Polishing-Fine-1_finished_11-04-43_ib.tif",
+        ),
+    ],
+)
+def test_both_beams_of_one_acquisition_share_a_stem(sem_name, fib_name):
+    assert acquisition_stem(sem_name) == acquisition_stem(fib_name)
+
+
+def test_acquisition_stem_leaves_a_name_with_no_beam_suffix_alone():
+    assert acquisition_stem("ref_PositionReady.tif") == "ref_PositionReady"
+    assert acquisition_stem("new_image_00.tif") == "new_image_00"
+
+
+def test_acquisition_stems_of_different_acquisitions_differ():
+    assert acquisition_stem("ref_Polishing_start_eb.tif") != acquisition_stem(
+        "ref_Polishing_final_res_01_eb.tif"
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "01-ruling-ibex_centring_SEM.tif",
+        "08-live-bird_centring_SEM.tif",
+    ],
+)
+def test_centring_images_are_ignored_rather_than_unrecognised(name):
+    assert is_ignored_image_name(name)
+    assert classify_loose_image(name) is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # Adaptive Polishing images, which fill an image directory instead.
+        "01-ruling-ibex_AP_img_013_SEM.tif",
+        "img_0013.tif",
+        "adapt_mill_img_002_electron_002.tif",
+        "Franklin_2024-03-21_lam019_img_0008.tif",
+        # Above the lamella level, so no loose-image rule should claim them.
+        "overview-image-2026-04-17_11-17-34.tif",
+        "tile_0_0_eb.tif",
+    ],
+)
+def test_names_no_rule_recognises_are_reported_rather_than_guessed_at(name):
+    assert classify_loose_image(name) is None
+    assert not is_ignored_image_name(name)
+
+
+def test_alignment_directory_is_recognised_whatever_its_case():
+    assert is_alignment_directory("Alignment")
+    assert is_alignment_directory("alignment")
+    assert not is_alignment_directory("Milling")
+    assert not is_alignment_directory("01-ruling-ibex - Polishing-11-33-36")
+
+
+@pytest.mark.parametrize(
+    "series, modality, expected",
+    [
+        ("reference", "SEM", "reference_sem"),
+        ("reference", "FIB", "reference_fib"),
+        ("alignment", "FIB", "alignment_fib"),
+    ],
+)
+def test_loose_image_set_name_feeds_the_one_label_naming_rule(series, modality, expected):
+    assert loose_image_set_name(series, modality) == expected
+    assert labels_directory_name(expected) == f"{expected}_labels"
+
+
+@pytest.mark.parametrize("series", ["reference", "alignment"])
+@pytest.mark.parametrize("modality", ["SEM", "FIB"])
+def test_a_loose_label_directory_is_never_mistaken_for_an_image_directory(series, modality):
+    """The new names must not collide with any role a directory already has."""
+    name = labels_directory_name(loose_image_set_name(series, modality))
+    assert directory_role(name) == "labels"
+    assert classify_image_directory(name) is None
+
+
+def test_loose_image_set_name_refuses_the_adaptive_series():
+    """Adaptive Polishing images fill a directory that already has a name."""
+    with pytest.raises(ValueError, match="Not a loose series"):
+        loose_image_set_name("adaptive", "SEM")
