@@ -288,6 +288,21 @@ becomes wrong, correct it in place rather than appending a correction.
   find images whose header would not read; and a measured property is not offered, since it
   cannot answer before Measure is pressed. Modality, workflow state and the label filter keep
   dedicated controls, being fixed questions rather than data.
+- **A command that reports covers every series; a command that acts stays on Adaptive
+  Polishing.** Indexing reference and alignment images more than doubled what a scan holds,
+  and none of that may change what an existing command prints or writes. So `inspect-layout`
+  and `stats` cover everything and say which is which — narrowing a report silently is the
+  bug this work exists to fix — while `predict`, `convert-predictions`, the state commands,
+  `quantify-labels`, `compress-labels`, `find-specks` and both exports default to
+  `--series adaptive`. Widening is one flag. `cli.DEFAULT_SERIES` and `REPORTING_SERIES`
+  name the two, and each command chooses where it is registered. Checked by diffing a
+  training CSV against the previous version: identical, 965 and 242 lines.
+- **The series is registered once, as a breakdown**, so it gets `--series` and an Export
+  filter row from the same declaration as the count — per the rule above it. `by_series`
+  returns the slug rather than the display label, because a value counted must be a value
+  `--series` accepts; the label lives on the `Breakdown`, which is where a reader sees it.
+  Unlike a variant, a series is a closed vocabulary, so an unknown name raises rather than
+  matching nothing: `--series refrence` is a typo, not a request for an empty set.
 - **Counting is split between the tab and the commands, not moved.** The Export tab counts
   the set its filters describe, because choosing a training set means looking at what
   survives a filter and that loop cannot run through a command that prints and exits. `stats`

@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from .layout import extract_image_number
+from .layout import SERIES, extract_image_number
 from .models import ImageRecord
 from .operations.selection import current_state
 from .scanner import ProjectIndex
@@ -175,6 +175,31 @@ def matches_variant(record: ImageRecord, selectors: list[str] | None) -> bool:
     return record.variant in values
 
 
+def matches_series(record: ImageRecord, selectors: list[str] | None) -> bool:
+    """Return whether *record* is in one of the requested series.
+
+    ``"all"`` selects every series, and ``None`` matches everything so that a
+    caller which does not care is unaffected. Unlike a variant, a series is a
+    closed vocabulary, so an unknown name is a mistake worth reporting rather
+    than a selector that quietly matches nothing.
+
+    Raises:
+        ValueError: If a selector names no known series.
+    """
+    if not selectors:
+        return True
+    values = {value.strip() for raw in selectors for value in raw.split(",") if value.strip()}
+    if not values or "all" in values:
+        return True
+    unknown = sorted(values - set(SERIES))
+    if unknown:
+        raise ValueError(
+            f"Unknown series: {', '.join(unknown)}; expected one of "
+            f"{', '.join(SERIES)} or 'all'"
+        )
+    return record.series in values
+
+
 def matches_state(record: ImageRecord, state: str) -> bool:
     """Return whether *record* matches the requested workflow state.
 
@@ -199,6 +224,7 @@ def iter_matching_records(
     modality: str = "all",
     state: str = "all",
     variant_selectors: list[str] | None = None,
+    series_selectors: list[str] | None = None,
 ) -> Iterator[ImageRecord]:
     """Yield every :class:`ImageRecord` that passes the supplied filters.
 
@@ -213,6 +239,10 @@ def iter_matching_records(
         state: ``"corrected"``, ``"selected"``, ``"deselected"`` or ``"all"``.
         variant_selectors: Imaging-condition variants, where ``"base"`` is the
             unsuffixed image directory.
+        series_selectors: What the images were taken for -- ``"adaptive"``,
+            ``"reference"``, ``"alignment"`` or ``"all"``. ``None`` matches
+            every series, so the caller decides the default rather than
+            inheriting one from here.
     """
     for project in index.all_projects():
         if project_selectors is not None and not matches_project(project, project_selectors):
@@ -224,6 +254,8 @@ def iter_matching_records(
                 if stage_selectors is not None and not matches_stage(stage, stage_selectors):
                     continue
                 for record in stage.images:
+                    if not matches_series(record, series_selectors):
+                        continue
                     if modality != "all" and record.modality != modality:
                         continue
                     if not matches_variant(record, variant_selectors):

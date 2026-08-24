@@ -32,6 +32,7 @@ from .filtering import (
     iter_matching_records,
 )
 from .io.path import make_path_relative
+from .layout import SERIES
 from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
 from .operations.label_measure import DEFAULT_SPECK_PIXELS
 from .operations.predictions import convert_record_predictions, plan_conversions
@@ -85,15 +86,32 @@ def open_log_file(path: Path) -> logging.Handler:
 # Argument helpers
 # ---------------------------------------------------------------------------
 
+#: What ``--series`` defaults to for a command that acts, exports or measures.
+#:
+#: Autolamella writes reference and alignment images alongside the Adaptive
+#: Polishing ones, and indexing them must not change what an existing command
+#: prints or writes. So a command that *reports* on the collection covers every
+#: series -- ``inspect-layout`` and ``stats`` -- and every other command stays
+#: on Adaptive Polishing until told otherwise. Widening is one flag.
+DEFAULT_SERIES: str = "adaptive"
+
+#: What ``--series`` defaults to for a command whose job is to report what is
+#: there. Narrowing these silently is the bug this work exists to fix.
+REPORTING_SERIES: str = "all"
+
+
 def _add_scope_arguments(
     parser: argparse.ArgumentParser,
     default_modality: str | None = None,
     include_state: bool = True,
+    default_series: str = DEFAULT_SERIES,
 ) -> None:
     """Add the common scope-selection arguments to *parser*.
 
     Set *include_state* to False when the caller registers its own
-    ``--state`` argument (for example to make it required).
+    ``--state`` argument (for example to make it required). Set
+    *default_series* to :data:`REPORTING_SERIES` for a command that reports on
+    the collection rather than acting on part of it.
     """
     parser.add_argument("paths", nargs="*", help="Explicit image paths or scan directory")
     parser.add_argument("--start-path", default=".", help="Directory to start scanning from")
@@ -121,6 +139,17 @@ def _add_scope_arguments(
             "every condition. Defaults to every variant"
         ),
     )
+    parser.add_argument(
+        "--series", action="append", default=[],
+        metavar="SERIES",
+        help=(
+            "What the images were taken for: "
+            + ", ".join(SERIES)
+            + ", or 'all'. Repeat or comma-separate to include several "
+            f"(default: {default_series})"
+        ),
+    )
+    parser.set_defaults(default_series=default_series)
     if include_state:
         parser.add_argument(
             "--state",
@@ -232,9 +261,22 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
             modality=args.modality,
             state=state,
             variant_selectors=getattr(args, "variant", None) or None,
+            series_selectors=_series_selectors(args),
         )
     )
     return records, start_path
+
+
+def _series_selectors(args: argparse.Namespace) -> list[str]:
+    """Return the series to match, falling back to the command's default.
+
+    A command declares its own default through :func:`_add_scope_arguments`,
+    so which series a command covers when nobody says is decided where the
+    command is registered rather than here.
+    """
+    return getattr(args, "series", None) or [
+        getattr(args, "default_series", DEFAULT_SERIES)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +704,7 @@ def build_parser() -> argparse.ArgumentParser:
             "the per-lamella view."
         ),
     )
-    _add_scope_arguments(stats_cmd, default_modality="all")
+    _add_scope_arguments(stats_cmd, default_modality="all", default_series=REPORTING_SERIES)
     stats_cmd.add_argument(
         "--by", action="append", default=[], metavar="PROPERTY",
         help=(

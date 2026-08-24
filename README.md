@@ -58,6 +58,14 @@ fit. It is read-only and the right place to start on unfamiliar data, and it
 reports any image file that belongs to no series — which is how a naming this
 package has not seen makes itself visible.
 
+**`--series` chooses which of the three a command covers.** `inspect-layout` and
+`stats` report on all of them; every other command acts on Adaptive Polishing
+unless told otherwise, so indexing the other two changed nothing that was
+already being written:
+
+    am-seg stats ... --by series                 # how many of each
+    am-seg create-training-csv ... --series reference,adaptive
+
 Installation
 ------------
 

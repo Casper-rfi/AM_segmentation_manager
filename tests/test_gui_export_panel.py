@@ -465,11 +465,17 @@ def test_the_table_is_drawn_in_a_font_its_columns_can_line_up_in(
 
 def test_the_arrow_keys_step_through_the_list(panel: ExportPanel):
     """Whether Qt's own keys step or open the popup is a style hint's to
-    answer, and the binding here is not the one the window ships under."""
-    panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
+    answer, and the binding here is not the one the window ships under.
+
+    Which breakdown sits next to which is not the point, and asserting it
+    would make adding one a test failure, so this steps to whatever is there.
+    """
+    start = panel.breakdown.findData("modality")
+    panel.breakdown.setCurrentIndex(start)
+    following = panel.breakdown.itemData(start + 1)
 
     QTest.keyClick(panel.breakdown, Qt.Key_Down)
-    assert panel.breakdown.currentData() == "state"
+    assert panel.breakdown.currentData() == following
 
     QTest.keyClick(panel.breakdown, Qt.Key_Up)
     assert panel.breakdown.currentData() == "modality"

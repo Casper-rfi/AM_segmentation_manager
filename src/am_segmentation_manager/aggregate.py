@@ -127,6 +127,16 @@ def by_variant(record: ImageRecord) -> Hashable:
     return record.variant or "base"
 
 
+def by_series(record: ImageRecord) -> Hashable:
+    """Group by what the image was taken for.
+
+    Returns the series slug rather than its display label, so that a value
+    counted here is a value ``--series`` accepts. The label belongs on the
+    breakdown, which is where a reader sees it.
+    """
+    return record.series
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -595,6 +605,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "modality": Breakdown("record", by_modality, "modality (SEM / FIB)"),
     "state": Breakdown("record", by_state, "workflow state"),
     "variant": Breakdown("record", by_variant, "imaging condition"),
+    "series": Breakdown("record", by_series, "series (adaptive / reference / alignment)"),
     "autolamella-project": Breakdown(
         "project", by_autolamella_project, "Autolamella project", group="record"
     ),
