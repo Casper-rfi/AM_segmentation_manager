@@ -57,71 +57,57 @@ becomes wrong, correct it in place rather than appending a correction.
   them; the missing level is synthesised in memory with the parent standing in, and the
   model records that it is synthetic. Data on disk is never reorganised to fit the newest
   layout.
-- **The series is a property of an image set, not of a directory.** Autolamella writes far
-  more than the Adaptive Polishing images: a lamella directory holds reference images of
-  both beams and alignment images at once. So a set is a *group of filenames* within a
-  directory rather than the directory itself, which is what `ImageSet.image_names` is, and
-  `image_files_of` is the one place either shape is read back. Adaptive sets keep the old
-  shape — whole directory, no names — so nothing that indexes them changed.
+- **The series is a property of an image set, not of a directory.** A lamella directory
+  holds reference images of both beams and alignment images at once, so a set is a *group
+  of filenames* within a directory rather than the directory itself. `image_files_of` is
+  the one place either shape is read back; adaptive sets keep the old shape.
 - **A loose-image stage does not end the stage search; a directory-shaped one does.** The
   invariant the 2026 layout rests on. A lamella holds reference images loose and its
   milling tasks below; each task holds reference images loose and its Adaptive Polishing
-  stages below. Were a lamella full of reference images to end the search the way `sem/`
-  does, every Adaptive Polishing stage beneath it would vanish from the index — 127 stages
-  in the reference collection, silently. Nothing sits below an image directory, so
-  stopping there stays right. A directory holding both shapes is returned once and not
-  descended into, which loses nothing: the scanner builds both kinds of set for every
-  stage, so which branch found it does not change what is indexed.
+  stages below. Were a lamella of reference images to end the search the way `sem/` does,
+  every Adaptive Polishing stage beneath it would vanish from the index, silently. Nothing
+  sits below an image directory, so stopping there stays right.
 - **A loose set's label directory is resolved exactly, with no fallback chain.** Unlike
   `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. A dataset
   that collapses the stage level keeps its Adaptive Polishing images and its `labels/` in
   the lamella directory, so a reference set falling back would pair every reference image
   with a label of an entirely different scene: right dimensions, plausible shapes, wrong
-  data. The name is `<series>_<modality>_labels`, built from `loose_image_set_name` through
-  the same `labels_directory_name` every other label directory goes through.
+  data.
 - **A series nobody has started labelling is not reported as unlabelled.** `no-labels-yet`
-  fires once per image set, and the reference and alignment images add 460 sets holding
-  5,237 images that nothing has annotated — enough to bury every finding worth acting on.
-  `layout.LABELS_EXPECTED` names the series that get the report, and a set whose label
-  directory *does* exist is reported on normally whatever its series, so starting to label
-  one needs no change there. `unexpected-stage-name` is narrowed the same way: it checks the
-  rule "a directory of image directories is a stage", so it only applies to a stage found
-  that way — a lamella or alignment run was never going to be named `adaptive_polish*`.
+  fires per image set, and the loose series add 460 sets that nothing has annotated — enough
+  to bury every finding worth acting on. `layout.LABELS_EXPECTED` names the series that get
+  the report; a set whose label directory *does* exist is reported on normally whatever its
+  series. `unexpected-stage-name` is narrowed the same way, to a stage found by holding
+  image *directories* — a lamella was never going to be named `adaptive_polish*`.
 - **The survey counts what it could not reach at all.** Every other finding describes
   something the conventions recognised. `unindexed-images` counts image files no image set
   claims, which is the failure that hides best: before this work a project holding 430
-  images surveyed as holding 100, and nothing said so. It costs a walk per project — 4.6s of
-  the reference collection's 40s, where reading labels is 38s of it — and it is what makes
-  the project-root overview images visible without indexing them as lamella data. Labels,
+  images surveyed as holding 100, and nothing said so. It is also what makes the
+  project-root overview images visible without indexing them as lamella data. Labels,
   predictions and deliberately ignored names are excluded, or annotating a project would
   report thousands.
 - **A loose image is ordered by its header's acquisition time; an Adaptive Polishing image
   by the number in its filename.** Nothing in a loose name orders it: 44% of them carry no
   timestamp at all, and the epochs that do appear are when the milling *stage* started, up
-  to eleven minutes before the image. The file's own mtime is worse than useless here — not
-  one of 4,000 checked is within two minutes of the header, the median being 134 days out,
-  because the collection has been copied. The header is complete (5,237 of 5,237) and
-  authoritative, so the scanner reads one per loose image and stores it on the record.
-  Adaptive Polishing images are never opened, so ordering them cannot change.
+  to eleven minutes before the image. mtime is worse than useless — not one of 4,000
+  checked is within two minutes of the header, because the collection has been copied. The
+  header is complete and authoritative, so the scanner reads one per loose image. Adaptive
+  Polishing images are never opened, so ordering them cannot change.
 - **A series is ordered across its stages, not stage by stage.** A lamella directory holds
   reference images spanning the whole session while the milling tasks below it hold theirs
   in the middle, so the stages interleave in time and no position for that stage in a
-  stage-by-stage list is right. `_in_acquisition_order` sorts a timeline by time whenever
-  every frame has one — which is exactly a loose series — and leaves an Adaptive Polishing
-  timeline in the stage-and-number order it was built in.
+  stage-by-stage list is right. `_in_acquisition_order` sorts by time whenever every frame
+  has one — exactly a loose series — and leaves an Adaptive Polishing timeline alone.
 - **An alignment run's fixed filenames break a tie the clock cannot.** A header records
   whole seconds and a run takes several images inside one, so time alone left 11 of 121
   runs reading `final_image` before the last `new_image`. `alignment_run_order` ranks the
-  names Autolamella writes — reference, then each iteration, then final — and is used only
-  to break a tie, never to order images the clock can separate.
-- **Discovery asks filenames, never headers.** 668 of the 13,221 images in the reference
-  collection state no beam in their name — the three fixed names in an alignment run, and
-  `ref_PositionReady.tif`; all of them read as ION. Discovery still opens nothing: it only
-  needs to know whether a directory holds anything, and asks `holds_loose_images`, which
-  reads filenames. The scanner opens one header per *loose* image — for the beam where the
-  name does not say, and for the acquisition time always — memoised so each file is read
-  once, taking the collection scan from 1.30s to 2.84s. The survey opens only what it must,
-  because it reports what is on disk rather than ordering it.
+  names Autolamella writes, and is used only for ties.
+- **Only the scanner opens an image, and only a loose one.** Its header gives the beam
+  where the filename does not state it — 668 images here, every one ion-beam — and the
+  acquisition time always; the two come from one read, memoised, costing the collection
+  scan 1.3s to 2.8s. Discovery opens nothing: it asks `holds_loose_images`, which reads
+  filenames. The survey opens only what it must, reporting what is on disk rather than
+  ordering it.
 - **`predictions/clean/` is indexed but can never become a label.** Adaptive Polishing's
   post-processing rewrites the intensity values, so they no longer index the segmentation
   classes. A label converted from one looks entirely valid — right dimensions, plausible
@@ -308,20 +294,17 @@ becomes wrong, correct it in place rather than appending a correction.
   cannot answer before Measure is pressed. Modality, workflow state and the label filter keep
   dedicated controls, being fixed questions rather than data.
 - **A command that reports covers every series; a command that acts stays on Adaptive
-  Polishing.** Indexing reference and alignment images more than doubled what a scan holds,
-  and none of that may change what an existing command prints or writes. So `inspect-layout`
-  and `stats` cover everything and say which is which — narrowing a report silently is the
-  bug this work exists to fix — while `predict`, `convert-predictions`, the state commands,
-  `quantify-labels`, `compress-labels`, `find-specks` and both exports default to
+  Polishing.** Indexing the loose series more than doubled what a scan holds, and none of
+  that may change what an existing command prints or writes. So `inspect-layout` and `stats`
+  cover everything and say which is which — narrowing a report silently is the bug this work
+  exists to fix — while everything that writes, exports or measures defaults to
   `--series adaptive`. Widening is one flag. `cli.DEFAULT_SERIES` and `REPORTING_SERIES`
-  name the two, and each command chooses where it is registered. Checked by diffing a
-  training CSV against the previous version: identical, 965 and 242 lines.
+  name the two, and each command chooses where it is registered.
 - **The series is registered once, as a breakdown**, so it gets `--series` and an Export
-  filter row from the same declaration as the count — per the rule above it. `by_series`
-  returns the slug rather than the display label, because a value counted must be a value
-  `--series` accepts; the label lives on the `Breakdown`, which is where a reader sees it.
-  Unlike a variant, a series is a closed vocabulary, so an unknown name raises rather than
-  matching nothing: `--series refrence` is a typo, not a request for an empty set.
+  filter row from the same declaration as the count. `by_series` returns the slug rather
+  than the display label, because a value counted must be a value `--series` accepts. Unlike
+  a variant it is a closed vocabulary, so an unknown name raises: `--series refrence` is a
+  typo, not a request for an empty set.
 - **Counting is split between the tab and the commands, not moved.** The Export tab counts
   the set its filters describe, because choosing a training set means looking at what
   survives a filter and that loop cannot run through a command that prints and exits. `stats`
@@ -362,19 +345,17 @@ becomes wrong, correct it in place rather than appending a correction.
   `--electron-source`; what is dropped is the list in the window, the scarce thing being the
   column it would sit in.
 - **Series is the one filter that does not open on everything.** Every other control on the
-  tab starts wide and is narrowed towards an export. This one starts on Adaptive Polishing,
-  because a scan now holds 9,001 records where it held 3,764, and a tab that silently counted
-  the rest would disagree with `create-training-csv`, which defaults the same way — breaking
-  the rule below it that one selection exported either way gives the same file. It is a
-  dedicated control rather than a derived filter row, like modality and workflow state: three
-  fixed choices rather than whatever the data holds. Checkboxes rather than a dropdown,
-  because the three are independent and an export covering two is a real request.
+  tab starts wide and narrows towards an export. This one starts on Adaptive Polishing,
+  because a tab silently counting the rest would disagree with `create-training-csv` —
+  breaking the rule below that one selection exported either way gives the same file. A
+  dedicated control rather than a derived filter row, like modality and workflow state, and
+  checkboxes rather than a dropdown, because an export covering two series is a real
+  request.
 - **The metadata CSV names the series of every row.** An added column, and a deliberate
   change to what an existing export writes: once more than one series can be exported, a row
   that does not say which it came from cannot be read. Shared rather than per-beam in the
   paired shape, because a series is decided by filename and the beam suffix plays no part in
-  that decision — checked across the reference collection, where 0 of 5,594 acquisitions span
-  more than one.
+  that decision, so both beams of an acquisition always agree.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
   workflow-state filter starts on "all" rather than on *corrected*: the tab is narrowed
   towards an export rather than opening on one and hiding the archive. The cost is that an
@@ -404,10 +385,8 @@ becomes wrong, correct it in place rather than appending a correction.
   images carry an acquisition number and their SEM and FIB files do not share a stem, so the
   number matches them. Reference and alignment filenames carry no number and the two beams
   differ only by an `_eb`/`_ib` suffix, so those match on the stem with the suffix removed —
-  `layout.acquisition_stem`, beside `extract_image_number` because both are naming rules.
-  `_frame_key` picks whichever applies, and no Adaptive Polishing image reaches the second
-  branch, so adding it changed nothing: every one of the 1,614 adaptive frames in the
-  reference collection kept its identity and its members, diffed rather than counted.
+  `layout.acquisition_stem`, beside `extract_image_number` because both are naming rules. No
+  Adaptive Polishing image reaches the second branch, so adding it changed none of them.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called
   `image` or `label`, or ending in `_image` or `_label`, holds a path — so one command checks
   either shape and files written before both. A blank cell is its own answer rather than an
@@ -549,30 +528,24 @@ becomes wrong, correct it in place rather than appending a correction.
 - **Curate shows one series at a time; Export ticks several.** Different questions. A
   timeline mixing alignment runs with polishing frames is not something anyone proofreads,
   and a 2026 lamella runs to 21 stages across three series, so the Curate control is a single
-  choice that rebuilds the frame stack — the position and the frame ticks go with it, because
-  a frame index only means anything within one timeline. An export covering two series is a
-  real request, so that one is checkboxes. Both open on Adaptive Polishing.
-- **The Curate control is offered from what the lamella holds, not from the vocabulary**, so
-  it never offers a choice that would show an empty timeline, and a pre-Autolamella lamella
-  gets no control at all. It is set before the "no frame" early return in `_render`: a
-  lamella can hold nothing of the series being shown while holding plenty of another, and the
-  control is the only way out of that.
+  choice that rebuilds the frame stack — the position and the frame ticks go with it,
+  because a frame index only means anything within one timeline. Both open on Adaptive
+  Polishing. The control is offered from what the lamella *holds*, so it never offers a
+  choice that would show an empty timeline and a pre-Autolamella lamella gets none, and it
+  is set before the "no frame" early return in `_render`: a lamella can hold nothing of the
+  series being shown while holding plenty of another, and the control is the way out.
 
 - **One record per image, where a lamella holds the same file twice.** Autolamella copies
   the image an alignment aligns *against* into every run that uses it, so one acquisition
   appears as up to six files — 121 `reference_image.tif` over 51 acquisitions here. Each
-  would be a separate frame to annotate, a separate row in an export, and a separate
-  training pair of the same picture with the same label. The scanner keeps the earliest and
-  drops the rest, from the image set as well as the records so the two cannot disagree.
-- **The filename is what makes recognising a copy safe.** Two images taken inside one second
-  are ordinary — an alignment run takes several — so matching on acquisition time and size
-  alone merged 38 groups of genuinely different pictures across the reference collection,
-  `new_image_00` and `new_image_01` of one run among them. Matching on filename *and* time,
-  across directories of one lamella, merged 34 groups of 70 files, every one byte-identical
-  to what it merged with. The residual risk is two runs of one lamella sharing an instant,
-  which cannot happen while they cannot overlap. No file is hashed: the acquisition time is
-  already read, and it partitions these exactly as content does — checked against SHA-256
-  over all 121.
+  was a frame to annotate, a row in an export and a training pair of the same picture with
+  the same label. The scanner keeps the earliest and drops the rest, from the image set as
+  well as the records. **The filename is what makes recognising a copy safe**: matching on
+  acquisition time and size alone merged 38 groups of genuinely different pictures, because
+  a run takes several images inside one second and `new_image_00` and `new_image_01` share
+  a timestamp. Nothing is hashed — the time is already read, and it partitions these exactly
+  as their content does. The residual risk is two runs of one lamella sharing an instant,
+  which cannot happen while two runs cannot overlap.
 - **A plot describes one acquisition or a whole stage, and the window says which.** An
   Adaptive Polishing stage writes one plot per milling cycle into `plots/`, matched to a
   frame by its acquisition number. An alignment run writes one `figure.png` at its root
@@ -580,10 +553,9 @@ becomes wrong, correct it in place rather than appending a correction.
   every frame of the run shows it, and carries a badge saying so, because a figure
   describing five frames read as describing one is worse than no figure. `frame.plot_path`
   stays the frame's own and `stage_plot` the stage's; `displayed_plot` picks, preferring the
-  frame's. `AP_summary_plots.png` is recognised by the same rule — it summarises a whole
-  milling run — though it never displays today, since every stage that has one also has a
-  plot for every acquisition. `centring.png` sits beside it and is deliberately excluded:
-  it records where the plugin placed its field of view, not what the run achieved.
+  frame's. `AP_summary_plots.png` follows the same rule, summarising a whole milling run.
+  `centring.png` sits beside it and is excluded: it records where the plugin placed its
+  field of view, not what the run achieved.
 
 ## Environment
 

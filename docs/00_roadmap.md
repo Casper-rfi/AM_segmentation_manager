@@ -14,10 +14,22 @@ predicting and preparing labels from predictions, exporting filtered training li
 and quantifying the collection through its metadata and its labels. `README.md` says
 what each command and tab does. What is worth knowing beyond that:
 
+* **Three series of images are indexed**, an axis apart from modality and imaging
+  condition: the Adaptive Polishing images, the reference images around each milling task,
+  and the alignment runs. The last two sit *loose* in a directory rather than filling one,
+  so an image set is a group of filenames within a directory one lamella shares between
+  series. `--series` chooses what a command covers — the reporting commands cover all
+  three, everything that writes stays on Adaptive Polishing — and Curate shows one at a
+  time where Export ticks any.
 * **Workflow state is declared in each stage's `AM_state.yaml`**, not implied by which
   folder a file sits in. A change expands across the label group, validates the whole
   batch, and writes one entry. Marking a set corrected, and exporting a training CSV,
   both stop to name any image whose label holds no annotation.
+* **A frame is ordered by what its filename carries.** An Adaptive Polishing image carries
+  an acquisition number, so nothing opens it; a loose image carries neither a usable
+  timestamp nor always its beam, so the scanner reads one header per loose image and orders
+  its timeline by when the instrument recorded taking it. Where a lamella holds the same
+  image copied into several alignment runs, one record is indexed.
 * **Each tab has a controller holding no Qt.**
 * **What a change applies to is one level at a time.** Ticking a project clears the
   ticked lamellae and picking frames out clears both, so what is ticked on screen is
@@ -71,6 +83,13 @@ In no particular order.
 
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
+
+**Labelling a reference image** works as far as the layout goes — a label lands in
+`<series>_<modality>_labels/` and its state is declared like any other — but nothing
+predicts one: `_collect_predictions` gives a loose set none, because resolving would claim
+the Adaptive Polishing pipeline's output in a dataset that collapses the stage level.
+Predicting them needs the exact-name rule their labels have, and `layout.LABELS_EXPECTED`
+widening so `inspect-layout` reports them as unlabelled.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py`
 builders when editing them for other reasons, never as a sweep. `test_selection.py`
