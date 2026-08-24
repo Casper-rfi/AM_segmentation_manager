@@ -30,6 +30,7 @@ from ..operations.predictions import (
 )
 from ..operations.selection import current_state
 from ..progress import Cancellation
+from ..reporting import format_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -75,16 +76,6 @@ def _skip_summary(plan: ConversionPlan) -> tuple[str, ...]:
         for count, description in sorted(counted, reverse=True)
         if count
     )
-
-
-def format_bytes(size: int) -> str:
-    """Return a byte count in the largest unit that leaves it above one."""
-    value = float(size)
-    for unit in ("B", "kB", "MB", "GB"):
-        if abs(value) < 1024 or unit == "GB":
-            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-        value /= 1024
-    return f"{value:.1f} GB"  # pragma: no cover - unreachable, the loop ends at GB
 
 
 class OperationsController:

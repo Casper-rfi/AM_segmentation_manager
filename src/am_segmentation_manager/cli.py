@@ -213,6 +213,20 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
 
     Returns a tuple of `(records, start_path)`.
     """
+    records, start_path, _projects = _resolve_scope(args)
+    return records, start_path
+
+
+def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
+    """Resolve the records, the scan root, and the projects they came from.
+
+    The projects are what a command needs when it acts on a *dataset* rather
+    than on images -- copying one out takes the files describing it along.
+    Empty where explicit image paths were given, there being no scan to take
+    them from.
+
+    Returns a tuple of `(records, start_path, projects)`.
+    """
     from .operations.selection import record_from_image_path
 
     state = getattr(args, "state", "all")
@@ -230,7 +244,7 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
     if file_paths and not any([args.project, args.lamella, args.stage, args.image]):
         records = [record_from_image_path(p) for p in file_paths]
         matching = [r for r in records if args.modality == "all" or r.modality == args.modality]
-        return matching, start_path
+        return matching, start_path, []
 
     missing_scopes = [
         flag
@@ -248,7 +262,7 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
             "Use 'all' where appropriate (missing: %s).",
             ", ".join(missing_scopes),
         )
-        return [], start_path
+        return [], start_path, []
 
     index = Scanner(start_path).build_index()
     records = list(
@@ -264,7 +278,7 @@ def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
             series_selectors=_series_selectors(args),
         )
     )
-    return records, start_path
+    return records, start_path, index.all_projects()
 
 
 def _series_selectors(args: argparse.Namespace) -> list[str]:
@@ -828,6 +842,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export_projects.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
     export_projects.add_argument("-o", "--output", required=True, help="CSV file to write")
+
+    # -- export-files --------------------------------------------------------
+    export_files = sub.add_parser(
+        "export-files",
+        help="Copy the selected images, their labels and the project files out",
+        description=(
+            "Copy a selection out into a folder of its own, mirroring the "
+            "folder hierarchy it came from: each image, the label paired with "
+            "it, each stage's AM_state.yaml, and each project's "
+            "AM_metadata.yaml, experiment.yaml and protocol.yaml. The result "
+            "is a smaller collection of the same shape, so am-seg reads it and "
+            "proofreading can continue in the copy. Nothing is ever "
+            "overwritten: a destination already holding the same file is "
+            "skipped, so an interrupted export resumes, and one holding "
+            "anything else refuses the whole run. Free space is checked before "
+            "the first file is written. The Export tab narrows a selection by "
+            "acquisition settings as well; the selectors here are the "
+            "structural ones."
+        ),
+    )
+    _add_scope_arguments(export_files, default_modality="all")
+    export_files.add_argument(
+        "-o", "--output", required=True, metavar="DIRECTORY",
+        help="Directory to copy into. It must not be inside the folder scanned",
+    )
+    export_files.add_argument(
+        "--dry-run", action="store_true",
+        help="Report what would be copied, and how much, without writing anything",
+    )
 
     # -- create-training-csv -----------------------------------------------
     create_training_csv = sub.add_parser(
@@ -1717,6 +1760,61 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
         if val_csv:
             logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
+        return 0
+
+    if args.command == "export-files":
+        from .operations.copy_export import (
+            DestinationInsideSource,
+            copy_export,
+            plan_copy,
+        )
+        from .reporting import format_bytes
+
+        records, start_path, projects = _resolve_scope(args)
+        if not records:
+            logger.info("No matching images found to copy")
+            return 2
+
+        try:
+            plan = plan_copy(records, Path(args.output), start_path, projects=projects)
+        except DestinationInsideSource as error:
+            logger.error("Could not copy: %s", error)
+            return 2
+
+        for item in plan.items:
+            logger.debug(
+                "%s: %s -> %s", item.outcome, item.source, item.destination
+            )
+        logger.info(
+            "%d file(s) to copy, %s; %d already there",
+            len(plan.to_copy), format_bytes(plan.bytes_to_copy),
+            len(plan.already_there),
+        )
+        if plan.conflicts:
+            logger.error(
+                "%d destination(s) already hold a different file, starting with "
+                "%s. Nothing was copied; choose an empty directory.",
+                len(plan.conflicts), plan.conflicts[0].destination,
+            )
+            return 2
+        if plan.short_by:
+            logger.error(
+                "Not enough room: %s needed, %s free. Nothing was copied.",
+                format_bytes(plan.bytes_to_copy), format_bytes(plan.free_space),
+            )
+            return 2
+        if args.dry_run:
+            logger.info("Dry run: nothing was copied")
+            return 0
+        if not plan.to_copy:
+            logger.info("Nothing to copy: %s already holds it all", plan.destination)
+            return 0
+
+        report = copy_export(plan)
+        logger.info(
+            "Copied %d file(s), %s, into %s",
+            len(report.copied), format_bytes(report.bytes_copied), plan.destination,
+        )
         return 0
 
     if args.command == "check-training-csv":

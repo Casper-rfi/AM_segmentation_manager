@@ -58,6 +58,7 @@ WORKFLOW_ORDER = [
     "quantify-labels",
     "export-metadata-csv",
     "export-projects-csv",
+    "export-files",
     "create-training-csv",
     "check-training-csv",
 ]

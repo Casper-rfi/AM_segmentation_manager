@@ -26,6 +26,11 @@ AM_METADATA_FILENAME = "AM_metadata.yaml"
 #: Filename of Autolamella's experiment file.
 EXPERIMENT_FILENAME = "experiment.yaml"
 
+#: Filename of the protocol Autolamella milled to. Nothing here reads it --
+#: see `docs/decisions.md` on why it is not a project marker -- but it
+#: describes how the data was produced, so a copy of a dataset takes it along.
+PROTOCOL_FILENAME = "protocol.yaml"
+
 #: Placeholder written by ``init-project`` for a value only a human can supply.
 #: Treated as "not filled in" rather than as a value.
 TODO_MARKER = "TODO"

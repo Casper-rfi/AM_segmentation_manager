@@ -21,6 +21,16 @@ from .survey import SEVERITY_ORDER, CollectionSurvey, Finding, ProjectSurvey
 
 logger = logging.getLogger(__name__)
 
+
+def format_bytes(size: int) -> str:
+    """Return a byte count in the largest unit that leaves it above one."""
+    value = float(size)
+    for unit in ("B", "kB", "MB", "GB"):
+        if abs(value) < 1024 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"  # pragma: no cover - unreachable, the loop ends at GB
+
 # The three mutually exclusive workflow states plus an "all" total.
 _STATUS_ORDER = ("deselected", "selected", "corrected", "all")
 

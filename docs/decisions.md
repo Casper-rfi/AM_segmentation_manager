@@ -368,6 +368,18 @@ becomes wrong, correct it in place rather than appending a correction.
   the FIB path, each a genuine pair nothing here can rank — and "one image per label"
   collapses it. The train/validation split groups by the *acquisition*, a paired row holding
   two images of one scene that splitting would score the model on what it has already seen.
+- **An export can also copy the files out, and it never overwrites one.** `export-files` and
+  the Export tab's copy write the matched images, the label of each, every contributing
+  stage's `AM_state.yaml` and every contributing project's `AM_metadata.yaml`,
+  `experiment.yaml` and `protocol.yaml` into a directory, under the paths they already have —
+  so the result is a smaller collection of the same shape, which `am-seg` scans and which can
+  be proofread further. The whole set of destinations is resolved and classified first: one
+  already holding the *same* file is skipped, which is what makes an interrupted export
+  resume, and one holding anything else refuses the entire run rather than being discovered
+  halfway through. Free space is checked before the first byte, and a destination inside the
+  folder being copied from is refused outright — it would be walking into its own output. Each
+  file lands by rename with its modification time kept, which is both what makes a stopped run
+  leave whole files and what lets the next run recognise them.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called
   `image` or `label`, or ending in `_image` or `_label`, holds a path — so one command checks
   either shape and files written before both. A blank cell is its own answer rather than an
