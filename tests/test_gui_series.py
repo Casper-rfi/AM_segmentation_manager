@@ -170,6 +170,55 @@ def test_the_cache_follows_the_new_timeline(controller: CurationController):
     assert list(controller.cache.frames) == controller.frames
 
 
+# ---------------------------------------------------------------------------
+# The view follows the beams the timeline holds
+# ---------------------------------------------------------------------------
+
+def test_a_timeline_imaged_with_one_beam_shows_that_beam(controller: CurationController):
+    """An alignment run is ion-beam only, so opening one on the SEM view showed
+    "no image for this modality" on every frame of it."""
+    controller.set_series("alignment")
+
+    assert controller.mode == "fib"
+    assert controller.target == "FIB", "and a state change follows the eye"
+
+
+def test_the_beam_that_was_chosen_comes_back(controller: CurationController):
+    controller.set_series("alignment")
+
+    controller.set_series("adaptive")
+
+    assert controller.mode == "sem"
+
+
+def test_choosing_a_beam_there_is_a_choice_of_its_own(controller: CurationController):
+    """Switching the view by hand is a decision, and outlives the timeline it
+    was made on -- unlike the fallback, which answers about one timeline."""
+    controller.set_series("alignment")
+    controller.set_mode("fib")
+
+    controller.set_series("adaptive")
+
+    assert controller.mode == "fib"
+
+
+def test_the_plot_view_is_left_alone(controller: CurationController):
+    """A figure is not an image of either beam."""
+    controller.set_mode("plot")
+
+    controller.set_series("alignment")
+
+    assert controller.mode == "plot"
+
+
+def test_a_timeline_holding_neither_beam_changes_nothing():
+    """Nothing to follow, so the view stays where the reviewer left it."""
+    controller = make_controller([Lamella(name="lam", path=Path("lam"), stages=[])])
+
+    assert controller.frames == []
+    assert controller.mode == "sem"
+
+
 def test_the_chosen_series_survives_moving_between_lamellae():
     """Otherwise reviewing a project's reference images means reselecting per lamella."""
     lamellae = [

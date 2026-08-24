@@ -483,7 +483,11 @@ becomes wrong, correct it in place rather than appending a correction.
   has the chosen one opens on it. Settled in `_rebuild_frames`, the one path both a change of
   lamella and a change of series pass through — otherwise a lamella with no Adaptive Polishing
   images showed an empty timeline, and the control, hidden for having one entry, offered no way
-  back to the series it does hold.
+  back to the series it does hold. **The beam follows the same rule**: an alignment run is
+  imaged with the ion beam alone, so `_settle_mode` shows the other beam where the one chosen
+  has no image anywhere in the stack, and the choice comes back on a timeline that holds it.
+  Asked of the whole stack rather than of the frame on screen, an acquisition captured with one
+  beam being ordinary; the plot view is exempt, a figure being an image of neither beam.
 - **A view control with one option is greyed, not hidden.** Series and imaging condition both
   hid themselves below two entries, which is the ordinary case for both — so the row of
   controls beside them moved every time the reviewer stepped onto such a lamella, and the

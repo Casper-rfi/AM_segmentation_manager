@@ -60,6 +60,11 @@ MIXED = "mixed"
 
 MODE_MODALITIES: dict[DisplayMode, str] = {"sem": "SEM", "fib": "FIB"}
 
+#: The same pairing read the other way, for asking which view shows a beam.
+MODALITY_MODES: dict[str, DisplayMode] = {
+    modality: mode for mode, modality in MODE_MODALITIES.items()
+}
+
 #: Which series the Curate tab opens on. Adaptive Polishing, so the tab shows
 #: what it always showed; the other two are one click away. Unlike the Export
 #: tab this is a single choice rather than a set, because a timeline mixing
@@ -321,6 +326,11 @@ class CurationController:
         self._frame_position = 0
 
         self.mode: DisplayMode = "sem"
+        #: The view the user asked for. Kept apart from :attr:`mode` for the
+        #: reason :attr:`wanted_series` is kept apart from :attr:`series`: a
+        #: timeline imaged with one beam shows the other, and the choice comes
+        #: back on a timeline that holds it.
+        self.wanted_mode: DisplayMode = "sem"
         #: Which series the timeline shows, one at a time. A 2026 lamella holds
         #: its reference images, its alignment runs and its Adaptive Polishing
         #: stages -- three unrelated things across up to 21 stages -- and a
@@ -528,10 +538,10 @@ class CurationController:
         the timeline outright. The frame selection goes with it, since a frame
         index only means anything within one stack.
 
-        **The series shown is settled here**, and nowhere else: this is the one
+        **What is shown is settled here**, and nowhere else: this is the one
         path both a change of lamella and a change of series pass through, so
-        a lamella holding nothing of the series being shown cannot leave the
-        window on an empty timeline.
+        neither can leave the window on an empty timeline or on a beam this
+        one holds no image of.
         """
         lamella = self.lamella
         self.series = resolve_series(self.wanted_series, self.available_series())
@@ -543,6 +553,7 @@ class CurationController:
         self.cache.set_frames(self._frames)
         self._frame_position = 0
         self.selection.clear_frames()
+        self._settle_mode()
         logger.debug(
             "Selected lamella %s with %d %s frame(s)",
             lamella.name if lamella is not None else "(none)",
@@ -575,11 +586,52 @@ class CurationController:
         """
         if mode not in ("sem", "fib", "plot"):
             raise ValueError(f"Unknown display mode: {mode}")
+        self.wanted_mode = mode
+        self._show_mode(mode)
+
+    def _show_mode(self, mode: DisplayMode) -> None:
+        """Put *mode* on screen without recording it as what was asked for.
+
+        What :meth:`_settle_mode` calls when it has to show the other beam.
+        """
         self.mode = mode
         if self.follow_mode:
             modality = MODE_MODALITIES.get(mode)
             if modality is not None:
                 self.target = modality
+
+    def _modalities_present(self) -> list[str]:
+        """Return the beams this timeline holds an image of, in display order.
+
+        Asked of the whole stack rather than of one frame: an acquisition
+        captured with one beam is ordinary, and the view should not follow it.
+        """
+        return [
+            modality for modality in MODALITIES
+            if any(frame.modality_records(modality) for frame in self._frames)
+        ]
+
+    def _settle_mode(self) -> None:
+        """Show a beam this timeline actually holds.
+
+        An alignment run is imaged with the ion beam alone, so opening one with
+        the SEM view selected showed "no image for this modality" on every
+        frame of it, and the reviewer had to notice and switch. The choice
+        itself is untouched, so a timeline that does hold it opens on it again.
+
+        The plot view is left alone: it says what is available for itself, and
+        a figure is not an image of either beam.
+        """
+        if self.wanted_mode == "plot":
+            return
+        present = self._modalities_present()
+        if not present:
+            return
+        wanted = MODE_MODALITIES[self.wanted_mode]
+        mode = self.wanted_mode if wanted in present else MODALITY_MODES[present[0]]
+        if mode != self.mode:
+            logger.debug("Showing %s: this timeline holds %s", mode, present)
+            self._show_mode(mode)
 
     def available_modes(self, frame: LamellaFrame | None = None) -> list[DisplayMode]:
         """Return the views that have something to show for a frame.

@@ -1733,6 +1733,10 @@ class CurationWindow(QMainWindow):
             return
 
         self.image_panel.set_available_modes(self.controller.available_modes())
+        # Read back rather than only set on the way in: a timeline holding no
+        # image of the beam on screen puts the view on the other one, and the
+        # buttons have to say so.
+        self.image_panel.set_mode(self.controller.mode)
         self.image_panel.set_variants(
             self.controller.available_variants(),
             self.controller.current_variant(),

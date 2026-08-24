@@ -247,6 +247,23 @@ def test_choosing_a_series_rebuilds_the_timeline(qt_app, modern_project: Path):
         window.close()
 
 
+def test_the_beam_buttons_follow_the_chosen_series(qt_app, modern_project: Path):
+    """The alignment run holds an ion-beam image alone, so the view moves to
+    it -- and the buttons have to say which view that is."""
+    window = _window(qt_app, modern_project)
+    try:
+        assert window.image_panel.mode_buttons["sem"].isChecked() is True
+
+        combo = window.image_panel.series_combo
+        combo.setCurrentIndex(combo.findData("alignment"))
+        _settle(qt_app)
+
+        assert window.image_panel.mode_buttons["fib"].isChecked() is True
+        assert window.controller.target == "FIB"
+    finally:
+        window.close()
+
+
 def test_the_frame_readout_follows_the_chosen_series(qt_app, modern_project: Path):
     window = _window(qt_app, modern_project)
     try:
