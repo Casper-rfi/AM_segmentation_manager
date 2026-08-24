@@ -558,6 +558,21 @@ becomes wrong, correct it in place rather than appending a correction.
   lamella can hold nothing of the series being shown while holding plenty of another, and the
   control is the only way out of that.
 
+- **One record per image, where a lamella holds the same file twice.** Autolamella copies
+  the image an alignment aligns *against* into every run that uses it, so one acquisition
+  appears as up to six files — 121 `reference_image.tif` over 51 acquisitions here. Each
+  would be a separate frame to annotate, a separate row in an export, and a separate
+  training pair of the same picture with the same label. The scanner keeps the earliest and
+  drops the rest, from the image set as well as the records so the two cannot disagree.
+- **The filename is what makes recognising a copy safe.** Two images taken inside one second
+  are ordinary — an alignment run takes several — so matching on acquisition time and size
+  alone merged 38 groups of genuinely different pictures across the reference collection,
+  `new_image_00` and `new_image_01` of one run among them. Matching on filename *and* time,
+  across directories of one lamella, merged 34 groups of 70 files, every one byte-identical
+  to what it merged with. The residual risk is two runs of one lamella sharing an instant,
+  which cannot happen while they cannot overlap. No file is hashed: the acquisition time is
+  already read, and it partitions these exactly as content does — checked against SHA-256
+  over all 121.
 - **A plot describes one acquisition or a whole stage, and the window says which.** An
   Adaptive Polishing stage writes one plot per milling cycle into `plots/`, matched to a
   frame by its acquisition number. An alignment run writes one `figure.png` at its root

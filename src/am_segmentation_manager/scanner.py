@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -102,6 +103,20 @@ class ProjectIndex:
         if self.start_path is None:
             return str(path)
         return make_path_relative(path, self.start_path)
+
+
+def _without_names(image_set: ImageSet, names: set[str]) -> ImageSet | None:
+    """Return *image_set* without *names*, or None if nothing is left of it.
+
+    Only a loose set can lose names: a directory-shaped one is its whole
+    directory, and nothing in this package removes a file from it.
+    """
+    if image_set.image_names is None:
+        return image_set
+    remaining = tuple(name for name in image_set.image_names if name not in names)
+    if not remaining:
+        return None
+    return replace(image_set, image_names=remaining)
 
 
 class Scanner:
@@ -276,9 +291,60 @@ class Scanner:
             )
 
         stages.sort(key=self._stage_sort_key)
+        self._drop_copied_images(stages, lamella_name)
         for index, stage in enumerate(stages, start=1):
             stage.number = f"{index:02d}"
         return stages
+
+    @staticmethod
+    def _drop_copied_images(stages: list[Stage], lamella_name: str) -> None:
+        """Index one record per image, where a lamella holds the same file twice.
+
+        Autolamella copies the image an alignment aligns *against* into every
+        run that uses it, so one acquisition appears as up to six files.
+        Indexing each would put the same picture in a timeline several times,
+        count it several times in an export, and pair it with the same label
+        repeatedly in a training set -- and annotating it would mean annotating
+        the same picture again in every run.
+
+        A copy is a filename and an acquisition time another directory in this
+        lamella has already used. **The filename is what makes this safe.**
+        Two images taken within one second are ordinary -- an alignment run
+        takes several -- so matching on time and size alone merged 38 groups of
+        genuinely different pictures across the reference collection, among
+        them ``new_image_00`` and ``new_image_01`` of one run. With the
+        filename it merges 34 groups of 70 files, every one of them a
+        ``reference_image.tif`` that is byte-identical to the one it is
+        merged with.
+
+        Stages must already be in order, so that the copy kept is the earliest.
+        """
+        seen: set[tuple[str, datetime]] = set()
+        for stage in stages:
+            kept: list[ImageRecord] = []
+            copied: set[str] = set()
+            for record in stage.images:
+                if record.acquired_at is None:
+                    kept.append(record)
+                    continue
+                key = (record.image_path.name, record.acquired_at)
+                if key in seen:
+                    copied.add(record.image_path.name)
+                    continue
+                seen.add(key)
+                kept.append(record)
+            if not copied:
+                continue
+            logger.debug(
+                "%s: %s holds %d image(s) already indexed in another directory",
+                lamella_name, stage.name, len(copied),
+            )
+            stage.images = kept
+            stage.image_sets = [
+                narrowed
+                for image_set in stage.image_sets
+                if (narrowed := _without_names(image_set, copied)) is not None
+            ]
 
     def _stage_image_sets(self, discovered: DiscoveredStage) -> list[ImageSet]:
         """Return every image set in a stage, of both shapes.
