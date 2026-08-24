@@ -57,6 +57,36 @@ becomes wrong, correct it in place rather than appending a correction.
   them; the missing level is synthesised in memory with the parent standing in, and the
   model records that it is synthetic. Data on disk is never reorganised to fit the newest
   layout.
+- **The series is a property of an image set, not of a directory.** Autolamella writes far
+  more than the Adaptive Polishing images: a lamella directory holds reference images of
+  both beams and alignment images at once. So a set is a *group of filenames* within a
+  directory rather than the directory itself, which is what `ImageSet.image_names` is, and
+  `image_files_of` is the one place either shape is read back. Adaptive sets keep the old
+  shape — whole directory, no names — so nothing that indexes them changed.
+- **A loose-image stage does not end the stage search; a directory-shaped one does.** The
+  invariant the 2026 layout rests on. A lamella holds reference images loose and its
+  milling tasks below; each task holds reference images loose and its Adaptive Polishing
+  stages below. Were a lamella full of reference images to end the search the way `sem/`
+  does, every Adaptive Polishing stage beneath it would vanish from the index — 127 stages
+  in the reference collection, silently. Nothing sits below an image directory, so
+  stopping there stays right. A directory holding both shapes is returned once and not
+  descended into, which loses nothing: the scanner builds both kinds of set for every
+  stage, so which branch found it does not change what is indexed.
+- **A loose set's label directory is resolved exactly, with no fallback chain.** Unlike
+  `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. A dataset
+  that collapses the stage level keeps its Adaptive Polishing images and its `labels/` in
+  the lamella directory, so a reference set falling back would pair every reference image
+  with a label of an entirely different scene: right dimensions, plausible shapes, wrong
+  data. The name is `<series>_<modality>_labels`, built from `loose_image_set_name` through
+  the same `labels_directory_name` every other label directory goes through.
+- **Discovery asks filenames, never headers.** 668 of the 13,221 images in the reference
+  collection state no beam in their name — the three fixed names in an alignment run, and
+  `ref_PositionReady.tif`. Establishing their beam means reading the header, which
+  `image_metadata.py` otherwise forbids during a scan. The exception is narrow and lives at
+  one seam: `build_loose_image_sets` takes a `resolve_modality` callable, the scanner
+  supplies one that reads a header **only for a name that states no beam**, and discovery
+  supplies none at all — it only needs to know whether a directory holds anything, and asks
+  `holds_loose_images`, which opens nothing. Measured: 668 reads, 0 unresolved, all ION.
 - **`predictions/clean/` is indexed but can never become a label.** Adaptive Polishing's
   post-processing rewrites the intensity values, so they no longer index the segmentation
   classes. A label converted from one looks entirely valid — right dimensions, plausible

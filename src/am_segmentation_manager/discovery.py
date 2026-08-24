@@ -5,9 +5,11 @@ Answers "where are the things" using the conventions in
 dataset tree -- the scanner and the survey -- which must agree about what counts
 as a project and where its stages are.
 
-Older datasets collapse levels. The missing ones are *synthesised*, the parent
-standing in, which :class:`DiscoveredStage` records. An unreadable directory
-yields nothing rather than raising.
+A stage holds images either as directories or loose among its files, and only
+the first kind ends the search: see :func:`find_stage_directories`, whose
+invariant the layout rests on. Older datasets collapse levels; the missing ones
+are *synthesised*, the parent standing in, which :class:`DiscoveredStage`
+records. An unreadable directory yields nothing rather than raising.
 """
 from __future__ import annotations
 
@@ -15,7 +17,14 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from .layout import build_image_sets, directory_role, image_files, subdirectories_by_name
+from .layout import (
+    build_image_sets,
+    classify_loose_image,
+    directory_role,
+    image_files,
+    is_alignment_directory,
+    subdirectories_by_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +56,15 @@ class DiscoveredStage:
             so the project root stands in for one.
         stage_is_synthetic: True when the lamella has no stage directories, so
             the lamella directory stands in for one.
+        in_alignment_run: True when the stage is one alignment run, whose
+            images are named too generically to classify without knowing that.
     """
 
     path: Path
     lamella_path: Path
     lamella_is_synthetic: bool
     stage_is_synthetic: bool
+    in_alignment_run: bool = False
 
 
 def project_markers(directory: Path) -> tuple[str, ...]:
@@ -104,14 +116,40 @@ def find_project_roots(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> list[P
 
 
 def holds_images(directory: Path) -> bool:
-    """Return whether *directory* is a stage that actually contains images.
+    """Return whether *directory* holds Adaptive Polishing images.
 
-    Stricter than "has image directories", which is the test
+    Stricter than "has image directories", which is one of the tests
     :func:`find_stage_directories` uses. Inside a project an empty ``sem/`` is a
     real, if empty, image set worth reporting; outside one, a directory merely
     *named* like an image directory proves nothing.
+
+    Deliberately blind to loose reference and alignment images. Its callers ask
+    where a *project* is and which unmarked directories hold data worth marking,
+    and both questions are about the images this package was built to curate: a
+    directory holding only alignment images is not a dataset anyone wants
+    proposed as a new project.
     """
     return any(image_files(image_set.directory) for image_set in build_image_sets(directory))
+
+
+def holds_loose_images(directory: Path, in_alignment_run: bool = False) -> bool:
+    """Return whether *directory* holds images loose among its other files.
+
+    Cheaper than building the sets, and that is the point: discovery only needs
+    to know whether there is anything here, so it asks the filenames and
+    **never opens an image to find out**. Establishing the beam of an image
+    whose name does not state it is the scanner's job, once, for a directory
+    already known to be a stage.
+
+    Args:
+        directory: The directory to look in.
+        in_alignment_run: Whether *directory* is one alignment run, whose
+            fixed filenames mean nothing without that context.
+    """
+    return any(
+        classify_loose_image(path.name, in_alignment_run=in_alignment_run) is not None
+        for path in image_files(directory)
+    )
 
 
 def find_dataset_candidates(
@@ -184,32 +222,49 @@ def find_stage_directories(
 ) -> list[Path]:
     """Return the stage directories in a project, outermost first.
 
-    A stage is a directory holding at least one image directory. The project
-    root itself is a candidate, which is what supports the oldest layouts where
-    neither the lamella nor the stage level exists as a folder.
+    A stage is a directory holding images, in either of the two shapes they
+    come in: image *directories* such as ``sem/``, or images sitting loose
+    among a directory's other files. The project root itself is a candidate,
+    which is what supports the oldest layouts where neither the lamella nor the
+    stage level exists as a folder.
+
+    **A loose-image stage does not stop the search, and a directory-shaped one
+    does.** This is the invariant the whole layout rests on. A 2026 lamella
+    holds reference images loose and its milling tasks below, and each task
+    holds reference images loose and its Adaptive Polishing stages below; were
+    a lamella full of reference images to end the search the way ``sem/`` does,
+    every Adaptive Polishing stage beneath it would vanish from the index.
+    Nothing sits below an image directory, so stopping there stays right.
+
+    A directory holding both shapes is returned once and not descended into.
+    That loses nothing: the scanner builds both kinds of set for every stage it
+    is given, so which branch found the directory does not change what is
+    indexed in it.
 
     The search stops at a **nested project root**: those stages belong to that
-    project, not this one. It also does not descend into a stage, nor into
-    image, label, prediction, plot or state directories, which bounds the cost
-    on trees holding thousands of files.
+    project, not this one. It also does not descend into image, label,
+    prediction, plot or state directories, which bounds the cost on trees
+    holding thousands of files.
     """
     found: list[Path] = []
 
-    def walk(directory: Path, depth: int) -> None:
+    def walk(directory: Path, depth: int, in_alignment_run: bool) -> None:
         if directory != project_root and project_markers(directory):
             logger.debug("Not crossing into nested project %s", directory)
             return
         if build_image_sets(directory):
             found.append(directory)
             return
+        if holds_loose_images(directory, in_alignment_run=in_alignment_run):
+            found.append(directory)
         if depth >= max_depth:
             logger.debug("Stopping at depth %d: %s", depth, directory)
             return
         for child in subdirectories_by_name(directory).values():
             if directory_role(child.name) == "unknown":
-                walk(child, depth + 1)
+                walk(child, depth + 1, is_alignment_directory(directory.name))
 
-    walk(project_root, 0)
+    walk(project_root, 0, False)
     return found
 
 
@@ -244,6 +299,7 @@ def discover_stages(
             lamella_path=(lamella_path := lamella_directory_for(project_root, stage_path)),
             lamella_is_synthetic=lamella_path == project_root,
             stage_is_synthetic=stage_path == lamella_path,
+            in_alignment_run=is_alignment_directory(stage_path.parent.name),
         )
         for stage_path in find_stage_directories(project_root, max_depth=max_depth)
     ]
