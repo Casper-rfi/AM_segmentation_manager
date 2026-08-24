@@ -35,6 +35,14 @@ tab does, and [`decisions.md`](decisions.md) why each of the following is so:
 * **Predictions need an environment installed separately**, built by
   `scripts/setup_ml.sh`, which runs the window too. One prediction per label group, one
   modality per run, resumable, in a child process the window shares no torch with.
+  **Every series is predictable**, a loose set's predictions landing in
+  `<series>_<modality>_predictions/` beside its labels, and a ticked lamella covers only
+  the series the tab is showing.
+* **An image carries the milling task it belongs to**, resolved from the directory where
+  the layout provides one and otherwise from the filename, both matched against the names
+  that lamella's own `experiment.yaml` records. Stages roll up into their task, so this
+  counts and filters in a handful of rows where `stage-name` — which answers "which
+  directory" — splits one task across several. An image naming no task says so.
 * **Export filters, counts and writes — and can copy the files out.** Filters are added as
   they are wanted, derived from the breakdowns so a property is not declared twice. Opening
   the tab reads the image headers; opening the labels stays behind *Measure labels*.
@@ -55,12 +63,13 @@ In no particular order.
 **Importing existing labels** into the project hierarchy, once the source structures
 have been looked at. [`04_future_work.md`](04_future_work.md) §4.
 
-**Labelling a reference image** works as far as the layout goes — a label lands in
-`<series>_<modality>_labels/` and its state is declared like any other — but nothing
-predicts one: `_collect_predictions` gives a loose set none, because resolving would claim
-the Adaptive Polishing pipeline's output in a dataset that collapses the stage level.
-Predicting them needs the exact-name rule their labels have, and `layout.LABELS_EXPECTED`
-widening so `inspect-layout` reports them as unlabelled.
+**An arbitrary task name can collide with a fixed filename marker.** A task called
+`Alignment Check` gives `ref_Alignment Check_start_eb.tif`, which the `ref_alignment`
+prefix reads as an alignment image; one called `Centring` is dropped by `_IGNORED_MARKERS`
+without even being reported as unrecognised. Neither occurs in the current collection. The
+task vocabulary in `tasks.py` is what would let `classify_loose_image` tell a task name
+from a marker, if it is given the lamella's vocabulary the way the scanner already gives it
+one.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py`
 builders when editing them for other reasons, never as a sweep. `test_selection.py`

@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from .layout import SERIES, extract_image_number
+from .layout import SERIES, extract_image_number, normalise_task_name
 from .models import ImageRecord
 from .operations.selection import current_state
 from .scanner import ProjectIndex
@@ -200,6 +200,36 @@ def matches_series(record: ImageRecord, selectors: list[str] | None) -> bool:
     return record.series in values
 
 
+#: Selector meaning "the images whose task nothing records".
+NO_TASK = "none"
+
+
+def matches_task(record: ImageRecord, selectors: list[str] | None) -> bool:
+    """Return whether *record* belongs to one of the requested milling tasks.
+
+    Task names are set in the protocol somebody wrote, so this is an open
+    vocabulary like a variant rather than a closed one like a series: an
+    unrecognised name matches nothing rather than raising, because it may well
+    be a task some other project used. Matching is on the normalised name --
+    see :func:`~.layout.normalise_task_name` -- so ``--task rough-milling``
+    finds ``Rough Milling`` and ``--task millpolishing`` finds
+    ``MillPolishing``.
+
+    ``"all"`` selects every task, :data:`NO_TASK` selects the images naming
+    none, and ``None`` matches everything so a caller that does not care is
+    unaffected.
+    """
+    if not selectors:
+        return True
+    values = {value.strip() for raw in selectors for value in raw.split(",") if value.strip()}
+    if not values or "all" in values:
+        return True
+    wanted = {normalise_task_name(value) for value in values}
+    if record.task is None:
+        return normalise_task_name(NO_TASK) in wanted
+    return normalise_task_name(record.task) in wanted
+
+
 def matches_state(record: ImageRecord, state: str) -> bool:
     """Return whether *record* matches the requested workflow state.
 
@@ -225,6 +255,7 @@ def iter_matching_records(
     state: str = "all",
     variant_selectors: list[str] | None = None,
     series_selectors: list[str] | None = None,
+    task_selectors: list[str] | None = None,
 ) -> Iterator[ImageRecord]:
     """Yield every :class:`ImageRecord` that passes the supplied filters.
 
@@ -243,6 +274,8 @@ def iter_matching_records(
             ``"reference"``, ``"alignment"`` or ``"all"``. ``None`` matches
             every series, so the caller decides the default rather than
             inheriting one from here.
+        task_selectors: Milling task names, where :data:`NO_TASK` selects the
+            images naming none.
     """
     for project in index.all_projects():
         if project_selectors is not None and not matches_project(project, project_selectors):
@@ -255,6 +288,8 @@ def iter_matching_records(
                     continue
                 for record in stage.images:
                     if not matches_series(record, series_selectors):
+                        continue
+                    if not matches_task(record, task_selectors):
                         continue
                     if modality != "all" and record.modality != modality:
                         continue

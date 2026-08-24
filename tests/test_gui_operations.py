@@ -66,6 +66,7 @@ def test_a_conversion_preview_writes_nothing(controller, tmp_path: Path):
     record = ImageRecord(
         image_path=image, modality="SEM",
         predictions=[stage / "predictions" / "raw" / "img.tif"],
+        labels_directory=stage / "sem_labels",
     )
 
     report = controller.convert_predictions([record], dry_run=True)
@@ -81,6 +82,7 @@ def test_converting_writes_the_labels_the_preview_listed(controller, tmp_path: P
     record = ImageRecord(
         image_path=image, modality="SEM",
         predictions=[stage / "predictions" / "raw" / "img.tif"],
+        labels_directory=stage / "sem_labels",
     )
     preview = controller.convert_predictions([record], dry_run=True)
 

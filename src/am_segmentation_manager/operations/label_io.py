@@ -61,22 +61,31 @@ def label_destination(record: ImageRecord) -> Path:
 
     An existing label is answered with its own path, so nothing computes a
     fresh destination that would name a second label beside the one really
-    there. A record with no label yet is answered with the path the layout
-    gives it.
+    there. Otherwise the answer is **read off the record**, which carries the
+    directory its image set resolved to.
+
+    Not re-derived from the image's path: how far a label directory sits from
+    an image depends on the shape of its set, and the derivation only ever
+    worked for an Adaptive Polishing image sitting one level below its stage in
+    a directory naming a modality. A reference image sits directly in a
+    directory naming a lamella, so deriving put its label in a
+    ``<lamella>_labels`` outside the lamella -- and a proofread label is the
+    one thing in this package nothing may misplace.
 
     Asked by everything that writes a label: prediction conversion, and
     proofreading a label that does not exist yet.
+
+    Raises:
+        ValueError: If the record does not say where its label lives, which
+            means it was built by something that has not been taught to.
     """
     if record.labels:
         return record.labels[0]
-
-    image_directory = record.image_path.parent
-    labels_directory, _, _ = resolve_labels_directory(
-        image_directory,
-        record.modality,
-        subdirectories_by_name(image_directory.parent),
-    )
-    return labels_directory / record.image_path.name
+    if record.labels_directory is None:
+        raise ValueError(
+            f"{record.image_path} does not record where its label lives"
+        )
+    return record.labels_directory / record.image_path.name
 
 
 def is_label_file_empty(path: Path) -> bool | None:

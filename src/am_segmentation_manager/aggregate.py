@@ -146,6 +146,22 @@ def by_series(record: ImageRecord) -> Hashable:
     return record.series
 
 
+def by_task(record: ImageRecord) -> Hashable:
+    """Group by the milling task, with the stages of one task rolled into it.
+
+    A different question from :func:`by_stage_name`, which answers "which
+    directory": one task spans several stage directories (``Rough 1``,
+    ``Rough 2``), and one lamella directory holds every task's reference
+    images at once. Counting by task is what narrows an export to *the
+    reference images of the polishing task*.
+
+    An image naming no task counts under :data:`MISSING` -- beam-shift
+    alignment names none, and neither does an Adaptive Polishing stage in a
+    layout predating ``Milling/<Task>/``.
+    """
+    return _present(record.task)
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +671,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
     ),
     "stage": Breakdown("project", by_stage, "milling stage", group="record"),
     "stage-name": Breakdown("record", by_stage_name, "milling stage name"),
+    "task": Breakdown("record", by_task, "milling task"),
     "lamella": Breakdown("project", by_lamella, "lamella", group="record"),
     "microscope": Breakdown("metadata", by_microscope_model, "microscope model"),
     "serial": Breakdown("metadata", by_microscope_serial, "microscope serial number"),

@@ -26,8 +26,6 @@ from ..layout import (
     MODALITIES,
     OWN_PREDICTION_KIND,
     PREDICTION_PROVENANCE_FILENAME,
-    resolve_predictions_directory,
-    subdirectories_by_name,
 )
 from ..models import ImageRecord
 from .label_groups import build_groups, primary_record
@@ -125,16 +123,26 @@ class PredictionPlan:
 def prediction_destination(record: ImageRecord) -> Path:
     """Return where *record*'s prediction belongs.
 
-    The predictions directory its image set resolves to, under the subdirectory
-    this package owns. Creating no directory and touching no file.
+    **Read off the record, never re-derived from its path.** How far a
+    predictions directory sits from an image depends on the shape of its image
+    set, exactly as a label directory does: an Adaptive Polishing image sits one
+    level below its stage in a directory naming a modality, while a reference
+    image sits directly in a directory naming a lamella. Deriving from
+    ``image_path.parent`` therefore resolved a reference image's predictions to
+    a ``<lamella>_predictions`` outside the lamella -- somewhere the scanner
+    never looks, so every prediction written there was reported as missing.
+
+    Creates no directory and touches no file.
+
+    Raises:
+        ValueError: If the record does not say where its predictions live,
+            which means it was built by something that has not been taught to.
     """
-    image_directory = record.image_path.parent
-    directory, _, _ = resolve_predictions_directory(
-        image_directory,
-        record.modality or MODALITIES[0],
-        subdirectories_by_name(image_directory.parent),
-    )
-    return directory / OWN_PREDICTION_KIND / record.image_path.name
+    if record.predictions_directory is None:
+        raise ValueError(
+            f"{record.image_path} does not record where its predictions live"
+        )
+    return record.predictions_directory / OWN_PREDICTION_KIND / record.image_path.name
 
 
 def provenance_path(prediction: Path) -> Path:

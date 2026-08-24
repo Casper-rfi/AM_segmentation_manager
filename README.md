@@ -66,6 +66,17 @@ already being written:
     am-seg stats ... --by series                 # how many of each
     am-seg create-training-csv ... --series reference,adaptive
 
+**`--task` narrows to one milling task**, rolling that task's milling stages
+into it, which `--stage` and `--by stage-name` cannot: one task spans several
+stage directories (`Rough 1`, `Rough 2`) and a lamella directory holds every
+task's reference images at once. Task names come from the project's own
+`experiment.yaml`, so they are whatever the protocol's author typed;
+separators and case are ignored when matching, and `--task none` selects the
+images naming no task at all:
+
+    am-seg stats ... --by task                   # which tasks are here
+    am-seg create-training-csv ... --series reference --task polishing
+
 Installation
 ------------
 

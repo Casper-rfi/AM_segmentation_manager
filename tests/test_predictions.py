@@ -9,6 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.layout import (
+    resolve_labels_directory,
+    subdirectories_by_name,
+)
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.predictions import prediction_to_label
 
@@ -95,8 +99,18 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
         for path in (image, prediction):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"content")
+        # Resolved the way the scanner resolves it, so the shared-directory
+        # rule is exercised here rather than asserted by construction.
+        labels_directory, _, _ = resolve_labels_directory(
+            image.parent, "SEM", subdirectories_by_name(stage)
+        )
         records.append(
-            ImageRecord(image_path=image, modality="SEM", predictions=[prediction])
+            ImageRecord(
+                image_path=image,
+                modality="SEM",
+                predictions=[prediction],
+                labels_directory=labels_directory,
+            )
         )
 
     planned = plan_conversions(records).conversions
@@ -117,7 +131,12 @@ def _record_with_prediction(tmp_path: Path, kind: str | None) -> ImageRecord:
     for path in (image, prediction):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"content")
-    return ImageRecord(image_path=image, modality="SEM", predictions=[prediction])
+    return ImageRecord(
+        image_path=image,
+        modality="SEM",
+        predictions=[prediction],
+        labels_directory=stage / "sem_labels",
+    )
 
 
 def test_post_processed_predictions_are_never_converted(tmp_path: Path) -> None:

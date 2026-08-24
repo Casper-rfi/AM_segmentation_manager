@@ -1034,14 +1034,30 @@ class CurationController:
         ]
 
     def _records_of(self, lamellae: list[Lamella]) -> list:
-        """Return every record of *lamellae* belonging to the edit target."""
+        """Return every record of *lamellae* in the edit target and the series shown.
+
+        **Both narrowings, not only the modality.** A 2026 lamella holds its
+        reference images and its alignment runs beside its Adaptive Polishing
+        stages, and the tab shows one series at a time; a ticked lamella that
+        reached every series would predict, convert or restate images the
+        timeline was not showing. Frame-level selection was already scoped this
+        way, being built from the frames themselves.
+
+        Each lamella is asked what it can show of the chosen series, exactly as
+        navigating to it would -- see :func:`~..frames.resolve_series` -- so a
+        lamella holding none of it contributes the series it does hold rather
+        than nothing at all.
+        """
         modalities = ("SEM", "FIB") if self.target == "both" else (self.target,)
-        return [
-            record
-            for lamella in lamellae
-            for record in lamella.image_records
-            if record.modality in modalities
-        ]
+        records: list = []
+        for lamella in lamellae:
+            series = resolve_series(self.wanted_series, series_present(lamella))
+            records.extend(
+                record
+                for record in lamella.image_records
+                if record.modality in modalities and record.series == series
+            )
+        return records
 
     def corrected_records(self, records: list | None = None) -> list:
         """Return those records currently in the corrected state.

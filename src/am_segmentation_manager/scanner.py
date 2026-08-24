@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +33,7 @@ from .layout import (
     image_files,
     image_files_by_name,
     image_files_of,
+    resolve_loose_predictions_directory,
     resolve_predictions_directory,
     subdirectories_by_name,
 )
@@ -44,6 +45,7 @@ from .metadata import (
 )
 from .models import ImageRecord, Lamella, Project, Stage
 from .state import StageState, StateFileError, read_state, state_key
+from .tasks import NO_TASKS, TaskVocabulary, read_vocabularies
 
 logger = logging.getLogger(__name__)
 
@@ -229,16 +231,28 @@ class Scanner:
         # Project numbers are scan-order identifiers, independent of the
         # project folder name, so users can select projects as 001, 002…
         project.number = f"{project_index:03d}"
-        project.lamellae = self._build_lamellae(project_root, project_name)
+        project.lamellae = self._build_lamellae(
+            project_root, project_name, read_vocabularies(experiment_meta)
+        )
         return project
 
-    def _build_lamellae(self, project_root: Path, project_name: str) -> list[Lamella]:
+    def _build_lamellae(
+        self,
+        project_root: Path,
+        project_name: str,
+        vocabularies: dict[str, TaskVocabulary],
+    ) -> list[Lamella]:
         """Build the lamellae of a project, synthesising absent levels.
 
         Older datasets collapse the hierarchy: some have no stage directory
         below the lamella, and the oldest have neither. Discovery reports which
         levels are absent, and the parent directory stands in for each one, so
         those datasets index without their files having to be reorganised.
+
+        Each lamella takes its own task vocabulary from *vocabularies*, keyed
+        by directory name. A lamella the experiment does not list -- every
+        dataset predating ``experiment.yaml`` -- gets :data:`~..tasks.NO_TASKS`
+        and its images carry no task.
         """
         grouped = group_stages_by_lamella(discover_stages(project_root))
 
@@ -255,13 +269,22 @@ class Scanner:
             # 01 keeps `--lamella 1` working across every layout.
             lamella.number = "01" if synthetic else self._parse_numeric_prefix(lamella_path.name)
             lamella.stages = self._build_stages(
-                discovered, project_name=project_name, lamella_name=lamella_path.name
+                discovered,
+                project_name=project_name,
+                lamella_name=lamella_path.name,
+                lamella_path=lamella_path,
+                vocabulary=vocabularies.get(lamella_path.name, NO_TASKS),
             )
             lamellae.append(lamella)
         return lamellae
 
     def _build_stages(
-        self, discovered: list[DiscoveredStage], project_name: str, lamella_name: str
+        self,
+        discovered: list[DiscoveredStage],
+        project_name: str,
+        lamella_name: str,
+        lamella_path: Path,
+        vocabulary: TaskVocabulary,
     ) -> list[Stage]:
         """Build the stages of one lamella, ordered by acquisition time.
 
@@ -282,6 +305,8 @@ class Scanner:
                 stage.image_sets,
                 project_name=project_name,
                 lamella_name=lamella_name,
+                lamella_path=lamella_path,
+                vocabulary=vocabulary,
             )
             stage.plots = self._discover_plots(item.path)
             stage.summary_plot = self._discover_summary_plot(item.path)
@@ -491,6 +516,8 @@ class Scanner:
         image_sets: list[ImageSet],
         project_name: str,
         lamella_name: str,
+        lamella_path: Path,
+        vocabulary: TaskVocabulary,
     ) -> list[ImageRecord]:
         """Discover image files, predictions and labels inside a stage folder.
 
@@ -522,10 +549,15 @@ class Scanner:
         """
         image_records: list[ImageRecord] = []
         declared = self._declared_state(stage_path)
+        # Listed once for the whole stage. A loose set's directory *is* the
+        # stage, and an Adaptive Polishing set's is a child of it, so the same
+        # mapping answers where either one's labels and predictions resolve to.
+        siblings = subdirectories_by_name(stage_path)
 
         for image_set in image_sets:
             labels_map = image_files_by_name(image_set.labels_directory)
-            predictions_map = self._collect_predictions(stage_path, image_set)
+            predictions_directory = self._predictions_directory(image_set, siblings)
+            predictions_map = self._collect_predictions(predictions_directory)
 
             for name, image_path in sorted(image_files_of(image_set).items()):
                 key = state_key(image_set.labels_directory / name, stage_path)
@@ -540,8 +572,10 @@ class Scanner:
                     series=image_set.series,
                     acquired_at=self._header(image_path)[1] if image_set.is_loose else None,
                     labels_directory=image_set.labels_directory,
+                    predictions_directory=predictions_directory,
                     label_shared=image_set.labels_are_shared,
                     state=declared.state_of(key),
+                    task=self._resolve_task(image_path, lamella_path, vocabulary),
                 )
                 prediction = predictions_map.get(name)
                 record.predictions = list(prediction) if prediction else []
@@ -550,6 +584,38 @@ class Scanner:
                 image_records.append(record)
 
         return image_records
+
+    @staticmethod
+    def _resolve_task(
+        image_path: Path, lamella_path: Path, vocabulary: TaskVocabulary
+    ) -> str | None:
+        """Return the milling task an image belongs to, or None if nothing says.
+
+        The directory decides where it can. The 2026-07 layout puts a task's
+        images under ``Milling/<Task>/`` and its alignment runs below that, so
+        the nearest directory whose name the lamella's vocabulary knows is the
+        task -- and it is the *only* thing that resolves a name Autolamella
+        spells differently in the two places, ``Milling/Fiducial/`` for the task
+        called ``Mill Fiducial``. The lamella directory itself is not offered:
+        a petname sharing a word with a task would claim every image in it.
+
+        The filename answers where the directory does not, which is every
+        reference image -- ``ref_Rough Milling_start_eb`` names its task and
+        sits in a directory shared by every task's.
+
+        Returns:
+            The task as the experiment spells it, or None. None is a real
+            answer, not a gap to fill: beam-shift alignment and the images
+            inside an alignment run name no task, and neither does an Adaptive
+            Polishing stage in a layout predating ``Milling/<Task>/``.
+        """
+        directory = image_path.parent
+        while directory != lamella_path and directory != directory.parent:
+            task = vocabulary.resolve(directory.name)
+            if task is not None:
+                return task
+            directory = directory.parent
+        return vocabulary.resolve(image_path.stem)
 
     @staticmethod
     def _declared_state(stage_path: Path) -> StageState:
@@ -566,33 +632,46 @@ class Scanner:
             return StageState(path=stage_path, states={}, fingerprint=None)
 
     @staticmethod
-    def _collect_predictions(stage_path: Path, image_set) -> dict[str, list[Path]]:
-        """Return prediction files for an image set, keyed by filename.
+    def _predictions_directory(
+        image_set: ImageSet, siblings: Mapping[str, Path]
+    ) -> Path:
+        """Return where an image set's predictions live or would live.
 
-        Predictions live in a directory resolved by the layout conventions,
-        optionally split into ``raw/`` and ``clean/`` subdirectories. A filename
-        may appear in more than one of those, so every match is kept and the
-        caller chooses by kind.
+        **Reading and writing resolve here, once.** A record carries the answer
+        so that :func:`~..operations.predict.prediction_destination` writes
+        where the next scan will look; re-deriving it from an image's path put
+        a reference image's prediction in a ``<lamella>_predictions`` beside the
+        lamella, which nothing then read.
 
-        Resolved for reading, which accepts a directory shared with another
-        image set: that is where the pipeline's own output sits.
+        An Adaptive Polishing set resolves through the fallback chain, which
+        accepts a directory shared with another set: that is where the
+        segmentation pipeline's own output sits, and only one image of a label
+        group is ever predicted, so two conditions cannot claim one filename. A
+        loose set resolves by exact name instead, for the reason
+        :func:`~..layout.resolve_loose_predictions_directory` gives.
 
-        A loose set has none. Nothing predicts reference or alignment images
-        yet, and resolving for one would fall back to the shared
-        ``<modality>_predictions`` -- which in a dataset collapsing the stage
-        level is the Adaptive Polishing pipeline's own output, an entirely
-        different set of scenes. When those series become predictable this
-        needs the exact-name rule its labels already have.
+        Returned whether or not it exists, since that is also where a
+        prediction would be written.
         """
         if image_set.is_loose:
-            return {}
-
-        directory, exists, _ = resolve_predictions_directory(
-            image_set.directory, image_set.modality, subdirectories_by_name(stage_path)
+            directory, _ = resolve_loose_predictions_directory(
+                image_set.directory, image_set.series, image_set.modality, siblings
+            )
+            return directory
+        directory, _, _ = resolve_predictions_directory(
+            image_set.directory, image_set.modality, siblings
         )
-        if not exists:
-            return {}
+        return directory
 
+    @staticmethod
+    def _collect_predictions(directory: Path) -> dict[str, list[Path]]:
+        """Return the prediction files in *directory*, keyed by filename.
+
+        Predictions sit in the directory itself or split into the
+        :data:`~..layout.PREDICTION_KINDS` subdirectories. A filename may appear
+        in more than one of those, so every match is kept and the caller
+        chooses by kind. A directory that does not exist holds none.
+        """
         collected: dict[str, list[Path]] = {}
         for candidate in [directory, *(directory / kind for kind in PREDICTION_KINDS)]:
             for path in image_files(candidate):

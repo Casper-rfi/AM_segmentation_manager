@@ -657,6 +657,64 @@ def test_a_ticked_lamella_covers_every_frame_of_it():
     assert len(controller.scoped_records()) == 8
 
 
+def test_a_ticked_lamella_covers_only_the_series_on_screen():
+    """The tab shows one series at a time, and a tick must not outreach it.
+
+    A 2026 lamella holds its reference images and its alignment runs beside its
+    Adaptive Polishing stages. Ticking it while the timeline showed Adaptive
+    Polishing predicted, converted and restated all three.
+    """
+    stage = make_stage("01-alpha_stage", "01", 2, fib=False)
+    stage.images.append(
+        ImageRecord(
+            image_path=Path("01-alpha/ref_Polishing_start_eb.tif"),
+            modality="SEM",
+            series="reference",
+        )
+    )
+    lamella = Lamella(name="01-alpha", path=Path("01-alpha"), number="01", stages=[stage])
+    controller = make_controller([Project(
+        name="project-a", path=Path("project-a"), lamellae=[lamella], number="001"
+    )])
+    controller.set_target("SEM")
+    controller.set_lamella_checked(0, True)
+
+    assert {record.series for record in controller.scoped_records()} == {"adaptive"}
+
+    controller.set_series("reference")
+
+    assert {record.series for record in controller.scoped_records()} == {"reference"}
+
+
+def test_a_ticked_lamella_holding_none_of_the_chosen_series_shows_what_it_has():
+    """The same answer navigating to it would give -- see frames.resolve_series.
+
+    Contributing nothing at all would make a tick on such a lamella look like
+    it had done something when it had not.
+    """
+    stage = Stage(
+        name="01-alpha_stage",
+        path=Path("01-alpha_stage"),
+        number="01",
+        images=[
+            ImageRecord(
+                image_path=Path("01-alpha/ref_Polishing_start_eb.tif"),
+                modality="SEM",
+                series="reference",
+            )
+        ],
+    )
+    lamella = Lamella(name="01-alpha", path=Path("01-alpha"), number="01", stages=[stage])
+    controller = make_controller([Project(
+        name="project-a", path=Path("project-a"), lamellae=[lamella], number="001"
+    )])
+    controller.set_target("SEM")
+    controller.set_lamella_checked(0, True)
+
+    assert controller.wanted_series == "adaptive"
+    assert {record.series for record in controller.scoped_records()} == {"reference"}
+
+
 def test_a_ticked_project_covers_every_lamella():
     controller = make_controller()
     controller.set_target("both")

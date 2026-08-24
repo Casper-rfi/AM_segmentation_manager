@@ -40,6 +40,13 @@ class ImageRecord:
             the base directory. An opaque key, never parsed.
         series: what the image was taken for -- 'adaptive', 'reference' or
             'alignment'. Orthogonal to modality and variant.
+        task: the milling task the image belongs to, spelt as the project's
+            ``experiment.yaml`` spells it, or None where neither its directory
+            nor its filename names one. Stages roll up into their task, so
+            ``Rough 1`` and ``Rough 2`` are both ``Rough Milling``. Coarser
+            than the stage directory and orthogonal to it: one task spans
+            several stages, and one lamella directory holds every task's
+            reference images at once.
         acquired_at: when the instrument recorded taking the image, read from
             its header. Set for a loose image, which has nothing else that
             orders it: 44% of them carry no timestamp in the filename, and the
@@ -55,6 +62,11 @@ class ImageRecord:
         labels_directory: where this record's label lives or would live.
             Carried for the same reason -- it cannot be recovered from a loose
             image's path, whose directory names no modality.
+        predictions_directory: where this record's predictions live or would
+            live, the resolved directory rather than the ``am_seg`` subdirectory
+            inside it that this package writes to. Carried for the same reason
+            again, and so that reading a prediction and writing one cannot
+            disagree about where it belongs.
         label_shared: whether this record's label directory is shared with
             another image set, so its label also belongs to other images
         state: the workflow state of the label group this image belongs to.
@@ -75,9 +87,11 @@ class ImageRecord:
     modality: str | None = None
     variant: str | None = None
     series: str = "adaptive"
+    task: str | None = None
     acquired_at: datetime | None = None
     stage_path: Path | None = None
     labels_directory: Path | None = None
+    predictions_directory: Path | None = None
     label_shared: bool = False
     state: RecordState = DEFAULT_STATE
 

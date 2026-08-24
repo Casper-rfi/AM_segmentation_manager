@@ -108,6 +108,25 @@ becomes wrong, correct it in place rather than appending a correction.
   what makes recognising a copy safe**: acquisition time and size alone merged 38 groups of
   genuinely different pictures, a run taking several images inside one second. Nothing is
   hashed — the time is already read, and it partitions these exactly as their content does.
+- **Where a record's label and predictions live is carried, never re-derived.** Both
+  derivations walked up from the image path, and both only ever worked for an Adaptive
+  Polishing image — one level below its stage, in a directory naming a modality. A
+  reference image sits *directly* in a directory naming a lamella, so deriving resolved its
+  files to a `<lamella>_labels` and `<lamella>_predictions` outside the lamella entirely:
+  predictions were written where the next scan never looked, and `convert-predictions` then
+  reported every one of them as missing. The scanner resolves both once per image set and
+  the record carries them, so reading and writing cannot disagree; a record that does not
+  say raises rather than guessing at a plausible directory. A loose set resolves by exact
+  name with no fallback chain, for both, and for the same reason: the shared
+  `<modality>_predictions` in a dataset that collapses the stage level is the Adaptive
+  Polishing pipeline's own output.
+- **A ticked lamella covers only the series on screen.** Curate shows one series at a time,
+  and what is ticked has to be the whole of what an operation touches. Filtering a ticked
+  lamella by modality alone reached every series, so predicting a lamella while looking at
+  its Adaptive Polishing timeline predicted its reference and alignment images too. Each
+  lamella is asked what it can show of the chosen series, exactly as navigating to it would
+  — `frames.resolve_series` — so a lamella holding none of it contributes what it has
+  rather than nothing.
 - **`predictions/clean/` is indexed but can never become a label.** Adaptive Polishing's
   post-processing rewrites the intensity values, so they no longer index the segmentation
   classes: a label converted from one looks entirely valid — right dimensions, plausible
@@ -286,6 +305,27 @@ becomes wrong, correct it in place rather than appending a correction.
   same declaration as the count, and `by_series` returns the slug rather than the display
   label, a value counted having to be a value `--series` accepts. Unlike a variant it is a
   closed vocabulary, so `--series refrence` raises: a typo, not a request for an empty set.
+- **The milling task is resolved against each lamella's own vocabulary, never a pattern.**
+  Task names come from whatever protocol somebody wrote — 26 distinct subjects across this
+  collection, `Rough 1` spelt both ways — so no fixed set of filename patterns could keep
+  up, and none could split `Rough-Milling-Rough-2` into a task and a stage. Each lamella's
+  entry in `experiment.yaml` lists its own names (`task_history` and `task_config` in the
+  2026-07 era, `protocol` and `states` before it) and a directory or filename resolves by
+  offering every run of its words to that list, longest run first. **Stages roll up into
+  their task**, so `Fine 1` and `Localised Adaptive Polishing` are both `Polishing`, and
+  there is no separate stage axis: `stage-name` already answers "which directory", which is
+  a different question once one task spans several. The directory is tried before the
+  filename, and is the only thing that resolves a name Autolamella spells two ways —
+  `Milling/Fiducial/` for the task called `Mill Fiducial`. The lamella directory itself is
+  never offered, or a petname sharing a word with a task would claim every image below it.
+  A name two of the lamella's tasks both claim is dropped rather than assigned to one:
+  reporting a task an image may not belong to is worse than reporting none. **None is a real
+  answer** — beam-shift alignment, the images inside an alignment run, and every Adaptive
+  Polishing stage in a layout predating `Milling/<Task>/` name no task, 4,818 of 8,931
+  images here. **Timestamps were ruled out** as the source: the windows in `history` are
+  short and sparse rather than tiling the session, and images named after a step fall
+  outside it — `ref_MillRough_start_eb.tif` was acquired inside the recorded `SetupLamella`
+  window.
 - **Counting is split between the tab and the commands, not moved.** The Export tab counts
   the set its filters describe, because choosing a training set means looking at what
   survives a filter and that loop cannot run through a command that prints and exits. `stats`

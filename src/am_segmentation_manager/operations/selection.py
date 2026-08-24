@@ -30,6 +30,7 @@ from ..layout import (
     classify_image_directory,
     image_files,
     resolve_labels_directory,
+    resolve_predictions_directory,
     state_directories,
     subdirectories_by_name,
 )
@@ -443,10 +444,12 @@ def record_from_image_path(path: Path) -> ImageRecord:
     if image_directory is None or classification is None:
         return ImageRecord(image_path=image_path)
 
+    siblings = subdirectories_by_name(image_directory.parent)
     labels_directory, _, _ = resolve_labels_directory(
-        image_directory,
-        classification.modality,
-        subdirectories_by_name(image_directory.parent),
+        image_directory, classification.modality, siblings
+    )
+    predictions_directory, _, _ = resolve_predictions_directory(
+        image_directory, classification.modality, siblings
     )
     labels: list[Path] = []
     label_path = labels_directory / image_path.name
@@ -457,4 +460,6 @@ def record_from_image_path(path: Path) -> ImageRecord:
         labels=labels,
         modality=classification.modality,
         variant=classification.variant,
+        labels_directory=labels_directory,
+        predictions_directory=predictions_directory,
     )

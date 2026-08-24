@@ -542,6 +542,55 @@ def loose_image_set_name(series: Series, modality: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Milling task names
+# ---------------------------------------------------------------------------
+
+#: The directory a lamella collects its milling tasks in, one subdirectory per
+#: task, in the 2026-07 layout and later. Beside :data:`ALIGNMENT_DIRECTORY`.
+MILLING_DIRECTORY: Final[str] = "Milling"
+
+
+def normalise_task_name(value: str) -> str:
+    """Return *value* reduced to what makes two spellings of a task equal.
+
+    Case and every separator go, so ``Rough 1``, ``Rough-1`` and ``rough_1``
+    are one name, and the ``mill_polishing`` of a protocol matches the
+    ``MillPolishing`` the same experiment writes into a filename. Task names
+    are whatever whoever wrote the protocol chose, so nothing here may assume
+    a spelling.
+    """
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def task_name_words(value: str) -> list[str]:
+    """Return *value* split into the words a task name could be built from."""
+    return [word for word in re.split(r"[^A-Za-z0-9]+", value) if word]
+
+
+def task_name_runs(value: str, max_words: int) -> list[str]:
+    """Return the runs of consecutive words in *value*, most specific first.
+
+    A directory or filename says which task it belongs to by carrying the
+    task's name among the words describing the acquisition --
+    ``Rough-Milling-Rough-2_finished_20-21-21``. Offering every run of words to
+    a vocabulary is therefore one rule covering every filename shape, where a
+    pattern per shape would need extending each time Autolamella names
+    something new. It is also what splits a composite: ``Rough Milling`` and
+    ``Rough 2`` are both in the vocabulary and both name the same task.
+
+    Longest first, then leftmost, so a caller taking the first run the
+    vocabulary knows takes the most specific one. *max_words* is the longest
+    name the vocabulary holds, past which no run could match.
+    """
+    words = task_name_words(value)
+    return [
+        normalise_task_name("".join(words[start:start + length]))
+        for length in range(min(max_words, len(words)), 0, -1)
+        for start in range(len(words) - length + 1)
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Label and prediction directory resolution
 # ---------------------------------------------------------------------------
 
@@ -727,6 +776,40 @@ def resolve_loose_labels_directory(
         name is still returned: that is where a label would be written.
     """
     name = labels_directory_name(loose_image_set_name(series, modality))
+    existing = siblings.get(name.lower())
+    if existing is not None:
+        return existing, True
+    return directory / name, False
+
+
+def resolve_loose_predictions_directory(
+    directory: Path,
+    series: Series,
+    modality: str,
+    siblings: Mapping[str, Path],
+) -> tuple[Path, bool]:
+    """Return where a loose image set's predictions live.
+
+    **The name is exact, with no fallback chain**, for the same reason
+    :func:`resolve_loose_labels_directory`'s is: falling back to the shared
+    ``<modality>_predictions`` would let a reference set in a dataset that
+    collapses the stage level claim the Adaptive Polishing pipeline's own
+    output, pairing every reference image with a prediction of a different
+    scene. Reading and writing share this, so a prediction is looked for where
+    one would be written.
+
+    Args:
+        directory: The directory the loose images sit in.
+        series: Which series the set holds.
+        modality: ``"SEM"`` or ``"FIB"``.
+        siblings: Existing subdirectories of *directory*, keyed by lowercased
+            name, as :func:`subdirectories_by_name` returns them.
+
+    Returns:
+        A tuple of ``(directory, exists)``. When the directory is absent the
+        name is still returned: that is where a prediction would be written.
+    """
+    name = predictions_directory_name(loose_image_set_name(series, modality))
     existing = siblings.get(name.lower())
     if existing is not None:
         return existing, True

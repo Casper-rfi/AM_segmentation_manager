@@ -27,6 +27,7 @@ from .aggregate import (
 )
 from .filtering import (
     METADATA_FILTERS,
+    NO_TASK,
     filter_by_metadata,
     filter_property,
     iter_matching_records,
@@ -150,6 +151,17 @@ def _add_scope_arguments(
         ),
     )
     parser.set_defaults(default_series=default_series)
+    parser.add_argument(
+        "--task", action="append", default=[], metavar="TASK",
+        help=(
+            "Milling task the images belong to, as the project's "
+            "experiment.yaml names it (Polishing, Rough Milling, MillRough); "
+            "separators and case are ignored. Stages roll up into their task, "
+            f"so 'Rough 1' and 'Rough 2' are both Rough Milling. '{NO_TASK}' "
+            "selects the images naming no task, 'all' every image. Repeat or "
+            "comma-separate to include several (default: every task)"
+        ),
+    )
     if include_state:
         parser.add_argument(
             "--state",
@@ -276,6 +288,7 @@ def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
             state=state,
             variant_selectors=getattr(args, "variant", None) or None,
             series_selectors=_series_selectors(args),
+            task_selectors=getattr(args, "task", None) or None,
         )
     )
     return records, start_path, index.all_projects()
