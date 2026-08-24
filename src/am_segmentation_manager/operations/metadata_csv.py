@@ -36,13 +36,17 @@ PROJECT_IDENTITY_COLUMN = "autolamella_project"
 
 #: Columns identifying where an image sits, before any measured values.
 IDENTITY_COLUMNS = (
-    PROJECT_IDENTITY_COLUMN, "lamella", "stage", "modality", "variant",
+    PROJECT_IDENTITY_COLUMN, "lamella", "stage", "series", "modality", "variant",
     "state", "label_state", "label_shared", "image", "label",
 )
 
 #: What a paired row says once, because both beams share it. "modality" is not
 #: among them: a paired row has no single modality, which is the point of it.
-SHARED_COLUMNS = (PROJECT_IDENTITY_COLUMN, "lamella", "stage", "acquisition")
+#: "series" is, because it is decided by filename and the beam suffix plays no
+#: part in that decision, so both beams of one acquisition always agree.
+SHARED_COLUMNS = (
+    PROJECT_IDENTITY_COLUMN, "lamella", "stage", "series", "acquisition",
+)
 
 #: What a paired row says twice, once per beam, under the prefixes below.
 PER_BEAM_COLUMNS = (
@@ -103,6 +107,7 @@ def image_rows(
             PROJECT_IDENTITY_COLUMN: record.project,
             "lamella": record.lamella,
             "stage": record.stage,
+            "series": record.series,
             "modality": record.modality,
             "variant": record.variant or "base",
             "state": current_state(record),
@@ -161,6 +166,7 @@ def paired_image_rows(
                     PROJECT_IDENTITY_COLUMN: present.project,
                     "lamella": present.lamella,
                     "stage": present.stage,
+                    "series": acquisition.series,
                     "acquisition": (
                         "" if acquisition.image_number is None
                         else acquisition.image_number

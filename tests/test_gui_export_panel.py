@@ -44,6 +44,7 @@ if HAS_QT:
         ExportPanel,
         FilterRow,
     )
+    from am_segmentation_manager.layout import SERIES
     from am_segmentation_manager.scanner import Scanner
     from conftest import build_dataset
 
@@ -798,3 +799,48 @@ def test_a_caption_carries_its_control_s_tooltip(panel: ExportPanel):
     assert captions["Workflow state"]
     assert captions["Break down by"]
     assert captions["Training"] == panel.train_share.toolTip()
+
+
+# ---------------------------------------------------------------------------
+# The series control
+# ---------------------------------------------------------------------------
+
+def test_the_series_control_opens_on_adaptive_polishing_alone(panel: ExportPanel):
+    """The one filter that does not open on everything.
+
+    A scan now holds reference and alignment images too, and a tab that
+    silently counted them would disagree with create-training-csv, which
+    defaults the same way.
+    """
+    ticked = {name for name, box in panel.series_boxes.items() if box.isChecked()}
+
+    assert ticked == {"adaptive"}
+    assert panel.controller.filters.series == ("adaptive",)
+
+
+def test_every_series_has_a_box(panel: ExportPanel):
+    assert set(panel.series_boxes) == set(SERIES)
+
+
+def test_ticking_a_series_reaches_the_controller(panel: ExportPanel):
+    panel.series_boxes["reference"].setChecked(True)
+
+    assert set(panel.controller.filters.series) == {"adaptive", "reference"}
+
+
+def test_unticking_a_series_reaches_the_controller(panel: ExportPanel):
+    panel.series_boxes["adaptive"].setChecked(False)
+
+    assert panel.controller.filters.series == ()
+
+
+def test_the_series_control_is_not_also_offered_as_a_filter_row(panel: ExportPanel):
+    """Three fixed choices, so it is a control rather than a list of values."""
+    row = panel.filter_rows[0] if panel.filter_rows else None
+    offered = (
+        {row.property_box.itemData(i) for i in range(row.property_box.count())}
+        if row is not None
+        else set()
+    )
+
+    assert "series" not in offered

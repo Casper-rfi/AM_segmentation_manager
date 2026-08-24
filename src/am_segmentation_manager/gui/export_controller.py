@@ -84,11 +84,18 @@ LABEL_FILTERS: dict[str, frozenset[str]] = {
 }
 
 #: Breakdowns with a control of their own in the Filters box, so they are not
-#: also offered as a list of values. Modality and workflow state are three
-#: fixed choices each rather than whatever the data holds, and the label filter
-#: is five named questions rather than four states -- "has a label" is not a
-#: value any record carries.
-DEDICATED_CONTROLS = frozenset({"modality", "state", "label"})
+#: also offered as a list of values. Modality, workflow state and series are
+#: fixed sets of choices rather than whatever the data holds, and the label
+#: filter is five named questions rather than four states -- "has a label" is
+#: not a value any record carries.
+DEDICATED_CONTROLS = frozenset({"modality", "state", "label", "series"})
+
+#: What the series control starts on. **The one filter that does not open on
+#: everything**, and deliberately: a scan holds reference and alignment images
+#: as well, and an export that silently grew to include them would disagree
+#: with ``create-training-csv``, which defaults the same way. Ticking another
+#: is one click, and the summary line says what is counted.
+DEFAULT_SERIES: tuple[str, ...] = ("adaptive",)
 
 #: Breakdowns counted on, but never offered as a filter in the window. Each
 #: would produce a list nobody could work with: a lamella is one row per
@@ -241,6 +248,9 @@ class ExportFilters:
             offers the values the data actually holds. A filter and a
             breakdown are the same key function used two ways, so there is one
             table of them rather than two that can disagree.
+        series: What the images were taken for, as a set of ticked values.
+            Starts at :data:`DEFAULT_SERIES` rather than at everything, which
+            is the one place this tab does not open on the whole collection.
         conditions: ``"all"`` keeps every imaging condition of a scene,
             ``"primary"`` keeps one image per label. Starts at ``"all"``,
             unlike ``create-training-csv``: the tab opens on the whole
@@ -250,6 +260,7 @@ class ExportFilters:
 
     modality: str = "all"
     state: str = "all"
+    series: tuple[str, ...] = DEFAULT_SERIES
     choices: dict[str, list[str]] = field(default_factory=dict)
     conditions: str = "all"
     label: str = ANY_LABEL
@@ -598,6 +609,7 @@ class ExportController:
         kept = [
             record for record in self._records
             if (self.filters.modality == "all" or record.modality == self.filters.modality)
+            and (not self.filters.series or record.series in self.filters.series)
             and matches_state(record, self.filters.state)
             and (wanted is None or self.label_state(record) in wanted)
         ]

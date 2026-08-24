@@ -342,6 +342,20 @@ becomes wrong, correct it in place rather than appending a correction.
   `UNFILTERABLE` names them. They stay breakdowns, and the command line still filters on
   `--electron-source`; what is dropped is the list in the window, the scarce thing being the
   column it would sit in.
+- **Series is the one filter that does not open on everything.** Every other control on the
+  tab starts wide and is narrowed towards an export. This one starts on Adaptive Polishing,
+  because a scan now holds 9,001 records where it held 3,764, and a tab that silently counted
+  the rest would disagree with `create-training-csv`, which defaults the same way — breaking
+  the rule below it that one selection exported either way gives the same file. It is a
+  dedicated control rather than a derived filter row, like modality and workflow state: three
+  fixed choices rather than whatever the data holds. Checkboxes rather than a dropdown,
+  because the three are independent and an export covering two is a real request.
+- **The metadata CSV names the series of every row.** An added column, and a deliberate
+  change to what an existing export writes: once more than one series can be exported, a row
+  that does not say which it came from cannot be read. Shared rather than per-beam in the
+  paired shape, because a series is decided by filename and the beam suffix plays no part in
+  that decision — checked across the reference collection, where 0 of 5,594 acquisitions span
+  more than one.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
   workflow-state filter starts on "all" rather than on *corrected*: the tab is narrowed
   towards an export rather than opening on one and hiding the archive. The cost is that an

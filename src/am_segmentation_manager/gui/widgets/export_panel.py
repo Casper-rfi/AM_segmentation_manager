@@ -36,9 +36,11 @@ from qtpy.QtWidgets import (
 )
 
 from ...aggregate import AREA_BINS_PER_DECADE, bin_mantissas
+from ...layout import SERIES, SERIES_LABELS
 from ..export_controller import (
     ANY_LABEL,
     DEFAULT_PREFIX,
+    DEFAULT_SERIES,
     LABEL_FILTERS,
     MODALITIES,
     STATES,
@@ -344,6 +346,31 @@ class ExportPanel(QWidget):
             )
         )
         column.addWidget(self.label_state)
+
+        # Checkboxes rather than a dropdown: the three are independent, and an
+        # export covering two of them is a real request. The only filter that
+        # does not start on everything -- see export_controller.DEFAULT_SERIES.
+        self.series_boxes: dict[str, QCheckBox] = {}
+        series_holder = QWidget()
+        series_column = QVBoxLayout(series_holder)
+        series_column.setContentsMargins(0, 0, 0, 0)
+        series_column.setSpacing(0)
+        for name in SERIES:
+            checkbox = QCheckBox(SERIES_LABELS[name])
+            checkbox.setChecked(name in DEFAULT_SERIES)
+            checkbox.toggled.connect(self._controls_changed)
+            self.series_boxes[name] = checkbox
+            series_column.addWidget(checkbox)
+        column.addWidget(
+            caption_for(
+                "Series",
+                series_holder,
+                "What the images were taken for. Only Adaptive Polishing is "
+                "ticked to start with, so an export covers what it always "
+                "did. Narrows the breakdown and every export.",
+            )
+        )
+        column.addWidget(series_holder)
 
         self.conditions = QCheckBox("One image per label")
         self.conditions.setToolTip(
@@ -805,6 +832,9 @@ class ExportPanel(QWidget):
         filters.modality = self.modality.currentText()
         filters.state = self.state.currentText()
         filters.label = self.label_state.currentText()
+        filters.series = tuple(
+            name for name, box in self.series_boxes.items() if box.isChecked()
+        )
         filters.conditions = "primary" if self.conditions.isChecked() else "all"
         for row in self.filter_rows:
             if row.property_name:
