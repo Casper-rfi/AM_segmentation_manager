@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .layout import acquisition_stem, extract_image_number
-from .models import AdaptiveMillingStage, ImageRecord, Lamella
+from .models import ImageRecord, Lamella, Stage
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ def build_lamella_frames(
 
 
 def _build_stage_frames(
-    lamella: Lamella, stage: AdaptiveMillingStage, series: str | None = None
+    lamella: Lamella, stage: Stage, series: str | None = None
 ) -> list[LamellaFrame]:
     """Return the frames for a single stage, ordered by acquisition number."""
     plots = _plots_by_image_number(stage.plots)

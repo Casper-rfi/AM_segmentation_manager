@@ -3,7 +3,7 @@
 This module defines the core dataclasses used across the package:
 - Project
 - Lamella
-- AdaptiveMillingStage
+- Stage
 - ImageRecord
 
 The dataclasses are intentionally small and typed so they are easy to test
@@ -75,21 +75,30 @@ class ImageRecord:
 
 
 @dataclass
-class AdaptiveMillingStage:
-    """A stage inside a lamella's milling history.
+class Stage:
+    """A directory of a lamella's images, and the state file governing them.
+
+    Not only an Adaptive Polishing stage. A lamella directory holding
+    reference images is one, as is a milling task and a single alignment run,
+    because what makes a stage is holding images and an ``AM_state.yaml`` --
+    not what the images were taken for. Which is which is
+    :attr:`ImageRecord.series`, per image set rather than per directory, since
+    one directory holds several.
 
     Attributes:
-        name: human friendly stage name (e.g. 'Adaptive_polish_...')
+        name: human friendly stage name (e.g. 'adaptive_polish_...')
         path: filesystem path to the stage folder
         images: list of ImageRecord objects discovered in this stage
         number: zero-padded sequential stage number within the lamella
         plots: summary plot images written during lamella preparation, one per
             acquisition. Fewer plots than images is normal.
         synthetic: True when the dataset has no stage directory and the lamella
-            directory stands in for one. Older layouts collapse this level.
-        image_sets: the image directories in this stage, with the label
-            directory each resolves to and whether that label directory is
-            shared with another set.
+            directory stands in for one. Older layouts collapse this level, and
+            a lamella standing in for a stage of its own reference images is
+            the same case.
+        image_sets: the image sets in this stage, with the label directory each
+            resolves to and whether that label directory is shared with
+            another set.
     """
 
     name: str
@@ -120,7 +129,7 @@ class Lamella:
     Attributes:
         name: lamella folder name
         path: path to lamella folder
-        stages: list of AdaptiveMillingStage
+        stages: list of Stage
         number: zero-padded lamella number parsed from the folder prefix
         synthetic: True when the dataset has no lamella directories and the
             project directory stands in for one.
@@ -128,7 +137,7 @@ class Lamella:
 
     name: str
     path: Path
-    stages: list[AdaptiveMillingStage] = field(default_factory=list)
+    stages: list[Stage] = field(default_factory=list)
     number: str | None = None
     synthetic: bool = False
 

@@ -39,7 +39,7 @@ from .metadata import (
     build_experiment_metadata,
     merge_metadata,
 )
-from .models import AdaptiveMillingStage, ImageRecord, Lamella, Project
+from .models import ImageRecord, Lamella, Project, Stage
 from .state import StageState, StateFileError, read_state, state_key
 
 logger = logging.getLogger(__name__)
@@ -148,10 +148,10 @@ class Scanner:
     def build_index(self) -> ProjectIndex:
         """Scan and build a ProjectIndex for discovered projects.
 
-        Discovers projects, their lamellae and the Adaptive Milling stages
-        within them, indexing each stage's image sets and matching predictions
-        and labels by filename, so downstream operations work on in-memory
-        objects rather than re-traversing the filesystem.
+        Discovers projects, their lamellae and the stages within them,
+        indexing each stage's image sets -- of every series -- and matching
+        predictions and labels by filename, so downstream operations work on
+        in-memory objects rather than re-traversing the filesystem.
         """
         index = ProjectIndex(start_path=self.start_path)
 
@@ -222,12 +222,12 @@ class Scanner:
 
     def _build_stages(
         self, discovered: list[DiscoveredStage], project_name: str, lamella_name: str
-    ) -> list[AdaptiveMillingStage]:
+    ) -> list[Stage]:
         """Build the stages of one lamella, ordered by acquisition time."""
         ordered = sorted(discovered, key=lambda item: self._stage_sort_key(item.path))
-        stages: list[AdaptiveMillingStage] = []
+        stages: list[Stage] = []
         for index, item in enumerate(ordered, start=1):
-            stage = AdaptiveMillingStage(
+            stage = Stage(
                 name=item.path.name,
                 path=item.path,
                 synthetic=item.stage_is_synthetic,

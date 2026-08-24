@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.frames import build_lamella_frames, group_by_acquisition
-from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella
+from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 
 STAGE = Path("/p/01-ruling-ibex")
 ADAPTIVE_STAGE = STAGE / "Milling/Polishing/adaptive_polish_2026-07-28-11-34-24AM"
@@ -111,7 +111,7 @@ def test_an_acquisition_reports_the_series_of_its_images():
 @pytest.fixture
 def lamella() -> Lamella:
     """A 2026 lamella: three series across two stages."""
-    loose_stage = AdaptiveMillingStage(
+    loose_stage = Stage(
         name="01-ruling-ibex",
         path=STAGE,
         number="01",
@@ -122,7 +122,7 @@ def lamella() -> Lamella:
             loose("ref_alignment_ib.tif", "FIB", "alignment"),
         ],
     )
-    polish = AdaptiveMillingStage(
+    polish = Stage(
         name="adaptive_polish_2026-07-28-11-34-24AM",
         path=ADAPTIVE_STAGE,
         number="02",

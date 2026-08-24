@@ -5,7 +5,7 @@ Package entrypoint and version.
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .models import AdaptiveMillingStage, ImageRecord, Lamella, Project
+from .models import ImageRecord, Lamella, Project, Stage
 from .scanner import ProjectIndex, Scanner
 
 try:
@@ -22,7 +22,7 @@ except PackageNotFoundError:  # pragma: no cover - source tree without install
 __all__ = [
     "Project",
     "Lamella",
-    "AdaptiveMillingStage",
+    "Stage",
     "ImageRecord",
     "Scanner",
     "ProjectIndex",

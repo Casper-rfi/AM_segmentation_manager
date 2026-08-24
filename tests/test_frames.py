@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.frames import LamellaFrame, build_lamella_frames
-from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella
+from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 
 
 def make_record(name: str, modality: str) -> ImageRecord:
@@ -25,8 +25,8 @@ def make_stage(
     number: str,
     images: list[ImageRecord] | None = None,
     plots: list[str] | None = None,
-) -> AdaptiveMillingStage:
-    return AdaptiveMillingStage(
+) -> Stage:
+    return Stage(
         name=name,
         path=Path(name),
         number=number,
@@ -35,7 +35,7 @@ def make_stage(
     )
 
 
-def make_lamella(stages: list[AdaptiveMillingStage]) -> Lamella:
+def make_lamella(stages: list[Stage]) -> Lamella:
     return Lamella(name="01-alive-muskox", path=Path("01-alive-muskox"), number="01", stages=stages)
 
 

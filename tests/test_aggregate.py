@@ -22,10 +22,10 @@ from am_segmentation_manager.filtering import (
 )
 from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.models import (
-    AdaptiveMillingStage,
     ImageRecord,
     Lamella,
     Project,
+    Stage,
 )
 from am_segmentation_manager.operations.metadata_csv import (
     export_image_metadata_csv,
@@ -148,7 +148,7 @@ def make_project(name: str, key: str, sample: str | None, records: list) -> Proj
         lamellae=[
             Lamella(
                 name="01-lam", path=Path(key) / "01-lam",
-                stages=[AdaptiveMillingStage(name="s", path=Path(key), images=records)],
+                stages=[Stage(name="s", path=Path(key), images=records)],
             )
         ],
     )

@@ -21,10 +21,10 @@ from am_segmentation_manager.gui.controller import (
     project_status,
 )
 from am_segmentation_manager.models import (
-    AdaptiveMillingStage,
     ImageRecord,
     Lamella,
     Project,
+    Stage,
 )
 from am_segmentation_manager.scanner import ProjectIndex
 
@@ -41,7 +41,7 @@ def make_stage(name: str, number: str, count: int, *, fib: bool = True, plots: b
             images.append(
                 ImageRecord(image_path=Path(f"{name}/fib/img_{n:03d}_FIB.tif"), modality="FIB")
             )
-    return AdaptiveMillingStage(
+    return Stage(
         name=name,
         path=Path(name),
         number=number,
@@ -228,7 +228,7 @@ def numbered_project(*acquisitions: int) -> Project:
     the end. Naming the numbers is what lets a test insert an acquisition
     *before* the one it picked out.
     """
-    stage = AdaptiveMillingStage(
+    stage = Stage(
         name="01-alpha_stage",
         path=Path("01-alpha_stage"),
         number="01",
@@ -981,7 +981,7 @@ def status_lamella(name: str, records: list[ImageRecord]) -> Lamella:
         name=name,
         path=Path(name),
         number="01",
-        stages=[AdaptiveMillingStage(name="stage", path=Path(name) / "stage", images=records)],
+        stages=[Stage(name="stage", path=Path(name) / "stage", images=records)],
     )
 
 

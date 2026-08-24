@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella, Project
+from am_segmentation_manager.models import ImageRecord, Lamella, Project, Stage
 from am_segmentation_manager.reporting import (
     print_project_summary,
     record_state,
@@ -30,7 +30,7 @@ def test_summarize_lamella():
         state="corrected",
     )
 
-    stage = AdaptiveMillingStage(name="stage1", path=Path("/stage"), images=[img_sel, img_des, img_cor])
+    stage = Stage(name="stage1", path=Path("/stage"), images=[img_sel, img_des, img_cor])
     lamella = Lamella(name="lam1", path=Path("/lam1"), stages=[stage])
 
     summary = summarize_lamella(lamella)
@@ -43,7 +43,7 @@ def test_summarize_lamella():
 def test_print_project_summary(caplog):
     import logging
     img = ImageRecord(image_path=Path("/stage/sem/img1.tif"), modality="SEM")
-    stage = AdaptiveMillingStage(name="stage1", path=Path("/stage"), images=[img])
+    stage = Stage(name="stage1", path=Path("/stage"), images=[img])
     lamella = Lamella(name="lam1", path=Path("/lam1"), stages=[stage])
     proj = Project(name="Proj1", path=Path("/proj1"), lamellae=[lamella])
 

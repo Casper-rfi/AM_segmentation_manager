@@ -16,7 +16,7 @@ from am_segmentation_manager.filtering import (
     parse_selector_values,
     record_matches_paths,
 )
-from am_segmentation_manager.models import AdaptiveMillingStage, ImageRecord, Lamella, Project
+from am_segmentation_manager.models import ImageRecord, Lamella, Project, Stage
 from am_segmentation_manager.state import STATE_VALUES
 
 
@@ -56,7 +56,7 @@ def test_matches_lamella():
 
 
 def test_matches_stage():
-    stg = AdaptiveMillingStage(name="Adaptive_polish_1", path=Path("/fake"), number="01")
+    stg = Stage(name="Adaptive_polish_1", path=Path("/fake"), number="01")
     assert matches_stage(stg, ["1"]) is True
     assert matches_stage(stg, ["Adaptive_polish_1"]) is True
     assert matches_stage(stg, ["2"]) is False
