@@ -527,6 +527,18 @@ becomes wrong, correct it in place rather than appending a correction.
   than a Qt signal: a queued signal reaches the worker when it next returns to its event
   loop, which inside a long call is never.
 
+- **Curate shows one series at a time; Export ticks several.** Different questions. A
+  timeline mixing alignment runs with polishing frames is not something anyone proofreads,
+  and a 2026 lamella runs to 21 stages across three series, so the Curate control is a single
+  choice that rebuilds the frame stack — the position and the frame ticks go with it, because
+  a frame index only means anything within one timeline. An export covering two series is a
+  real request, so that one is checkboxes. Both open on Adaptive Polishing.
+- **The Curate control is offered from what the lamella holds, not from the vocabulary**, so
+  it never offers a choice that would show an empty timeline, and a pre-Autolamella lamella
+  gets no control at all. It is set before the "no frame" early return in `_render`: a
+  lamella can hold nothing of the series being shown while holding plenty of another, and the
+  control is the only way out of that.
+
 ## Environment
 
 - **A save refuses a label whose file changed since it was opened.** Proofreading holds a

@@ -472,6 +472,7 @@ class CurationWindow(QMainWindow):
 
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
+        self.image_panel.series_changed.connect(self._set_series)
         self.image_panel.overlay_toggled.connect(self._set_overlay)
         self.image_panel.image_toggled.connect(self._set_image_shown)
         self.image_panel.alpha_changed.connect(lambda _alpha: self._render())
@@ -1447,6 +1448,15 @@ class CurationWindow(QMainWindow):
             self.controller.project_checks(), self.controller.lamella_checks()
         )
 
+    def _set_series(self, series: str) -> None:
+        """Show a different series' timeline.
+
+        More than a view change: it decides which frames exist, so the whole
+        window is brought back in step rather than only redrawn.
+        """
+        self.controller.set_series(series)
+        self.refresh()
+
     def _set_variant(self, variant: str) -> None:
         """Show a different imaging condition.
 
@@ -1707,6 +1717,13 @@ class CurationWindow(QMainWindow):
 
     def _render(self) -> None:
         """Draw the current frame, or say why it cannot be drawn yet."""
+        # Before the empty check: a lamella can hold no frames of the series
+        # being shown while holding plenty of another, and the control is the
+        # only way out of that.
+        self.image_panel.set_series(
+            self.controller.available_series(), self.controller.series
+        )
+
         frame = self.controller.frame
         if frame is None:
             self.image_panel.show_empty()

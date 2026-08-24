@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
 
 from ...config import SegmentationConfig
 from ...display import DEFAULT_ALPHA, compose_overlay
+from ...layout import SERIES_LABELS
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
 from .common import LABEL_BADGES, class_legend_html
@@ -60,6 +61,8 @@ class ImagePanel(QWidget):
     image_toggled = Signal(bool)
     #: Emitted with the imaging condition to display; empty string means base.
     variant_changed = Signal(str)
+    #: Emitted with the series whose timeline to show.
+    series_changed = Signal(str)
     #: Emitted when the user asks for the displayed file's path, or to open its
     #: folder. The panel does not know which file it is showing -- it is handed
     #: a prepared image -- so the window answers these from the controller.
@@ -94,6 +97,28 @@ class ImagePanel(QWidget):
             controls.addWidget(button)
             self.mode_buttons[mode] = button
         self.mode_buttons["sem"].setChecked(True)
+
+        # -- series --------------------------------------------------------
+        # Beside the modality buttons because it is the same kind of choice --
+        # which images the timeline is made of -- and before the variant,
+        # because it decides which frames exist where the variant only decides
+        # which file of a frame is drawn. One at a time rather than a set: a
+        # timeline mixing alignment runs with polishing frames is not something
+        # anyone proofreads. Hidden unless the lamella holds more than one.
+        controls.addSpacing(16)
+        self.series_label = QLabel("Series")
+        self.series_combo = QComboBox()
+        self.series_combo.setMinimumWidth(140)
+        self.series_combo.setToolTip(
+            "Which images the timeline is made of. Autolamella writes "
+            "reference and alignment images as well as the Adaptive Polishing "
+            "ones; each is its own timeline, shown one at a time."
+        )
+        self.series_label.setToolTip(self.series_combo.toolTip())
+        self.series_combo.currentIndexChanged.connect(self._series_chosen)
+        controls.addWidget(self.series_label)
+        controls.addWidget(self.series_combo)
+        self._show_series_controls(False)
 
         # -- imaging condition ---------------------------------------------
         # A dropdown rather than buttons: variant names run long
@@ -218,6 +243,39 @@ class ImagePanel(QWidget):
             button.setEnabled(mode in modes)
 
     # -- imaging conditions ------------------------------------------------
+
+    def _series_chosen(self, index: int) -> None:
+        """Emit the chosen series."""
+        if index < 0:
+            return
+        self.series_changed.emit(self.series_combo.itemData(index))
+
+    def _show_series_controls(self, visible: bool) -> None:
+        self.series_label.setVisible(visible)
+        self.series_combo.setVisible(visible)
+
+    def set_series(self, series: list[str], current: str) -> None:
+        """Offer the series the current lamella holds.
+
+        Hidden unless there is a genuine choice, so a pre-Autolamella lamella
+        -- which has only Adaptive Polishing images -- shows nothing extra.
+
+        Args:
+            series: The series present, in display order.
+            current: The one on screen.
+        """
+        if len(series) < 2:
+            self._show_series_controls(False)
+            return
+
+        self.series_combo.blockSignals(True)
+        self.series_combo.clear()
+        for name in series:
+            self.series_combo.addItem(SERIES_LABELS.get(name, name), name)
+        position = series.index(current) if current in series else 0
+        self.series_combo.setCurrentIndex(position)
+        self.series_combo.blockSignals(False)
+        self._show_series_controls(True)
 
     def _variant_chosen(self, index: int) -> None:
         """Emit the chosen condition, using an empty string for the base."""

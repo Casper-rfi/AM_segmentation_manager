@@ -18,7 +18,7 @@ from typing import Literal
 
 from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import LamellaFrame, build_lamella_frames
-from ..layout import MODALITIES
+from ..layout import MODALITIES, SERIES
 from ..models import Lamella, Project
 from ..operations import label_io
 from ..operations.label_groups import expand_to_groups
@@ -54,6 +54,12 @@ EditTarget = Literal["SEM", "FIB", "both"]
 MIXED = "mixed"
 
 MODE_MODALITIES: dict[DisplayMode, str] = {"sem": "SEM", "fib": "FIB"}
+
+#: Which series the Curate tab opens on. Adaptive Polishing, so the tab shows
+#: what it always showed; the other two are one click away. Unlike the Export
+#: tab this is a single choice rather than a set, because a timeline mixing
+#: alignment runs with polishing frames is not something anyone proofreads.
+DEFAULT_SERIES: str = "adaptive"
 
 #: Scans a directory and returns the projects found in it.
 ProjectScanner = Callable[[Path], ProjectIndex]
@@ -310,6 +316,12 @@ class CurationController:
         self._frame_position = 0
 
         self.mode: DisplayMode = "sem"
+        #: Which series the timeline shows, one at a time. A 2026 lamella holds
+        #: its reference images, its alignment runs and its Adaptive Polishing
+        #: stages -- three unrelated things across up to 21 stages -- and a
+        #: timeline mixing them is not something anyone proofreads. Starts on
+        #: Adaptive Polishing, so the tab opens on what it always showed.
+        self.series: str = DEFAULT_SERIES
         self.show_overlay = True
         #: Whether the label is drawn over the acquisition or over black.
         self.show_image = True
@@ -494,14 +506,30 @@ class CurationController:
         since a frame index only means anything within one lamella.
         """
         self._lamella_position = _clamp(position, len(self._lamellae))
+        self._rebuild_frames()
+
+    def _rebuild_frames(self) -> None:
+        """Rebuild the frame stack for the current lamella and series.
+
+        Everything prepared for the previous stack is discarded: at a lamella
+        boundary none of it is worth keeping, and a change of series replaces
+        the timeline outright. The frame selection goes with it, since a frame
+        index only means anything within one stack.
+        """
         lamella = self.lamella
-        self._frames = build_lamella_frames(lamella) if lamella is not None else []
+        self._frames = (
+            build_lamella_frames(lamella, series=self.series)
+            if lamella is not None
+            else []
+        )
         self.cache.set_frames(self._frames)
         self._frame_position = 0
         self.selection.clear_frames()
         logger.debug(
-            "Selected lamella %s with %d frames",
-            lamella.name if lamella is not None else "(none)", len(self._frames),
+            "Selected lamella %s with %d %s frame(s)",
+            lamella.name if lamella is not None else "(none)",
+            len(self._frames),
+            self.series,
         )
 
     def select_frame(self, position: int) -> None:
@@ -552,6 +580,33 @@ class CurationController:
         if frame.plot_path is not None:
             modes.append("plot")
         return modes
+
+    def available_series(self) -> list[str]:
+        """Return the series the current lamella actually holds, in order.
+
+        Read off the lamella's records rather than from the vocabulary, so the
+        control offers nothing that would show an empty timeline. A
+        pre-Autolamella lamella has only Adaptive Polishing images and gets no
+        choice to make.
+        """
+        lamella = self.lamella
+        if lamella is None:
+            return []
+        present = {record.series for record in lamella.image_records}
+        return [name for name in SERIES if name in present]
+
+    def set_series(self, series: str) -> None:
+        """Show one series' timeline, rebuilding the frame stack.
+
+        Unlike the variant, this is not only a view choice: it decides which
+        frames exist, so what is ticked and where the view sits go with it.
+        """
+        if series == self.series:
+            return
+        if series not in SERIES:
+            raise ValueError(f"Unknown series: {series!r}; expected one of {list(SERIES)}")
+        self.series = series
+        self._rebuild_frames()
 
     def available_variants(self, modality: str | None = None) -> list[str | None]:
         """Return the imaging conditions the current frame has for a modality.
