@@ -7,9 +7,10 @@ one schema, and the older FEI vendor tag 34682, symmetric between beams with
 
 **A missing value is None, never a default.** Metadata is a mapping keyed by
 image path, built by the commands that need it, so a scan stays a filesystem
-walk rather than an image pass. :func:`beam_resolver` is the single exception,
-and a narrow one: an image whose *filename* states no beam has nowhere else to
-get one, so a scan opens those and only those.
+walk rather than an image pass. :func:`header_reader` is the single exception, and a
+bounded one: a *loose* image's filename states neither its beam reliably nor
+when it was taken, so a scan opens those and only those. An Adaptive Polishing
+image is never opened.
 """
 from __future__ import annotations
 
@@ -612,28 +613,45 @@ def read_image_metadata(path: Path) -> ImageMetadata | None:
     return extract_metadata(document, dialect)
 
 
-def read_beam_modality(path: Path) -> str | None:
-    """Return the modality an image's header states its beam to be."""
+#: What a scan needs from a loose image's header: which beam took it, where the
+#: filename does not say, and when -- which nothing else states reliably.
+LooseHeader = tuple[str | None, "datetime | None"]
+
+
+def read_loose_header(path: Path) -> LooseHeader:
+    """Return the beam and acquisition time an image's header states.
+
+    Both come from one read, because a scan wants both of a loose image and
+    opening the file twice for them would double the only part of a scan that
+    is not a filesystem walk.
+    """
     metadata = read_image_metadata(path)
-    return metadata.modality if metadata is not None else None
+    if metadata is None:
+        return None, None
+    return metadata.modality, metadata.acquired_at
 
 
-def beam_resolver() -> Callable[[Path], str | None] | None:
-    """Return something that can name the beam of an image, or None.
+def header_reader() -> Callable[[Path], LooseHeader] | None:
+    """Return something that can read a loose image's header, or None.
 
-    **The one thing that opens an image during a scan**, and only ever for a
-    filename that states no beam -- 668 of the 13,221 in the reference
-    collection. Reading every header would turn a scan into an image pass;
-    reading none would drop those images, since nothing else can say which beam
-    took them.
+    **The one thing that opens an image during a scan**, and only ever a *loose*
+    image -- 5,237 of the 13,221 in the reference collection, costing about a
+    second. An Adaptive Polishing image is never opened: its filename carries
+    both the beam and the acquisition number that orders it.
+
+    A loose image has neither reliably. 44% carry no timestamp in the filename
+    at all, the epochs that do appear are when the milling stage started rather
+    than when the image was taken, and the file's own mtime is worthless here
+    -- across the reference collection not one is within two minutes of the
+    header, the median being 134 days out, because the files have been copied.
 
     Returns None where the optional image stack is absent, so that scanning
     keeps working in a minimal install: :func:`read_image_metadata` raises
     there rather than returning None, and a scan is a filesystem walk that has
-    never needed the image stack. Those few images are then left out and
-    reported, instead of the whole scan failing on an import.
+    never needed the image stack. Images whose beam is then unknown are left
+    out and reported; the rest are indexed unordered.
 
-    The scanner and the survey both take their resolver from here, so the two
+    The scanner and the survey both take their reader from here, so the two
     cannot disagree about which images are indexable.
     """
     if image_stack_problems():
@@ -642,7 +660,7 @@ def beam_resolver() -> Callable[[Path], str | None] | None:
             "cannot be indexed. Install the [all] extra to include them"
         )
         return None
-    return read_beam_modality
+    return read_loose_header
 
 
 def read_records_metadata(records: Iterable) -> dict[Path, ImageMetadata]:

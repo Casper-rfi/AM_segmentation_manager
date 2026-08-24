@@ -95,14 +95,33 @@ becomes wrong, correct it in place rather than appending a correction.
   the project-root overview images visible without indexing them as lamella data. Labels,
   predictions and deliberately ignored names are excluded, or annotating a project would
   report thousands.
+- **A loose image is ordered by its header's acquisition time; an Adaptive Polishing image
+  by the number in its filename.** Nothing in a loose name orders it: 44% of them carry no
+  timestamp at all, and the epochs that do appear are when the milling *stage* started, up
+  to eleven minutes before the image. The file's own mtime is worse than useless here — not
+  one of 4,000 checked is within two minutes of the header, the median being 134 days out,
+  because the collection has been copied. The header is complete (5,237 of 5,237) and
+  authoritative, so the scanner reads one per loose image and stores it on the record.
+  Adaptive Polishing images are never opened, so ordering them cannot change.
+- **A series is ordered across its stages, not stage by stage.** A lamella directory holds
+  reference images spanning the whole session while the milling tasks below it hold theirs
+  in the middle, so the stages interleave in time and no position for that stage in a
+  stage-by-stage list is right. `_in_acquisition_order` sorts a timeline by time whenever
+  every frame has one — which is exactly a loose series — and leaves an Adaptive Polishing
+  timeline in the stage-and-number order it was built in.
+- **An alignment run's fixed filenames break a tie the clock cannot.** A header records
+  whole seconds and a run takes several images inside one, so time alone left 11 of 121
+  runs reading `final_image` before the last `new_image`. `alignment_run_order` ranks the
+  names Autolamella writes — reference, then each iteration, then final — and is used only
+  to break a tie, never to order images the clock can separate.
 - **Discovery asks filenames, never headers.** 668 of the 13,221 images in the reference
   collection state no beam in their name — the three fixed names in an alignment run, and
-  `ref_PositionReady.tif`. Establishing their beam means reading the header, which
-  `image_metadata.py` otherwise forbids during a scan. The exception is narrow and lives at
-  one seam: `build_loose_image_sets` takes a `resolve_modality` callable, the scanner
-  supplies one that reads a header **only for a name that states no beam**, and discovery
-  supplies none at all — it only needs to know whether a directory holds anything, and asks
-  `holds_loose_images`, which opens nothing. Measured: 668 reads, 0 unresolved, all ION.
+  `ref_PositionReady.tif`; all of them read as ION. Discovery still opens nothing: it only
+  needs to know whether a directory holds anything, and asks `holds_loose_images`, which
+  reads filenames. The scanner opens one header per *loose* image — for the beam where the
+  name does not say, and for the acquisition time always — memoised so each file is read
+  once, taking the collection scan from 1.30s to 2.84s. The survey opens only what it must,
+  because it reports what is on disk rather than ordering it.
 - **`predictions/clean/` is indexed but can never become a label.** Adaptive Polishing's
   post-processing rewrites the intensity values, so they no longer index the segmentation
   classes. A label converted from one looks entirely valid — right dimensions, plausible

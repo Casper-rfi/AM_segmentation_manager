@@ -13,9 +13,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
-from .layout import acquisition_stem, extract_image_number
+from .layout import (
+    UNSEQUENCED,
+    acquisition_stem,
+    alignment_run_order,
+    extract_image_number,
+)
 from .models import ImageRecord, Lamella, Stage
 
 logger = logging.getLogger(__name__)
@@ -72,8 +78,19 @@ class LamellaFrame:
     series: str = "adaptive"
 
     @property
+    def acquired_at(self) -> datetime | None:
+        """Return when this frame was taken, if its images say.
+
+        The earliest of its records', so the answer does not depend on which
+        beams happen to be present. ``None`` for an Adaptive Polishing frame,
+        whose images are ordered by the number in their filenames instead.
+        """
+        taken = [r.acquired_at for r in self.records if r.acquired_at is not None]
+        return min(taken) if taken else None
+
+    @property
     def display_name(self) -> str:
-        """Return a short user-facing label, e.g. ``'stage 02 - img 013'``."""
+        """Return a short user-facing label, e.g. 'stage 02 - img 013'."""
         stage_part = f"stage {self.stage_number}" if self.stage_number else self.stage
         if self.image_number is None:
             primary = next(iter(self.records), None)
@@ -167,8 +184,48 @@ def build_lamella_frames(
     frames: list[LamellaFrame] = []
     for stage in lamella.stages:
         frames.extend(_build_stage_frames(lamella, stage, series))
+    frames = _in_acquisition_order(frames)
     logger.debug("Built %d frames for lamella %s", len(frames), lamella.name)
     return frames
+
+
+def _in_acquisition_order(frames: list[LamellaFrame]) -> list[LamellaFrame]:
+    """Return the frames in the order they were taken.
+
+    **Where every frame knows when it was taken, that is the order** -- which
+    is every reference and alignment timeline, and the only thing that puts one
+    right. Their stages interleave in time: a lamella directory holds reference
+    images spanning the whole session while the milling tasks below it hold
+    theirs in the middle, so no position for that stage in a stage-by-stage
+    list is the correct one.
+
+    Adaptive Polishing frames carry no acquisition time, because their
+    filenames carry the number that orders them within a stage and their stage
+    folders are timestamped -- both free, where a time costs opening the image.
+    Those keep the stage-and-number order they were built in, which is already
+    the order they were taken in.
+    """
+    if not all(frame.acquired_at is not None for frame in frames):
+        return frames
+    return sorted(
+        frames,
+        key=lambda frame: (frame.acquired_at, frame.stage, _sequence(frame), frame.key),
+    )
+
+
+def _sequence(frame: LamellaFrame) -> int:
+    """Return a frame's place in its alignment run, for breaking a tie.
+
+    A header records whole seconds and an alignment run takes several images
+    within one, so acquisition time alone leaves them in filename order --
+    which reads ``final_image`` before the last ``new_image``.
+    """
+    primary = next(iter(frame.records), None)
+    return (
+        alignment_run_order(primary.image_path.name)
+        if primary is not None
+        else UNSEQUENCED
+    )
 
 
 def _build_stage_frames(
@@ -239,6 +296,17 @@ class Acquisition:
         return [*self.sem, *self.fib]
 
     @property
+    def acquired_at(self) -> datetime | None:
+        """Return when this acquisition was taken, if its images say.
+
+        The earliest of its records', because the two beams of one moment are
+        seconds apart and either would do; taking the earliest makes the answer
+        independent of which beams happen to be present.
+        """
+        taken = [r.acquired_at for r in self.records if r.acquired_at is not None]
+        return min(taken) if taken else None
+
+    @property
     def series(self) -> str:
         """Return what this acquisition's images were taken for.
 
@@ -287,18 +355,17 @@ def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
         identity = (stage, _frame_key(record.image_path))
         grouped.setdefault(identity, {}).setdefault(modality, []).append(record)
 
-    return [
+    acquisitions = [
         Acquisition(
             stage_directory=directory,
             key=key,
             sem=tuple(sorted(modalities.get("SEM", []), key=_variant_sort_key)),
             fib=tuple(sorted(modalities.get("FIB", []), key=_variant_sort_key)),
         )
-        for directory, key in sorted(
-            grouped, key=lambda entry: (str(entry[0]), _frame_sort_key(entry[1]))
-        )
-        for modalities in [grouped[(directory, key)]]
+        for (directory, key), modalities in grouped.items()
     ]
+    acquisitions.sort(key=_acquisition_sort_key)
+    return acquisitions
 
 
 def _variant_sort_key(record: ImageRecord) -> tuple[bool, str]:
@@ -332,7 +399,27 @@ def _frame_key(image_path: Path) -> FrameKey:
     return (None, acquisition_stem(image_path.name))
 
 
-def _frame_sort_key(key: FrameKey) -> tuple[bool, int, str]:
-    """Order numbered acquisitions first, then unnumbered ones by filename."""
-    number, stem = key
-    return (number is None, number if number is not None else 0, stem)
+def _acquisition_sort_key(
+    acquisition: Acquisition,
+) -> tuple[str, bool, int, datetime, str]:
+    """Order acquisitions within a stage, stages by directory.
+
+    A numbered acquisition is placed by its number: that is what an Adaptive
+    Polishing filename carries, it is already acquisition order, and it costs
+    nothing to read. An unnumbered one is placed by **when it was taken**,
+    which is the only thing that orders a reference or alignment image --
+    alphabetical order put ``Setup Lamella Position`` last of four tasks when
+    it is the first, and read an alignment run as ``final, new_00..02,
+    reference`` when it was ``reference, new_00..02, final``.
+
+    The filename is the last resort, for an acquisition whose images carry
+    neither a number nor a readable header.
+    """
+    number, stem = acquisition.key
+    return (
+        str(acquisition.stage_directory),
+        number is None,
+        number if number is not None else 0,
+        acquisition.acquired_at or datetime.max,
+        stem,
+    )

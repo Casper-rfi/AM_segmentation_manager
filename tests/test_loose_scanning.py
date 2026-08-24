@@ -188,7 +188,8 @@ def test_scanning_works_without_the_image_stack(project, monkeypatch):
 
 def test_a_beam_read_from_a_header_indexes_the_image(project, monkeypatch):
     monkeypatch.setattr(
-        "am_segmentation_manager.scanner.beam_resolver", lambda: (lambda path: "FIB")
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", None)),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 
@@ -199,15 +200,39 @@ def test_a_beam_read_from_a_header_indexes_the_image(project, monkeypatch):
     assert record.series == "reference"
 
 
-def test_only_names_stating_no_beam_are_opened(project, monkeypatch):
-    """Reading every header would turn a scan into an image pass."""
+def test_only_loose_images_are_opened(project, monkeypatch):
+    """Reading every header would turn a scan into an image pass.
+
+    A loose image is opened because nothing else states its beam reliably or
+    says when it was taken. An Adaptive Polishing image is not: its filename
+    carries both the beam and the acquisition number that orders it.
+    """
     opened: list[str] = []
     monkeypatch.setattr(
-        "am_segmentation_manager.scanner.beam_resolver",
-        lambda: (lambda path: opened.append(path.name) or "FIB"),
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: (opened.append(path.name), ("FIB", None))[1]),
+    )
+
+    Scanner(project.parent).build_index()
+
+    assert set(opened) == {
+        "ref_Polishing_start_eb.tif",
+        "ref_Polishing_start_ib.tif",
+        "ref_alignment_ib.tif",
+        "Polishing_pre-task_10-55-29_eb.tif",
+        "Polishing_pre-task_10-55-29_ib.tif",
+    }
+
+
+def test_each_image_is_opened_once(project, monkeypatch):
+    """The beam and the acquisition time come out of the same read."""
+    opened: list[str] = []
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: (opened.append(path.name), ("FIB", None))[1]),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 
     Scanner(project.parent).build_index()
 
-    assert opened == ["ref_PositionReady.tif"]
+    assert len(opened) == len(set(opened))

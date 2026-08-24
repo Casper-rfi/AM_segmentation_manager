@@ -446,6 +446,35 @@ def classify_loose_image(image_name: str, in_alignment_run: bool = False) -> Ima
     return None
 
 
+#: Where a name that is not part of a run's fixed sequence is placed: after all
+#: of them, leaving the filename to order it.
+UNSEQUENCED: Final[int] = 1 << 20
+
+
+def alignment_run_order(image_name: str) -> int:
+    """Return where a filename sits in an alignment run's fixed sequence.
+
+    A run holds the reference image it aligns against, the images taken as it
+    iterates, and the final one. A header records whole seconds, so several of
+    them land on the same second and need something to break the tie -- in the
+    reference collection 11 of 121 runs would otherwise read ``final_image``
+    before the last ``new_image``. The sequence is fixed by the names
+    Autolamella writes, which is what makes this a rule rather than a guess.
+
+    Returns:
+        A rank, or :data:`UNSEQUENCED` for a name outside the sequence.
+    """
+    stem = Path(image_name).stem.lower()
+    if stem == "reference_image":
+        return 0
+    iteration = _ALIGNMENT_RUN_PATTERN.match(stem)
+    if iteration is not None:
+        return 1 + int(stem.rsplit("_", 1)[1])
+    if stem == "final_image":
+        return UNSEQUENCED - 1
+    return UNSEQUENCED
+
+
 def loose_image_set_name(series: Series, modality: str) -> str:
     """Return the name identifying one series and modality of loose images.
 

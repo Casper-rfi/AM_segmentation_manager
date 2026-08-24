@@ -19,7 +19,7 @@ from .discovery import (
     find_project_roots,
     group_stages_by_lamella,
 )
-from .image_metadata import beam_resolver
+from .image_metadata import LooseHeader, header_reader
 from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
@@ -119,6 +119,29 @@ class Scanner:
 
     def __init__(self, start_path: Path) -> None:
         self.start_path = start_path
+        # One header read per loose image, memoised for the life of this scan.
+        # The beam and the acquisition time come out of the same read but are
+        # wanted at different moments -- the beam while image sets are built,
+        # the time while records are made -- and opening the file twice would
+        # double the only part of a scan that is not a filesystem walk.
+        self._headers: dict[Path, LooseHeader] = {}
+        self._read_header = header_reader()
+
+    def _header(self, image_path: Path) -> LooseHeader:
+        """Return a loose image's beam and acquisition time, reading once."""
+        cached = self._headers.get(image_path)
+        if cached is None:
+            cached = (
+                self._read_header(image_path)
+                if self._read_header is not None
+                else (None, None)
+            )
+            self._headers[image_path] = cached
+        return cached
+
+    def _resolve_modality(self, image_path: Path) -> str | None:
+        """Return the beam an image's header states, for a name that does not."""
+        return self._header(image_path)[0]
 
     def find_project_roots(self) -> list[Path]:
         """Return the project roots under start_path.
@@ -223,16 +246,19 @@ class Scanner:
     def _build_stages(
         self, discovered: list[DiscoveredStage], project_name: str, lamella_name: str
     ) -> list[Stage]:
-        """Build the stages of one lamella, ordered by acquisition time."""
-        ordered = sorted(discovered, key=lambda item: self._stage_sort_key(item.path))
+        """Build the stages of one lamella, ordered by acquisition time.
+
+        Built before they are ordered, because a stage whose folder name
+        carries no timestamp is placed by the images inside it, and those are
+        not known until it has been built.
+        """
         stages: list[Stage] = []
-        for index, item in enumerate(ordered, start=1):
+        for item in discovered:
             stage = Stage(
                 name=item.path.name,
                 path=item.path,
                 synthetic=item.stage_is_synthetic,
             )
-            stage.number = f"{index:02d}"
             stage.image_sets = self._stage_image_sets(item)
             stage.images = self._discover_images_in_stage(
                 item.path,
@@ -246,6 +272,10 @@ class Scanner:
                 "Discovered stage %s with %d images and %d plots",
                 item.path, len(stage.images), len(stage.plots),
             )
+
+        stages.sort(key=self._stage_sort_key)
+        for index, stage in enumerate(stages, start=1):
+            stage.number = f"{index:02d}"
         return stages
 
     def _stage_image_sets(self, discovered: DiscoveredStage) -> list[ImageSet]:
@@ -262,7 +292,7 @@ class Scanner:
         loose = build_loose_image_sets(
             discovered.path,
             in_alignment_run=discovered.in_alignment_run,
-            resolve_modality=beam_resolver(),
+            resolve_modality=self._resolve_modality,
         )
         if loose.unrecognised:
             logger.debug(
@@ -293,14 +323,26 @@ class Scanner:
         ]
 
     @classmethod
-    def _stage_sort_key(cls, stage_path: Path) -> tuple[bool, datetime, str]:
-        """Order stages by the timestamp embedded in their folder name.
+    def _stage_sort_key(cls, stage: Stage) -> tuple[bool, datetime, str]:
+        """Order stages by when their images were taken.
 
-        Undated folders are placed after dated stages, then ordered by path for
-        deterministic output.
+        The timestamp in the folder name where there is one, which every
+        Adaptive Polishing stage has and which costs nothing to read. A stage
+        found by holding loose images usually has none -- a lamella directory
+        is named for the lamella and a milling task for the task -- so those
+        are placed by their earliest image instead: the same question answered
+        from the images rather than from the name. A stage with neither is
+        placed last, then by path for deterministic output.
         """
-        timestamp = cls._timestamp_from_filename(stage_path.name)
-        return (timestamp is None, timestamp or datetime.max, str(stage_path))
+        timestamp = cls._timestamp_from_filename(stage.name)
+        if timestamp is None:
+            taken = [
+                record.acquired_at
+                for record in stage.images
+                if record.acquired_at is not None
+            ]
+            timestamp = min(taken) if taken else None
+        return (timestamp is None, timestamp or datetime.max, str(stage.path))
 
     @staticmethod
     def _timestamp_from_filename(filename: str) -> datetime | None:
@@ -417,6 +459,7 @@ class Scanner:
                     modality=image_set.modality,
                     variant=image_set.variant,
                     series=image_set.series,
+                    acquired_at=self._header(image_path)[1] if image_set.is_loose else None,
                     labels_directory=image_set.labels_directory,
                     label_shared=image_set.labels_are_shared,
                     state=declared.state_of(key),

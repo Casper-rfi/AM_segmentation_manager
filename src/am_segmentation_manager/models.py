@@ -40,6 +40,13 @@ class ImageRecord:
             the base directory. An opaque key, never parsed.
         series: what the image was taken for -- 'adaptive', 'reference' or
             'alignment'. Orthogonal to modality and variant.
+        acquired_at: when the instrument recorded taking the image, read from
+            its header. Set for a loose image, which has nothing else that
+            orders it: 44% of them carry no timestamp in the filename, and the
+            epochs that do appear are when the milling stage started, up to
+            eleven minutes before the image. ``None`` for an Adaptive
+            Polishing image, whose filename carries the acquisition number
+            that orders it, so its header is never opened.
         stage_path: the stage directory the image belongs to. Carried rather
             than derived from *image_path*, because how far the stage sits
             above an image depends on the shape of its set: an Adaptive
@@ -68,6 +75,7 @@ class ImageRecord:
     modality: str | None = None
     variant: str | None = None
     series: str = "adaptive"
+    acquired_at: datetime | None = None
     stage_path: Path | None = None
     labels_directory: Path | None = None
     label_shared: bool = False

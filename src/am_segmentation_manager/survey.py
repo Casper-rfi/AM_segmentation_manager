@@ -27,7 +27,7 @@ from .discovery import (
     group_stages_by_lamella,
     project_markers,
 )
-from .image_metadata import beam_resolver
+from .image_metadata import header_reader
 from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
@@ -530,10 +530,14 @@ def _survey_stage(
             is not reported as ignored -- it is descended into, not ignored.
     """
     directory_sets = build_image_sets(stage_path)
+    # Only the beam is wanted here. The survey reports what is on disk rather
+    # than ordering it, so it opens a header only for a name that states no
+    # beam, where the scanner opens one for every loose image.
+    reader = header_reader()
     loose = build_loose_image_sets(
         stage_path,
         in_alignment_run=in_alignment_run,
-        resolve_modality=beam_resolver(),
+        resolve_modality=(lambda path: reader(path)[0]) if reader is not None else None,
     )
 
     # The rule this checks is "a directory holding image directories is a

@@ -33,7 +33,8 @@ def resolved_beams(monkeypatch):
     overrides this.
     """
     monkeypatch.setattr(
-        "am_segmentation_manager.survey.beam_resolver", lambda: (lambda path: "FIB")
+        "am_segmentation_manager.survey.header_reader",
+        lambda: (lambda path: ("FIB", None)),
     )
 
 
@@ -157,7 +158,8 @@ def test_an_image_matching_no_rule_is_reported(project: Path):
 
 def test_an_image_whose_beam_nothing_can_state_is_reported(project: Path, monkeypatch):
     monkeypatch.setattr(
-        "am_segmentation_manager.survey.beam_resolver", lambda: (lambda path: None)
+        "am_segmentation_manager.survey.header_reader",
+        lambda: (lambda path: (None, None)),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 
