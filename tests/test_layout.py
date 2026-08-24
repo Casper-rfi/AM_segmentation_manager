@@ -13,14 +13,17 @@ import pytest
 
 from am_segmentation_manager.layout import (
     ImageDirectory,
+    LooseImageSets,
     acquisition_stem,
     beam_modality,
     build_image_sets,
+    build_loose_image_sets,
     candidate_labels_directory_names,
     classify_image_directory,
     classify_loose_image,
     directory_role,
     image_files_by_name,
+    image_files_of,
     is_alignment_directory,
     is_ignored_image_name,
     is_labels_directory,
@@ -509,3 +512,247 @@ def test_loose_image_set_name_refuses_the_adaptive_series():
     """Adaptive Polishing images fill a directory that already has a name."""
     with pytest.raises(ValueError, match="Not a loose series"):
         loose_image_set_name("adaptive", "SEM")
+
+
+# ---------------------------------------------------------------------------
+# Loose image set assembly
+# ---------------------------------------------------------------------------
+
+def make_files(directory: Path, names: list[str]) -> Path:
+    """Create *names* as empty files in *directory*, which is created too."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (directory / name).touch()
+    return directory
+
+
+#: A lamella directory as the 2026-07 layout leaves it: reference images of
+#: both beams, one alignment image, and the milling directories below.
+LAMELLA_FILES = [
+    "ref_Polishing_start_eb.tif",
+    "ref_Polishing_start_ib.tif",
+    "ref_Rough Milling_final_res_01_eb.tif",
+    "ref_Rough Milling_final_res_01_ib.tif",
+    "ref_alignment_ib.tif",
+]
+
+
+def test_a_lamella_directory_yields_one_set_per_series_and_beam(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+
+    found = build_loose_image_sets(lamella)
+
+    assert [(s.series, s.modality) for s in found.sets] == [
+        ("reference", "SEM"),
+        ("reference", "FIB"),
+        ("alignment", "FIB"),
+    ]
+    assert found.unrecognised == ()
+    assert found.unresolved == ()
+
+
+def test_each_loose_set_holds_only_its_own_files(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+
+    by_key = {(s.series, s.modality): s for s in build_loose_image_sets(lamella).sets}
+
+    assert by_key[("reference", "SEM")].image_names == (
+        "ref_Polishing_start_eb.tif",
+        "ref_Rough Milling_final_res_01_eb.tif",
+    )
+    assert by_key[("alignment", "FIB")].image_names == ("ref_alignment_ib.tif",)
+
+
+def test_a_directory_with_no_loose_images_yields_nothing(tmp_path):
+    stage = tmp_path / "adaptive_polish_2026-07-28-11-34-24AM"
+    make_files(stage / "sem", ["01-ruling-ibex_AP_img_000_SEM.tif"])
+
+    assert build_loose_image_sets(stage) == LooseImageSets()
+
+
+def test_adaptive_image_directories_are_left_to_the_other_builder(tmp_path):
+    """The two builders must not both claim the same files."""
+    stage = tmp_path / "adaptive_polish_2026-07-28-11-34-24AM"
+    make_files(stage / "sem", ["01-ruling-ibex_AP_img_000_SEM.tif"])
+    make_files(stage / "fib", ["01-ruling-ibex_AP_img_000_FIB.tif"])
+
+    assert build_loose_image_sets(stage).sets == ()
+    assert [s.modality for s in build_image_sets(stage)] == ["SEM", "FIB"]
+
+
+def test_an_adaptive_set_is_the_whole_directory_and_says_so(tmp_path):
+    stage = tmp_path / "adaptive_polish_2026-07-28-11-34-24AM"
+    make_files(stage / "sem", ["a_SEM.tif", "b_SEM.tif"])
+
+    image_set = build_image_sets(stage)[0]
+
+    assert image_set.series == "adaptive"
+    assert image_set.image_names is None
+    assert not image_set.is_loose
+    assert image_set.name == "sem"
+    assert image_set.display_name == "SEM"
+
+
+def test_a_loose_set_is_named_for_its_series_rather_than_its_directory(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+
+    image_set = build_loose_image_sets(lamella).sets[0]
+
+    assert image_set.is_loose
+    assert image_set.name == "reference_sem"
+    assert image_set.display_name == "SEM (reference)"
+    assert image_set.variant is None
+
+
+def test_centring_images_leave_no_trace(tmp_path):
+    """Deliberately omitted, so neither a set nor something to report."""
+    stage = make_files(
+        tmp_path / "adaptive_polish_2026-07-28-11-34-24AM",
+        ["01-ruling-ibex_centring_SEM.tif"],
+    )
+
+    assert build_loose_image_sets(stage) == LooseImageSets()
+
+
+def test_a_name_no_rule_recognises_is_reported(tmp_path):
+    lamella = make_files(
+        tmp_path / "01-ruling-ibex", [*LAMELLA_FILES, "something_new_eb.tif"]
+    )
+
+    found = build_loose_image_sets(lamella)
+
+    assert found.unrecognised == ("something_new_eb.tif",)
+    assert len(found.sets) == 3
+
+
+# ---------------------------------------------------------------------------
+# Resolving the beam a filename does not state
+# ---------------------------------------------------------------------------
+
+ALIGNMENT_RUN_FILES = ["reference_image.tif", "new_image_00.tif", "final_image.tif"]
+
+
+def test_an_alignment_run_needs_the_directory_to_vouch_for_its_files(tmp_path):
+    run = make_files(tmp_path / "Alignment" / "01-ruling-ibex - Polishing", ALIGNMENT_RUN_FILES)
+
+    assert build_loose_image_sets(run).unrecognised == tuple(sorted(ALIGNMENT_RUN_FILES))
+    assert build_loose_image_sets(run, in_alignment_run=True).unrecognised == ()
+
+
+def test_an_unstated_beam_is_reported_when_nothing_can_resolve_it(tmp_path):
+    run = make_files(tmp_path / "Alignment" / "01-ruling-ibex - Polishing", ALIGNMENT_RUN_FILES)
+
+    found = build_loose_image_sets(run, in_alignment_run=True)
+
+    assert found.sets == ()
+    assert found.unresolved == tuple(sorted(ALIGNMENT_RUN_FILES))
+
+
+def test_a_resolver_supplies_the_beam_the_name_does_not(tmp_path):
+    run = make_files(tmp_path / "Alignment" / "01-ruling-ibex - Polishing", ALIGNMENT_RUN_FILES)
+
+    found = build_loose_image_sets(
+        run, in_alignment_run=True, resolve_modality=lambda path: "FIB"
+    )
+
+    assert [(s.series, s.modality) for s in found.sets] == [("alignment", "FIB")]
+    assert found.sets[0].image_names == tuple(sorted(ALIGNMENT_RUN_FILES))
+    assert found.unresolved == ()
+
+
+def test_the_resolver_is_asked_only_about_names_that_do_not_state_a_beam(tmp_path):
+    """Reading a header is the exception, so it must not become the rule."""
+    lamella = make_files(tmp_path / "01-ruling-ibex", [*LAMELLA_FILES, "ref_PositionReady.tif"])
+    asked: list[str] = []
+
+    build_loose_image_sets(
+        lamella, resolve_modality=lambda path: asked.append(path.name) or "FIB"
+    )
+
+    assert asked == ["ref_PositionReady.tif"]
+
+
+def test_a_resolver_that_cannot_say_leaves_the_image_reported(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", ["ref_PositionReady.tif"])
+
+    found = build_loose_image_sets(lamella, resolve_modality=lambda path: None)
+
+    assert found.sets == ()
+    assert found.unresolved == ("ref_PositionReady.tif",)
+
+
+# ---------------------------------------------------------------------------
+# Where a loose set's labels go
+# ---------------------------------------------------------------------------
+
+def test_a_loose_label_directory_is_named_for_the_set(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+
+    by_key = {(s.series, s.modality): s for s in build_loose_image_sets(lamella).sets}
+
+    assert by_key[("reference", "SEM")].labels_directory == lamella / "reference_sem_labels"
+    assert by_key[("alignment", "FIB")].labels_directory == lamella / "alignment_fib_labels"
+    assert not by_key[("reference", "SEM")].labels_exist
+
+
+def test_an_existing_loose_label_directory_is_found(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+    (lamella / "reference_sem_labels").mkdir()
+
+    by_key = {(s.series, s.modality): s for s in build_loose_image_sets(lamella).sets}
+
+    assert by_key[("reference", "SEM")].labels_exist
+    assert not by_key[("reference", "FIB")].labels_exist
+
+
+def test_a_loose_set_never_claims_the_adaptive_labels_beside_it(tmp_path):
+    """The failure this guards against pairs images with labels of other scenes.
+
+    A dataset that collapses the stage level keeps its Adaptive Polishing
+    images and its ``labels/`` in the lamella directory. A reference set in
+    that same directory must not fall back to them.
+    """
+    lamella = make_files(tmp_path / "lam_003", LAMELLA_FILES)
+    make_files(lamella / "SEM_8", ["img_0000.tif"])
+    make_files(lamella / "labels", ["img_0000.tif"])
+    make_files(lamella / "sem_labels", ["img_0000.tif"])
+
+    by_key = {(s.series, s.modality): s for s in build_loose_image_sets(lamella).sets}
+
+    assert by_key[("reference", "SEM")].labels_directory == lamella / "reference_sem_labels"
+    assert not by_key[("reference", "SEM")].labels_exist
+
+
+def test_loose_sets_in_one_directory_never_share_a_label_directory(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+
+    sets = build_loose_image_sets(lamella).sets
+
+    assert len({s.labels_directory for s in sets}) == len(sets)
+    assert not any(s.labels_are_shared for s in sets)
+    assert not any(s.labels_are_legacy for s in sets)
+
+
+# ---------------------------------------------------------------------------
+# Reading a set's files back
+# ---------------------------------------------------------------------------
+
+def test_image_files_of_a_loose_set_returns_only_that_set(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", LAMELLA_FILES)
+
+    by_key = {(s.series, s.modality): s for s in build_loose_image_sets(lamella).sets}
+
+    assert sorted(image_files_of(by_key[("reference", "FIB")])) == [
+        "ref_Polishing_start_ib.tif",
+        "ref_Rough Milling_final_res_01_ib.tif",
+    ]
+
+
+def test_image_files_of_an_adaptive_set_returns_the_whole_directory(tmp_path):
+    stage = tmp_path / "adaptive_polish_2026-07-28-11-34-24AM"
+    make_files(stage / "sem", ["a_SEM.tif", "b_SEM.tif"])
+
+    found = image_files_of(build_image_sets(stage)[0])
+
+    assert sorted(found) == ["a_SEM.tif", "b_SEM.tif"]
+    assert found["a_SEM.tif"] == stage / "sem" / "a_SEM.tif"

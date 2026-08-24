@@ -11,14 +11,15 @@ reads. Workflow state is declared in :mod:`~am_segmentation_manager.state` and
 nothing here reads it; the ``deselected/`` and ``corrected/`` names stay
 reserved so an unmigrated dataset is never read as selected.
 
-Except for :func:`build_image_sets`, nothing here touches the filesystem.
+Except for the two image-set builders and the helpers at the end of the module,
+nothing here touches the filesystem.
 """
 from __future__ import annotations
 
 import logging
 import re
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
@@ -141,13 +142,26 @@ class ImageDirectory:
 
 @dataclass(frozen=True)
 class ImageSet:
-    """A directory of images acquired under a single imaging condition.
+    """Images of one series, modality and imaging condition, in one directory.
+
+    Usually a whole image directory: an Adaptive Polishing set fills ``sem/``
+    or ``sem_8_fi_1/`` and takes its name from it. A loose set instead holds
+    named files picked out of a directory it shares -- a lamella directory
+    holds reference and alignment images at once -- so *image_names* says which
+    of them are this set's.
 
     Attributes:
-        directory: The image directory itself.
-        modality: ``"SEM"`` or ``"FIB"``.
+        directory: The directory the images sit in.
+        modality: ``"SEM"`` or ``"FIB"``. Always known: an image whose beam
+            neither its name nor its header states is reported rather than put
+            in a set, since nothing downstream could say which beam it is.
         variant: The imaging-condition suffix, or ``None`` for the base
-            directory.
+            directory. Always ``None`` for a loose set, which has no image
+            directory to carry one.
+        series: What the images were taken for.
+        image_names: The filenames belonging to this set, or ``None`` where the
+            set is the whole directory. Read it through
+            :func:`image_files_of` rather than testing it.
         labels_directory: Where this set's labels live, whether or not that
             directory exists yet.
         labels_exist: Whether *labels_directory* is present on disk.
@@ -164,15 +178,32 @@ class ImageSet:
     labels_exist: bool
     labels_are_shared: bool
     labels_are_legacy: bool
+    series: Series = "adaptive"
+    image_names: tuple[str, ...] | None = None
+
+    @property
+    def is_loose(self) -> bool:
+        """Return whether this set is a subset of a directory it shares."""
+        return self.image_names is not None
 
     @property
     def name(self) -> str:
-        """Return the image directory's name."""
+        """Return what identifies this set within its directory.
+
+        The image directory's name, or the invented one a loose set's labels
+        are named after -- which is the same string
+        :func:`labels_directory_name` was given, either way.
+        """
+        if self.is_loose:
+            return loose_image_set_name(self.series, self.modality)
         return self.directory.name
 
     @property
     def display_name(self) -> str:
-        """Return a short label such as ``'SEM'`` or ``'SEM [8_fi_1]'``."""
+        """Return a short label such as ``'SEM'``, ``'SEM [8_fi_1]'`` or
+        ``'SEM (reference)'``."""
+        if self.is_loose:
+            return f"{self.modality} ({SERIES_LABELS[self.series]})"
         if self.variant is None:
             return self.modality
         return f"{self.modality} [{self.variant}]"
@@ -591,6 +622,38 @@ def resolve_predictions_directory(
     return image_directory.parent / private, False, False
 
 
+def resolve_loose_labels_directory(
+    directory: Path,
+    series: Series,
+    modality: str,
+    siblings: Mapping[str, Path],
+) -> tuple[Path, bool]:
+    """Return where a loose image set's labels live.
+
+    **There is no fallback chain here**, unlike :func:`resolve_labels_directory`:
+    the name is exact. Falling back to the shared ``<modality>_labels`` would
+    let a reference set in a dataset that collapses the stage level claim that
+    lamella's Adaptive Polishing labels, pairing every reference image with a
+    label of a different scene.
+
+    Args:
+        directory: The directory the loose images sit in.
+        series: Which series the set holds.
+        modality: ``"SEM"`` or ``"FIB"``.
+        siblings: Existing subdirectories of *directory*, keyed by lowercased
+            name, as :func:`subdirectories_by_name` returns them.
+
+    Returns:
+        A tuple of ``(directory, exists)``. When the directory is absent the
+        name is still returned: that is where a label would be written.
+    """
+    name = labels_directory_name(loose_image_set_name(series, modality))
+    existing = siblings.get(name.lower())
+    if existing is not None:
+        return existing, True
+    return directory / name, False
+
+
 # ---------------------------------------------------------------------------
 # Workflow state locations
 # ---------------------------------------------------------------------------
@@ -611,7 +674,12 @@ def state_directories(directory: Path) -> list[Path]:
 def build_image_sets(stage_directory: Path) -> list[ImageSet]:
     """Return the image sets in a stage directory, ordered for display.
 
-    This is the only function in this module that lists a directory. Assembling
+    Adaptive Polishing sets only -- the images loose in the same directory are
+    :func:`build_loose_image_sets`'s. Keeping them apart is what stops
+    discovery mistaking a lamella full of reference images for a stage; see
+    :func:`~am_segmentation_manager.discovery.find_stage_directories`.
+
+    One of the few functions in this module that lists a directory. Assembling
     an image set requires knowing which sibling directories exist, and doing it
     here keeps the convention in one place rather than duplicating it in the
     scanner and the survey.
@@ -656,6 +724,127 @@ def _image_set_sort_key(image_set: ImageSet) -> tuple[int, int, str]:
     """Order image sets by modality, then base variant, then variant name."""
     modality_order = MODALITIES.index(image_set.modality) if image_set.modality in MODALITIES else len(MODALITIES)
     return (modality_order, image_set.variant is not None, (image_set.variant or "").lower())
+
+
+@dataclass(frozen=True)
+class LooseImageSets:
+    """The loose image sets in one directory, and the files that did not fit.
+
+    The leftovers are returned rather than logged, because each needs a
+    different answer and only the survey can give one: an unrecognised name may
+    be an Autolamella version naming something new, while an unresolved beam is
+    an image whose header would not read.
+
+    Attributes:
+        sets: The sets found, ordered by series then modality.
+        unrecognised: Filenames no classification rule matched. Deliberate
+            omissions are not among them -- see :func:`is_ignored_image_name`.
+        unresolved: Filenames classified into a series, but whose beam neither
+            the name nor *resolve_modality* could establish.
+    """
+
+    sets: tuple[ImageSet, ...] = ()
+    unrecognised: tuple[str, ...] = ()
+    unresolved: tuple[str, ...] = ()
+
+
+def build_loose_image_sets(
+    directory: Path,
+    in_alignment_run: bool = False,
+    resolve_modality: Callable[[Path], str | None] | None = None,
+) -> LooseImageSets:
+    """Return the reference and alignment sets among a directory's loose files.
+
+    Loose images share their directory with whatever else Autolamella wrote
+    there, so a set is a group of filenames rather than a directory: the files
+    are classified with :func:`classify_loose_image` and grouped by series and
+    modality. A directory holding no loose images yields nothing, which is the
+    usual answer.
+
+    Args:
+        directory: The directory to look in. Not descended into.
+        in_alignment_run: Whether *directory* is one alignment run, so the
+            generic names a run holds can be read as alignment images.
+        resolve_modality: Called for an image whose *name* does not state its
+            beam, to get it from somewhere that can -- the image header. Left
+            unset, such an image is reported as unresolved instead. The seam is
+            here so that reading a header stays the caller's decision: scanning
+            is a filesystem walk, and this is the one narrow exception to it.
+
+    Returns:
+        A :class:`LooseImageSets` holding the sets and everything that did not
+        fit into one.
+    """
+    siblings = subdirectories_by_name(directory)
+    grouped: dict[tuple[Series, str], list[str]] = {}
+    unrecognised: list[str] = []
+    unresolved: list[str] = []
+
+    for path in image_files(directory):
+        if is_ignored_image_name(path.name):
+            continue
+        classified = classify_loose_image(path.name, in_alignment_run=in_alignment_run)
+        if classified is None:
+            unrecognised.append(path.name)
+            continue
+        modality = classified.modality
+        if modality is None and resolve_modality is not None:
+            modality = resolve_modality(path)
+        if modality is None:
+            unresolved.append(path.name)
+            continue
+        grouped.setdefault((classified.series, modality), []).append(path.name)
+
+    sets: list[ImageSet] = []
+    for series, modality in sorted(grouped, key=_loose_group_sort_key):
+        labels_directory, labels_exist = resolve_loose_labels_directory(
+            directory, series, modality, siblings
+        )
+        sets.append(
+            ImageSet(
+                directory=directory,
+                modality=modality,
+                variant=None,
+                labels_directory=labels_directory,
+                labels_exist=labels_exist,
+                # A loose label directory is named for its series and beam, so
+                # no two sets in one directory can resolve to the same one.
+                labels_are_shared=False,
+                labels_are_legacy=False,
+                series=series,
+                image_names=tuple(sorted(grouped[(series, modality)])),
+            )
+        )
+
+    if unrecognised:
+        logger.debug("%d unrecognised image name(s) in %s", len(unrecognised), directory)
+    return LooseImageSets(
+        sets=tuple(sets),
+        unrecognised=tuple(sorted(unrecognised)),
+        unresolved=tuple(sorted(unresolved)),
+    )
+
+
+def _loose_group_sort_key(group: tuple[Series, str]) -> tuple[int, int]:
+    """Order loose sets by series, then by modality, both in declared order."""
+    series, modality = group
+    return (
+        SERIES.index(series),
+        MODALITIES.index(modality) if modality in MODALITIES else len(MODALITIES),
+    )
+
+
+def image_files_of(image_set: ImageSet) -> dict[str, Path]:
+    """Return the image files belonging to *image_set*, keyed by filename.
+
+    **The one statement of which files are a set's**, so that a caller never
+    has to know whether a set is a whole directory or a group of names picked
+    out of one. A loose set's files are not re-listed or re-classified: they
+    were named when the set was built.
+    """
+    if image_set.image_names is None:
+        return image_files_by_name(image_set.directory)
+    return {name: image_set.directory / name for name in image_set.image_names}
 
 
 # ---------------------------------------------------------------------------
