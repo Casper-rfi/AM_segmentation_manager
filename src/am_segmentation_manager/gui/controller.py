@@ -17,7 +17,12 @@ from pathlib import Path
 from typing import Literal
 
 from ..config import SegmentationConfig, load_segmentation_config
-from ..frames import LamellaFrame, build_lamella_frames
+from ..frames import (
+    LamellaFrame,
+    build_lamella_frames,
+    resolve_series,
+    series_present,
+)
 from ..layout import MODALITIES, SERIES
 from ..models import Lamella, Project
 from ..operations import label_io
@@ -321,7 +326,14 @@ class CurationController:
         #: stages -- three unrelated things across up to 21 stages -- and a
         #: timeline mixing them is not something anyone proofreads. Starts on
         #: Adaptive Polishing, so the tab opens on what it always showed.
+        #:
+        #: Read it, never assign it: it is what the current lamella can
+        #: actually show of :attr:`wanted_series`, and :meth:`_rebuild_frames`
+        #: settles the two.
         self.series: str = DEFAULT_SERIES
+        #: The series the user asked for, which a lamella holding none of it
+        #: does not overwrite. See :func:`~..frames.resolve_series`.
+        self.wanted_series: str = DEFAULT_SERIES
         self.show_overlay = True
         #: Whether the label is drawn over the acquisition or over black.
         self.show_image = True
@@ -515,8 +527,14 @@ class CurationController:
         boundary none of it is worth keeping, and a change of series replaces
         the timeline outright. The frame selection goes with it, since a frame
         index only means anything within one stack.
+
+        **The series shown is settled here**, and nowhere else: this is the one
+        path both a change of lamella and a change of series pass through, so
+        a lamella holding nothing of the series being shown cannot leave the
+        window on an empty timeline.
         """
         lamella = self.lamella
+        self.series = resolve_series(self.wanted_series, self.available_series())
         self._frames = (
             build_lamella_frames(lamella, series=self.series)
             if lamella is not None
@@ -584,28 +602,27 @@ class CurationController:
     def available_series(self) -> list[str]:
         """Return the series the current lamella actually holds, in order.
 
-        Read off the lamella's records rather than from the vocabulary, so the
-        control offers nothing that would show an empty timeline. A
-        pre-Autolamella lamella has only Adaptive Polishing images and gets no
-        choice to make.
+        A pre-Autolamella lamella has only Adaptive Polishing images and gets
+        no choice to make -- but the control still shows what it is on, rather
+        than disappearing.
         """
-        lamella = self.lamella
-        if lamella is None:
-            return []
-        present = {record.series for record in lamella.image_records}
-        return [name for name in SERIES if name in present]
+        return series_present(self.lamella)
 
     def set_series(self, series: str) -> None:
         """Show one series' timeline, rebuilding the frame stack.
 
         Unlike the variant, this is not only a view choice: it decides which
         frames exist, so what is ticked and where the view sits go with it.
+
+        Remembered whether or not this lamella can show it, so that moving
+        through lamellae that hold different series does not quietly change
+        what the reviewer asked to look at.
         """
-        if series == self.series:
-            return
         if series not in SERIES:
             raise ValueError(f"Unknown series: {series!r}; expected one of {list(SERIES)}")
-        self.series = series
+        self.wanted_series = series
+        if series == self.series:
+            return
         self._rebuild_frames()
 
     def available_variants(self, modality: str | None = None) -> list[str | None]:

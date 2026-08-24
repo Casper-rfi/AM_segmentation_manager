@@ -116,27 +116,29 @@ def _settle(app, timeout: float = 2.0) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The variant control appears only when there is a choice
+# The variant control stays put, and is greyed out without a choice
 # ---------------------------------------------------------------------------
 
-def test_the_variant_control_is_hidden_without_a_choice(qt_app, plain_project: Path):
-    """Every Autolamella project so far is in this case."""
+def test_the_variant_control_is_greyed_without_a_choice(qt_app, plain_project: Path):
+    """Every Autolamella project so far is in this case, so hiding it moved
+    the whole row on nearly every step between projects."""
     window = _window(qt_app, plain_project)
     try:
         # isHidden() rather than isVisible(): a child of a window that was
         # never shown is never "visible", so isVisible() would pass here
         # whether or not the control was actually hidden.
-        assert window.image_panel.variant_combo.isHidden() is True
-        assert window.image_panel.variant_label.isHidden() is True
+        assert window.image_panel.variant_combo.isHidden() is False
+        assert window.image_panel.variant_label.isHidden() is False
+        assert window.image_panel.variant_combo.isEnabled() is False
     finally:
         window.close()
 
 
-def test_the_variant_control_appears_when_conditions_exist(qt_app, variant_project: Path):
+def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
         combo = window.image_panel.variant_combo
-        assert combo.isHidden() is False
+        assert combo.isEnabled() is True
         assert combo.count() == len(SEM_VARIANTS)
         assert [combo.itemData(i) for i in range(combo.count())] == ["8", "8_fi_1", "8_fi_4"]
     finally:
@@ -168,14 +170,15 @@ def test_choosing_a_condition_changes_only_the_view(qt_app, variant_project: Pat
         window.close()
 
 
-def test_the_control_disappears_when_switching_to_a_single_condition_modality(
+def test_the_control_greys_out_when_switching_to_a_single_condition_modality(
     qt_app, variant_project: Path
 ):
     window = _window(qt_app, variant_project)
     try:
         window._set_mode("fib", from_user=True)
         _settle(qt_app)
-        assert window.image_panel.variant_combo.isHidden() is True
+        assert window.image_panel.variant_combo.isHidden() is False
+        assert window.image_panel.variant_combo.isEnabled() is False
     finally:
         window.close()
 

@@ -224,6 +224,28 @@ def test_the_overlay_pane_can_drop_the_image_under_the_label(window):
 
 
 # ---------------------------------------------------------------------------
+# Resizable divisions
+# ---------------------------------------------------------------------------
+
+def test_every_division_that_moves_is_marked_as_one(window):
+    """Which divisions can be dragged is found by eye, so one that looks like
+    an ordinary line is one nobody discovers. Asserted over the same mapping
+    the window saves its layout through, so a division added without a grip is
+    a division added without a saved size as well."""
+    from am_segmentation_manager.gui.widgets.common import GripSplitter
+
+    divisions = window._splitters()
+
+    assert divisions, "the window has resizable divisions"
+    assert all(
+        isinstance(splitter, GripSplitter) for splitter in divisions.values()
+    ), sorted(
+        name for name, splitter in divisions.items()
+        if not isinstance(splitter, GripSplitter)
+    )
+
+
+# ---------------------------------------------------------------------------
 # The editing guard
 # ---------------------------------------------------------------------------
 

@@ -12,7 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.frames import build_lamella_frames, group_by_acquisition
+from am_segmentation_manager.frames import (
+    build_lamella_frames,
+    group_by_acquisition,
+    resolve_series,
+    series_present,
+)
 from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 
 STAGE = Path("/p/01-ruling-ibex")
@@ -154,3 +159,41 @@ def test_asking_for_a_series_a_lamella_lacks_gives_no_frames(lamella: Lamella):
     lamella.stages = lamella.stages[1:]
 
     assert build_lamella_frames(lamella, series="reference") == []
+
+
+# ---------------------------------------------------------------------------
+# Which series a view can show, and which it settles on
+# ---------------------------------------------------------------------------
+
+def test_a_lamella_reports_the_series_it_holds_in_display_order(lamella: Lamella):
+    assert series_present(lamella) == ["adaptive", "reference", "alignment"]
+
+
+def test_nothing_scanned_holds_no_series():
+    assert series_present(None) == []
+
+
+def test_a_lamella_holding_the_chosen_series_shows_it(lamella: Lamella):
+    assert resolve_series("reference", series_present(lamella)) == "reference"
+
+
+def test_a_lamella_holding_none_of_it_shows_what_it_has(lamella: Lamella):
+    """The case that stranded the reviewer: the timeline was empty, and with
+    the control hidden there was no way back to the series the lamella does
+    hold."""
+    lamella.stages = lamella.stages[:1]
+
+    assert resolve_series("adaptive", series_present(lamella)) == "reference"
+
+
+def test_the_choice_itself_is_not_changed_by_falling_back(lamella: Lamella):
+    """resolve_series answers about one lamella and remembers nothing, which is
+    what lets the next lamella that holds the chosen series open on it."""
+    lamella.stages = lamella.stages[:1]
+    assert resolve_series("adaptive", series_present(lamella)) == "reference"
+
+    assert resolve_series("adaptive", ["adaptive", "reference"]) == "adaptive"
+
+
+def test_a_lamella_with_no_images_settles_nothing():
+    assert resolve_series("alignment", []) == "alignment"

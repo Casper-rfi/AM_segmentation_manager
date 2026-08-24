@@ -46,6 +46,7 @@ from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
 from .busy_dialog import BusyDialog
+from .common import GripSplitter
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
@@ -398,8 +399,7 @@ class CurationWindow(QMainWindow):
         right_column.addWidget(self.state_panel, stretch=1)
         right_column.addWidget(self.operations_panel)
 
-        self.curate = QSplitter(Qt.Horizontal)
-        self.curate.setHandleWidth(3)
+        self.curate = GripSplitter(Qt.Horizontal)
         self.curate.addWidget(self.project_panel)
         self.curate.addWidget(centre)
         self.curate.addWidget(right)
@@ -1726,6 +1726,9 @@ class CurationWindow(QMainWindow):
 
         frame = self.controller.frame
         if frame is None:
+            # Emptied rather than left as it was: the conditions on offer
+            # belonged to a frame that is no longer on screen.
+            self.image_panel.set_variants([])
             self.image_panel.show_empty()
             return
 

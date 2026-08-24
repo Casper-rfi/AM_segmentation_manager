@@ -2,8 +2,8 @@
 
 Drives the real widgets offscreen against a 2026 project, whose lamella holds
 reference and alignment images around its Adaptive Polishing stage. What the
-design turns on is pinned here: the control is absent unless the lamella holds
-more than one series, and choosing one replaces the timeline.
+design turns on is pinned here: the control is always on screen, greyed where
+the lamella holds one series, and choosing one replaces the timeline.
 """
 from __future__ import annotations
 
@@ -75,6 +75,26 @@ def modern_project(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def mixed_project(tmp_path: Path) -> Path:
+    """Two lamellae: one with an Adaptive Polishing stage, one without."""
+    root = tmp_path / "scan"
+    project = root / "AutoLamella-2026-07-28-10-31"
+    image = np.full((64, 96), 100, dtype=np.uint8)
+
+    polished = project / "01-ruling-ibex"
+    _write(polished / "ref_Polishing_start_eb.tif", image)
+    stage = polished / "Milling" / "Polishing" / "adaptive_polish_2026-07-28-11-34-24AM"
+    _write(stage / "sem" / "img_000_SEM.tif", image)
+
+    unpolished = project / "02-ruling-oryx"
+    _write(unpolished / "ref_Polishing_start_eb.tif", image)
+    _write(unpolished / "ref_alignment_ib.tif", image)
+
+    (project / "experiment.yaml").write_text("name: mixed\n", encoding="utf-8")
+    return root
+
+
+@pytest.fixture
 def plain_project(tmp_path: Path) -> Path:
     """An ordinary Autolamella project: Adaptive Polishing images only."""
     root = tmp_path / "scan"
@@ -118,27 +138,32 @@ def _settle(app, timeout: float = 2.0) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The control appears only when there is a choice
+# The control stays put, and is greyed out without a choice
 # ---------------------------------------------------------------------------
 
-def test_the_series_control_is_hidden_without_a_choice(qt_app, plain_project: Path):
-    """A project of Adaptive Polishing images alone shows nothing extra."""
+def test_the_series_control_is_greyed_without_a_choice(qt_app, plain_project: Path):
+    """A project of Adaptive Polishing images alone has nothing to choose --
+    but the control still says what is being shown, and the row beside it does
+    not move as the reviewer steps onto such a lamella."""
     window = _window(qt_app, plain_project)
     try:
         # isHidden() rather than isVisible(): a child of a window that was
         # never shown is never "visible", so isVisible() would pass here
         # whether or not the control was actually hidden.
-        assert window.image_panel.series_combo.isHidden() is True
-        assert window.image_panel.series_label.isHidden() is True
+        combo = window.image_panel.series_combo
+        assert combo.isHidden() is False
+        assert window.image_panel.series_label.isHidden() is False
+        assert combo.isEnabled() is False
+        assert combo.currentText() == "Adaptive Polishing"
     finally:
         window.close()
 
 
-def test_the_series_control_appears_when_a_lamella_holds_more(qt_app, modern_project):
+def test_the_series_control_opens_when_a_lamella_holds_more(qt_app, modern_project):
     window = _window(qt_app, modern_project)
     try:
         combo = window.image_panel.series_combo
-        assert combo.isHidden() is False
+        assert combo.isEnabled() is True
         offered = [combo.itemData(i) for i in range(combo.count())]
         assert offered == ["adaptive", "reference", "alignment"]
     finally:
@@ -151,6 +176,45 @@ def test_the_control_shows_the_series_by_name(qt_app, modern_project: Path):
         combo = window.image_panel.series_combo
         captions = [combo.itemText(i) for i in range(combo.count())]
         assert captions == ["Adaptive Polishing", "reference", "alignment"]
+    finally:
+        window.close()
+
+
+# ---------------------------------------------------------------------------
+# A lamella holding none of the chosen series
+# ---------------------------------------------------------------------------
+
+def test_a_lamella_without_the_chosen_series_shows_one_it_holds(
+    qt_app, mixed_project: Path
+):
+    """The report this came from: with Adaptive Polishing chosen, a lamella
+    that has none showed an empty timeline and -- the control being hidden --
+    offered no way back to the series it does hold."""
+    window = _window(qt_app, mixed_project)
+    try:
+        window._step_lamella(1)
+        _settle(qt_app)
+
+        combo = window.image_panel.series_combo
+        assert window.controller.series == "reference"
+        assert len(window.controller.frames) == 1
+        assert combo.currentText() == "reference"
+        assert combo.isEnabled() is True, "alignment is still one click away"
+    finally:
+        window.close()
+
+
+def test_stepping_back_returns_to_the_chosen_series(qt_app, mixed_project: Path):
+    """The fallback answers about one lamella rather than changing the choice."""
+    window = _window(qt_app, mixed_project)
+    try:
+        window._step_lamella(1)
+        _settle(qt_app)
+        window._step_lamella(-1)
+        _settle(qt_app)
+
+        assert window.controller.series == "adaptive"
+        assert window.image_panel.series_combo.currentText() == "Adaptive Polishing"
     finally:
         window.close()
 

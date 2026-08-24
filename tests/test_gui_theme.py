@@ -21,8 +21,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 if importlib.util.find_spec("qtpy") is not None:
-    from qtpy.QtCore import QSettings, Qt
-    from qtpy.QtGui import QColor, QPalette
+    from qtpy.QtCore import QEvent, QPointF, QSettings, Qt
+    from qtpy.QtGui import QColor, QEnterEvent, QPalette
     from qtpy.QtWidgets import (
         QApplication,
         QLineEdit,
@@ -33,6 +33,7 @@ if importlib.util.find_spec("qtpy") is not None:
     )
 
     from am_segmentation_manager.gui.widgets import theme
+    from am_segmentation_manager.gui.widgets.common import GripSplitter
 
 
 @pytest.fixture(scope="session")
@@ -183,6 +184,63 @@ def test_the_row_being_looked_at_is_still_obvious(themed):
 def test_a_badge_says_what_it_means_rather_than_naming_a_colour(themed):
     assert set(theme.BADGE_STYLES) == {"warning", "error", "info"}
     assert all(style.startswith("color:") for style in theme.BADGE_STYLES.values())
+
+
+# ---------------------------------------------------------------------------
+# Resizable divisions
+# ---------------------------------------------------------------------------
+
+def _handle(app, orientation):
+    """Return the handle of a two-pane splitter, laid out and ready to draw.
+
+    Shown, because a splitter gives its handle a size when it lays itself out
+    and not before -- an unshown one reports a 6x6 handle wherever it is asked.
+    """
+    splitter = GripSplitter(orientation)
+    splitter.addWidget(QWidget())
+    splitter.addWidget(QWidget())
+    splitter.resize(200, 200)
+    splitter.show()
+    app.processEvents()
+    return splitter, splitter.handle(1)
+
+
+def _colour_at(widget, x: int, y: int) -> str:
+    return QColor(widget.grab().toImage().pixel(x, y)).name()
+
+
+@pytest.mark.parametrize("orientation", [Qt.Horizontal, Qt.Vertical])
+def test_a_division_that_moves_says_so(themed, orientation):
+    """A splitter handle was a hairline like every other rule in the window, so
+    the only way to find one was to sweep the pointer along it until the cursor
+    changed. Asserted on the pixels, the grip being painted rather than styled.
+
+    Both orientations, because the grip runs along the handle: one turned the
+    wrong way is a bar across the division rather than a grip on it, and it
+    would still be a coloured mark in the middle of the handle.
+    """
+    splitter, handle = _handle(themed, orientation)
+    middle = (handle.width() // 2, handle.height() // 2)
+    along = (
+        (handle.width() // 2, 2) if orientation == Qt.Horizontal
+        else (2, handle.height() // 2)
+    )
+
+    assert _colour_at(handle, *middle) == theme.GRIP
+    assert _colour_at(handle, *along) == theme.WINDOW, "the grip runs the whole way"
+
+
+def test_the_grip_reacts_to_the_pointer(themed):
+    """The same accent every other control takes when it is pointed at."""
+    splitter, handle = _handle(themed, Qt.Horizontal)
+    middle = (handle.width() // 2, handle.height() // 2)
+    point = QPointF(handle.rect().center())
+
+    QApplication.sendEvent(handle, QEnterEvent(point, point, point))
+    assert _colour_at(handle, *middle) == theme.ACCENT
+
+    QApplication.sendEvent(handle, QEvent(QEvent.Leave))
+    assert _colour_at(handle, *middle) == theme.GRIP
 
 
 # ---------------------------------------------------------------------------

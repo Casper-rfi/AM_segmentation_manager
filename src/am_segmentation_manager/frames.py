@@ -11,12 +11,13 @@ access -- it is a pure transformation of the scanned model.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from .layout import (
+    SERIES,
     UNSEQUENCED,
     acquisition_stem,
     alignment_run_order,
@@ -179,6 +180,38 @@ class LamellaFrame:
     def variants(self, modality: str) -> list[str | None]:
         """Return the variants present for *modality*, base first."""
         return [record.variant for record in self.modality_records(modality)]
+
+
+def series_present(lamella: Lamella | None) -> list[str]:
+    """Return the series *lamella* holds images of, in display order.
+
+    Read off the records rather than from the vocabulary, so a view offering
+    these never offers one that would show an empty timeline.
+    """
+    if lamella is None:
+        return []
+    present = {record.series for record in lamella.image_records}
+    return [name for name in SERIES if name in present]
+
+
+def resolve_series(wanted: str, present: Sequence[str]) -> str:
+    """Return the series to show: *wanted* where the lamella holds it.
+
+    **What was chosen and what a lamella can show are two things**, and this
+    answers only the second. A lamella holding no Adaptive Polishing images
+    falls back to one it does hold; *wanted* is untouched, which is what lets
+    the next lamella that has the chosen series open on it. A caller that
+    stored the answer back would leave the reviewer on whatever the emptiest
+    lamella in the collection happened to hold.
+
+    Args:
+        wanted: The series chosen, returned unchanged when *present* is empty:
+            a lamella with no images at all settles nothing.
+        present: What the lamella holds, in display order.
+    """
+    if not present or wanted in present:
+        return wanted
+    return present[0]
 
 
 def build_lamella_frames(

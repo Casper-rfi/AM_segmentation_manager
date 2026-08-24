@@ -31,7 +31,7 @@ from ...display import DEFAULT_ALPHA, compose_overlay
 from ...layout import SERIES_LABELS
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
-from .common import LABEL_BADGES, class_legend_html
+from .common import LABEL_BADGES, class_legend_html, fill_choice_combo
 from .image_view import ImageView, LinkedImageViews
 from .theme import BADGE_STYLES
 
@@ -107,7 +107,7 @@ class ImagePanel(QWidget):
         # because it decides which frames exist where the variant only decides
         # which file of a frame is drawn. One at a time rather than a set: a
         # timeline mixing alignment runs with polishing frames is not something
-        # anyone proofreads. Hidden unless the lamella holds more than one.
+        # anyone proofreads.
         controls.addSpacing(16)
         self.series_label = QLabel("Series")
         self.series_combo = QComboBox()
@@ -121,12 +121,10 @@ class ImagePanel(QWidget):
         self.series_combo.currentIndexChanged.connect(self._series_chosen)
         controls.addWidget(self.series_label)
         controls.addWidget(self.series_combo)
-        self._show_series_controls(False)
 
         # -- imaging condition ---------------------------------------------
         # A dropdown rather than buttons: variant names run long
-        # (``8_fi_16``) and a stage can hold five of them. Hidden entirely
-        # unless the current modality has a choice, which is the usual case.
+        # (``8_fi_16``) and a stage can hold five of them.
         controls.addSpacing(16)
         self.variant_label = QLabel("Variant")
         self.variant_combo = QComboBox()
@@ -140,7 +138,6 @@ class ImagePanel(QWidget):
         self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
         controls.addWidget(self.variant_label)
         controls.addWidget(self.variant_combo)
-        self._show_variant_controls(False)
 
         controls.addSpacing(20)
         self.overlay_check = QCheckBox("Show label")
@@ -253,32 +250,23 @@ class ImagePanel(QWidget):
             return
         self.series_changed.emit(self.series_combo.itemData(index))
 
-    def _show_series_controls(self, visible: bool) -> None:
-        self.series_label.setVisible(visible)
-        self.series_combo.setVisible(visible)
-
     def set_series(self, series: list[str], current: str) -> None:
         """Offer the series the current lamella holds.
 
-        Hidden unless there is a genuine choice, so a pre-Autolamella lamella
-        -- which has only Adaptive Polishing images -- shows nothing extra.
+        **Always on screen, greyed where there is nothing to choose.** Hiding
+        it moved every control beside it each time the reviewer stepped onto a
+        lamella of one series, and a lamella holding none of the series being
+        shown left no way back to the one it does hold.
 
         Args:
             series: The series present, in display order.
             current: The one on screen.
         """
-        if len(series) < 2:
-            self._show_series_controls(False)
-            return
-
-        self.series_combo.blockSignals(True)
-        self.series_combo.clear()
-        for name in series:
-            self.series_combo.addItem(SERIES_LABELS.get(name, name), name)
-        position = series.index(current) if current in series else 0
-        self.series_combo.setCurrentIndex(position)
-        self.series_combo.blockSignals(False)
-        self._show_series_controls(True)
+        fill_choice_combo(
+            self.series_combo,
+            [(SERIES_LABELS.get(name, name), name) for name in series],
+            current,
+        )
 
     def _variant_chosen(self, index: int) -> None:
         """Emit the chosen condition, using an empty string for the base."""
@@ -286,10 +274,6 @@ class ImagePanel(QWidget):
             return
         value = self.variant_combo.itemData(index)
         self.variant_changed.emit(value or "")
-
-    def _show_variant_controls(self, visible: bool) -> None:
-        self.variant_label.setVisible(visible)
-        self.variant_combo.setVisible(visible)
 
     def set_variants(
         self,
@@ -299,9 +283,10 @@ class ImagePanel(QWidget):
     ) -> None:
         """Offer the imaging conditions available for the current view.
 
-        The control is hidden unless there is a genuine choice, so a project
-        with one condition per modality -- every Autolamella project so far --
-        shows nothing extra.
+        Greyed rather than hidden where there is nothing to choose, for the
+        reason :meth:`set_series` gives: every Autolamella project so far has
+        one condition per modality, so hiding it moved this row on nearly every
+        step between projects.
 
         Args:
             variants: Conditions present, base first. ``None`` is the base.
@@ -309,23 +294,15 @@ class ImagePanel(QWidget):
             descriptions: Human-readable names from the project metadata, keyed
                 by variant. A variant with no description shows its raw name.
         """
-        if len(variants) < 2:
-            self._show_variant_controls(False)
-            return
-
         described = descriptions or {}
-        self.variant_combo.blockSignals(True)
-        self.variant_combo.clear()
-        for variant in variants:
-            if variant is None:
-                caption = "base"
-            else:
-                caption = described.get(variant, variant)
-            self.variant_combo.addItem(caption, variant)
-        position = variants.index(current) if current in variants else 0
-        self.variant_combo.setCurrentIndex(position)
-        self.variant_combo.blockSignals(False)
-        self._show_variant_controls(True)
+        fill_choice_combo(
+            self.variant_combo,
+            [
+                ("base" if variant is None else described.get(variant, variant), variant)
+                for variant in variants
+            ],
+            current,
+        )
 
     def _build_legend(self) -> None:
         """Render a colour swatch and name for each foreground class."""

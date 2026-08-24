@@ -11,8 +11,16 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QFont, QIcon, QPixmap, QStandardItem, QStandardItemModel
+from qtpy.QtCore import QPointF, QRectF, Qt, Signal
+from qtpy.QtGui import (
+    QColor,
+    QFont,
+    QIcon,
+    QPainter,
+    QPixmap,
+    QStandardItem,
+    QStandardItemModel,
+)
 from qtpy.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -21,10 +29,13 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QSizePolicy,
+    QSplitter,
+    QSplitterHandle,
     QWidget,
 )
 
 from ...config import SegmentationConfig
+from . import theme
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +265,80 @@ class CheckList(QListWidget):
         self.row_ticked.emit(self.row(item), item.checkState() == Qt.Checked)
 
 
+class GripSplitter(QSplitter):
+    """A splitter whose handles show that they can be dragged.
+
+    Qt draws a divider that looks the same whether or not it moves, so the only
+    way to find out was to sweep the pointer along it until the cursor changed.
+    The handle carries a grip instead, and takes the accent under the pointer
+    like every other control that reacts to being pointed at.
+    """
+
+    def __init__(self, orientation, parent: QWidget | None = None) -> None:
+        super().__init__(orientation, parent)
+        self.setHandleWidth(theme.HANDLE_WIDTH)
+
+    def createHandle(self) -> QSplitterHandle:  # noqa: N802 - Qt naming
+        """Return a handle that paints a grip."""
+        return _GripHandle(self.orientation(), self)
+
+
+class _GripHandle(QSplitterHandle):
+    """One divider of a :class:`GripSplitter`, drawn as a grip.
+
+    Painted rather than styled: a stylesheet can put a flat colour or an image
+    file on a handle and nothing else, and this package ships no images.
+    """
+
+    def __init__(self, orientation, parent: QSplitter) -> None:
+        super().__init__(orientation, parent)
+        self._pointed_at = False
+
+    def enterEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._pointed_at = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._pointed_at = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Draw the handle as the window's surface with a grip on it.
+
+        The grip takes the accent while the handle is pointed at; the surface
+        under it is left alone. Filling the whole band instead draws a coloured
+        column the height of the window to answer "this line moves", which the
+        cursor has said already by the time anyone is close enough to see it.
+        """
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor(theme.WINDOW))
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(theme.ACCENT if self._pointed_at else theme.GRIP))
+        painter.drawRoundedRect(
+            self._grip(), theme.GRIP_THICKNESS / 2, theme.GRIP_THICKNESS / 2
+        )
+
+    def _grip(self) -> QRectF:
+        """Return the bar to draw, centred in the handle and along it.
+
+        A horizontal splitter divides its children left from right, so its
+        handle is the upright bar and the grip runs down it.
+        """
+        thickness, length = theme.GRIP_THICKNESS, theme.GRIP_LENGTH
+        if self.orientation() == Qt.Horizontal:
+            width, height = thickness, length
+        else:
+            width, height = length, thickness
+        centre = QPointF(self.rect().center()) + QPointF(0.5, 0.5)
+        return QRectF(
+            centre.x() - width / 2, centre.y() - height / 2, width, height
+        )
+
+
 class ElidingLabel(QLabel):
     """A label that shortens its text to fit rather than being cut off by it.
 
@@ -329,6 +414,39 @@ class StepCombo(QComboBox):
                 self.setCurrentIndex(index)
                 return
             index += delta
+
+
+def fill_choice_combo(
+    combo: QComboBox,
+    entries: Sequence[tuple[str, object]],
+    current: object,
+) -> None:
+    """Offer *entries* in *combo*, select *current*, and grey it if there is one.
+
+    Rebuilt only when the entries have actually changed. The view controls are
+    refilled on every step through a lamella, and a combo cleared that often
+    closes its own popup under the pointer.
+
+    Args:
+        entries: ``(caption, value)`` pairs, the value being what a reader
+            takes from ``itemData`` and never has to map back from a caption.
+        current: The value to show. A value not among *entries* falls to the
+            first, so a caller need not check.
+    """
+    entries = list(entries)
+    held = [(combo.itemText(i), combo.itemData(i)) for i in range(combo.count())]
+    combo.blockSignals(True)
+    if held != entries:
+        combo.clear()
+        for caption, value in entries:
+            combo.addItem(caption, value)
+    values = [value for _caption, value in entries]
+    combo.setCurrentIndex(values.index(current) if current in values else 0)
+    combo.blockSignals(False)
+    # Greyed rather than hidden where there is nothing to choose: the control
+    # still says what is on screen, and the row beside it does not move as the
+    # reviewer steps onto a lamella that has only one.
+    combo.setEnabled(len(entries) > 1)
 
 
 def fill_grouped_combo(

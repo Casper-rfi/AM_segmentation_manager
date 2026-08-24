@@ -27,7 +27,6 @@ from qtpy.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -42,7 +41,7 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import add_path_menu, chip_icon
+from .common import GripSplitter, add_path_menu, chip_icon
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
@@ -146,7 +145,7 @@ class MetadataPanel(QWidget):
         # In a splitter because the rows carry relative paths, which are long
         # and are the point: most projects in one folder share their metadata,
         # so the folder a row names is what tells you what to type.
-        self.panes = QSplitter(Qt.Horizontal)
+        self.panes = GripSplitter(Qt.Horizontal)
         self.panes.addWidget(self._build_projects())
         self.panes.addWidget(self._build_fields())
         self.panes.setSizes([460, 900])

@@ -193,12 +193,48 @@ def test_the_chosen_series_survives_moving_between_lamellae():
     assert len(controller.frames) == 1
 
 
-def test_a_lamella_without_the_chosen_series_shows_an_empty_timeline():
-    """The control still offers what is there, which is the way out."""
-    lamella = Lamella(name="lam", path=Path("lam"), stages=[adaptive_stage(2)])
-    controller = make_controller([lamella])
-    controller.series = "reference"
-    controller.select_lamella(0)
+def test_a_lamella_without_the_chosen_series_shows_one_it_holds():
+    """It used to show an empty timeline, with the control hidden for having
+    one entry -- so there was no way to reach the series the lamella has."""
+    lamellae = [
+        Lamella(
+            name="01-lam",
+            path=Path("01-lam"),
+            number="01",
+            stages=[loose_stage([("ref_alignment_ib.tif", "FIB", "alignment")])],
+        ),
+        Lamella(name="02-lam", path=Path("02-lam"), number="02", stages=[adaptive_stage(2)]),
+    ]
+    controller = make_controller(lamellae)
+    assert controller.series == "alignment", "nothing else to show"
 
-    assert controller.frames == []
-    assert controller.available_series() == ["adaptive"]
+    controller.select_lamella(1)
+
+    assert controller.series == "adaptive"
+    assert len(controller.frames) == 2
+
+
+def test_the_choice_survives_a_lamella_that_cannot_show_it():
+    """The fallback answers about one lamella rather than changing the choice,
+    so a project reviewed for its reference images stays on them."""
+    lamellae = [
+        Lamella(
+            name=f"0{n}-lam",
+            path=Path(f"0{n}-lam"),
+            number=f"0{n}",
+            stages=(
+                [loose_stage([("ref_Polishing_start_eb.tif", "SEM", "reference")])]
+                if n != 2
+                else [adaptive_stage(2)]
+            ),
+        )
+        for n in (1, 2, 3)
+    ]
+    controller = make_controller(lamellae)
+    controller.set_series("reference")
+
+    controller.select_lamella(1)
+    assert controller.series == "adaptive", "all this lamella holds"
+
+    controller.select_lamella(2)
+    assert controller.series == "reference"

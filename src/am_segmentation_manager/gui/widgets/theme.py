@@ -26,8 +26,7 @@ MUTED = "#6b7280"
 DISABLED_TEXT = "#a3a8b0"
 
 BORDER = "#d6d9df"
-#: Separators that should be felt rather than seen -- splitter handles, the rule
-#: under a heading.
+#: Separators that should be felt rather than seen -- the rule under a heading.
 BORDER_LIGHT = "#e6e8ec"
 HOVER = "#eaeef6"
 PRESSED = "#e2e6ee"
@@ -41,6 +40,12 @@ ACCENT_TEXT = "#ffffff"
 #: darker cut of the one above, so a filled button can react without the window
 #: gaining a hue that would have to mean something.
 ACCENT_STRONG = "#2258c4"
+
+#: The grip on a splitter handle. Darker than :data:`BORDER`, because it is the
+#: one separator that is meant to be *seen*: a division nobody can tell is
+#: draggable is a division nobody drags. Under the pointer it takes the accent,
+#: like every other control that reacts to being pointed at.
+GRIP = "#b0b6c0"
 
 #: The row being looked at, in a list whose rows also carry a checkbox and a
 #: status chip. A tint rather than a solid accent fill: Qt draws the check
@@ -75,6 +80,16 @@ COMPACT_BUTTON = "compactButton"
 #: user is looking at. An outline makes it legible on any background rather than
 #: tuning the fill against one theme.
 SWATCH_OUTLINE = QColor("#1a1a1a")
+
+#: How a splitter handle is drawn: how thick the handle is, and the rounded bar
+#: down the middle of it. A bar rather than a row of dots, which at this size is
+#: three specks that read as dirt on the screen; short enough against the length
+#: of the division that it is plainly a grip on it rather than the edge itself.
+#: Painted by :class:`.common.GripSplitter` rather than set as a rule below, a
+#: stylesheet being able to put only a flat colour or an image file on a handle.
+HANDLE_WIDTH = 6
+GRIP_THICKNESS = 3.0
+GRIP_LENGTH = 28.0
 
 #: A status chip is one band per modality, **SEM above FIB** -- the same
 #: arrangement as the timeline's two rows, so the layout means the same thing in
@@ -235,9 +250,6 @@ def stylesheet() -> str:
         color: {TEXT};
     }}
     QTabBar::tab:hover:!selected {{ background: {HOVER}; color: {TEXT}; }}
-
-    QSplitter::handle {{ background: {BORDER_LIGHT}; }}
-    QSplitter::handle:hover {{ background: {ACCENT}; }}
 
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
     QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 0; }}

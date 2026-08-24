@@ -379,6 +379,14 @@ becomes wrong, correct it in place rather than appending a correction.
   either has to re-state it; and its 12px padding is wider than a one-character label, which
   clipped such a button blank while it reported its text correctly, so `COMPACT_BUTTON` names
   the exception.
+- **A division that can be dragged says so.** Qt draws a splitter handle as a hairline
+  indistinguishable from the rules between panels, so the only way to find one was to sweep
+  the pointer along it until the cursor changed. `common.GripSplitter` paints a rounded grip
+  on the handle and takes the accent under the pointer; painted rather than styled, a
+  stylesheet being able to put only a flat colour or an image file on a handle, and this
+  package shipping no images. A bar rather than a row of dots, which at this size read as
+  dirt on the screen. Every division goes through it — the same mapping the window saves its
+  sizes through, so one added without a grip is one added without a remembered size.
 - **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is
   also how Qt marks the row you are looking at, it is lost whenever the list is rebuilt, and
   in four visible rows over dozens of values there is no seeing what is chosen without
@@ -469,9 +477,21 @@ becomes wrong, correct it in place rather than appending a correction.
   lamella runs to 21 stages across three series, so the Curate control is a single choice that
   rebuilds the frame stack — the position and the frame ticks go with it, a frame index meaning
   anything only within one timeline. Both open on Adaptive Polishing. The control is offered
-  from what the lamella *holds*, and is set before the "no frame" early return in `_render`: a
-  lamella can hold nothing of the series being shown while holding plenty of another, and the
-  control is the way out.
+  from what the lamella *holds*, and is set before the "no frame" early return in `_render`.
+  **What was chosen and what a lamella can show are two things**: `frames.resolve_series` falls
+  back to a series the lamella holds, leaving the choice itself alone, so the next lamella that
+  has the chosen one opens on it. Settled in `_rebuild_frames`, the one path both a change of
+  lamella and a change of series pass through — otherwise a lamella with no Adaptive Polishing
+  images showed an empty timeline, and the control, hidden for having one entry, offered no way
+  back to the series it does hold.
+- **A view control with one option is greyed, not hidden.** Series and imaging condition both
+  hid themselves below two entries, which is the ordinary case for both — so the row of
+  controls beside them moved every time the reviewer stepped onto such a lamella, and the
+  answer to "what am I looking at" disappeared exactly when there was only one. Greyed, it
+  still says which series and which condition is on screen, which is how the view buttons
+  already treat a modality the frame does not have. `common.fill_choice_combo` is the one
+  implementation, and it rebuilds a combo only when its entries changed: these are refilled on
+  every step through a lamella, and one cleared that often closes its own popup.
 - **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
   Polishing stage writes one plot per milling cycle into `plots/`, matched to a frame by its
   acquisition number. An alignment run writes one `figure.png` at its root summarising the

@@ -24,13 +24,19 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
 from ..controller import CurationStatus
-from .common import CheckList, add_path_menu, chip_icon, choose_directory, ticked_caption
+from .common import (
+    CheckList,
+    GripSplitter,
+    add_path_menu,
+    chip_icon,
+    choose_directory,
+    ticked_caption,
+)
 from .frame_strip import STATE_COLOURS
 from .theme import (
     SWATCH_BAND,
@@ -147,7 +153,7 @@ class ProjectPanel(QWidget):
             self.lamella_path_requested, self.lamella_reveal_requested,
         )
 
-        self.lists = QSplitter(Qt.Vertical)
+        self.lists = GripSplitter(Qt.Vertical)
         self.lists.addWidget(self.project_box)
         self.lists.addWidget(self.lamella_box)
         self.lists.setSizes([200, 300])
