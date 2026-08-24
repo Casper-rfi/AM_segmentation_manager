@@ -27,21 +27,21 @@ tab does, and [`decisions.md`](decisions.md) why each of the following is so:
   `convert-predictions` against the ticked set; Add data runs `inspect-layout`,
   `init-project` and `compress-labels` over the whole scanned folder. Each previews first,
   applies on a worker thread, and leaves the selection intact.
-* **Labels are proofread in the window**, not in external software. One lamella and one
-  series at a time. A save writes that lamella's edits in a single action, offers to mark
-  the reviewed set corrected, and refuses the whole batch rather than overwrite a label
-  something else has rewritten since it was opened. It will also ring the components of a
-  few pixels, which `find-specks` reports across the collection.
+* **Labels are proofread in the window**, not in external software, one lamella and one
+  series at a time. A save writes that lamella's edits in a single action, offers to mark the
+  reviewed set corrected, and refuses the whole batch rather than overwrite a label something
+  else has rewritten since. It also rings the components of a few pixels, which `find-specks`
+  reports across the collection.
 * **Predictions need an environment installed separately**, built by
   `scripts/setup_ml.sh`, which runs the window too. One prediction per label group, one
   modality per run, resumable, in a child process the window shares no torch with.
-* **Export filters, counts and writes — and can copy the files out.** Filters are
-  added as they are wanted, derived from the breakdowns so a property is not declared
-  twice. Opening the tab reads the image headers; opening the labels stays behind *Measure
-  labels*. **Which modality is chosen decides the shape of what is written**, and the
-  command line agrees, so one selection exported either way gives the same file. The same
-  selection can also be *copied* out with its labels and each project's own files, under the
-  paths it already has, which is `export-files` on the command line.
+* **Export filters, counts and writes — and can copy the files out.** Filters are added as
+  they are wanted, derived from the breakdowns so a property is not declared twice. Opening
+  the tab reads the image headers; opening the labels stays behind *Measure labels*.
+  **Which modality is chosen decides the shape of what is written**, and the command line
+  agrees, so one selection exported either way gives the same file. That selection can also
+  be copied out with its labels and project files, under the paths it already has
+  (`export-files`).
 * **A project is a directory; `project` is what the work was part of.** The directory is
   `autolamella_project` in every export; the metadata field names the wider project several
   directories usually share. Both can be counted and filtered on.

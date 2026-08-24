@@ -48,8 +48,7 @@ becomes wrong, correct it in place rather than appending a correction.
   whose name, `created_at` and recorded path in `experiment.yaml` are all identical, so
   keying by name silently drops one; and two projects each hold an `05-pet-mutt`, which an
   unqualified row reported as one lamella of 140 images. A lamella is therefore counted as
-  `project / lamella` and a stage one level deeper. Stage names are worse still, being either
-  shared by every lamella (`adaptive_polish`) or a bare timestamp.
+  `project / lamella` and a stage one level deeper.
 - **The lamella and stage levels are not always directories.** Older datasets collapse
   them; the missing level is synthesised in memory with the parent standing in, and the
   model records that it is synthetic. Data on disk is never reorganised to fit the newest
@@ -320,21 +319,17 @@ becomes wrong, correct it in place rather than appending a correction.
   never filtered on**: a lamella and a fully qualified milling stage both run to hundreds of
   values, and an electron source does not vary across this collection at all. `UNFILTERABLE`
   names them; they stay breakdowns, and the command line still filters on `--electron-source`.
-- **A stage is filtered on by its name, and counted on by its path.** `stage` names a folder --
-  `project / lamella / adaptive_polish_<timestamp>` -- which is what finds one run again and is
-  useless as a list to choose from. `stage-name` is the same folder with the timestamp taken
-  out by `layout.stage_base_name`, so it collapses to `adaptive_polish` and to the names of the
-  milling tasks the 2026 layout keeps reference images in: a handful of rows that repeat across
-  every lamella, which is the question an export is narrowed by. **What names no milling stage
-  counts under `LAMELLA_ROOT`**, and two things do: a stage directory synthesised from the
-  lamella, which carries the lamella's name, and an alignment run sitting directly under one.
-  **An alignment run counts under the task it aligns for** — the directory its `Alignment/`
-  folder sits in — because Autolamella names a run after the lamella, the task and the time it
-  ran, which is a row per run and one beginning with a lamella's name. Between them these were
-  how a list of milling stages filled up with lamellae while the tasks whose images live only
-  in their runs were missing from it altogether. The timestamp pattern lives in
-  `layout.py` with the other naming conventions, because the scanner reads it to order stages
-  by when they ran and this reads it to remove it, and the two must agree on what one is.
+- **A stage is filtered on by its name, and counted on by its path.** `stage` names a folder —
+  `project / lamella / adaptive_polish_<timestamp>` — which finds one run again but is useless as
+  a list to choose from. `stage-name` is that with the timestamp removed by
+  `layout.stage_base_name`, collapsing to `adaptive_polish` and to the milling tasks the 2026
+  layout keeps reference images in. **What names no milling stage counts under `LAMELLA_ROOT`**,
+  and two things do: a stage synthesised from the lamella, which carries the lamella's name, and
+  an alignment run directly under one. **A run counts under the task it aligns for** — the
+  directory its `Alignment/` folder sits in — Autolamella naming a run after the lamella, the
+  task and the time, which is otherwise a row per run beginning with a lamella's name. The
+  timestamp pattern lives in `layout.py`: the scanner reads it to order stages by when they ran
+  and this reads it to remove one, and the two must agree on what one is.
 - **Series is the one filter that does not open on everything.** Every other control on the tab
   starts wide and narrows towards an export. This one starts on Adaptive Polishing, because a
   tab silently counting the rest would disagree with `create-training-csv`. A dedicated control
@@ -368,18 +363,16 @@ becomes wrong, correct it in place rather than appending a correction.
   the FIB path, each a genuine pair nothing here can rank — and "one image per label"
   collapses it. The train/validation split groups by the *acquisition*, a paired row holding
   two images of one scene that splitting would score the model on what it has already seen.
-- **An export can also copy the files out, and it never overwrites one.** `export-files` and
-  the Export tab's copy write the matched images, the label of each, every contributing
-  stage's `AM_state.yaml` and every contributing project's `AM_metadata.yaml`,
-  `experiment.yaml` and `protocol.yaml` into a directory, under the paths they already have —
-  so the result is a smaller collection of the same shape, which `am-seg` scans and which can
-  be proofread further. The whole set of destinations is resolved and classified first: one
-  already holding the *same* file is skipped, which is what makes an interrupted export
-  resume, and one holding anything else refuses the entire run rather than being discovered
-  halfway through. Free space is checked before the first byte, and a destination inside the
-  folder being copied from is refused outright — it would be walking into its own output. Each
-  file lands by rename with its modification time kept, which is both what makes a stopped run
-  leave whole files and what lets the next run recognise them.
+- **An export can also copy the files out, and it never overwrites one.** `export-files` and the
+  Export tab's copy write the matched images, each label, every contributing stage's
+  `AM_state.yaml` and every contributing project's `AM_metadata.yaml`, `experiment.yaml` and
+  `protocol.yaml` under the paths they already have — a smaller collection of the same shape,
+  which `am-seg` scans and which can be proofread further. Every destination is classified before
+  a byte moves: one holding the *same* file is skipped, which is what makes an interrupted export
+  resume, and one holding anything else refuses the whole run. Free space is checked first, and a
+  destination inside the folder being copied from is refused — it would walk into its own output.
+  Files land by rename with their modification time kept, which is both what leaves whole files
+  behind and what lets the next run recognise them.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called
   `image` or `label`, or ending in `_image` or `_label`, holds a path — so one command checks
   either shape and files written before both. A blank cell is its own answer rather than an
@@ -407,12 +400,10 @@ becomes wrong, correct it in place rather than appending a correction.
   clipped such a button blank while it reported its text correctly, so `COMPACT_BUTTON` names
   the exception.
 - **A division that can be dragged says so.** Qt draws a splitter handle as a hairline
-  indistinguishable from the rules between panels, so the only way to find one was to sweep
-  the pointer along it until the cursor changed. `common.GripSplitter` paints a rounded grip
-  on the handle and takes the accent under the pointer; painted rather than styled, a
-  stylesheet being able to put only a flat colour or an image file on a handle, and this
-  package shipping no images. A bar rather than a row of dots, which at this size read as
-  dirt on the screen. Every division goes through it — the same mapping the window saves its
+  indistinguishable from the rules between panels, so finding one meant sweeping the pointer
+  along it until the cursor changed. `common.GripSplitter` paints a rounded grip and takes the
+  accent under it — painted rather than styled, a stylesheet putting only a flat colour or an
+  image file on a handle. Every division goes through it, the same mapping the window saves its
   sizes through, so one added without a grip is one added without a remembered size.
 - **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is
   also how Qt marks the row you are looking at, it is lost whenever the list is rebuilt, and
@@ -499,33 +490,26 @@ becomes wrong, correct it in place rather than appending a correction.
   exists to prevent. Cancellation is a `threading.Event` in `progress.py` polled by the work
   closure: a queued Qt signal reaches the worker when it next returns to its event loop, which
   inside a long call is never.
-- **Curate and Label show one series at a time; Export ticks several.** Different questions. A
+- **Curate and Label show one series at a time; Export ticks several.** Different questions: a
   timeline mixing alignment runs with polishing frames is not something anyone proofreads, and a
-  2026 lamella runs to 21 stages across three series, so each of those two tabs has a single
-  choice that rebuilds its frame stack — the position and the frame ticks go with it, a frame index meaning
-  anything only within one timeline. Both open on Adaptive Polishing. The control is offered
-  from what the lamella *holds*, and is set before the "no frame" early return in `_render`.
-  **What was chosen and what a lamella can show are two things**: `frames.resolve_series` falls
-  back to a series the lamella holds, leaving the choice itself alone, so the next lamella that
-  has the chosen one opens on it. Settled in `_rebuild_frames`, the one path both a change of
-  lamella and a change of series pass through — otherwise a lamella with no Adaptive Polishing
-  images showed an empty timeline, and the control, hidden for having one entry, offered no way
-  back to the series it does hold. **The beam follows the same rule**: an alignment run is
-  imaged with the ion beam alone, so `_settle_mode` shows the other beam where the one chosen
-  has no image anywhere in the stack, and the choice comes back on a timeline that holds it.
-  Asked of the whole stack rather than of the frame on screen, an acquisition captured with one
-  beam being ordinary; the plot view is exempt, a figure being an image of neither beam. The
-  Label tab settles both the same way, on the frames it has to *review* rather than on every
-  frame, and holds its own choice of each: which series is being annotated is a different
-  question from which is being curated, as its modality already was.
-- **A view control with one option is greyed, not hidden.** Series and imaging condition both
-  hid themselves below two entries, which is the ordinary case for both — so the row of
-  controls beside them moved every time the reviewer stepped onto such a lamella, and the
-  answer to "what am I looking at" disappeared exactly when there was only one. Greyed, it
-  still says which series and which condition is on screen, which is how the view buttons
-  already treat a modality the frame does not have. `common.fill_choice_combo` is the one
-  implementation, and it rebuilds a combo only when its entries changed: these are refilled on
-  every step through a lamella, and one cleared that often closes its own popup.
+  2026 lamella runs to 21 stages across three series. Each tab has one choice, which rebuilds its
+  frame stack — the position and the ticks go with it, a frame index meaning anything only within
+  one timeline. Both open on Adaptive Polishing, offered from what the lamella *holds*.
+  **What was chosen and what a lamella can show are two things**: `resolve_series` falls back to
+  a series the lamella holds without touching the choice, so the next lamella that has it opens
+  on it — otherwise a lamella with no Adaptive Polishing images showed an empty timeline and, the
+  control being hidden for having one entry, no way back. **The beam follows the same rule** in
+  `_settle_mode`, asked of the whole stack rather than the frame on screen, an acquisition
+  captured with one beam being ordinary; the plot view is exempt, a figure being an image of
+  neither beam. Both are settled in `_rebuild_frames`, the one path a change of lamella and a
+  change of series share. The Label tab settles on the frames it has to *review*, and holds its
+  own choice of each: what is being annotated is a different question from what is being curated.
+- **A view control with one option is greyed, not hidden.** Series and imaging condition both hid
+  themselves below two entries — the ordinary case for both — so the row moved whenever the
+  reviewer stepped onto such a lamella, and the answer to "what am I looking at" disappeared
+  exactly when there was one of it. `common.fill_choice_combo` is the one implementation, and
+  rebuilds a combo only when its entries changed: they are refilled on every step through a
+  lamella, and one cleared that often closes its own popup.
 - **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
   Polishing stage writes one plot per milling cycle into `plots/`, matched to a frame by its
   acquisition number. An alignment run writes one `figure.png` at its root summarising the
@@ -554,8 +538,8 @@ becomes wrong, correct it in place rather than appending a correction.
   `base` and the imports resolve to a different stack entirely — PyQt5 rather than PySide6 —
   giving several hundred failures that are all one wrong interpreter.
 - **The reference collection is at
-  `<collection>/`** — 12 projects, ~3500 indexed
-  images, 52 GB, spanning Autolamella and pre-Autolamella layouts. Treat it as read-only.
+  `<collection>/`** — 13 projects, 108 lamellae,
+  8,931 indexed images, 54 GB, spanning Autolamella and pre-Autolamella layouts. Read-only.
   Point the smoke test at it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
 - **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side
   effect, and `test_gui_*` sorts before most other tests. That is how a locale-dependent
@@ -635,12 +619,10 @@ becomes wrong, correct it in place rather than appending a correction.
   modality. **Predicting with the wrong model is cheap to undo**, which is what makes that
   guard sufficient: resumption keys on the model and run name, so predicting the same images
   with the right model replaces the wrong ones without `--overwrite`. **The window remembers a
-  model per series and beam** rather than one for everything, the box following the view. Six
-  slots is a convenience and not a claim: nothing is inferred from which slot a path sits in,
-  and the selection still states the modality. What it stops is the box offering the SEM model
-  while a FIB frame is on screen — the mistake the refusal catches at the door, and which one
-  box was quietly setting up. A slot nothing has filled falls back to the single path kept
-  before there were six.
+  model per series and beam**, the box following the view. Six slots is a convenience and not a
+  claim — nothing is inferred from which slot a path sits in, and the selection still states the
+  modality — but it stops the box offering the SEM model while a FIB frame is on screen. A slot
+  nothing has filled falls back to the single path kept before there were six.
 - **One prediction per label group, not per image.** The label is the unit of workflow state
   everywhere else here, and a prediction exists to become a label, so a group gets one — made
   from `label_groups.primary_record`, the same image the curation window shows and a training
