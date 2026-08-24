@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -19,13 +19,18 @@ from .discovery import (
     find_project_roots,
     group_stages_by_lamella,
 )
+from .image_metadata import read_image_metadata
+from .io.image import image_stack_problems
 from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
     PREDICTION_KINDS,
+    ImageSet,
     build_image_sets,
+    build_loose_image_sets,
     image_files,
     image_files_by_name,
+    image_files_of,
     resolve_predictions_directory,
     subdirectories_by_name,
 )
@@ -99,6 +104,16 @@ class ProjectIndex:
         return make_path_relative(path, self.start_path)
 
 
+def _read_beam(image_path: Path) -> str | None:
+    """Return the beam an image's header states, or None if it does not.
+
+    A module function rather than a method so it can be passed as the resolver
+    without binding a scanner into it.
+    """
+    metadata = read_image_metadata(image_path)
+    return metadata.modality if metadata is not None else None
+
+
 class Scanner:
     """Scan a starting directory for Autolamella projects.
 
@@ -115,6 +130,9 @@ class Scanner:
 
     def __init__(self, start_path: Path) -> None:
         self.start_path = start_path
+        # Resolved once per scanner: the answer cannot change mid-scan, and
+        # asking costs an import attempt per stage otherwise.
+        self._image_stack_missing: bool | None = None
 
     def find_project_roots(self) -> list[Path]:
         """Return the project roots under start_path.
@@ -229,9 +247,12 @@ class Scanner:
                 synthetic=item.stage_is_synthetic,
             )
             stage.number = f"{index:02d}"
-            stage.image_sets = build_image_sets(item.path)
+            stage.image_sets = self._stage_image_sets(item)
             stage.images = self._discover_images_in_stage(
-                item.path, project_name=project_name, lamella_name=lamella_name
+                item.path,
+                stage.image_sets,
+                project_name=project_name,
+                lamella_name=lamella_name,
             )
             stage.plots = self._discover_plots(item.path)
             stages.append(stage)
@@ -240,6 +261,60 @@ class Scanner:
                 item.path, len(stage.images), len(stage.plots),
             )
         return stages
+
+    def _stage_image_sets(self, discovered: DiscoveredStage) -> list[ImageSet]:
+        """Return every image set in a stage, of both shapes.
+
+        Adaptive Polishing sets first, then the loose reference and alignment
+        ones, so display order puts the images this package was built to curate
+        at the top. What a loose set's files could not be made of -- an
+        unrecognised name, or a beam nothing could establish -- is logged here
+        and reported properly by ``inspect-layout``, which surveys the tree
+        itself rather than reading this.
+        """
+        sets = list(build_image_sets(discovered.path))
+        loose = build_loose_image_sets(
+            discovered.path,
+            in_alignment_run=discovered.in_alignment_run,
+            resolve_modality=self._beam_resolver(),
+        )
+        if loose.unrecognised:
+            logger.debug(
+                "%d image(s) in %s match no naming rule: %s",
+                len(loose.unrecognised), discovered.path, ", ".join(loose.unrecognised[:5]),
+            )
+        if loose.unresolved:
+            logger.info(
+                "%d image(s) in %s state no beam and none could be read; not indexed",
+                len(loose.unresolved), discovered.path,
+            )
+        return sets + list(loose.sets)
+
+    def _beam_resolver(self) -> Callable[[Path], str | None] | None:
+        """Return something that can read a beam from a header, or None.
+
+        **The one place a scan opens an image**, and only for a filename that
+        states no beam -- 668 of the 13,221 in the reference collection.
+        Reading every header would turn a scan into an image pass; reading none
+        would drop those images, since nothing else can say which beam took
+        them.
+
+        Returns None where the optional image stack is absent, so that scanning
+        keeps working in a minimal install. ``read_image_metadata`` raises
+        there rather than returning None, and a scan is a filesystem walk that
+        has never needed the image stack -- so those few images are left out
+        and reported, instead of the whole scan failing on an import.
+        """
+        if self._image_stack_missing is None:
+            self._image_stack_missing = bool(image_stack_problems())
+            if self._image_stack_missing:
+                logger.info(
+                    "No image stack installed; images whose filename states no "
+                    "beam cannot be indexed. Install the [all] extra to include them"
+                )
+        if self._image_stack_missing:
+            return None
+        return _read_beam
 
     @classmethod
     def _discover_plots(cls, stage_path: Path) -> list[Path]:
@@ -329,7 +404,13 @@ class Scanner:
             return None
         return f"{int(match.group(1)):02d}"
 
-    def _discover_images_in_stage(self, stage_path: Path, project_name: str, lamella_name: str) -> list[ImageRecord]:
+    def _discover_images_in_stage(
+        self,
+        stage_path: Path,
+        image_sets: list[ImageSet],
+        project_name: str,
+        lamella_name: str,
+    ) -> list[ImageRecord]:
         """Discover image files, predictions and labels inside a stage folder.
 
         Directory names are resolved through :mod:`am_segmentation_manager.layout`,
@@ -351,23 +432,32 @@ class Scanner:
         acquisition under different imaging conditions. Variants sharing a label
         directory each reference the same label file, which is why a record
         records whether its label is shared.
+
+        A record carries its stage and its label directory rather than leaving
+        them to be derived from its image path. Both derivations only ever
+        worked for an Adaptive Polishing image, which sits one level below its
+        stage in a directory naming a modality; a reference image sits directly
+        in its stage, in a directory naming a lamella.
         """
         image_records: list[ImageRecord] = []
         declared = self._declared_state(stage_path)
 
-        for image_set in build_image_sets(stage_path):
+        for image_set in image_sets:
             labels_map = image_files_by_name(image_set.labels_directory)
             predictions_map = self._collect_predictions(stage_path, image_set)
 
-            for name, image_path in sorted(image_files_by_name(image_set.directory).items()):
+            for name, image_path in sorted(image_files_of(image_set).items()):
                 key = state_key(image_set.labels_directory / name, stage_path)
                 record = ImageRecord(
                     image_path=image_path,
                     project=project_name,
                     lamella=lamella_name,
                     stage=stage_path.name,
+                    stage_path=stage_path,
                     modality=image_set.modality,
                     variant=image_set.variant,
+                    series=image_set.series,
+                    labels_directory=image_set.labels_directory,
                     label_shared=image_set.labels_are_shared,
                     state=declared.state_of(key),
                 )
@@ -404,7 +494,17 @@ class Scanner:
 
         Resolved for reading, which accepts a directory shared with another
         image set: that is where the pipeline's own output sits.
+
+        A loose set has none. Nothing predicts reference or alignment images
+        yet, and resolving for one would fall back to the shared
+        ``<modality>_predictions`` -- which in a dataset collapsing the stage
+        level is the Adaptive Polishing pipeline's own output, an entirely
+        different set of scenes. When those series become predictable this
+        needs the exact-name rule its labels already have.
         """
+        if image_set.is_loose:
+            return {}
+
         directory, exists, _ = resolve_predictions_directory(
             image_set.directory, image_set.modality, subdirectories_by_name(stage_path)
         )

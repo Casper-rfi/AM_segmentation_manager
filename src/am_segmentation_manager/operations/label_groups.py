@@ -88,9 +88,18 @@ def labels_directory_for(
 def group_identity(
     record: ImageRecord, cache: dict[Path, Path | None] | None = None
 ) -> Path | None:
-    """Return the label path identifying *record*'s group, existing or not."""
+    """Return the label path identifying *record*'s group, existing or not.
+
+    A scanned record carries the directory its label belongs in, so nothing is
+    re-derived. The fallback covers a record built by hand, and can only answer
+    for an Adaptive Polishing image: a loose reference image's directory names
+    a lamella rather than a modality, so there is nothing in the path to
+    resolve a label directory from.
+    """
     if record.labels:
         return record.labels[0]
+    if record.labels_directory is not None:
+        return record.labels_directory / record.image_path.name
     labels_directory = labels_directory_for(record.image_path, cache)
     if labels_directory is None:
         return None

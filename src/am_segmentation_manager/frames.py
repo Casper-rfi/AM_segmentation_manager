@@ -251,9 +251,15 @@ def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
                 "Skipping %s: unknown modality %r", record.image_path, record.modality
             )
             continue
-        # The stage is the image directory's parent, for a variant directory as
-        # much as for the base one -- so conditions of one scene group together.
-        identity = (record.image_path.parent.parent, _frame_key(record.image_path))
+        # A scanned record carries its stage. Falling back to the image
+        # directory's parent covers a record built by hand, and is right for
+        # exactly the case it still applies to: an Adaptive Polishing image
+        # sits one level below its stage, in a directory naming a modality, so
+        # conditions of one scene group together. A loose image sits directly
+        # in its stage, where the same derivation would name the lamella's
+        # parent and scatter one stage's images across the collection.
+        stage = record.stage_path or record.image_path.parent.parent
+        identity = (stage, _frame_key(record.image_path))
         grouped.setdefault(identity, {}).setdefault(modality, []).append(record)
 
     return [

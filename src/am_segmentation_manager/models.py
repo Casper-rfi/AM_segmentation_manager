@@ -38,6 +38,16 @@ class ImageRecord:
         modality: 'SEM' or 'FIB' when known
         variant: imaging-condition suffix of the image directory, or None for
             the base directory. An opaque key, never parsed.
+        series: what the image was taken for -- 'adaptive', 'reference' or
+            'alignment'. Orthogonal to modality and variant.
+        stage_path: the stage directory the image belongs to. Carried rather
+            than derived from *image_path*, because how far the stage sits
+            above an image depends on the shape of its set: an Adaptive
+            Polishing image sits one level down in ``sem/``, a reference image
+            sits directly in the stage.
+        labels_directory: where this record's label lives or would live.
+            Carried for the same reason -- it cannot be recovered from a loose
+            image's path, whose directory names no modality.
         label_shared: whether this record's label directory is shared with
             another image set, so its label also belongs to other images
         state: the workflow state of the label group this image belongs to.
@@ -57,6 +67,9 @@ class ImageRecord:
     timestamp: datetime | None = None
     modality: str | None = None
     variant: str | None = None
+    series: str = "adaptive"
+    stage_path: Path | None = None
+    labels_directory: Path | None = None
     label_shared: bool = False
     state: RecordState = DEFAULT_STATE
 
