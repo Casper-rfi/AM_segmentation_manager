@@ -33,7 +33,7 @@ if HAS_QT:
         QWidget,
     )
 
-    from am_segmentation_manager.aggregate import AREA_BINS_PER_DECADE
+    from am_segmentation_manager.aggregate import AREA_BINS_PER_DECADE, LAMELLA_ROOT
     from am_segmentation_manager.gui.export_controller import (
         ANY_LABEL,
         DEFAULT_PREFIX,
@@ -138,6 +138,86 @@ def test_adding_a_filter_leaves_the_first_alone(qt_app, tmp_path):
     assert panel.filter_rows[0].property_name == "variant"
     assert panel.controller.filters.choices["variant"]
     assert panel.filter_rows[1].property_name == ""
+
+
+def _two_stage_names(tmp_path) -> ExportPanel:
+    """A panel over two projects whose stages are named differently."""
+    pytest.importorskip("tifffile")
+    for name, stage in (("polishing", "adaptive_polish"), ("rough", "MillRoughCut")):
+        build_dataset(
+            tmp_path / name, acquisitions=2, labels="annotated", stage_parts=(stage,)
+        )
+    controller = ExportController()
+    controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
+    panel = ExportPanel(controller)
+    panel.refresh()
+    return panel
+
+
+def _values(row: FilterRow) -> list[str]:
+    return [row.values.item(index).text() for index in range(row.values.count())]
+
+
+def _loose_lamella_panel(tmp_path) -> ExportPanel:
+    """A 2026-shaped scan: reference images loose in the lamella and in a task."""
+    tifffile = pytest.importorskip("tifffile")
+    numpy = pytest.importorskip("numpy")
+    project = tmp_path / "AutoLamella-2026"
+    project.mkdir(parents=True)
+    (project / "experiment.yaml").write_text("name: loose\n", encoding="utf-8")
+    for lamella_name in ("01-ruling-ibex", "02-tidy-oryx"):
+        lamella = project / lamella_name
+        for relative in ("ref_alignment_ib.tif", "MillRoughCut/ref_Polishing_start_eb.tif"):
+            destination = lamella / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            tifffile.imwrite(str(destination), numpy.zeros((16, 16), dtype=numpy.uint8))
+
+    controller = ExportController()
+    controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
+    panel = ExportPanel(controller)
+    panel.refresh()
+    # Through the boxes rather than the filter behind them: the tab opens on
+    # Adaptive Polishing alone, and there is none of it here.
+    for series in ("reference", "alignment"):
+        panel.series_boxes[series].setChecked(True)
+    return panel
+
+
+def test_a_lamella_is_never_offered_as_a_milling_stage(qt_app, tmp_path):
+    """Autolamella leaves reference images directly in the lamella, whose
+    directory then stands in for a stage -- so every lamella in the collection
+    turned up in the list of stage names."""
+    panel = _loose_lamella_panel(tmp_path)
+    row = _only_row(panel)
+
+    _choose(row, "stage-name")
+
+    assert _values(row) == [LAMELLA_ROOT, "MillRoughCut"]
+
+
+def test_the_milling_stage_is_offered_by_name(qt_app, tmp_path):
+    """A stage folder carries a timestamp, so the qualified stage is one row
+    per folder on disk -- hundreds of them, and each of one lamella's run. The
+    name is what repeats across lamellae, and what an export is chosen by."""
+    panel = _two_stage_names(tmp_path)
+    row = _only_row(panel)
+
+    _choose(row, "stage-name")
+
+    assert _values(row) == ["MillRoughCut", "adaptive_polish"]
+    assert row.property_box.findData("stage") == -1, "still counted on, not filtered"
+
+
+def test_filtering_by_stage_name_narrows_the_export(qt_app, tmp_path):
+    panel = _two_stage_names(tmp_path)
+    row = _only_row(panel)
+    before = panel.controller.preview().matched
+
+    _choose(row, "stage-name")
+    _tick(row.values, _values(row).index("MillRoughCut"))
+
+    assert panel.controller.filters.choices["stage-name"] == ["MillRoughCut"]
+    assert panel.controller.preview().matched == before // 2
 
 
 def test_a_property_already_filtered_on_is_not_offered_twice(qt_app, tmp_path):

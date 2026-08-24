@@ -262,6 +262,38 @@ def extract_image_number(image_name: str) -> int | None:
     return None
 
 
+#: The timestamp Autolamella puts in a stage folder name, in both the forms it
+#: writes: 24-hour (``..._2026-08-07-15-30-00``) and the 12-hour one the
+#: adaptive milling plugin uses (``adaptive_polish_2026-07-28-02-43-32PM``).
+#: Here with the other naming conventions because two things read it and must
+#: read it the same way -- :class:`~am_segmentation_manager.scanner.Scanner`,
+#: to order stages by when they ran, and :func:`stage_base_name`.
+STAGE_TIMESTAMP: Final[re.Pattern[str]] = re.compile(
+    r"(\d{4})[-_]?([01]\d)[-_]?([0-3]\d)[T _-]?([0-2]\d)[-_:]?([0-5]\d)[-_:]?([0-5]\d)"
+    r"\s*([AaPp][Mm])?"
+)
+
+#: What a stage whose name is nothing but a timestamp is grouped under. Rare,
+#: and a row named after one run of one lamella would be a row of one.
+UNNAMED_STAGE: Final[str] = "(timestamped)"
+
+
+def stage_base_name(stage_name: str) -> str:
+    """Return a stage folder's name with the timestamp taken out of it.
+
+    What is left is the part that repeats across lamellae and projects --
+    ``adaptive_polish``, or the name of the milling task a directory of
+    reference images belongs to -- so that counting or filtering by it gives a
+    handful of rows rather than one per folder on disk.
+
+    Returns:
+        The name without its timestamp and any separators left stranded
+        either side of it, or :data:`UNNAMED_STAGE` where nothing else remains.
+    """
+    stripped = re.sub(r"[-_. ]{2,}", "_", STAGE_TIMESTAMP.sub(" ", stage_name))
+    return stripped.strip(" -_.") or UNNAMED_STAGE
+
+
 def classify_image_directory(name: str) -> ImageDirectory | None:
     """Return the modality and variant *name* encodes, or None if it is not an
     image directory.

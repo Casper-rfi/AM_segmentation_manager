@@ -20,6 +20,7 @@ from pathlib import Path
 
 from .config import SegmentationConfig
 from .image_metadata import ImageMetadata
+from .layout import is_alignment_directory, stage_base_name
 from .models import ImageRecord, Project
 from .operations.label_measure import (
     EMPTY,
@@ -36,6 +37,14 @@ logger = logging.getLogger(__name__)
 #: Stands in for a value the data does not record, so it counts as its own
 #: group rather than disappearing from the total.
 MISSING = "(not recorded)"
+
+#: What images sitting directly in a lamella directory are counted under by
+#: :func:`by_stage_name`. There is no milling stage to name: the reference
+#: images Autolamella takes outside any task live there, and a layout with no
+#: stage level puts everything there. Grouping them by the directory would
+#: report one row per lamella, which is what the qualified `stage` breakdown is
+#: for and what this one exists to avoid.
+LAMELLA_ROOT = "(lamella directory)"
 
 #: A function from a record to the group it belongs in.
 KeyFunction = Callable[[ImageRecord], Hashable]
@@ -532,6 +541,41 @@ def by_stage(lookup: Mapping[Path, Project]) -> KeyFunction:
     return key
 
 
+def _milling_stage_of(record: ImageRecord) -> str:
+    """Return the directory naming the milling stage *record* was taken for.
+
+    Its own stage directory, except for an alignment run: Autolamella collects
+    those in an ``Alignment/`` directory under the task they align for, and
+    names each run after the lamella, the task and the time it ran. That is a
+    row per run -- and one starting with the lamella's name -- where what the
+    images belong to is the task the ``Alignment/`` directory sits in.
+    """
+    path = record.stage_path
+    if path is not None and is_alignment_directory(path.parent.name):
+        return path.parent.parent.name
+    return str(_present(record.stage))
+
+
+def by_stage_name(record: ImageRecord) -> Hashable:
+    """Group by what a stage is *called*, with its timestamp taken out.
+
+    Unqualified, unlike :func:`by_stage`, and that is the point: what is left
+    of ``adaptive_polish_2026-07-28-02-43-32PM`` is shared by every stage of
+    every lamella, and the milling task a set of reference images belongs to
+    is named the same way across a project. So this counts and filters in a
+    handful of rows where the qualified stage runs to hundreds.
+
+    A record with no milling stage to name counts under :data:`LAMELLA_ROOT`
+    rather than putting every lamella in the collection into a list of stages.
+    That is a stage directory synthesised from the lamella, which carries the
+    lamella's name, and an alignment run directly under a lamella.
+    """
+    name = _milling_stage_of(record)
+    if record.lamella and name == record.lamella:
+        return LAMELLA_ROOT
+    return stage_base_name(name)
+
+
 def by_autolamella_project(lookup: Mapping[Path, Project]) -> KeyFunction:
     """Group by the project directory's identity, which is its relative path.
 
@@ -610,6 +654,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
         "project", by_autolamella_project, "Autolamella project", group="record"
     ),
     "stage": Breakdown("project", by_stage, "milling stage", group="record"),
+    "stage-name": Breakdown("record", by_stage_name, "milling stage name"),
     "lamella": Breakdown("project", by_lamella, "lamella", group="record"),
     "microscope": Breakdown("metadata", by_microscope_model, "microscope model"),
     "serial": Breakdown("metadata", by_microscope_serial, "microscope serial number"),

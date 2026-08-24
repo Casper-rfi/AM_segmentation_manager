@@ -26,6 +26,7 @@ from .io.yaml import read_yaml
 from .layout import (
     PREDICTION_KINDS,
     STAGE_SUMMARY_PLOTS,
+    STAGE_TIMESTAMP,
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
@@ -429,16 +430,13 @@ class Scanner:
     def _timestamp_from_filename(filename: str) -> datetime | None:
         """Extract a common Autolamella timestamp from a folder name.
 
-        Handles both 24-hour folder names (``..._2026-08-07-15-30-00``) and the
-        12-hour names Autolamella writes for adaptive milling stages
-        (``adaptive_polish_2026-07-28-02-43-32PM``). A trailing AM/PM suffix is
-        applied to the hour, so an afternoon stage sorts after a morning one.
+        The pattern is :data:`~am_segmentation_manager.layout.STAGE_TIMESTAMP`,
+        which is also what takes the timestamp *out* of a name for grouping:
+        what counts as one has to be the same question in both places. A
+        trailing AM/PM suffix is applied to the hour, so an afternoon stage
+        sorts after a morning one.
         """
-        match = re.search(
-            r"(\d{4})[-_]?([01]\d)[-_]?([0-3]\d)[T _-]?([0-2]\d)[-_:]?([0-5]\d)[-_:]?([0-5]\d)"
-            r"\s*([AaPp][Mm])?",
-            filename,
-        )
+        match = STAGE_TIMESTAMP.search(filename)
         if match is None:
             return None
         year, month, day, hour, minute, second = (int(value) for value in match.groups()[:6])

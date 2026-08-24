@@ -212,6 +212,76 @@ def test_a_record_outside_the_lookup_still_lands_somewhere_named():
     assert counts == {"loose-project / 01-lam": 1}
 
 
+def test_a_stage_name_drops_the_timestamp_that_makes_it_unique():
+    """What the qualified stage is for is finding one folder; what this is for
+    is counting the thousands of them in a handful of rows."""
+    morning = record("a")
+    morning.stage = "adaptive_polish_2026-07-28-02-43-32PM"
+    afternoon = record("b")
+    afternoon.stage = "adaptive_polish_2025-04-15-02-48-15AM"
+
+    counts = ag.count_by([morning, afternoon], ag.by_stage_name)
+
+    assert counts == {"adaptive_polish": 2}
+
+
+def test_a_lamella_standing_in_for_a_stage_is_not_counted_as_one():
+    """The 2026 layout leaves reference images directly in the lamella, whose
+    directory then stands in for a stage -- so the stage's *name* is the
+    lamella's. Counting those by name put every lamella in the collection into
+    a list of milling stages, which is the list this breakdown exists to avoid.
+    """
+    loose = record("a")
+    loose.lamella = loose.stage = "01-ruling-ibex"
+    task = record("b")
+    task.lamella, task.stage = "01-ruling-ibex", "MillRoughCut"
+
+    counts = ag.count_by([loose, task], ag.by_stage_name)
+
+    assert counts == {ag.LAMELLA_ROOT: 1, "MillRoughCut": 1}
+
+
+def test_an_alignment_run_counts_under_the_task_it_aligns_for():
+    """Autolamella names a run after the lamella, the task and the time it ran,
+    and collects the runs under the task in an Alignment/ directory. Counting
+    those by their own name is a row per run, each starting with a lamella's
+    name -- which is how a list of milling stages filled up with lamellae."""
+    run = record("a")
+    run.lamella, run.series = "01-ruling-ibex", "alignment"
+    run.stage = "01-ruling-ibex - MillRoughCut-10-55-07"
+    run.stage_path = Path(
+        "p/01-ruling-ibex/MillRoughCut/Alignment/01-ruling-ibex - MillRoughCut-10-55-07"
+    )
+
+    assert ag.count_by([run], ag.by_stage_name) == {"MillRoughCut": 1}
+
+
+def test_an_alignment_run_under_the_lamella_names_no_task():
+    """There is a run directory at that level too, and nothing above it says
+    which task it was for."""
+    run = record("a")
+    run.lamella, run.series = "01-ruling-ibex", "alignment"
+    run.stage = "01-ruling-ibex - SetupLamella-09-12-31"
+    run.stage_path = Path(
+        "p/01-ruling-ibex/Alignment/01-ruling-ibex - SetupLamella-09-12-31"
+    )
+
+    assert ag.count_by([run], ag.by_stage_name) == {ag.LAMELLA_ROOT: 1}
+
+
+def test_a_milling_task_is_counted_by_the_name_it_repeats_under():
+    """The 2026 layout puts reference images in a task directory, named the
+    same in every lamella -- which is the question this filter answers."""
+    polishing = record("a")
+    polishing.stage = "Polishing"
+    rough = record("b")
+    rough.stage = "Rough Milling"
+
+    counts = ag.count_by([polishing, rough], ag.by_stage_name)
+
+    assert counts == {"Polishing": 1, "Rough Milling": 1}
+
+
 def test_lamella_and_stage_are_listed_as_workflow_not_project_metadata():
     """They need the project lookup to be named, but a lamella is not something
     read out of a project's metadata file, and the headings say where a value
@@ -222,6 +292,7 @@ def test_lamella_and_stage_are_listed_as_workflow_not_project_metadata():
 
     assert "lamella" in workflow
     assert "stage" in workflow
+    assert "stage-name" in workflow
 
 
 def test_a_project_without_metadata_reports_missing():

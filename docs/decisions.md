@@ -317,9 +317,24 @@ becomes wrong, correct it in place rather than appending a correction.
   on, and a property already in one row is not offered in another, which is what stops two
   rows disagreeing about it. Removing the last row empties it instead, because a box with no
   filter in it still says what could be filtered on. **A few properties are counted by but
-  never filtered on**: a lamella and a milling stage both run to hundreds of values, and an
-  electron source does not vary across this collection at all. `UNFILTERABLE` names them; they
-  stay breakdowns, and the command line still filters on `--electron-source`.
+  never filtered on**: a lamella and a fully qualified milling stage both run to hundreds of
+  values, and an electron source does not vary across this collection at all. `UNFILTERABLE`
+  names them; they stay breakdowns, and the command line still filters on `--electron-source`.
+- **A stage is filtered on by its name, and counted on by its path.** `stage` names a folder --
+  `project / lamella / adaptive_polish_<timestamp>` -- which is what finds one run again and is
+  useless as a list to choose from. `stage-name` is the same folder with the timestamp taken
+  out by `layout.stage_base_name`, so it collapses to `adaptive_polish` and to the names of the
+  milling tasks the 2026 layout keeps reference images in: a handful of rows that repeat across
+  every lamella, which is the question an export is narrowed by. **What names no milling stage
+  counts under `LAMELLA_ROOT`**, and two things do: a stage directory synthesised from the
+  lamella, which carries the lamella's name, and an alignment run sitting directly under one.
+  **An alignment run counts under the task it aligns for** — the directory its `Alignment/`
+  folder sits in — because Autolamella names a run after the lamella, the task and the time it
+  ran, which is a row per run and one beginning with a lamella's name. Between them these were
+  how a list of milling stages filled up with lamellae while the tasks whose images live only
+  in their runs were missing from it altogether. The timestamp pattern lives in
+  `layout.py` with the other naming conventions, because the scanner reads it to order stages
+  by when they ran and this reads it to remove it, and the two must agree on what one is.
 - **Series is the one filter that does not open on everything.** Every other control on the tab
   starts wide and narrows towards an export. This one starts on Adaptive Polishing, because a
   tab silently counting the rest would disagree with `create-training-csv`. A dedicated control

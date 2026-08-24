@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.layout import (
+    UNNAMED_STAGE,
     ImageDirectory,
     LooseImageSets,
     acquisition_stem,
@@ -30,6 +31,7 @@ from am_segmentation_manager.layout import (
     labels_directory_name,
     loose_image_set_name,
     resolve_labels_directory,
+    stage_base_name,
     subdirectories_by_name,
 )
 
@@ -756,3 +758,32 @@ def test_image_files_of_an_adaptive_set_returns_the_whole_directory(tmp_path):
 
     assert sorted(found) == ["a_SEM.tif", "b_SEM.tif"]
     assert found["a_SEM.tif"] == stage / "sem" / "a_SEM.tif"
+
+
+# ---------------------------------------------------------------------------
+# Stage names
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "folder, expected",
+    [
+        ("adaptive_polish_2026-07-28-02-43-32PM", "adaptive_polish"),
+        ("adaptive_polish_2025-04-15-02-48-15AM", "adaptive_polish"),
+        ("adaptive_polish_2026-08-07-15-30-00", "adaptive_polish"),
+        # Already bare: the 2024 layout, and the milling tasks the 2026 one
+        # puts reference images in.
+        ("adaptive_polish", "adaptive_polish"),
+        ("Polishing", "Polishing"),
+        ("Rough Milling", "Rough Milling"),
+        # Nothing but a timestamp, which names no stage at all.
+        ("2026-08-07-15-30-00", UNNAMED_STAGE),
+    ],
+)
+def test_a_stage_name_keeps_what_repeats_and_drops_what_does_not(folder, expected):
+    """What is left has to be shared by every lamella that ran the same step,
+    or counting by it is counting folders."""
+    assert stage_base_name(folder) == expected
+
+
+def test_a_timestamp_inside_a_name_leaves_no_gap_behind():
+    assert stage_base_name("ref_2025-04-15-02-48-15AM_run") == "ref_run"
