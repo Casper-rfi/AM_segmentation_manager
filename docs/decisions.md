@@ -367,6 +367,14 @@ becomes wrong, correct it in place rather than appending a correction.
   train/validation split groups by the *acquisition* rather than the label, since a paired
   row holds two: what its beams and conditions have in common is the scene, and splitting
   that would score the model on what it has effectively seen.
+- **What pairs the two beams depends on the era of the filename.** Adaptive Polishing
+  images carry an acquisition number and their SEM and FIB files do not share a stem, so the
+  number matches them. Reference and alignment filenames carry no number and the two beams
+  differ only by an `_eb`/`_ib` suffix, so those match on the stem with the suffix removed —
+  `layout.acquisition_stem`, beside `extract_image_number` because both are naming rules.
+  `_frame_key` picks whichever applies, and no Adaptive Polishing image reaches the second
+  branch, so adding it changed nothing: every one of the 1,614 adaptive frames in the
+  reference collection kept its identity and its members, diffed rather than counted.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called
   `image` or `label`, or ending in `_image` or `_label`, holds a path — so one command checks
   either shape and files written before both. A blank cell is its own answer rather than an

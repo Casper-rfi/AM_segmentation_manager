@@ -15,18 +15,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .layout import extract_image_number
+from .layout import acquisition_stem, extract_image_number
 from .models import AdaptiveMillingStage, ImageRecord, Lamella
 
 logger = logging.getLogger(__name__)
 
 MODALITIES = ("SEM", "FIB")
 
-# Identity of an acquisition within a stage. Images are grouped by the number
-# embedded in their filename, because the SEM and FIB files of one acquisition
-# do not reliably share a stem: older projects name the file inside ``fib/``
-# with the same ``_SEM`` suffix as the electron image. Files with no parseable
-# number fall back to grouping by filename stem.
+# Identity of an acquisition within a stage. Adaptive Polishing images are
+# grouped by the number embedded in their filename, because the SEM and FIB
+# files of one acquisition do not reliably share a stem: older projects name
+# the file inside ``fib/`` with the same ``_SEM`` suffix as the electron image.
+# Reference and alignment filenames carry no number and differ only by their
+# beam suffix, so those group by the stem with the suffix removed.
 FrameKey = tuple[int | None, str]
 
 #: Identity of an acquisition within its *lamella*, which spans several stages
@@ -57,6 +58,8 @@ class LamellaFrame:
         sem: The SEM image records, base variant first. Empty if there are none.
         fib: The FIB image records, base variant first. Empty if there are none.
         plot_path: The summary plot for this acquisition, when one exists.
+        series: What the images were taken for. One value for the frame: see
+            :attr:`Acquisition.series`.
     """
 
     lamella: str
@@ -66,6 +69,7 @@ class LamellaFrame:
     sem: tuple[ImageRecord, ...] = ()
     fib: tuple[ImageRecord, ...] = ()
     plot_path: Path | None = None
+    series: str = "adaptive"
 
     @property
     def display_name(self) -> str:
@@ -139,7 +143,9 @@ class LamellaFrame:
         return [record.variant for record in self.modality_records(modality)]
 
 
-def build_lamella_frames(lamella: Lamella) -> list[LamellaFrame]:
+def build_lamella_frames(
+    lamella: Lamella, series: str | None = None
+) -> list[LamellaFrame]:
     """Return the lamella's acquisitions as one chronologically ordered list.
 
     Frames follow the order of ``lamella.stages`` -- which the scanner has
@@ -149,6 +155,10 @@ def build_lamella_frames(lamella: Lamella) -> list[LamellaFrame]:
 
     Args:
         lamella: A lamella from a scanned project index.
+        series: Keep only acquisitions of this series. ``None`` keeps every
+            one. A 2026 lamella holds its reference images, its alignment runs
+            and its Adaptive Polishing stages, which is one timeline of three
+            unrelated things; anything reviewing it wants one at a time.
 
     Returns:
         One :class:`LamellaFrame` per acquisition, across all of the lamella's
@@ -156,12 +166,14 @@ def build_lamella_frames(lamella: Lamella) -> list[LamellaFrame]:
     """
     frames: list[LamellaFrame] = []
     for stage in lamella.stages:
-        frames.extend(_build_stage_frames(lamella, stage))
+        frames.extend(_build_stage_frames(lamella, stage, series))
     logger.debug("Built %d frames for lamella %s", len(frames), lamella.name)
     return frames
 
 
-def _build_stage_frames(lamella: Lamella, stage: AdaptiveMillingStage) -> list[LamellaFrame]:
+def _build_stage_frames(
+    lamella: Lamella, stage: AdaptiveMillingStage, series: str | None = None
+) -> list[LamellaFrame]:
     """Return the frames for a single stage, ordered by acquisition number."""
     plots = _plots_by_image_number(stage.plots)
     return [
@@ -177,8 +189,10 @@ def _build_stage_frames(lamella: Lamella, stage: AdaptiveMillingStage) -> list[L
                 if acquisition.image_number is not None
                 else None
             ),
+            series=acquisition.series,
         )
         for acquisition in group_by_acquisition(stage.images)
+        if series is None or acquisition.series == series
     ]
 
 
@@ -223,6 +237,17 @@ class Acquisition:
     def records(self) -> list[ImageRecord]:
         """Return every record in this acquisition, SEM first."""
         return [*self.sem, *self.fib]
+
+    @property
+    def series(self) -> str:
+        """Return what this acquisition's images were taken for.
+
+        One value for the whole acquisition: a series is decided by filename,
+        and the beam suffix plays no part in that decision, so both beams and
+        every imaging condition of one scene classify the same way.
+        """
+        first = next(iter(self.records), None)
+        return first.series if first is not None else "adaptive"
 
 
 def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
@@ -294,11 +319,17 @@ def _plots_by_image_number(plots: Iterable[Path]) -> dict[int, Path]:
 
 
 def _frame_key(image_path: Path) -> FrameKey:
-    """Return the grouping key identifying an image's acquisition."""
+    """Return the grouping key identifying an image's acquisition.
+
+    The acquisition number where the filename carries one, which is every
+    Adaptive Polishing image. Outside those there is no number, and the two
+    beams differ only by the suffix -- ``ref_Polishing_start_eb`` against
+    ``ref_Polishing_start_ib`` -- so the stem is taken with that removed.
+    """
     number = extract_image_number(image_path.name)
     if number is not None:
         return (number, "")
-    return (None, image_path.stem)
+    return (None, acquisition_stem(image_path.name))
 
 
 def _frame_sort_key(key: FrameKey) -> tuple[bool, int, str]:
