@@ -64,6 +64,8 @@ class LamellaFrame:
         sem: The SEM image records, base variant first. Empty if there are none.
         fib: The FIB image records, base variant first. Empty if there are none.
         plot_path: The summary plot for this acquisition, when one exists.
+        stage_plot: The plot describing the whole stage, when it wrote one.
+            Shared by every frame of that stage; see :attr:`displayed_plot`.
         series: What the images were taken for. One value for the frame: see
             :attr:`Acquisition.series`.
     """
@@ -75,7 +77,26 @@ class LamellaFrame:
     sem: tuple[ImageRecord, ...] = ()
     fib: tuple[ImageRecord, ...] = ()
     plot_path: Path | None = None
+    stage_plot: Path | None = None
     series: str = "adaptive"
+
+    @property
+    def displayed_plot(self) -> Path | None:
+        """Return the plot to show for this frame, of either kind.
+
+        Its own where the stage wrote one per acquisition, which is every
+        Adaptive Polishing stage that has plots at all. Otherwise the stage's,
+        which is what an alignment run has: one figure summarising the several
+        images it took to converge, with nothing to match to a single
+        acquisition. :attr:`plot_is_shared` says which this is, because a
+        figure describing five frames should not be read as describing one.
+        """
+        return self.plot_path or self.stage_plot
+
+    @property
+    def plot_is_shared(self) -> bool:
+        """Return whether the plot on show describes the stage, not this frame."""
+        return self.plot_path is None and self.stage_plot is not None
 
     @property
     def acquired_at(self) -> datetime | None:
@@ -246,6 +267,7 @@ def _build_stage_frames(
                 if acquisition.image_number is not None
                 else None
             ),
+            stage_plot=stage.summary_plot,
             series=acquisition.series,
         )
         for acquisition in group_by_acquisition(stage.images)

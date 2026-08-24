@@ -348,7 +348,7 @@ class FrameCache:
         routinely hold fewer plots than acquisitions.
         """
         frame = self._frame(frame_index)
-        if frame is None or frame.plot_path is None:
+        if frame is None or frame.displayed_plot is None:
             return None
 
         cached = self._plots.get(frame_index)
@@ -357,9 +357,9 @@ class FrameCache:
 
         generation = self._generation
         try:
-            prepared = FramePlot(plot=self._load_plot(frame.plot_path))
+            prepared = FramePlot(plot=self._load_plot(frame.displayed_plot))
         except Exception as exc:  # noqa: BLE001 - as above
-            logger.warning("Could not prepare plot %s: %s", frame.plot_path, exc)
+            logger.warning("Could not prepare plot %s: %s", frame.displayed_plot, exc)
             prepared = FramePlot(error=str(exc))
         else:
             self._budget_for(prepared)
@@ -446,7 +446,7 @@ class FrameCache:
         looked at.
         """
         frame = self._frame(frame_index)
-        if frame is None or frame.plot_path is None:
+        if frame is None or frame.displayed_plot is None:
             return None
 
         cached = self._details.get(frame_index)
@@ -455,9 +455,9 @@ class FrameCache:
 
         generation = self._generation
         try:
-            prepared = FramePlot(plot=prepare_plot(frame.plot_path))
+            prepared = FramePlot(plot=prepare_plot(frame.displayed_plot))
         except Exception as exc:  # noqa: BLE001 - as above
-            logger.warning("Could not read %s whole: %s", frame.plot_path, exc)
+            logger.warning("Could not read %s whole: %s", frame.displayed_plot, exc)
             prepared = FramePlot(error=str(exc))
         if generation == self._generation:
             self._details.put(frame_index, prepared)
@@ -529,7 +529,7 @@ class FrameCache:
                 requests.append(LoadRequest(frame_index, modality, variant))
             if include_plots:
                 frame = self._frame(frame_index)
-                if frame is not None and frame.plot_path is not None:
+                if frame is not None and frame.displayed_plot is not None:
                     if frame_index not in self._plots:
                         requests.append(LoadRequest(frame_index, None))
         # Last, and only where it will be looked at: it is the slowest read
@@ -537,7 +537,7 @@ class FrameCache:
         # lamella for a resolution nobody is using yet.
         if include_plots and current not in self._details:
             frame = self._frame(current)
-            if frame is not None and frame.plot_path is not None:
+            if frame is not None and frame.displayed_plot is not None:
                 requests.append(LoadRequest(current, None, detail=True))
         return requests
 

@@ -100,6 +100,9 @@ class Stage:
         number: zero-padded sequential stage number within the lamella
         plots: summary plot images written during lamella preparation, one per
             acquisition. Fewer plots than images is normal.
+        summary_plot: the one plot describing the whole stage, where it has
+            one. An alignment run summarises the several images it took to
+            converge, so there is nothing to match to a single acquisition.
         synthetic: True when the dataset has no stage directory and the lamella
             directory stands in for one. Older layouts collapse this level, and
             a lamella standing in for a stage of its own reference images is
@@ -114,6 +117,7 @@ class Stage:
     images: list[ImageRecord] = field(default_factory=list)
     number: str | None = None
     plots: list[Path] = field(default_factory=list)
+    summary_plot: Path | None = None
     synthetic: bool = False
     image_sets: list[ImageSet] = field(default_factory=list)
 

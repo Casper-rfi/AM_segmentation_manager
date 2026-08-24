@@ -558,6 +558,18 @@ becomes wrong, correct it in place rather than appending a correction.
   lamella can hold nothing of the series being shown while holding plenty of another, and the
   control is the only way out of that.
 
+- **A plot describes one acquisition or a whole stage, and the window says which.** An
+  Adaptive Polishing stage writes one plot per milling cycle into `plots/`, matched to a
+  frame by its acquisition number. An alignment run writes one `figure.png` at its root
+  summarising the several images it took to converge, so there is nothing to match it to:
+  every frame of the run shows it, and carries a badge saying so, because a figure
+  describing five frames read as describing one is worse than no figure. `frame.plot_path`
+  stays the frame's own and `stage_plot` the stage's; `displayed_plot` picks, preferring the
+  frame's. `AP_summary_plots.png` is recognised by the same rule — it summarises a whole
+  milling run — though it never displays today, since every stage that has one also has a
+  plot for every acquisition. `centring.png` sits beside it and is deliberately excluded:
+  it records where the plugin placed its field of view, not what the run achieved.
+
 ## Environment
 
 - **A save refuses a label whose file changed since it was opened.** Proofreading holds a

@@ -1738,12 +1738,13 @@ class CurationWindow(QMainWindow):
         self.image_panel.set_status(self._status_text())
 
         if self.controller.mode == "plot":
-            if frame.plot_path is None:
+            if frame.displayed_plot is None:
                 self.image_panel.show_plot(None)
             elif self.controller.cache.cached_plot(self.controller.frame_position) is None:
                 self.image_panel.show_loading()
             else:
                 self._render_plot()
+            self.image_panel.set_plot_scope(frame.plot_is_shared)
             return
 
         modality = "SEM" if self.controller.mode == "sem" else "FIB"

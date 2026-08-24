@@ -577,7 +577,7 @@ class CurationController:
             modes.append("sem")
         if frame.fib:
             modes.append("fib")
-        if frame.plot_path is not None:
+        if frame.displayed_plot is not None:
             modes.append("plot")
         return modes
 
@@ -691,9 +691,9 @@ class CurationController:
     def current_plot_path(self) -> Path | None:
         """Return the absolute path of the summary plot on screen, if any."""
         frame = self.frame
-        if frame is None or frame.plot_path is None:
+        if frame is None or frame.displayed_plot is None:
             return None
-        return frame.plot_path.resolve()
+        return frame.displayed_plot.resolve()
 
     def current_image(self) -> FrameImage | None:
         """Return the prepared acquisition for the current mode and frame.

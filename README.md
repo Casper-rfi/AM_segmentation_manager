@@ -134,7 +134,7 @@ is equivalent and needs no installation.
 data* to describe projects so they can be indexed and grouped, and to inspect or
 recompress the whole folder; *Curate* to review images against their labels, set
 their state, and predict them — one series at a time, chosen beside the
-modality buttons; *Label* to proofread one lamella's selected images
+modality buttons, with each alignment run's summary figure on its Plots view; *Label* to proofread one lamella's selected images
 at full resolution; and *Export* to choose a subset and write it out. Proofreading holds a lamella's edits until you save them, saving
 offers to mark the reviewed set corrected, and the Label tab will ring the stray
 spots too small to be real. Reviewing is safe by default: everything that writes

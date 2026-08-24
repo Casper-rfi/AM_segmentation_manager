@@ -24,6 +24,7 @@ from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
     PREDICTION_KINDS,
+    STAGE_SUMMARY_PLOTS,
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
@@ -267,6 +268,7 @@ class Scanner:
                 lamella_name=lamella_name,
             )
             stage.plots = self._discover_plots(item.path)
+            stage.summary_plot = self._discover_summary_plot(item.path)
             stages.append(stage)
             logger.debug(
                 "Discovered stage %s with %d images and %d plots",
@@ -321,6 +323,19 @@ class Scanner:
             p for p in sorted(plots_directory.iterdir())
             if p.is_file() and p.suffix.lower() in cls.PLOT_EXTENSIONS
         ]
+
+    @staticmethod
+    def _discover_summary_plot(stage_path: Path) -> Path | None:
+        """Return the plot describing the whole stage, if it wrote one.
+
+        At the stage root rather than in ``plots/``, and singular: it covers
+        every acquisition in the stage, so there is nothing to match it to.
+        """
+        for name in STAGE_SUMMARY_PLOTS:
+            candidate = stage_path / name
+            if candidate.is_file():
+                return candidate
+        return None
 
     @classmethod
     def _stage_sort_key(cls, stage: Stage) -> tuple[bool, datetime, str]:

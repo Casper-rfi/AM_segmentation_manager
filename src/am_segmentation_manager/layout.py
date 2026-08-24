@@ -127,6 +127,16 @@ BEAM_SUFFIXES: Final[dict[str, str]] = {"_eb": "SEM", "_ib": "FIB"}
 #: per run. Present below a lamella and below each milling task.
 ALIGNMENT_DIRECTORY: Final[str] = "Alignment"
 
+#: Plot files that summarise a whole stage rather than one acquisition, tried
+#: in order. Unlike the per-acquisition plots in ``plots/``, these sit at the
+#: stage root and there is one of them: an alignment run's ``figure.png``
+#: summarises the several images it took to converge, and the Adaptive
+#: Polishing plugin's ``AP_summary_plots.png`` summarises a whole milling run.
+#:
+#: ``centring.png`` sits beside them and is deliberately absent: it records
+#: where the plugin placed its field of view, which is a diagnostic of the run.
+STAGE_SUMMARY_PLOTS: Final[tuple[str, ...]] = ("figure.png", "AP_summary_plots.png")
+
 
 @dataclass(frozen=True)
 class ImageDirectory:

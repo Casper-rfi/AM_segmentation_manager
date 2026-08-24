@@ -73,6 +73,9 @@ class ImagePanel(QWidget):
         super().__init__()
         self.config = config
         self._alpha = DEFAULT_ALPHA
+        #: Whether the figure on show describes the whole stage; see
+        #: :meth:`set_plot_scope`.
+        self._plot_is_shared = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -422,7 +425,19 @@ class ImagePanel(QWidget):
             whole.plot if whole is not None and not whole.failed else None,
         )
         self._draw_plot(same_picture=same)
-        self._set_badges([])
+        self._set_badges(
+            [("summarises the whole stage", "info")] if self._plot_is_shared else []
+        )
+
+    def set_plot_scope(self, shared: bool) -> None:
+        """Say whether the figure on show describes the stage or one frame.
+
+        An alignment run writes one figure for the several images it took to
+        converge, so the same picture is shown on each of its frames. Read as
+        that frame's own it would be badly misleading, and nothing about the
+        figure itself says otherwise.
+        """
+        self._plot_is_shared = shared
 
     def _draw_plot(self, *, same_picture: bool = True) -> None:
         """Draw whichever copy of the figure shows the most at this zoom.
