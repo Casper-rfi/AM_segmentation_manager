@@ -35,11 +35,13 @@ tab does, and [`decisions.md`](decisions.md) why each of the following is so:
 * **Predictions need an environment installed separately**, built by
   `scripts/setup_ml.sh`, which runs the window too. One prediction per label group, one
   modality per run, resumable, in a child process the window shares no torch with.
-* **Export filters, counts and writes, and every filter narrows all three.** Filters are
+* **Export filters, counts and writes — and can copy the files out.** Filters are
   added as they are wanted, derived from the breakdowns so a property is not declared
   twice. Opening the tab reads the image headers; opening the labels stays behind *Measure
   labels*. **Which modality is chosen decides the shape of what is written**, and the
-  command line agrees, so one selection exported either way gives the same file.
+  command line agrees, so one selection exported either way gives the same file. The same
+  selection can also be *copied* out with its labels and each project's own files, under the
+  paths it already has, which is `export-files` on the command line.
 * **A project is a directory; `project` is what the work was part of.** The directory is
   `autolamella_project` in every export; the metadata field names the wider project several
   directories usually share. Both can be counted and filtered on.

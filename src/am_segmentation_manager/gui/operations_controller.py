@@ -12,6 +12,7 @@ scan root: an absolute path eight directories deep is unreadable in a dialog.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,6 +59,37 @@ class OperationReport:
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""
         return [self.headline, *self.lines]
+
+
+#: How many filenames a report lists before leaving the rest to the count. A
+#: copy of a whole collection runs to thousands of files, and a dialog listing
+#: them is one nobody reads to the end.
+MAX_REPORTED_FILES = 20
+
+
+#: What each kind of copied file is called in a report, in the order a reader
+#: wants them: the data first, then what describes it.
+COPIED_NOUNS: dict[str, str] = {
+    "image": "image",
+    "label": "label",
+    "state": "state file",
+    "metadata": "project file",
+}
+
+
+def _copy_context(plan) -> tuple[str, ...]:
+    """Return what a copy would write, counted by what each file is."""
+    kinds = Counter(item.kind for item in plan.to_copy)
+    counted = ", ".join(
+        f"{kinds[kind]} {noun}{'s' if kinds[kind] != 1 else ''}"
+        for kind, noun in COPIED_NOUNS.items()
+        if kinds.get(kind)
+    )
+    context = [counted] if counted else []
+    if plan.already_there:
+        context.append(f"{len(plan.already_there)} file(s) are already there")
+    context.append(f"{format_bytes(plan.free_space)} free where it is going")
+    return tuple(context)
 
 
 def _skip_summary(plan: ConversionPlan) -> tuple[str, ...]:
@@ -467,6 +499,94 @@ class OperationsController:
 
 
     # -- describing and indexing a collection ------------------------------
+
+    # -- copying a selection out -------------------------------------------
+
+    def copy_files(
+        self,
+        records: Iterable[ImageRecord],
+        destination: Path,
+        *,
+        projects: Sequence = (),
+        start_path: Path | None = None,
+        dry_run: bool = False,
+        cancellation: Cancellation | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> OperationReport:
+        """Copy the selection, its labels and its project files into *destination*.
+
+        The preview is the plan: what would be written, how much of it, and
+        what is in the way. It reads directory entries only, so a selection of
+        thousands answers while the user is still looking at the folder they
+        picked rather than long after.
+
+        **A refusal carries no count and cannot be confirmed past.** Everything
+        else in this window that stops can be overridden, because what it
+        protects is the user's own data and the user may know better; here the
+        answer is to choose another folder.
+
+        Args:
+            projects: The scanned projects, which say where each project's own
+                files are. Without them the copy is images and labels alone.
+            start_path: The scan root the copied paths are relative to.
+                Defaults to the one reports are written against.
+        """
+        from ..operations.copy_export import (
+            DestinationInsideSource,
+            copy_export,
+            plan_copy,
+        )
+
+        root = start_path or self.start_path
+        if root is None:
+            return OperationReport("Nothing has been scanned yet.")
+        try:
+            plan = plan_copy(records, destination, root, projects=projects)
+        except DestinationInsideSource as error:
+            return OperationReport(f"Choose a folder outside the collection: {error}")
+
+        if plan.conflicts:
+            return OperationReport(
+                f"{len(plan.conflicts)} file(s) already in {destination} differ "
+                f"from what this would copy there. Nothing has been copied; "
+                f"choose an empty folder, or the one an earlier run of this "
+                f"same export wrote.",
+                tuple(
+                    str(item.destination.name)
+                    for item in plan.conflicts[:MAX_REPORTED_FILES]
+                ),
+            )
+        if plan.short_by:
+            return OperationReport(
+                f"Not enough room in {destination}: "
+                f"{format_bytes(plan.bytes_to_copy)} to write, "
+                f"{format_bytes(plan.free_space)} free."
+            )
+        if not plan.to_copy:
+            return OperationReport(
+                f"Nothing to copy: {destination} already holds all "
+                f"{len(plan.already_there)} file(s)."
+            )
+
+        if dry_run:
+            return OperationReport(
+                f"Would copy {len(plan.to_copy)} file(s), "
+                f"{format_bytes(plan.bytes_to_copy)}, into {destination}.",
+                _copy_context(plan),
+                len(plan.to_copy),
+            )
+
+        report = copy_export(plan, on_progress=on_progress, cancellation=cancellation)
+        headline = (
+            f"Copied {len(report.copied)} file(s), "
+            f"{format_bytes(report.bytes_copied)}, into {destination}."
+        )
+        if report.stopped:
+            headline += (
+                " Stopped early; what was copied is kept, and running it again "
+                "carries on from there."
+            )
+        return OperationReport(headline, applied=True, count=len(report.copied))
 
     def survey(self, root: Path, *, detail: bool = False) -> OperationReport:
         """Report how a directory is interpreted, and what does not fit.

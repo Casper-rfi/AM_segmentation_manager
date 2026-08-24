@@ -267,6 +267,8 @@ class ExportPanel(QWidget):
     training_export_requested = Signal(str)
     image_metadata_export_requested = Signal(str)
     project_metadata_export_requested = Signal(str)
+    #: Emitted with the directory to copy the matching files into.
+    files_export_requested = Signal(str)
 
     #: Emitted with a CSV to check the recorded paths of.
     csv_check_requested = Signal(str)
@@ -666,6 +668,14 @@ class ExportPanel(QWidget):
                 "One row per project in the scan, from its recorded "
                 "metadata. Not narrowed by the filters: the unit here is the "
                 "project, not the image.",
+            ),
+            (
+                "Copy images and labels...",
+                self.files_export_requested,
+                True,
+                "Copy the matching images, their labels and each project's "
+                "files into a folder, keeping the hierarchy.\n"
+                "Nothing is overwritten; an earlier run of it resumes.",
             ),
         ):
             button = QPushButton(label)

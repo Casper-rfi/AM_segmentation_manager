@@ -1222,6 +1222,45 @@ def inline_operations(window, monkeypatch):
     return asked
 
 
+def test_copying_the_selection_writes_it_into_the_chosen_folder(
+    window, inline_operations, tmp_path: Path
+):
+    """The Export tab's copy: the filters decide what, the dialog decides
+    where, and the same preview-then-apply ladder decides whether."""
+    destination = tmp_path / "deposit"
+
+    window._copy_files(str(destination))
+
+    assert inline_operations == [("Copy images and labels", "Apply")]
+    copied = sorted(path.name for path in destination.rglob("*.tif"))
+    assert copied, "the images and their labels land under the folder"
+    assert (destination / "AutoLamella-2026-07-28-13-57" / "experiment.yaml").exists(), (
+        "the file that makes the copy indexable comes too"
+    )
+
+
+def test_copying_previews_before_it_writes(window, inline_operations, monkeypatch):
+    """Refusing the preview must leave the folder untouched, gigabytes being
+    the usual size of this one."""
+    monkeypatch.setattr(window, "_confirm_report", lambda *args: False)
+    destination = Path(window.controller.start_path).parent / "refused"
+
+    window._copy_files(str(destination))
+
+    assert not destination.exists()
+
+
+def test_copying_into_the_collection_is_refused(window, inline_operations):
+    """It would be walking into its own output, and the copy would be scanned
+    as part of the collection it came from."""
+    inside = Path(window.controller.start_path) / "export"
+
+    window._copy_files(str(inside))
+
+    assert inline_operations == [], "a refusal is shown, not offered"
+    assert not inside.exists()
+
+
 def test_compressing_acts_on_the_whole_collection(window, inline_operations):
     """Recompression preserves the pixels exactly, so there is no label it
     should be withheld from and nothing to select."""

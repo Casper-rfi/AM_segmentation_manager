@@ -506,6 +506,7 @@ class CurationWindow(QMainWindow):
         self.export_panel.csv_check_requested.connect(self._check_csv)
         self.export_panel.measure_requested.connect(self._measure_labels)
 
+        self.export_panel.files_export_requested.connect(self._copy_files)
         self.export_panel.training_export_requested.connect(self._export_training)
         self.export_panel.image_metadata_export_requested.connect(self._export_image_metadata)
         self.export_panel.project_metadata_export_requested.connect(self._export_project_metadata)
@@ -1089,6 +1090,37 @@ class CurationWindow(QMainWindow):
             QMessageBox.Cancel,
         )
         return answer == QMessageBox.Yes
+
+    def _copy_files(self, directory: str) -> None:
+        """Copy the matching images, labels and project files into *directory*.
+
+        On the same preview-then-apply path as the operations that write into
+        the collection, and stoppable for the same reason: this one writes
+        gigabytes, and a copy that lands by rename leaves whole files wherever
+        it is stopped.
+
+        No rescan afterwards. Nothing in the scanned collection has changed --
+        the copy is somewhere else, and refuses to be anywhere else.
+        """
+        if not self.export_controller.selected_records():
+            self._flash("Nothing matches these filters")
+            return
+
+        cancellation = Cancellation()
+        progressed = self.operations.worker.progressed
+        self._operate(
+            "Copy images and labels",
+            lambda allow, dry: self.operations_controller.copy_files(
+                self.export_controller.selected_records(),
+                Path(directory),
+                projects=self.export_controller.projects,
+                start_path=self.export_controller.start_path,
+                dry_run=dry,
+                cancellation=None if dry else cancellation,
+                on_progress=None if dry else progressed.emit,
+            ),
+            cancellation=cancellation,
+        )
 
     def _export_image_metadata(self, path: str) -> None:
         if not self.export_controller.selected_records():
