@@ -225,12 +225,6 @@ silently change their state, so a state change expands across the whole group be
 anything moves. An image with a private label forms a group of one, which keeps this
 a single code path rather than a special case.
 
-Where a group has a label, **the label's location is authoritative** for the group's
-state; the image's own location decides only when no label exists yet. A group whose
-images disagree with their label is reported, never silently resolved, and
-`repair-state` moves the images to follow the label — never the reverse, since the
-label holds the proofread work.
-
 **A label file existing is not evidence of annotation.** The external segmentation
 software writes an empty label for every image in its input folder. Anything treating
 a label as finished work must look inside it: an empty label exported as a training

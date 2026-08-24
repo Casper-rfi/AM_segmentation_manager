@@ -18,12 +18,10 @@ what each command and tab does. What is worth knowing beyond that:
   folder a file sits in. A change expands across the label group, validates the whole
   batch, and writes one entry. Marking a set corrected, and exporting a training CSV,
   both stop to name any image whose label holds no annotation.
-* **Each tab has a controller holding no Qt**, which is what makes navigation, cache
-  eviction and state expansion testable without a display.
+* **Each tab has a controller holding no Qt.**
 * **What a change applies to is one level at a time.** Ticking a project clears the
-  ticked lamellae, picking frames out clears both, and ticked lamellae belong to the
-  project on screen and go when it changes — so what is ticked on screen is the whole
-  of what a state change or an operation will touch.
+  ticked lamellae and picking frames out clears both, so what is ticked on screen is
+  the whole of what a state change or an operation will touch.
 * **Where an operation sits says what it acts on.** Curate runs `predict` and
   `convert-predictions` against the ticked set, because choosing which images to
   predict is the decision; Add data runs `inspect-layout`, `init-project` and
@@ -41,9 +39,9 @@ what each command and tab does. What is worth knowing beyond that:
   several gigabytes, so `scripts/setup_ml.sh` builds its own, which runs the window too.
   Writes go to `<predictions>/am_seg/`, the only prediction directory this package
   writes. One prediction per label group, one modality per run — a selection holding
-  both is refused, since a model is for one and nothing can tell which — and resumable,
-  which is what earns it a Stop button. **The window runs it in a child process** and
-  imports no torch itself; which device to use is chosen beside the model.
+  both is refused — and resumable, which is what earns it a Stop button. **The window
+  runs it in a child process** and imports no torch itself; which device to use is
+  chosen beside the model.
 * **Export filters, counts and writes, and every filter narrows all three.** A filter is
   added when it is wanted: each carries a dropdown of the properties still free, the
   values of the one it is on, and a button taking it away along with what it kept. The
@@ -61,9 +59,7 @@ what each command and tab does. What is worth knowing beyond that:
 * **A project is a directory; `project` is what the work was part of.** The directory
   the scanner indexes and Curate lists is `autolamella_project` in every export; the
   metadata field called `project` names the wider project that several of those
-  directories usually share. Both can be counted and filtered on, and nothing derives
-  one from the other — the folder name is a fact about storage, and which project a
-  dataset was collected for is a question only a person can answer.
+  directories usually share. Both can be counted and filtered on.
 
 Why each of these is so is in [`decisions.md`](decisions.md).
 

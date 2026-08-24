@@ -308,7 +308,8 @@ class CurationWindow(QMainWindow):
         self.operations_panel = OperationsPanel()
         # Located, not imported: importing torch to grey out a button would add
         # seconds to every start of a window that may never predict anything.
-        # The full check runs when the button is pressed.
+        # Nothing deeper is checked here or on the press -- a missing or broken
+        # stack is reported by the child process that has to import it.
         from ...ml.environment import ml_stack_present
 
         self.operations_panel.set_prediction_available(ml_stack_present())
