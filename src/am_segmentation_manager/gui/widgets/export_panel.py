@@ -395,11 +395,14 @@ class ExportPanel(QWidget):
         # The scroller stretches this column to its own height, and a layout
         # shares the surplus between whatever is in it -- which pushed every
         # row a long way from the list it names. The spare height goes to the
-        # bottom instead.
+        # bottom instead, into a stretch, which unlike a widget cannot itself
+        # be hidden again.
         self.filter_column.addStretch(1)
 
         # Scrolled, so the filter rows cannot force the window taller than the
-        # screen.
+        # screen. setWidget shows whatever it is handed, so a widget hidden
+        # before it goes in comes back on screen: hide the scroller rather than
+        # what it holds.
         self.filter_scroller = QScrollArea()
         self.filter_scroller.setWidgetResizable(True)
         self.filter_scroller.setFrameShape(QScrollArea.NoFrame)

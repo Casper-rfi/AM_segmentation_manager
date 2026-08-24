@@ -754,8 +754,8 @@ MAX_TOOLTIP = 200
 
 
 def test_no_tooltip_in_the_window_is_longer_than_anyone_reads(window):
-    """The ceiling was stated in docs/decisions.md and enforced on one tab, so
-    the timeline grew a 488-character legend nobody was reading."""
+    """The ceiling is stated in gui/widgets/__init__.py. Enforced on one tab
+    only, the timeline grew a 488-character legend nobody was reading."""
     from qtpy.QtWidgets import QWidget
 
     too_long = {

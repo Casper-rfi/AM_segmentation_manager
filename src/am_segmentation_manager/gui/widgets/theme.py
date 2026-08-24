@@ -153,7 +153,8 @@ def stylesheet() -> str:
        locked and is mostly used for reading, and Qt's disabled grey puts every
        value at low contrast on exactly the tab whose job is showing them. The
        background dulls instead, which is what says "locked"; the buttons and
-       radio groups beside it still grey out normally. */
+       radio groups beside it still grey out normally, being controls you
+       cannot use rather than values you are reading. */
     QLineEdit:disabled, QComboBox:disabled, QPlainTextEdit:disabled {{
         color: {TEXT};
         background: {WINDOW};
