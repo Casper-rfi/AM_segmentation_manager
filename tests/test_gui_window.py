@@ -1287,6 +1287,75 @@ def test_browsing_for_a_model_predicts_nothing_by_itself(window):
     assert started == []
 
 
+# ---------------------------------------------------------------------------
+# The model box follows the view
+# ---------------------------------------------------------------------------
+#
+# An SEM model over a FIB image returns a confident, entirely wrong prediction,
+# and the series differ from each other as much again. Which model is right
+# stays the user's to say; what these pin is that the box is not offering the
+# answer to a different question.
+
+def test_the_model_box_is_kept_per_series_and_beam(window, settings):
+    window.operations_panel.set_model("/models/AM_SEM_All_V01.pth")
+
+    window._set_mode("fib", from_user=True)
+
+    assert window.operations_panel.model() == ""
+    assert settings.value("model/adaptive/SEM", "", type=str) == (
+        "/models/AM_SEM_All_V01.pth"
+    )
+
+
+def test_the_model_comes_back_when_the_view_does(window):
+    window.operations_panel.set_model("/models/AM_SEM_All_V01.pth")
+    window._set_mode("fib", from_user=True)
+    window.operations_panel.set_model("/models/AM_FIB_All_V02.pth")
+
+    window._set_mode("sem", from_user=True)
+    assert window.operations_panel.model() == "/models/AM_SEM_All_V01.pth"
+
+    window._set_mode("fib", from_user=True)
+    assert window.operations_panel.model() == "/models/AM_FIB_All_V02.pth"
+
+
+def test_the_plot_view_leaves_the_model_box_alone(window):
+    """It names no beam, so there is no slot to put a typed path into."""
+    window.operations_panel.set_model("/models/AM_SEM_All_V01.pth")
+
+    window._set_mode("plot", from_user=True)
+
+    assert window.operations_panel.model() == "/models/AM_SEM_All_V01.pth"
+
+
+def test_a_slot_never_filled_opens_on_the_one_path_kept_before(qt_app, settings):
+    """An existing window opens on the model it always did, rather than on an
+    empty box because the preference gained a shape."""
+    settings.setValue("model_directory", "/models/AM_SEM_All_V01.pth")
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0)}, class_labels={0: "background"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        assert window.operations_panel.model() == "/models/AM_SEM_All_V01.pth"
+    finally:
+        window.close()
+
+
+def test_closing_keeps_what_was_typed_into_the_box(window, settings):
+    """Predicting is not the only way a path gets chosen, and losing one that
+    was browsed for means browsing for it again next session."""
+    window.operations_panel.set_model("/models/AM_SEM_All_V01.pth")
+
+    window.close()
+
+    assert settings.value("model/adaptive/SEM", "", type=str) == (
+        "/models/AM_SEM_All_V01.pth"
+    )
+
+
 def test_predicting_with_editing_off_says_so_without_asking_for_anything(
     window, monkeypatch
 ):

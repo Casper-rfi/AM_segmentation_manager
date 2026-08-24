@@ -87,8 +87,8 @@ class OperationsPanel(QWidget):
         self.model_edit.setPlaceholderText("Model weights (.pth)")
         self.model_edit.setToolTip(
             "The trained model to predict with. Type a path or press Browse.\n"
-            "Settings the weights do not record are read from a .yaml of the "
-            "same name beside them."
+            "Kept per series and beam, so the box follows the view.\n"
+            "Settings the weights do not record come from a .yaml beside them."
         )
         model_row.addWidget(self.model_edit)
         self.browse_button = QPushButton("Browse...")

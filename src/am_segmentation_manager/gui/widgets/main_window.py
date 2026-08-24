@@ -31,6 +31,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...layout import MODALITIES
 from ...operations.selection import (
     RecordState,
     StaleState,
@@ -38,7 +39,7 @@ from ...operations.selection import (
     current_state,
 )
 from ...progress import Cancellation
-from ..controller import CurationController, EditingDisabled
+from ..controller import MODE_MODALITIES, CurationController, EditingDisabled
 from ..export_controller import ExportController
 from ..label_controller import LabelController
 from ..loader import BackgroundLoader
@@ -64,8 +65,11 @@ logger = logging.getLogger(__name__)
 SETTINGS_ORGANISATION = "am_segmentation_manager"
 SETTINGS_APPLICATION = "curation"
 SETTING_SCAN_ROOT = "scan_root"
-#: Where the model chooser last opened, so a second run does not navigate again.
-SETTING_MODEL = "model_directory"
+#: Where the model to predict with is remembered, one entry per series and
+#: beam: ``model/<series>/<modality>``. The key below it is what a single box
+#: wrote before there were six, and is read where a slot has never been filled.
+SETTING_MODEL = "model"
+SETTING_LEGACY_MODEL = "model_directory"
 #: The device last predicted on, remembered like the model: one machine
 #: usually has one answer, and re-choosing it every session is noise.
 SETTING_DEVICE = "predict_device"
@@ -314,9 +318,14 @@ class CurationWindow(QMainWindow):
         from ...ml.environment import ml_stack_present
 
         self.operations_panel.set_prediction_available(ml_stack_present())
-        self.operations_panel.set_model(
-            self.settings.value(SETTING_MODEL, "", type=str)
+        #: Which remembered model the box is currently showing, as
+        #: ``(series, modality)``. Held so that what is typed can be put back
+        #: where it came from when the view moves on; see
+        #: :meth:`_follow_model_context`.
+        self._model_context = (
+            controller.series, MODE_MODALITIES.get(controller.mode, MODALITIES[0])
         )
+        self.operations_panel.set_model(self._remembered_model(self._model_context))
         self.operations_panel.set_device(
             self.settings.value(SETTING_DEVICE, "", type=str)
         )
@@ -537,10 +546,57 @@ class CurationWindow(QMainWindow):
                 splitter.restoreState(state)
 
     def _save_layout(self) -> None:
-        """Record the window's size and its splitter positions."""
+        """Record the window's size, its splitter positions and its model box."""
         self.settings.setValue(SETTING_GEOMETRY, self.saveGeometry())
         for name, splitter in self._splitters().items():
             self.settings.setValue(f"{SETTING_SPLITTER}/{name}", splitter.saveState())
+        self._remember_model()
+
+    # -- the model to predict with -----------------------------------------
+
+    def _model_key(self, context: tuple[str, str]) -> str:
+        """Return the settings key holding the model for a series and beam."""
+        series, modality = context
+        return f"{SETTING_MODEL}/{series}/{modality}"
+
+    def _remembered_model(self, context: tuple[str, str]) -> str:
+        """Return the model last used for a series and beam.
+
+        A slot nothing has written falls back to the single path kept before
+        there were six, so an existing window opens on the model it always
+        did rather than on an empty box.
+        """
+        key = self._model_key(context)
+        if self.settings.contains(key):
+            return self.settings.value(key, "", type=str)
+        return self.settings.value(SETTING_LEGACY_MODEL, "", type=str)
+
+    def _remember_model(self) -> None:
+        """Store what is in the model box against the view it belongs to."""
+        self.settings.setValue(
+            self._model_key(self._model_context), self.operations_panel.model()
+        )
+
+    def _follow_model_context(self) -> None:
+        """Point the model box at the series and beam now on screen.
+
+        Called from :meth:`refresh` rather than from the controls, because the
+        beam can change without anyone touching one: a timeline holding no
+        image of it shows the other.
+
+        The plot view leaves the box alone. It names no beam, so there is no
+        slot to put what is typed into, and emptying the box on the way past a
+        figure would lose a path the user had just chosen.
+        """
+        modality = MODE_MODALITIES.get(self.controller.mode)
+        if modality is None:
+            return
+        context = (self.controller.series, modality)
+        if context == self._model_context:
+            return
+        self._remember_model()
+        self._model_context = context
+        self.operations_panel.set_model(self._remembered_model(context))
 
     # -- the other tabs ----------------------------------------------------
 
@@ -797,9 +853,9 @@ class CurationWindow(QMainWindow):
             self._flash("Choose a model to predict with")
             return
         weights = Path(model)
-        # Remembered whole: the next session opens with the same model already
-        # in the box, which is the usual case -- one model, many runs.
-        self.settings.setValue(SETTING_MODEL, model)
+        # Remembered against the view it was chosen for, so the next session
+        # opens with the same model in the box -- one model, many runs.
+        self._remember_model()
         device = self.operations_panel.device()
         self.settings.setValue(SETTING_DEVICE, device)
 
@@ -1655,6 +1711,7 @@ class CurationWindow(QMainWindow):
         # Outside the reload: the summary describes the lamella being looked
         # at, so it has to follow the cursor rather than only a rescan.
         self.project_panel.show_summary(self._summary_text())
+        self._follow_model_context()
         self._refresh_timeline()
         self._render()
         self._refresh_state_panel()

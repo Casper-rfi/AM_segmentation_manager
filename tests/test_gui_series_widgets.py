@@ -264,6 +264,26 @@ def test_the_beam_buttons_follow_the_chosen_series(qt_app, modern_project: Path)
         window.close()
 
 
+def test_the_model_box_follows_the_chosen_series(qt_app, modern_project: Path):
+    """A model trained on Adaptive Polishing frames has not seen a reference
+    image of the whole lamella, so offering it there is offering the answer to
+    a different question."""
+    window = _window(qt_app, modern_project)
+    try:
+        window.operations_panel.set_model("/models/adaptive_sem.pth")
+
+        combo = window.image_panel.series_combo
+        combo.setCurrentIndex(combo.findData("reference"))
+        _settle(qt_app)
+        assert window.operations_panel.model() == ""
+
+        combo.setCurrentIndex(combo.findData("adaptive"))
+        _settle(qt_app)
+        assert window.operations_panel.model() == "/models/adaptive_sem.pth"
+    finally:
+        window.close()
+
+
 def test_the_frame_readout_follows_the_chosen_series(qt_app, modern_project: Path):
     window = _window(qt_app, modern_project)
     try:

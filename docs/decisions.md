@@ -604,7 +604,13 @@ becomes wrong, correct it in place rather than appending a correction.
   show you rather than a line in a file you would have to open. Every report leads with the
   modality. **Predicting with the wrong model is cheap to undo**, which is what makes that
   guard sufficient: resumption keys on the model and run name, so predicting the same images
-  with the right model replaces the wrong ones without `--overwrite`.
+  with the right model replaces the wrong ones without `--overwrite`. **The window remembers a
+  model per series and beam** rather than one for everything, the box following the view. Six
+  slots is a convenience and not a claim: nothing is inferred from which slot a path sits in,
+  and the selection still states the modality. What it stops is the box offering the SEM model
+  while a FIB frame is on screen — the mistake the refusal catches at the door, and which one
+  box was quietly setting up. A slot nothing has filled falls back to the single path kept
+  before there were six.
 - **One prediction per label group, not per image.** The label is the unit of workflow state
   everywhere else here, and a prediction exists to become a label, so a group gets one — made
   from `label_groups.primary_record`, the same image the curation window shows and a training
