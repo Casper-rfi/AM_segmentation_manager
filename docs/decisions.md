@@ -280,6 +280,16 @@ appending to it.
   into a vocabulary this package would then have to maintain. A FEI cryo stage states its
   position under `Compustage*` and a tilt about x, and nothing that is a rotation about z, so
   `stage_rotation_deg` is empty there rather than filled from the tilt.
+- **Three programs take part in an acquisition, and the header names their versions
+  misleadingly.** openfibsem fills `system.info.hardware_version` from the *microscope
+  server's* version and `system.info.software_version` from the *scripting client's*, so both
+  keys say the opposite of what they hold; `experiment.application_version` is the application's
+  own. They are on unrelated release series — xT at 28.x, AutoScript at 4.x, autolamella at
+  0.x — so one "software version" column would answer a different question per image. The
+  fields are named for what they are, and the microscope's own version is the only one the FEI
+  dialect states, under `System.Software`, which makes it the only one covering the
+  pre-Autolamella datasets. That the two are one quantity is not an assumption: one Arctis
+  writes 28.4.1.25560 under both keys, in the two dialects.
 - **A missing measurement is never a default.** The one exception is the integration counts,
   where absence means "not enabled" — that is decoding the field, not defaulting it.
 - **Headers are never read during scanning.** Metadata is a mapping keyed by image path,

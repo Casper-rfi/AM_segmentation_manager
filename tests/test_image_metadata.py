@@ -43,6 +43,10 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
         "working_distance": 0.019, "scan_rotation": 3.141592653589793,
     }
     return {
+        "experiment": {
+            "application": "autolamella", "application_version": "0.5.1",
+            "fibsem_version": "0.5.1", "method": "null",
+        },
         "image": {
             "beam_type": beam, "resolution": [3072, 2048],
             # The image block records this acquisition, so it follows the beam.
@@ -77,7 +81,13 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
         "system": {
             "electron": {"voltage": 2000, "plasma": False, "plasma_gas": None},
             "ion": {"voltage": 30000, "plasma": True, "plasma_gas": "Argon", "current": 2e-11},
-            "info": {"model": "Arctis", "serial_number": "9952468", "manufacturer": "Thermo"},
+            "info": {
+                "model": "Arctis", "serial_number": "9952468", "manufacturer": "Thermo",
+                # Named the wrong way round at the source: the first is the
+                # microscope server's version and the second the API client's.
+                "hardware_version": "28.4.1.25560", "software_version": "4.9.0.902",
+                "fibsem_version": "0.5.1",
+            },
             "stage": {"shuttle_pre_tilt": 26.0, "milling_angle": 15.0, "rotation": True},
         },
     }
@@ -87,7 +97,8 @@ def fei_header(beam: str = ELECTRON) -> dict:
     """A tag-34682 mapping, with both beam columns present as the real ones are."""
     return {
         "User": {"Date": "01/28/2024", "Time": "02:53:08 PM"},
-        "System": {"SystemType": "Arctis", "Dnumber": 9952468, "Type": "DualBeam"},
+        "System": {"SystemType": "Arctis", "Dnumber": 9952468, "Type": "DualBeam",
+                   "Software": "28.4.0.24398"},
         "Beam": {"HV": 2000 if beam == ELECTRON else 30000,
                  "Beam": "EBeam" if beam == ELECTRON else "IBeam"},
         "EBeam": {"HV": 2000, "BeamCurrent": 1e-10, "HFW": 4.144e-05, "Source": "FEG",
@@ -690,3 +701,30 @@ def test_the_fei_dialect_states_no_comparable_detector_setting():
     assert metadata.detector_brightness is None
     assert metadata.detector_contrast is None
     assert metadata.detector_type == "ETD", "which detector is still read"
+
+
+# ---------------------------------------------------------------------------
+# Three programs took part, and each states its own version
+# ---------------------------------------------------------------------------
+
+def test_the_three_software_versions_are_kept_apart():
+    """The microscope's own software, the scripting interface driving it, and
+    the application that asked. They are on separate release series -- xT at
+    28.x, AutoScript at 4.x -- so one column for "the software version" would
+    answer a different question for each image."""
+    metadata = extract_metadata(fibsem_header(), "fibsem")
+
+    assert metadata.microscope_software_version == "28.4.1.25560"
+    assert metadata.microscope_api_version == "4.9.0.902"
+    assert metadata.acquisition_software == "autolamella"
+    assert metadata.acquisition_software_version == "0.5.1"
+
+
+def test_the_microscope_software_version_is_read_from_both_dialects():
+    """The one of the three the FEI headers state, which is what makes it the
+    only version column covering the pre-Autolamella datasets."""
+    metadata = extract_metadata(fei_header(), "fei")
+
+    assert metadata.microscope_software_version == "28.4.0.24398"
+    assert metadata.microscope_api_version is None
+    assert metadata.acquisition_software is None

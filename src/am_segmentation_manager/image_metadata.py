@@ -76,6 +76,15 @@ class ImageMetadata:
         microscope_serial: Instrument serial number. Distinguishes two
             instruments of the same model, which is what "fine-tune for one
             microscope" actually needs.
+        microscope_software_version: Version of the microscope's own control
+            software, e.g. ``"28.4.1.25560"``. The fibsem dialect files this
+            under a key called ``hardware_version``, which it is not.
+        microscope_api_version: Version of the scripting interface the
+            acquisition drove the microscope through, e.g. ``"4.9.0.902"``.
+            Tracks the instrument rather than the date.
+        acquisition_software: The application that took the image, e.g.
+            ``"autolamella"``.
+        acquisition_software_version: That application's version.
         acceleration_voltage_kv: Accelerating voltage in kilovolts.
         beam_current_pa: Beam current in picoamps. Amps in both dialects and
             both beams, so one conversion covers everything.
@@ -127,6 +136,10 @@ class ImageMetadata:
     line_integrations: int | None = None
     microscope_model: str | None = None
     microscope_serial: str | None = None
+    microscope_software_version: str | None = None
+    microscope_api_version: str | None = None
+    acquisition_software: str | None = None
+    acquisition_software_version: str | None = None
     acceleration_voltage_kv: float | None = None
     beam_current_pa: float | None = None
     beam_type: str | None = None
@@ -283,6 +296,28 @@ FIELDS: tuple[HeaderField, ...] = (
         "microscope_serial",
         fibsem=(("system", "info", "serial_number"),),
         fei=(("System", "Dnumber"),),
+    ),
+    # Three programs, three versions, and the keys do not say so. openfibsem
+    # fills `hardware_version` from the microscope server's version and
+    # `software_version` from the scripting client's, so the names are the
+    # wrong way round for a reader: see docs/decisions.md § Metadata. The FEI
+    # dialect states only the first of the three, under a third name again.
+    HeaderField(
+        "microscope_software_version",
+        fibsem=(("system", "info", "hardware_version"),),
+        fei=(("System", "Software"),),
+    ),
+    HeaderField(
+        "microscope_api_version",
+        fibsem=(("system", "info", "software_version"),),
+    ),
+    HeaderField(
+        "acquisition_software",
+        fibsem=(("experiment", "application"),),
+    ),
+    HeaderField(
+        "acquisition_software_version",
+        fibsem=(("experiment", "application_version"),),
     ),
     # Only microscope_state, never system.*. The latter holds both beams'
     # *configured defaults* whichever beam took the image, so it is neither this
@@ -560,6 +595,8 @@ _BOOL_FIELDS = {"autocontrast", "autogamma"}
 _TEXT_FIELDS = {
     "microscope_model", "microscope_serial", "detector_type", "detector_mode",
     "plasma_gas", "electron_source", "stage_coordinate_system",
+    "microscope_software_version", "microscope_api_version",
+    "acquisition_software", "acquisition_software_version",
 }
 
 
