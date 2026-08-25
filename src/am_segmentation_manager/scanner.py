@@ -33,6 +33,8 @@ from .layout import (
     image_files,
     image_files_by_name,
     image_files_of,
+    is_alignment_directory,
+    is_alignment_run_reference,
     resolve_loose_predictions_directory,
     resolve_predictions_directory,
     subdirectories_by_name,
@@ -324,53 +326,117 @@ class Scanner:
 
     @staticmethod
     def _drop_copied_images(stages: list[Stage], lamella_name: str) -> None:
-        """Index one record per image, where a lamella holds the same file twice.
+        """Index one record per acquisition, where a lamella holds it twice.
 
         Autolamella copies the image an alignment aligns *against* into every
-        run that uses it, so one acquisition appears as up to six files.
-        Indexing each would put the same picture in a timeline several times,
-        count it several times in an export, and pair it with the same label
-        repeatedly in a training set -- and annotating it would mean annotating
-        the same picture again in every run.
-
-        A copy is a filename and an acquisition time another directory in this
-        lamella has already used. **The filename is what makes this safe.**
-        Two images taken within one second are ordinary -- an alignment run
-        takes several -- so matching on time and size alone merged 38 groups of
-        genuinely different pictures across the reference collection, among
-        them ``new_image_00`` and ``new_image_01`` of one run. With the
-        filename it merges 34 groups of 70 files, every one of them a
-        ``reference_image.tif`` that is byte-identical to the one it is
-        merged with.
+        run that uses it, and saves it under its own name outside the runs as
+        well, so one acquisition appears as up to seven files. Indexing each
+        would put the same picture in a timeline several times, count it
+        several times in an export, and pair it with the same label repeatedly
+        in a training set -- and annotating it would mean annotating the same
+        picture again in every run.
 
         Stages must already be in order, so that the copy kept is the earliest.
         """
-        seen: set[tuple[str, datetime]] = set()
+        copies = Scanner._copied_image_paths(stages)
+        if not copies:
+            return
         for stage in stages:
-            kept: list[ImageRecord] = []
-            copied: set[str] = set()
-            for record in stage.images:
-                if record.acquired_at is None:
-                    kept.append(record)
-                    continue
-                key = (record.image_path.name, record.acquired_at)
-                if key in seen:
-                    copied.add(record.image_path.name)
-                    continue
-                seen.add(key)
-                kept.append(record)
-            if not copied:
+            dropped = {
+                record.image_path.name
+                for record in stage.images
+                if record.image_path in copies
+            }
+            if not dropped:
                 continue
             logger.debug(
-                "%s: %s holds %d image(s) already indexed in another directory",
-                lamella_name, stage.name, len(copied),
+                "%s: %s holds %d image(s) already indexed elsewhere in this lamella",
+                lamella_name, stage.name, len(dropped),
             )
-            stage.images = kept
+            stage.images = [
+                record for record in stage.images if record.image_path not in copies
+            ]
             stage.image_sets = [
                 narrowed
                 for image_set in stage.image_sets
-                if (narrowed := _without_names(image_set, copied)) is not None
+                if (narrowed := _without_names(image_set, dropped)) is not None
             ]
+
+    @staticmethod
+    def _copied_image_paths(stages: list[Stage]) -> set[Path]:
+        """Return the images that are a second copy of an acquisition indexed already.
+
+        **Two rules, because Autolamella duplicates in two ways**, and one
+        filename rule cannot see both.
+
+        A run's ``reference_image.tif`` is a copy wherever the directory holding
+        that run's ``Alignment/`` folder already holds an image taken at the
+        same moment -- which is where Autolamella saves the original, under a
+        name that says what it is (``Polishing_alignment_reference_20-12-30_ib``
+        or ``ref_alignment_ib``). The original is kept: it is the one file where
+        several runs copy it, its name carries the milling task, and it sits at
+        the same point in a time-ordered timeline anyway. Over the reference
+        collection this matched 36 of the 51 run references, every one of them
+        byte-identical to the image it was matched with and none of the other
+        15 -- runs whose reference was never saved outside -- touched. The
+        containing directory and the acquisition time agreed on all 36
+        independently, so **neither signal is carrying this alone**.
+
+        Otherwise a copy is a filename and an acquisition time another
+        directory has already used, which collapses the run copies among
+        themselves. **The filename is what makes that one safe**: two images
+        taken within one second are ordinary -- an alignment run takes several
+        -- so matching on time and size alone merged 38 groups of genuinely
+        different pictures, among them ``new_image_00`` and ``new_image_01`` of
+        one run.
+
+        Nothing is hashed. The acquisition time is already read for every loose
+        image, and with either rule's second condition it partitions these
+        exactly as their contents do.
+        """
+        acquisitions: dict[Path, set[datetime]] = {}
+        for stage in stages:
+            for record in stage.images:
+                if record.acquired_at is not None:
+                    acquisitions.setdefault(record.image_path.parent, set()).add(
+                        record.acquired_at
+                    )
+
+        copies: set[Path] = set()
+        seen: set[tuple[str, datetime]] = set()
+        for stage in stages:
+            for record in stage.images:
+                if record.acquired_at is None:
+                    continue
+                host = Scanner._alignment_run_host(record)
+                if host is not None and record.acquired_at in acquisitions.get(host, ()):
+                    copies.add(record.image_path)
+                    continue
+                key = (record.image_path.name, record.acquired_at)
+                if key in seen:
+                    copies.add(record.image_path)
+                    continue
+                seen.add(key)
+        return copies
+
+    @staticmethod
+    def _alignment_run_host(record: ImageRecord) -> Path | None:
+        """Return where a run's reference image was copied *from*, if it is one.
+
+        The directory holding the ``Alignment/`` folder the run sits in -- a
+        lamella or a milling task -- which is where Autolamella saves the
+        original beside its other loose images.
+
+        Returns:
+            That directory, or None where *record* is not an alignment run's
+            reference image.
+        """
+        stage_path = record.stage_path
+        if stage_path is None or not is_alignment_directory(stage_path.parent.name):
+            return None
+        if not is_alignment_run_reference(record.image_path.name):
+            return None
+        return stage_path.parent.parent
 
     def _stage_image_sets(self, discovered: DiscoveredStage) -> list[ImageSet]:
         """Return every image set in a stage, of both shapes.

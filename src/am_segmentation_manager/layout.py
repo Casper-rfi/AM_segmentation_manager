@@ -355,15 +355,29 @@ _ALIGNMENT_MARKERS: Final[tuple[str, ...]] = (
     "_alignment_reference_",
 )
 
-#: Prefixes naming an alignment image outright.
-_ALIGNMENT_PREFIXES: Final[tuple[str, ...]] = ("beam_shift_alignment", "ref_alignment")
+#: Prefixes naming an alignment image outright, whatever follows them.
+_ALIGNMENT_PREFIXES: Final[tuple[str, ...]] = ("beam_shift_alignment",)
+
+#: Whole names, with the beam suffix taken off, that are alignment images.
+#: ``ref_alignment`` is matched entire rather than as a prefix because
+#: everything after ``ref_`` is a *task* name somebody chose: as a prefix it
+#: read a task called ``Alignment Check`` as an alignment image, silently
+#: moving that task's reference images into another series. Autolamella writes
+#: this one bare -- 76 of them here, none with anything after it.
+_ALIGNMENT_STEMS: Final[frozenset[str]] = frozenset({"ref_alignment"})
+
+#: What a run calls the image it aligned *against*, as opposed to the ones it
+#: took while converging. Autolamella copies that image into every run using
+#: it, so this is the name a duplicate wears; see
+#: :func:`is_alignment_run_reference`.
+ALIGNMENT_RUN_REFERENCE: Final[str] = "reference_image"
 
 #: The fixed names Autolamella writes inside an alignment run directory,
 #: alongside ``new_image_<n>``. They carry no marker of their own -- a bare
 #: ``final_image.tif`` could be anything -- so they are recognised only where
 #: the directory says what they are. See :func:`classify_loose_image`.
 _ALIGNMENT_RUN_STEMS: Final[frozenset[str]] = frozenset(
-    {"reference_image", "final_image"}
+    {ALIGNMENT_RUN_REFERENCE, "final_image"}
 )
 _ALIGNMENT_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"^new_image_\d+$")
 
@@ -379,7 +393,15 @@ _REFERENCE_PREFIX: Final[str] = "ref_"
 #: Adaptive Polishing plugin placed its field of view, which is a diagnostic of
 #: the run rather than data anybody segments. Distinguished from a name no rule
 #: recognises, which is reported so an unanticipated layout is visible.
-_IGNORED_MARKERS: Final[tuple[str, ...]] = ("_centring_",)
+#:
+#: Anchored at the end rather than matched anywhere in the name, because the
+#: plugin writes ``<lamella>_centring_<modality>`` and nothing else: as a bare
+#: substring it swallowed every image of a milling task called ``Centring``,
+#: and dropping an image without even reporting it unrecognised is the worst
+#: way for this to be wrong.
+_IGNORED_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"_centring_[a-z0-9]+$"),
+)
 
 
 @dataclass(frozen=True)
@@ -434,12 +456,24 @@ def is_alignment_directory(name: str) -> bool:
     return name.lower() == ALIGNMENT_DIRECTORY.lower()
 
 
+def is_alignment_run_reference(image_name: str) -> bool:
+    """Return whether *image_name* is what a run calls the image it aligned to.
+
+    Only meaningful inside an :data:`ALIGNMENT_DIRECTORY` run: the name is
+    generic enough to mean anything anywhere else, which is the same reason
+    :func:`classify_loose_image` reads it only where the directory vouches
+    for it.
+    """
+    return Path(image_name).stem.lower() == ALIGNMENT_RUN_REFERENCE
+
+
 def is_ignored_image_name(image_name: str) -> bool:
     """Return whether an image is deliberately not indexed.
 
     Separate from "no rule recognises this", which the survey reports.
     """
-    return any(marker in Path(image_name).stem.lower() for marker in _IGNORED_MARKERS)
+    stem = Path(image_name).stem.lower()
+    return any(pattern.search(stem) for pattern in _IGNORED_PATTERNS)
 
 
 def classify_loose_image(image_name: str, in_alignment_run: bool = False) -> ImageFile | None:
@@ -470,8 +504,10 @@ def classify_loose_image(image_name: str, in_alignment_run: bool = False) -> Ima
     lowered = stem.lower()
     modality = beam_modality(stem)
 
-    if lowered.startswith(_ALIGNMENT_PREFIXES) or any(
-        marker in lowered for marker in _ALIGNMENT_MARKERS
+    if (
+        lowered.startswith(_ALIGNMENT_PREFIXES)
+        or acquisition_stem(stem).lower() in _ALIGNMENT_STEMS
+        or any(marker in lowered for marker in _ALIGNMENT_MARKERS)
     ):
         return ImageFile(series="alignment", modality=modality)
 

@@ -394,6 +394,43 @@ def test_alignment_wins_over_the_reference_prefix(name):
     assert classify_loose_image(name).series == "alignment"
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ref_Alignment Check_start_eb.tif",
+        "ref_Alignment Check_final_res_01_ib.tif",
+        "ref_Alignment_start_eb.tif",
+    ],
+)
+def test_a_task_named_after_alignment_is_still_a_reference_image(name):
+    """Everything after ``ref_`` is a task name somebody chose.
+
+    ``ref_alignment`` is matched entire for this reason: as a prefix it moved a
+    whole task's reference images into the alignment series, where nothing
+    predicts or labels them and no count would show them missing.
+    """
+    assert classify_loose_image(name).series == "reference"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ref_Centring_start_eb.tif",
+        "Centring_pre-task_10-35-26_eb.tif",
+        "Polishing-Centring_finished_10-00-00_ib.tif",
+    ],
+)
+def test_a_task_named_centring_is_indexed_rather_than_dropped(name):
+    """The centring image is ``<lamella>_centring_<modality>`` and nothing else.
+
+    Matched anywhere in a name it swallowed a whole task -- and an image
+    dropped as deliberately ignored is not even reported as unrecognised,
+    which is the worst way for a naming rule to be wrong.
+    """
+    assert not is_ignored_image_name(name)
+    assert classify_loose_image(name).series == "reference"
+
+
 @pytest.mark.parametrize("name", ALIGNMENT_RUN_NAMES)
 def test_alignment_run_names_need_the_directory_to_vouch_for_them(name):
     assert classify_loose_image(name, in_alignment_run=True).series == "alignment"

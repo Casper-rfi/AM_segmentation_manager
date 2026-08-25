@@ -1,10 +1,11 @@
 """Tests for indexing one record per image where a lamella holds copies.
 
-Autolamella copies the image an alignment aligns against into every run that
-uses it, so one acquisition appears as up to six files. What makes recognising
-that safe is the filename: two images taken inside one second are ordinary --
-an alignment run takes several -- so time alone would merge pictures that
-differ.
+Autolamella duplicates the image an alignment aligns against in two ways: it
+copies it into every run that uses it, and it saves it outside the runs under
+a name of its own. Two rules therefore, and each carries its own guard against
+merging pictures that merely coincide -- the filename for the first, the
+containing directory for the second -- because two images taken inside one
+second are ordinary, an alignment run taking several.
 """
 from __future__ import annotations
 
@@ -93,6 +94,105 @@ def test_the_image_set_stops_naming_the_copy(project: Path):
         for stage in lamella.stages:
             from_sets = {p for s in stage.image_sets for p in image_files_of(s).values()}
             assert from_sets == {r.image_path for r in stage.images}
+
+
+# ---------------------------------------------------------------------------
+# The original outside the runs
+# ---------------------------------------------------------------------------
+
+def test_the_original_beside_the_runs_wins_over_the_run_copies(
+    tmp_path: Path, monkeypatch
+):
+    """Autolamella saves it once outside and copies it into each run.
+
+    The run copies go: the original is the one file, its name says what it is,
+    and it carries the milling task the runs' generic names do not.
+    """
+    root = tmp_path / "AutoLamella-2026-08-06-15-53"
+    task = root / "01-guided-fish" / "Milling" / "Polishing"
+    root.mkdir(parents=True)
+    (root / "experiment.yaml").write_text("name: localised\n", encoding="utf-8")
+    original = "Polishing_alignment_reference_20-12-30_ib.tif"
+    touch(task, original, "Polishing_pre-task_20-12-33_ib.tif")
+    times = {
+        task / original: TAKEN,
+        task / "Polishing_pre-task_20-12-33_ib.tif": datetime(2026, 8, 6, 20, 12, 33),
+    }
+    for run in ("Fine 1-20-13-12", "Fine 2-20-22-02"):
+        directory = touch(task / "Alignment" / run, "reference_image.tif")
+        times[directory / "reference_image.tif"] = TAKEN
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", times.get(path))),
+    )
+
+    held = {r.image_path for r in Scanner(root.parent).build_index().find_by_name(
+        "localised"
+    ).image_records}
+
+    assert task / original in held
+    assert not any(path.name == "reference_image.tif" for path in held)
+
+
+def test_a_run_reference_never_saved_outside_is_kept(tmp_path: Path, monkeypatch):
+    """15 of the 51 in the reference collection are of this kind.
+
+    Nothing outside the runs holds that acquisition, so the run's copy is the
+    only record of it and dropping it would lose the image.
+    """
+    root = tmp_path / "AutoLamella-2026-08-06-15-53"
+    task = root / "01-guided-fish" / "Milling" / "Polishing"
+    root.mkdir(parents=True)
+    (root / "experiment.yaml").write_text("name: localised\n", encoding="utf-8")
+    touch(task, "Polishing_pre-task_20-12-33_ib.tif")
+    directory = touch(task / "Alignment" / "Fine 1-20-13-12", "reference_image.tif")
+    times = {
+        task / "Polishing_pre-task_20-12-33_ib.tif": datetime(2026, 8, 6, 20, 12, 33),
+        directory / "reference_image.tif": TAKEN,
+    }
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", times.get(path))),
+    )
+
+    held = {r.image_path for r in Scanner(root.parent).build_index().find_by_name(
+        "localised"
+    ).image_records}
+
+    assert directory / "reference_image.tif" in held
+
+
+def test_a_same_time_image_in_another_directory_does_not_drop_the_run_copy(
+    tmp_path: Path, monkeypatch
+):
+    """The directory is the second signal, and it has to be doing work.
+
+    The original is where the runs' ``Alignment/`` folder sits, never anywhere
+    else in the lamella; matching on the acquisition time alone would let an
+    unrelated image elsewhere claim a run's only reference.
+    """
+    root = tmp_path / "AutoLamella-2026-08-06-15-53"
+    lamella = root / "01-guided-fish"
+    task = lamella / "Milling" / "Polishing"
+    root.mkdir(parents=True)
+    (root / "experiment.yaml").write_text("name: localised\n", encoding="utf-8")
+    touch(lamella, "ref_Rough Milling_start_ib.tif")  # elsewhere, same instant
+    directory = touch(task / "Alignment" / "Fine 1-20-13-12", "reference_image.tif")
+    times = {
+        lamella / "ref_Rough Milling_start_ib.tif": TAKEN,
+        directory / "reference_image.tif": TAKEN,
+    }
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", times.get(path))),
+    )
+
+    held = {r.image_path for r in Scanner(root.parent).build_index().find_by_name(
+        "localised"
+    ).image_records}
+
+    assert directory / "reference_image.tif" in held
+    assert lamella / "ref_Rough Milling_start_ib.tif" in held
 
 
 # ---------------------------------------------------------------------------
