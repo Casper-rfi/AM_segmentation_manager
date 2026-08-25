@@ -90,6 +90,18 @@ class ImageMetadata:
             records none, so it is ``None`` there.
         hfw_um: Horizontal field width in micrometres. With pixel size this
             pins down magnification.
+        beam_shift_x_um: Beam shift along x in micrometres, for the beam that
+            took the image.
+        beam_shift_y_um: Beam shift along y in micrometres.
+        stage_x_um: Stage position along x in micrometres.
+        stage_y_um: Stage position along y in micrometres.
+        stage_z_um: Stage position along z in micrometres.
+        stage_rotation_deg: Stage rotation in degrees.
+        stage_tilt_deg: Stage tilt in degrees.
+        stage_coordinate_system: Which frame the stage position is stated in,
+            e.g. ``"RAW"`` or ``"SPECIMEN"``. **Two stage positions are
+            comparable only within one coordinate system**, and this
+            collection holds both.
         acquired_at: When the image was taken.
         source: The header dialect the values came from.
     """
@@ -110,6 +122,14 @@ class ImageMetadata:
     plasma_gas: str | None = None
     electron_source: str | None = None
     hfw_um: float | None = None
+    beam_shift_x_um: float | None = None
+    beam_shift_y_um: float | None = None
+    stage_x_um: float | None = None
+    stage_y_um: float | None = None
+    stage_z_um: float | None = None
+    stage_rotation_deg: float | None = None
+    stage_tilt_deg: float | None = None
+    stage_coordinate_system: str | None = None
     acquired_at: datetime | None = None
     source: str | None = None
 
@@ -173,6 +193,10 @@ class HeaderField:
     beams: tuple[str, ...] = ()
     floor: int | None = None
 
+
+#: Both dialects state stage angles in radians and this package in degrees,
+#: which is what a person reading a CSV of milling geometry expects.
+_DEGREES_PER_RADIAN = 180.0 / math.pi
 
 #: The field map. Adding a metadata field is a row here; supporting a new
 #: dialect is a column.
@@ -294,6 +318,65 @@ FIELDS: tuple[HeaderField, ...] = (
         scale=1e6,
         beam_specific=True,
     ),
+    HeaderField(
+        "beam_shift_x_um",
+        fibsem=(("microscope_state", "{beam}", "shift", "x"),),
+        fei=(("{Beam}", "BeamShiftX"), ("Beam", "BeamShiftX")),
+        scale=1e6,
+        beam_specific=True,
+    ),
+    HeaderField(
+        "beam_shift_y_um",
+        fibsem=(("microscope_state", "{beam}", "shift", "y"),),
+        fei=(("{Beam}", "BeamShiftY"), ("Beam", "BeamShiftY")),
+        scale=1e6,
+        beam_specific=True,
+    ),
+    # The stage is one stage whichever beam fired, so these are not beam
+    # specific, and none of them falls back to a search: `system.stage` holds
+    # the stage's *capabilities* -- `rotation: True` means it can rotate -- and
+    # a search for "rotation" would find that and report it as a position.
+    #
+    # In a FEI header the cryo stage's position is under `Compustage*`, and the
+    # `Stage*` keys it leaves unset hold uninitialised memory rather than
+    # nothing, so the order here matters as well as _number rejecting them.
+    HeaderField(
+        "stage_x_um",
+        fibsem=(("microscope_state", "stage_position", "x"),),
+        fei=(("Stage", "CompustageX"), ("Stage", "StageX")),
+        scale=1e6,
+    ),
+    HeaderField(
+        "stage_y_um",
+        fibsem=(("microscope_state", "stage_position", "y"),),
+        fei=(("Stage", "CompustageY"), ("Stage", "StageY")),
+        scale=1e6,
+    ),
+    HeaderField(
+        "stage_z_um",
+        fibsem=(("microscope_state", "stage_position", "z"),),
+        fei=(("Stage", "CompustageZ"), ("Stage", "StageZ")),
+        scale=1e6,
+    ),
+    HeaderField(
+        "stage_rotation_deg",
+        fibsem=(("microscope_state", "stage_position", "r"),),
+        fei=(("Stage", "StageR"),),
+        scale=_DEGREES_PER_RADIAN,
+    ),
+    # A FEI compustage states its tilt as a rotation about x, and nothing as a
+    # rotation about z, which is why tilt has a FEI source and rotation has
+    # only the one the flat stage keys give.
+    HeaderField(
+        "stage_tilt_deg",
+        fibsem=(("microscope_state", "stage_position", "t"),),
+        fei=(("Stage", "CompustageRX"), ("Stage", "StageT")),
+        scale=_DEGREES_PER_RADIAN,
+    ),
+    HeaderField(
+        "stage_coordinate_system",
+        fibsem=(("microscope_state", "stage_position", "coordinate_system"),),
+    ),
 )
 
 
@@ -403,7 +486,7 @@ _INTEGER_FIELDS = {
 #: Fields that are labels rather than numbers.
 _TEXT_FIELDS = {
     "microscope_model", "microscope_serial", "detector_type", "detector_mode",
-    "plasma_gas", "electron_source",
+    "plasma_gas", "electron_source", "stage_coordinate_system",
 }
 
 

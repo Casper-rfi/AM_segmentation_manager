@@ -266,6 +266,13 @@ appending to it.
   the real position sits in `Stage.CompustageX`. So a subnormal or non-finite number reads as
   absent, and the reader moves on to the next candidate path and then to the search fallback
   rather than stopping at a key that merely exists.
+- **A stage position is comparable only within its coordinate system, so the system is a
+  column of its own.** The 2024–2025 projects state specimen positions, z around −59 µm, and
+  the 2026 ones RAW positions, z around +32 487 µm; the same archive holds `Specimen`,
+  `SPECIMEN` and `RAW`. The value is carried as the header spells it rather than normalised
+  into a vocabulary this package would then have to maintain. A FEI cryo stage states its
+  position under `Compustage*` and a tilt about x, and nothing that is a rotation about z, so
+  `stage_rotation_deg` is empty there rather than filled from the tilt.
 - **A missing measurement is never a default.** The one exception is the integration counts,
   where absence means "not enabled" — that is decoding the field, not defaulting it.
 - **Headers are never read during scanning.** Metadata is a mapping keyed by image path,

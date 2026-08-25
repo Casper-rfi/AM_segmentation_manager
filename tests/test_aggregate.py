@@ -863,6 +863,28 @@ def test_cli_export_metadata_csv_pairs_both_modalities(tmp_path: Path):
     assert rows[0]["lamella"], "what the beams share is said once"
 
 
+def test_both_export_shapes_carry_where_the_image_was_taken(tmp_path: Path):
+    """The acquisition columns are taken from the ImageMetadata fields, so a
+    new field reaches both files without either listing the columns itself."""
+    from am_segmentation_manager.cli import main
+
+    built(tmp_path)
+    plain, paired = tmp_path / "images.csv", tmp_path / "paired.csv"
+    assert main([
+        "export-metadata-csv", str(tmp_path), *SCOPE, "--no-headers",
+        "--modality", "SEM", "-o", str(plain),
+    ]) == 0
+    assert main([
+        "export-metadata-csv", str(tmp_path), *SCOPE, "--no-headers", "-o", str(paired),
+    ]) == 0
+
+    columns = set(next(iter(csv.DictReader(plain.open(encoding="utf-8")))))
+    assert {"stage_x_um", "stage_coordinate_system", "beam_shift_x_um"} <= columns
+
+    paired_columns = set(next(iter(csv.DictReader(paired.open(encoding="utf-8")))))
+    assert {"sem_stage_x_um", "fib_stage_x_um", "sem_beam_shift_y_um"} <= paired_columns
+
+
 def test_cli_refuses_metadata_filters_without_headers(tmp_path: Path):
     """The filters need the headers they would be filtering on."""
     from am_segmentation_manager.cli import main

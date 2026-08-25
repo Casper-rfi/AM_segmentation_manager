@@ -33,10 +33,12 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
     electron_state = {
         "beam_type": "ELECTRON", "voltage": 2000.0, "beam_current": 2.5e-11,
         "dwell_time": 2e-07, "hfw": 4e-05,
+        "shift": {"x": 4.5e-06, "y": -1.25e-06},
     }
     ion_state = {
         "beam_type": "ION", "voltage": 30000.0, "beam_current": 2e-11,
         "dwell_time": 3e-07, "hfw": 4e-05,
+        "shift": {"x": -3.75e-06, "y": 6.25e-07},
     }
     return {
         "image": {
@@ -56,6 +58,12 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
                 {"type": "ETD", "mode": "SecondaryElectrons"} if beam == ELECTRON else None
             ),
             "ion_detector": {"type": "ETD", "mode": "SecondaryElectrons"} if beam == ION else None,
+            # One stage, whichever beam fired. Metres and radians, as written.
+            "stage_position": {
+                "x": -2.28825e-03, "y": 4.1535e-03, "z": 3.2486e-02,
+                "r": -1.3089405962989709, "t": 0.3316123777623847,
+                "coordinate_system": "RAW",
+            },
         },
         # system holds BOTH beams' configured defaults whichever took the image.
         "system": {
@@ -73,13 +81,23 @@ def fei_header(beam: str = ELECTRON) -> dict:
         "System": {"SystemType": "Arctis", "Dnumber": 9952468, "Type": "DualBeam"},
         "Beam": {"HV": 2000 if beam == ELECTRON else 30000,
                  "Beam": "EBeam" if beam == ELECTRON else "IBeam"},
-        "EBeam": {"HV": 2000, "BeamCurrent": 1e-10, "HFW": 4.144e-05, "Source": "FEG"},
-        "IBeam": {"HV": 30000, "BeamCurrent": 2e-11, "HFW": 2.59e-05, "Source": "Argon"},
+        "EBeam": {"HV": 2000, "BeamCurrent": 1e-10, "HFW": 4.144e-05, "Source": "FEG",
+                  "BeamShiftX": -1.72956e-05, "BeamShiftY": 9.09873e-07},
+        "IBeam": {"HV": 30000, "BeamCurrent": 2e-11, "HFW": 2.59e-05, "Source": "Argon",
+                  "BeamShiftX": 2.5e-06, "BeamShiftY": -1.5e-06},
         "Scan": {"Dwelltime": 5e-08, "PixelWidth": 1.34896e-08, "Integrate": 16},
         "EScan": {"Dwell": 5e-08, "PixelWidth": 1.34896e-08, "LineIntegration": 1},
         "IScan": {"Dwell": 5e-08, "PixelWidth": 8.43099e-09, "LineIntegration": 4},
         "Image": {"ResolutionX": 3072, "ResolutionY": 2048, "Integrate": 16},
         "Detectors": {"Name": "ETD", "Mode": "SE"},
+        # A cryo stage states its position under Compustage*, and leaves the
+        # flat stage's keys holding uninitialised memory rather than nothing.
+        "Stage": {
+            "StageX": 6.95268e-310, "StageY": 0, "StageZ": "",
+            "StageR": "", "StageT": "",
+            "CompustageX": 4.80519e-04, "CompustageY": 2.14798e-04,
+            "CompustageZ": -2.66696e-05, "CompustageRX": -0.453719,
+        },
     }
 
 
@@ -243,6 +261,73 @@ def test_a_path_stating_nothing_falls_through_to_the_next():
     document["microscope_state"]["ion_beam"]["hfw"] = 4e-05
 
     assert extract_metadata(document, "fibsem").hfw_um == 40.0
+
+
+# ---------------------------------------------------------------------------
+# Where the image was taken
+# ---------------------------------------------------------------------------
+
+def test_the_stage_position_is_read_in_micrometres_and_degrees():
+    metadata = extract_metadata(fibsem_header(ION), "fibsem")
+
+    assert metadata.stage_x_um == pytest.approx(-2288.25)
+    assert metadata.stage_y_um == pytest.approx(4153.5)
+    assert metadata.stage_z_um == pytest.approx(32486.0)
+    assert metadata.stage_rotation_deg == pytest.approx(-74.996772)
+    assert metadata.stage_tilt_deg == pytest.approx(18.99999)
+
+
+def test_the_coordinate_system_is_carried_with_the_position():
+    """This collection holds both RAW and specimen positions, and a z of
+    32486 um means nothing next to one of -59 um without saying which."""
+    assert extract_metadata(fibsem_header(), "fibsem").stage_coordinate_system == "RAW"
+
+
+def test_the_stage_is_the_same_stage_whichever_beam_fired():
+    electron = extract_metadata(fibsem_header(ELECTRON), "fibsem")
+    ion = extract_metadata(fibsem_header(ION), "fibsem")
+
+    assert electron.stage_x_um == ion.stage_x_um
+    assert electron.stage_tilt_deg == ion.stage_tilt_deg
+
+
+def test_a_cryo_stage_is_read_from_its_own_keys_not_the_ones_left_unset():
+    """Stage.StageX holds a subnormal and Stage.StageY a plausible zero, while
+    the position the stage was actually at is under Compustage*."""
+    metadata = extract_metadata(fei_header(), "fei")
+
+    assert metadata.stage_x_um == pytest.approx(480.519)
+    assert metadata.stage_y_um == pytest.approx(214.798)
+    assert metadata.stage_z_um == pytest.approx(-26.6696)
+    assert metadata.stage_tilt_deg == pytest.approx(-25.996184)
+
+
+def test_a_compustage_states_no_rotation_and_no_coordinate_system():
+    """It states a tilt about x and nothing about z. Absent stays absent."""
+    metadata = extract_metadata(fei_header(), "fei")
+
+    assert metadata.stage_rotation_deg is None
+    assert metadata.stage_coordinate_system is None
+
+
+def test_beam_shift_follows_the_beam_that_took_the_image():
+    """Both dialects carry both columns' shift, and reading the wrong one
+    yields a plausible number rather than an obvious mistake."""
+    fibsem = [
+        extract_metadata(fibsem_header(ELECTRON), "fibsem"),
+        extract_metadata(fibsem_header(ION), "fibsem"),
+    ]
+    fei = [
+        extract_metadata(fei_header(ELECTRON), "fei"),
+        extract_metadata(fei_header(ION), "fei"),
+    ]
+
+    assert [(m.beam_shift_x_um, m.beam_shift_y_um) for m in fibsem] == [
+        (4.5, -1.25), (-3.75, 0.625),
+    ]
+    assert [(m.beam_shift_x_um, m.beam_shift_y_um) for m in fei] == [
+        (-17.2956, 0.909873), (2.5, -1.5),
+    ]
 
 
 # ---------------------------------------------------------------------------
