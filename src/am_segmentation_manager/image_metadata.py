@@ -82,6 +82,8 @@ class ImageMetadata:
         beam_type: ``"ELECTRON"`` or ``"ION"``, as stated by the instrument.
         detector_type: e.g. ``"ETD"``.
         detector_mode: e.g. ``"SecondaryElectrons"``.
+        detector_brightness: Detector brightness as a fraction of full scale.
+        detector_contrast: Detector contrast as a fraction of full scale.
         plasma_gas: The ion column's plasma gas, e.g. ``"Argon"``. Only ever
             read for an image the ion beam took, and ``None`` on a gallium
             column, which has no plasma and records no gas.
@@ -90,6 +92,13 @@ class ImageMetadata:
             records none, so it is ``None`` there.
         hfw_um: Horizontal field width in micrometres. With pixel size this
             pins down magnification.
+        scan_rotation_deg: Scan rotation in degrees, which is what says how the
+            image is oriented relative to the stage.
+        working_distance_mm: Working distance of the beam that took the image,
+            in millimetres.
+        autocontrast: Whether the acquisition applied automatic contrast, and
+            so whether its grey levels are comparable with another image's.
+        autogamma: Whether the acquisition applied automatic gamma.
         beam_shift_x_um: Beam shift along x in micrometres, for the beam that
             took the image.
         beam_shift_y_um: Beam shift along y in micrometres.
@@ -102,6 +111,10 @@ class ImageMetadata:
             e.g. ``"RAW"`` or ``"SPECIMEN"``. **Two stage positions are
             comparable only within one coordinate system**, and this
             collection holds both.
+        shuttle_pretilt_deg: Pre-tilt of the shuttle the grid is held in, in
+            degrees.
+        milling_angle_deg: Angle between the ion beam and the sample, in
+            degrees. With the pre-tilt this is the milling geometry.
         acquired_at: When the image was taken.
         source: The header dialect the values came from.
     """
@@ -119,9 +132,15 @@ class ImageMetadata:
     beam_type: str | None = None
     detector_type: str | None = None
     detector_mode: str | None = None
+    detector_brightness: float | None = None
+    detector_contrast: float | None = None
     plasma_gas: str | None = None
     electron_source: str | None = None
     hfw_um: float | None = None
+    scan_rotation_deg: float | None = None
+    working_distance_mm: float | None = None
+    autocontrast: bool | None = None
+    autogamma: bool | None = None
     beam_shift_x_um: float | None = None
     beam_shift_y_um: float | None = None
     stage_x_um: float | None = None
@@ -130,6 +149,8 @@ class ImageMetadata:
     stage_rotation_deg: float | None = None
     stage_tilt_deg: float | None = None
     stage_coordinate_system: str | None = None
+    shuttle_pretilt_deg: float | None = None
+    milling_angle_deg: float | None = None
     acquired_at: datetime | None = None
     source: str | None = None
 
@@ -295,6 +316,20 @@ FIELDS: tuple[HeaderField, ...] = (
         fei=(("Detectors", "Mode"),),
         beam_specific=True,
     ),
+    # fibsem only. The FEI dialect states these under a section named after
+    # whichever detector was used, which a table of fixed paths cannot address,
+    # and on a 0-100 scale rather than as a fraction -- so one column would
+    # hold two different quantities. Blank is the honest answer there.
+    HeaderField(
+        "detector_brightness",
+        fibsem=(("microscope_state", "{detector}", "brightness"),),
+        beam_specific=True,
+    ),
+    HeaderField(
+        "detector_contrast",
+        fibsem=(("microscope_state", "{detector}", "contrast"),),
+        beam_specific=True,
+    ),
     # Both dialects record these once per beam -- FEI as `Source` under each
     # column, fibsem as `plasma_gas` under each -- and write the key for the
     # column that did not fire as well, so a fibsem SEM header carries
@@ -318,6 +353,27 @@ FIELDS: tuple[HeaderField, ...] = (
         scale=1e6,
         beam_specific=True,
     ),
+    HeaderField(
+        "scan_rotation_deg",
+        fibsem=(("microscope_state", "{beam}", "scan_rotation"),),
+        fei=(("{Beam}", "ScanRotation"), ("Beam", "ScanRotation")),
+        scale=_DEGREES_PER_RADIAN,
+        beam_specific=True,
+    ),
+    # Only the beam's own WD. The FEI dialect also states one under Stage,
+    # which is whichever column was last focused rather than this one.
+    HeaderField(
+        "working_distance_mm",
+        fibsem=(("microscope_state", "{beam}", "working_distance"),),
+        fei=(("{Beam}", "WD"),),
+        scale=1e3,
+        beam_specific=True,
+    ),
+    # Whether the acquisition processed its own grey levels. fibsem only: the
+    # FEI dialect's DigitalContrast and DigitalGamma are an adjustment applied
+    # to a saved image, which is a different thing.
+    HeaderField("autocontrast", fibsem=(("image", "autocontrast"),)),
+    HeaderField("autogamma", fibsem=(("image", "autogamma"),)),
     HeaderField(
         "beam_shift_x_um",
         fibsem=(("microscope_state", "{beam}", "shift", "x"),),
@@ -376,6 +432,18 @@ FIELDS: tuple[HeaderField, ...] = (
     HeaderField(
         "stage_coordinate_system",
         fibsem=(("microscope_state", "stage_position", "coordinate_system"),),
+    ),
+    # From system.*, which elsewhere in this table is the wrong place to read:
+    # it holds both beams' configured defaults. The stage has one geometry
+    # whichever beam fired, so there is no other column's value to confuse
+    # these with. Both are stated in degrees already.
+    HeaderField(
+        "shuttle_pretilt_deg",
+        fibsem=(("system", "stage", "shuttle_pre_tilt"),),
+    ),
+    HeaderField(
+        "milling_angle_deg",
+        fibsem=(("system", "stage", "milling_angle"),),
     ),
 )
 
@@ -483,11 +551,35 @@ def _text(value: Any) -> str | None:
 _INTEGER_FIELDS = {
     "image_width", "image_height", "image_integrations", "line_integrations",
 }
+#: Fields that record whether something was switched on. A number would be
+#: wrong here and a string would export as "True" either way, so they convert
+#: through their own branch.
+_BOOL_FIELDS = {"autocontrast", "autogamma"}
+
 #: Fields that are labels rather than numbers.
 _TEXT_FIELDS = {
     "microscope_model", "microscope_serial", "detector_type", "detector_mode",
     "plasma_gas", "electron_source", "stage_coordinate_system",
 }
+
+
+def _boolean(value: Any) -> bool | None:
+    """Return *value* as a flag, or None where the header states none.
+
+    A header writes these as JSON booleans, and writes a null as the string
+    ``"None"`` in the same places it does elsewhere.
+    """
+    if isinstance(value, bool):
+        return value
+    text = _text(value)
+    if text is None:
+        return None
+    lowered = text.lower()
+    if lowered in {"true", "yes", "on", "1"}:
+        return True
+    if lowered in {"false", "no", "off", "0"}:
+        return False
+    return None
 
 
 def _convert(field: HeaderField, raw: Any) -> Any:
@@ -499,6 +591,8 @@ def _convert(field: HeaderField, raw: Any) -> Any:
     """
     if field.name in _TEXT_FIELDS:
         return _text(raw)
+    if field.name in _BOOL_FIELDS:
+        return _boolean(raw)
     number = _number(raw, field.scale)
     if number is None:
         return None

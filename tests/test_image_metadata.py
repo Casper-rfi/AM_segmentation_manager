@@ -34,18 +34,20 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
         "beam_type": "ELECTRON", "voltage": 2000.0, "beam_current": 2.5e-11,
         "dwell_time": 2e-07, "hfw": 4e-05,
         "shift": {"x": 4.5e-06, "y": -1.25e-06},
+        "working_distance": 0.007, "scan_rotation": 0.0,
     }
     ion_state = {
         "beam_type": "ION", "voltage": 30000.0, "beam_current": 2e-11,
         "dwell_time": 3e-07, "hfw": 4e-05,
         "shift": {"x": -3.75e-06, "y": 6.25e-07},
+        "working_distance": 0.019, "scan_rotation": 3.141592653589793,
     }
     return {
         "image": {
             "beam_type": beam, "resolution": [3072, 2048],
             # The image block records this acquisition, so it follows the beam.
             "dwell_time": 2e-07 if beam == ELECTRON else 3e-07,
-            "hfw": 4e-05,
+            "hfw": 4e-05, "autocontrast": True, "autogamma": False,
         },
         "pixel_size": {"x": 1.3020833333333335e-08, "y": 1.3020833333333333e-08},
         "shape": [2048, 3072],
@@ -55,9 +57,15 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
             "electron_beam": electron_state if beam == ELECTRON else None,
             "ion_beam": ion_state if beam == ION else None,
             "electron_detector": (
-                {"type": "ETD", "mode": "SecondaryElectrons"} if beam == ELECTRON else None
+                {"type": "ETD", "mode": "SecondaryElectrons",
+                 "brightness": 0.25, "contrast": 0.75}
+                if beam == ELECTRON else None
             ),
-            "ion_detector": {"type": "ETD", "mode": "SecondaryElectrons"} if beam == ION else None,
+            "ion_detector": (
+                {"type": "ETD", "mode": "SecondaryElectrons",
+                 "brightness": 0.5, "contrast": 0.875}
+                if beam == ION else None
+            ),
             # One stage, whichever beam fired. Metres and radians, as written.
             "stage_position": {
                 "x": -2.28825e-03, "y": 4.1535e-03, "z": 3.2486e-02,
@@ -70,6 +78,7 @@ def fibsem_header(beam: str = ELECTRON) -> dict:
             "electron": {"voltage": 2000, "plasma": False, "plasma_gas": None},
             "ion": {"voltage": 30000, "plasma": True, "plasma_gas": "Argon", "current": 2e-11},
             "info": {"model": "Arctis", "serial_number": "9952468", "manufacturer": "Thermo"},
+            "stage": {"shuttle_pre_tilt": 26.0, "milling_angle": 15.0, "rotation": True},
         },
     }
 
@@ -82,9 +91,11 @@ def fei_header(beam: str = ELECTRON) -> dict:
         "Beam": {"HV": 2000 if beam == ELECTRON else 30000,
                  "Beam": "EBeam" if beam == ELECTRON else "IBeam"},
         "EBeam": {"HV": 2000, "BeamCurrent": 1e-10, "HFW": 4.144e-05, "Source": "FEG",
-                  "BeamShiftX": -1.72956e-05, "BeamShiftY": 9.09873e-07},
+                  "BeamShiftX": -1.72956e-05, "BeamShiftY": 9.09873e-07,
+                  "WD": 0.00983654, "ScanRotation": 3.14159},
         "IBeam": {"HV": 30000, "BeamCurrent": 2e-11, "HFW": 2.59e-05, "Source": "Argon",
-                  "BeamShiftX": 2.5e-06, "BeamShiftY": -1.5e-06},
+                  "BeamShiftX": 2.5e-06, "BeamShiftY": -1.5e-06,
+                  "WD": 0.0165, "ScanRotation": 0.0},
         "Scan": {"Dwelltime": 5e-08, "PixelWidth": 1.34896e-08, "Integrate": 16},
         "EScan": {"Dwell": 5e-08, "PixelWidth": 1.34896e-08, "LineIntegration": 1},
         "IScan": {"Dwell": 5e-08, "PixelWidth": 8.43099e-09, "LineIntegration": 4},
@@ -606,3 +617,76 @@ def test_metadata_is_not_attached_to_records():
     is paid only by commands that ask for it."""
     assert not hasattr(ImageRecord(image_path=Path("x.tif")), "metadata")
     assert "metadata" not in ImageMetadata.__dataclass_fields__
+
+
+# ---------------------------------------------------------------------------
+# Imaging geometry, and what the acquisition did to its own grey levels
+# ---------------------------------------------------------------------------
+
+def test_the_imaging_geometry_is_read_in_degrees_and_millimetres():
+    metadata = extract_metadata(fibsem_header(ION), "fibsem")
+
+    assert metadata.scan_rotation_deg == pytest.approx(180.0)
+    assert metadata.working_distance_mm == pytest.approx(19.0)
+    assert metadata.shuttle_pretilt_deg == pytest.approx(26.0)
+    assert metadata.milling_angle_deg == pytest.approx(15.0)
+
+
+def test_the_working_distance_and_scan_rotation_follow_the_beam():
+    """The columns are focused independently and scanned independently, so
+    reading the other one's gives a number that looks perfectly ordinary."""
+    electron = extract_metadata(fibsem_header(ELECTRON), "fibsem")
+    ion = extract_metadata(fibsem_header(ION), "fibsem")
+
+    assert (electron.working_distance_mm, ion.working_distance_mm) == (7.0, 19.0)
+    assert (electron.scan_rotation_deg, ion.scan_rotation_deg) == (0.0, 180.0)
+    assert extract_metadata(fei_header(ELECTRON), "fei").working_distance_mm == pytest.approx(
+        9.83654
+    )
+
+
+def test_the_stage_geometry_is_the_same_for_both_beams():
+    """Unlike everything else read out of system.*, the stage has one geometry
+    whichever column fired, so there is no other beam's value to confuse."""
+    electron = extract_metadata(fibsem_header(ELECTRON), "fibsem")
+    ion = extract_metadata(fibsem_header(ION), "fibsem")
+
+    assert electron.shuttle_pretilt_deg == ion.shuttle_pretilt_deg == 26.0
+    assert electron.milling_angle_deg == ion.milling_angle_deg == 15.0
+
+
+def test_an_acquisition_says_whether_it_processed_its_own_grey_levels():
+    metadata = extract_metadata(fibsem_header(), "fibsem")
+
+    assert metadata.autocontrast is True
+    assert metadata.autogamma is False
+
+
+def test_a_flag_that_is_off_is_not_the_same_as_one_that_is_absent():
+    """Autocontrast off means the grey levels are the detector's own, which is
+    a fact about the image; a header not saying is not."""
+    document = fibsem_header()
+    document["image"]["autocontrast"] = False
+    del document["image"]["autogamma"]
+    metadata = extract_metadata(document, "fibsem")
+
+    assert metadata.autocontrast is False
+    assert metadata.autogamma is None
+
+
+def test_detector_settings_are_read_for_the_detector_that_was_used():
+    electron = extract_metadata(fibsem_header(ELECTRON), "fibsem")
+    ion = extract_metadata(fibsem_header(ION), "fibsem")
+
+    assert (electron.detector_brightness, electron.detector_contrast) == (0.25, 0.75)
+    assert (ion.detector_brightness, ion.detector_contrast) == (0.5, 0.875)
+
+
+def test_the_fei_dialect_states_no_comparable_detector_setting():
+    """It writes them under a section named after the detector, on a 0-100
+    scale rather than as a fraction. One column would hold two quantities."""
+    metadata = extract_metadata(fei_header(), "fei")
+
+    assert metadata.detector_brightness is None
+    assert metadata.detector_contrast is None
+    assert metadata.detector_type == "ETD", "which detector is still read"
