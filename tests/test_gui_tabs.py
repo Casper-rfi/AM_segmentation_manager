@@ -825,7 +825,7 @@ def test_the_view_refreshes_after_a_write(metadata: MetadataController):
     assert metadata.values()["sample"] == "HeLa"
     # Two: the sample just set, plus lamella_type derived from the project's
     # experiment.yaml method.
-    assert "2 of 6" in metadata.summary()
+    assert "2 of 7" in metadata.summary()
 
 
 def test_planning_writes_nothing(metadata: MetadataController):

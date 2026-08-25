@@ -295,6 +295,28 @@ def test_lamella_and_stage_are_listed_as_workflow_not_project_metadata():
     assert "stage-name" in workflow
 
 
+def test_images_are_counted_by_the_grid_they_were_prepared_on():
+    """A project breakdown like any other, which is what registering it in
+    BREAKDOWNS buys: the count, --by grid-type and the Export filter row."""
+    from am_segmentation_manager.metadata import ExperimentMetadata
+
+    first, second = record("a"), record("b")
+    object.__setattr__(first, "image_path", Path("one/sem/a.tif"))
+    object.__setattr__(second, "image_path", Path("two/sem/b.tif"))
+    projects = [
+        make_project("one", "one", "HeLa", [first]),
+        make_project("two", "two", "HeLa", [second]),
+    ]
+    for project, grid in zip(projects, ("Quantifoil R2/2 Cu 200 mesh", "UltrAuFoil R1.2/1.3")):
+        object.__setattr__(project, "experiment_metadata", ExperimentMetadata(grid_type=grid))
+    lookup = ag.project_lookup(projects)
+
+    counts = ag.count_by([first, second], ag.by_grid_type(lookup))
+
+    assert counts == {"Quantifoil R2/2 Cu 200 mesh": 1, "UltrAuFoil R1.2/1.3": 1}
+    assert "grid-type" in ag.BREAKDOWNS
+
+
 def test_a_project_without_metadata_reports_missing():
     only = record("a")
     lookup = ag.project_lookup([make_project("p", "p", None, [only])])

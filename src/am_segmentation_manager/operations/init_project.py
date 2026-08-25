@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 #: between projects even when everything else is shared. Getting one of these
 #: wrong is invisible in the output, so they stay placeholders until a person
 #: fills them in.
-NEVER_DEFAULTED: frozenset[str] = frozenset({"description", "sample"})
+NEVER_DEFAULTED: frozenset[str] = frozenset({"description", "sample", "grid_type"})
 
 
 @dataclass(frozen=True)

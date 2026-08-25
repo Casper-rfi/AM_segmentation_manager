@@ -44,7 +44,9 @@ __all__ = [
 #: ``lamella_type`` has a fixed vocabulary of its own. ``project`` names the
 #: wider project several datasets belong to, so it repeats across them by
 #: definition -- which is exactly what these lists are for.
-SUGGESTED_FIELDS: tuple[str, ...] = ("organisation", "project", "user", "sample")
+SUGGESTED_FIELDS: tuple[str, ...] = (
+    "organisation", "project", "user", "sample", "grid_type",
+)
 
 #: How many values a field offers. A collection of several hundred projects
 #: would otherwise put a list nobody can read behind every box.

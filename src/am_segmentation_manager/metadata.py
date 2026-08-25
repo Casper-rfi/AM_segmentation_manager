@@ -79,6 +79,9 @@ class ExperimentMetadata:
         project: The name of the wider project the experiment belongs to.
         user: Who acquired the data.
         sample: Cell type or organism.
+        grid_type: The grid the sample was prepared on, e.g.
+            ``"Quantifoil R2/2 Cu 200 mesh"``. Free text, material, mesh and
+            film combining in more ways than a fixed vocabulary would survive.
         lamella_type: One of :data:`LAMELLA_TYPES`.
         variants: Human-readable descriptions of imaging-condition variants,
             keyed by the variant string in the image directory name. Variants
@@ -94,6 +97,7 @@ class ExperimentMetadata:
     project: str | None = None
     user: str | None = None
     sample: str | None = None
+    grid_type: str | None = None
     lamella_type: str | None = None
     variants: Mapping[str, str] = field(default_factory=dict)
     sources: Mapping[str, Path] = field(default_factory=dict)
@@ -122,6 +126,7 @@ DESCRIPTIVE_FIELDS: tuple[str, ...] = (
     "project",
     "user",
     "sample",
+    "grid_type",
     "lamella_type",
 )
 
@@ -134,6 +139,7 @@ FIELD_COMMENTS: dict[str, str] = {
     "project": "Name of the wider project this belongs to",
     "user": "Who acquired the data",
     "sample": "Cell type or organism",
+    "grid_type": "Grid the sample was prepared on, e.g. Quantifoil R2/2 Cu 200 mesh",
     "lamella_type": f"One of: {', '.join(LAMELLA_TYPES)}",
 }
 

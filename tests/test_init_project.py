@@ -43,7 +43,8 @@ def test_a_template_is_valid_yaml_with_every_field(tmp_path: Path):
 
     document = read_yaml(project / "AM_metadata.yaml")
     assert set(document["metadata"]) == {
-        "description", "organisation", "project", "user", "sample", "lamella_type",
+        "description", "organisation", "project", "user", "sample", "grid_type",
+        "lamella_type",
     }
 
 
@@ -144,9 +145,11 @@ def test_defaults_may_be_written_without_a_metadata_block(tmp_path: Path):
     assert read_defaults(defaults_file) == {"organisation": "RFI"}
 
 
-@pytest.mark.parametrize("field", ["sample", "description"])
+@pytest.mark.parametrize("field", ["sample", "description", "grid_type"])
 def test_fields_that_vary_between_projects_cannot_be_defaulted(tmp_path: Path, field: str):
-    """Lamellae in one directory may come from different samples."""
+    """Projects in one directory may come from different samples, and a grid
+    belongs to a specimen as much as the sample does -- one collection here
+    holds a yeast project and a virus one side by side."""
     defaults_file = tmp_path / "shared.yaml"
     defaults_file.write_text(f"metadata:\n  {field}: HeLa\n", encoding="utf-8")
 

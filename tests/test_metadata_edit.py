@@ -183,6 +183,15 @@ def test_an_invalid_lamella_type_is_rejected(project: Path):
         update_project_metadata(project, {"lamella_type": "banana"})
 
 
+def test_a_grid_type_is_free_text(project: Path):
+    """Unlike lamella_type. Material, mesh and film combine in more ways than
+    a vocabulary would survive, and a rejected real grid is worse than an
+    inconsistent one -- the Add data tab offers the spellings already in use."""
+    update_project_metadata(project, {"grid_type": "Quantifoil R2/2 Cu 200 mesh"})
+
+    assert block(project)["metadata"]["grid_type"] == "Quantifoil R2/2 Cu 200 mesh"
+
+
 def test_every_problem_is_reported_at_once(project: Path):
     """Correcting a command line one error per run is miserable."""
     with pytest.raises(MetadataValidationError) as raised:

@@ -502,6 +502,11 @@ def by_sample(lookup: Mapping[Path, Project]) -> KeyFunction:
     return _project_metadata_key(lookup, "sample")
 
 
+def by_grid_type(lookup: Mapping[Path, Project]) -> KeyFunction:
+    """Group by the grid the sample was prepared on."""
+    return _project_metadata_key(lookup, "grid_type")
+
+
 def by_lamella_type(lookup: Mapping[Path, Project]) -> KeyFunction:
     """Group by preparation type: cells-on-grid, waffle, lift-out, other."""
     return _project_metadata_key(lookup, "lamella_type")
@@ -685,6 +690,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "electron-source": Breakdown("metadata", by_electron_source, "electron source"),
     "detector": Breakdown("metadata", by_detector, "detector type"),
     "sample": Breakdown("project", by_sample, "sample"),
+    "grid-type": Breakdown("project", by_grid_type, "grid type"),
     "lamella-type": Breakdown("project", by_lamella_type, "lamella preparation type"),
     "user": Breakdown("project", by_user, "user"),
     "organisation": Breakdown("project", by_organisation, "organisation"),

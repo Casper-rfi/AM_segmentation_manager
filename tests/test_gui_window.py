@@ -2193,10 +2193,10 @@ def test_the_list_says_which_projects_still_need_describing(metadata_panel):
     described = metadata_panel.projects.item(0)
     outstanding = metadata_panel.projects.item(1)
 
-    assert "3 of 6 fields set" in described.toolTip()
-    assert "missing: description, project, lamella_type" in described.toolTip()
+    assert "3 of 7 fields set" in described.toolTip()
+    assert "missing: description, project, grid_type, lamella_type" in described.toolTip()
     # Only the organisation, from experiment.yaml: its sample is a placeholder.
-    assert "1 of 6 fields set" in outstanding.toolTip()
+    assert "1 of 7 fields set" in outstanding.toolTip()
     assert "sample" in outstanding.toolTip()
     assert not described.icon().isNull()
 
@@ -2215,12 +2215,12 @@ def test_a_long_row_is_elided_rather_than_scrolled(metadata_panel):
 def test_saving_updates_the_mark_in_the_list(metadata_panel):
     """Saving is exactly when a project stops being incomplete, so leaving the
     list describing the state before it is how a user learns to distrust it."""
-    assert "3 of 6 fields set" in metadata_panel.projects.item(0).toolTip()
+    assert "3 of 7 fields set" in metadata_panel.projects.item(0).toolTip()
     metadata_panel.enable.setChecked(True)
     set_editor_text(metadata_panel.editors["description"], "A lamella series")
     metadata_panel._save()
 
-    assert "4 of 6 fields set" in metadata_panel.projects.item(0).toolTip()
+    assert "4 of 7 fields set" in metadata_panel.projects.item(0).toolTip()
 
 
 def test_right_clicking_a_project_asks_for_its_path(metadata_panel):

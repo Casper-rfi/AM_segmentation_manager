@@ -4,4 +4,5 @@ metadata:
     project: Name of project
     user: Name of who acquired the data
     sample: cell type or organism
+    grid_type: grid the sample was prepared on
     lamella_type: cells-on-grid OR waffle OR lift-out OR other

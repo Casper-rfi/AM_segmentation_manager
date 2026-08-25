@@ -239,6 +239,13 @@ appending to it.
   a `metadata_project` in another. The directory is what the scanner indexes and Curate lists,
   so it is qualified wherever written; the metadata field keeps the plain name. Neither is
   derived from the other, which is why Add data offers no button to copy one into the other.
+- **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of
+  four things and a typo is a real error; a grid is a material, a mesh and a film in
+  combinations no list would survive, and rejecting a real grid is worse than tolerating two
+  spellings of one. The Add data tab offers the values already in use, which is what keeps
+  spellings consistent without a vocabulary to maintain. Like `sample`, it cannot be pre-filled
+  from a shared defaults file: a grid belongs to the specimen, and one collection directory
+  here holds a yeast project beside a virus one.
 - **Every image header carries settings for both beams, and some values exist for only one.**
   `microscope_state.*` describes the beam that took the image; `system.*` holds both beams'
   configured defaults, so reading `system.ion.voltage` from an SEM image yields the FIB's 30 kV
