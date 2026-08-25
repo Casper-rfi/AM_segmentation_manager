@@ -15,6 +15,8 @@ image is never opened.
 from __future__ import annotations
 
 import logging
+import math
+import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from dataclasses import fields as dataclass_fields
@@ -55,7 +57,9 @@ class ImageMetadata:
     """Acquisition settings read from one image header.
 
     Every field is optional. ``None`` means the header did not record it, which
-    is never the same as a default: see the module docstring.
+    is never the same as a default: see the module docstring. A number is stored
+    in the unit its field name states and is rounded as it is converted, so it
+    carries no floating-point noise from the conversion.
 
     Attributes:
         image_width: Width in pixels.
@@ -337,8 +341,23 @@ def _search(node: Any, keys: tuple[str, ...], _depth: int = 0) -> Any:
     return None
 
 
+#: Decimal places kept when a value is converted into the unit its field name
+#: states. Converting in binary floating point leaves noise ten or more orders
+#: of magnitude below the value -- a header holding 6e-05 m becomes
+#: 59.99999999999999 um, and 2e-09 A becomes 2000.0000000000002 pA. Six decimals
+#: is coarser than that noise and finer than anything these instruments report,
+#: so only the noise goes: a beam measured at 29.996416 kV against a 30 kV set
+#: point survives, that being the header's own value rather than an artefact.
+_DECIMALS = 6
+
+
 def _number(value: Any, scale: float | None) -> float | int | None:
-    """Return *value* as a number, scaled, or None if it is not one."""
+    """Return *value* as a number, scaled and rounded, or None if it is not one.
+
+    Non-finite and subnormal values read as None. Neither is a measurement: a
+    subnormal float is uninitialised memory, which is what the FEI dialect
+    leaves in the stage keys it never filled in.
+    """
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, str) and (
@@ -349,9 +368,13 @@ def _number(value: Any, scale: float | None) -> float | int | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
+    # Before scaling: multiplying a subnormal by 1e12 makes it an ordinary
+    # small number, and there would be nothing left to recognise.
+    if not math.isfinite(number) or 0 < abs(number) < sys.float_info.min:
+        return None
     if scale is not None:
         number *= scale
-    return number
+    return round(number, _DECIMALS)
 
 
 #: Strings that mean "not recorded". The fibsem writer serialises a Python
@@ -382,6 +405,23 @@ _TEXT_FIELDS = {
     "microscope_model", "microscope_serial", "detector_type", "detector_mode",
     "plasma_gas", "electron_source",
 }
+
+
+def _convert(field: HeaderField, raw: Any) -> Any:
+    """Return *raw* as *field* stores it, or None where it states no value.
+
+    Conversion is what decides whether a candidate path matched: a key can be
+    present and say nothing -- a blank, a null marker, uninitialised memory --
+    and the paths after it are still worth trying.
+    """
+    if field.name in _TEXT_FIELDS:
+        return _text(raw)
+    number = _number(raw, field.scale)
+    if number is None:
+        return None
+    if field.name in _INTEGER_FIELDS:
+        return int(round(number))
+    return number
 
 
 def _beam_substitutions(beam_type: str | None) -> dict[str, str]:
@@ -542,40 +582,33 @@ def extract_metadata(document: Mapping[str, Any], dialect: str) -> ImageMetadata
         if field.beams and beam not in field.beams:
             continue
         candidates = field.fibsem if dialect == "fibsem" else field.fei
-        raw = None
+        value = None
         for path in candidates:
-            raw = _walk(document, _expand(path, substitutions))
-            if raw is not None and raw != "":
+            value = _convert(field, _walk(document, _expand(path, substitutions)))
+            if value is not None:
                 break
-            raw = None
-        if raw is None and field.search:
+        if value is None and field.search:
             # A beam-specific value is searched for only under the beam that
             # took the image. Searching the whole document would happily return
             # the other beam's voltage, which looks entirely plausible.
             if field.beam_specific:
                 for root in _search_roots(document, dialect, substitutions):
-                    raw = _search(root, field.search)
-                    if raw is not None:
+                    value = _convert(field, _search(root, field.search))
+                    if value is not None:
                         break
             else:
-                raw = _search(document, field.search)
-            if raw is not None:
+                value = _convert(field, _search(document, field.search))
+            if value is not None:
                 logger.debug(
                     "%s found by search rather than a declared path; the header "
                     "dialect may have changed", field.name,
                 )
-        if raw is None:
+        if value is None:
             if field.floor is not None:
                 floors[field.name] = field.floor
             continue
 
-        if field.name in _TEXT_FIELDS:
-            values[field.name] = _text(raw)
-        elif field.name in _INTEGER_FIELDS:
-            number = _number(raw, field.scale)
-            values[field.name] = int(round(number)) if number is not None else None
-        else:
-            values[field.name] = _number(raw, field.scale)
+        values[field.name] = value
 
     values["acquired_at"] = _acquired_at(document, dialect)
 

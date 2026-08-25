@@ -239,7 +239,9 @@ def _rounded_metadata_key(
 
 
 #: Significant figures kept by the breakdowns that group a derived measurement.
-#: A grouping figure only; the exported value is never rounded.
+#: A grouping figure only, and far coarser than the rounding a value gets when
+#: it is read: this one collapses values the instrument really did measure
+#: differently, which an export must keep apart.
 _GROUPING_DIGITS = 4
 
 

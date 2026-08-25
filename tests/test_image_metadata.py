@@ -196,6 +196,55 @@ def test_dimensions_are_integers_not_floats():
     assert isinstance(metadata.image_width, int)
 
 
+def test_a_converted_value_carries_no_noise_from_the_conversion():
+    """The values below are transcribed from real headers. Neither is odd:
+    6e-05 has no exact binary representation, so the header already holds
+    5.9999999999999995e-05, and multiplying by 1e6 exposes it."""
+    document = fibsem_header(ION)
+    document["image"]["hfw"] = 5.9999999999999995e-05
+    document["microscope_state"]["ion_beam"]["beam_current"] = 2e-09
+    metadata = extract_metadata(document, "fibsem")
+
+    assert metadata.hfw_um == 60.0
+    assert metadata.beam_current_pa == 2000.0
+
+
+def test_a_measured_value_is_kept_rather_than_snapped_to_its_set_point():
+    """Both of these are what the instrument reported, not conversion noise: a
+    30 kV column measured at 29996 V, drawing 10 pA against a 30 pA preset.
+    Rounding must not turn either into the round number it is near."""
+    document = fibsem_header(ION)
+    document["microscope_state"]["ion_beam"]["voltage"] = 29996.41597249603
+    document["microscope_state"]["ion_beam"]["beam_current"] = 1.0002222222222226e-11
+    metadata = extract_metadata(document, "fibsem")
+
+    assert metadata.acceleration_voltage_kv == 29.996416
+    assert metadata.beam_current_pa == 10.002222
+
+
+def test_uninitialised_memory_is_not_a_measurement():
+    """A subnormal float is what a dialect leaves in a key it never filled in,
+    and a NaN is not a number the instrument measured. Both read as absent."""
+    document = fibsem_header(ION)
+    del document["image"]["hfw"]
+    document["microscope_state"]["ion_beam"]["hfw"] = 6.95268e-310
+    document["microscope_state"]["ion_beam"]["voltage"] = float("nan")
+    metadata = extract_metadata(document, "fibsem")
+
+    assert metadata.hfw_um is None
+    assert metadata.acceleration_voltage_kv is None
+
+
+def test_a_path_stating_nothing_falls_through_to_the_next():
+    """image.hfw describes this acquisition and the beam state is the fallback.
+    A key present but holding nothing usable must not hide the fallback."""
+    document = fibsem_header(ION)
+    document["image"]["hfw"] = 6.95268e-310
+    document["microscope_state"]["ion_beam"]["hfw"] = 4e-05
+
+    assert extract_metadata(document, "fibsem").hfw_um == 40.0
+
+
 # ---------------------------------------------------------------------------
 # Absent is None, never a default
 # ---------------------------------------------------------------------------

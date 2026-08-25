@@ -254,7 +254,18 @@ appending to it.
   recording what was measured rather than what was set: a voltage to 0.1 kV, a pixel size and
   beam current to four significant figures, those two being derived from the magnification and
   so differing in the last decimal between two images of one field of view. Significant figures
-  rather than decimal places, pixel sizes spanning decades. The exported value is never rounded.
+  rather than decimal places, pixel sizes spanning decades. The conversion itself rounds, to
+  six decimals in the stored unit: a header holds 6e-05 m, which binary floating point cannot
+  represent exactly, and multiplying by 1e6 turns that into 59.99999999999999 um. Six decimals
+  is finer than anything these instruments report and ten orders of magnitude coarser than the
+  noise, so only the noise goes — a beam measured at 29.996416 kV against a 30 kV set point is
+  the header's own value and survives.
+- **A declared path counts as matched only if its value converts.** A key can be present and
+  still state nothing: a blank, a `"None"` marker, or uninitialised memory, which is what the
+  FEI dialect leaves in the stage keys it never fills — `Stage.StageX` reads 6.95e-310 while
+  the real position sits in `Stage.CompustageX`. So a subnormal or non-finite number reads as
+  absent, and the reader moves on to the next candidate path and then to the search fallback
+  rather than stopping at a key that merely exists.
 - **A missing measurement is never a default.** The one exception is the integration counts,
   where absence means "not enabled" — that is decoding the field, not defaulting it.
 - **Headers are never read during scanning.** Metadata is a mapping keyed by image path,
