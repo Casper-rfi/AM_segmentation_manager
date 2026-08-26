@@ -56,6 +56,7 @@ from .common import (
     choose_save_file,
     fill_grouped_combo,
     fixed_width_font,
+    horizontal_rule,
     ticked_caption,
 )
 from .theme import COMPACT_BUTTON
@@ -669,14 +670,6 @@ class ExportPanel(QWidget):
                 "metadata. Not narrowed by the filters: the unit here is the "
                 "project, not the image.",
             ),
-            (
-                "Copy images and labels...",
-                self.files_export_requested,
-                True,
-                "Copy the matching images, their labels and each project's "
-                "files into a folder, keeping the hierarchy.\n"
-                "Nothing is overwritten; an earlier run of it resumes.",
-            ),
         ):
             button = QPushButton(label)
             button.setToolTip(tooltip)
@@ -696,6 +689,26 @@ class ExportPanel(QWidget):
         )
         self.check_button.clicked.connect(self._check)
         column.addWidget(self.check_button)
+
+        # Under a rule and apart from the four above, which all write or read a
+        # list of paths. This one moves the images and labels themselves, and
+        # reading it as a fifth kind of CSV is how a copy of gigabytes gets
+        # started by accident.
+        column.addSpacing(10)
+        column.addWidget(horizontal_rule())
+        column.addSpacing(10)
+        self.files_button = QPushButton("Export images and labels...")
+        self.files_button.setToolTip(
+            "Copy the matching images, their labels and each project's "
+            "files into a folder, keeping the hierarchy.\n"
+            "Nothing is overwritten; an earlier run of it resumes."
+        )
+        self.files_button.clicked.connect(
+            lambda: self._choose(
+                self.files_export_requested, self.files_button.text(), True
+            )
+        )
+        column.addWidget(self.files_button)
 
         column.addStretch(1)
         return box

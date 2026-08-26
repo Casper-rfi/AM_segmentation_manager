@@ -27,6 +27,7 @@ if HAS_QT:
         QCheckBox,
         QComboBox,
         QDoubleSpinBox,
+        QFrame,
         QLabel,
         QListWidget,
         QPushButton,
@@ -924,3 +925,27 @@ def test_the_series_control_is_not_also_offered_as_a_filter_row(panel: ExportPan
     )
 
     assert "series" not in offered
+
+
+def test_the_file_export_is_named_for_what_it_does_and_kept_off_the_csv_run(
+    panel: ExportPanel,
+):
+    """It writes images, not a list of paths. Sat among the CSV buttons it read
+    as a fifth one of those, which is how a copy of gigabytes gets started by
+    accident -- so it is named alike and placed last, under a rule."""
+    column = panel._export_box.layout()
+    ordered = [
+        column.itemAt(index).widget()
+        for index in range(column.count())
+        if column.itemAt(index).widget() is not None
+    ]
+    labelled = [
+        widget.text() for widget in ordered
+        if isinstance(widget, QPushButton) and widget.text().endswith("...")
+    ]
+
+    assert panel.files_button.text() == "Export images and labels..."
+    assert labelled[-1] == panel.files_button.text()
+    assert all(text.endswith("CSV...") for text in labelled[:-1])
+    # Under a rule, so the eye does not run the two groups together.
+    assert isinstance(ordered[ordered.index(panel.files_button) - 1], QFrame)

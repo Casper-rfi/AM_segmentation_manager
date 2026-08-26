@@ -1,6 +1,6 @@
 """Copying a selection of images and labels out into a folder of its own.
 
-What ``am-seg export-files`` and the Export tab's *Copy images and labels* do:
+What ``am-seg export-files`` and the Export tab's *Export images and labels* do:
 take the images a selection matches, the label of each, and the few files that
 describe the projects they came from, and write them into a new directory under
 the same relative paths they had. The copy is therefore a smaller collection of

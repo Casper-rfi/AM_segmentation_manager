@@ -24,6 +24,7 @@ from qtpy.QtGui import (
 from qtpy.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QFrame,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -114,6 +115,23 @@ def fixed_width_font() -> QFont:
     font.setStyleHint(QFont.Monospace)
     font.setFixedPitch(True)
     return font
+
+
+def horizontal_rule() -> QFrame:
+    """Return a hairline for dividing one group of controls from the next.
+
+    Painted rather than left to the style, which draws a sunken frame as two
+    lines of its own choosing -- a groove cut across a panel whose every other
+    edge is flat. :data:`theme.BORDER` rather than the lighter separator: this
+    rule is the only thing saying the groups differ, and against a group box
+    the light one cannot be seen at all.
+    """
+    rule = QFrame()
+    rule.setFrameShape(QFrame.HLine)
+    rule.setFrameShadow(QFrame.Plain)
+    rule.setFixedHeight(1)
+    rule.setStyleSheet(f"background: {theme.BORDER}; border: none;")
+    return rule
 
 
 def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:

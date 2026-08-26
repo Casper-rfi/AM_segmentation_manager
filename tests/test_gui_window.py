@@ -1231,7 +1231,7 @@ def test_copying_the_selection_writes_it_into_the_chosen_folder(
 
     window._copy_files(str(destination))
 
-    assert inline_operations == [("Copy images and labels", "Apply")]
+    assert inline_operations == [("Export images and labels", "Apply")]
     copied = sorted(path.name for path in destination.rglob("*.tif"))
     assert copied, "the images and their labels land under the folder"
     assert (destination / "AutoLamella-2026-07-28-13-57" / "experiment.yaml").exists(), (

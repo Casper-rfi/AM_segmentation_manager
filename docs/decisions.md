@@ -410,10 +410,10 @@ appending to it.
   image per label" collapses it. The train/validation split groups by the *acquisition*, a paired
   row holding two images of one scene that splitting would score the model on what it has seen.
 - **An export can also copy the files out, and it never overwrites one.** `export-files` and the
-  Export tab's copy write the matched images, each label, every contributing stage's
-  `AM_state.yaml` and every contributing project's metadata and protocol files under the paths
-  they already have — a smaller collection of the same shape, which `am-seg` scans and which can
-  be proofread further. Every destination is classified before a byte moves: one holding the
+  Export tab's *Export images and labels* write the matched images, each label, every contributing
+  stage's `AM_state.yaml` and every contributing project's metadata and protocol files under the
+  paths they already have — a smaller collection of the same shape, which `am-seg` scans and which
+  can be proofread further. Every destination is classified before a byte moves: one holding the
   *same* file is skipped, which is what makes an interrupted export resume, and one holding
   anything else refuses the whole run. Free space is checked first, and a destination inside the
   folder being copied from is refused — it would walk into its own output. Files land by rename

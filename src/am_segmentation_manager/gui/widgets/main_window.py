@@ -1109,7 +1109,7 @@ class CurationWindow(QMainWindow):
         cancellation = Cancellation()
         progressed = self.operations.worker.progressed
         self._operate(
-            "Copy images and labels",
+            "Export images and labels",
             lambda allow, dry: self.operations_controller.copy_files(
                 self.export_controller.selected_records(),
                 Path(directory),
