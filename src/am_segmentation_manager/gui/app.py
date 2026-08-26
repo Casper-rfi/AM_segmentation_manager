@@ -128,6 +128,11 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
     _apply_icon(application)
     window = CurationWindow(controller)
     window.show()
+    # Queued for the same reason the scan below is: show() only asks for a
+    # window, and asking for the keyboard before there is one to give it to
+    # does nothing. Launched from a terminal, the terminal stays in front
+    # otherwise -- see CurationWindow.bring_to_front for what that costs.
+    QTimer.singleShot(0, window.bring_to_front)
 
     if start_path is not None:
         window.project_panel.set_path(str(start_path))

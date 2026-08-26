@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from qtpy.QtCore import QByteArray, QRect, QSettings, Qt, QUrl, Signal
+from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl, Signal
 from qtpy.QtGui import QCursor, QDesktopServices
 from qtpy.QtWidgets import (
     QApplication,
@@ -537,6 +537,35 @@ class CurationWindow(QMainWindow):
         self.metadata_panel.project_reveal_requested.connect(
             lambda row: self._reveal_path(self.metadata_controller.project_path(row))
         )
+
+    # -- being the window in front -----------------------------------------
+
+    def bring_to_front(self) -> None:
+        """Raise this window and give it the keyboard.
+
+        A window that is merely open is not one the user can drive. macOS keeps
+        the launching application in front, and a window that is not in front
+        receives no key presses and no pointer motion at all -- so F1 does
+        nothing, no tooltip ever appears, and the brush outline sits where it
+        was last drawn. Three faults that look unrelated, one cause, and it
+        clears the moment anything is clicked, which is what made it look
+        occasional rather than constant.
+        """
+        self.raise_()
+        self.activateWindow()
+
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Record gaining and losing the keyboard, at debug level.
+
+        Whether the window was in front is not otherwise recoverable after the
+        fact, and it is the first thing to establish about any report that the
+        keyboard or the pointer stopped working.
+        """
+        if event.type() == QEvent.ActivationChange:
+            logger.debug(
+                "Window %s", "activated" if self.isActiveWindow() else "deactivated"
+            )
+        super().changeEvent(event)
 
     # -- remembering the layout --------------------------------------------
 

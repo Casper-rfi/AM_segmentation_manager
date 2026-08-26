@@ -12,6 +12,7 @@ the test requirements the same as the package's.
 from __future__ import annotations
 
 import importlib.util
+import logging
 import os
 import time
 from pathlib import Path
@@ -876,6 +877,32 @@ def test_f1_works_from_the_list_it_opened(window):
     )
 
     assert f1.context() == Qt.ApplicationShortcut
+
+
+def test_the_window_asks_to_be_the_one_in_front(window):
+    """Raised and activated, not just raised: a window on top but without the
+    keyboard is one macOS sends neither key presses nor pointer motion to, so
+    F1, every tooltip and the brush outline are all dead until it is clicked.
+    Asserted on the calls, an offscreen window never being activated."""
+    asked: list[str] = []
+    window.raise_ = lambda: asked.append("raise")
+    window.activateWindow = lambda: asked.append("activate")
+
+    window.bring_to_front()
+
+    assert asked == ["raise", "activate"]
+
+
+def test_losing_the_keyboard_is_recorded(window, caplog):
+    """Whether the window was in front is not recoverable after the fact, and
+    it is the first thing to establish about a report that the keyboard or the
+    pointer stopped working."""
+    from qtpy.QtCore import QEvent
+
+    with caplog.at_level(logging.DEBUG, logger="am_segmentation_manager.gui.widgets"):
+        window.changeEvent(QEvent(QEvent.ActivationChange))
+
+    assert "deactivated" in caplog.text
 
 
 def test_the_shortcut_list_does_not_block_the_window(window):

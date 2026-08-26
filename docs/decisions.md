@@ -463,6 +463,17 @@ appending to it.
   and state, and any icon carrying meaning goes through it); and a `QListWidget` with a
   horizontal scrollbar scrolls instead of eliding, cutting rows carrying paths off where they
   differ, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
+- **The window asks to be the one in front, and asks after the event loop has started.** Launched
+  from a terminal, macOS leaves the terminal in front, and a window that is not in front receives
+  no key presses and no pointer motion at all — so F1 does nothing, no tooltip ever appears, and
+  the brush outline sits wherever it was last drawn. Three faults that look unrelated, one cause,
+  and it clears the instant anything in the window is clicked, which is what makes it read as
+  occasional rather than constant. `show()` only asks for a window, and asking an absent one for
+  the keyboard does nothing, so `raise_()`/`activateWindow()` go through the same zero-delay timer
+  the startup scan does — ahead of it, there being no point activating a window behind the modal
+  dialog a scan puts up. `changeEvent` logs each activation change under `-v`, that being the
+  first thing to establish about any report that the keyboard or the pointer stopped working, and
+  not recoverable after the fact.
 - **F1 is an application shortcut, and the list closes only when it is the window in front.**
   A window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
   parented `QDialog` is one — so the key that opens the shortcut list could not close it again.

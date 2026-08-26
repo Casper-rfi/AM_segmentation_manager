@@ -301,11 +301,13 @@ def test_the_icon_is_set_on_the_application_so_dialogs_inherit_it(qt_app):
     assert not qt_app.windowIcon().isNull()
 
 
-def test_the_startup_scan_waits_for_the_window_to_appear(qt_app, tmp_path, monkeypatch):
+def test_the_startup_work_waits_for_the_window_to_appear(qt_app, tmp_path, monkeypatch):
     """``show()`` only asks for a paint. Nothing is drawn until ``exec()``
     starts delivering events, so a scan started before it ran against a window
     that had never appeared -- seconds of blank grey indistinguishable from a
-    hang."""
+    hang. Asking for the keyboard is queued for the same reason, and ahead of
+    the scan: the scan puts a modal dialog up, and there is no point activating
+    a window behind one."""
     from am_segmentation_manager.gui import app
 
     order: list[str] = []
@@ -316,6 +318,9 @@ def test_the_startup_scan_waits_for_the_window_to_appear(qt_app, tmp_path, monke
 
         def show(self):
             order.append("show")
+
+        def bring_to_front(self):
+            order.append("front")
 
         def scan(self, path):
             order.append("scan")
@@ -331,6 +336,6 @@ def test_the_startup_scan_waits_for_the_window_to_appear(qt_app, tmp_path, monke
 
     app.run(start_path=tmp_path)
 
-    assert order == ["show", "exec", "scan"], (
-        "the scan must be queued behind the event loop, not run before it"
+    assert order == ["show", "exec", "front", "scan"], (
+        "both must be queued behind the event loop, not run before it"
     )
