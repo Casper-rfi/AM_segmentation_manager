@@ -229,11 +229,9 @@ appending to it.
 - **Nothing is inherited from parent directories.** A collection directory groups projects by
   session or storage convenience, so lamellae in one *directory* may be different samples;
   lamellae in one *project* do share a sample, which is why that is the right level.
-- **The Add data tab suggests, and a suggestion is never a value.** It offers the values other
-  projects already use for a field, computed in the controller and reaching a file only when the
-  user saves, so `build_experiment_metadata` still resolves from the two files and nothing else.
-  `project` is on that list because it names something several datasets share, which is how a
-  collection ends up holding two spellings of one project.
+- **The Add data tab suggests, and a suggestion is never a value.** The values other projects
+  use are computed in the controller and reach a file only when the user saves, so
+  `build_experiment_metadata` still resolves from the two files and nothing else.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and
   a `metadata_project` in another. The directory is what the scanner indexes and Curate lists,
@@ -266,12 +264,11 @@ appending to it.
   group; storage being a list is what lets a value hold a comma, and the one thing a value may
   not hold is the separator itself.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of
-  four things and a typo is a real error; a grid is a material, a mesh and a film in
-  combinations no list would survive, and rejecting a real grid is worse than tolerating two
-  spellings of one. The Add data tab offers the values already in use, which is what keeps
-  spellings consistent without a vocabulary to maintain. Like `sample`, it cannot be pre-filled
-  from a shared defaults file: a grid belongs to the specimen, and one collection directory
-  here holds a yeast project beside a virus one.
+  four things and a typo is a real error; a grid is a material, a mesh and a film in combinations
+  no list would survive, and rejecting a real grid is worse than tolerating two spellings of one.
+  Offering the values already in use is what keeps spellings consistent without a vocabulary to
+  maintain. Like `sample` it cannot be defaulted from a shared file: a grid belongs to the
+  specimen, and one collection directory here holds a yeast project beside a virus one.
 - **Every image header carries settings for both beams, and some values exist for only one.**
   `microscope_state.*` describes the beam that took the image; `system.*` holds both beams'
   configured defaults, so reading `system.ion.voltage` from an SEM image yields the FIB's 30 kV
@@ -439,12 +436,9 @@ appending to it.
   Export tab's *Export images and labels* write the matched images, each label, every contributing
   stage's `AM_state.yaml` and every contributing project's metadata and protocol files under the
   paths they already have — a smaller collection of the same shape, which `am-seg` scans and which
-  can be proofread further. Every destination is classified before a byte moves: one holding the
-  *same* file is skipped, which is what makes an interrupted export resume, and one holding
-  anything else refuses the whole run. Free space is checked first, and a destination inside the
-  folder being copied from is refused — it would walk into its own output. Files land by rename
-  with their modification time kept, which both leaves whole files behind and lets the next run
-  recognise them.
+  can be proofread further. How it refuses to overwrite is its own module docstring's. Two checks
+  are not: free space first, and a destination inside the folder being copied from is refused, it
+  being about to walk into its own output.
 - **`check-training-csv` only checks, and reads the header rather than assuming it.** Nothing
   moves files, so a path that does not resolve means the file is gone; what survives is the
   check and a `--prune` dropping the dead rows, a CSV holding a particular train/validation
@@ -491,41 +485,35 @@ appending to it.
   differ, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
 - **The window asks to be the one in front, and asks after the event loop has started.** Launched
   from a terminal, macOS leaves the terminal in front, and a window that is not in front receives
-  no key presses and no pointer motion at all — so F1 does nothing, no tooltip ever appears, and
-  the brush outline sits wherever it was last drawn. Three faults that look unrelated, one cause,
-  and it clears the instant anything in the window is clicked, which is what makes it read as
-  occasional rather than constant. `show()` only asks for a window, and asking an absent one for
-  the keyboard does nothing, so `raise_()`/`activateWindow()` go through the same zero-delay timer
-  the startup scan does — ahead of it, there being no point activating a window behind the modal
-  dialog a scan puts up. `changeEvent` logs each activation change under `-v`, that being the
-  first thing to establish about any report that the keyboard or the pointer stopped working, and
-  not recoverable after the fact.
+  no key presses and no pointer motion at all — so F1 does nothing, no tooltip appears, and the
+  brush outline sits where it was last drawn. Three faults that look unrelated, one cause, and it
+  clears the instant anything is clicked, which is what makes it read as occasional. `show()`
+  only asks for a window, and asking an absent one for the keyboard does nothing, so
+  `raise_()`/`activateWindow()` go through the same zero-delay timer the startup scan does, ahead
+  of it. `changeEvent` logs activation under `-v`: it is the first thing to establish about any
+  report of this shape, and not recoverable after the fact.
 - **A widget that wraps takes its height from the width it actually has.** A form asks a field
   how tall it would be at one width and then hands it another, so a flow layout answering only
-  `heightForWidth` lays its later rows out below the bottom edge — where they are addressable,
-  reported by the widget, and invisible: a field said it held two organisations while showing
-  one. `_FlowArea` fixes its own height from its real width on every resize instead. Its
-  layout's minimum width is zero and its size hint is one unwrapped row, which have to differ:
-  made equal, the minimum is a floor and the pane can never be narrower than the longest value
-  anybody typed.
+  `heightForWidth` lays its later rows below the bottom edge — addressable, reported, and
+  invisible: a field said it held two organisations while showing one. `_FlowArea` fixes its own
+  height from its real width on every resize. Its layout's minimum width is zero and its hint is
+  one unwrapped row, which must differ: made equal, the minimum is a floor and the pane could
+  never be narrower than the longest value anybody typed.
 - **F1 is an application shortcut, and the list closes only when it is the window in front.**
   A window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
   parented `QDialog` is one — so the key that opens the shortcut list could not close it again.
   Closing on `isVisible()` was the other half: a list buried behind the window is still visible,
-  so F1 dismissed unseen the one thing that answers "what can I press?", and pressing it again —
-  the natural response to a key that appears dead — put it back. Both together are most of why
-  F1 read as working only sometimes. `ShortcutHelp.is_in_front` is the seam the fix and its
-  tests share, an offscreen window never being activated. Widening the context costs one guard:
-  the key now arrives from any window, so it does nothing while a modal dialog is up, a list
-  opened over one being neither readable nor closable until the operation ends.
+  so F1 dismissed unseen the one thing that answers "what can I press?", and pressing it again
+  put it back. Widening the context costs one guard: the key now arrives from any window, so it
+  does nothing while a modal dialog is up, a list opened over one being neither readable nor
+  closable until the operation ends.
 - **The brush outline is redrawn from state, never from mouse movement alone.** It is drawn in
   *scene* coordinates, so everything that moves the scene under a stationary pointer — a
   middle-button pan, a fit, centring on the next speck, a frame arriving on the loader thread —
-  leaves a ring around a pixel the pointer is no longer over; and every state that hides it —
-  the fill tool chosen, space held for a pan, editing switched off — left it hidden until the
-  pointer was nudged. `_sync_brush` is the single answer to "should there be a ring, and where",
-  and `scrollContentsBy` and `zoomed` are what catch the view moving on its own. Wheel zoom is
-  the one case that needs nothing, `AnchorUnderMouse` holding the scene point under the pointer.
+  leaves a ring around a pixel the pointer is no longer over; and every state that hides it left
+  it hidden until the pointer was nudged. `_sync_brush` is the single answer to "should there be
+  a ring, and where"; `scrollContentsBy` and `zoomed` catch the view moving on its own. Wheel
+  zoom needs nothing, `AnchorUnderMouse` holding the scene point under the pointer.
 - **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under PyQt5 it
   returns the proportional `.AppleSystemUIFont` while reporting the family it was asked for, so
   a table padded into columns comes out unaligned with nothing saying why; a style hint does not
@@ -567,15 +555,9 @@ appending to it.
   pixels rather than averaging them: against a figure of one-pixel rules, nearest loses whole
   gridlines, so the plot view asks for smooth scaling. Acquisitions do not — zoomed *in* on a
   label, nearest is what shows where one pixel ends and the next begins.
-- **The busy dialog is not a `QProgressDialog`.** That class calls `processEvents()` from inside
-  `setValue()` whenever it is modal — which this one must be, its whole job being to keep the
-  window out of files being written. Processing events there re-enters the event loop from
-  inside a queued-signal handler, so the worker's *finished* can arrive mid-update: the dialog
-  is closed and its last reference dropped while one of its own methods is still on the stack,
-  which shows as the window freezing on the final item of a run. `busy_dialog.py` is a plain
-  `QDialog` that processes nothing, and the window detaches it before closing it. Escape is
-  refused for the same reason the close button is absent: on a stoppable operation it asks it to
-  stop, and on any other there is nothing it could safely do.
+- **The busy dialog is not a `QProgressDialog`**, for the re-entrancy `busy_dialog.py` sets out,
+  and it refuses Escape for the reason its `reject` gives. What belongs to the window rather than
+  the dialog: the window detaches it before closing it.
 - **Whether it can be *stopped* is a different question, answered by what a half-done run leaves
   behind.** Each prediction is written atomically and recorded before the next begins, so a
   stopped run has produced finished files and an accurate account of them, and the next resumes
