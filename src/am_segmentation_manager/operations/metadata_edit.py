@@ -24,6 +24,10 @@ from ..metadata import (
     TODO_MARKER,
     build_experiment_metadata,
     field_named,
+    format_field_value,
+    parse_field_value,
+    split_values,
+    yaml_field_value,
 )
 from .init_project import render_template
 
@@ -112,27 +116,17 @@ class MetadataChange:
         return lines
 
 
-def _yaml_scalar(field: str, value: str) -> str:
-    """Return *value* written as YAML would write it for *field*.
+def _normalised(field: str, value: str | None) -> str | None:
+    """Return the text *value* stands for once the field has read it.
 
-    Delegated to the dumper rather than guessed: a sample containing a colon,
-    a leading ``#``, or the word ``yes`` all need different handling, and
-    getting one wrong writes a file that reads back as something else.
-
-    A numeric field is written as a number, so the file says what it holds;
-    quoted, it would read back as a string that happens to look like one. Its
-    placeholder is exempt, ``TODO`` being no more a number than it is a sample.
+    ``a;b`` and ``a; b`` are the same two values, and a deposition time typed
+    as ``30.0`` is the one already recorded as ``30``. Normalising before
+    anything is compared or written is what stops either reading as an edit,
+    and what puts one spelling in the file whichever was typed.
     """
-    import yaml
-
-    written: object = value
-    spec = field_named(field)
-    if spec is not None and spec.kind == NUMBER and value != TODO_MARKER:
-        number = float(value)
-        written = int(number) if number.is_integer() else number
-
-    dumped = yaml.safe_dump({"k": written}, default_flow_style=False, allow_unicode=True)
-    return dumped.split(":", 1)[1].strip()
+    if value is None or value == TODO_MARKER:
+        return value
+    return format_field_value(parse_field_value(field, value)) or None
 
 
 def _is_number(value: str) -> bool:
@@ -156,7 +150,7 @@ def _validate(values: Mapping[str, str | None]) -> None:
             continue
         if value is None or value == TODO_MARKER:
             continue
-        if not str(value).strip():
+        if not str(value).strip() or (spec.multi and not split_values(value)):
             problems.append(f"{field}: empty value; use --clear to remove it")
         if spec.choices and value not in spec.choices:
             problems.append(
@@ -178,8 +172,21 @@ def _resolved_before(project_root: Path) -> tuple[dict[str, str | None], dict[st
         experiment_path=project_root / EXPERIMENT_FILENAME,
         am_metadata_path=project_root / AM_METADATA_FILENAME,
     )
-    current = {field: getattr(resolved, field) for field in DESCRIPTIVE_FIELDS}
+    # As text, because that is what an edit arrives as: a field holding two
+    # organisations resolves to a tuple and is asked to become "RFI; Diamond",
+    # and comparing those two directly reports a change on every save.
+    current = {
+        field: format_field_value(getattr(resolved, field)) or None
+        for field in DESCRIPTIVE_FIELDS
+    }
     return current, dict(resolved.sources)
+
+
+def _is_continuation(line: str, indent: str) -> bool:
+    """Return whether *line* is indented under a key indented by *indent*."""
+    if not line.strip():
+        return False
+    return len(line) - len(line.lstrip()) > len(indent)
 
 
 def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
@@ -213,8 +220,10 @@ def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
 
     remaining = dict(values)
     edited: list[str] = []
-    for index in range(start + 1, end):
+    index = start + 1
+    while index < end:
         line = lines[index]
+        index += 1
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or ":" not in stripped:
             edited.append(line)
@@ -224,14 +233,20 @@ def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
             edited.append(line)
             continue
         value = remaining.pop(field)
-        if value is None:
-            continue  # removal: drop the line
         indent = line[: len(line) - len(line.lstrip())]
-        edited.append(f"{indent}{field}: {_yaml_scalar(field, value)}")
+        # Whatever is indented under this key belongs to it -- the items of a
+        # block list, written by hand rather than by this package. Replacing
+        # only the key line would leave them behind as a list of their own
+        # under the next field, which reads back as that field's value.
+        while index < end and _is_continuation(lines[index], indent):
+            index += 1
+        if value is None:
+            continue  # removal: drop the line and anything under it
+        edited.append(f"{indent}{field}: {yaml_field_value(field, value)}")
 
     # Anything not already in the block is appended to it.
     additions = [
-        f"  {field}: {_yaml_scalar(field, value)}"
+        f"  {field}: {yaml_field_value(field, value)}"
         for field, value in remaining.items()
         if value is not None
     ]
@@ -268,7 +283,8 @@ def plan_metadata_update(
     destination = project_root / AM_METADATA_FILENAME
 
     changes = []
-    for field, new in values.items():
+    for field, requested in values.items():
+        new = _normalised(field, requested)
         old = current.get(field)
         # TODO is "outstanding", which resolves to None but is not the same as
         # absent, so a field already holding one is still a change to record.
@@ -327,6 +343,8 @@ def update_project_metadata(
     if dry_run or change.is_empty:
         return change
 
+    # Validated by the plan, so nothing here can fail to parse.
+    values = {field: _normalised(field, value) for field, value in values.items()}
     destination = change.path
     if change.created:
         filled = {

@@ -34,7 +34,12 @@ from .filtering import (
 )
 from .io.path import make_path_relative
 from .layout import SERIES
-from .metadata import DESCRIPTIVE_FIELDS, TODO_MARKER
+from .metadata import (
+    DESCRIPTIVE_FIELDS,
+    TODO_MARKER,
+    VALUE_SEPARATOR,
+    field_named,
+)
 from .operations.label_measure import DEFAULT_SPECK_PIXELS
 from .operations.predictions import convert_record_predictions, plan_conversions
 from .reporting import print_project_summary, print_survey
@@ -462,7 +467,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit_metadata.add_argument(
         "--set", action="append", default=[], metavar="FIELD=VALUE",
-        help=f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}",
+        help=(
+            f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}. "
+            f"A field holding several values takes them separated by "
+            f"'{VALUE_SEPARATOR.strip()}', or one --set apiece"
+        ),
     )
     edit_metadata.add_argument(
         "--clear", action="append", default=[], metavar="FIELD",
@@ -1416,7 +1425,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
                 logger.error("--set expects FIELD=VALUE, got %r", item)
                 return 2
             field, value = item.split("=", 1)
-            values[field.strip()] = value.strip()
+            field, value = field.strip(), value.strip()
+            # Repeating --set for a field that holds several values adds to it
+            # rather than replacing what the earlier one asked for, so two
+            # organisations need no quoting or separator on the command line.
+            spec = field_named(field)
+            if spec is not None and spec.multi and values.get(field):
+                value = f"{values[field]}{VALUE_SEPARATOR}{value}"
+            values[field] = value
         for field in args.clear:
             values[field.strip()] = None
         for field in args.todo:

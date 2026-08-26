@@ -11,7 +11,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from qtpy.QtCore import QPointF, QRectF, Qt, Signal
+from qtpy.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
 from qtpy.QtGui import (
     QColor,
     QFont,
@@ -26,12 +26,16 @@ from qtpy.QtWidgets import (
     QFileDialog,
     QFrame,
     QLabel,
+    QLayout,
+    QLayoutItem,
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QPushButton,
     QSizePolicy,
     QSplitter,
     QSplitterHandle,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -631,3 +635,226 @@ def add_path_menu(
             reveal_signal.emit(row)
 
     widget.customContextMenuRequested.connect(show_menu)
+
+
+class FlowLayout(QLayout):
+    """A layout that puts its items in a row and wraps onto the next.
+
+    Qt ships no such layout. This is needed because a field holding several
+    values holds however many the user gives it, of whatever length: laid out
+    in one row they run off the pane, and in a column each takes a line of the
+    form to itself.
+    """
+
+    def __init__(self, spacing: int = 4) -> None:
+        super().__init__()
+        self._items: list[QLayoutItem] = []
+        self.setSpacing(spacing)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    # -- what QLayout requires ---------------------------------------------
+
+    def addItem(self, item) -> None:  # noqa: N802 - Qt naming
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):  # noqa: N802 - Qt naming
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index: int):  # noqa: N802 - Qt naming
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):  # noqa: N802 - Qt naming
+        return Qt.Orientations(Qt.Orientation(0))
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 - Qt naming
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 - Qt naming
+        return self._lay_out(QRect(0, 0, width, 0), apply=False)
+
+    def setGeometry(self, rect) -> None:  # noqa: N802 - Qt naming
+        super().setGeometry(rect)
+        self._lay_out(rect, apply=True)
+
+    def sizeHint(self):  # noqa: N802 - Qt naming
+        """Return the room the items need in one row, before any wrapping.
+
+        The width this would *like*. Given it, nothing wraps; given less, it
+        wraps down to :meth:`minimumSize`. The two have to differ: made equal,
+        one is a floor and the layout can only ever force its container wide.
+        """
+        margins = self.contentsMargins()
+        width = sum(item.sizeHint().width() for item in self._items)
+        width += self.spacing() * max(len(self._items) - 1, 0)
+        return QSize(width + margins.left() + margins.right(), 0).expandedTo(
+            self.minimumSize()
+        )
+
+    def minimumSize(self):  # noqa: N802 - Qt naming
+        """Return one row's height, and no width at all.
+
+        No width because a minimum is a floor: asked for the widest item, the
+        pane could never be narrower than the longest value in it, and a
+        layout that wraps is exactly the one that should not force that. The
+        height is what :meth:`heightForWidth` replaces once there is a width to
+        wrap against.
+        """
+        height = max((item.sizeHint().height() for item in self._items), default=0)
+        margins = self.contentsMargins()
+        return QSize(0, height + margins.top() + margins.bottom())
+
+    # -- the arithmetic ----------------------------------------------------
+
+    def _lay_out(self, rect, *, apply: bool) -> int:
+        """Place the items across *rect*, and return the height they need."""
+        margins = self.contentsMargins()
+        left = rect.x() + margins.left()
+        right = rect.right() - margins.right()
+        x, y = left, rect.y() + margins.top()
+        row_height = 0
+
+        for item in self._items:
+            # Clamped to the row: an item wider than the space it has spills
+            # past the edge otherwise, where nothing clips it and it is drawn
+            # over whatever sits beside the layout.
+            size = item.sizeHint().boundedTo(QSize(right - left + 1, 1 << 20))
+            if row_height and x + size.width() > right:
+                x = left
+                y += row_height + self.spacing()
+                row_height = 0
+            if apply:
+                item.setGeometry(QRect(QPoint(x, y), size))
+            x += size.width() + self.spacing()
+            row_height = max(row_height, size.height())
+
+        return y + row_height - rect.y() + margins.bottom()
+
+
+class _FlowArea(QWidget):
+    """A widget whose height is whatever the flow layout inside it needs.
+
+    Height-for-width alone is not enough inside a form: the form asks how tall
+    the widget would be at one width and then hands it another, and the rows
+    that do not fit are laid out below the bottom edge -- present,
+    addressable, and invisible. Answering from the width it actually has,
+    every time it gets one, is the only account that cannot disagree with
+    itself.
+    """
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self.sync_height()
+
+    def sync_height(self) -> None:
+        """Take the height this widget's contents need at its current width."""
+        layout = self.layout()
+        if layout is not None:
+            self.setFixedHeight(layout.heightForWidth(self.width()))
+
+
+class ChipEditor(QWidget):
+    """Several values at once, each a chip that can be taken off.
+
+    For a field that holds more than one thing -- two organisations, a sample
+    that is a host and the pathogen in it. A chip apiece rather than one line
+    of separated text, because where one value ends and the next begins is the
+    whole point, and a separator typed by hand is a separator got wrong.
+
+    Values are read and written as a list; nothing outside this class needs to
+    know what separates them on screen.
+    """
+
+    #: Emitted whenever the values change through the widget. Not emitted by
+    #: :meth:`set_values`, which is a redraw rather than an edit.
+    changed = Signal()
+
+    def __init__(self, separator: str = "; ", placeholder: str = "add a value") -> None:
+        """Build an editor whose typed text is split on *separator*."""
+        super().__init__()
+        self._separator = separator.strip()
+        self._values: list[str] = []
+
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(3)
+
+        self._chips = _FlowArea()
+        self._chip_layout = FlowLayout()
+        self._chips.setLayout(self._chip_layout)
+        column.addWidget(self._chips)
+
+        self.entry = QComboBox()
+        self.entry.setEditable(True)
+        self.entry.setInsertPolicy(QComboBox.NoInsert)
+        self.entry.lineEdit().setPlaceholderText(placeholder)
+        completer = self.entry.completer()
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        # Both ways in: typing a value and pressing Return, or picking one
+        # already in use. `activated` fires only on a choice the user made,
+        # where `currentIndexChanged` also fires as the list is refilled.
+        self.entry.lineEdit().returnPressed.connect(self._commit_entry)
+        self.entry.activated.connect(lambda _index: self._commit_entry())
+        column.addWidget(self.entry)
+
+    # -- what it holds -----------------------------------------------------
+
+    def values(self) -> list[str]:
+        """Return the values, in the order they were added."""
+        return list(self._values)
+
+    def set_values(self, values: Sequence[str]) -> None:
+        """Replace the values, reporting nothing."""
+        self._values = [value for value in dict.fromkeys(values) if value]
+        self._redraw()
+
+    def set_suggestions(self, values: Sequence[str]) -> None:
+        """Offer *values* in the box, keeping whatever is half-typed in it."""
+        typed = self.entry.currentText()
+        self.entry.clear()
+        self.entry.addItems(["", *values])
+        self.entry.setCurrentText(typed)
+
+    # -- editing -----------------------------------------------------------
+
+    def _commit_entry(self) -> None:
+        """Turn whatever is in the box into chips, and empty it."""
+        text = self.entry.currentText()
+        added = [part.strip() for part in text.split(self._separator)]
+        wanted = [part for part in added if part and part not in self._values]
+        self.entry.setCurrentText("")
+        if not wanted:
+            return
+        self._values.extend(wanted)
+        self._redraw()
+        self.changed.emit()
+
+    def _remove(self, value: str) -> None:
+        if value not in self._values:
+            return
+        self._values.remove(value)
+        self._redraw()
+        self.changed.emit()
+
+    def _redraw(self) -> None:
+        """Rebuild the chips from the values."""
+        while (item := self._chip_layout.takeAt(0)) is not None:
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        for value in self._values:
+            chip = QPushButton(f"{value}  ✕")
+            chip.setStyleSheet(theme.VALUE_CHIP_STYLE)
+            chip.setToolTip(f"Remove {value}")
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.clicked.connect(lambda _checked=False, v=value: self._remove(v))
+            self._chip_layout.addWidget(chip)
+        # The row count can change with the values, and the form above has to
+        # be told to make room rather than clipping the new row.
+        self._chips.setVisible(bool(self._values))
+        self._chips.sync_height()
+        self.updateGeometry()

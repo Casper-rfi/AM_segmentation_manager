@@ -125,7 +125,7 @@ def test_clearing_falls_back_to_experiment_yaml(project: Path):
 
     from am_segmentation_manager.scanner import Scanner
     scanned = Scanner(project.parent).build_index().all_projects()[0]
-    assert scanned.experiment_metadata.user == "Autolamella User"
+    assert scanned.experiment_metadata.user == ("Autolamella User",)
 
 
 def test_marking_a_field_outstanding_differs_from_clearing(project: Path):
@@ -359,3 +359,114 @@ def test_a_numeric_field_can_still_be_marked_outstanding(project: Path):
     update_project_metadata(project, {"gis_deposition_time_s": "TODO"})
 
     assert block(project)["metadata"]["gis_deposition_time_s"] == "TODO"
+
+
+# ---------------------------------------------------------------------------
+# Fields holding several values
+# ---------------------------------------------------------------------------
+
+def test_several_values_are_written_as_a_list(project: Path):
+    update_project_metadata(project, {"organisation": "RFI; Diamond"})
+
+    assert block(project)["metadata"]["organisation"] == ["RFI", "Diamond"]
+
+
+def test_one_value_is_still_written_as_a_plain_scalar(project: Path):
+    """Which is what every file already written looks like, and what a reader
+    expects of a field that holds one thing."""
+    update_project_metadata(project, {"organisation": "RFI"})
+
+    text = (project / "AM_metadata.yaml").read_text(encoding="utf-8")
+    assert "organisation: RFI\n" in text
+    assert block(project)["metadata"]["organisation"] == "RFI"
+
+
+def test_a_value_holding_a_comma_survives_the_list(project: Path):
+    """[a, b] would otherwise read back as two values where one was meant."""
+    update_project_metadata(project, {"user": "Berger, C; Smith, A"})
+
+    assert block(project)["metadata"]["user"] == ["Berger, C", "Smith, A"]
+
+
+def test_a_scalar_already_in_a_file_reads_as_one_value(project: Path):
+    """Nothing written before a field held several has to be migrated."""
+    from am_segmentation_manager.metadata import build_experiment_metadata
+
+    resolved = build_experiment_metadata(None, block(project))
+
+    assert resolved.organisation == ("Rosalind Franklin Institute",)
+
+
+def test_setting_the_values_already_recorded_is_not_a_change(project: Path):
+    update_project_metadata(project, {"organisation": "RFI; Diamond"})
+
+    assert plan_metadata_update(project, {"organisation": "RFI; Diamond"}).is_empty
+    assert plan_metadata_update(project, {"organisation": "RFI;Diamond"}).is_empty
+
+
+def test_an_empty_list_of_values_is_refused(project: Path):
+    with pytest.raises(MetadataValidationError, match="empty value"):
+        update_project_metadata(project, {"organisation": " ; "})
+
+
+def test_replacing_a_hand_written_block_list_takes_its_items_with_it(project: Path):
+    """A file edited by hand can carry a block list. Replacing only the key
+    line would leave its items behind, and YAML would read them as the value of
+    whatever field came next."""
+    path = project / "AM_metadata.yaml"
+    path.write_text(
+        "metadata:\n"
+        "  organisation:\n"
+        "    - RFI\n"
+        "    - Diamond\n"
+        "  user: Casper\n",
+        encoding="utf-8",
+    )
+
+    update_project_metadata(project, {"organisation": "Diamond"})
+
+    assert block(project)["metadata"] == {"organisation": "Diamond", "user": "Casper"}
+
+
+def test_clearing_a_hand_written_block_list_removes_all_of_it(project: Path):
+    path = project / "AM_metadata.yaml"
+    path.write_text(
+        "metadata:\n"
+        "  organisation:\n"
+        "    - RFI\n"
+        "  user: Casper\n",
+        encoding="utf-8",
+    )
+
+    update_project_metadata(project, {"organisation": None})
+
+    assert block(project)["metadata"] == {"user": "Casper"}
+
+
+def test_repeating_set_adds_to_a_field_that_holds_several(tmp_path: Path):
+    """Two organisations should not need a quoted separator on a command line."""
+    root = tmp_path / "collection"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "experiment.yaml").write_text("name: proj\n", encoding="utf-8")
+
+    assert main([
+        "edit-metadata", str(root), "--all",
+        "--set", "organisation=RFI",
+        "--set", "organisation=Diamond",
+    ]) == 0
+
+    assert block(root / "proj")["metadata"]["organisation"] == ["RFI", "Diamond"]
+
+
+def test_repeating_set_still_replaces_a_field_that_holds_one(tmp_path: Path):
+    root = tmp_path / "collection"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / "experiment.yaml").write_text("name: proj\n", encoding="utf-8")
+
+    assert main([
+        "edit-metadata", str(root), "--all",
+        "--set", "grid_id=G1",
+        "--set", "grid_id=G2",
+    ]) == 0
+
+    assert block(root / "proj")["metadata"]["grid_id"] == "G2"

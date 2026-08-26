@@ -31,9 +31,9 @@ def test_am_metadata_overrides_experiment_per_key():
 
     resolved = build_experiment_metadata(experiment, am_metadata)
 
-    assert resolved.user == "Corrected"
-    assert resolved.sample == "HeLa"
-    assert resolved.organisation == "RFI"
+    assert resolved.user == ("Corrected",)
+    assert resolved.sample == ("HeLa",)
+    assert resolved.organisation == ("RFI",)
 
 
 def test_sources_record_which_file_supplied_each_value(tmp_path: Path):
@@ -90,29 +90,29 @@ def test_the_2026_schema_without_method_yields_no_lamella_type():
 def test_an_empty_experiment_metadata_block_is_harmless():
     """Autolamella 2026 writes `metadata: {}` -- the same key this package uses."""
     resolved = build_experiment_metadata({"metadata": {}}, {"metadata": {"sample": "HeLa"}})
-    assert resolved.sample == "HeLa"
+    assert resolved.sample == ("HeLa",)
 
 
 def test_todo_placeholders_are_not_values():
     resolved = build_experiment_metadata({}, {"metadata": {"sample": "TODO", "user": "Casper"}})
 
-    assert resolved.sample is None
+    assert resolved.sample == ()
     assert resolved.todo_fields == ("sample",)
-    assert resolved.user == "Casper"
+    assert resolved.user == ("Casper",)
 
 
 def test_a_filled_in_field_clears_its_todo_state():
     resolved = build_experiment_metadata(
         {"metadata": {"sample": "TODO"}}, {"metadata": {"sample": "HeLa"}}
     )
-    assert resolved.sample == "HeLa"
+    assert resolved.sample == ("HeLa",)
     assert resolved.todo_fields == ()
 
 
 def test_blank_values_are_treated_as_absent():
     resolved = build_experiment_metadata({}, {"metadata": {"sample": "   ", "user": None}})
-    assert resolved.sample is None
-    assert resolved.user is None
+    assert resolved.sample == ()
+    assert resolved.user == ()
 
 
 def test_an_unrecognised_lamella_type_is_kept_but_warned(caplog):
@@ -168,8 +168,8 @@ def test_metadata_is_not_inherited_from_a_collection_directory(tmp_path: Path):
     index = Scanner(tmp_path).build_index()
     by_name = {project.path.name: project for project in index.all_projects()}
 
-    assert by_name["project-a"].experiment_metadata.sample == "HeLa"
-    assert by_name["project-b"].experiment_metadata.sample is None
+    assert by_name["project-a"].experiment_metadata.sample == ("HeLa",)
+    assert by_name["project-b"].experiment_metadata.sample == ()
 
 
 def test_a_marker_in_a_collection_directory_does_not_swallow_its_projects(tmp_path: Path):
@@ -202,8 +202,8 @@ def test_the_scanner_attaches_typed_metadata(tmp_path: Path):
 
     project = Scanner(tmp_path).build_index().all_projects()[0]
 
-    assert project.experiment_metadata.sample == "HeLa"
-    assert project.experiment_metadata.user == "Casper"
+    assert project.experiment_metadata.sample == ("HeLa",)
+    assert project.experiment_metadata.user == ("Casper",)
     assert project.metadata["name"] == "project"
 
 

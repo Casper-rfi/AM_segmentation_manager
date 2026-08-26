@@ -22,6 +22,8 @@ from ..metadata import (
     FIELDS,
     LAMELLA_TYPES,
     TODO_MARKER,
+    VALUE_SEPARATOR,
+    field_values,
     format_field_value,
 )
 from ..models import Project
@@ -42,6 +44,7 @@ __all__ = [
     "SUGGESTED_FIELDS",
     "SUGGESTION_LIMIT",
     "TODO_MARKER",
+    "VALUE_SEPARATOR",
     "MetadataValidationError",
     "MetadataController",
     "ProjectSummary",
@@ -174,16 +177,22 @@ class MetadataController:
         """
         if field not in SUGGESTED_FIELDS:
             return []
+        # Each value of a field that holds several, not the set of them: a
+        # project run by two organisations should offer each on its own, or
+        # the list fills with pairs nobody would pick as a unit.
         counts = Counter(
             value
             for project in self._projects
-            if (value := getattr(project.experiment_metadata, field, None))
+            for value in field_values(getattr(project.experiment_metadata, field, None))
         )
         offered = sorted(counts, key=lambda value: (-counts[value], value.lower()))
         offered = offered[:SUGGESTION_LIMIT]
-        current = self.values().get(field)
-        if current and current not in offered:
-            offered.append(current)
+        project = self.project
+        current = (
+            field_values(getattr(project.experiment_metadata, field, None))
+            if project is not None else ()
+        )
+        offered.extend(value for value in current if value not in offered)
         return offered
 
     def outstanding(self) -> tuple[str, ...]:

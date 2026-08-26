@@ -59,6 +59,25 @@ LAMELLA_TYPES: tuple[str, ...] = ("cells-on-grid", "waffle", "lift-out", "other"
 TEXT = "text"
 NUMBER = "number"
 
+#: How several values of one field are written where only text will fit -- an
+#: editor, a CSV cell, the name of a group. Not how they are *stored*: a file
+#: holds a YAML list, so a value may contain a comma, a colon or a newline
+#: without the file becoming ambiguous. A value may not contain this, which is
+#: what splitting on it costs and the only thing it costs.
+VALUE_SEPARATOR = "; "
+
+
+def is_recorded(value: object) -> bool:
+    """Return whether a resolved field value stands for anything.
+
+    Not the truth of the value: a GIS deposition time of zero seconds is a
+    recorded value and a falsy one, and an empty tuple is a multi-valued field
+    holding nothing rather than a field holding an empty value.
+    """
+    if isinstance(value, tuple):
+        return bool(value)
+    return value is not None
+
 
 def merge_metadata(base: dict, override: dict) -> dict:
     """Merge two metadata dictionaries, with `override` taking precedence.
@@ -81,15 +100,28 @@ class ExperimentMetadata:
     """Descriptive metadata for one project.
 
     Every field is optional: metadata is filled in progressively, and a project
-    with none is still perfectly indexable. ``None`` means "not recorded",
-    which includes a field still holding a ``TODO`` placeholder.
+    with none is still perfectly indexable. "Not recorded" is ``None`` for a
+    field holding one value and an empty tuple for one holding several, which
+    includes a field still holding a ``TODO`` placeholder. Ask
+    :func:`is_recorded` rather than testing either, and :func:`field_values`
+    for the values themselves.
+
+    A multi-valued field is a tuple however many values it holds, so nothing
+    reading one has to ask which case it is in.
 
     Attributes:
         description: What the experiment was for.
-        organisation: The organisation that acquired the data.
-        project: The name of the wider project the experiment belongs to.
+        organisation: The organisations that acquired the data.
+        project: The wider projects the experiment belongs to.
         user: Who acquired the data.
-        sample: Cell type or organism.
+        sample: Cell types or organisms. Several because one specimen can be a
+            co-culture, or a host and the pathogen infecting it.
+        sample_state: What was done to the sample, e.g. infected,
+            differentiated. Separate values rather than one phrase, so an
+            export can be narrowed to every infected sample however else it
+            was treated.
+        sample_medium: What the sample was in, e.g. culture medium,
+            cryoprotectant, fiducials.
         freezing_method: How the sample was vitrified, e.g.
             ``"plunge-frozen"``. Free text, for the reason ``grid_type`` is.
         grid_id: Identifier of the physical grid the lamellae were cut from.
@@ -111,10 +143,12 @@ class ExperimentMetadata:
     """
 
     description: str | None = None
-    organisation: str | None = None
-    project: str | None = None
-    user: str | None = None
-    sample: str | None = None
+    organisation: tuple[str, ...] = ()
+    project: tuple[str, ...] = ()
+    user: tuple[str, ...] = ()
+    sample: tuple[str, ...] = ()
+    sample_state: tuple[str, ...] = ()
+    sample_medium: tuple[str, ...] = ()
     freezing_method: str | None = None
     grid_id: str | None = None
     grid_type: str | None = None
@@ -126,16 +160,15 @@ class ExperimentMetadata:
 
     @property
     def is_empty(self) -> bool:
-        """Return whether no descriptive field has been recorded.
-
-        Tested against None rather than for truth: a GIS deposition time of
-        zero seconds is a recorded value, and a falsy one.
-        """
-        return all(getattr(self, name) is None for name in DESCRIPTIVE_FIELDS)
+        """Return whether no descriptive field has been recorded."""
+        return len(self.missing_fields()) == len(DESCRIPTIVE_FIELDS)
 
     def missing_fields(self) -> tuple[str, ...]:
         """Return the descriptive fields with no value, in declaration order."""
-        return tuple(name for name in DESCRIPTIVE_FIELDS if getattr(self, name) is None)
+        return tuple(
+            name for name in DESCRIPTIVE_FIELDS
+            if not is_recorded(getattr(self, name))
+        )
 
     def variant_description(self, variant: str | None) -> str:
         """Return a display label for a variant, falling back to the raw string."""
@@ -158,6 +191,11 @@ class ProjectField:
             the field in a generated template and shown as its tooltip.
         kind: :data:`TEXT` or :data:`NUMBER`. A number is rejected unless it is
             one, and reaches :class:`ExperimentMetadata` as a float.
+        multi: Whether the field may hold several values at once. Stored as a
+            YAML list, held as a tuple, and shown separated by
+            :data:`VALUE_SEPARATOR`. A single value is read, written and
+            displayed the same either way, so turning this on for a field
+            leaves every file already written valid.
         choices: The values accepted, or empty for free text. A field with a
             vocabulary is edited by picking from it and rejects anything else.
         suggested: Whether the editor offers the values other projects already
@@ -174,6 +212,7 @@ class ProjectField:
     label: str
     comment: str
     kind: str = TEXT
+    multi: bool = False
     choices: tuple[str, ...] = ()
     suggested: bool = False
     defaultable: bool = True
@@ -201,6 +240,7 @@ FIELDS: tuple[ProjectField, ...] = (
         "organisation",
         "Organisation",
         "Organisation that acquired the data",
+        multi=True,
         suggested=True,
         breakdown_label="organisation",
     ),
@@ -208,6 +248,7 @@ FIELDS: tuple[ProjectField, ...] = (
         "project",
         "Project",
         "Name of the wider project this belongs to",
+        multi=True,
         suggested=True,
         breakdown_label="project",
     ),
@@ -215,6 +256,7 @@ FIELDS: tuple[ProjectField, ...] = (
         "user",
         "User",
         "Who acquired the data",
+        multi=True,
         suggested=True,
         breakdown_label="user",
     ),
@@ -222,9 +264,28 @@ FIELDS: tuple[ProjectField, ...] = (
         "sample",
         "Sample",
         "Cell type or organism",
+        multi=True,
         suggested=True,
         defaultable=False,
         breakdown_label="sample",
+    ),
+    ProjectField(
+        "sample_state",
+        "Sample state",
+        "What was done to the sample, e.g. infected, differentiated",
+        multi=True,
+        suggested=True,
+        defaultable=False,
+        breakdown_label="sample state",
+    ),
+    ProjectField(
+        "sample_medium",
+        "Sample medium",
+        "What the sample was in, e.g. culture medium, cryoprotectant, fiducials",
+        multi=True,
+        suggested=True,
+        defaultable=False,
+        breakdown_label="sample medium",
     ),
     ProjectField(
         "freezing_method",
@@ -239,7 +300,7 @@ FIELDS: tuple[ProjectField, ...] = (
         "Identifier of the physical grid this was prepared on",
         suggested=True,
         defaultable=False,
-        breakdown_label="grid",
+        breakdown_label="grid ID",
     ),
     ProjectField(
         "grid_type",
@@ -301,21 +362,118 @@ def _clean(value: Any) -> str | None:
     return text
 
 
-def parse_field_value(name: str, text: str) -> str | float | None:
-    """Return a cleaned string as the value the field called *name* holds.
+def _clean_items(value: Any) -> tuple[str, ...]:
+    """Return a multi-valued field's values, as the file states them.
+
+    A bare scalar is one value, which is what keeps every file written before a
+    field became multi-valued readable, and what lets ``experiment.yaml`` carry
+    one without knowing this package's conventions. Repeats are dropped and
+    order is kept.
+
+    The separator is not looked for here: storage is a YAML list, so a value
+    may contain any character at all, and a scalar that happens to hold a
+    semicolon is one value that reads as one value.
+    """
+    items = value if isinstance(value, (list, tuple)) else [value]
+    cleaned = (_clean(item) for item in items)
+    return tuple(dict.fromkeys(text for text in cleaned if text is not None))
+
+
+def _is_placeholder(value: Any) -> bool:
+    """Return whether a raw value is a ``TODO`` marker rather than a value."""
+    return str(value or "").strip().upper() == TODO_MARKER
+
+
+def yaml_field_value(field: str, value: str) -> str:
+    """Return *value* written as YAML would write it for *field*.
+
+    Delegated to the dumper rather than guessed: a sample containing a colon,
+    a leading ``#``, or the word ``yes`` all need different handling, and
+    getting one wrong writes a file that reads back as something else.
+
+    A numeric field is written as a number, so the file says what it holds;
+    quoted, it would read back as a string that happens to look like one. A
+    field holding several values is written as a list, on one line so that the
+    line-by-line editing above stays a matter of replacing a line -- and as a
+    bare scalar when it holds one, which is what it has always looked like and
+    what it still reads back as. Placeholders are exempt from both, ``TODO``
+    being no more a number than it is a sample.
+    """
+    import yaml
+
+    spec = FIELDS_BY_NAME.get(field)
+    if spec is not None and value != TODO_MARKER:
+        if spec.multi:
+            items = list(split_values(value))
+            if len(items) != 1:
+                # The whole list through the dumper rather than the items
+                # joined: a value holding a comma has to come back quoted, or
+                # [a, b] reads as two values where one was meant.
+                return yaml.safe_dump(
+                    items, default_flow_style=True, allow_unicode=True
+                ).strip()
+            value = items[0]
+        elif spec.kind == NUMBER:
+            number = float(value)
+            dumped = yaml.safe_dump(
+                {"k": int(number) if number.is_integer() else number},
+                default_flow_style=False,
+            )
+            return dumped.split(":", 1)[1].strip()
+
+    dumped = yaml.safe_dump({"k": value}, default_flow_style=False, allow_unicode=True)
+    return dumped.split(":", 1)[1].strip()
+
+
+
+def parse_field_value(name: str, text: str) -> str | float | tuple[str, ...] | None:
+    """Return the value the field called *name* holds, from text a person typed.
+
+    The editor's and the command line's form, where several values arrive
+    separated by :data:`VALUE_SEPARATOR`; a file states them as a list instead,
+    which :func:`build_experiment_metadata` reads directly.
 
     A number that is not one is dropped with a warning rather than kept as
     text: the attribute is typed, and a value that cannot be summed sitting in
     a column of ones that can is worse than an admitted gap.
     """
     spec = FIELDS_BY_NAME.get(name)
-    if spec is None or spec.kind != NUMBER:
+    if spec is None:
+        return text
+    if spec.multi:
+        return split_values(text)
+    if spec.kind != NUMBER:
         return text
     try:
         return float(text)
     except ValueError:
         logger.warning("%s is %r, which is not a number; ignoring it", name, text)
         return None
+
+
+def split_values(text: str) -> tuple[str, ...]:
+    """Return the values *text* stands for, as a person typed them.
+
+    Order is kept and repeats are dropped: a field naming one organisation
+    twice says nothing the once did.
+    """
+    parts = (part.strip() for part in text.split(VALUE_SEPARATOR.strip()))
+    return tuple(dict.fromkeys(part for part in parts if part))
+
+
+def field_values(value: object) -> tuple[str, ...]:
+    """Return a resolved value as the separate values it holds.
+
+    One for a field holding one, none for a field holding nothing, and however
+    many a multi-valued field holds. What anything counting, offering or
+    listing values asks, so that a field holding several is not a special case
+    at each of them.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, tuple):
+        return value
+    return (format_field_value(value),)
 
 
 def format_field_value(value: object) -> str:
@@ -328,6 +486,8 @@ def format_field_value(value: object) -> str:
     """
     if value is None:
         return ""
+    if isinstance(value, tuple):
+        return VALUE_SEPARATOR.join(value)
     if isinstance(value, float):
         return f"{value:g}"
     return str(value)
@@ -371,7 +531,7 @@ def build_experiment_metadata(
     experiment = experiment or {}
     am_metadata = am_metadata or {}
 
-    values: dict[str, str | float] = {}
+    values: dict[str, object] = {}
     sources: dict[str, Path] = {}
     todo: set[str] = set()
 
@@ -379,13 +539,15 @@ def build_experiment_metadata(
         for name in DESCRIPTIVE_FIELDS:
             if name not in section:
                 continue
-            cleaned = _clean(section[name])
-            if cleaned is None:
-                if str(section[name] or "").strip().upper() == TODO_MARKER:
+            raw = section[name]
+            if FIELDS_BY_NAME[name].multi:
+                value: object = _clean_items(raw)
+            else:
+                cleaned = _clean(raw)
+                value = None if cleaned is None else parse_field_value(name, cleaned)
+            if not is_recorded(value):
+                if _is_placeholder(raw):
                     todo.add(name)
-                continue
-            value = parse_field_value(name, cleaned)
-            if value is None:
                 continue
             todo.discard(name)
             values[name] = value

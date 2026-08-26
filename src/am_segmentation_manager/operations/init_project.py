@@ -23,6 +23,7 @@ from ..metadata import (
     FIELDS,
     TODO_MARKER,
     lamella_type_from_method,
+    yaml_field_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,11 @@ def render_template(
     for entry in FIELDS:
         if entry.comment:
             lines.append(f"  # {entry.comment}")
-        value = values.get(entry.name, TODO_MARKER)
+        # Through the same writer the editor uses, so a field holding several
+        # values lands as a list rather than as one string that happens to
+        # contain a separator -- and so a sample containing a colon does not
+        # write a file that reads back as something else.
+        value = yaml_field_value(entry.name, values.get(entry.name, TODO_MARKER))
         suffix = "  # derived from experiment.yaml" if entry.name in derived else ""
         lines.append(f"  {entry.name}: {value}{suffix}")
     lines.extend(

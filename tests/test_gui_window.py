@@ -43,6 +43,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
+    from am_segmentation_manager.gui.widgets.common import ChipEditor
     from am_segmentation_manager.gui.widgets.image_view import MIN_FIT_FRACTION
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
     from am_segmentation_manager.gui.widgets.metadata_panel import (
@@ -2227,7 +2228,7 @@ def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
 
 
 def test_repeating_fields_offer_the_values_already_in_use(metadata_panel):
-    box = metadata_panel.editors["sample"]
+    box = metadata_panel.editors["sample"].entry
 
     assert box.isEditable()
     # A blank first entry, so "unset" stays reachable from the list.
@@ -2235,26 +2236,54 @@ def test_repeating_fields_offer_the_values_already_in_use(metadata_panel):
     assert metadata_panel.editors["description"].__class__.__name__ == "QLineEdit"
 
 
+def test_a_single_valued_field_keeps_its_one_box(metadata_panel):
+    """Only a field that holds several gets chips. A grid type is one thing,
+    and offering to add a second would say it might not be."""
+    from qtpy.QtWidgets import QComboBox
+
+    assert isinstance(metadata_panel.editors["grid_type"], QComboBox)
+    assert isinstance(metadata_panel.editors["lamella_type"], QComboBox)
+
+
 def test_a_value_not_in_the_list_can_still_be_typed(metadata_panel):
     """The list is a shortcut, not a vocabulary -- the first project to use a
-    sample has nothing to pick."""
-    box = metadata_panel.editors["sample"]
-    box.setCurrentText("Chlamydomonas")
+    sample has nothing to pick. And it is added to what is there rather than
+    replacing it, which is the whole reason the field holds several."""
+    metadata_panel.enable.setChecked(True)
+    editor = metadata_panel.editors["sample"]
+    editor.entry.setCurrentText("Chlamydomonas")
+    editor.entry.lineEdit().returnPressed.emit()
 
-    assert metadata_panel._edits() == {"sample": "Chlamydomonas"}
+    assert editor.values() == ["HeLa", "Chlamydomonas"]
+    assert metadata_panel._edits() == {"sample": "HeLa; Chlamydomonas"}
     # Typing must not grow the list, or a typo would be offered back later.
-    assert box.count() == 2
+    assert editor.entry.count() == 2
 
 
-def test_the_wider_project_is_a_suggestion_box_like_the_rest(metadata_panel):
+def test_a_chip_can_be_taken_off_again(metadata_panel):
+    """And not while editing is locked: the cross is a control on a value, and
+    the lock covers every other way of changing one."""
+    editor = metadata_panel.editors["sample"]
+    assert editor.values() == ["HeLa"]
+    editor._chip_layout.itemAt(0).widget().click()
+    assert editor.values() == ["HeLa"], "locked, so the cross does nothing"
+
+    metadata_panel.enable.setChecked(True)
+
+    editor._chip_layout.itemAt(0).widget().click()
+
+    assert editor.values() == []
+    assert metadata_panel._edits() == {"sample": None}
+
+
+def test_the_wider_project_holds_several_like_the_rest(metadata_panel):
     """It names the project several datasets belong to, so it repeats across
     them -- which is what the value lists are for. It used to carry a button
     copying the directory name in, which is a different fact entirely."""
-    from qtpy.QtWidgets import QComboBox
-
     editor = metadata_panel.editors["project"]
 
-    assert isinstance(editor, QComboBox)
+    assert isinstance(editor, ChipEditor)
+    assert editor.entry.isEditable()
     assert not hasattr(metadata_panel, "folder_button")
 
 
@@ -2392,3 +2421,69 @@ def test_predicting_stays_off_where_it_was_never_available(window):
 
     assert not window.operations_panel.predict_button.isEnabled()
     assert not window.operations_panel.device_box.isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# The chip editor, as a widget
+# ---------------------------------------------------------------------------
+
+def test_chips_wrap_onto_another_row_rather_than_off_the_edge(qt_app):
+    """Values that do not fit used to be laid out below the bottom edge, where
+    they are addressable and invisible -- so a field would report two
+    organisations while showing one."""
+    editor = ChipEditor()
+    editor._chips.resize(90, 0)
+    editor.set_values(["alpha"])
+    one_row = editor._chips.height()
+
+    editor.set_values(["alpha", "beta", "gamma", "delta"])
+
+    assert one_row > 0
+    assert editor._chips.height() > one_row
+    assert editor._chip_layout.count() == 4
+
+
+def test_a_chip_area_takes_no_minimum_width(qt_app):
+    """A minimum is a floor. Asked for the widest value in it, the pane could
+    never be narrower than the longest organisation anybody had typed."""
+    editor = ChipEditor()
+    editor.set_values(["a value considerably longer than the pane it sits in"])
+
+    assert editor._chip_layout.minimumSize().width() == 0
+    assert editor._chip_layout.sizeHint().width() > 0
+
+
+def test_typing_several_values_at_once_makes_several_chips(qt_app):
+    """Pasting a separated line is how anyone would try it first."""
+    editor = ChipEditor()
+    editor.entry.setCurrentText("infected; differentiated")
+    editor.entry.lineEdit().returnPressed.emit()
+
+    assert editor.values() == ["infected", "differentiated"]
+    assert editor.entry.currentText() == "", "the box empties into the chips"
+
+
+def test_a_value_already_there_is_not_added_twice(qt_app):
+    editor = ChipEditor()
+    editor.set_values(["HeLa"])
+    reported: list[int] = []
+    editor.changed.connect(lambda: reported.append(1))
+
+    editor.entry.setCurrentText("HeLa")
+    editor.entry.lineEdit().returnPressed.emit()
+
+    assert editor.values() == ["HeLa"]
+    assert reported == [], "nothing changed, so nothing is reported"
+
+
+def test_setting_the_values_is_a_redraw_rather_than_an_edit(qt_app):
+    """The panel fills every editor whenever it refreshes, and a refresh that
+    reported edits would have the window saving what it had just read."""
+    editor = ChipEditor()
+    reported: list[int] = []
+    editor.changed.connect(lambda: reported.append(1))
+
+    editor.set_values(["RFI", "Diamond"])
+
+    assert editor.values() == ["RFI", "Diamond"]
+    assert reported == []

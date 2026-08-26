@@ -184,7 +184,7 @@ def test_am_metadata_alone_is_enough(tmp_path: Path):
     project = _only_project(tmp_path)
 
     assert not (project.path / "experiment.yaml").exists()
-    assert project.experiment_metadata.sample == "HeLa"
+    assert project.experiment_metadata.sample == ("HeLa",)
 
 
 def test_a_project_marked_only_by_am_metadata_falls_back_to_its_folder_name(tmp_path: Path):

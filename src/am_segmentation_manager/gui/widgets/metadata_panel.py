@@ -31,15 +31,17 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...metadata import split_values
 from ..metadata_controller import (
     FIELDS,
     SUGGESTED_FIELDS,
     TODO_MARKER,
+    VALUE_SEPARATOR,
     MetadataController,
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import GripSplitter, add_path_menu, chip_icon
+from .common import ChipEditor, GripSplitter, add_path_menu, chip_icon
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
@@ -84,17 +86,36 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
 
 
 def editor_text(editor: QWidget) -> str:
-    """Return what an editor is showing, whichever kind of editor it is."""
+    """Return what an editor is showing, whichever kind of editor it is.
+
+    As one string even where the editor holds several values, because that is
+    what the resolved value formats to: the panel decides whether a field was
+    edited by comparing the two, and a comparison of a list against a string is
+    a field that always reports a change.
+    """
+    if isinstance(editor, ChipEditor):
+        return VALUE_SEPARATOR.join(editor.values())
     text = editor.currentText() if isinstance(editor, QComboBox) else editor.text()
     return text.strip()
 
 
 def set_editor_text(editor: QWidget, value: str) -> None:
     """Show *value* in an editor, whichever kind of editor it is."""
-    if isinstance(editor, QComboBox):
+    if isinstance(editor, ChipEditor):
+        editor.set_values(split_values(value))
+    elif isinstance(editor, QComboBox):
         editor.setCurrentText(value)
     else:
         editor.setText(value)
+
+
+def set_editor_suggestions(editor: QWidget, values: list[str]) -> None:
+    """Offer the values already in use, whichever kind of editor this is."""
+    if isinstance(editor, ChipEditor):
+        editor.set_suggestions(values)
+    elif isinstance(editor, QComboBox):
+        editor.clear()
+        editor.addItems(["", *values])
 
 
 def _suggestion_box() -> QComboBox:
@@ -259,8 +280,10 @@ class MetadataPanel(QWidget):
         # is picked from, a value that repeats across projects is offered back,
         # and anything else is typed.
         for entry in FIELDS:
-            if entry.choices:
-                editor: QWidget = QComboBox()
+            if entry.multi:
+                editor: QWidget = ChipEditor(separator=VALUE_SEPARATOR)
+            elif entry.choices:
+                editor = QComboBox()
                 editor.setEditable(False)
                 editor.addItems(["", *entry.choices, TODO_MARKER])
             elif entry.suggested:
@@ -442,8 +465,7 @@ class MetadataPanel(QWidget):
                 if field in SUGGESTED_FIELDS:
                     # Rebuilt every time, so a value saved on one project is
                     # offered on the next without rescanning.
-                    editor.clear()
-                    editor.addItems(["", *self.controller.suggestions(field)])
+                    set_editor_suggestions(editor, self.controller.suggestions(field))
                 set_editor_text(editor, value)
                 self._show_note(field, sources.get(field, ""), field in outstanding)
             # Saving is exactly when a project stops being incomplete, so the

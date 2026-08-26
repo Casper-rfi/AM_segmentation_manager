@@ -70,6 +70,17 @@ BADGE_STYLES = {
 #: is set apart rather than reading as body text.
 SHARED_NOTE_STYLE = f"color: {WARNING};"
 
+#: A chip standing for one value of a field that holds several. Tinted rather
+#: than outlined, so a row of them reads as several things where a plain
+#: comma-separated line reads as one; the cross is the muted text colour, being
+#: a control on the chip rather than part of the value.
+VALUE_CHIP_STYLE = (
+    f"QPushButton {{ background: {SELECTED}; border: 1px solid {BORDER}; "
+    f"border-radius: 9px; padding: 1px 7px; text-align: left; }}"
+    f"QPushButton:hover {{ background: {HOVER}; }}"
+    f"QPushButton:disabled {{ background: {ALTERNATE}; color: {DISABLED_TEXT}; }}"
+)
+
 #: Object name marking a button whose label is a single character, so the
 #: stylesheet can stop the default padding swallowing it. Set with
 #: ``setObjectName``; see the rule of the same name below.

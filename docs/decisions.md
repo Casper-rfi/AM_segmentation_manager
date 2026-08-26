@@ -240,23 +240,31 @@ appending to it.
   so it is qualified wherever written; the metadata field keeps the plain name. Neither is
   derived from the other, which is why Add data offers no button to copy one into the other.
 - **A descriptive field is a row in `metadata.FIELDS`**, as a header value is a row in
-  `image_metadata.FIELDS`. The name, the one-line guidance, whether it has a vocabulary, whether
-  the editor offers the values already in use, whether a shared defaults file may pre-fill it and
-  what it is called when records are counted by it are all read off that row — so adding a field
-  is one row rather than an edit in six modules, and the four places that named `lamella_type` in
-  order to find the one field with a vocabulary now ask the field instead. The breakdown is
-  generated with it: a field with a `breakdown_label` gets its count, its `--by` selector and its
-  Export filter row without `aggregate.py` naming it, and they are offered in the order the Add
-  data tab asks for them rather than in an order of their own.
-- **A numeric field is a number from the moment it is typed.** `gis_deposition_time_s` is
-  refused unless it parses, written to the YAML unquoted so the file says what it holds, and
-  carried as a float — which makes zero a recorded value, no deposition, and a falsy one, so
-  "is this project described at all" tests against None rather than for truth. One
-  `format_field_value` renders it wherever it is read back, because the editor compares what it
-  shows against the resolved value: shown as `30.0` where `30` was typed, every project merely
-  looked at would report an edit, and the breakdown would head a column with a number nobody
-  wrote. A value that is not a number is dropped with a warning rather than kept as text, a
-  column of sums being worth less than an admitted gap.
+  `image_metadata.FIELDS`. The guidance, the editor it gets, whether it holds one value or
+  several, whether a defaults file may pre-fill it and what it is called when records are
+  counted by it are all read off that row — so adding a field is one row rather than an edit in
+  six modules, and the four places that named `lamella_type` to find the one field with a
+  vocabulary now ask the field instead. A field with a `breakdown_label` gets its count, its
+  `--by` selector and its Export filter row without `aggregate.py` naming it, offered in the
+  order the Add data tab asks for them.
+- **A value is the type its field says, from the moment it is typed.** One
+  `format_field_value` renders every one of them back, because the editor decides whether you
+  edited a field by comparing what it shows against the resolved value: a deposition time shown
+  as `30.0` where `30` was typed makes every project merely looked at report an edit, and heads
+  a breakdown column with a number nobody wrote. So a number is refused unless it parses,
+  written unquoted, and carried as a float — which makes zero a recorded value, no deposition,
+  and a falsy one, so `is_recorded` asks rather than testing for truth. A number that is not one
+  is dropped with a warning rather than kept as text, a column of sums being worth less than an
+  admitted gap.
+- **A field holding several values stores them as a YAML list, and a bare scalar is one value.**
+  That is what lets a field become multi-valued with no migration: every file already written
+  stays valid, and `experiment.yaml` can carry one without knowing this package's conventions.
+  Written back on one line, because `AM_metadata.yaml` is edited line by line to keep its
+  comments — but a file edited by hand can hold a block list, and replacing only its key line
+  left the items behind as the next field's value, so a replacement takes whatever is indented
+  under it. `VALUE_SEPARATOR` is presentation only, for an editor, a CSV cell and the name of a
+  group; storage being a list is what lets a value hold a comma, and the one thing a value may
+  not hold is the separator itself.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of
   four things and a typo is a real error; a grid is a material, a mesh and a film in
   combinations no list would survive, and rejecting a real grid is worse than tolerating two
@@ -492,6 +500,14 @@ appending to it.
   dialog a scan puts up. `changeEvent` logs each activation change under `-v`, that being the
   first thing to establish about any report that the keyboard or the pointer stopped working, and
   not recoverable after the fact.
+- **A widget that wraps takes its height from the width it actually has.** A form asks a field
+  how tall it would be at one width and then hands it another, so a flow layout answering only
+  `heightForWidth` lays its later rows out below the bottom edge — where they are addressable,
+  reported by the widget, and invisible: a field said it held two organisations while showing
+  one. `_FlowArea` fixes its own height from its real width on every resize instead. Its
+  layout's minimum width is zero and its size hint is one unwrapped row, which have to differ:
+  made equal, the minimum is a floor and the pane can never be narrower than the longest value
+  anybody typed.
 - **F1 is an application shortcut, and the list closes only when it is the window in front.**
   A window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
   parented `QDialog` is one — so the key that opens the shortcut list could not close it again.
