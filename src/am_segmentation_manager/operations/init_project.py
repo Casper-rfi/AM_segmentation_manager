@@ -20,7 +20,7 @@ from ..metadata import (
     AM_METADATA_FILENAME,
     DESCRIPTIVE_FIELDS,
     EXPERIMENT_FILENAME,
-    FIELD_COMMENTS,
+    FIELDS,
     TODO_MARKER,
     lamella_type_from_method,
 )
@@ -30,8 +30,10 @@ logger = logging.getLogger(__name__)
 #: Fields that must never be pre-filled from a defaults file, because they vary
 #: between projects even when everything else is shared. Getting one of these
 #: wrong is invisible in the output, so they stay placeholders until a person
-#: fills them in.
-NEVER_DEFAULTED: frozenset[str] = frozenset({"description", "sample", "grid_type"})
+#: fills them in. Which fields those are is the field table's to say.
+NEVER_DEFAULTED: frozenset[str] = frozenset(
+    entry.name for entry in FIELDS if not entry.defaultable
+)
 
 
 @dataclass(frozen=True)
@@ -124,13 +126,12 @@ def render_template(
         "# file is the whole story for this project.",
         "metadata:",
     ]
-    for name in DESCRIPTIVE_FIELDS:
-        comment = FIELD_COMMENTS.get(name)
-        if comment:
-            lines.append(f"  # {comment}")
-        value = values.get(name, TODO_MARKER)
-        suffix = "  # derived from experiment.yaml" if name in derived else ""
-        lines.append(f"  {name}: {value}{suffix}")
+    for entry in FIELDS:
+        if entry.comment:
+            lines.append(f"  # {entry.comment}")
+        value = values.get(entry.name, TODO_MARKER)
+        suffix = "  # derived from experiment.yaml" if entry.name in derived else ""
+        lines.append(f"  {entry.name}: {value}{suffix}")
     lines.extend(
         [
             "",

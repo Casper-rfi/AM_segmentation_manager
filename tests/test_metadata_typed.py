@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.metadata import (
+    FIELDS,
     ExperimentMetadata,
     build_experiment_metadata,
     lamella_type_from_method,
@@ -203,3 +204,73 @@ def test_the_scanner_attaches_typed_metadata(tmp_path: Path):
     assert project.experiment_metadata.sample == "HeLa"
     assert project.experiment_metadata.user == "Casper"
     assert project.metadata["name"] == "project"
+
+
+# ---------------------------------------------------------------------------
+# The field table
+#
+# Adding a descriptive field is a row in metadata.FIELDS, and nothing outside
+# it may list the fields or single one out. These pin the reach of that table:
+# each is a place that used to carry its own copy of the answer.
+# ---------------------------------------------------------------------------
+
+def test_every_field_is_an_attribute_of_the_resolved_metadata():
+    """A row with no attribute behind it reads as permanently unset, and
+    nothing says so -- the field simply never holds anything."""
+    for entry in FIELDS:
+        assert hasattr(ExperimentMetadata(), entry.name), entry.name
+
+
+def test_the_table_is_where_the_fields_and_their_guidance_come_from():
+    from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, FIELD_COMMENTS
+
+    assert DESCRIPTIVE_FIELDS == tuple(entry.name for entry in FIELDS)
+    assert FIELD_COMMENTS == {entry.name: entry.comment for entry in FIELDS}
+    assert all(entry.comment for entry in FIELDS), "a field with no guidance"
+
+
+def test_the_table_decides_what_a_defaults_file_may_pre_fill():
+    from am_segmentation_manager.operations.init_project import NEVER_DEFAULTED
+
+    assert NEVER_DEFAULTED == {
+        entry.name for entry in FIELDS if not entry.defaultable
+    }
+
+
+def test_the_table_decides_which_fields_are_offered_the_values_in_use():
+    from am_segmentation_manager.gui.metadata_controller import SUGGESTED_FIELDS
+
+    assert SUGGESTED_FIELDS == tuple(
+        entry.name for entry in FIELDS if entry.suggested
+    )
+
+
+def test_a_field_that_can_be_counted_by_gets_a_breakdown_of_its_own():
+    """One row in the table, one count, one --by selector and one Export filter
+    row. A field that had to be added to aggregate.py separately is a field
+    somebody forgets to add."""
+    from am_segmentation_manager.aggregate import BREAKDOWNS
+
+    for entry in FIELDS:
+        if entry.breakdown_label is None:
+            assert entry.breakdown_name not in BREAKDOWNS
+            continue
+        breakdown = BREAKDOWNS[entry.breakdown_name]
+        assert breakdown.kind == "project"
+        assert breakdown.label == entry.breakdown_label
+
+
+def test_a_vocabulary_is_rejected_by_name_rather_than_by_a_named_field():
+    """The check used to name lamella_type in four places. A second field with
+    a vocabulary has to be rejected the same way without editing any of them."""
+    from am_segmentation_manager.operations.metadata_edit import (
+        MetadataValidationError,
+        _validate,
+    )
+
+    for entry in FIELDS:
+        if not entry.choices:
+            continue
+        _validate({entry.name: entry.choices[0]})
+        with pytest.raises(MetadataValidationError, match=entry.name):
+            _validate({entry.name: "not-a-real-value"})

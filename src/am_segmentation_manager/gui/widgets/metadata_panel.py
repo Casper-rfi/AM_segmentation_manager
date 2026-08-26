@@ -32,9 +32,7 @@ from qtpy.QtWidgets import (
 )
 
 from ..metadata_controller import (
-    DESCRIPTIVE_FIELDS,
-    FIELD_COMMENTS,
-    LAMELLA_TYPES,
+    FIELDS,
     SUGGESTED_FIELDS,
     TODO_MARKER,
     MetadataController,
@@ -257,22 +255,24 @@ class MetadataPanel(QWidget):
         self.editors: dict[str, QWidget] = {}
         self.notes: dict[str, QLabel] = {}
         self.captions: dict[str, QLabel] = {}
-        for field in DESCRIPTIVE_FIELDS:
-            if field == "lamella_type":
+        # Which editor a field gets is the field table's to say: a vocabulary
+        # is picked from, a value that repeats across projects is offered back,
+        # and anything else is typed.
+        for entry in FIELDS:
+            if entry.choices:
                 editor: QWidget = QComboBox()
                 editor.setEditable(False)
-                editor.addItems(["", *LAMELLA_TYPES, TODO_MARKER])
-            elif field in SUGGESTED_FIELDS:
+                editor.addItems(["", *entry.choices, TODO_MARKER])
+            elif entry.suggested:
                 editor = _suggestion_box()
             else:
                 editor = QLineEdit()
                 editor.setPlaceholderText("unset")
 
             note = QLabel("")
-            caption = QLabel(field.replace("_", " ").title())
-            help_text = FIELD_COMMENTS.get(field, "")
+            caption = QLabel(entry.name.replace("_", " ").title())
             for widget in (caption, editor):
-                widget.setToolTip(help_text)
+                widget.setToolTip(entry.comment)
 
             row = QHBoxLayout()
             row.addWidget(editor, stretch=1)
@@ -280,9 +280,9 @@ class MetadataPanel(QWidget):
             holder = QWidget()
             holder.setLayout(row)
             form.addRow(caption, holder)
-            self.editors[field] = editor
-            self.notes[field] = note
-            self.captions[field] = caption
+            self.editors[entry.name] = editor
+            self.notes[entry.name] = note
+            self.captions[entry.name] = caption
         column.addLayout(form)
 
         self.enable = QCheckBox("Enable editing")

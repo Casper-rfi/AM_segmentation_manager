@@ -8,6 +8,9 @@ restating the rest.
 Nothing is inherited from parent directories: a directory can hold projects
 prepared on different samples, so resolving a field from a parent would
 attribute the wrong sample to a project invisibly.
+
+Which fields exist, and how each is edited, defaulted and counted by, is
+declared once in :data:`FIELDS`.
 """
 from __future__ import annotations
 
@@ -119,29 +122,104 @@ class ExperimentMetadata:
         return self.variants.get(variant, variant)
 
 
+@dataclass(frozen=True)
+class ProjectField:
+    """One descriptive field, and how each part of the package treats it.
+
+    Attributes:
+        name: The key in the ``metadata:`` block and the attribute on
+            :class:`ExperimentMetadata`.
+        comment: What a person is expected to enter, in one line. Written above
+            the field in a generated template and shown as its tooltip.
+        choices: The values accepted, or empty for free text. A field with a
+            vocabulary is edited by picking from it and rejects anything else.
+        suggested: Whether the editor offers the values other projects already
+            use. For a field whose value repeats across projects, which is how
+            a collection ends up with two spellings of one sample.
+        defaultable: Whether a shared defaults file may pre-fill it. False
+            where the value varies between projects even when everything else
+            is shared, so getting it wrong would be invisible in the output.
+        breakdown_label: What this field is called when records are counted by
+            it, or None for a field nothing can usefully be grouped by.
+    """
+
+    name: str
+    comment: str
+    choices: tuple[str, ...] = ()
+    suggested: bool = False
+    defaultable: bool = True
+    breakdown_label: str | None = None
+
+    @property
+    def breakdown_name(self) -> str:
+        """Return the name a command line takes to group by this field."""
+        return self.name.replace("_", "-")
+
+
 #: The descriptive fields, in the order they are written to a template.
-DESCRIPTIVE_FIELDS: tuple[str, ...] = (
-    "description",
-    "organisation",
-    "project",
-    "user",
-    "sample",
-    "grid_type",
-    "lamella_type",
+#:
+#: **Adding a field is a row here.** The name, the guidance, the editor it gets,
+#: whether it can be defaulted and whether records can be counted by it are all
+#: read off this table; nothing outside it lists the fields or singles one out.
+FIELDS: tuple[ProjectField, ...] = (
+    ProjectField(
+        "description",
+        "What this experiment was for",
+        defaultable=False,
+    ),
+    ProjectField(
+        "organisation",
+        "Organisation that acquired the data",
+        suggested=True,
+        breakdown_label="organisation",
+    ),
+    ProjectField(
+        "project",
+        "Name of the wider project this belongs to",
+        suggested=True,
+        breakdown_label="project",
+    ),
+    ProjectField(
+        "user",
+        "Who acquired the data",
+        suggested=True,
+        breakdown_label="user",
+    ),
+    ProjectField(
+        "sample",
+        "Cell type or organism",
+        suggested=True,
+        defaultable=False,
+        breakdown_label="sample",
+    ),
+    ProjectField(
+        "grid_type",
+        "Grid the sample was prepared on, e.g. Quantifoil R2/2 Cu 200 mesh",
+        suggested=True,
+        defaultable=False,
+        breakdown_label="grid type",
+    ),
+    ProjectField(
+        "lamella_type",
+        f"One of: {', '.join(LAMELLA_TYPES)}",
+        choices=LAMELLA_TYPES,
+        breakdown_label="lamella preparation type",
+    ),
 )
 
-#: What a person is expected to enter in each field, in one line. Written above
-#: the field in a generated template and shown as its tooltip in the GUI, which
-#: is why it lives here rather than in either of them.
-FIELD_COMMENTS: dict[str, str] = {
-    "description": "What this experiment was for",
-    "organisation": "Organisation that acquired the data",
-    "project": "Name of the wider project this belongs to",
-    "user": "Who acquired the data",
-    "sample": "Cell type or organism",
-    "grid_type": "Grid the sample was prepared on, e.g. Quantifoil R2/2 Cu 200 mesh",
-    "lamella_type": f"One of: {', '.join(LAMELLA_TYPES)}",
-}
+#: The fields by name, for the lookups that have one in hand.
+FIELDS_BY_NAME: dict[str, ProjectField] = {field.name: field for field in FIELDS}
+
+#: The field names, in declaration order.
+DESCRIPTIVE_FIELDS: tuple[str, ...] = tuple(FIELDS_BY_NAME)
+
+#: What a person is expected to enter in each field, in one line.
+FIELD_COMMENTS: dict[str, str] = {field.name: field.comment for field in FIELDS}
+
+
+def field_named(name: str) -> ProjectField | None:
+    """Return the field called *name*, or None if this package has no such field."""
+    return FIELDS_BY_NAME.get(name)
 
 
 def _metadata_section(document: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -231,15 +309,13 @@ def build_experiment_metadata(
 
     apply(_metadata_section(am_metadata), am_metadata_path)
 
-    unknown = {
-        value for name, value in values.items()
-        if name == "lamella_type" and value not in LAMELLA_TYPES
-    }
-    for value in unknown:
-        logger.warning(
-            "Unrecognised lamella_type %r; expected one of %s",
-            value, ", ".join(LAMELLA_TYPES),
-        )
+    for name, value in values.items():
+        field_spec = FIELDS_BY_NAME[name]
+        if field_spec.choices and value not in field_spec.choices:
+            logger.warning(
+                "Unrecognised %s %r; expected one of %s",
+                name, value, ", ".join(field_spec.choices),
+            )
 
     variants = am_metadata.get("variants")
     if not isinstance(variants, Mapping):

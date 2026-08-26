@@ -20,9 +20,9 @@ from ..metadata import (
     AM_METADATA_FILENAME,
     DESCRIPTIVE_FIELDS,
     EXPERIMENT_FILENAME,
-    LAMELLA_TYPES,
     TODO_MARKER,
     build_experiment_metadata,
+    field_named,
 )
 from .init_project import render_template
 
@@ -128,7 +128,8 @@ def _validate(values: Mapping[str, str | None]) -> None:
     """Check every requested edit before any of them is made."""
     problems: list[str] = []
     for field, value in values.items():
-        if field not in DESCRIPTIVE_FIELDS:
+        spec = field_named(field)
+        if spec is None:
             problems.append(
                 f"unknown field {field!r}; expected one of {', '.join(DESCRIPTIVE_FIELDS)}"
             )
@@ -137,9 +138,9 @@ def _validate(values: Mapping[str, str | None]) -> None:
             continue
         if not str(value).strip():
             problems.append(f"{field}: empty value; use --clear to remove it")
-        if field == "lamella_type" and value not in LAMELLA_TYPES:
+        if spec.choices and value not in spec.choices:
             problems.append(
-                f"lamella_type {value!r} is not one of {', '.join(LAMELLA_TYPES)}"
+                f"{field} {value!r} is not one of {', '.join(spec.choices)}"
             )
     if problems:
         raise MetadataValidationError(problems)

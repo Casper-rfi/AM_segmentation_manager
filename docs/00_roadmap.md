@@ -22,7 +22,9 @@ Autolamella writes and every layout era from pre-Autolamella to 2026-08. In outl
 * **Predictions need a second environment**, built by `scripts/setup_ml.sh`.
 * **A record carries what it is** — series, modality, imaging condition, milling task,
   workflow state, and where its label and predictions live — and one `BREAKDOWNS` entry in
-  `aggregate.py` turns any of those into a count, a CLI selector and an Export filter row.
+  `aggregate.py` turns any of those into a count, a CLI selector and an Export filter row. A
+  row in `metadata.FIELDS` does the same for a project's descriptive metadata, and decides the
+  editor it gets and whether it can be defaulted.
 
 ---
 

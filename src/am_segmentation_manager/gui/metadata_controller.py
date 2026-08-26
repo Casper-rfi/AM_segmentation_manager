@@ -16,7 +16,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..metadata import DESCRIPTIVE_FIELDS, FIELD_COMMENTS, LAMELLA_TYPES, TODO_MARKER
+from ..metadata import (
+    DESCRIPTIVE_FIELDS,
+    FIELD_COMMENTS,
+    FIELDS,
+    LAMELLA_TYPES,
+    TODO_MARKER,
+)
 from ..models import Project
 from ..operations.metadata_edit import (
     MetadataChange,
@@ -29,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DESCRIPTIVE_FIELDS",
+    "FIELDS",
     "FIELD_COMMENTS",
     "LAMELLA_TYPES",
     "SUGGESTED_FIELDS",
@@ -39,13 +46,13 @@ __all__ = [
     "ProjectSummary",
 ]
 
-#: Fields offered as a list of the values already in use. The others are left
-#: out deliberately: ``description`` is prose about one experiment, and
-#: ``lamella_type`` has a fixed vocabulary of its own. ``project`` names the
-#: wider project several datasets belong to, so it repeats across them by
-#: definition -- which is exactly what these lists are for.
-SUGGESTED_FIELDS: tuple[str, ...] = (
-    "organisation", "project", "user", "sample", "grid_type",
+#: Fields offered as a list of the values already in use, from the field table.
+#: The ones left out are left out deliberately: ``description`` is prose about
+#: one experiment, and ``lamella_type`` has a fixed vocabulary of its own.
+#: ``project`` names the wider project several datasets belong to, so it repeats
+#: across them by definition -- which is exactly what these lists are for.
+SUGGESTED_FIELDS: tuple[str, ...] = tuple(
+    entry.name for entry in FIELDS if entry.suggested
 )
 
 #: How many values a field offers. A collection of several hundred projects

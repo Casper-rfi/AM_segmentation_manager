@@ -166,7 +166,7 @@ def test_project_properties_are_looked_up_by_path_not_by_name():
     ]
     lookup = ag.project_lookup(projects)
 
-    counts = ag.count_by([first, second], ag.by_sample(lookup))
+    counts = ag.count_by([first, second], ag.by_project_field("sample")(lookup))
 
     assert counts == {"HeLa": 1, "S. cerevisiae": 1}
 
@@ -311,7 +311,7 @@ def test_images_are_counted_by_the_grid_they_were_prepared_on():
         object.__setattr__(project, "experiment_metadata", ExperimentMetadata(grid_type=grid))
     lookup = ag.project_lookup(projects)
 
-    counts = ag.count_by([first, second], ag.by_grid_type(lookup))
+    counts = ag.count_by([first, second], ag.by_project_field("grid_type")(lookup))
 
     assert counts == {"Quantifoil R2/2 Cu 200 mesh": 1, "UltrAuFoil R1.2/1.3": 1}
     assert "grid-type" in ag.BREAKDOWNS
@@ -321,7 +321,7 @@ def test_a_project_without_metadata_reports_missing():
     only = record("a")
     lookup = ag.project_lookup([make_project("p", "p", None, [only])])
 
-    assert ag.count_by([only], ag.by_sample(lookup)) == {ag.MISSING: 1}
+    assert ag.count_by([only], ag.by_project_field("sample")(lookup)) == {ag.MISSING: 1}
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +637,7 @@ def test_counting_by_the_two_projects_gives_different_answers(tmp_path: Path):
     ]
 
     directories = ag.count_by(records, ag.by_autolamella_project(lookup))
-    wider = ag.count_by(records, ag.by_project(lookup))
+    wider = ag.count_by(records, ag.by_project_field("project")(lookup))
 
     assert set(directories) == {"dir-0", "dir-1"}
     assert wider == {"adaptive milling": 2}

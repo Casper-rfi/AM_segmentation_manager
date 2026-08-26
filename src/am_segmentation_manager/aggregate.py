@@ -21,6 +21,7 @@ from pathlib import Path
 from .config import SegmentationConfig
 from .image_metadata import ImageMetadata
 from .layout import is_alignment_directory, stage_base_name
+from .metadata import FIELDS as PROJECT_FIELDS
 from .models import ImageRecord, Project
 from .operations.label_measure import (
     EMPTY,
@@ -497,29 +498,20 @@ def _project_metadata_key(lookup: Mapping[Path, Project], attribute: str) -> Key
     return key
 
 
-def by_sample(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by biological sample, from the project's metadata."""
-    return _project_metadata_key(lookup, "sample")
+def by_project_field(name: str) -> Callable[[Mapping[Path, Project]], KeyFunction]:
+    """Return the factory grouping records by the project metadata field *name*.
 
+    One function for every described field rather than one per field: which
+    fields exist is for :data:`~am_segmentation_manager.metadata.FIELDS` to say,
+    and a breakdown written out per field is a breakdown a new field does not
+    get. The outer call names the field and the inner takes the project lookup,
+    which is the shape a ``project`` breakdown is built from.
+    """
 
-def by_grid_type(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by the grid the sample was prepared on."""
-    return _project_metadata_key(lookup, "grid_type")
+    def factory(lookup: Mapping[Path, Project]) -> KeyFunction:
+        return _project_metadata_key(lookup, name)
 
-
-def by_lamella_type(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by preparation type: cells-on-grid, waffle, lift-out, other."""
-    return _project_metadata_key(lookup, "lamella_type")
-
-
-def by_user(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by the user recorded in the project's metadata."""
-    return _project_metadata_key(lookup, "user")
-
-
-def by_organisation(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by the organisation recorded in the project's metadata."""
-    return _project_metadata_key(lookup, "organisation")
+    return factory
 
 
 def _project_of(lookup: Mapping[Path, Project], record: ImageRecord) -> str:
@@ -602,10 +594,10 @@ def by_stage_name(record: ImageRecord) -> Hashable:
 def by_autolamella_project(lookup: Mapping[Path, Project]) -> KeyFunction:
     """Group by the project directory's identity, which is its relative path.
 
-    Distinct from :func:`by_project`, which groups by the *wider* project a
-    dataset was collected for. One is where the files are and the other is what
-    the work was part of, and several directories usually belong to one wider
-    project.
+    Distinct from the ``project`` breakdown, which groups by the *wider* project
+    a dataset was collected for. One is where the files are and the other is
+    what the work was part of, and several directories usually belong to one
+    wider project.
     """
 
     def key(record: ImageRecord) -> Hashable:
@@ -613,11 +605,6 @@ def by_autolamella_project(lookup: Mapping[Path, Project]) -> KeyFunction:
         return _present(project.key if project is not None else None)
 
     return key
-
-
-def by_project(lookup: Mapping[Path, Project]) -> KeyFunction:
-    """Group by the wider project recorded in the project's metadata."""
-    return _project_metadata_key(lookup, "project")
 
 
 @dataclass(frozen=True)
@@ -649,6 +636,20 @@ class Breakdown:
     def __post_init__(self) -> None:
         if not self.group:
             object.__setattr__(self, "group", self.kind)
+
+
+#: One breakdown per project metadata field that can be counted by, keyed and
+#: labelled from the field table. Generated rather than written out: adding a
+#: field to :data:`~am_segmentation_manager.metadata.FIELDS` gives it a count, a
+#: ``--by`` selector and an Export filter row without editing this module, and
+#: they are offered in the order the Add data tab asks for them.
+PROJECT_BREAKDOWNS: dict[str, Breakdown] = {
+    entry.breakdown_name: Breakdown(
+        "project", by_project_field(entry.name), entry.breakdown_label
+    )
+    for entry in PROJECT_FIELDS
+    if entry.breakdown_label
+}
 
 
 #: Heading for each kind of breakdown, in the order they are offered. The kind
@@ -689,12 +690,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "plasma-gas": Breakdown("metadata", by_plasma_gas, "plasma gas"),
     "electron-source": Breakdown("metadata", by_electron_source, "electron source"),
     "detector": Breakdown("metadata", by_detector, "detector type"),
-    "sample": Breakdown("project", by_sample, "sample"),
-    "grid-type": Breakdown("project", by_grid_type, "grid type"),
-    "lamella-type": Breakdown("project", by_lamella_type, "lamella preparation type"),
-    "user": Breakdown("project", by_user, "user"),
-    "organisation": Breakdown("project", by_organisation, "organisation"),
-    "project": Breakdown("project", by_project, "project"),
+    **PROJECT_BREAKDOWNS,
     "label": Breakdown("label", by_label_state, "label state"),
     "has-crack": Breakdown("measurement", by_has_crack, "cracked (yes / no)"),
     "crack-count": Breakdown("measurement", by_crack_count, "number of cracks"),

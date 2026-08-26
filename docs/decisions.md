@@ -239,6 +239,15 @@ appending to it.
   a `metadata_project` in another. The directory is what the scanner indexes and Curate lists,
   so it is qualified wherever written; the metadata field keeps the plain name. Neither is
   derived from the other, which is why Add data offers no button to copy one into the other.
+- **A descriptive field is a row in `metadata.FIELDS`**, as a header value is a row in
+  `image_metadata.FIELDS`. The name, the one-line guidance, whether it has a vocabulary, whether
+  the editor offers the values already in use, whether a shared defaults file may pre-fill it and
+  what it is called when records are counted by it are all read off that row — so adding a field
+  is one row rather than an edit in six modules, and the four places that named `lamella_type` in
+  order to find the one field with a vocabulary now ask the field instead. The breakdown is
+  generated with it: a field with a `breakdown_label` gets its count, its `--by` selector and its
+  Export filter row without `aggregate.py` naming it, and they are offered in the order the Add
+  data tab asks for them rather than in an order of their own.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of
   four things and a typo is a real error; a grid is a material, a mesh and a film in
   combinations no list would survive, and rejecting a real grid is worse than tolerating two
