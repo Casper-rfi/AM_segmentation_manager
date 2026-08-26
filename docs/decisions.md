@@ -513,7 +513,11 @@ appending to it.
   editor turns typed text into a value on Return, on a pick, and on losing focus — and `_edits`
   asks it to anyway. Held until confirmed, a value typed by someone who then reaches straight
   for Save is discarded without a word, which is what every first attempt at the field looks
-  like.
+  like. **Adding a widget to a layout reparents it, and reparenting hides it**, so it must be
+  shown again before anything measures it: a layout of hidden widgets measures zero, and the
+  chips were given no height at all. Held, addressable and saved, they were simply not on
+  screen — which reads as a field that refuses a value *and* loses the one already in it, and
+  as intermittent, Qt showing them on the next pass through the event loop.
 - **F1 is an application shortcut, and the list closes only when it is the window in front.**
   A window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
   parented `QDialog` is one — so the key that opens the shortcut list could not close it again.

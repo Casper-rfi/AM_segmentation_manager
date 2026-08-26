@@ -2493,6 +2493,39 @@ def test_chips_wrap_onto_another_row_rather_than_off_the_edge(qt_app):
     assert editor._chip_layout.count() == 4
 
 
+def test_a_chip_is_tall_enough_to_be_seen_as_soon_as_it_exists(qt_app):
+    """Regression, and the worst kind: adding a widget to a layout reparents
+    it, reparenting hides it, and a hidden widget measures as nothing -- so the
+    row of chips was given no height. The values were held, addressable and
+    saved, and simply not on screen, which reads as a field that refuses to
+    take a value and as one that loses the value already in it."""
+    editor = ChipEditor()
+    editor.show()
+    editor._chips.resize(300, 0)
+
+    editor.set_values(["RFI"])
+
+    assert editor._chips.isVisible()
+    assert editor._chips.height() > 0
+    assert editor._chip_layout.heightForWidth(300) > 0
+
+
+def test_chips_come_back_after_a_project_that_had_none(qt_app):
+    """What stepping through a collection does to one editor. A project with
+    nothing in the field hides the chips, and the next project has to be able
+    to show them again -- which is the case that failed, because a chip cannot
+    be shown into a parent that is still hidden."""
+    editor = ChipEditor()
+    editor.show()
+    editor._chips.resize(300, 0)
+
+    for values in (["RFI"], [], ["RFI", "Diamond"], [], ["EMBL"]):
+        editor.set_values(values)
+
+        assert (editor._chips.height() > 0) == bool(values), values
+        assert editor.values() == values
+
+
 def test_a_chip_area_takes_no_minimum_width(qt_app):
     """A minimum is a floor. Asked for the widest value in it, the pane could
     never be narrower than the longest organisation anybody had typed."""

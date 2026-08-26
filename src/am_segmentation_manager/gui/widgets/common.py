@@ -859,6 +859,9 @@ class ChipEditor(QWidget):
             if widget is not None:
                 widget.setParent(None)
                 widget.deleteLater()
+        # Shown before the chips go in, because a widget cannot be shown into a
+        # hidden parent and a hidden widget measures as nothing.
+        self._chips.setVisible(bool(self._values))
         for value in self._values:
             chip = QPushButton(f"{value}  ✕")
             chip.setStyleSheet(theme.VALUE_CHIP_STYLE)
@@ -866,8 +869,13 @@ class ChipEditor(QWidget):
             chip.setCursor(Qt.PointingHandCursor)
             chip.clicked.connect(lambda _checked=False, v=value: self._remove(v))
             self._chip_layout.addWidget(chip)
-        # The row count can change with the values, and the form above has to
-        # be told to make room rather than clipping the new row.
-        self._chips.setVisible(bool(self._values))
+            # Adding a widget to a layout reparents it, and reparenting hides
+            # it. Qt shows it again on the next pass through the event loop --
+            # but the height is wanted now, and a layout of hidden widgets
+            # measures zero, so the row of chips gets no height at all and the
+            # values are held, addressable, and invisible.
+            chip.setVisible(True)
+        # The row count changes with the values, and the form has to be told to
+        # make room rather than clipping the new row.
         self._chips.sync_height()
         self.updateGeometry()
