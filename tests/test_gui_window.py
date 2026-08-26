@@ -830,10 +830,52 @@ def _curate_tab(window) -> int:
 def test_f1_puts_the_list_away_again(window):
     window.show_shortcuts()
     assert window._help.isVisible()
+    # is_in_front rather than the real thing: an offscreen window is never
+    # activated, so nothing here is ever the window in front.
+    window._help.is_in_front = lambda: True
 
     window.show_shortcuts()
 
     assert not window._help.isVisible(), "the key that opened it closes it"
+
+
+def test_f1_fetches_back_a_list_left_behind_the_window(window):
+    """It closed on visibility alone, and a list buried behind the window is
+    visible -- so F1 dismissed, unseen, the one thing that answers "what can I
+    press?", and pressing it again just put it back. That is most of what made
+    F1 look as though it worked only sometimes."""
+    window.show_shortcuts()
+    window._help.is_in_front = lambda: False
+
+    window.show_shortcuts()
+
+    assert window._help.isVisible()
+
+
+def test_f1_is_ignored_while_an_operation_holds_the_window(window, monkeypatch):
+    """The key reaches the window from anywhere now, and a list opened over an
+    application-modal dialog can be neither read nor closed until it ends."""
+    monkeypatch.setattr(
+        QApplication, "activeModalWidget", staticmethod(lambda: window)
+    )
+
+    window.show_shortcuts()
+
+    assert window._help is None
+
+
+def test_f1_works_from_the_list_it_opened(window):
+    """A window-scoped shortcut is dead while a second top-level window holds
+    the keyboard, and the list is one -- so the key that opens it could not
+    close it again."""
+    from qtpy.QtCore import Qt
+
+    f1 = next(
+        shortcut for binding, shortcut in zip(window._bindings, window._shortcuts)
+        if binding.key == "F1"
+    )
+
+    assert f1.context() == Qt.ApplicationShortcut
 
 
 def test_the_shortcut_list_does_not_block_the_window(window):

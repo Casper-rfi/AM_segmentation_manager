@@ -1020,6 +1020,45 @@ def test_the_brush_appears_where_the_pointer_already_is(canvas):
     )
 
 
+def test_the_brush_comes_back_when_the_pan_key_is_let_go(canvas):
+    """Holding space takes the ring away, and releasing it used to leave the
+    pane with no ring and no cursor until the pointer was nudged."""
+    canvas._pointer_position = lambda: QPoint(100, 100)
+    canvas.keyPressEvent(key_event(QEvent.KeyPress, Qt.Key_Space))
+    assert not canvas._brush_item.isVisible()
+
+    canvas.keyReleaseEvent(key_event(QEvent.KeyRelease, Qt.Key_Space))
+
+    assert canvas._brush_item.isVisible()
+
+
+def test_the_brush_comes_back_when_the_brush_tool_is_chosen_again(canvas):
+    """The fill has a crosshair and no ring; going back to the brush is a
+    state change like any other, not something to wait for a mouse move."""
+    canvas._pointer_position = lambda: QPoint(100, 100)
+    canvas.set_tool(TOOL_FILL)
+    assert not canvas._brush_item.isVisible()
+
+    canvas.set_tool(TOOL_BRUSH)
+
+    assert canvas._brush_item.isVisible()
+
+
+def test_the_brush_follows_the_scene_when_the_view_moves_under_it(canvas):
+    """The ring is drawn in scene coordinates, so anything that scrolls the
+    view -- a middle-button pan, a fit, going to the next speck -- leaves it
+    round a pixel the pointer is no longer over."""
+    canvas._pointer_position = lambda: QPoint(100, 100)
+    canvas.mouseMoveEvent(mouse_event(QEvent.MouseMove, QPoint(100, 100), Qt.NoButton))
+    before = canvas._brush_item.rect().center()
+
+    canvas.centre_on(5, 5)
+
+    after = canvas._brush_item.rect().center()
+    assert canvas.mapFromScene(after) == QPoint(100, 100)
+    assert after != before, "the scene moved, so the ring is over a new pixel"
+
+
 def test_the_brush_stays_hidden_when_the_pointer_is_elsewhere(canvas):
     canvas.set_editable(False)
     canvas._pointer_position = lambda: QPoint(-40, -40)

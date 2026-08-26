@@ -463,6 +463,24 @@ appending to it.
   and state, and any icon carrying meaning goes through it); and a `QListWidget` with a
   horizontal scrollbar scrolls instead of eliding, cutting rows carrying paths off where they
   differ, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
+- **F1 is an application shortcut, and the list closes only when it is the window in front.**
+  A window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
+  parented `QDialog` is one — so the key that opens the shortcut list could not close it again.
+  Closing on `isVisible()` was the other half: a list buried behind the window is still visible,
+  so F1 dismissed unseen the one thing that answers "what can I press?", and pressing it again —
+  the natural response to a key that appears dead — put it back. Both together are most of why
+  F1 read as working only sometimes. `ShortcutHelp.is_in_front` is the seam the fix and its
+  tests share, an offscreen window never being activated. Widening the context costs one guard:
+  the key now arrives from any window, so it does nothing while a modal dialog is up, a list
+  opened over one being neither readable nor closable until the operation ends.
+- **The brush outline is redrawn from state, never from mouse movement alone.** It is drawn in
+  *scene* coordinates, so everything that moves the scene under a stationary pointer — a
+  middle-button pan, a fit, centring on the next speck, a frame arriving on the loader thread —
+  leaves a ring around a pixel the pointer is no longer over; and every state that hides it —
+  the fill tool chosen, space held for a pan, editing switched off — left it hidden until the
+  pointer was nudged. `_sync_brush` is the single answer to "should there be a ring, and where",
+  and `scrollContentsBy` and `zoomed` are what catch the view moving on its own. Wheel zoom is
+  the one case that needs nothing, `AnchorUnderMouse` holding the scene point under the pointer.
 - **`QFontDatabase.systemFont(FixedFont)` is not a fixed-width font.** On macOS under PyQt5 it
   returns the proportional `.AppleSystemUIFont` while reporting the family it was asked for, so
   a table padded into columns comes out unaligned with nothing saying why; a style hint does not

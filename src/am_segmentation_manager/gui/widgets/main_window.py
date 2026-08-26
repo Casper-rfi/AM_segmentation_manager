@@ -163,6 +163,10 @@ class Binding:
         scope: Restrict the key to this widget and its children instead of the
             whole window. Needed where a tab holds editors with arrow-key
             behaviour of their own, which a window-wide key would take first.
+        anywhere: Let the key fire from any of the application's windows rather
+            than only the one it is bound to. A window-scoped shortcut is dead
+            while a second top-level window holds the keyboard, and a dialog --
+            even a parented one -- is a second top-level window.
     """
 
     key: str
@@ -170,6 +174,7 @@ class Binding:
     action: Callable[[], None]
     tab: str
     scope: QWidget | None = None
+    anywhere: bool = False
 
 
 class ShortcutHelp(QDialog):
@@ -191,6 +196,15 @@ class ShortcutHelp(QDialog):
         buttons.rejected.connect(self.close)
         layout.addWidget(buttons)
 
+    def is_in_front(self) -> bool:
+        """Return whether this list is the window a key press is aimed at.
+
+        Not ``isVisible()``: a list left open behind the window is still
+        visible, and treating that as "in front" is what made F1 dismiss,
+        unseen, the thing it was pressed to see.
+        """
+        return self.isActiveWindow()
+
     def show_for(self, tab_name: str, help_text: str) -> None:
         """List *tab_name*'s keys, replacing whatever was listed before."""
         self.setWindowTitle(f"Keyboard shortcuts: {tab_name}")
@@ -198,6 +212,10 @@ class ShortcutHelp(QDialog):
         self.adjustSize()
         self.show()
         self.raise_()
+        # Not just raised: a window that is on top but not activated still
+        # leaves the keyboard where it was, and on macOS receives no pointer
+        # motion, so the list would not even show its own tooltips.
+        self.activateWindow()
 
 
 class SaveLabelsDialog(QDialog):
@@ -1274,7 +1292,9 @@ class CurationWindow(QMainWindow):
             Binding(
                 "Ctrl+Shift+Z", "Redo the last stroke", self.label_panel.redo, TAB_LABEL
             ),
-            Binding("F1", "Show this list", self.show_shortcuts, ANY_TAB),
+            # The one key that has to work while the list it opens holds the
+            # keyboard, since closing it again is what it is for.
+            Binding("F1", "Show this list", self.show_shortcuts, ANY_TAB, anywhere=True),
         ]
         self._shortcuts = []
         for binding in self._bindings:
@@ -1283,6 +1303,8 @@ class CurationWindow(QMainWindow):
             )
             if binding.scope is not None:
                 shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+            elif binding.anywhere:
+                shortcut.setContext(Qt.ApplicationShortcut)
             self._shortcuts.append(shortcut)
         self._apply_tab_shortcuts(self._current_tab())
 
@@ -1344,8 +1366,21 @@ class CurationWindow(QMainWindow):
         is the one place that answers "what can I press?". Only the active tab's
         keys are listed, because the others are switched off and pressing one
         does nothing.
+
+        F1 puts the list away only when the list is the window in front. One
+        left open behind the main window is still visible, so closing on that
+        alone made F1 answer "what can I press?" by dismissing, unseen, the one
+        thing that says -- and the fix for a key that appears to do nothing is
+        to press it again, which reopened it and made the whole thing look
+        intermittent.
+
+        Nothing happens while an operation is running behind its modal dialog.
+        The key reaches here from any window now, and a list opened over a
+        modal one cannot be read, moved or closed until the operation ends.
         """
-        if self._help is not None and self._help.isVisible():
+        if QApplication.activeModalWidget() is not None:
+            return
+        if self._help is not None and self._help.is_in_front():
             self._help.close()
             return
         if self._help is None:

@@ -195,6 +195,11 @@ class LabelCanvas(ImageView):
         self._pan_from = None
         self._space_held = False
 
+        # Last, because it is the first thing that reads the state above. A fit
+        # changes the transform without necessarily moving a scrollbar, so
+        # scrollContentsBy alone does not cover every way the scene moves.
+        self.zoomed.connect(self._sync_brush)
+
     # -- what is shown -----------------------------------------------------
 
     def set_frame(self, image: np.ndarray, label: np.ndarray | None) -> None:
@@ -273,7 +278,7 @@ class LabelCanvas(ImageView):
         self._label_array = None
         self._label_item.setPixmap(QPixmap())
         self._label_item.setVisible(False)
-        self._brush_item.setVisible(False)
+        self._sync_brush()
         self.show_specks(())
 
     # -- the tools ---------------------------------------------------------
@@ -287,12 +292,6 @@ class LabelCanvas(ImageView):
         self._editable = editable
         if not editable:
             self._cancel_stroke()
-            self._brush_item.setVisible(False)
-        else:
-            # A frame is prepared on another thread, so editing usually becomes
-            # possible while the pointer is already sitting still over the pane.
-            # Without this the brush is invisible until it is moved.
-            self._show_brush_at_pointer()
         self._apply_drag_mode()
         self._apply_tool_cursor()
 
@@ -329,15 +328,18 @@ class LabelCanvas(ImageView):
         carry no cursor of their own. Naming the cursor here, at the level Qt
         manipulates, is what keeps the hand on screen for as long as space is
         held.
+
+        The outline goes wherever the cursor does: every state this reads is
+        also a state that decides whether there is a brush to draw, and keeping
+        the two apart is what left a ring on screen after a fill was chosen and
+        no ring at all after a pan ended.
         """
         viewport = self.viewport()
+        self._sync_brush()
         if not self.editable or self._space_held:
             # The left button pans in both cases, so the hand is the truth.
-            self._brush_item.setVisible(False)
             viewport.setCursor(Qt.OpenHandCursor)
-            return
-        if self._tool == TOOL_FILL:
-            self._brush_item.setVisible(False)
+        elif self._tool == TOOL_FILL:
             viewport.setCursor(Qt.CrossCursor)
         else:
             viewport.unsetCursor()
@@ -345,7 +347,7 @@ class LabelCanvas(ImageView):
     def set_brush_radius(self, radius: int) -> None:
         """Set the brush radius in label pixels."""
         self._brush_radius = max(MIN_BRUSH_RADIUS, min(int(radius), MAX_BRUSH_RADIUS))
-        self._resize_brush_cursor()
+        self._sync_brush()
 
     @property
     def brush_radius(self) -> int:
@@ -384,18 +386,14 @@ class LabelCanvas(ImageView):
             QGraphicsView.NoDrag if painting else QGraphicsView.ScrollHandDrag
         )
 
-    def _resize_brush_cursor(self) -> None:
-        """Redraw the brush outline at the current radius, where it already is."""
-        rect = self._brush_item.rect()
-        centre = rect.center()
-        size = 2 * self._brush_radius + 1
-        self._brush_item.setRect(
-            centre.x() - size / 2, centre.y() - size / 2, size, size
-        )
-
     def _move_brush_cursor(self, position) -> None:
-        """Put the brush outline under the pointer."""
-        if not self.editable or self._space_held:
+        """Put the brush outline under a pointer at *position*, or take it away.
+
+        The one place that decides whether the outline should be showing. Every
+        other caller either reports where the pointer is or asks
+        :meth:`_sync_brush` to find out.
+        """
+        if not self.editable or self._space_held or self._tool != TOOL_BRUSH:
             self._brush_item.setVisible(False)
             return
         scene = self.mapToScene(position)
@@ -421,16 +419,36 @@ class LabelCanvas(ImageView):
         """Return where the pointer is, in viewport coordinates."""
         return self.viewport().mapFromGlobal(QCursor.pos())
 
-    def _show_brush_at_pointer(self) -> None:
-        """Draw the brush outline where the pointer is, if it is over the pane."""
+    def _sync_brush(self) -> None:
+        """Redraw the brush outline against a pointer that has not reported in.
+
+        The outline is drawn in *scene* coordinates, and almost everything moves
+        the scene under a stationary pointer: a middle-button pan, a fit, going
+        to the next speck, a frame arriving on the loader thread. Each leaves a
+        ring around a pixel the pointer is no longer over -- and each state
+        change that hides it leaves it hidden until the pointer is nudged. So
+        every one of them ends here instead of waiting for a mouse move.
+        """
         position = self._pointer_position()
         if self.viewport().rect().contains(position):
             self._move_brush_cursor(position)
+        else:
+            self._brush_item.setVisible(False)
 
     def leaveEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Hide the brush outline when the pointer leaves the pane."""
         self._brush_item.setVisible(False)
         super().leaveEvent(event)
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:  # noqa: N802 - Qt naming
+        """Follow the scene as it moves under the pointer.
+
+        The one hook every kind of view movement passes through: a pan by drag
+        or by middle button, a fit, and centring on a speck all end in the
+        scrollbars.
+        """
+        super().scrollContentsBy(dx, dy)
+        self._sync_brush()
 
     def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Stop panning when the keyboard goes elsewhere.
@@ -468,8 +486,7 @@ class LabelCanvas(ImageView):
             self._pan_by(position)
             event.accept()
             return
-        if self._tool == TOOL_BRUSH:
-            self._move_brush_cursor(position)
+        self._move_brush_cursor(position)
         if self._stroke is not None:
             self._extend_stroke(self._label_point(position))
             event.accept()
@@ -615,7 +632,6 @@ class LabelCanvas(ImageView):
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._space_held = True
             self._cancel_stroke()
-            self._brush_item.setVisible(False)
             self._apply_drag_mode()
             self._apply_tool_cursor()
             event.accept()
