@@ -474,7 +474,7 @@ appending to it.
   and describe the wrong run.
 - **One stylesheet, and it beats the palette.** `theme.py` sets the Fusion style, a palette and
   a short stylesheet; nothing else picks a chrome colour. Fusion rather than the platform's
-  style because the two bindings draw the same widgets differently. Where a rule and the palette
+  style, which differs by platform and by Qt version. Where a rule and the palette
   disagree the rule wins, and a widget palette edited in Python is ignored — yet reads back as
   the value it was set to, so a test asserting on it passes while the screen shows something
   else: **anything about how something *renders* is asserted on the pixels**. The stylesheet
@@ -624,6 +624,13 @@ appending to it.
   `<collection>/`** — 13 projects, 108 lamellae,
   8,895 indexed images, 54 GB, spanning every layout era from pre-Autolamella to 2026-08.
   Read-only. Point the smoke test at it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
+- **PySide6 is the binding, and PyQt5 is no longer one.** It was, while the labelling was to be
+  done in fibsemOS; `am-seg` labels its own images now, and running both on a microscope PC is
+  two environments rather than one binding. The sixty lines of compatibility stay, costing
+  nothing — and most of what looks like a PyQt5 workaround (Fusion, non-native dialogs,
+  `StepCombo`, named monospace families) is cross-platform and stays regardless. What it costs
+  is silence: nothing runs the suite under PyQt5, and it had already broken on one
+  `setBrush(Qt.NoBrush)` — 275 errors, unnoticed. It may still open there; nothing promises it.
 - **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side effect,
   and `test_gui_*` sorts before most other tests. That is how a locale-dependent `strptime('%p')`
   bug appears only in full runs, and only on a non-English locale. `LC_ALL=… pytest` does **not**

@@ -1,8 +1,8 @@
 """How the window looks: the palette, the stylesheet, and the chrome colours.
 
 Everything visual that carries no information is set here, so the window looks
-the same under either Qt binding; see `docs/decisions.md` § Display for why the
-style is set rather than inherited, and why a stylesheet rule beats a palette.
+the same wherever it runs; see `docs/decisions.md` § Display for why the style
+is set rather than inherited, and why a stylesheet rule beats a palette.
 It is kept short because Qt re-evaluates it whenever a widget is polished.
 
 Colours that carry *meaning* are not here: the workflow states and label lines
@@ -285,8 +285,8 @@ def apply_theme(application) -> None:
     """Give *application* the window's style, palette and stylesheet.
 
     Fusion rather than the platform style, so the window looks the same wherever
-    it runs -- the development machine and the user's differ in Qt binding, and
-    four bugs have already reached the user through that gap.
+    it runs -- the development machine and the microscope's differ in platform
+    and in Qt, and four bugs have already reached the user through that gap.
     """
     application.setStyle("Fusion")
     application.setPalette(build_palette())

@@ -92,9 +92,12 @@ checks the optional dependencies import. With pip instead:
 **Two installation hazards, both of which break imports:**
 
 * **Do not install a second Qt binding.** `qtpy` is only an adapter and needs
-  PySide6 (or PyQt5) underneath, but loading two into one process crashes at
-  startup. If the environment already has PyQt5 (via napari, say), install
-  `qtpy` alone.
+  PySide6 underneath, but loading two bindings into one process crashes at
+  startup. **PySide6 is the binding this package is developed and tested
+  against.** `qtpy` will load PyQt5 if that is what an environment has, and the
+  window does still work there, but nothing checks it and it has broken before
+  without anyone noticing. Give `am-seg` an environment of its own rather than
+  sharing one with a PyQt5 application.
 * **Do not mix conda and pip for the image stack.** conda's `opencv` and pip's
   `opencv-python` both provide `cv2`, and having both leaves an import that
   fails. In a conda environment, do not also run `pip install -e '.[all]'`.

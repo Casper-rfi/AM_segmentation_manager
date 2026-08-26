@@ -52,9 +52,10 @@ all = [
 plots = [
   "matplotlib",
 ]
-# The curation window. qtpy adapts to whichever Qt binding is present, so an
-# environment that already has PyQt5 (for example via napari) needs qtpy only:
-# installing a second binding alongside the first causes import-time crashes.
+# The curation window. PySide6 is the binding this is developed and tested
+# against; qtpy adapts to whichever is present, but two in one process crash at
+# import. Give this package an environment of its own rather than dropping it
+# into one that already has a binding.
 gui = [
   "qtpy",
   "PySide6",

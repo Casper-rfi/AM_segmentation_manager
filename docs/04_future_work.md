@@ -1,10 +1,8 @@
 # Future work
 
-Status: **sketches, not designs.** Last reviewed 2026-08-25.
-
-A holding area for things deliberately not being designed yet: enough to stop the idea
-being lost, and the questions to answer before building it. Detail added before it is
-needed is detail that has to be maintained and re-argued.
+Status: **sketches, not designs.** Last reviewed 2026-08-26. Enough to stop an idea being
+lost, and the questions to answer before building it — detail added before it is needed is
+detail that has to be maintained and re-argued.
 
 ---
 

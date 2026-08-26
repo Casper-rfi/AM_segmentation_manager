@@ -45,5 +45,4 @@ oversight, and all become necessary at the same moment: there is no `LICENSE`
 classifier), no CI, no `CHANGELOG.md`, no `[project.urls]`, and the version is pinned at
 `0.0.0`. `mypy` is not configured, and `ruff` does not check types, so the annotations are
 unverified. The suite has also not been run under a non-English locale — do that before any
-release, for the reasons in [`decisions.md`](decisions.md) § Environment. It does now pass
-under PySide6 6.11.1, which the development environment resolves to.
+release, for the reasons in [`decisions.md`](decisions.md) § Environment.

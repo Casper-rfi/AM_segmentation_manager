@@ -19,7 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QCursor, QImage, QPen, QPixmap
+from qtpy.QtGui import QBrush, QColor, QCursor, QImage, QPen, QPixmap
 from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsView
 
 from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
@@ -172,7 +172,7 @@ class LabelCanvas(ImageView):
         # growing into a band that hides the edge being painted.
         pen.setCosmetic(True)
         self._brush_item.setPen(pen)
-        self._brush_item.setBrush(Qt.NoBrush)
+        self._brush_item.setBrush(QBrush(Qt.NoBrush))
         self._brush_item.setVisible(False)
         self.scene().addItem(self._brush_item)
 
@@ -260,7 +260,7 @@ class LabelCanvas(ImageView):
                 -SPECK_RING, -SPECK_RING, 2 * SPECK_RING, 2 * SPECK_RING
             )
             ring.setPen(pen)
-            ring.setBrush(Qt.NoBrush)
+            ring.setBrush(QBrush(Qt.NoBrush))
             ring.setZValue(SPECK_Z)
             ring.setFlag(QGraphicsEllipseItem.ItemIgnoresTransformations, True)
             # The middle of the pixel, not its corner.

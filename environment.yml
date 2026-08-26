@@ -32,8 +32,8 @@ dependencies:
   # the package still runs and declines to chart without it.
   - matplotlib
   # curation window (`am-seg gui`). qtpy is only an adapter and does nothing on
-  # its own: it needs a binding underneath, which is what pyside6 provides.
-  # Do not add a second binding (PyQt5) alongside pyside6 -- loading two Qt
-  # bindings into one process causes import-time crashes.
+  # its own: it needs a binding underneath, which is what pyside6 provides --
+  # the one this package is tested against. Do not add a second binding
+  # alongside it; two Qt bindings in one process crash at import.
   - qtpy
   - pyside6
