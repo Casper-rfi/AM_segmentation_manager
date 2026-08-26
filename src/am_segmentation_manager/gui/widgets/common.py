@@ -793,10 +793,14 @@ class ChipEditor(QWidget):
         completer = self.entry.completer()
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setFilterMode(Qt.MatchContains)
-        # Both ways in: typing a value and pressing Return, or picking one
-        # already in use. `activated` fires only on a choice the user made,
-        # where `currentIndexChanged` also fires as the list is refilled.
-        self.entry.lineEdit().returnPressed.connect(self._commit_entry)
+        # Three ways in, and the third is the one that matters: Return, picking
+        # a value already in use, and simply leaving the box. Without that last
+        # one a value typed and left there is discarded by the next thing that
+        # reads the editor -- which is Save, the very next thing the user does.
+        # `editingFinished` covers Return and focus alike; `activated` fires
+        # only on a choice the user made, where `currentIndexChanged` also
+        # fires as the list is refilled.
+        self.entry.lineEdit().editingFinished.connect(self._commit_entry)
         self.entry.activated.connect(lambda _index: self._commit_entry())
         column.addWidget(self.entry)
 
@@ -819,6 +823,15 @@ class ChipEditor(QWidget):
         self.entry.setCurrentText(typed)
 
     # -- editing -----------------------------------------------------------
+
+    def commit_pending(self) -> None:
+        """Turn anything still in the box into a value.
+
+        Called by whoever is about to read this editor, so that a value typed
+        and not confirmed is never quietly dropped. Doing nothing is the normal
+        case, the box being empty most of the time.
+        """
+        self._commit_entry()
 
     def _commit_entry(self) -> None:
         """Turn whatever is in the box into chips, and empty it."""

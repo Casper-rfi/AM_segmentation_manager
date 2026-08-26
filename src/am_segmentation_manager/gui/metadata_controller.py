@@ -20,6 +20,7 @@ from ..metadata import (
     DESCRIPTIVE_FIELDS,
     FIELD_COMMENTS,
     FIELDS,
+    FIELDS_BY_NAME,
     LAMELLA_TYPES,
     TODO_MARKER,
     VALUE_SEPARATOR,
@@ -174,6 +175,11 @@ class MetadataController:
         always appears, since a list that omits what the box is showing invites
         replacing it by accident. Returns an empty list for a field with no
         suggestions, and for one not in :data:`SUGGESTED_FIELDS`.
+
+        A field's declared defaults come last and always appear, so the usual
+        answers are on offer in a collection where nobody has given one yet.
+        That is the whole difference between a default and a vocabulary: it is
+        offered, not required.
         """
         if field not in SUGGESTED_FIELDS:
             return []
@@ -193,6 +199,11 @@ class MetadataController:
             if project is not None else ()
         )
         offered.extend(value for value in current if value not in offered)
+        spec = FIELDS_BY_NAME.get(field)
+        if spec is not None:
+            offered.extend(
+                value for value in spec.defaults if value not in offered
+            )
         return offered
 
     def outstanding(self) -> tuple[str, ...]:

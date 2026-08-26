@@ -54,7 +54,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.gui.widgets.theme import BADGE_STYLES
     from am_segmentation_manager.metadata import (
         DESCRIPTIVE_FIELDS,
-        FIELD_COMMENTS,
+        FIELDS,
         build_experiment_metadata,
     )
     from am_segmentation_manager.models import Project
@@ -2190,9 +2190,22 @@ def test_a_locked_field_still_shows_its_value(metadata_panel):
 
 def test_every_field_says_what_is_expected_in_it(metadata_panel):
     """Hovering either the name or the box has to explain the field."""
-    for field, comment in FIELD_COMMENTS.items():
-        assert metadata_panel.captions[field].toolTip() == comment
-        assert metadata_panel.editors[field].toolTip() == comment
+    for entry in FIELDS:
+        assert metadata_panel.captions[entry.name].toolTip() == entry.guidance
+        assert metadata_panel.editors[entry.name].toolTip() == entry.guidance
+
+
+def test_a_field_holding_several_says_so_without_being_hovered(metadata_panel):
+    """A hover explains a control to someone who already suspects it exists.
+    Which fields take more than one answer has to be readable at a glance, or
+    the ones that do look exactly like the ones that do not."""
+    plural = {"(s)", "media"}
+    for entry in FIELDS:
+        caption = metadata_panel.captions[entry.name].text()
+        reads_plural = any(caption.endswith(ending) for ending in plural)
+        assert reads_plural == entry.multi, caption
+        says_so = "Holds several" in metadata_panel.editors[entry.name].toolTip()
+        assert says_so == entry.multi, entry.name
 
 
 def test_a_value_is_annotated_with_the_file_it_came_from(metadata_panel):
@@ -2252,12 +2265,49 @@ def test_a_value_not_in_the_list_can_still_be_typed(metadata_panel):
     metadata_panel.enable.setChecked(True)
     editor = metadata_panel.editors["sample"]
     editor.entry.setCurrentText("Chlamydomonas")
-    editor.entry.lineEdit().returnPressed.emit()
+    editor.entry.lineEdit().editingFinished.emit()
 
     assert editor.values() == ["HeLa", "Chlamydomonas"]
     assert metadata_panel._edits() == {"sample": "HeLa; Chlamydomonas"}
     # Typing must not grow the list, or a typo would be offered back later.
     assert editor.entry.count() == 2
+
+
+def test_a_value_typed_and_not_confirmed_is_still_saved(metadata_panel):
+    """Regression: the box held what you typed until Return or focus left it,
+    so typing a value and reaching straight for Save discarded it silently --
+    which is every first attempt at using the field."""
+    metadata_panel.enable.setChecked(True)
+    metadata_panel.editors["organisation"].entry.setCurrentText("Diamond")
+
+    assert metadata_panel._edits() == {
+        "organisation": "Rosalind Franklin Institute; Diamond"
+    }
+
+
+def test_leaving_the_box_turns_what_is_in_it_into_a_value(metadata_panel):
+    """So that what was typed is visibly a value before Save is pressed,
+    rather than only becoming one when Save reads the editor."""
+    metadata_panel.enable.setChecked(True)
+    editor = metadata_panel.editors["project"]
+    editor.entry.setCurrentText("Adaptive milling")
+
+    editor.entry.lineEdit().editingFinished.emit()
+
+    assert editor.values() == ["Adaptive milling"]
+    assert editor.entry.currentText() == ""
+
+
+def test_the_usual_answers_are_offered_before_anyone_has_given_one(metadata_panel):
+    """A default is offered, where a vocabulary is required: plunge and high
+    pressure cover almost everything, and jet freezing still has to be typable."""
+    from am_segmentation_manager.metadata import FREEZING_METHODS
+
+    box = metadata_panel.editors["freezing_method"]
+    offered = [box.itemText(row) for row in range(box.count())]
+
+    assert offered == ["", *FREEZING_METHODS]
+    assert box.isEditable(), "an unusual method is typed, not refused"
 
 
 def test_a_chip_can_be_taken_off_again(metadata_panel):
@@ -2457,7 +2507,7 @@ def test_typing_several_values_at_once_makes_several_chips(qt_app):
     """Pasting a separated line is how anyone would try it first."""
     editor = ChipEditor()
     editor.entry.setCurrentText("infected; differentiated")
-    editor.entry.lineEdit().returnPressed.emit()
+    editor.entry.lineEdit().editingFinished.emit()
 
     assert editor.values() == ["infected", "differentiated"]
     assert editor.entry.currentText() == "", "the box empties into the chips"
@@ -2470,7 +2520,7 @@ def test_a_value_already_there_is_not_added_twice(qt_app):
     editor.changed.connect(lambda: reported.append(1))
 
     editor.entry.setCurrentText("HeLa")
-    editor.entry.lineEdit().returnPressed.emit()
+    editor.entry.lineEdit().editingFinished.emit()
 
     assert editor.values() == ["HeLa"]
     assert reported == [], "nothing changed, so nothing is reported"

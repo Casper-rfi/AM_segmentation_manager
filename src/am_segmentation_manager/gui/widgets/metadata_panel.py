@@ -295,7 +295,7 @@ class MetadataPanel(QWidget):
             note = QLabel("")
             caption = QLabel(entry.label)
             for widget in (caption, editor):
-                widget.setToolTip(entry.comment)
+                widget.setToolTip(entry.guidance)
 
             row = QHBoxLayout()
             row.addWidget(editor, stretch=1)
@@ -395,7 +395,14 @@ class MetadataPanel(QWidget):
         Only differences are sent, so saving does not rewrite fields nobody
         touched -- and an empty box means "remove this", which is a real
         operation distinct from leaving it alone.
+
+        Anything half-typed becomes a value first. A chip editor holds its box
+        until the value is confirmed, and someone who types one and reaches
+        straight for Save means it.
         """
+        for editor in self.editors.values():
+            if isinstance(editor, ChipEditor):
+                editor.commit_pending()
         current = self.controller.values()
         edits: dict[str, str | None] = {}
         for field, editor in self.editors.items():

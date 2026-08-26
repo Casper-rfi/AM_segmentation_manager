@@ -51,6 +51,12 @@ METHOD_LAMELLA_TYPES: dict[str, str] = {
 #: Accepted values for ``lamella_type``.
 LAMELLA_TYPES: tuple[str, ...] = ("cells-on-grid", "waffle", "lift-out", "other")
 
+#: The two freezing methods that cover almost every sample here, offered
+#: whether or not a project has used one yet. Not a vocabulary: jet freezing
+#: and self-pressurised freezing exist, and refusing one would be worse than
+#: tolerating two spellings of the usual two.
+FREEZING_METHODS: tuple[str, ...] = ("Plunge freezing", "High pressure freezing")
+
 #: What kind of value a field holds. Text is the default. A number is validated
 #: as one when it is entered and carried as a float, so a value that is not one
 #: is refused at the point somebody can still fix it rather than deposited in a
@@ -198,6 +204,10 @@ class ProjectField:
             leaves every file already written valid.
         choices: The values accepted, or empty for free text. A field with a
             vocabulary is edited by picking from it and rejects anything else.
+        defaults: Values always offered, whether or not a project uses one yet.
+            For a field with a handful of usual answers and a long tail --
+            unlike *choices*, anything else is still accepted, so an unusual
+            one is typed rather than refused.
         suggested: Whether the editor offers the values other projects already
             use. For a field whose value repeats across projects, which is how
             a collection ends up with two spellings of one sample.
@@ -214,6 +224,7 @@ class ProjectField:
     kind: str = TEXT
     multi: bool = False
     choices: tuple[str, ...] = ()
+    defaults: tuple[str, ...] = ()
     suggested: bool = False
     defaultable: bool = True
     breakdown_label: str | None = None
@@ -222,6 +233,18 @@ class ProjectField:
     def breakdown_name(self) -> str:
         """Return the name a command line takes to group by this field."""
         return self.name.replace("_", "-")
+
+    @property
+    def guidance(self) -> str:
+        """Return the comment, saying as well whether the field holds several.
+
+        Appended rather than written into each comment: a field that becomes
+        multi-valued should start saying so without anyone remembering to edit
+        its line.
+        """
+        if not self.multi:
+            return self.comment
+        return f"{self.comment}. Holds several -- add them one at a time"
 
 
 #: The descriptive fields, in the order they are written to a template.
@@ -238,7 +261,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "organisation",
-        "Organisation",
+        "Organisation(s)",
         "Organisation that acquired the data",
         multi=True,
         suggested=True,
@@ -246,7 +269,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "project",
-        "Project",
+        "Project(s)",
         "Name of the wider project this belongs to",
         multi=True,
         suggested=True,
@@ -254,7 +277,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "user",
-        "User",
+        "User(s)",
         "Who acquired the data",
         multi=True,
         suggested=True,
@@ -262,7 +285,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "sample",
-        "Sample",
+        "Sample(s)",
         "Cell type or organism",
         multi=True,
         suggested=True,
@@ -271,7 +294,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "sample_state",
-        "Sample state",
+        "Sample state(s)",
         "What was done to the sample, e.g. infected, differentiated",
         multi=True,
         suggested=True,
@@ -280,7 +303,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "sample_medium",
-        "Sample medium",
+        "Sample media",
         "What the sample was in, e.g. culture medium, cryoprotectant, fiducials",
         multi=True,
         suggested=True,
@@ -290,7 +313,8 @@ FIELDS: tuple[ProjectField, ...] = (
     ProjectField(
         "freezing_method",
         "Freezing method",
-        "How the sample was vitrified, e.g. plunge-frozen",
+        "How the sample was vitrified",
+        defaults=FREEZING_METHODS,
         suggested=True,
         breakdown_label="freezing method",
     ),
@@ -312,7 +336,9 @@ FIELDS: tuple[ProjectField, ...] = (
     ),
     ProjectField(
         "gis_deposition_time_s",
-        "GIS deposition time (s)",
+        # Spelled out, where the breakdown heading keeps the symbol: beside
+        # "Project(s)" a bracketed "(s)" reads as a plural, not as seconds.
+        "GIS deposition time (seconds)",
         "Seconds of GIS deposition, as a number",
         kind=NUMBER,
         breakdown_label="GIS deposition time (s)",

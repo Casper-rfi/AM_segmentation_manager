@@ -244,7 +244,9 @@ appending to it.
   six modules, and the four places that named `lamella_type` to find the one field with a
   vocabulary now ask the field instead. A field with a `breakdown_label` gets its count, its
   `--by` selector and its Export filter row without `aggregate.py` naming it, offered in the
-  order the Add data tab asks for them.
+  order the Add data tab asks for them. `defaults` are the usual answers, offered where
+  `choices` would require: two freezing methods cover almost every sample, and jet freezing
+  still has to be typable.
 - **A value is the type its field says, from the moment it is typed.** One
   `format_field_value` renders every one of them back, because the editor decides whether you
   edited a field by comparing what it shows against the resolved value: a deposition time shown
@@ -460,18 +462,16 @@ appending to it.
 
 ## Display
 
-- **A window that has not been drawn cannot say it is working.** `show()` only asks for a
-  paint; nothing reaches the screen until `exec()` starts delivering events, so a startup scan
-  run between the two gives seconds of blank grey indistinguishable from a hang — it is queued
-  at zero delay instead. Where the interface thread does have to block, the line saying so is
-  `repaint`ed rather than merely set: an ordinary `setText` reaches the screen only after the
-  work it announces has finished, and `repaint` draws one widget synchronously without the
-  re-entrancy hazard `BusyDialog` exists to avoid. Anything longer goes to `gui/worker.py`
-  behind that dialog, which opens indeterminate and becomes a count as soon as the operation
-  reports — one `on_progress(done, total)` contract and one `progressed` signal connected once
-  for the whole window, so giving an operation a counter is a callback in its loop rather than
-  a mechanism. Only the applying run counts, never the preview, which would fill a bar
-  instantly and describe the wrong run.
+- **A window that has not been drawn cannot say it is working.** A startup scan run before the
+  event loop gives seconds of blank grey indistinguishable from a hang, which is why it is
+  queued with the activation below. Where the interface thread does have to block, the line
+  saying so is `repaint`ed rather than merely set: an ordinary `setText` reaches the screen only
+  after the work it announces has finished. Anything longer goes to `gui/worker.py` behind the
+  busy dialog, which opens indeterminate and becomes a count as soon as the operation reports —
+  one `on_progress(done, total)` contract and one `progressed` signal connected once for the
+  whole window, so giving an operation a counter is a callback in its loop rather than a
+  mechanism. Only the applying run counts, never the preview, which would fill a bar instantly
+  and describe the wrong run.
 - **One stylesheet, and it beats the palette.** `theme.py` sets the Fusion style, a palette and
   a short stylesheet; nothing else picks a chrome colour. Fusion rather than the platform's
   style because the two bindings draw the same widgets differently. Where a rule and the palette
@@ -509,6 +509,11 @@ appending to it.
   height from its real width on every resize. Its layout's minimum width is zero and its hint is
   one unwrapped row, which must differ: made equal, the minimum is a floor and the pane could
   never be narrower than the longest value anybody typed.
+- **An editor that collects values commits what is in its box before anyone reads it.** A chip
+  editor turns typed text into a value on Return, on a pick, and on losing focus — and `_edits`
+  asks it to anyway. Held until confirmed, a value typed by someone who then reaches straight
+  for Save is discarded without a word, which is what every first attempt at the field looks
+  like.
 - **F1 is an application shortcut, and the list closes only when it is the window in front.**
   A window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
   parented `QDialog` is one — so the key that opens the shortcut list could not close it again.
