@@ -998,7 +998,12 @@ class ExportPanel(QWidget):
 
         if not other:
             counts = self.controller.breakdown(name)
-            return format_counts(counts, f"Images by {row}")
+            return format_counts(
+                counts,
+                f"Images by {row}",
+                total=len(self.controller.selected_records()),
+                multi=breakdowns[name].multi,
+            )
 
         column = breakdowns[other].label
         table = self.controller.cross_tabulation(name, other)
@@ -1009,4 +1014,5 @@ class ExportPanel(QWidget):
             title=f"Images by {row} and {column}",
             row_order=breakdowns[name].order,
             column_order=breakdowns[other].order,
+            multi=breakdowns[name].multi or breakdowns[other].multi,
         )

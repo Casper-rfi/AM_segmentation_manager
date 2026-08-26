@@ -1214,3 +1214,58 @@ def test_measuring_leaves_nothing_for_an_export_to_read(tmp_path: Path, monkeypa
     controller.export_training(tmp_path / "out")
 
     assert opened == []
+
+
+# ---------------------------------------------------------------------------
+# Filtering on a property an image has several of
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def several(tmp_path: Path) -> ExportController:
+    """A scan whose project holds two organisations and two sample states."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    project = next(tmp_path.rglob("experiment.yaml")).parent
+    (project / "AM_metadata.yaml").write_text(
+        "metadata:\n"
+        "  organisation: [RFI, Diamond]\n"
+        "  sample_state: [infected, differentiated]\n",
+        encoding="utf-8",
+    )
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    return controller
+
+
+def test_a_filter_offers_each_value_rather_than_the_set(several: ExportController):
+    """"Diamond; RFI" as a single entry could not be used to find every project
+    either of them touched, which is the point of holding them apart."""
+    assert several.choice_values("organisation") == ["Diamond", "RFI"]
+
+
+def test_filtering_on_one_value_keeps_images_holding_it_among_others(
+    several: ExportController,
+):
+    """An export narrowed to infected samples wants every image of one, not
+    only those of samples that are nothing else."""
+    everything = several.preview().matched
+
+    several.set_choice_filter("sample-state", ["infected"])
+
+    assert several.preview().matched == everything
+    assert everything > 0
+
+
+def test_filtering_on_a_value_nothing_holds_keeps_nothing(several: ExportController):
+    several.set_choice_filter("organisation", ["EMBL"])
+
+    assert several.preview().matched == 0
+
+
+def test_the_breakdown_counts_an_image_under_each_of_its_values(
+    several: ExportController,
+):
+    counts = several.breakdown("organisation")
+
+    assert counts == {"Diamond": 4, "RFI": 4}
+    assert sum(counts.values()) > several.preview().matched

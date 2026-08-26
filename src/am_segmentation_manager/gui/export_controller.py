@@ -26,6 +26,7 @@ from ..aggregate import (
     count_by,
     cross_tabulate,
     grouped_breakdowns,
+    groups_of,
     project_lookup,
     resolve_breakdown,
 )
@@ -626,7 +627,17 @@ class ExportController:
         if chosen:
             for name, key in zip(chosen, self._keys(list(chosen))):
                 allowed = chosen[name]
-                kept = [record for record in kept if str(key(record)) in allowed]
+                multi = self.breakdowns[name].multi
+                # Any of them, for a property a record has several of: an
+                # export narrowed to infected samples wants every image of one,
+                # not only those of samples that are nothing else.
+                kept = [
+                    record for record in kept
+                    if any(
+                        str(group) in allowed
+                        for group in groups_of(key, record, multi=multi)
+                    )
+                ]
         if self.filters.conditions == "primary":
             kept = keep_one_condition_per_scene(kept)
         return kept
@@ -882,8 +893,9 @@ class ExportController:
         of them does.
         """
         (key,) = self._keys([name])
+        entry = self.breakdowns[name]
         return count_by(
-            self.selected_records(), key, self.breakdowns[name].order
+            self.selected_records(), key, entry.order, multi=entry.multi
         )
 
     def cross_tabulation(self, row: str, column: str) -> dict:
@@ -894,7 +906,11 @@ class ExportController:
         and, more usefully, which combinations have nothing in them at all.
         """
         row_key, column_key = self._keys([row, column])
-        return cross_tabulate(self.selected_records(), row_key, column_key)
+        return cross_tabulate(
+            self.selected_records(), row_key, column_key,
+            row_multi=self.breakdowns[row].multi,
+            column_multi=self.breakdowns[column].multi,
+        )
 
     def filterable_breakdowns(self) -> list[tuple[str, str]]:
         """Return the ``(name, label)`` of every breakdown offered as a filter.
@@ -959,8 +975,14 @@ class ExportController:
         """
         self._require_filter(name)
         (key,) = self._keys([name])
+        multi = self.breakdowns[name].multi
+        # Each value on its own rather than the set a record holds: a filter
+        # offering "Diamond; RFI" as one entry could not be used to find every
+        # project either of them touched, which is the point of the split.
         values = {
-            str(key(record)) for record in self.selected_records(ignoring=name)
+            str(group)
+            for record in self.selected_records(ignoring=name)
+            for group in groups_of(key, record, multi=multi)
         }
         return sorted(
             values | set(self.filters.choices.get(name, ())), key=_sortable

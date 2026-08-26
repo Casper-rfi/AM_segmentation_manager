@@ -331,6 +331,16 @@ appending to it.
 
 ## Counting and export
 
+- **A record can be in more than one group, and the table says so.** A property an image has
+  several of — two organisations, a sample both infected and differentiated — counts the image
+  under each. The alternative, a bucket per combination, answers "how many images are of
+  infected samples" with nothing, which is the question holding them apart exists for. The rows
+  then add to more than the images counted, so the percentages stay a share of the *images* and
+  a line under the title says why; a column adding past 100 reads as an arithmetic error
+  otherwise. A filter matches any of a record's values, and offers each on its own. Which kind a
+  key is comes from `Breakdown.multi`, off the field table, never from what it returned; and
+  `groups_of` is the one place either kind is read, so counting, cross-tabulating and filtering
+  cannot reach different conclusions.
 - **A filter and a breakdown are one declaration.** The same key function used two ways — group
   by it, or keep the records whose group was chosen — so the filter lists come from `BREAKDOWNS`
   rather than a second table, and cannot disagree with it about what a value *is*. Two

@@ -1232,17 +1232,28 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             return 2
 
         if len(keys) == 1:
-            counts = count_by(records, keys[0], breakdowns[chosen[0]].order)
-            for line in format_counts(counts, f"Images per {chosen[0]}"):
+            entry = breakdowns[chosen[0]]
+            counts = count_by(records, keys[0], entry.order, multi=entry.multi)
+            for line in format_counts(
+                counts,
+                f"Images per {chosen[0]}",
+                total=len(records),
+                multi=entry.multi,
+            ):
                 print(line)
             rows = [(str(key), count) for key, count in counts.items()]
             header = [chosen[0], "images"]
         else:
-            table = cross_tabulate(records, keys[0], keys[1])
+            table = cross_tabulate(
+                records, keys[0], keys[1],
+                row_multi=breakdowns[chosen[0]].multi,
+                column_multi=breakdowns[chosen[1]].multi,
+            )
             for line in format_cross_tabulation(
                 table, chosen[0], chosen[1],
                 row_order=breakdowns[chosen[0]].order,
                 column_order=breakdowns[chosen[1]].order,
+                multi=breakdowns[chosen[0]].multi or breakdowns[chosen[1]].multi,
             ):
                 print(line)
             rows = [(str(a), str(b), count) for (a, b), count in table.items()]

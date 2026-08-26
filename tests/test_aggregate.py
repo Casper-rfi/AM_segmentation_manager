@@ -144,7 +144,7 @@ def make_project(name: str, key: str, sample: str | None, records: list) -> Proj
         name=name,
         path=Path(key),
         relative_path=key,
-        experiment_metadata=ExperimentMetadata(sample=sample),
+        experiment_metadata=ExperimentMetadata(sample=(sample,) if sample else ()),
         lamellae=[
             Lamella(
                 name="01-lam", path=Path(key) / "01-lam",
@@ -916,3 +916,99 @@ def test_cli_refuses_metadata_filters_without_headers(tmp_path: Path):
         "export-metadata-csv", str(tmp_path), *SCOPE,
         "--no-headers", "--microscope", "Arctis", "-o", str(tmp_path / "x.csv"),
     ]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Properties an image has more than one of
+# ---------------------------------------------------------------------------
+
+def _with_metadata(key: str, records: list, **fields):
+    from am_segmentation_manager.metadata import ExperimentMetadata
+
+    project = make_project(key, key, None, records)
+    object.__setattr__(project, "experiment_metadata", ExperimentMetadata(**fields))
+    return project
+
+
+def test_an_image_is_counted_under_every_value_its_project_holds():
+    """A bucket per combination would answer "how many images are of infected
+    samples" with nothing, which is the question the split exists for."""
+    both, one = record("a"), record("b")
+    object.__setattr__(both, "image_path", Path("one/sem/a.tif"))
+    object.__setattr__(one, "image_path", Path("two/sem/b.tif"))
+    lookup = ag.project_lookup([
+        _with_metadata("one", [both], sample_state=("infected", "differentiated")),
+        _with_metadata("two", [one], sample_state=("infected",)),
+    ])
+
+    counts = ag.count_by(
+        [both, one], ag.by_project_field("sample_state", multi=True)(lookup), multi=True
+    )
+
+    assert counts == {"infected": 2, "differentiated": 1}
+    assert sum(counts.values()) > 2, "the rows add to more than the images"
+
+
+def test_a_project_holding_no_values_still_lands_somewhere():
+    """An empty tuple returning no groups at all would drop the image out of
+    the table rather than reporting it as undescribed."""
+    only = record("a")
+    lookup = ag.project_lookup([_with_metadata("p", [only], sample_state=())])
+
+    counts = ag.count_by(
+        [only], ag.by_project_field("sample_state", multi=True)(lookup), multi=True
+    )
+
+    assert counts == {ag.MISSING: 1}
+
+
+def test_a_cross_tabulation_expands_both_axes():
+    both = record("a")
+    object.__setattr__(both, "image_path", Path("one/sem/a.tif"))
+    lookup = ag.project_lookup([
+        _with_metadata(
+            "one", [both],
+            organisation=("RFI", "Diamond"), sample_state=("infected", "differentiated"),
+        )
+    ])
+    rows = ag.by_project_field("organisation", multi=True)(lookup)
+    columns = ag.by_project_field("sample_state", multi=True)(lookup)
+
+    table = ag.cross_tabulate(
+        [both], rows, columns, row_multi=True, column_multi=True
+    )
+
+    assert table == {
+        ("RFI", "infected"): 1, ("RFI", "differentiated"): 1,
+        ("Diamond", "infected"): 1, ("Diamond", "differentiated"): 1,
+    }
+
+
+def test_the_table_declares_which_breakdowns_hold_several():
+    """Read off the field table, never guessed from what a key returned: a key
+    is free to return a tuple for a reason of its own."""
+    from am_segmentation_manager.metadata import FIELDS
+
+    for entry in FIELDS:
+        if entry.breakdown_label is None:
+            continue
+        assert ag.BREAKDOWNS[entry.breakdown_name].multi == entry.multi, entry.name
+
+
+def test_a_table_whose_rows_outnumber_the_images_says_so():
+    """A percentage column adding to more than 100 reads as an arithmetic
+    error unless the table says why."""
+    counts = {"infected": 2, "differentiated": 1}
+
+    lines = format_counts(counts, "Images per sample state", total=2, multi=True)
+
+    assert "(2 image(s))" in lines[0]
+    assert "counted under each" in lines[1]
+    assert "100.0%" in lines[2], "a share of the images, not of the rows"
+
+
+def test_a_single_valued_table_says_nothing_extra():
+    lines = format_counts({"SEM": 2}, "Images per modality")
+
+    assert len(lines) == 2
+    assert "counted under each" not in "".join(lines)

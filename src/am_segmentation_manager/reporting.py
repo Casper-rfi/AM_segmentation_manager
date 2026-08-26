@@ -288,12 +288,20 @@ def print_survey(
 # ---------------------------------------------------------------------------
 
 def format_counts(
-    counts: dict, title: str, *, total: int | None = None
+    counts: dict, title: str, *, total: int | None = None, multi: bool = False
 ) -> list[str]:
     """Return a one-dimensional breakdown as aligned lines.
 
     A percentage column is included because the question these tables answer is
     usually about balance, and "2386" only answers it next to the total.
+
+    Args:
+        total: What the percentages are a share of, where the rows do not add
+            up to it. Required for a *multi* breakdown, whose rows add up to
+            more than the images counted.
+        multi: Whether an image can appear in more than one row. Said out loud,
+            because a column of percentages adding to more than 100 reads as an
+            arithmetic error otherwise.
     """
     if not counts:
         return [f"{title}: nothing to count"]
@@ -301,6 +309,8 @@ def format_counts(
     total = sum(counts.values()) if total is None else total
     width = max(len(str(key)) for key in counts)
     lines = [f"{title}  ({total} image(s))"]
+    if multi:
+        lines.append("  An image holding several values is counted under each.")
     for key, count in counts.items():
         share = f"{100 * count / total:5.1f}%" if total else "    -"
         lines.append(f"  {str(key):<{width}}  {count:>7}  {share}")
@@ -315,6 +325,7 @@ def format_cross_tabulation(
     title: str | None = None,
     row_order: Sequence = (),
     column_order: Sequence = (),
+    multi: bool = False,
 ) -> list[str]:
     """Return a two-dimensional breakdown as an aligned grid, with margins.
 
@@ -323,6 +334,9 @@ def format_cross_tabulation(
             set was counted. The two titles keep naming the axes either way.
         row_order: Row labels to keep in a declared order, for an axis that is
             a scale rather than a set of names. The column order likewise.
+        multi: Whether either axis holds several values per image. The margins
+            then count an image once per cell it lands in, and a total larger
+            than the collection needs saying rather than working out.
     """
     from .aggregate import totals
 
@@ -339,7 +353,10 @@ def format_cross_tabulation(
     header = f"{row_title:<{row_width}} " + " ".join(
         f"{str(column):>{column_widths[column]}}" for column in columns
     )
-    lines = [heading, header, "-" * len(header)]
+    lines = [heading]
+    if multi:
+        lines.append("An image holding several values is counted in each cell.")
+    lines += [header, "-" * len(header)]
 
     for row in rows:
         cells = " ".join(

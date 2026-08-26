@@ -22,7 +22,7 @@ from .config import SegmentationConfig
 from .image_metadata import ImageMetadata
 from .layout import is_alignment_directory, stage_base_name
 from .metadata import FIELDS as PROJECT_FIELDS
-from .metadata import format_field_value
+from .metadata import field_values
 from .models import ImageRecord, Project
 from .operations.label_measure import (
     EMPTY,
@@ -48,8 +48,22 @@ MISSING = "(not recorded)"
 #: for and what this one exists to avoid.
 LAMELLA_ROOT = "(lamella directory)"
 
-#: A function from a record to the group it belongs in.
+#: A function from a record to the group it belongs in -- or, for a breakdown
+#: declared ``multi``, to the tuple of every group it belongs in.
 KeyFunction = Callable[[ImageRecord], Hashable]
+
+
+def groups_of(
+    key: KeyFunction, record: ImageRecord, *, multi: bool
+) -> tuple[Hashable, ...]:
+    """Return every group *record* belongs in under *key*.
+
+    The one place either kind of key is read, so counting, cross-tabulating and
+    filtering cannot come to different conclusions about what a record is in.
+    Whether a key returns one group or several is declared by
+    ``Breakdown.multi``, never guessed from what it returned.
+    """
+    return key(record) if multi else (key(record),)
 
 
 def _present(value: object) -> Hashable:
@@ -72,6 +86,8 @@ def count_by(
     records: Iterable[ImageRecord],
     key: KeyFunction,
     order: Sequence[Hashable] = (),
+    *,
+    multi: bool = False,
 ) -> dict[Hashable, int]:
     """Return how many records fall into each group.
 
@@ -82,8 +98,15 @@ def count_by(
         order: Group names to keep in a declared order instead, largest-first
             being wrong for a scale: bins of increasing area shuffled by
             population no longer read as a distribution.
+        multi: Whether *key* returns every group a record is in rather than
+            one, from ``Breakdown.multi``. The counts then sum to more than the
+            records counted: an image of a sample that is both infected and
+            differentiated is one of each, and the alternative -- a bucket per
+            combination -- answers "how many are infected" with nothing.
     """
-    counts = Counter(key(record) for record in records)
+    counts = Counter(
+        group for record in records for group in groups_of(key, record, multi=multi)
+    )
     if not order:
         return dict(sorted(counts.items(), key=lambda item: (-item[1], str(item[0]))))
     ranked = _ranked(order)
@@ -91,15 +114,29 @@ def count_by(
 
 
 def cross_tabulate(
-    records: Iterable[ImageRecord], row: KeyFunction, column: KeyFunction
+    records: Iterable[ImageRecord],
+    row: KeyFunction,
+    column: KeyFunction,
+    *,
+    row_multi: bool = False,
+    column_multi: bool = False,
 ) -> dict[tuple[Hashable, Hashable], int]:
     """Return counts for each ``(row, column)`` pair.
 
     This is what "is the training set balanced" usually means: not how many
     Arctis images there are, but how many *corrected FIB* images at 30 kV there
     are on each instrument.
+
+    An axis that holds several values puts a record in every cell it belongs
+    to, on the same reasoning as :func:`count_by`: one image of an infected,
+    differentiated sample is one infected image and one differentiated one.
     """
-    counts = Counter((row(record), column(record)) for record in records)
+    counts = Counter(
+        (row_group, column_group)
+        for record in records
+        for row_group in groups_of(row, record, multi=row_multi)
+        for column_group in groups_of(column, record, multi=column_multi)
+    )
     return dict(sorted(counts.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))))
 
 
@@ -490,20 +527,25 @@ def project_lookup(projects: Iterable[Project]) -> dict[Path, Project]:
     return lookup
 
 
-def _project_metadata_key(lookup: Mapping[Path, Project], attribute: str) -> KeyFunction:
+def _project_metadata_key(
+    lookup: Mapping[Path, Project], attribute: str, *, multi: bool = False
+) -> KeyFunction:
     def key(record: ImageRecord) -> Hashable:
         project = lookup.get(record.image_path)
         metadata = project.experiment_metadata if project is not None else None
         value = getattr(metadata, attribute) if metadata is not None else None
-        # Formatted rather than taken as it is: a group is named by its value,
-        # and a deposition time of 30 seconds heading a column as "30.0" is one
-        # nobody typed. The Export filter matches on the same string.
-        return _present(format_field_value(value))
+        # Each value formatted rather than taken as it is: a group is named by
+        # its value, and a deposition time of 30 seconds heading a column as
+        # "30.0" is one nobody typed. The Export filter matches the same string.
+        groups = tuple(_present(text) for text in field_values(value)) or (MISSING,)
+        return groups if multi else groups[0]
 
     return key
 
 
-def by_project_field(name: str) -> Callable[[Mapping[Path, Project]], KeyFunction]:
+def by_project_field(
+    name: str, *, multi: bool = False
+) -> Callable[[Mapping[Path, Project]], KeyFunction]:
     """Return the factory grouping records by the project metadata field *name*.
 
     One function for every described field rather than one per field: which
@@ -511,10 +553,14 @@ def by_project_field(name: str) -> Callable[[Mapping[Path, Project]], KeyFunctio
     and a breakdown written out per field is a breakdown a new field does not
     get. The outer call names the field and the inner takes the project lookup,
     which is the shape a ``project`` breakdown is built from.
+
+    Args:
+        multi: Whether the field holds several values, in which case the key
+            returns every one of them and a record is counted under each.
     """
 
     def factory(lookup: Mapping[Path, Project]) -> KeyFunction:
-        return _project_metadata_key(lookup, name)
+        return _project_metadata_key(lookup, name, multi=multi)
 
     return factory
 
@@ -630,6 +676,11 @@ class Breakdown:
             is where the value comes from. Usually the same as *kind* and
             defaults to it; a lamella needs the project lookup to be *named*
             but is not project metadata, which is where the two come apart.
+        multi: Whether a record can be in more than one of this breakdown's
+            groups, its key returning every group rather than one. The counts
+            then sum to more than the records counted, which is a real answer
+            to a real question and has to be said out loud wherever they are
+            shown. Declared here rather than guessed from what a key returns.
     """
 
     kind: str
@@ -637,6 +688,7 @@ class Breakdown:
     label: str
     order: tuple[Hashable, ...] = ()
     group: str = ""
+    multi: bool = False
 
     def __post_init__(self) -> None:
         if not self.group:
@@ -650,7 +702,10 @@ class Breakdown:
 #: they are offered in the order the Add data tab asks for them.
 PROJECT_BREAKDOWNS: dict[str, Breakdown] = {
     entry.breakdown_name: Breakdown(
-        "project", by_project_field(entry.name), entry.breakdown_label
+        "project",
+        by_project_field(entry.name, multi=entry.multi),
+        entry.breakdown_label,
+        multi=entry.multi,
     )
     for entry in PROJECT_FIELDS
     if entry.breakdown_label
