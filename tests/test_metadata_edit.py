@@ -324,3 +324,38 @@ def test_cli_reports_no_match_rather_than_doing_nothing_quietly(tmp_path: Path):
     root = collection(tmp_path)
 
     assert main(["edit-metadata", str(root), "--project", "nope", "--set", "sample=HeLa"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Numeric fields
+# ---------------------------------------------------------------------------
+
+def test_a_numeric_field_rejects_something_that_is_not_a_number(project: Path):
+    """Caught where somebody can still fix it, rather than in the CSV that
+    was deposited in a repository."""
+    with pytest.raises(MetadataValidationError, match="not a number"):
+        update_project_metadata(project, {"gis_deposition_time_s": "3o"})
+
+
+def test_a_numeric_field_is_written_as_a_number(project: Path):
+    """Quoted, it would read back as a string that merely looks like one, and
+    the file would not say what it holds."""
+    update_project_metadata(project, {"gis_deposition_time_s": "30"})
+
+    text = (project / "AM_metadata.yaml").read_text(encoding="utf-8")
+    assert "gis_deposition_time_s: 30" in text
+    assert block(project)["metadata"]["gis_deposition_time_s"] == 30
+
+
+def test_a_numeric_field_keeps_a_fraction(project: Path):
+    update_project_metadata(project, {"gis_deposition_time_s": "2.5"})
+
+    assert block(project)["metadata"]["gis_deposition_time_s"] == 2.5
+
+
+def test_a_numeric_field_can_still_be_marked_outstanding(project: Path):
+    """TODO is no more a number than it is a sample, and marking a field as
+    unfilled must not be the one edit a numeric field refuses."""
+    update_project_metadata(project, {"gis_deposition_time_s": "TODO"})
+
+    assert block(project)["metadata"]["gis_deposition_time_s"] == "TODO"

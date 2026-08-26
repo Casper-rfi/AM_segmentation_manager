@@ -4,5 +4,8 @@ metadata:
     project: Name of project
     user: Name of who acquired the data
     sample: cell type or organism
+    freezing_method: how the sample was vitrified, e.g. plunge-frozen
+    grid_id: identifier of the physical grid this was prepared on
     grid_type: grid the sample was prepared on
+    gis_deposition_time_s: 30
     lamella_type: cells-on-grid OR waffle OR lift-out OR other

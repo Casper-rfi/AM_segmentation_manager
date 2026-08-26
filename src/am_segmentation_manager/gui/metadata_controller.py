@@ -22,6 +22,7 @@ from ..metadata import (
     FIELDS,
     LAMELLA_TYPES,
     TODO_MARKER,
+    format_field_value,
 )
 from ..models import Project
 from ..operations.metadata_edit import (
@@ -130,11 +131,17 @@ class MetadataController:
     # -- reading -----------------------------------------------------------
 
     def values(self) -> dict[str, str]:
-        """Return each field's resolved value, blank where unset."""
+        """Return each field's resolved value as text, blank where unset.
+
+        Through :func:`~am_segmentation_manager.metadata.format_field_value`, so
+        what an editor shows is what saving would compare against: a number read
+        back as ``30.0`` and shown as ``30`` would otherwise register as an edit
+        on every project the user merely looked at.
+        """
         project = self.project
         resolved = project.experiment_metadata if project else None
         return {
-            field: (getattr(resolved, field, None) or "") if resolved else ""
+            field: format_field_value(getattr(resolved, field, None)) if resolved else ""
             for field in DESCRIPTIVE_FIELDS
         }
 

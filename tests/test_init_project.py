@@ -13,6 +13,7 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.io.yaml import read_yaml
+from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS
 from am_segmentation_manager.operations.init_project import (
     init_project,
     init_projects,
@@ -42,10 +43,9 @@ def test_a_template_is_valid_yaml_with_every_field(tmp_path: Path):
     init_project(project)
 
     document = read_yaml(project / "AM_metadata.yaml")
-    assert set(document["metadata"]) == {
-        "description", "organisation", "project", "user", "sample", "grid_type",
-        "lamella_type",
-    }
+    # From the table rather than listed again: a template that quietly stopped
+    # writing a field would leave the one place asking for it silent about it.
+    assert tuple(document["metadata"]) == DESCRIPTIVE_FIELDS
 
 
 def test_derivable_fields_are_filled_in(tmp_path: Path):

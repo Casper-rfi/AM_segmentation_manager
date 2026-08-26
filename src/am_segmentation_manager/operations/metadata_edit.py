@@ -20,6 +20,7 @@ from ..metadata import (
     AM_METADATA_FILENAME,
     DESCRIPTIVE_FIELDS,
     EXPERIMENT_FILENAME,
+    NUMBER,
     TODO_MARKER,
     build_experiment_metadata,
     field_named,
@@ -111,17 +112,36 @@ class MetadataChange:
         return lines
 
 
-def _yaml_scalar(value: str) -> str:
-    """Return *value* quoted as YAML requires, and no more than required.
+def _yaml_scalar(field: str, value: str) -> str:
+    """Return *value* written as YAML would write it for *field*.
 
     Delegated to the dumper rather than guessed: a sample containing a colon,
     a leading ``#``, or the word ``yes`` all need different handling, and
     getting one wrong writes a file that reads back as something else.
+
+    A numeric field is written as a number, so the file says what it holds;
+    quoted, it would read back as a string that happens to look like one. Its
+    placeholder is exempt, ``TODO`` being no more a number than it is a sample.
     """
     import yaml
 
-    dumped = yaml.safe_dump({"k": value}, default_flow_style=False, allow_unicode=True)
+    written: object = value
+    spec = field_named(field)
+    if spec is not None and spec.kind == NUMBER and value != TODO_MARKER:
+        number = float(value)
+        written = int(number) if number.is_integer() else number
+
+    dumped = yaml.safe_dump({"k": written}, default_flow_style=False, allow_unicode=True)
     return dumped.split(":", 1)[1].strip()
+
+
+def _is_number(value: str) -> bool:
+    """Return whether *value* is something a numeric field can hold."""
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _validate(values: Mapping[str, str | None]) -> None:
@@ -142,6 +162,8 @@ def _validate(values: Mapping[str, str | None]) -> None:
             problems.append(
                 f"{field} {value!r} is not one of {', '.join(spec.choices)}"
             )
+        if spec.kind == NUMBER and not _is_number(value):
+            problems.append(f"{field} {value!r} is not a number")
     if problems:
         raise MetadataValidationError(problems)
 
@@ -205,11 +227,11 @@ def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
         if value is None:
             continue  # removal: drop the line
         indent = line[: len(line) - len(line.lstrip())]
-        edited.append(f"{indent}{field}: {_yaml_scalar(value)}")
+        edited.append(f"{indent}{field}: {_yaml_scalar(field, value)}")
 
     # Anything not already in the block is appended to it.
     additions = [
-        f"  {field}: {_yaml_scalar(value)}"
+        f"  {field}: {_yaml_scalar(field, value)}"
         for field, value in remaining.items()
         if value is not None
     ]

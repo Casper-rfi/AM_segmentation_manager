@@ -270,7 +270,7 @@ class MetadataPanel(QWidget):
                 editor.setPlaceholderText("unset")
 
             note = QLabel("")
-            caption = QLabel(entry.name.replace("_", " ").title())
+            caption = QLabel(entry.label)
             for widget in (caption, editor):
                 widget.setToolTip(entry.comment)
 

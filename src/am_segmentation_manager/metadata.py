@@ -51,6 +51,14 @@ METHOD_LAMELLA_TYPES: dict[str, str] = {
 #: Accepted values for ``lamella_type``.
 LAMELLA_TYPES: tuple[str, ...] = ("cells-on-grid", "waffle", "lift-out", "other")
 
+#: What kind of value a field holds. Text is the default. A number is validated
+#: as one when it is entered and carried as a float, so a value that is not one
+#: is refused at the point somebody can still fix it rather than deposited in a
+#: CSV -- and, being a real number, it can be summed and sorted by whoever
+#: receives that file.
+TEXT = "text"
+NUMBER = "number"
+
 
 def merge_metadata(base: dict, override: dict) -> dict:
     """Merge two metadata dictionaries, with `override` taking precedence.
@@ -82,9 +90,16 @@ class ExperimentMetadata:
         project: The name of the wider project the experiment belongs to.
         user: Who acquired the data.
         sample: Cell type or organism.
+        freezing_method: How the sample was vitrified, e.g.
+            ``"plunge-frozen"``. Free text, for the reason ``grid_type`` is.
+        grid_id: Identifier of the physical grid the lamellae were cut from.
+            Several projects may name one grid; nothing here assumes they do
+            not.
         grid_type: The grid the sample was prepared on, e.g.
             ``"Quantifoil R2/2 Cu 200 mesh"``. Free text, material, mesh and
             film combining in more ways than a fixed vocabulary would survive.
+        gis_deposition_time_s: Seconds of GIS deposition. A number, so ``0.0``
+            is a recorded value -- no deposition -- and not the same as unset.
         lamella_type: One of :data:`LAMELLA_TYPES`.
         variants: Human-readable descriptions of imaging-condition variants,
             keyed by the variant string in the image directory name. Variants
@@ -100,7 +115,10 @@ class ExperimentMetadata:
     project: str | None = None
     user: str | None = None
     sample: str | None = None
+    freezing_method: str | None = None
+    grid_id: str | None = None
     grid_type: str | None = None
+    gis_deposition_time_s: float | None = None
     lamella_type: str | None = None
     variants: Mapping[str, str] = field(default_factory=dict)
     sources: Mapping[str, Path] = field(default_factory=dict)
@@ -108,8 +126,12 @@ class ExperimentMetadata:
 
     @property
     def is_empty(self) -> bool:
-        """Return whether no descriptive field has been recorded."""
-        return not any(getattr(self, name) for name in DESCRIPTIVE_FIELDS)
+        """Return whether no descriptive field has been recorded.
+
+        Tested against None rather than for truth: a GIS deposition time of
+        zero seconds is a recorded value, and a falsy one.
+        """
+        return all(getattr(self, name) is None for name in DESCRIPTIVE_FIELDS)
 
     def missing_fields(self) -> tuple[str, ...]:
         """Return the descriptive fields with no value, in declaration order."""
@@ -129,8 +151,13 @@ class ProjectField:
     Attributes:
         name: The key in the ``metadata:`` block and the attribute on
             :class:`ExperimentMetadata`.
+        label: What the field is called in a form. Written out rather than
+            derived from *name*, which turns ``grid_id`` into "Grid Id" and
+            ``gis_deposition_time_s`` into something nobody would write.
         comment: What a person is expected to enter, in one line. Written above
             the field in a generated template and shown as its tooltip.
+        kind: :data:`TEXT` or :data:`NUMBER`. A number is rejected unless it is
+            one, and reaches :class:`ExperimentMetadata` as a float.
         choices: The values accepted, or empty for free text. A field with a
             vocabulary is edited by picking from it and rejects anything else.
         suggested: Whether the editor offers the values other projects already
@@ -144,7 +171,9 @@ class ProjectField:
     """
 
     name: str
+    label: str
     comment: str
+    kind: str = TEXT
     choices: tuple[str, ...] = ()
     suggested: bool = False
     defaultable: bool = True
@@ -164,43 +193,72 @@ class ProjectField:
 FIELDS: tuple[ProjectField, ...] = (
     ProjectField(
         "description",
+        "Description",
         "What this experiment was for",
         defaultable=False,
     ),
     ProjectField(
         "organisation",
+        "Organisation",
         "Organisation that acquired the data",
         suggested=True,
         breakdown_label="organisation",
     ),
     ProjectField(
         "project",
+        "Project",
         "Name of the wider project this belongs to",
         suggested=True,
         breakdown_label="project",
     ),
     ProjectField(
         "user",
+        "User",
         "Who acquired the data",
         suggested=True,
         breakdown_label="user",
     ),
     ProjectField(
         "sample",
+        "Sample",
         "Cell type or organism",
         suggested=True,
         defaultable=False,
         breakdown_label="sample",
     ),
     ProjectField(
+        "freezing_method",
+        "Freezing method",
+        "How the sample was vitrified, e.g. plunge-frozen",
+        suggested=True,
+        breakdown_label="freezing method",
+    ),
+    ProjectField(
+        "grid_id",
+        "Grid ID",
+        "Identifier of the physical grid this was prepared on",
+        suggested=True,
+        defaultable=False,
+        breakdown_label="grid",
+    ),
+    ProjectField(
         "grid_type",
+        "Grid type",
         "Grid the sample was prepared on, e.g. Quantifoil R2/2 Cu 200 mesh",
         suggested=True,
         defaultable=False,
         breakdown_label="grid type",
     ),
     ProjectField(
+        "gis_deposition_time_s",
+        "GIS deposition time (s)",
+        "Seconds of GIS deposition, as a number",
+        kind=NUMBER,
+        breakdown_label="GIS deposition time (s)",
+    ),
+    ProjectField(
         "lamella_type",
+        "Lamella type",
         f"One of: {', '.join(LAMELLA_TYPES)}",
         choices=LAMELLA_TYPES,
         breakdown_label="lamella preparation type",
@@ -243,6 +301,38 @@ def _clean(value: Any) -> str | None:
     return text
 
 
+def parse_field_value(name: str, text: str) -> str | float | None:
+    """Return a cleaned string as the value the field called *name* holds.
+
+    A number that is not one is dropped with a warning rather than kept as
+    text: the attribute is typed, and a value that cannot be summed sitting in
+    a column of ones that can is worse than an admitted gap.
+    """
+    spec = FIELDS_BY_NAME.get(name)
+    if spec is None or spec.kind != NUMBER:
+        return text
+    try:
+        return float(text)
+    except ValueError:
+        logger.warning("%s is %r, which is not a number; ignoring it", name, text)
+        return None
+
+
+def format_field_value(value: object) -> str:
+    """Return a resolved field value as the text that stands for it.
+
+    One formatter for every consumer -- an editor, a CSV cell, the name of a
+    group in a breakdown -- so a value cannot be shown one way and matched
+    another. A whole number loses its decimal point: these are entered by hand,
+    and a deposition time typed as ``30`` should read back as ``30``.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
+
+
 def lamella_type_from_method(method: Any) -> str | None:
     """Return the lamella type implied by Autolamella's ``method`` value."""
     text = _clean(method)
@@ -281,7 +371,7 @@ def build_experiment_metadata(
     experiment = experiment or {}
     am_metadata = am_metadata or {}
 
-    values: dict[str, str] = {}
+    values: dict[str, str | float] = {}
     sources: dict[str, Path] = {}
     todo: set[str] = set()
 
@@ -294,8 +384,11 @@ def build_experiment_metadata(
                 if str(section[name] or "").strip().upper() == TODO_MARKER:
                     todo.add(name)
                 continue
+            value = parse_field_value(name, cleaned)
+            if value is None:
+                continue
             todo.discard(name)
-            values[name] = cleaned
+            values[name] = value
             if path is not None:
                 sources[name] = path
 

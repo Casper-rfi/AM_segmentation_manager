@@ -21,7 +21,12 @@ from am_segmentation_manager.gui.metadata_controller import (
     MetadataValidationError,
 )
 from am_segmentation_manager.image_metadata import ELECTRON, ION, ImageMetadata
-from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, build_experiment_metadata
+from am_segmentation_manager.metadata import (
+    DESCRIPTIVE_FIELDS,
+    FIELDS,
+    NUMBER,
+    build_experiment_metadata,
+)
 from am_segmentation_manager.models import Project
 from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
@@ -825,7 +830,7 @@ def test_the_view_refreshes_after_a_write(metadata: MetadataController):
     assert metadata.values()["sample"] == "HeLa"
     # Two: the sample just set, plus lamella_type derived from the project's
     # experiment.yaml method.
-    assert "2 of 7" in metadata.summary()
+    assert f"2 of {len(DESCRIPTIVE_FIELDS)}" in metadata.summary()
 
 
 def test_planning_writes_nothing(metadata: MetadataController):
@@ -986,12 +991,22 @@ def test_a_summary_names_the_fields_still_wanted():
     assert "missing: description" in controller.project_summaries()[0].describe()
 
 
+def _acceptable(entry) -> str:
+    """Return a value the field *entry* describes will accept.
+
+    Read off the table so a field added with a kind or a vocabulary of its own
+    does not have to be remembered here as well.
+    """
+    if entry.choices:
+        return entry.choices[0]
+    if entry.kind == NUMBER:
+        return "30"
+    return "filled"
+
+
 def test_a_complete_project_is_reported_as_complete(metadata: MetadataController):
     metadata.editing_enabled = True
-    metadata.apply({
-        field: "filled" if field != "lamella_type" else "waffle"
-        for field in DESCRIPTIVE_FIELDS
-    })
+    metadata.apply({entry.name: _acceptable(entry) for entry in FIELDS})
 
     summary = metadata.project_summaries()[0]
     assert summary.is_complete is True

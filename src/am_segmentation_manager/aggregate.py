@@ -22,6 +22,7 @@ from .config import SegmentationConfig
 from .image_metadata import ImageMetadata
 from .layout import is_alignment_directory, stage_base_name
 from .metadata import FIELDS as PROJECT_FIELDS
+from .metadata import format_field_value
 from .models import ImageRecord, Project
 from .operations.label_measure import (
     EMPTY,
@@ -493,7 +494,11 @@ def _project_metadata_key(lookup: Mapping[Path, Project], attribute: str) -> Key
     def key(record: ImageRecord) -> Hashable:
         project = lookup.get(record.image_path)
         metadata = project.experiment_metadata if project is not None else None
-        return _present(getattr(metadata, attribute) if metadata is not None else None)
+        value = getattr(metadata, attribute) if metadata is not None else None
+        # Formatted rather than taken as it is: a group is named by its value,
+        # and a deposition time of 30 seconds heading a column as "30.0" is one
+        # nobody typed. The Export filter matches on the same string.
+        return _present(format_field_value(value))
 
     return key
 

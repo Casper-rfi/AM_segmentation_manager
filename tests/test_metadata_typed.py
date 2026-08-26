@@ -15,6 +15,7 @@ from am_segmentation_manager.metadata import (
     FIELDS,
     ExperimentMetadata,
     build_experiment_metadata,
+    format_field_value,
     lamella_type_from_method,
 )
 from am_segmentation_manager.scanner import Scanner
@@ -274,3 +275,47 @@ def test_a_vocabulary_is_rejected_by_name_rather_than_by_a_named_field():
         _validate({entry.name: entry.choices[0]})
         with pytest.raises(MetadataValidationError, match=entry.name):
             _validate({entry.name: "not-a-real-value"})
+
+
+# ---------------------------------------------------------------------------
+# Numeric fields
+# ---------------------------------------------------------------------------
+
+def test_a_numeric_field_resolves_to_a_number():
+    """Not to the text of one: it is deposited in a CSV beside other numbers,
+    and a column that cannot be summed is worth less than the value in it."""
+    resolved = build_experiment_metadata(
+        {}, {"metadata": {"gis_deposition_time_s": 30}}
+    )
+
+    assert resolved.gis_deposition_time_s == 30.0
+
+
+def test_a_numeric_field_that_is_not_a_number_is_dropped_and_warned(caplog):
+    """Kept as text it would not fit the attribute; kept as zero it would be a
+    deposition time nobody performed."""
+    with caplog.at_level("WARNING"):
+        resolved = build_experiment_metadata(
+            {}, {"metadata": {"gis_deposition_time_s": "3o"}}
+        )
+
+    assert resolved.gis_deposition_time_s is None
+    assert "not a number" in caplog.text
+
+
+def test_zero_is_a_recorded_value_and_not_an_empty_project():
+    """No GIS deposition is a thing that happened, and it is falsy."""
+    resolved = build_experiment_metadata(
+        {}, {"metadata": {"gis_deposition_time_s": 0}}
+    )
+
+    assert resolved.is_empty is False
+    assert "gis_deposition_time_s" not in resolved.missing_fields()
+
+
+def test_a_number_reads_back_as_it_was_typed():
+    """30 shown as "30.0" would register as an edit on every project merely
+    looked at, and would head a breakdown column as a number nobody typed."""
+    assert format_field_value(30.0) == "30"
+    assert format_field_value(2.5) == "2.5"
+    assert format_field_value(None) == ""

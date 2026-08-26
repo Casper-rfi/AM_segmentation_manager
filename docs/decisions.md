@@ -248,6 +248,15 @@ appending to it.
   generated with it: a field with a `breakdown_label` gets its count, its `--by` selector and its
   Export filter row without `aggregate.py` naming it, and they are offered in the order the Add
   data tab asks for them rather than in an order of their own.
+- **A numeric field is a number from the moment it is typed.** `gis_deposition_time_s` is
+  refused unless it parses, written to the YAML unquoted so the file says what it holds, and
+  carried as a float — which makes zero a recorded value, no deposition, and a falsy one, so
+  "is this project described at all" tests against None rather than for truth. One
+  `format_field_value` renders it wherever it is read back, because the editor compares what it
+  shows against the resolved value: shown as `30.0` where `30` was typed, every project merely
+  looked at would report an edit, and the breakdown would head a column with a number nobody
+  wrote. A value that is not a number is dropped with a warning rather than kept as text, a
+  column of sums being worth less than an admitted gap.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of
   four things and a typo is a real error; a grid is a material, a mesh and a film in
   combinations no list would survive, and rejecting a real grid is worse than tolerating two

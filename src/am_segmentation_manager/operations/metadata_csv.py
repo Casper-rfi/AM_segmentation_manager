@@ -18,7 +18,7 @@ from ..config import SegmentationConfig
 from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.path import make_path_relative
-from ..metadata import DESCRIPTIVE_FIELDS
+from ..metadata import DESCRIPTIVE_FIELDS, format_field_value
 from ..models import ImageRecord, Project
 from .csv import find_matching_label
 from .label_io import label_state
@@ -128,7 +128,7 @@ def image_rows(
         resolved = project.experiment_metadata if project is not None else None
         for name in DESCRIPTIVE_FIELDS:
             value = getattr(resolved, name, None) if resolved is not None else None
-            row[image_metadata_column(name)] = "" if value is None else value
+            row[image_metadata_column(name)] = format_field_value(value)
         if project is not None:
             row[PROJECT_IDENTITY_COLUMN] = project.key
 
@@ -216,7 +216,7 @@ def _fill_project(row: dict[str, object], project: Project | None) -> None:
     resolved = project.experiment_metadata if project is not None else None
     for name in DESCRIPTIVE_FIELDS:
         value = getattr(resolved, name, None) if resolved is not None else None
-        row[image_metadata_column(name)] = "" if value is None else value
+        row[image_metadata_column(name)] = format_field_value(value)
     if project is not None:
         row[PROJECT_IDENTITY_COLUMN] = project.key
 
@@ -310,7 +310,7 @@ def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str
         }
         for name in DESCRIPTIVE_FIELDS:
             value = getattr(resolved, name, None) if resolved is not None else None
-            row[name] = "" if value is None else value
+            row[name] = format_field_value(value)
             # Which file supplied it. Bookkeeping-looking, but it is how you
             # answer "why does this project say the sample is X" without
             # opening two YAML files.
