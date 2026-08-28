@@ -146,10 +146,14 @@ appending to it.
   A third pass runs over the whole *project*, because the script-based prototype duplicated across
   lamellae rather than within one — writing a single setup image into eleven of them, which no
   rule scoped to a lamella can see. It keeps the filename-and-time key rather than loosening to
-  time alone: measured over the collection, 2,514 loose images in 301 lamellae, it merges 11 files
-  in 2 groups, every one byte-identical, and time alone would have merged one file more for a key
-  nothing has measured. That one file is a misfiled reference rather than a copy, and leaving it
-  indexed keeps the misfiling visible instead of papering over it.
+  time alone: measured over the collection, 2,514 loose images in 301 lamellae, it merges 10 files,
+  every one byte-identical, and time alone would have merged one file more for a key nothing has
+  measured. That one file is a misfiled reference rather than a copy, and leaving it indexed keeps
+  the misfiling visible instead of papering over it. **It never empties a lamella**: where every
+  image a lamella has is a copy — an abandoned entry holding one setup reference — dropping them
+  would take the directory out of the index and the survey at once, and a duplicate that can be
+  seen beats a directory that cannot. Only the cross-lamella pass can face that; the within-lamella
+  rule keeps the original where the lamella still shows it.
 - **A fixed filename marker is matched to the shape Autolamella writes, not loosely.** Everything
   after `ref_` is a *task* name somebody chose, so a loose marker collides with one.
   `ref_alignment` is matched entire rather than as a prefix — as a prefix it reads a task called

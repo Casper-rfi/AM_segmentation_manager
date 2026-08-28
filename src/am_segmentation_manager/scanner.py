@@ -390,6 +390,15 @@ class Scanner:
 
         The earliest lamella keeps the image, so the copy that survives is the
         one whose lamella actually took it.
+
+        **A lamella is never emptied by this.** Where every image a lamella has
+        is a copy -- an abandoned entry the software created and wrote a setup
+        reference into before the lamella was made again under another name --
+        dropping them would take the lamella out of the index and out of the
+        survey, leaving nothing to say the directory is there at all. A
+        duplicate that can be seen is better than a directory that cannot. The
+        within-lamella rule never faces this: it keeps the original in the same
+        lamella, so that lamella still shows the acquisition.
         """
         seen: set[tuple[str, datetime]] = set()
         copies: set[Path] = set()
@@ -403,6 +412,12 @@ class Scanner:
                         copies.add(record.image_path)
                         continue
                     seen.add(key)
+
+        for lamella in lamellae:
+            records = [record for stage in lamella.stages for record in stage.images]
+            if records and all(record.image_path in copies for record in records):
+                copies.difference_update(record.image_path for record in records)
+
         for lamella in lamellae:
             Scanner._remove_copies(
                 lamella.stages, copies, f"{project_name}/{lamella.name}"

@@ -331,3 +331,37 @@ def test_one_second_shared_by_two_lamellae_needs_the_filename_too(
         lambda: (lambda path: ("FIB", times.get(path))),
     )
     assert len(records(root)) == 2
+
+
+def test_a_lamella_of_nothing_but_copies_keeps_them(tmp_path: Path, monkeypatch):
+    """An abandoned entry must not vanish from the index and the survey both.
+
+    The software writes a setup reference into a lamella, the lamella is made
+    again under another name, and the first directory keeps that one file.
+    Dropping it would leave nothing anywhere to say the directory is there.
+    """
+    root = tmp_path / "AutoLamella-2024-06-28-11-54"
+    root.mkdir(parents=True)
+    (root / "experiment.yaml").write_text("name: bitmap\n", encoding="utf-8")
+
+    times: dict[Path, datetime] = {}
+    lamella = touch(root / "01-set-aphid", "ref_SetupLamella.tif", "ref_ReadyLamella_start_ib.tif")
+    times[lamella / "ref_SetupLamella.tif"] = TAKEN
+    times[lamella / "ref_ReadyLamella_start_ib.tif"] = datetime(2024, 6, 28, 12, 39, 45)
+    abandoned = touch(root / "01-social-osprey", "ref_SetupLamella.tif")
+    times[abandoned / "ref_SetupLamella.tif"] = TAKEN
+
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", times.get(path))),
+    )
+
+    kept = paths_of(root, "ref_SetupLamella.tif")
+    assert sorted(p.parent.name for p in kept) == ["01-set-aphid", "01-social-osprey"]
+
+
+def test_a_copy_is_still_dropped_where_the_lamella_keeps_something(
+    across_lamellae: Path,
+):
+    """The guard is about emptying a lamella, not about sparing every copy."""
+    assert len(paths_of(across_lamellae, "ref_SetupLamella.tif")) == 1
