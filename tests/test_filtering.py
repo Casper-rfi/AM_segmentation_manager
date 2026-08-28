@@ -40,6 +40,25 @@ def test_extract_image_number():
     assert extract_image_number("unknown_filename.tif") is None
 
 
+def test_extract_image_number_reads_the_2023_beam_form():
+    """``Image_<beam>_<number>``: both beams of one acquisition give one number."""
+    assert extract_image_number("Image_1_000.tif") == 0
+    assert extract_image_number("Image_2_000.tif") == 0
+    assert extract_image_number("Image_1_044.tif") == 44
+
+
+def test_extract_image_number_leaves_the_other_naming_eras_alone():
+    """One number, or a non-numeric tail, is not the beam form and carries none."""
+    assert extract_image_number("Image_000.tif") is None
+    assert extract_image_number("Image_000_TLD.tif") is None
+    assert extract_image_number("lamella02_01.tif") is None
+    # A timestamp must not be read as a beam and an acquisition number.
+    assert extract_image_number("Image_2023_0811.tif") is None
+    # Plot naming stays unmatched; see docs/04_future_work.md.
+    assert extract_image_number("GLM_Plot_0.png") is None
+    assert extract_image_number("Image_000.tif_00.png") is None
+
+
 def test_matches_project():
     proj = Project(name="MyProject", path=Path("/fake/path"))
     proj.number = "001"

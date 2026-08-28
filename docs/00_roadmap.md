@@ -19,8 +19,8 @@ same work for scripting and testing. Predictions need the second environment
 
 In no particular order.
 
-**Importing existing labels** into the project hierarchy, once the source structures have been
-looked at. [`04_future_work.md`](04_future_work.md) §4.
+**Matching summary plots** to the frames they describe — no plot reaches a frame in any project
+today. [`04_future_work.md`](04_future_work.md) §5.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
 editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built

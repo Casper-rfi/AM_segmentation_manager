@@ -170,6 +170,26 @@ def test_unnumbered_images_come_last_ordered_by_name():
     ]
 
 
+def test_the_2023_beam_form_pairs_across_its_differing_filenames():
+    """``Image_1_000`` and ``Image_2_000`` are one acquisition, two beams.
+
+    The names differ, so the stem fallback would put them in separate frames
+    and leave each showing one modality and a blank where the other belongs.
+    """
+    stage = make_stage("lam_02", "01", [
+        make_record("Image_1_000.tif", "SEM"),
+        make_record("Image_2_000.tif", "FIB"),
+        make_record("Image_1_001.tif", "SEM"),
+        make_record("Image_2_001.tif", "FIB"),
+    ])
+
+    frames = build_lamella_frames(make_lamella([stage]))
+
+    assert [frame.image_number for frame in frames] == [0, 1]
+    assert all(frame.record("SEM") and frame.record("FIB") for frame in frames)
+    assert frames[0].record("FIB").image_path.name == "Image_2_000.tif"
+
+
 def test_unnumbered_sem_and_fib_pair_by_filename_stem():
     stage = make_stage("adaptive_polish_1", "01", [
         make_record("centring.tif", "SEM"),

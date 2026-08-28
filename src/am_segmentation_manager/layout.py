@@ -243,22 +243,36 @@ def is_predictions_directory(name: str) -> bool:
     return lowered.endswith(PREDICTIONS_SUFFIX) or lowered in LEGACY_PREDICTION_DIRECTORIES
 
 
+#: The filename forms carrying an acquisition number, tried in order; the
+#: number is the group named ``number``. In ``Image_1_013`` the middle digit is
+#: the beam -- 1 electron, 2 ion -- which the image directory and the header
+#: both state, so only the trailing number is read. That form is anchored and
+#: takes a single beam digit, so a timestamp such as ``Image_2023_0811`` does
+#: not read as an acquisition number.
+_IMAGE_NUMBER_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"AP_img_(?P<number>\d+)", re.IGNORECASE),
+    re.compile(r"img_(?P<number>\d+)", re.IGNORECASE),
+    re.compile(r"^image_\d_(?P<number>\d+)", re.IGNORECASE),
+)
+
+
 def extract_image_number(image_name: str) -> int | None:
     """Return the acquisition number an Autolamella filename carries.
 
-    Recognises ``AP_img_013`` and ``img_013``. Here with the rest of the naming
-    conventions rather than beside the filters that first needed it: it is what
-    matches an SEM image to the FIB image of the same acquisition, which
+    Recognises ``AP_img_013``, ``img_013`` and ``Image_1_013``. Here with the
+    rest of the naming conventions rather than beside the filters that first
+    needed it: it is what matches an SEM image to the FIB image of the same
+    acquisition, which
     :func:`~am_segmentation_manager.frames.group_by_acquisition` relies on, and
     that has to sit below the operations layer.
 
     Returns:
         The number, or None where the name carries none.
     """
-    for pattern in (r"AP_img_(\d+)", r"img_(\d+)"):
-        match = re.search(pattern, image_name, re.IGNORECASE)
+    for pattern in _IMAGE_NUMBER_PATTERNS:
+        match = pattern.search(image_name)
         if match is not None:
-            return int(match.group(1))
+            return int(match.group("number"))
     return None
 
 
