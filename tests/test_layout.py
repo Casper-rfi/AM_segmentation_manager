@@ -358,6 +358,9 @@ ALIGNMENT_NAMES = [
     "ref_Rough 1_initial_alignment_1750966458_7226627_ib.tif",
     "Polishing_alignment_reference_10-55-27_ib.tif",
     "Rough-Milling_alignment_reference_10-40-00_ib.tif",
+    # What a milling task aligned against, three to a task before it starts.
+    "alignment_target_MillPolishingCut_00_ib.tif",
+    "alignment_target_MillRoughCut_02_ib.tif",
 ]
 
 #: The Adaptive Polishing images the script-based prototype wrote loose in the

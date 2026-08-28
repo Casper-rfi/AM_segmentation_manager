@@ -372,7 +372,12 @@ _ALIGNMENT_MARKERS: Final[tuple[str, ...]] = (
 )
 
 #: Prefixes naming an alignment image outright, whatever follows them.
-_ALIGNMENT_PREFIXES: Final[tuple[str, ...]] = ("beam_shift_alignment",)
+#: ``alignment_target`` is what a milling task aligned against, written three
+#: to a task just before it starts; the milling task's name follows.
+_ALIGNMENT_PREFIXES: Final[tuple[str, ...]] = (
+    "beam_shift_alignment",
+    "alignment_target",
+)
 
 #: Whole names, with the beam suffix taken off, that are alignment images.
 #: ``ref_alignment`` is matched entire rather than as a prefix because
