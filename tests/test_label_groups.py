@@ -22,6 +22,7 @@ from am_segmentation_manager.operations.selection import (
     deselect_records,
     mark_corrected_records,
     plan_transition,
+    record_from_image_path,
     select_records,
     transition_records,
 )
@@ -323,3 +324,71 @@ def test_cli_deselect_declares_the_whole_group(tmp_path: Path):
     assert {record.state for record in scan(tmp_path).values() if record.variant} == {"deselected"}
 
 
+
+
+# ---------------------------------------------------------------------------
+# Images sitting loose in their stage
+# ---------------------------------------------------------------------------
+
+#: The prototype's Adaptive Polishing pair: one scene, both beams, loose in the
+#: lamella directory with no image directory to take a label directory from.
+LOOSE_PAIR = (
+    "adapt_mill_img_000_electron_000.tif",
+    "adapt_mill_img_000_ion_000.tif",
+)
+
+
+def build_loose_lamella(tmp_path: Path) -> Path:
+    """Return a lamella holding one loose Adaptive Polishing acquisition."""
+    lamella = tmp_path / "project" / "01-enough-bear"
+    lamella.mkdir(parents=True)
+    for name in LOOSE_PAIR:
+        (lamella / name).write_bytes(b"")
+    return lamella
+
+
+def test_a_loose_image_is_keyed_by_its_series_and_beam(tmp_path: Path) -> None:
+    """One directory holds two sets, so the answer cannot come from the path."""
+    lamella = build_loose_lamella(tmp_path)
+    electron, ion = (lamella / name for name in LOOSE_PAIR)
+
+    assert group_key(record_from_image_path(electron)).endswith(
+        f"adaptive_sem_labels/{LOOSE_PAIR[0]}"
+    )
+    assert group_key(record_from_image_path(ion)).endswith(
+        f"adaptive_fib_labels/{LOOSE_PAIR[1]}"
+    )
+
+
+def test_a_loose_record_carries_where_its_label_belongs(tmp_path: Path) -> None:
+    lamella = build_loose_lamella(tmp_path)
+    record = record_from_image_path(lamella / LOOSE_PAIR[0])
+
+    assert record.modality == "SEM"
+    assert record.series == "adaptive"
+    assert record.labels_directory == lamella / "adaptive_sem_labels"
+    assert record.stage_path == lamella
+
+
+def test_a_loose_image_whose_name_says_nothing_still_gets_a_bare_record(
+    tmp_path: Path,
+) -> None:
+    lamella = build_loose_lamella(tmp_path)
+    (lamella / "something_else.tif").write_bytes(b"")
+    record = record_from_image_path(lamella / "something_else.tif")
+
+    assert record.labels_directory is None
+    assert group_key(record) == str(lamella / "something_else.tif")
+
+
+def test_a_loose_group_can_be_declared_corrected(tmp_path: Path) -> None:
+    """The state file lives in the lamella, which stands in for the stage."""
+    lamella = build_loose_lamella(tmp_path)
+    records = [record_from_image_path(lamella / name) for name in LOOSE_PAIR]
+
+    assert mark_corrected_records(records) == 2
+
+    assert read_state(lamella).states == {
+        f"adaptive_sem_labels/{LOOSE_PAIR[0]}": "corrected",
+        f"adaptive_fib_labels/{LOOSE_PAIR[1]}": "corrected",
+    }

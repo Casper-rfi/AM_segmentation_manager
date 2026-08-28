@@ -88,19 +88,21 @@ DirectoryRole = Literal["image", "labels", "predictions", "plots", "state", "unk
 #: imaging-condition variant: one directory holds several series, so a series is
 #: a property of an image set rather than of the directory it sits in.
 #:
-#: ``adaptive`` images fill a ``<modality>`` directory of their own and are
-#: recognised by :func:`classify_image_directory`. The other two are loose files
-#: sharing a directory with whatever else Autolamella wrote there, and are
-#: recognised by :func:`classify_loose_image`.
+#: ``adaptive`` images usually fill a ``<modality>`` directory of their own,
+#: recognised by :func:`classify_image_directory`; the script-based prototype
+#: wrote them loose in the lamella directory instead. Reference and alignment
+#: images are always loose, sharing a directory with whatever else Autolamella
+#: wrote there. :func:`classify_loose_image` recognises any of the three.
 Series = Literal["adaptive", "reference", "alignment"]
 
 #: The series, in display order.
 SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment")
 
-#: The series whose images sit loose in a directory rather than filling one.
-#: These are the two :func:`classify_loose_image` can return, and the two that
-#: need a name invented for them before their labels have somewhere to go.
-LOOSE_SERIES: Final[tuple[Series, ...]] = ("reference", "alignment")
+#: The series whose images can sit loose in a directory rather than filling
+#: one, and so need a name invented for them before their labels have somewhere
+#: to go. All three: an Adaptive Polishing image usually has a directory to take
+#: its name from, but not where the prototype wrote it beside the references.
+LOOSE_SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment")
 
 #: The series whose images are expected to be labelled, so that an unlabelled
 #: one is worth reporting. Everything outside this is indexed and countable but
@@ -395,6 +397,19 @@ _ALIGNMENT_RUN_STEMS: Final[frozenset[str]] = frozenset(
 )
 _ALIGNMENT_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"^new_image_\d+$")
 
+#: The Adaptive Polishing images the script-based prototype wrote loose in the
+#: lamella directory rather than into a ``<modality>`` directory. The beam is
+#: spelled out between two indices that always agree; the first is the
+#: acquisition number, which :func:`extract_image_number` already reads.
+_LOOSE_ADAPTIVE: Final[re.Pattern[str]] = re.compile(
+    r"^adapt_mill_img_\d+_(?P<beam>electron|ion)_\d+$", re.IGNORECASE
+)
+
+#: The beam a loose Adaptive Polishing name spells out, to the modality it
+#: means. Separate from :data:`BEAM_SUFFIXES`, which is about a name's *ending*
+#: and is what :func:`beam_modality` answers for.
+_SPELLED_BEAMS: Final[dict[str, str]] = {"electron": "SEM", "ion": "FIB"}
+
 #: Markers naming a reference image taken around a milling task: one before it
 #: starts, and one after each of its milling stages finishes.
 _REFERENCE_MARKERS: Final[tuple[str, ...]] = ("_pre-task_", "_finished_")
@@ -518,6 +533,14 @@ def classify_loose_image(image_name: str, in_alignment_run: bool = False) -> Ima
     lowered = stem.lower()
     modality = beam_modality(stem)
 
+    # First, and anchored: this is the one loose name that states its own beam
+    # rather than suffixing it, and the one that is not Autolamella's.
+    spelled = _LOOSE_ADAPTIVE.match(stem)
+    if spelled is not None:
+        return ImageFile(
+            series="adaptive", modality=_SPELLED_BEAMS[spelled["beam"].lower()]
+        )
+
     if (
         lowered.startswith(_ALIGNMENT_PREFIXES)
         or acquisition_stem(stem).lower() in _ALIGNMENT_STEMS
@@ -579,10 +602,9 @@ def loose_image_set_name(series: Series, modality: str) -> str:
     label directory rather than one named for a guess.
 
     Raises:
-        ValueError: If *series* is not one of :data:`LOOSE_SERIES`. Adaptive
-            Polishing images fill a directory that already has a name, so
-            asking for a loose one means the caller has lost track of which
-            kind of set it holds.
+        ValueError: If *series* is not one of :data:`LOOSE_SERIES`, which is
+            every series -- so this fires only for a value that is not a series
+            at all, and means the caller has lost track of what it is holding.
     """
     if series not in LOOSE_SERIES:
         raise ValueError(

@@ -28,8 +28,11 @@ from pathlib import Path
 from ..io.atomic import fingerprint_of
 from ..layout import (
     classify_image_directory,
+    classify_loose_image,
     image_files,
     resolve_labels_directory,
+    resolve_loose_labels_directory,
+    resolve_loose_predictions_directory,
     resolve_predictions_directory,
     state_directories,
     subdirectories_by_name,
@@ -430,7 +433,8 @@ def record_from_image_path(path: Path) -> ImageRecord:
     The image directory is found by walking up from the file. Resolution goes
     through :mod:`am_segmentation_manager.layout`, so a path in any supported
     layout -- including a variant directory such as ``sem_5kv/`` -- finds the
-    right label directory.
+    right label directory. An image sitting loose in its stage has no such
+    directory, and is read from its filename instead.
     """
     image_path = path
     image_directory: Path | None = None
@@ -442,7 +446,7 @@ def record_from_image_path(path: Path) -> ImageRecord:
             break
 
     if image_directory is None or classification is None:
-        return ImageRecord(image_path=image_path)
+        return _loose_record(image_path)
 
     siblings = subdirectories_by_name(image_directory.parent)
     labels_directory, _, _ = resolve_labels_directory(
@@ -462,4 +466,36 @@ def record_from_image_path(path: Path) -> ImageRecord:
         variant=classification.variant,
         labels_directory=labels_directory,
         predictions_directory=predictions_directory,
+    )
+
+
+def _loose_record(image_path: Path) -> ImageRecord:
+    """Return a record for an image sitting loose in its stage directory.
+
+    Reference, alignment and the prototype's Adaptive Polishing images have no
+    image directory to take a modality or a label directory from; the filename
+    states both, and :func:`~am_segmentation_manager.layout.classify_loose_image`
+    reads it. An image whose name says nothing gets a bare record, as before:
+    nothing here would be a fact rather than a guess.
+    """
+    classified = classify_loose_image(image_path.name)
+    if classified is None or classified.modality is None:
+        return ImageRecord(image_path=image_path)
+
+    siblings = subdirectories_by_name(image_path.parent)
+    labels_directory, _ = resolve_loose_labels_directory(
+        image_path.parent, classified.series, classified.modality, siblings
+    )
+    predictions_directory, _ = resolve_loose_predictions_directory(
+        image_path.parent, classified.series, classified.modality, siblings
+    )
+    label_path = labels_directory / image_path.name
+    return ImageRecord(
+        image_path=image_path,
+        labels=[label_path] if label_path.exists() else [],
+        modality=classified.modality,
+        series=classified.series,
+        labels_directory=labels_directory,
+        predictions_directory=predictions_directory,
+        stage_path=image_path.parent,
     )

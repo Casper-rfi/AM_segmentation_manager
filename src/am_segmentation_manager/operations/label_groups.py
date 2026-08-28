@@ -22,8 +22,10 @@ from pathlib import Path
 from ..layout import (
     build_image_sets,
     classify_image_directory,
+    classify_loose_image,
     image_files_by_name,
     resolve_labels_directory,
+    resolve_loose_labels_directory,
     subdirectories_by_name,
 )
 from ..models import ImageRecord
@@ -60,28 +62,51 @@ def labels_directory_for(
     """Return where *image_path*'s label lives or would live.
 
     Answers for a label directory that does not exist yet, which is what lets a
-    group be identified before anything has been annotated. Returns None when
-    the image sits in no recognised image directory.
+    group be identified before anything has been annotated. An image filling a
+    ``<modality>`` directory takes its answer from that directory; one sitting
+    loose takes it from what its filename says the set is. Returns None when
+    neither says anything.
 
     Args:
         cache: Reused across a batch. Resolution lists the stage's
             subdirectories, which is one listing per image directory rather
-            than per image.
+            than per image. Only the directory-based answer is cached: a loose
+            set is chosen by filename, and one directory holds several of them.
     """
     image_directory = image_path.parent
+    classification = classify_image_directory(image_directory.name)
+    if classification is None:
+        return _loose_labels_directory_for(image_path)
+
     if cache is not None and image_directory in cache:
         return cache[image_directory]
-
-    classification = classify_image_directory(image_directory.name)
-    resolved: Path | None = None
-    if classification is not None:
-        resolved, _, _ = resolve_labels_directory(
-            image_directory,
-            classification.modality,
-            subdirectories_by_name(image_directory.parent),
-        )
+    resolved, _, _ = resolve_labels_directory(
+        image_directory,
+        classification.modality,
+        subdirectories_by_name(image_directory.parent),
+    )
     if cache is not None:
         cache[image_directory] = resolved
+    return resolved
+
+
+def _loose_labels_directory_for(image_path: Path) -> Path | None:
+    """Return where a loose image's label lives or would live.
+
+    The set is named by the image's series and modality, both of which its
+    filename states, so two images in one directory can belong to different
+    sets -- an Adaptive Polishing pair is ``adaptive_sem_labels`` and
+    ``adaptive_fib_labels``, never one directory shared.
+    """
+    classified = classify_loose_image(image_path.name)
+    if classified is None or classified.modality is None:
+        return None
+    resolved, _ = resolve_loose_labels_directory(
+        image_path.parent,
+        classified.series,
+        classified.modality,
+        subdirectories_by_name(image_path.parent),
+    )
     return resolved
 
 
@@ -91,10 +116,9 @@ def group_identity(
     """Return the label path identifying *record*'s group, existing or not.
 
     A scanned record carries the directory its label belongs in, so nothing is
-    re-derived. The fallback covers a record built by hand, and can only answer
-    for an Adaptive Polishing image: a loose reference image's directory names
-    a lamella rather than a modality, so there is nothing in the path to
-    resolve a label directory from.
+    re-derived. The fallback covers a record built by hand, answering from the
+    image directory where there is one and from the filename where the image
+    sits loose.
     """
     if record.labels:
         return record.labels[0]

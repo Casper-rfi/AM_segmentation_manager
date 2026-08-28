@@ -360,6 +360,14 @@ ALIGNMENT_NAMES = [
     "Rough-Milling_alignment_reference_10-40-00_ib.tif",
 ]
 
+#: The Adaptive Polishing images the script-based prototype wrote loose in the
+#: lamella directory, paired with the modality each spells out.
+LOOSE_ADAPTIVE_NAMES = [
+    ("adapt_mill_img_000_electron_000.tif", "SEM"),
+    ("adapt_mill_img_005_ion_005.tif", "FIB"),
+    ("adapt_mill_img_017_ELECTRON_017.tif", "SEM"),
+]
+
 #: The names an alignment run directory holds. Generic enough to mean anything,
 #: so they are only alignment images where the directory vouches for them.
 ALIGNMENT_RUN_NAMES = [
@@ -375,6 +383,27 @@ def test_reference_images_are_classified_as_reference(name):
     classified = classify_loose_image(name)
     assert classified is not None, name
     assert classified.series == "reference"
+
+
+@pytest.mark.parametrize("name, modality", LOOSE_ADAPTIVE_NAMES)
+def test_loose_adaptive_images_state_their_own_beam(name, modality):
+    """The one loose name spelling its beam out rather than suffixing it."""
+    classified = classify_loose_image(name)
+    assert classified is not None, name
+    assert classified.series == "adaptive"
+    assert classified.modality == modality
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "adapt_mill_img_000_neutron_000.tif",
+        "adapt_mill_img_000_electron.tif",
+        "prefixed_adapt_mill_img_000_electron_000.tif",
+    ],
+)
+def test_a_name_near_the_loose_adaptive_form_is_not_guessed_at(name):
+    assert classify_loose_image(name) is None
 
 
 @pytest.mark.parametrize("name", ALIGNMENT_NAMES)
@@ -503,10 +532,11 @@ def test_centring_images_are_ignored_rather_than_unrecognised(name):
 @pytest.mark.parametrize(
     "name",
     [
-        # Adaptive Polishing images, which fill an image directory instead.
+        # Adaptive Polishing images that fill an image directory instead, so
+        # their names carry nothing saying what they are. The prototype's loose
+        # ones do, and are classified above.
         "01-ruling-ibex_AP_img_013_SEM.tif",
         "img_0013.tif",
-        "adapt_mill_img_002_electron_002.tif",
         "Franklin_2024-03-21_lam019_img_0008.tif",
         # Above the lamella level, so no loose-image rule should claim them.
         "overview-image-2026-04-17_11-17-34.tif",
@@ -531,6 +561,8 @@ def test_alignment_directory_is_recognised_whatever_its_case():
         ("reference", "SEM", "reference_sem"),
         ("reference", "FIB", "reference_fib"),
         ("alignment", "FIB", "alignment_fib"),
+        ("adaptive", "SEM", "adaptive_sem"),
+        ("adaptive", "FIB", "adaptive_fib"),
     ],
 )
 def test_loose_image_set_name_feeds_the_one_label_naming_rule(series, modality, expected):
@@ -538,7 +570,7 @@ def test_loose_image_set_name_feeds_the_one_label_naming_rule(series, modality, 
     assert labels_directory_name(expected) == f"{expected}_labels"
 
 
-@pytest.mark.parametrize("series", ["reference", "alignment"])
+@pytest.mark.parametrize("series", ["adaptive", "reference", "alignment"])
 @pytest.mark.parametrize("modality", ["SEM", "FIB"])
 def test_a_loose_label_directory_is_never_mistaken_for_an_image_directory(series, modality):
     """The new names must not collide with any role a directory already has."""
@@ -547,10 +579,10 @@ def test_a_loose_label_directory_is_never_mistaken_for_an_image_directory(series
     assert classify_image_directory(name) is None
 
 
-def test_loose_image_set_name_refuses_the_adaptive_series():
-    """Adaptive Polishing images fill a directory that already has a name."""
+def test_loose_image_set_name_refuses_something_that_is_not_a_series():
+    """Every series can be loose, so only a non-series is left to refuse."""
     with pytest.raises(ValueError, match="Not a loose series"):
-        loose_image_set_name("adaptive", "SEM")
+        loose_image_set_name("polishing", "SEM")
 
 
 # ---------------------------------------------------------------------------
