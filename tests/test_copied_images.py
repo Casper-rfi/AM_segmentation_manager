@@ -258,3 +258,76 @@ def test_adaptive_images_are_never_treated_as_copies(tmp_path: Path):
     ]
 
     assert len(kept) == 2
+
+
+# ---------------------------------------------------------------------------
+# A copy the project holds, rather than one lamella
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def across_lamellae(tmp_path: Path, monkeypatch) -> Path:
+    """Three lamellae, two of them handed one lamella's setup image.
+
+    The shape the script-based prototype produced: one acquisition written into
+    several lamellae as each one's own starting reference. Nothing inside a
+    lamella shows it, so the rule scoped to one lamella cannot see it.
+    """
+    root = tmp_path / "AutoLamella-2024-06-26-17-12"
+    root.mkdir(parents=True)
+    (root / "experiment.yaml").write_text("name: bitmap\n", encoding="utf-8")
+
+    times: dict[Path, datetime] = {}
+    for index, name in enumerate(("01-enough-bear", "02-game-boar", "03-trusty-osprey")):
+        lamella = touch(root / name, "ref_SetupLamella.tif", "ref_MillRoughCut_start_ib.tif")
+        # The setup image is one acquisition, handed to all three.
+        times[lamella / "ref_SetupLamella.tif"] = TAKEN
+        # Each lamella's own milling reference is its own, minutes apart.
+        times[lamella / "ref_MillRoughCut_start_ib.tif"] = datetime(
+            2024, 6, 26, 17, 40 + index, 12
+        )
+
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", times.get(path))),
+    )
+    return root
+
+
+def test_an_image_handed_to_several_lamellae_is_indexed_once(across_lamellae: Path):
+    assert len(paths_of(across_lamellae, "ref_SetupLamella.tif")) == 1
+
+
+def test_the_lamella_that_took_it_keeps_it(across_lamellae: Path):
+    """Lamellae are built in path order, so the earliest keeps the image."""
+    kept = paths_of(across_lamellae, "ref_SetupLamella.tif")[0]
+    assert kept.parent.name == "01-enough-bear"
+
+
+def test_each_lamella_keeps_its_own_images(across_lamellae: Path):
+    assert len(paths_of(across_lamellae, "ref_MillRoughCut_start_ib.tif")) == 3
+
+
+def test_the_image_set_stops_naming_the_copy_across_lamellae(across_lamellae: Path):
+    for record in records(across_lamellae):
+        if record.image_path.parent.name == "01-enough-bear":
+            continue
+        assert record.image_path.name != "ref_SetupLamella.tif"
+
+
+def test_one_second_shared_by_two_lamellae_needs_the_filename_too(
+    tmp_path: Path, monkeypatch
+):
+    """The key keeps the filename, so a coincidence of time is not a merge."""
+    root = tmp_path / "AutoLamella-2024-06-26-17-12"
+    root.mkdir(parents=True)
+    (root / "experiment.yaml").write_text("name: bitmap\n", encoding="utf-8")
+    times: dict[Path, datetime] = {}
+    for name, image in (("01-enough-bear", "ref_SetupLamella.tif"),
+                        ("02-game-boar", "ref_ReadyLamella_start_ib.tif")):
+        times[touch(root / name, image) / image] = TAKEN
+
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ("FIB", times.get(path))),
+    )
+    assert len(records(root)) == 2

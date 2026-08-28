@@ -143,6 +143,13 @@ appending to it.
   being the guard there — time and size alone merged 38 groups of genuinely different pictures.
   **Nothing is hashed**: the time is already read, and with either rule's second condition it
   partitions these as contents do.
+  A third pass runs over the whole *project*, because the script-based prototype duplicated across
+  lamellae rather than within one — writing a single setup image into eleven of them, which no
+  rule scoped to a lamella can see. It keeps the filename-and-time key rather than loosening to
+  time alone: measured over the collection, 2,514 loose images in 301 lamellae, it merges 11 files
+  in 2 groups, every one byte-identical, and time alone would have merged one file more for a key
+  nothing has measured. That one file is a misfiled reference rather than a copy, and leaving it
+  indexed keeps the misfiling visible instead of papering over it.
 - **A fixed filename marker is matched to the shape Autolamella writes, not loosely.** Everything
   after `ref_` is a *task* name somebody chose, so a loose marker collides with one.
   `ref_alignment` is matched entire rather than as a prefix — as a prefix it reads a task called

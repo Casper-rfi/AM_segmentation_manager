@@ -278,6 +278,10 @@ class Scanner:
                 vocabulary=vocabularies.get(lamella_path.name, NO_TASKS),
             )
             lamellae.append(lamella)
+        # After every lamella is built: a copy is only recognisable against the
+        # lamella that already holds the acquisition, whichever order they came
+        # in. Sorted by path above, so the earliest keeps it.
+        self._drop_copies_across_lamellae(lamellae, project_name)
         return lamellae
 
     def _build_stages(
@@ -338,7 +342,11 @@ class Scanner:
 
         Stages must already be in order, so that the copy kept is the earliest.
         """
-        copies = Scanner._copied_image_paths(stages)
+        Scanner._remove_copies(stages, Scanner._copied_image_paths(stages), lamella_name)
+
+    @staticmethod
+    def _remove_copies(stages: list[Stage], copies: set[Path], scope: str) -> None:
+        """Take *copies* out of *stages*, narrowing the sets that held them."""
         if not copies:
             return
         for stage in stages:
@@ -350,8 +358,8 @@ class Scanner:
             if not dropped:
                 continue
             logger.debug(
-                "%s: %s holds %d image(s) already indexed elsewhere in this lamella",
-                lamella_name, stage.name, len(dropped),
+                "%s: %s holds %d image(s) already indexed elsewhere",
+                scope, stage.name, len(dropped),
             )
             stage.images = [
                 record for record in stage.images if record.image_path not in copies
@@ -361,6 +369,44 @@ class Scanner:
                 for image_set in stage.image_sets
                 if (narrowed := _without_names(image_set, dropped)) is not None
             ]
+
+    @staticmethod
+    def _drop_copies_across_lamellae(lamellae: list[Lamella], project_name: str) -> None:
+        """Index one record per acquisition, where a *project* holds it twice.
+
+        :meth:`_drop_copied_images` sees only within a lamella, which is where
+        Autolamella duplicates: it copies an alignment's reference into each run
+        below the same lamella. The script-based prototype duplicated *across*
+        them instead, writing one lamella's setup image into eleven others, so
+        that shape is invisible to a rule scoped to one lamella.
+
+        A copy here is a filename and an acquisition time another lamella has
+        already used -- the same key :meth:`_copied_image_paths` was measured
+        on, and it is kept rather than loosened to time alone. Over the whole
+        reference collection, 2,514 loose images in 301 lamellae, this merges
+        11 files in 2 groups, every one byte-identical to what it merged with.
+        Dropping the filename from the key would have merged one file more, in
+        exchange for a key nothing has measured.
+
+        The earliest lamella keeps the image, so the copy that survives is the
+        one whose lamella actually took it.
+        """
+        seen: set[tuple[str, datetime]] = set()
+        copies: set[Path] = set()
+        for lamella in lamellae:
+            for stage in lamella.stages:
+                for record in stage.images:
+                    if record.acquired_at is None:
+                        continue
+                    key = (record.image_path.name, record.acquired_at)
+                    if key in seen:
+                        copies.add(record.image_path)
+                        continue
+                    seen.add(key)
+        for lamella in lamellae:
+            Scanner._remove_copies(
+                lamella.stages, copies, f"{project_name}/{lamella.name}"
+            )
 
     @staticmethod
     def _copied_image_paths(stages: list[Stage]) -> set[Path]:
