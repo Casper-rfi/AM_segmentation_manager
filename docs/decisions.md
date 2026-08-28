@@ -34,6 +34,14 @@ appending to it.
   decode identically before trusting the pairing, and refuses the whole batch over one doubt. A
   script for the same reason as the rename above, and it reads that tag itself: `image_metadata.py`
   reads headers for acquisition settings and has no use for an identity.
+- **A condition that repeats its variant in the filename is renamed, not parsed around.** Two 2023
+  projects name a TLD image `Image_000_TLD.tif` beside `SEM_8/Image_000.tif`, so it pairs with no
+  label and sits in a frame of its own. Teaching the package to strip such a suffix would change
+  the identity an image and its label share in four places, one of them the state key, and would
+  parse a variant the model keeps opaque. `scripts/share_variant_labels.py` drops the suffix and
+  moves the labels into the shared directory instead, rewriting the state keys in the same pass —
+  a label directory's name is part of its group's key, so moving one without them silently drops
+  every group back to *selected*.
 - **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
   variant may not be named `labels`, `deselected`, `corrected` or `predictions`: those collide
