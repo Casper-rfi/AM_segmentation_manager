@@ -34,6 +34,19 @@ appending to it.
   decode identically before trusting the pairing, and refuses the whole batch over one doubt. A
   script for the same reason as the rename above, and it reads that tag itself: `image_metadata.py`
   reads headers for acquisition settings and has no use for an identity.
+- **An image with no GUID is identified by where the acquisition software recorded writing it.**
+  The script-based stack writes no FEI GUID at all -- none of 560 images in the 2024-06 project has
+  one -- but its fibsem header names the directory, the filename and the timestamp it wrote, and a
+  copy carries all three unchanged. Those come from the acquisition software, which is what keeps
+  the fallback evidence rather than a guess; a filename alone would be the latter. The GUID wins
+  where both exist.
+- **Adaptive Polishing images can sit loose in the lamella directory.** Usually they fill a
+  `<modality>` directory that names them, but the script-based prototype wrote them beside
+  Autolamella's own references as `adapt_mill_img_000_electron_000.tif` -- spelling the beam out
+  rather than suffixing it, which is why `beam_modality` cannot read it and the rule does. So all
+  three series are in `LOOSE_SERIES`, and such a set's labels go to `adaptive_sem_labels/` by the
+  same naming rule the other loose series use. That name has no shared form on purpose: a shared
+  `sem_labels/` would let a reference set claim the same lamella's Adaptive Polishing labels.
 - **A condition that repeats its variant in the filename is renamed, not parsed around.** Two 2023
   projects name a TLD image `Image_000_TLD.tif` beside `SEM_8/Image_000.tif`, so it pairs with no
   label and sits in a frame of its own. Teaching the package to strip such a suffix would change

@@ -2,8 +2,9 @@
 """Put labels made from renamed images back beside the images they belong to.
 
 A subset of one project's images was once copied out, renamed and segmented.
-This pairs each renamed image with the original by the GUID the instrument
-wrote into its TIFF header, and copies the label into the label directory the
+This pairs each renamed image with the original by what its header says the
+acquisition is -- the instrument's GUID, or where the script-based stack
+recorded writing it -- and copies the label into the label directory the
 original's image directory resolves to, named after the original.
 
 **This is a standalone script, not an ``am-seg`` command.** A handful of
@@ -36,12 +37,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from am_segmentation_manager.image_metadata import FIBSEM_TAG
 from am_segmentation_manager.io.atomic import write_atomically
 from am_segmentation_manager.io.image import read_array, require_image_stack, to_2d
 from am_segmentation_manager.io.path import make_path_relative
 from am_segmentation_manager.layout import (
     LEGACY_LABEL_DIRECTORIES,
     classify_image_directory,
+    classify_loose_image,
     image_files,
     is_ignored_image_name,
     resolve_labels_directory,
@@ -57,10 +60,11 @@ from am_segmentation_manager.operations.selection import (
 
 logger = logging.getLogger(__name__)
 
-#: TIFF tag holding the FEI XML document, the only header field that identifies
-#: an acquisition rather than describing it. Read here rather than through
-#: :mod:`~am_segmentation_manager.image_metadata`, which reads the two tags the
-#: package needs for acquisition settings and has no use for an identity.
+#: TIFF tag holding the FEI XML document, whose GUID identifies an acquisition
+#: rather than describing it. Read here rather than through
+#: :mod:`~am_segmentation_manager.image_metadata`, which reads the tags the
+#: package needs for acquisition settings and has no use for an identity. The
+#: fibsem tag it does read is the fallback -- see :func:`written_identity`.
 GUID_TAG = 34683
 
 _GUID = re.compile(r"<Guid>\s*\{?([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\}?\s*</Guid>")
@@ -89,14 +93,14 @@ class LabelPlacement:
         original_image: The image in the project the renamed copy was made from.
         destination: Where the label is to be written, named after
             *original_image* so the two pair by filename.
-        guid: The acquisition GUID both images carry.
+        identity: What both images say the acquisition is.
     """
 
     label: Path
     renamed_image: Path
     original_image: Path
     destination: Path
-    guid: str
+    identity: str
 
     def describe(self, root: Path | None = None) -> str:
         """Return a one-line description for a preview or a log."""
@@ -132,6 +136,52 @@ def acquisition_guid(path: Path) -> str | None:
         return None
     match = _GUID.search(document)
     return match.group(1).lower() if match else None
+
+
+def written_identity(path: Path) -> str | None:
+    """Return where the acquisition software recorded writing *path*.
+
+    The fibsem header names the directory an image was written to, the filename
+    it was given and when it was taken. A copy carries all three unchanged, so
+    together they identify an acquisition for the images carrying no GUID.
+    """
+    import json
+
+    import tifffile
+
+    try:
+        with tifffile.TiffFile(str(path)) as handle:
+            tag = handle.pages[0].tags.get(FIBSEM_TAG)
+            document = None if tag is None else json.loads(str(tag.value))
+    except Exception as exc:  # noqa: BLE001 - an unreadable file must not raise here
+        logger.warning("Could not read the fibsem header of %s: %s", path, exc)
+        return None
+    if not isinstance(document, dict):
+        return None
+
+    image = document.get("image") or {}
+    state = document.get("microscope_state") or {}
+    written, name, taken = (
+        image.get("path"), image.get("filename"), state.get("timestamp")
+    )
+    if not (written and name and taken):
+        return None
+    return f"{written}|{name}|{taken}"
+
+
+def acquisition_identity(path: Path) -> str | None:
+    """Return what identifies the acquisition in *path*, or None if nothing does.
+
+    The instrument's GUID where the header carries one. The script-based stack
+    writes no GUID at all, so its images fall back to what it did record: where
+    it wrote them. Both come from the acquisition software, which is what keeps
+    this evidence rather than a guess -- a filename alone would be the latter.
+    """
+    guid = acquisition_guid(path)
+    if guid is not None:
+        return f"guid:{guid}"
+    written = written_identity(path)
+    return None if written is None else f"written:{written}"
 
 
 def pixel_digest(path: Path) -> tuple[tuple[int, ...], str] | None:
@@ -171,42 +221,55 @@ def is_empty(path: Path) -> bool | None:
 # ---------------------------------------------------------------------------
 
 def project_images(project_root: Path) -> list[Path]:
-    """Return every image in *project_root* that sits in an image directory.
+    """Return every image in *project_root* that could carry a label.
 
-    Directories are classified through
-    :func:`~am_segmentation_manager.layout.classify_image_directory`, so label,
-    prediction, plot and state directories are skipped rather than searched for
-    originals.
+    Two shapes, because Adaptive Polishing images come in two. Usually they
+    fill a ``<modality>`` directory, classified through
+    :func:`~am_segmentation_manager.layout.classify_image_directory`, which
+    skips label, prediction, plot and state directories. The script-based
+    prototype instead wrote them loose in the lamella directory, where
+    :func:`~am_segmentation_manager.layout.classify_loose_image` names them.
+
+    Only the *adaptive* series is taken from a loose directory. It is the
+    series labels are expected for, and leaving the rest out keeps the
+    references Autolamella copies between lamellae from reaching the index:
+    a copy carries the original's recorded identity, so eleven of them would
+    read as one acquisition duplicated eleven times.
     """
     found: list[Path] = []
     for directory in sorted(path for path in project_root.rglob("*") if path.is_dir()):
-        if classify_image_directory(directory.name) is None:
+        if classify_image_directory(directory.name) is not None:
+            found.extend(
+                path for path in image_files(directory)
+                if not is_ignored_image_name(path.name)
+            )
             continue
         found.extend(
             path for path in image_files(directory)
-            if not is_ignored_image_name(path.name)
+            if (classified := classify_loose_image(path.name)) is not None
+            and classified.series == "adaptive"
         )
     return found
 
 
-def index_by_guid(paths: Iterable[Path]) -> tuple[dict[str, Path], dict[str, list[Path]]]:
-    """Return images keyed by GUID, and the GUIDs more than one image carries.
+def index_by_identity(paths: Iterable[Path]) -> tuple[dict[str, Path], dict[str, list[Path]]]:
+    """Return images keyed by acquisition identity, and the identities shared.
 
-    A duplicated GUID is returned rather than resolved: which of two copies an
-    original is cannot be decided here, and only a duplicate a label actually
+    A duplicated identity is returned rather than resolved: which of two copies
+    an original is cannot be decided here, and only a duplicate a label actually
     matches is a problem worth stopping for.
     """
     index: dict[str, Path] = {}
     duplicates: dict[str, list[Path]] = {}
     for path in paths:
-        guid = acquisition_guid(path)
-        if guid is None:
-            logger.warning("No acquisition GUID in %s; it cannot be matched", path)
+        identity = acquisition_identity(path)
+        if identity is None:
+            logger.warning("Nothing identifies the acquisition in %s; it cannot be matched", path)
             continue
-        if guid in index:
-            duplicates.setdefault(guid, [index[guid]]).append(path)
+        if identity in index:
+            duplicates.setdefault(identity, [index[identity]]).append(path)
             continue
-        index[guid] = path
+        index[identity] = path
     return index, duplicates
 
 
@@ -274,9 +337,11 @@ def plan_placement(
     if not sources:
         raise PlacementConflict(["No images found to place labels for"])
 
-    originals, duplicates = index_by_guid(project_images(project_root))
+    originals, duplicates = index_by_identity(project_images(project_root))
     if not originals:
-        raise PlacementConflict([f"No images with a GUID found in {project_root}"])
+        raise PlacementConflict(
+            [f"No image in {project_root} carries anything identifying its acquisition"]
+        )
 
     placements: list[LabelPlacement] = []
     claimed: dict[Path, Path] = {}
@@ -287,17 +352,17 @@ def plan_placement(
             conflicts.append(f"{image.name}: no label beside it in {labels_directory}")
             continue
 
-        guid = acquisition_guid(image)
-        if guid is None:
-            conflicts.append(f"{image.name}: no acquisition GUID in its header")
+        identity = acquisition_identity(image)
+        if identity is None:
+            conflicts.append(f"{image.name}: nothing in its header identifies the acquisition")
             continue
-        if guid in duplicates:
-            listed = ", ".join(str(path) for path in duplicates[guid])
-            conflicts.append(f"{image.name}: GUID {guid} matches several images: {listed}")
+        if identity in duplicates:
+            listed = ", ".join(str(path) for path in duplicates[identity])
+            conflicts.append(f"{image.name}: {identity} matches several images: {listed}")
             continue
-        original = originals.get(guid)
+        original = originals.get(identity)
         if original is None:
-            conflicts.append(f"{image.name}: GUID {guid} matches no image in {project_root}")
+            conflicts.append(f"{image.name}: {identity} matches no image in {project_root}")
             continue
 
         conflicts.extend(_pixel_conflicts(image, original, label))
@@ -327,7 +392,7 @@ def plan_placement(
                 renamed_image=image,
                 original_image=original,
                 destination=destination,
-                guid=guid,
+                identity=identity,
             )
         )
 
@@ -379,14 +444,18 @@ def _destination_for(
 
     Resolution goes through
     :func:`~am_segmentation_manager.operations.selection.record_from_image_path`,
-    so the label lands where the package will look for it. A pre-convention
-    label directory is refused rather than added to: renaming it afterwards
-    would be a second migration over freshly placed data.
+    so the label lands where the package will look for it, whether the image
+    fills a ``<modality>`` directory or sits loose in its stage. A
+    pre-convention label directory is refused rather than added to: renaming it
+    afterwards would be a second migration over freshly placed data.
 
     Sharing asks for the modality's directory instead, which every imaging
     condition of one acquisition resolves to. It is refused where a more
     specific directory already exists, since that one wins the resolution and
-    the shared label would never be found.
+    the shared label would never be found. It does not apply to a loose image:
+    that set's name already states its series and modality and has no shared
+    form, and a shared ``<modality>_labels`` there would let a reference set
+    claim the same lamella's Adaptive Polishing labels.
     """
     record = record_from_image_path(original)
     if record.labels_directory is None or record.modality is None:
@@ -400,7 +469,8 @@ def _destination_for(
         return None
 
     directory = record.labels_directory
-    if shared:
+    fills_a_directory = classify_image_directory(original.parent.name) is not None
+    if shared and fills_a_directory:
         wanted = directory.parent / shared_labels_directory_name(record.modality)
         if directory.name.lower() != wanted.name.lower() and directory.is_dir():
             conflicts.append(
@@ -504,7 +574,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Write into the modality's shared label directory (sem_labels, "
             "fib_labels), which every imaging condition of one acquisition "
-            "resolves to, rather than the private one per image directory"
+            "resolves to, rather than the private one per image directory. "
+            "Does not apply to loose images, whose label directory is named "
+            "after the series and modality and has no shared form"
         ),
     )
     parser.add_argument(

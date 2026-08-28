@@ -7,6 +7,7 @@ nothing written.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from place_renamed_labels import (
     GUID_TAG,
     PlacementConflict,
     acquisition_guid,
+    acquisition_identity,
     main,
     plan_placement,
     source_pairs,
@@ -44,6 +46,24 @@ def write_image(path: Path, guid: str | None, *, seed: int = 0) -> Path:
     array = np.full((8, 6), seed % 256, dtype=np.uint16)
     extratags = [(GUID_TAG, "s", 0, _XML.format(guid=guid), True)] if guid else []
     tifffile.imwrite(str(path), array, extratags=extratags)
+    return path
+
+
+def write_fibsem_image(
+    path: Path, *, written: str, name: str, taken: str, seed: int = 0
+) -> Path:
+    """Write an image whose only identity is the fibsem header's record of it.
+
+    The script-based acquisition stack writes no GUID; what it does write is
+    where it put the file and when it was taken.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = {
+        "image": {"path": written, "filename": name},
+        "microscope_state": {"timestamp": taken},
+    }
+    array = np.full((8, 6), seed % 256, dtype=np.uint16)
+    tifffile.imwrite(str(path), array, description=json.dumps(document))
     return path
 
 
@@ -99,6 +119,70 @@ def test_reads_the_guid_from_the_header(tmp_path: Path) -> None:
 def test_an_image_without_a_guid_has_none(tmp_path: Path) -> None:
     image = write_image(tmp_path / "image.tif", None)
     assert acquisition_guid(image) is None
+
+
+def test_an_image_with_no_guid_is_identified_by_where_it_was_written(
+    tmp_path: Path,
+) -> None:
+    image = write_fibsem_image(
+        tmp_path / "a.tif", written="Z:/run\\01-bear", name="img_000.tif",
+        taken="06/26/2024 17:31:14",
+    )
+    identity = acquisition_identity(image)
+    assert identity is not None
+    assert "01-bear" in identity and "img_000.tif" in identity
+    assert "17:31:14" in identity
+
+
+def test_the_guid_wins_where_a_header_carries_both(tmp_path: Path) -> None:
+    """A GUID is the instrument's own identity, so it is preferred."""
+    image = write_image(tmp_path / "a.tif", guid_of(4))
+    assert acquisition_identity(image) == f"guid:{guid_of(4)}"
+
+
+@pytest.mark.parametrize(
+    "written, name, taken",
+    [
+        ("Z:/run\\02-boar", "img_000.tif", "06/26/2024 17:31:14"),
+        ("Z:/run\\01-bear", "img_001.tif", "06/26/2024 17:31:14"),
+        ("Z:/run\\01-bear", "img_000.tif", "06/26/2024 17:32:14"),
+    ],
+)
+def test_each_part_of_the_written_identity_distinguishes_an_acquisition(
+    tmp_path: Path, written: str, name: str, taken: str
+) -> None:
+    one = write_fibsem_image(
+        tmp_path / "a.tif", written="Z:/run\\01-bear", name="img_000.tif",
+        taken="06/26/2024 17:31:14",
+    )
+    other = write_fibsem_image(tmp_path / "b.tif", written=written, name=name, taken=taken)
+    assert acquisition_identity(one) != acquisition_identity(other)
+
+
+def test_an_image_stating_nothing_has_no_identity(tmp_path: Path) -> None:
+    assert acquisition_identity(write_image(tmp_path / "a.tif", None)) is None
+
+
+def test_pairs_by_where_the_images_were_written_when_no_guid_exists(
+    tmp_path: Path,
+) -> None:
+    """A whole placement over the script-based stack's images."""
+    project, source = tmp_path / "project", tmp_path / "source"
+    for number, seed in ((0, 11), (1, 12)):
+        name = f"adapt_mill_img_{number:03d}_electron_{number:03d}.tif"
+        for root in (project / "lam_000", source / "lam_000" / "SEM"):
+            write_fibsem_image(
+                root / name, written="Z:/run\\lam_000", name=name,
+                taken=f"06/26/2024 17:3{number}:14", seed=seed,
+            )
+        write_label(source / "lam_000" / "labels" / name)
+
+    placements = plan_placement(source_pairs(source), project, shared=True)
+
+    assert [p.destination.parent.name for p in placements] == [
+        "adaptive_sem_labels", "adaptive_sem_labels",
+    ]
+    assert all(p.identity.startswith("written:") for p in placements)
 
 
 def test_pairs_by_guid_across_differing_filenames(dataset: dict[str, Path]) -> None:
