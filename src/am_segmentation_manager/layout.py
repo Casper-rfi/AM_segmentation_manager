@@ -404,10 +404,12 @@ _ALIGNMENT_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"^new_image_\d+$")
 
 #: The Adaptive Polishing images the script-based prototype wrote loose in the
 #: lamella directory rather than into a ``<modality>`` directory. The beam is
-#: spelled out between two indices that always agree; the first is the
-#: acquisition number, which :func:`extract_image_number` already reads.
+#: spelled out after the acquisition number, which :func:`extract_image_number`
+#: already reads. Runs up to 2024-06 repeated that number after the beam and
+#: later ones stopped, the two always agreeing where both are there, so the
+#: repeat is optional and nothing reads it.
 _LOOSE_ADAPTIVE: Final[re.Pattern[str]] = re.compile(
-    r"^adapt_mill_img_\d+_(?P<beam>electron|ion)_\d+$", re.IGNORECASE
+    r"^adapt_mill_img_\d+_(?P<beam>electron|ion)(?:_\d+)?$", re.IGNORECASE
 )
 
 #: The beam a loose Adaptive Polishing name spells out, to the modality it

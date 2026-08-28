@@ -366,9 +366,13 @@ ALIGNMENT_NAMES = [
 #: The Adaptive Polishing images the script-based prototype wrote loose in the
 #: lamella directory, paired with the modality each spells out.
 LOOSE_ADAPTIVE_NAMES = [
+    # Runs up to 2024-06 repeated the acquisition number after the beam.
     ("adapt_mill_img_000_electron_000.tif", "SEM"),
     ("adapt_mill_img_005_ion_005.tif", "FIB"),
     ("adapt_mill_img_017_ELECTRON_017.tif", "SEM"),
+    # Later ones stopped, and mean exactly the same thing.
+    ("adapt_mill_img_000_electron.tif", "SEM"),
+    ("adapt_mill_img_012_ion.tif", "FIB"),
 ]
 
 #: The names an alignment run directory holds. Generic enough to mean anything,
@@ -401,7 +405,7 @@ def test_loose_adaptive_images_state_their_own_beam(name, modality):
     "name",
     [
         "adapt_mill_img_000_neutron_000.tif",
-        "adapt_mill_img_000_electron.tif",
+        "adapt_mill_img_000_electron_extra.tif",
         "prefixed_adapt_mill_img_000_electron_000.tif",
     ],
 )
