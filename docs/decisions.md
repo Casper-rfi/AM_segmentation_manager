@@ -27,6 +27,13 @@ appending to it.
   indefinitely** (`labels`, `labels_fib`, `labels_FIB`), a new label landing in whichever
   directory an image set already has, so normalising is cosmetic — hence
   `scripts/rename_legacy_label_dirs.py` rather than a command.
+- **A renamed copy is paired back to its original by the header GUID, not by name or order.** A
+  subset of some early projects was copied out, renamed and segmented, and the renaming kept no
+  record of what came from where; the FEI XML tag (34683) every acquisition carries does, uniquely
+  across a project. `scripts/place_renamed_labels.py` pairs on it, then checks the two files still
+  decode identically before trusting the pairing, and refuses the whole batch over one doubt. A
+  script for the same reason as the rename above, and it reads that tag itself: `image_metadata.py`
+  reads headers for acquisition settings and has no use for an identity.
 - **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
   variant may not be named `labels`, `deselected`, `corrected` or `predictions`: those collide

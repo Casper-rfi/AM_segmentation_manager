@@ -126,7 +126,7 @@ am_segmentation_manager = ["data/*.yaml", "data/*.png", "data/*.ico"]
 # Put src/ on the import path, so the tests run against the source tree without
 # the package needing to be installed first. This is the supported way to do it;
 # the tests previously each inserted src/ into sys.path by hand.
-pythonpath = ["src"]
+pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
 
 [tool.ruff]
