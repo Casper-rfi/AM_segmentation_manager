@@ -490,3 +490,83 @@ def test_an_unreadable_state_file_is_an_error(tmp_path: Path):
 
     assert len(findings) == 1
     assert findings[0].severity == "error"
+
+
+# ---------------------------------------------------------------------------
+# Data the collection does not contain yet
+
+
+def _image(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "img.tif").write_bytes(b"i")
+
+
+def test_a_survey_reports_data_that_nothing_indexes(tmp_path: Path):
+    """The failure this closes: a folder of unindexed datasets surveyed as a
+    folder of none, because the survey counted only what was already a project.
+    """
+    from am_segmentation_manager.survey import survey_collection
+
+    _image(tmp_path / "indexed" / "lam_001" / "sem")
+    (tmp_path / "indexed" / "experiment.yaml").write_text("name: p\n")
+    _image(tmp_path / "unindexed" / "lam_001" / "sem")
+
+    found = survey_collection(tmp_path, check_labels=False)
+
+    assert [project.name for project in found.projects] == ["indexed"]
+    assert [item.path.name for item in found.unindexed] == ["unindexed"]
+    reported = [
+        finding for finding in found.all_findings
+        if finding.category == "unindexed-dataset"
+    ]
+    assert len(reported) == 1
+    assert "1 lamella(e) and 1 image(s)" in reported[0].message
+
+
+def test_a_survey_names_a_folder_that_gathers_datasets(tmp_path: Path):
+    from am_segmentation_manager.survey import survey_collection
+
+    _image(tmp_path / "indexed" / "lam_001" / "sem")
+    (tmp_path / "indexed" / "experiment.yaml").write_text("name: p\n")
+    _image(tmp_path / "to sort" / "2024_dataset" / "lam_001" / "sem")
+    _image(tmp_path / "to sort" / "2026_dataset" / "lam_001" / "stage" / "sem")
+
+    found = survey_collection(tmp_path, check_labels=False)
+
+    gathered = [
+        finding for finding in found.all_findings
+        if finding.category == "gathered-datasets"
+    ]
+    assert len(gathered) == 1
+    assert "2024_dataset" in gathered[0].message
+    assert gathered[0].severity == "warning"
+
+
+def test_a_collection_with_nothing_unindexed_reports_none(tmp_path: Path):
+    from am_segmentation_manager.survey import survey_collection
+
+    _image(tmp_path / "indexed" / "lam_001" / "sem")
+    (tmp_path / "indexed" / "experiment.yaml").write_text("name: p\n")
+
+    found = survey_collection(tmp_path, check_labels=False)
+
+    assert found.unindexed == ()
+    assert not [
+        finding for finding in found.all_findings
+        if finding.category in {"unindexed-dataset", "gathered-datasets"}
+    ]
+
+
+def test_the_survey_headline_counts_unindexed_images(tmp_path: Path):
+    """On the headline rather than only among the findings: a folder whose data
+    is mostly not indexed should say so where the project count is read."""
+    from am_segmentation_manager.reporting import format_survey
+    from am_segmentation_manager.survey import survey_collection
+
+    _image(tmp_path / "indexed" / "lam_001" / "sem")
+    (tmp_path / "indexed" / "experiment.yaml").write_text("name: p\n")
+    _image(tmp_path / "unindexed" / "lam_001" / "sem")
+
+    lines = format_survey(survey_collection(tmp_path, check_labels=False))
+
+    assert any("1 directory(ies) hold 1 image(s)" in line for line in lines)

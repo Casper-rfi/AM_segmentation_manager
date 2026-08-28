@@ -205,3 +205,97 @@ def test_a_lone_unmarked_dataset_proposes_its_container(tmp_path: Path):
 def test_recursive_init_reports_when_there_is_nothing_at_all(tmp_path: Path):
     (tmp_path / "empty").mkdir()
     assert main(["init-project", str(tmp_path), "--recursive"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# What a candidate would become
+
+
+def _image(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "img.tif").write_bytes(b"i")
+
+
+def test_a_candidate_reports_the_lamellae_and_images_it_would_have(tmp_path: Path):
+    from am_segmentation_manager.discovery import describe_dataset_candidate
+
+    _image(tmp_path / "dataset" / "lam_001" / "sem")
+    _image(tmp_path / "dataset" / "lam_002" / "sem")
+
+    described = describe_dataset_candidate(tmp_path / "dataset")
+
+    assert described.lamellae == ("lam_001", "lam_002")
+    assert described.images == 2
+    assert described.stage_depths == (1,)
+    assert described.holds_several_datasets is False
+
+
+def test_one_project_sits_at_one_depth_whatever_its_era(tmp_path: Path):
+    """The signal the proposal list sorts by. A collapsed dataset and a 2026
+    one each sit at a single depth; only their union has two."""
+    from am_segmentation_manager.discovery import describe_dataset_candidate
+
+    _image(tmp_path / "collapsed" / "lam_001" / "sem")
+    _image(tmp_path / "collapsed" / "lam_002" / "sem")
+    assert describe_dataset_candidate(tmp_path / "collapsed").stage_depths == (1,)
+
+    _image(tmp_path / "nested" / "lam_001" / "stage" / "sem")
+    _image(tmp_path / "nested" / "lam_002" / "stage" / "sem")
+    assert describe_dataset_candidate(tmp_path / "nested").stage_depths == (2,)
+
+
+def test_a_folder_holding_both_eras_gives_itself_away(tmp_path: Path):
+    from am_segmentation_manager.discovery import describe_dataset_candidate
+
+    _image(tmp_path / "gathered" / "2024_dataset" / "lam_001" / "sem")
+    _image(tmp_path / "gathered" / "2026_dataset" / "lam_001" / "stage" / "sem")
+
+    described = describe_dataset_candidate(tmp_path / "gathered")
+
+    assert described.stage_depths == (2, 3)
+    assert described.holds_several_datasets is True
+
+
+def test_loose_reference_images_add_no_depth_of_their_own(tmp_path: Path):
+    """A 2026 lamella holds them at every level above its stages, so counting
+    them would make every such project look like a gathering folder."""
+    from am_segmentation_manager.discovery import describe_dataset_candidate
+
+    lamella = tmp_path / "dataset" / "lam_001"
+    _image(lamella / "task" / "adaptive_polish_01" / "sem")
+    (lamella / "ref_alignment_initial_ib.tif").write_bytes(b"i")
+    (lamella / "task" / "ref_alignment_initial_ib.tif").write_bytes(b"i")
+
+    described = describe_dataset_candidate(tmp_path / "dataset")
+
+    assert described.holds_several_datasets is False
+    assert described.stage_depths == (3,)
+
+
+def test_looking_below_a_gathering_folder_finds_the_datasets_in_it(tmp_path: Path):
+    """Asked about the folder itself the search answers with the folder, since
+    it stops at the outermost directory that qualifies."""
+    from am_segmentation_manager.discovery import (
+        dataset_candidates_below,
+        find_dataset_candidates,
+    )
+
+    gathered = tmp_path / "gathered"
+    _image(gathered / "2024_dataset" / "lam_001" / "sem")
+    _image(gathered / "2026_dataset" / "lam_001" / "stage" / "sem")
+
+    assert find_dataset_candidates(gathered) == [gathered]
+    assert [item.path.name for item in dataset_candidates_below(gathered)] == [
+        "2024_dataset", "2026_dataset",
+    ]
+
+
+def test_looking_below_skips_a_child_that_is_already_a_project(tmp_path: Path):
+    from am_segmentation_manager.discovery import dataset_candidates_below
+
+    gathered = tmp_path / "gathered"
+    _image(gathered / "marked" / "lam_001" / "sem")
+    (gathered / "marked" / "experiment.yaml").write_text("name: p\n")
+    _image(gathered / "unmarked" / "lam_001" / "stage" / "sem")
+
+    assert [item.path.name for item in dataset_candidates_below(gathered)] == ["unmarked"]

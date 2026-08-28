@@ -10,6 +10,11 @@ the first kind ends the search: see :func:`find_stage_directories`, whose
 invariant the layout rests on. Older datasets collapse levels; the missing ones
 are *synthesised*, the parent standing in, which :class:`DiscoveredStage`
 records. An unreadable directory yields nothing rather than raising.
+
+A directory with no marker is *proposed* as a project, never concluded to be
+one: which level of an unmarked tree is the project is a fact about the
+acquisition, so :class:`DatasetCandidate` describes a proposal for a person to
+confirm.
 """
 from __future__ import annotations
 
@@ -167,12 +172,13 @@ def find_dataset_candidates(
     further would propose a marker inside each *lamella*, splitting one dataset
     into several projects.
 
-    **Known limitation.** Which level is "the project" is not decidable from
-    structure alone. Stopping at the outermost qualifying directory is right
-    wherever a collection holds at least one marked project to anchor the
-    level. A directory holding nothing but a single unmarked dataset is the
-    ambiguous case, and this proposes that directory rather than the dataset
-    inside it; ``--dry-run`` shows the proposal before anything is written.
+    **These are proposals, not conclusions.** Which level is "the project" is a
+    fact about the acquisition, not about the tree: a directory gathering
+    several unmarked datasets is shaped exactly like a project whose lamellae
+    happen to hold their own subdirectories, so a search alone will sometimes
+    propose the wrong level. :func:`describe_dataset_candidate` says what each
+    proposal would become and :func:`dataset_candidates_below` descends into
+    one that was proposed too high; deciding between them is a person's job.
     """
     if max_depth < 0:
         return []
@@ -202,6 +208,103 @@ def _contains_images(directory: Path, max_depth: int) -> bool:
     return any(
         holds_images(stage) for stage in find_stage_directories(directory, max_depth=max_depth)
     )
+
+
+@dataclass(frozen=True)
+class DatasetCandidate:
+    """An unindexed directory holding images, and what it would become.
+
+    What a person needs to answer the one question the filesystem does not: is
+    this directory one project, or a folder someone gathered several in.
+
+    Attributes:
+        path: The directory itself.
+        lamellae: The names of the lamellae it would have, in directory order.
+        images: How many images those lamellae hold between them.
+        stage_depths: The distinct depths below *path* at which image-holding
+            stages sit, ascending.
+    """
+
+    path: Path
+    lamellae: tuple[str, ...] = ()
+    images: int = 0
+    stage_depths: tuple[int, ...] = ()
+
+    @property
+    def holds_several_datasets(self) -> bool:
+        """Return whether this looks like a collection rather than one project.
+
+        One project's stages sit at a single depth, whichever layout era it
+        comes from; datasets of different eras gathered in one directory sit at
+        several. A hint for a person to weigh and never grounds for writing a
+        file: a directory gathering datasets of one era is indistinguishable
+        from a project by this test or any other structural one.
+        """
+        return len(self.stage_depths) > 1
+
+
+def describe_dataset_candidate(
+    path: Path, max_depth: int = DEFAULT_MAX_DEPTH
+) -> DatasetCandidate:
+    """Return what *path* holds, for someone deciding whether it is one project.
+
+    Counts only the Adaptive Polishing image directories :func:`holds_images`
+    looks for, so a lamella's loose reference images neither inflate the count
+    nor add a depth of their own -- which they would, since a 2026 lamella
+    holds them at every level above its stages.
+    """
+    stages = [
+        stage
+        for stage in find_stage_directories(path, max_depth=max_depth)
+        if holds_images(stage)
+    ]
+    lamellae: list[str] = []
+    seen: set[Path] = set()
+    images = 0
+    depths: set[int] = set()
+    for stage in stages:
+        depths.add(len(stage.relative_to(path).parts))
+        images += sum(
+            len(image_files(image_set.directory)) for image_set in build_image_sets(stage)
+        )
+        lamella = lamella_directory_for(path, stage)
+        if lamella not in seen:
+            seen.add(lamella)
+            lamellae.append(lamella.name)
+    return DatasetCandidate(
+        path=path,
+        lamellae=tuple(lamellae),
+        images=images,
+        stage_depths=tuple(sorted(depths)),
+    )
+
+
+def describe_dataset_candidates(
+    root: Path, max_depth: int = DEFAULT_MAX_DEPTH
+) -> list[DatasetCandidate]:
+    """Return every unindexed dataset under *root*, described."""
+    return [
+        describe_dataset_candidate(path, max_depth=max_depth)
+        for path in find_dataset_candidates(root, max_depth=max_depth)
+    ]
+
+
+def dataset_candidates_below(
+    directory: Path, max_depth: int = DEFAULT_MAX_DEPTH
+) -> list[DatasetCandidate]:
+    """Return the candidates one level inside *directory*, described.
+
+    What answers "not this directory, the ones inside it" for a directory the
+    search proposed at the wrong level. Each child is searched separately
+    because that is the only way its own candidates become visible: asked about
+    the parent, the search stops at the outermost directory that qualifies,
+    which is the parent itself.
+    """
+    return [
+        describe_dataset_candidate(path, max_depth=max_depth)
+        for child in subdirectories_by_name(directory).values()
+        for path in find_dataset_candidates(child, max_depth=max_depth)
+    ]
 
 
 def find_nested_project_roots(

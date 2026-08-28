@@ -393,14 +393,15 @@ def test_a_survey_reports_the_projects_it_found(controller, tmp_path: Path):
     assert any("Layout survey" in line for line in report.lines)
 
 
-def test_adding_metadata_files_previews_before_writing(controller, tmp_path: Path):
+def test_creating_projects_previews_before_writing(controller, tmp_path: Path):
     _project_with_prediction(tmp_path)
+    chosen = [tmp_path / "project"]
 
-    preview = controller.add_metadata_files(tmp_path, dry_run=True)
+    preview = controller.create_projects(chosen, dry_run=True)
     assert preview.count == 1
     assert not (tmp_path / "project" / "AM_metadata.yaml").exists()
 
-    applied = controller.add_metadata_files(tmp_path, dry_run=False)
+    applied = controller.create_projects(chosen, dry_run=False)
     assert applied.applied is True
     assert (tmp_path / "project" / "AM_metadata.yaml").exists()
 
@@ -410,11 +411,97 @@ def test_a_project_that_already_has_metadata_keeps_it(controller, tmp_path: Path
     existing = tmp_path / "project" / "AM_metadata.yaml"
     existing.write_text("sample: HeLa\n")
 
-    report = controller.add_metadata_files(tmp_path, dry_run=False)
+    report = controller.create_projects([tmp_path / "project"], dry_run=False)
 
     assert report.count == 0
     assert existing.read_text() == "sample: HeLa\n"
     assert any(line.startswith("kept") for line in report.lines)
+
+
+def test_a_project_already_indexed_but_undescribed_is_offered(controller, tmp_path: Path):
+    """Autolamella writes experiment.yaml and never AM_metadata.yaml, so these
+    are projects that simply have no descriptive fields yet."""
+    _project_with_prediction(tmp_path)
+
+    assert controller.undescribed_projects(tmp_path) == [tmp_path / "project"]
+
+    controller.create_projects([tmp_path / "project"], dry_run=False)
+    assert controller.undescribed_projects(tmp_path) == []
+
+
+def _gathered_datasets(tmp_path: Path) -> Path:
+    """Build a folder holding two datasets of different layout eras.
+
+    With a marked project beside it, so the scan root is not itself the
+    outermost unmarked directory holding images -- which is what it would be
+    in a tree holding nothing else, making it the only proposal.
+    """
+    anchor = tmp_path / "indexed" / "lam_001" / "sem"
+    anchor.mkdir(parents=True)
+    (anchor / "img.tif").write_bytes(b"i")
+    (tmp_path / "indexed" / "experiment.yaml").write_text("name: p\n")
+
+    gathered = tmp_path / "to sort"
+    collapsed = gathered / "2024_dataset" / "lam_001" / "sem"
+    collapsed.mkdir(parents=True)
+    (collapsed / "img.tif").write_bytes(b"i")
+    nested = gathered / "2026_dataset" / "lam_001" / "stage" / "sem"
+    nested.mkdir(parents=True)
+    (nested / "img.tif").write_bytes(b"i")
+    return gathered
+
+
+def test_a_gathering_directory_is_proposed_unticked_and_can_be_opened(
+    controller, tmp_path: Path
+):
+    """The failure this exists to stop: one marker over several acquisitions.
+
+    Proposing the gathering folder would make each dataset in it a lamella of
+    a single project, putting two samples under one metadata record.
+    """
+    gathered = _gathered_datasets(tmp_path)
+
+    proposals = controller.propose_projects(tmp_path)
+
+    assert [item.path for item in proposals] == [gathered]
+    assert proposals[0].holds_several_datasets is True
+
+    inside = controller.propose_projects_below(gathered)
+    assert [item.path.name for item in inside] == ["2024_dataset", "2026_dataset"]
+    assert all(not item.holds_several_datasets for item in inside)
+
+
+def test_creating_a_project_in_a_gathering_directory_writes_nothing(
+    controller, tmp_path: Path
+):
+    """Batch-validated: one bad path in the set stops the whole set."""
+    gathered = _gathered_datasets(tmp_path)
+
+    report = controller.create_projects(
+        [gathered / "2024_dataset", gathered], dry_run=False
+    )
+
+    assert report.blocked == "placement"
+    assert report.count == 0
+    assert not (gathered / "AM_metadata.yaml").exists()
+    assert not (gathered / "2024_dataset" / "AM_metadata.yaml").exists()
+
+
+def test_a_proposal_says_what_it_would_become(controller, tmp_path: Path):
+    """Lamella names that read like dataset names are what tells a reader the
+    level is wrong, and no structural test says that."""
+    gathered = _gathered_datasets(tmp_path)
+
+    proposal = controller.propose_projects(tmp_path)[0]
+    heading, detail = controller.describe_proposal(proposal)
+
+    assert "2 lamella(e), 2 image(s)" in heading
+    assert "2024_dataset" in detail and "2026_dataset" in detail
+    assert "gathers several datasets" in detail
+
+    inside = controller.propose_projects_below(gathered)
+    _heading, detail = controller.describe_proposal(inside[0])
+    assert detail == "would become lamellae: lam_001"
 
 
 def test_checking_a_csv_reports_the_rows_that_moved(controller, tmp_path: Path):

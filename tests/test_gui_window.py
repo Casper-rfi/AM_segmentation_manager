@@ -1577,8 +1577,27 @@ def test_only_the_applying_run_is_given_something_to_stop(window, monkeypatch):
     assert given == [None, cancellation]
 
 
-def test_writing_metadata_files_rescans_so_the_new_projects_appear(
-    project: Path, window, inline_operations
+def _accept_dialog(monkeypatch, chosen, *, accepted=True, opened=None):
+    """Stand in for the Add projects dialog, which is driven in its own tests."""
+
+    class FakeDialog:
+        def __init__(self, parent, controller, root):
+            if opened is not None:
+                opened.append(root)
+
+        def exec_(self):
+            return accepted
+
+        def chosen(self):
+            return list(chosen)
+
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.main_window.AddProjectsDialog", FakeDialog
+    )
+
+
+def test_creating_projects_rescans_so_the_new_projects_appear(
+    project: Path, window, inline_operations, monkeypatch
 ):
     """Making an unindexed dataset into a project is the point of this.
 
@@ -1592,11 +1611,41 @@ def test_writing_metadata_files_rescans_so_the_new_projects_appear(
     window.metadata_panel.enable.setChecked(True)
     assert len(window.controller.projects) == 1
 
-    window._add_metadata_files()
+    _accept_dialog(monkeypatch, [project / "loose-dataset"])
+    window._add_projects()
 
     assert (project / "loose-dataset" / "AM_metadata.yaml").exists()
     assert len(window.controller.projects) == 2
     assert window.metadata_panel.projects.count() == 2
+
+
+def test_cancelling_the_dialog_writes_nothing(project: Path, window, monkeypatch):
+    """The dialog is where the decision is made, so dismissing it is the whole
+    answer -- nothing behind it should have started."""
+    unindexed = project / "loose-dataset" / "01-lamella" / "stage" / "sem"
+    unindexed.mkdir(parents=True)
+    (unindexed / "img.tif").write_bytes(b"i")
+    window.metadata_panel.enable.setChecked(True)
+
+    _accept_dialog(monkeypatch, [project / "loose-dataset"], accepted=False)
+    window._add_projects()
+
+    assert not (project / "loose-dataset" / "AM_metadata.yaml").exists()
+
+
+def test_creating_projects_needs_editing_to_be_on(project: Path, window, monkeypatch):
+    """The same guard everything that writes is behind."""
+    shown: list = []
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.main_window.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args),
+    )
+    opened: list = []
+    _accept_dialog(monkeypatch, [], opened=opened)
+
+    window._add_projects()
+
+    assert shown and not opened
 
 
 def test_an_operation_previews_before_it_applies(window, monkeypatch):
@@ -1691,8 +1740,12 @@ def test_an_operation_needs_something_selected(window, monkeypatch):
     window._convert_predictions()
 
 
-def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings):
-    """Both act on the whole scan root, so neither is offered before one exists."""
+def test_the_collection_actions_wait_for_a_folder(qt_app, settings):
+    """All three act on the whole scan root, so none is offered before one
+    exists. Only recompressing then waits on the editing guard as well: the
+    other two write nothing by themselves, and naming projects is how a
+    collection gets its first row -- a disabled button there cannot say what it
+    is waiting for, so the window answers that when it is pressed."""
     controller = CurationController(cache=FrameCache(), config=CONFIG)
     fresh = CurationWindow(controller, settings=settings)
     try:
@@ -1703,15 +1756,36 @@ def test_the_collection_actions_wait_for_a_folder_and_the_guard(qt_app, settings
 
         panel.set_root(Path("/somewhere"))
         assert panel.survey_button.isEnabled()
-        # Inspecting changes nothing; the two that write still wait.
-        assert not panel.init_button.isEnabled()
+        assert panel.init_button.isEnabled()
         assert not panel.compress_button.isEnabled()
 
         panel.enable.setChecked(True)
-        assert panel.init_button.isEnabled()
         assert panel.compress_button.isEnabled()
     finally:
         fresh.close()
+
+
+def test_the_tab_says_how_much_of_the_folder_is_not_indexed(
+    project: Path, window
+):
+    """The project list shows what is indexed, which is silent about the data
+    sitting beside it that nothing has indexed -- the state a collection is in
+    before any of this has been done."""
+    unindexed = project / "loose-dataset" / "01-lamella" / "stage" / "sem"
+    unindexed.mkdir(parents=True)
+    (unindexed / "img.tif").write_bytes(b"i")
+
+    window.rescan()
+
+    said = window.metadata_panel.unindexed.text()
+    assert "1 directory(ies) here hold 1 image(s)" in said
+    assert "Add projects" in said
+
+
+def test_a_fully_indexed_folder_says_nothing_about_unindexed_data(project: Path, window):
+    window.rescan()
+
+    assert window.metadata_panel.unindexed.text() == ""
 
 
 # ---------------------------------------------------------------------------

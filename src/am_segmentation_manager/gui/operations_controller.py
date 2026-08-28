@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..discovery import DatasetCandidate
 from ..io.path import make_path_relative
 from ..models import ImageRecord
 from ..operations.label_compression import compress_labels, existing_labels
@@ -125,6 +126,10 @@ class OperationsController:
     def set_start_path(self, start_path: Path | None) -> None:
         """Record the directory reports are written relative to."""
         self.start_path = Path(start_path) if start_path is not None else None
+
+    def relative(self, path: Path) -> str:
+        """Return *path* as it should be shown, against the scan root."""
+        return self._relative(path)
 
     def _relative(self, path: Path | None) -> str:
         if path is None:
@@ -606,25 +611,103 @@ class OperationsController:
             len(found.projects),
         )
 
-    def add_metadata_files(self, root: Path, *, dry_run: bool = True) -> OperationReport:
-        """Write an ``AM_metadata.yaml`` into every project under *root*.
+    def undescribed_projects(self, root: Path) -> list[Path]:
+        """Return projects under *root* that have no ``AM_metadata.yaml`` yet.
 
-        Directories holding images but no marker file are included: a dataset
-        predating Autolamella is invisible to project discovery, which is
-        exactly the data that most needs a marker. Projects that already have a
-        metadata file keep it -- nothing here overwrites one.
+        Autolamella writes ``experiment.yaml``, so these are already indexed
+        and already projects. Giving them the descriptive file is bulk work
+        with no judgement in it, unlike deciding what counts as a project.
         """
-        from ..discovery import find_dataset_candidates, find_project_roots
-        from ..operations.init_project import init_projects
+        from ..discovery import find_project_roots
+        from ..metadata import AM_METADATA_FILENAME
 
-        root = Path(root)
-        existing = find_project_roots(root)
-        candidates = find_dataset_candidates(root)
-        roots = [*existing, *candidates]
-        if not roots:
-            return OperationReport(f"No projects or unindexed datasets found under {root}.")
+        return [
+            path
+            for path in find_project_roots(Path(root))
+            if not (path / AM_METADATA_FILENAME).exists()
+        ]
 
-        results = init_projects(roots, dry_run=dry_run)
+    def unindexed_summary(self, root: Path) -> tuple[int, int]:
+        """Return how many directories under *root* are not projects, and their
+        image count.
+
+        Cheap next to the scan it follows -- one walk of the same tree -- and
+        it answers the question the project list cannot: what is sitting here
+        that nothing has indexed.
+        """
+        candidates = self.propose_projects(root)
+        return len(candidates), sum(item.images for item in candidates)
+
+    def propose_projects(self, root: Path) -> list[DatasetCandidate]:
+        """Return the directories under *root* holding images but not indexed.
+
+        Proposals for a person to confirm. Which level is the project is a fact
+        about the acquisition rather than the tree, so this offers and does not
+        decide; :meth:`propose_projects_below` is how a proposal made too high
+        is corrected.
+        """
+        from ..discovery import describe_dataset_candidates
+
+        return describe_dataset_candidates(Path(root))
+
+    def propose_projects_below(self, directory: Path) -> list[DatasetCandidate]:
+        """Return the proposals one level inside *directory*."""
+        from ..discovery import dataset_candidates_below
+
+        return dataset_candidates_below(Path(directory))
+
+    def describe_proposal(self, candidate: DatasetCandidate) -> tuple[str, str]:
+        """Return a proposal as a heading and the detail line under it.
+
+        What it would *become* rather than what it is called: lamella names
+        that read like dataset names are what tells a reader the level is
+        wrong, and no structural test says that.
+        """
+        heading = (
+            f"{self._relative(candidate.path)}  "
+            f"-- {len(candidate.lamellae)} lamella(e), {candidate.images} image(s)"
+        )
+        shown = ", ".join(candidate.lamellae[:4])
+        more = "" if len(candidate.lamellae) <= 4 else ", ..."
+        if candidate.holds_several_datasets:
+            detail = (
+                f"laid out {len(candidate.stage_depths)} different ways, so this "
+                f"probably gathers several datasets -- would become lamellae: {shown}{more}"
+            )
+        else:
+            detail = f"would become lamellae: {shown}{more}"
+        return heading, detail
+
+    def create_projects(
+        self, paths: Sequence[Path], *, dry_run: bool = True
+    ) -> OperationReport:
+        """Write an ``AM_metadata.yaml`` into each of *paths*.
+
+        Every path is checked before any of them is written, so a set holding
+        one directory that must not be marked writes nothing rather than
+        stopping partway. An existing file is kept and reported; nothing here
+        overwrites one.
+        """
+        from ..operations.init_project import init_projects, project_placement_problem
+
+        chosen = [Path(path) for path in paths]
+        if not chosen:
+            return OperationReport("Nothing chosen.")
+
+        problems = [
+            f"{self._relative(path)}: {problem}"
+            for path in chosen
+            if (problem := project_placement_problem(path)) is not None
+        ]
+        if problems:
+            return OperationReport(
+                f"{len(problems)} of {len(chosen)} chosen directory(ies) cannot be "
+                f"made a project; nothing was written.",
+                tuple(problems),
+                blocked="placement",
+            )
+
+        results = init_projects(chosen, dry_run=dry_run)
         lines = []
         for result in results:
             location = self._relative(result.path)
@@ -632,18 +715,36 @@ class OperationsController:
                 lines.append(f"kept   {location}")
             else:
                 lines.append(f"write  {location} ({len(result.todo)} field(s) to fill in)")
-        for candidate in candidates:
-            lines.append(f"       {self._relative(candidate)} holds images but is not a project yet")
+
+        # A project written outside the scanned folder is a real project that
+        # this window will not show: the scan that follows reads the folder it
+        # already has. Said here rather than left to be noticed.
+        outside = [path for path in chosen if not self._within_scan(path)]
+        if outside:
+            lines.append(
+                f"       {len(outside)} of these are outside the scanned folder and "
+                f"will not appear until you scan a folder holding them"
+            )
 
         writing = [result for result in results if not result.skipped_existing]
         skipped = len(results) - len(writing)
         verb = "Would write" if dry_run else "Wrote"
         return OperationReport(
-            f"{verb} {len(writing)} metadata file(s); {skipped} project(s) already had one.",
+            f"{verb} {len(writing)} metadata file(s); {skipped} already had one.",
             tuple(lines),
             len(writing),
             applied=not dry_run,
         )
+
+    def _within_scan(self, path: Path) -> bool:
+        """Return whether *path* is inside the folder this window scanned."""
+        if self.start_path is None:
+            return True
+        try:
+            path.resolve().relative_to(self.start_path.resolve())
+        except ValueError:
+            return False
+        return True
 
     def check_csv(self, csv_path: Path, start_path: Path) -> OperationReport:
         """Check that every path an exported CSV records still exists.

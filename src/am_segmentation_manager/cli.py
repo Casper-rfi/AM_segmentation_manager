@@ -1036,13 +1036,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
         return 1 if survey.finding_counts()["error"] else 0
 
     if args.command == "init-project":
-        from .discovery import (
-            contains_marked_project,
-            find_dataset_candidates,
-            find_project_roots,
-            project_markers,
+        from .discovery import describe_dataset_candidates, find_project_roots, project_markers
+        from .operations.init_project import (
+            init_projects,
+            project_placement_problem,
+            read_defaults,
         )
-        from .operations.init_project import init_projects, read_defaults
 
         start_path = Path(args.start_path)
         if args.recursive:
@@ -1050,30 +1049,39 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
             # Datasets predating Autolamella have no marker, so project
             # discovery cannot see them -- which would leave the ones that most
             # need a marker out of the command that writes one.
-            candidates = find_dataset_candidates(start_path)
-            for candidate in candidates:
+            candidates = describe_dataset_candidates(start_path)
+            # A candidate holding datasets of several layout eras is a folder
+            # someone gathered them in, and marking it would make each of them
+            # a lamella of one project. Which level is right is not decidable
+            # here, so this reports it rather than guessing: name the datasets
+            # inside it, or pick them out in the window.
+            gathering = [item for item in candidates if item.holds_several_datasets]
+            for item in gathering:
+                logger.warning(
+                    "%s holds %d dataset(s) laid out %d different ways; skipped, "
+                    "because marking it would make each of them a lamella of one "
+                    "project. Run init-project on each dataset inside it instead.",
+                    make_path_relative(item.path, start_path),
+                    len(item.lamellae), len(item.stage_depths),
+                )
+            proposed = [item for item in candidates if not item.holds_several_datasets]
+            for item in proposed:
                 logger.info(
                     "%s holds images but is not a project yet; a metadata file "
-                    "makes it one", make_path_relative(candidate, start_path),
+                    "makes it one", make_path_relative(item.path, start_path),
                 )
-            roots = [*existing, *candidates]
+            roots = [*existing, *(item.path for item in proposed)]
             if not roots:
                 logger.error("No projects or unindexed datasets found under %s", start_path)
                 return 2
         else:
-            if not start_path.is_dir():
-                logger.error("Not a directory: %s", start_path)
-                return 2
-            if not project_markers(start_path) and contains_marked_project(start_path):
-                # A marker here would make every unmarked dataset beneath it a
-                # lamella of one project, merging samples under one metadata
-                # record -- wrong in a way nothing downstream can see.
+            problem = project_placement_problem(start_path)
+            if problem is not None:
                 logger.error(
-                    "%s holds projects of its own, so it is a collection rather "
-                    "than a project. Writing a marker here would merge every "
-                    "dataset under it into one project. Use --recursive to write "
-                    "a file into each project instead.",
-                    start_path,
+                    "%s Use --recursive to write a file into every project that "
+                    "can be identified unambiguously, or name each dataset inside "
+                    "it in turn.",
+                    problem,
                 )
                 return 2
             roots = [start_path]

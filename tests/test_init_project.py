@@ -293,3 +293,98 @@ def test_init_project_still_writes_into_a_plain_project(tmp_path: Path):
     assert main(["init-project", str(dataset)]) == 0
 
     assert (dataset / "AM_metadata.yaml").exists()
+
+
+# ---------------------------------------------------------------------------
+# Where a marker may be written
+
+
+def _image(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "img.tif").write_bytes(b"i")
+
+
+def test_a_folder_gathering_datasets_is_refused(tmp_path: Path):
+    """The gap the marker check alone leaves. A folder of unmarked datasets
+    holds no project to give it away, so only its shape does -- and a marker
+    there puts every one of them under a single metadata record."""
+    from am_segmentation_manager.operations.init_project import project_placement_problem
+
+    gathered = tmp_path / "to sort"
+    _image(gathered / "2024_dataset" / "lam_001" / "sem")
+    _image(gathered / "2026_dataset" / "lam_001" / "stage" / "sem")
+
+    problem = project_placement_problem(gathered)
+
+    assert problem is not None
+    assert "gathers several" in problem
+    assert project_placement_problem(gathered / "2024_dataset") is None
+    assert project_placement_problem(gathered / "2026_dataset") is None
+
+
+def test_a_folder_holding_marked_projects_is_refused(tmp_path: Path):
+    from am_segmentation_manager.operations.init_project import project_placement_problem
+
+    collection = tmp_path / "collection"
+    _image(collection / "marked" / "lam_001" / "sem")
+    (collection / "marked" / "experiment.yaml").write_text("name: p\n")
+
+    assert "collection rather than a project" in project_placement_problem(collection)
+
+
+def test_a_directory_that_is_already_a_project_is_no_problem(tmp_path: Path):
+    """init_project reports the file it declined to replace; that is not this
+    function's refusal to make."""
+    from am_segmentation_manager.operations.init_project import project_placement_problem
+
+    project = tmp_path / "project"
+    _image(project / "lam_001" / "sem")
+    (project / "experiment.yaml").write_text("name: p\n")
+
+    assert project_placement_problem(project) is None
+
+
+def test_a_folder_with_no_images_at_all_may_still_be_named(tmp_path: Path):
+    """What the escape hatch relies on: a dataset the search cannot recognise
+    has no shape to object to."""
+    from am_segmentation_manager.operations.init_project import project_placement_problem
+
+    odd = tmp_path / "odd_dataset" / "pictures"
+    odd.mkdir(parents=True)
+    (odd / "img.tif").write_bytes(b"i")
+
+    assert project_placement_problem(tmp_path / "odd_dataset") is None
+
+
+def test_recursive_init_skips_a_gathering_folder_and_says_so(tmp_path: Path, capsys):
+    """It writes what it is sure of and reports the rest, rather than guessing
+    a level it cannot know."""
+    from am_segmentation_manager.cli import main
+
+    # A marked project, without which the scan root is itself the outermost
+    # unmarked directory holding images, and so the only candidate.
+    _image(tmp_path / "indexed" / "lam_001" / "sem")
+    (tmp_path / "indexed" / "experiment.yaml").write_text("name: p\n")
+    _image(tmp_path / "plain_dataset" / "lam_001" / "sem")
+    gathered = tmp_path / "to sort"
+    _image(gathered / "2024_dataset" / "lam_001" / "sem")
+    _image(gathered / "2026_dataset" / "lam_001" / "stage" / "sem")
+
+    assert main(["init-project", str(tmp_path), "--recursive"]) == 0
+
+    assert (tmp_path / "plain_dataset" / "AM_metadata.yaml").exists()
+    assert not (gathered / "AM_metadata.yaml").exists()
+    assert "laid out 2 different ways" in capsys.readouterr().out
+
+
+def test_init_project_refuses_a_gathering_folder_by_name(tmp_path: Path, capsys):
+    from am_segmentation_manager.cli import main
+
+    gathered = tmp_path / "to sort"
+    _image(gathered / "2024_dataset" / "lam_001" / "sem")
+    _image(gathered / "2026_dataset" / "lam_001" / "stage" / "sem")
+
+    assert main(["init-project", str(gathered)]) == 2
+
+    assert not (gathered / "AM_metadata.yaml").exists()
+    assert "gathers several" in capsys.readouterr().out

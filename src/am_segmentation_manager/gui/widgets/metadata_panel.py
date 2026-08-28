@@ -145,8 +145,8 @@ class MetadataPanel(QWidget):
     project_path_requested = Signal(int)
     project_reveal_requested = Signal(int)
     #: Emitted when the user asks what the scanned folder looks like, or asks
-    #: for the projects in it to be given a metadata file. Both act on the whole
-    #: scanned collection, so the window supplies the root.
+    #: to choose which of its directories become projects. Both start from the
+    #: whole scanned collection, so the window supplies the root.
     survey_requested = Signal()
     init_requested = Signal()
     #: Emitted when the user asks to recompress every label in the collection.
@@ -199,8 +199,9 @@ class MetadataPanel(QWidget):
 
         The first two come before this list has rows in it, which is why they
         sit under the list rather than beside the fields: a collection with no
-        metadata files has nothing to select. Compressing joins them because it
-        has no reason to be narrower -- see its tooltip.
+        metadata files has nothing to select, and naming its projects is what
+        puts the first row there. Compressing joins them because it has no
+        reason to be narrower -- see its tooltip.
 
         Two to a row rather than three across. A button clips its caption
         rather than eliding it, and clipping takes the ends off both sides at
@@ -219,11 +220,11 @@ class MetadataPanel(QWidget):
         self.survey_button.clicked.connect(self.survey_requested.emit)
         grid.addWidget(self.survey_button, 0, 0)
 
-        self.init_button = QPushButton("Add metadata files...")
+        self.init_button = QPushButton("Add projects...")
         self.init_button.setToolTip(
-            "Write an AM_metadata.yaml into every project that has none, "
-            "including folders holding images that are not indexed as projects "
-            "yet. An existing file is never overwritten."
+            "Pick which directories become projects, and give those that have "
+            "none an AM_metadata.yaml. Unindexed folders are proposed for you "
+            "to confirm; an existing file is never overwritten."
         )
         self.init_button.clicked.connect(self.init_requested.emit)
         grid.addWidget(self.init_button, 0, 1)
@@ -237,8 +238,27 @@ class MetadataPanel(QWidget):
         self.compress_button.clicked.connect(self.compress_requested.emit)
         grid.addWidget(self.compress_button, 1, 0)
 
+        # The list above shows what is indexed, which says nothing about what
+        # is sitting in the folder unindexed -- the state a collection is in
+        # before any of this has been done, and the one the list cannot show.
+        self.unindexed = QLabel("")
+        self.unindexed.setWordWrap(True)
+        self.unindexed.setStyleSheet(f"color: {MISMATCH.name()};")
+        grid.addWidget(self.unindexed, 2, 0, 1, 2)
+
         self._update_collection_buttons()
         return box
+
+    def set_unindexed(self, count: int, images: int) -> None:
+        """Say how many directories under the folder are not projects yet."""
+        self.unindexed.setText(
+            ""
+            if not count
+            else (
+                f"{count} directory(ies) here hold {images} image(s) and are not "
+                f"projects yet. Add projects... names them."
+            )
+        )
 
     def set_root(self, root) -> None:
         """Name the folder the two collection actions would act on.
@@ -253,16 +273,20 @@ class MetadataPanel(QWidget):
         self._update_collection_buttons()
 
     def _update_collection_buttons(self) -> None:
-        """Offer the collection actions only when they have a folder to act on.
+        """Offer the collection actions once they have a folder to act on.
 
-        The two that write also wait on the editing guard, matching the fields
-        beside them; inspecting the layout changes nothing and does not.
+        Inspecting the layout and naming projects are offered as soon as a
+        folder is loaded; recompressing waits on the editing guard as well.
+        Naming projects still writes nothing until the guard is answered --
+        the window says so when the button is pressed. It is offered here
+        because a *disabled* button cannot say what it is waiting for, and
+        this is the one action a collection with no projects in it needs: its
+        guard sits beside fields that an empty project list never fills.
         """
         has_root = self.root is not None
-        editable = has_root and self.controller.editing_enabled
         self.survey_button.setEnabled(has_root)
-        self.init_button.setEnabled(editable)
-        self.compress_button.setEnabled(editable)
+        self.init_button.setEnabled(has_root)
+        self.compress_button.setEnabled(has_root and self.controller.editing_enabled)
 
     def _build_fields(self) -> QWidget:
         box = QGroupBox("Metadata")

@@ -158,6 +158,15 @@ def format_survey(
     counts = survey.finding_counts()
     summary = ", ".join(f"{counts[severity]} {severity}" for severity in SEVERITY_ORDER)
     lines.append(f"{len(survey.projects)} project(s) found; findings: {summary}")
+    if survey.unindexed:
+        # On the headline rather than only among the findings: a folder whose
+        # data is mostly not indexed yet should say so where the project count
+        # is read, not several screens below it.
+        images = sum(candidate.images for candidate in survey.unindexed)
+        lines.append(
+            f"{len(survey.unindexed)} directory(ies) hold {images} image(s) but are "
+            f"not projects yet; see the findings below"
+        )
 
     for project in survey.projects:
         lines.append("")

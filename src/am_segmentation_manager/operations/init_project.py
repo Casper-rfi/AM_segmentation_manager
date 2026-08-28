@@ -15,6 +15,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..discovery import (
+    contains_marked_project,
+    describe_dataset_candidate,
+    project_markers,
+)
 from ..io.yaml import read_yaml
 from ..metadata import (
     AM_METADATA_FILENAME,
@@ -35,6 +40,41 @@ logger = logging.getLogger(__name__)
 NEVER_DEFAULTED: frozenset[str] = frozenset(
     entry.name for entry in FIELDS if not entry.defaultable
 )
+
+
+def project_placement_problem(directory: Path) -> str | None:
+    """Return why a metadata file must not be written into *directory*, or None.
+
+    A marker in a directory that gathers datasets makes every one of them a
+    *lamella* of a single project, putting several samples under one metadata
+    record -- an error nothing downstream can see, which is why this refuses
+    rather than warns. A directory that is already a project is no problem
+    here: :func:`init_project` reports the file it declined to replace.
+
+    Two shapes of collection, because a gathering directory is only sometimes
+    visible from its markers. One holds projects that have been marked; the
+    other holds datasets nobody has marked yet, and gives itself away by
+    holding them at several layout depths at once.
+    """
+    if not directory.is_dir():
+        return f"Not a directory: {directory}"
+    if project_markers(directory):
+        return None
+    if contains_marked_project(directory):
+        return (
+            f"{directory} holds projects of its own, so it is a collection "
+            f"rather than a project. Writing a marker here would merge every "
+            f"dataset under it into one project."
+        )
+    candidate = describe_dataset_candidate(directory)
+    if candidate.holds_several_datasets:
+        return (
+            f"{directory} holds datasets laid out {len(candidate.stage_depths)} "
+            f"different ways, so it gathers several rather than being one. "
+            f"Its {len(candidate.lamellae)} subdirectories would become the "
+            f"lamellae of a single project. Name each dataset instead."
+        )
+    return None
 
 
 @dataclass(frozen=True)

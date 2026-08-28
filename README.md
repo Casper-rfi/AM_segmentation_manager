@@ -145,14 +145,18 @@ Installing provides the `am-seg` command; `python -m am_segmentation_manager.cli
 is equivalent and needs no installation.
 
 **The window is the primary interface.** Four tabs in workflow order — *Add data* to
-describe projects so they can be indexed and grouped, and to inspect or recompress the
-whole folder; *Curate* to review images against their labels, set their state and predict
-them; *Label* to proofread one lamella's selected images at full resolution; and *Export*
+name which directories are projects, describe them so they can be indexed and grouped,
+and inspect or recompress the whole folder; *Curate* to review images against their labels,
+set their state and predict them; *Label* to proofread one lamella's selected images at full resolution; and *Export*
 to choose a subset, write out its lists and metadata, or copy the images and labels
 themselves into a folder of their own. Curate and Label each show one series at a time,
 chosen beside the beam buttons, with each alignment run's summary figure on Curate's Plots
 view. Proofreading holds a lamella's edits until you save them, saving offers to mark the
 reviewed set corrected, and the Label tab will ring the stray spots too small to be real.
+Autolamella projects are found by their `experiment.yaml`; datasets predating it, or with
+theirs stripped out, are named on *Add data* through **Add projects**, which proposes the
+directories holding images that nothing indexes and lets you confirm them, look inside one
+that gathers several datasets, or name a folder the scan cannot recognise.
 Reviewing is safe by default: everything that writes stays locked until *Enable editing*
 is ticked. Press **`F1`** for the keys and mouse gestures live on the tab you are on.
 

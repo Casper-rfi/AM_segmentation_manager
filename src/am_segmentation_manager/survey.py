@@ -20,6 +20,8 @@ from typing import Literal
 from .discovery import (
     DEFAULT_MAX_DEPTH,
     PROJECT_MARKERS,
+    DatasetCandidate,
+    describe_dataset_candidates,
     discover_stages,
     find_nested_project_roots,
     find_project_roots,
@@ -256,11 +258,16 @@ class CollectionSurvey:
         projects: The projects found, ordered by relative path.
         findings: Findings that concern the collection rather than one project,
             such as two projects sharing an identity.
+        unindexed: Directories holding images that are not projects yet, and so
+            appear nowhere in *projects*. Reported because a survey that
+            counted only what is indexed would be silent about the data most
+            in need of attention.
     """
 
     root: Path
     projects: tuple[ProjectSurvey, ...] = ()
     findings: tuple[Finding, ...] = ()
+    unindexed: tuple[DatasetCandidate, ...] = ()
 
     @property
     def all_findings(self) -> list[Finding]:
@@ -312,9 +319,17 @@ def survey_collection(
             key=lambda project: project.relative_path,
         )
     )
-    findings = tuple(_collection_findings(projects))
-    logger.info("Surveyed %d project(s) under %s", len(projects), root)
-    return CollectionSurvey(root=root, projects=projects, findings=findings)
+    unindexed = tuple(describe_dataset_candidates(root, max_depth=max_depth))
+    findings = tuple(
+        [*_collection_findings(projects), *_unindexed_dataset_findings(unindexed)]
+    )
+    logger.info(
+        "Surveyed %d project(s) and %d unindexed dataset(s) under %s",
+        len(projects), len(unindexed), root,
+    )
+    return CollectionSurvey(
+        root=root, projects=projects, findings=findings, unindexed=unindexed
+    )
 
 
 def survey_project(
@@ -838,6 +853,49 @@ def _count_empty_labels(labels: dict[str, Path]) -> int:
     nobody could read would be a guess presented as a fact.
     """
     return sum(1 for path in labels.values() if is_label_file_empty(path) is True)
+
+
+def _unindexed_dataset_findings(
+    candidates: Iterable[DatasetCandidate],
+) -> list[Finding]:
+    """Return one finding per directory holding images that is not a project.
+
+    Warnings rather than info: this is data the collection does not yet
+    contain, and burying it among the per-image notes is what made a folder of
+    three unindexed datasets look like a folder of none.
+    """
+    findings: list[Finding] = []
+    for candidate in candidates:
+        if candidate.holds_several_datasets:
+            shown = ", ".join(candidate.lamellae[:3])
+            more = "" if len(candidate.lamellae) <= 3 else ", ..."
+            findings.append(
+                Finding(
+                    severity="warning",
+                    category="gathered-datasets",
+                    path=candidate.path,
+                    message=(
+                        f"Holds {len(candidate.lamellae)} dataset(s) laid out "
+                        f"{len(candidate.stage_depths)} different ways ({shown}{more}), "
+                        f"so it gathers several rather than being one. Make each of "
+                        f"them a project rather than this directory"
+                    ),
+                )
+            )
+        else:
+            findings.append(
+                Finding(
+                    severity="warning",
+                    category="unindexed-dataset",
+                    path=candidate.path,
+                    message=(
+                        f"Holds {len(candidate.lamellae)} lamella(e) and "
+                        f"{candidate.images} image(s) but has no project marker, so "
+                        f"nothing indexes it. A metadata file makes it a project"
+                    ),
+                )
+            )
+    return findings
 
 
 def _collection_findings(projects: Iterable[ProjectSurvey]) -> list[Finding]:

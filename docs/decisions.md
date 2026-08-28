@@ -43,10 +43,25 @@ appending to it.
   writes the latter rather than fabricating the former: `experiment.yaml` is Autolamella's file,
   and writing one misrepresents provenance and could collide if Autolamella ever opens that
   directory. `protocol.yaml` looks like a third marker and is not usable as one, some genuine
-  projects having `experiment.yaml` without it. `init-project` **refuses a directory that holds
-  projects of its own**: that is a collection, and a marker there makes every unmarked dataset
-  beneath it a *lamella* of one project — several samples under one metadata record, invisible in
-  the output. `--recursive` does the right thing.
+  projects having `experiment.yaml` without it. `init-project` **refuses a directory that gathers
+  datasets rather than being one**: a marker there makes every dataset beneath it a *lamella* of
+  one project — several samples under one metadata record, invisible in the output.
+  `project_placement_problem` is the single guard both interfaces ask, and it tests two shapes,
+  because a gathering directory only sometimes holds *marked* projects to give it away. The other
+  shape is structural: one project's Adaptive Polishing stages sit at a single depth whatever its
+  layout era, so stages at several depths mean several datasets. Measured across the reference
+  collection, every one of its 13 projects sits at one depth.
+- **Which directory is "the project" is decided by a person, not inferred.** It is a fact about
+  the acquisition, and a folder gathering unmarked datasets is shaped exactly like a project whose
+  lamellae hold subdirectories — so no structural test separates them in general, and the depth
+  signal above misses a folder gathering datasets of a single era. The search is reliable and the
+  levelling is not, so they are separate calls: `find_dataset_candidates` proposes,
+  `describe_dataset_candidate` says what each proposal would become, and
+  `dataset_candidates_below` descends into one proposed too high. The window's *Add projects*
+  dialog is where the confirming happens; `--recursive` writes the proposals it is sure of and
+  reports the rest rather than guessing. What a proposal *would become* is the useful column:
+  lamella names that read like dataset names are what tells a reader the level is wrong, and no
+  rule states that.
 - **Identity is the path relative to the scan root, never the name** — for a project, and for a
   lamella within its project. Two different projects here have identical names, `created_at` and
   recorded paths, so keying by name silently drops one; and two projects each hold an
@@ -76,9 +91,11 @@ appending to it.
   `unexpected-stage-name` is narrowed the same way, to a stage found by holding image
   *directories* — a lamella was never going to be named `adaptive_polish*`.
 - **The survey counts what it could not reach at all.** Every other finding describes something
-  the conventions recognised; `unindexed-images` counts image files no image set claims, which is
-  the failure that hides best — a project holding 430 images can survey as holding 100 with
-  nothing saying so. It is also what makes the project-root overview images visible without
+  the conventions recognised; `unindexed-images` counts image files no image set claims, and
+  `unindexed-dataset` counts whole directories no project claims — the two failures that hide
+  best. A project holding 430 images can survey as holding 100 with nothing saying so, and a
+  folder holding three unindexed datasets surveyed as holding none at all until the count moved
+  onto the headline. It is also what makes the project-root overview images visible without
   indexing them as lamella data. Labels, predictions and ignored names are excluded, or annotating
   a project would report thousands.
 - **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing

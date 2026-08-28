@@ -54,6 +54,7 @@ from .image_panel import ImagePanel
 from .label_panel import CLASS_KEYS, LabelPanel
 from .metadata_panel import MetadataPanel
 from .operations_panel import OperationsPanel
+from .project_dialog import AddProjectsDialog
 from .project_panel import ProjectPanel
 from .report_dialog import ReportDialog
 from .state_panel import StatePanel
@@ -519,7 +520,7 @@ class CurationWindow(QMainWindow):
         self.operations_panel.convert_requested.connect(self._convert_predictions)
 
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
-        self.metadata_panel.init_requested.connect(self._add_metadata_files)
+        self.metadata_panel.init_requested.connect(self._add_projects)
         self.metadata_panel.compress_requested.connect(self._compress_labels)
         self.export_panel.csv_check_requested.connect(self._check_csv)
         self.export_panel.measure_requested.connect(self._measure_labels)
@@ -716,6 +717,10 @@ class CurationWindow(QMainWindow):
         self.operations_controller.set_start_path(self.controller.start_path)
         self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
         self.metadata_panel.set_root(self.controller.start_path)
+        if self.controller.start_path is not None:
+            self.metadata_panel.set_unindexed(
+                *self.operations_controller.unindexed_summary(self.controller.start_path)
+            )
         # Re-pointed rather than left holding records from the previous scan,
         # whose paths may no longer be where the files are.
         self.label_controller.set_lamella(self.controller.lamella)
@@ -1012,8 +1017,14 @@ class CurationWindow(QMainWindow):
             lambda report: self._show_report("Inspect layout", report),
         )
 
-    def _add_metadata_files(self) -> None:
-        """Write a metadata file into every project under the scanned root."""
+    def _add_projects(self) -> None:
+        """Ask which directories become projects, then write their files.
+
+        The dialog *is* the preview: every row already says what it would
+        become, so this goes straight to writing rather than through the
+        confirm-a-report pair the other operations use. Showing the same
+        information a second time would not be read.
+        """
         root = self.controller.start_path
         if root is None:
             self._flash("Scan a folder first")
@@ -1024,14 +1035,18 @@ class CurationWindow(QMainWindow):
                 "Tick 'Enable editing' before writing metadata files.",
             )
             return
+        dialog = AddProjectsDialog(self, self.operations_controller, root)
+        if not dialog.exec_():
+            return
+        chosen = dialog.chosen()
+        if not chosen:
+            return
         # Rescanned afterwards: making an unindexed dataset into a project is
         # the point of this, and only a scan discovers the projects it created.
-        self._operate(
-            "Add metadata files",
-            lambda allow, dry: self.operations_controller.add_metadata_files(
-                root, dry_run=dry
-            ),
-            rescan=True,
+        self._run_operation(
+            "Add projects",
+            lambda: self.operations_controller.create_projects(chosen, dry_run=False),
+            lambda report: self._operation_applied("Add projects", report, True),
         )
 
     def _check_csv(self, path: str) -> None:
