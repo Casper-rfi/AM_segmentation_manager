@@ -306,6 +306,7 @@ def plan_placement(
     project_root: Path,
     *,
     shared: bool = False,
+    skip_empty: bool = False,
 ) -> list[LabelPlacement]:
     """Return the copies to make, having validated every one of them.
 
@@ -320,6 +321,10 @@ def plan_placement(
         project_root: The project holding the original images.
         shared: Write into the modality's shared label directory rather than
             the private one belonging to each image directory.
+        skip_empty: Pass over a label holding no annotation instead of
+            refusing the batch for it. Each one is named as it is skipped: a
+            blank label is a picture nobody segmented, and which ones those
+            are is worth seeing rather than counting.
 
     Raises:
         PlacementConflict: If anything at all is wrong, listing all of it.
@@ -363,6 +368,12 @@ def plan_placement(
         original = originals.get(identity)
         if original is None:
             conflicts.append(f"{image.name}: {identity} matches no image in {project_root}")
+            continue
+
+        if skip_empty and is_empty(label) is True:
+            # The label's own path, not the image's name: the filename repeats
+            # across lamellae, so it does not say which picture was skipped.
+            logger.info("Skipping %s: it holds no annotation", label)
             continue
 
         conflicts.extend(_pixel_conflicts(image, original, label))
@@ -580,6 +591,13 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--skip-empty", action="store_true",
+        help=(
+            "Pass over a label holding no annotation instead of refusing the "
+            "batch for it; each one skipped is named"
+        ),
+    )
+    parser.add_argument(
         "--compress", action="store_true",
         help="Re-encode each label with LZW while placing it, instead of copying bytes",
     )
@@ -613,7 +631,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("pass either --source-project or both --images and --labels")
 
     try:
-        placements = plan_placement(pairs, args.project, shared=args.shared)
+        placements = plan_placement(
+            pairs, args.project, shared=args.shared, skip_empty=args.skip_empty
+        )
     except PlacementConflict as exc:
         for conflict in exc.conflicts:
             logger.error("%s", conflict)

@@ -264,6 +264,36 @@ def test_an_empty_label_stops_the_batch(dataset: dict[str, Path]) -> None:
     assert any("no annotation" in line for line in caught.value.conflicts)
 
 
+def test_skipping_empty_labels_places_the_rest(dataset: dict[str, Path]) -> None:
+    write_label(dataset["labels"] / "SEM_1.tif", empty=True)
+
+    placements = plan(dataset, skip_empty=True)
+
+    assert [p.label.name for p in placements] == ["SEM_2.tif"]
+
+
+def test_skipping_empty_labels_names_the_label_not_the_filename(
+    dataset: dict[str, Path], caplog
+) -> None:
+    """The filename repeats across lamellae, so the path is what identifies it."""
+    write_label(dataset["labels"] / "SEM_1.tif", empty=True)
+
+    with caplog.at_level("INFO"):
+        plan(dataset, skip_empty=True)
+
+    assert str(dataset["labels"] / "SEM_1.tif") in caplog.text
+
+
+def test_skipping_empty_labels_still_refuses_a_real_problem(
+    dataset: dict[str, Path],
+) -> None:
+    """It passes over blanks; it does not pass over anything else."""
+    write_label(dataset["labels"] / "SEM_1.tif", shape=(4, 4))
+    with pytest.raises(PlacementConflict) as caught:
+        plan(dataset, skip_empty=True)
+    assert any("but the image is" in line for line in caught.value.conflicts)
+
+
 def test_a_label_of_the_wrong_size_stops_the_batch(dataset: dict[str, Path]) -> None:
     write_label(dataset["labels"] / "SEM_1.tif", shape=(4, 4))
     with pytest.raises(PlacementConflict) as caught:
