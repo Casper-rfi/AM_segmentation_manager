@@ -135,7 +135,7 @@ def _suggestion_box() -> QComboBox:
     box.setEditable(True)
     box.setInsertPolicy(QComboBox.NoInsert)
     box.lineEdit().setPlaceholderText("unset")
-    match_anywhere(box.completer())
+    match_anywhere(box)
     return box
 
 

@@ -221,8 +221,11 @@ in that module's docstring; work not built yet belongs in
   builds its completer in `InlineCompletion` mode, which keeps what was typed and appends the tail
   of the match — correct only when the match is a prefix. Typing `a` against `UltrAuFoil Au R2/2
   200 mesh` wrote `altrAuFoil Au R2/2 200 mesh` into the field, a value nobody typed, in metadata
-  that is exported. `common.match_anywhere` sets both, and is the only place either is set.
-  Matching anywhere is worth keeping: `Quantifoil` and `UltrAuFoil` differ in their middles.
+  that is exported. **And the popup has to be taught Tab**, which is the same fault from the other
+  side: a completer's popup answers Return and a click, so Tab reached the field, moved the focus
+  and left the half-typed letter behind as the value — `g` committed as a chip. Both belong to
+  `common.match_anywhere`, which is the only place any of it is set. Matching anywhere is worth
+  both: `Quantifoil` and `UltrAuFoil` differ in their middles.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and a
   `metadata_project` in another. The directory is what the scanner indexes and Curate lists, so it

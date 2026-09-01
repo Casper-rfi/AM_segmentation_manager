@@ -11,7 +11,17 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from qtpy.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
+from qtpy.QtCore import (
+    QEvent,
+    QObject,
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    Signal,
+)
 from qtpy.QtGui import (
     QColor,
     QFont,
@@ -169,8 +179,8 @@ def ticked_caption(noun: str, total: int, ticked: int) -> str:
     return f"{noun} ({total})"
 
 
-def match_anywhere(completer: QCompleter) -> None:
-    """Have *completer* suggest on any part of a value, and offer them in a list.
+def match_anywhere(box: QComboBox) -> None:
+    """Have *box* suggest on any part of a value, and let Tab take the suggestion.
 
     **The popup is not cosmetic.** An editable ``QComboBox`` builds its
     completer in ``InlineCompletion`` mode, which assumes the match is a prefix
@@ -180,12 +190,67 @@ def match_anywhere(completer: QCompleter) -> None:
     value nobody typed, in metadata that is exported. A popup replaces the whole
     text instead, which is what makes matching anywhere safe.
 
-    Matching anywhere is worth this: "Quantifoil" and "UltrAuFoil" are told
+    **Tab has to be taught to accept**, which is the other half of the same
+    fault. A completer's popup answers to Return and to a click; Tab is not its
+    key, so it reaches the field, moves the focus, and leaves whatever was
+    half-typed behind as the value -- one letter, committed as a chip nobody
+    meant. So Tab takes the suggestion on show and stays in the field.
+
+    Matching anywhere is worth both: "Quantifoil" and "UltrAuFoil" are told
     apart by their middles, not by how they start.
     """
+    completer = box.completer()
     completer.setCaseSensitivity(Qt.CaseInsensitive)
     completer.setFilterMode(Qt.MatchContains)
     completer.setCompletionMode(QCompleter.PopupCompletion)
+    line = box.lineEdit()
+    if line is not None:
+        line.installEventFilter(_CompleteOnTab(box))
+
+
+class _CompleteOnTab(QObject):
+    """Makes Tab take what the completer's popup is offering.
+
+    Parented to the box, an event filter being kept alive by whoever installed
+    it and by nothing else.
+    """
+
+    def __init__(self, box: QComboBox) -> None:
+        super().__init__(box)
+        self._box = box
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt naming
+        """Take the suggestion on Tab, and let every other key through."""
+        if event.type() != QEvent.KeyPress or event.key() != Qt.Key_Tab:
+            return False
+        completer = self._box.completer()
+        if completer is None or not completer.popup().isVisible():
+            return False
+        chosen = self._offered(completer)
+        if not chosen:
+            return False
+        completer.popup().hide()
+        self._box.setCurrentText(chosen)
+        # Hidden again after setting the text: writing to the field is an edit
+        # like any other, so the completer answers it by offering the value it
+        # has just been given.
+        completer.popup().hide()
+        line = self._box.lineEdit()
+        if line is not None:
+            line.setCursorPosition(len(chosen))
+        return True
+
+    @staticmethod
+    def _offered(completer: QCompleter) -> str:
+        """Return the row the popup is on, or the first it would offer.
+
+        A popup that has just appeared has no current row until someone arrows
+        into it, and that is exactly when Tab is pressed.
+        """
+        index = completer.popup().currentIndex()
+        if index.isValid():
+            return str(index.data())
+        return completer.currentCompletion()
 
 
 class ToggleSwitch(QCheckBox):
@@ -911,7 +976,7 @@ class ChipEditor(QWidget):
         self.entry.setEditable(True)
         self.entry.setInsertPolicy(QComboBox.NoInsert)
         self.entry.lineEdit().setPlaceholderText(placeholder)
-        match_anywhere(self.entry.completer())
+        match_anywhere(self.entry)
         # Three ways in, and the third is the one that matters: Return, picking
         # a value already in use, and simply leaving the box. Without that last
         # one a value typed and left there is discarded by the next thing that

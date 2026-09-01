@@ -82,3 +82,64 @@ def test_what_a_suggestion_offers_is_a_whole_value(box):
     completion = completer.currentCompletion()
     assert completion in GRID_TYPES
     assert not completion.lower().startswith("a")
+
+
+# ---------------------------------------------------------------------------
+# Taking a suggestion
+# ---------------------------------------------------------------------------
+
+def _press_tab(qt_app, box) -> None:
+    """Send Tab to the field, as pressing it does."""
+    from qtpy.QtGui import QKeyEvent
+
+    line = box.lineEdit()
+    for kind in (QKeyEvent.KeyPress, QKeyEvent.KeyRelease):
+        qt_app.sendEvent(line, QKeyEvent(kind, Qt.Key_Tab, Qt.NoModifier, "\t"))
+    qt_app.processEvents()
+
+
+def _offer(qt_app, box, typed: str) -> None:
+    """Type *typed* and put the popup on screen, as the field does."""
+    box.lineEdit().setText(typed)
+    box.completer().setCompletionPrefix(typed)
+    box.completer().complete()
+    qt_app.processEvents()
+
+
+def test_tab_takes_the_suggestion_the_popup_is_showing(qt_app, box):
+    """A popup answers Return and a click; Tab is not its key.
+
+    Left alone, Tab moved the focus and the half-typed letter stayed behind as
+    the value -- obvious enough to notice, and still a value nobody typed.
+    """
+    box.show()
+    _offer(qt_app, box, "a")
+
+    _press_tab(qt_app, box)
+
+    assert box.currentText() in GRID_TYPES
+
+
+def test_tab_is_left_alone_when_nothing_is_being_offered(qt_app, box):
+    """It is still the key that moves to the next field."""
+    box.show()
+    box.lineEdit().setText("nothing matches this")
+
+    _press_tab(qt_app, box)
+
+    assert box.currentText() == "nothing matches this"
+
+
+def test_a_chip_is_the_whole_value_and_not_the_letter_that_found_it(qt_app):
+    """The editor that keeps what it is given: what Tab leaves is committed."""
+    editor = ChipEditor()
+    editor.set_suggestions(GRID_TYPES)
+    editor.show()
+    _offer(qt_app, editor.entry, "a")
+
+    _press_tab(qt_app, editor.entry)
+    editor.commit_pending()
+
+    # Not compared against the box, which committing empties.
+    assert len(editor.values()) == 1
+    assert editor.values()[0] in GRID_TYPES
