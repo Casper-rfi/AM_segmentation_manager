@@ -2005,6 +2005,7 @@ class CurationWindow(QMainWindow):
             self.controller.project_statuses(),
             self.controller.project_checks(),
             folders=[project.folder for project in projects],
+            series=self.controller.project_series(),
         )
 
     def _refresh_lamellae(self) -> None:

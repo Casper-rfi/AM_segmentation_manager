@@ -718,6 +718,24 @@ class CurationController:
         """Return each lamella's curation status for the selected project."""
         return [lamella_status(lamella) for lamella in self._lamellae]
 
+    def project_series(self) -> list[list[str]]:
+        """Return the series each project holds images of, in list order.
+
+        Read off the records, like :func:`~..frames.series_present`, rather
+        than assumed from the vocabulary: a quarter of the reference archive
+        holds reference and alignment images and no Adaptive Polishing ones at
+        all, which is a project there is nothing to proofread in and nothing
+        else on the row says so.
+        """
+        return [
+            [
+                name
+                for name in SERIES
+                if name in {record.series for record in project.image_records}
+            ]
+            for project in self._projects
+        ]
+
     # -- paths, for copying out of the window ------------------------------
     #
     # Absolute paths throughout. The relative path is a project's identity

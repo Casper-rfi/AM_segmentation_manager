@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QSize, Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QGroupBox,
@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...layout import SERIES, SERIES_LABELS
 from ..controller import CurationStatus
 from .common import (
     CheckList,
@@ -43,6 +44,10 @@ from .common import (
 )
 from .frame_strip import STATE_COLOURS
 from .theme import (
+    CHIP_WIDTH,
+    SERIES_LEAD,
+    SERIES_MARK,
+    SERIES_MARK_GAP,
     SWATCH_BAND,
     SWATCH_GAP,
     SWATCH_HEIGHT,
@@ -99,6 +104,9 @@ class ProjectTree(QTreeWidget):
         # Narrower than Qt's default, which spends most of a 270px panel on
         # saying that a project is one level down.
         self.setIndentation(TREE_INDENT)
+        # Or Qt scales the chip to a text line's height and the series
+        # marks come out a smudge; see theme.CHIP_WIDTH.
+        self.setIconSize(QSize(CHIP_WIDTH, SWATCH_HEIGHT))
         self.itemChanged.connect(self._item_changed)
         self.currentItemChanged.connect(self._current_changed)
 
@@ -548,6 +556,7 @@ class ProjectPanel(QWidget):
         statuses: list[CurationStatus] | None = None,
         checks: list[bool] | None = None,
         folders: list[str] | None = None,
+        series: list[list[str]] | None = None,
     ) -> None:
         """List the discovered projects, selecting the one at *current*.
 
@@ -555,17 +564,23 @@ class ProjectPanel(QWidget):
         the projects with no chips, which is what happens before a scan.
         *checks* says which rows are ticked. *folders* says which folder each
         project hangs under, one entry per label; omitting it puts them all at
-        the top level, which is a flat list by another name.
+        the top level, which is a flat list by another name. *series* says which
+        series each project holds images of, marked on the chip; omitting it
+        draws the progress bands alone.
         """
         self._project_labels = list(labels)
+        held_series = series if series is not None else [None] * len(labels)
         self.project_list.set_projects(
             folders if folders is not None else [""] * len(labels),
             labels,
             ticked=checks or [],
-            icons=[_status_icon(status) for status in statuses or []],
+            icons=[
+                _status_icon(status, held)
+                for status, held in zip(statuses or [], held_series)
+            ],
             tooltips=[
-                f"{label}\n{status.summary}"
-                for label, status in zip(labels, statuses or [])
+                f"{label}\n{status.summary}{_series_note(held)}"
+                for label, status, held in zip(labels, statuses or [], held_series)
             ],
             current=current,
         )
@@ -677,26 +692,69 @@ STATUS_COLOURS = {
 #: read as absent rather than as a state, and many older datasets have no FIB.
 STATUS_EMPTY = "empty"
 
-def _status_icon(status: CurationStatus) -> QIcon:
-    """Return a two-band chip: SEM above, FIB below.
+def _status_icon(status: CurationStatus, series: Sequence[str] | None = None) -> QIcon:
+    """Return a two-band chip: SEM above, FIB below, and the series after it.
 
-    One icon rather than two so a list row stays one line, and split rather
-    than combined because a lamella whose SEM work is finished and whose FIB has
-    not started is a normal situation that one mark cannot express. Stacked
-    rather than side by side; :data:`SWATCH_WIDTH` says why.
+    One icon rather than two or three, so a row stays one line. The bands are
+    split rather than combined because a lamella whose SEM work is finished and
+    whose FIB has not started is a normal situation that one mark cannot
+    express; stacked rather than side by side, for the reason
+    :data:`SWATCH_WIDTH` gives.
+
+    Args:
+        series: The series this row holds images of. Omitted, no marks are
+            drawn and the chip is the bands alone -- which is what a lamella
+            row wants, a lamella being reached only through a project that
+            already said.
     """
-    pixmap = QPixmap(SWATCH_WIDTH, SWATCH_HEIGHT)
+    marks = len(SERIES) if series is not None else 0
+    width = SWATCH_WIDTH + (
+        SERIES_LEAD + marks * SERIES_MARK + (marks - 1) * SERIES_MARK_GAP
+        if marks
+        else 0
+    )
+    pixmap = QPixmap(width, SWATCH_HEIGHT)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     try:
         for index, modality in enumerate(("SEM", "FIB")):
             top = index * (SWATCH_BAND + SWATCH_GAP)
             _paint_status(painter, top, status.of(modality))
+        if series is not None:
+            _paint_series(painter, series)
     finally:
         # status.of() raises on an unexpected modality, and a painter left
         # alive past its pixmap crashes the process instead of reporting it.
         painter.end()
     return chip_icon(pixmap)
+
+
+def _series_note(series: Sequence[str] | None) -> str:
+    """Return the tooltip line naming the series a row holds.
+
+    Spelled out because the marks cannot be: three squares say *which* by
+    position, and a reader meeting them for the first time has nothing to read
+    that from. A row holding none says so rather than trailing an empty list.
+    """
+    if series is None:
+        return ""
+    if not series:
+        return "\nNo images of any series"
+    return "\nHolds: " + ", ".join(SERIES_LABELS[name] for name in series)
+
+
+def _paint_series(painter: QPainter, series: Sequence[str]) -> None:
+    """Mark each series the row holds, filled, and each it does not, hollow.
+
+    In :data:`~...layout.SERIES` order and always all of them, so the marks are
+    read by position: a row showing two would leave which two to be guessed.
+    """
+    top = (SWATCH_HEIGHT - SERIES_MARK) // 2
+    painter.setPen(SWATCH_OUTLINE)
+    for index, name in enumerate(SERIES):
+        left = SWATCH_WIDTH + SERIES_LEAD + index * (SERIES_MARK + SERIES_MARK_GAP)
+        painter.setBrush(SWATCH_OUTLINE if name in series else Qt.NoBrush)
+        painter.drawRect(left, top, SERIES_MARK - 1, SERIES_MARK - 1)
 
 
 def _paint_status(painter: QPainter, top: int, status: str) -> None:

@@ -144,6 +144,23 @@ SWATCH_BAND = 6
 SWATCH_GAP = 1
 SWATCH_HEIGHT = SWATCH_BAND * 2 + SWATCH_GAP
 
+#: One mark per series, on the same chip as the progress bands and after them:
+#: filled where the project holds images of that series, an outline where it
+#: does not. **Drawn in the outline colour and nothing else** -- the states, the
+#: label lines and the class palette have spent every colour that means
+#: something, and whether a series exists is a fourth question that must not
+#: look like an answer to any of them. Filled against hollow says it without
+#: one.
+SERIES_MARK = 5
+SERIES_MARK_GAP = 2
+SERIES_LEAD = 4
+
+#: How wide a row's chip is with the series marks on it. A view scales an icon
+#: to its own ``iconSize``, which defaults to about a text line: the bands alone
+#: survived that, and a chip half again as wide is squashed to a smudge. Any
+#: view showing one has to be told this.
+CHIP_WIDTH = SWATCH_WIDTH + SERIES_LEAD + 3 * SERIES_MARK + 2 * SERIES_MARK_GAP
+
 
 def build_palette() -> QPalette:
     """Return the window's colour palette.

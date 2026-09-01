@@ -238,3 +238,61 @@ def test_a_project_at_the_root_is_filtered_like_any_other(tree):
 
     assert not tree.project_item(5).isHidden()
     assert tree.project_item(0).isHidden()
+
+
+# ---------------------------------------------------------------------------
+# Which series a project holds
+# ---------------------------------------------------------------------------
+
+def _chip(status, series):
+    """Return the pixels of a row's chip, so two can be told apart."""
+    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
+    from am_segmentation_manager.gui.widgets.theme import CHIP_WIDTH, SWATCH_HEIGHT
+
+    icon = _status_icon(status, series)
+    return icon.pixmap(CHIP_WIDTH, SWATCH_HEIGHT).toImage().constBits().tobytes()
+
+
+@pytest.fixture
+def status():
+    from am_segmentation_manager.gui.controller import CurationStatus
+
+    return CurationStatus(sem="in progress", fib="not started")
+
+
+def test_a_project_missing_a_series_is_drawn_differently(qt_app, status):
+    """The whole point: the row with nothing to proofread has to be findable
+    among the ones that have."""
+    all_three = _chip(status, ["adaptive", "reference", "alignment"])
+
+    assert _chip(status, ["reference", "alignment"]) != all_three
+    assert _chip(status, ["adaptive"]) != all_three
+    assert _chip(status, []) != all_three
+
+
+def test_the_marks_are_read_by_position(qt_app, status):
+    """Always all three, so holding two leaves no question which two."""
+    assert _chip(status, ["adaptive"]) != _chip(status, ["reference"])
+    assert _chip(status, ["reference"]) != _chip(status, ["alignment"])
+
+
+def test_a_row_without_series_is_the_bands_alone(qt_app, status):
+    """What a lamella row wants: it is reached through a project that said."""
+    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
+    from am_segmentation_manager.gui.widgets.theme import CHIP_WIDTH, SWATCH_WIDTH
+
+    bare = _status_icon(status).availableSizes()[0]
+    marked = _status_icon(status, ["adaptive"]).availableSizes()[0]
+
+    assert bare.width() == SWATCH_WIDTH
+    assert marked.width() == CHIP_WIDTH
+
+
+def test_the_tooltip_spells_out_what_the_marks_mean(qt_app):
+    """Three squares say which by position, and a reader meeting them for the
+    first time has nothing to read that from."""
+    from am_segmentation_manager.gui.widgets.project_panel import _series_note
+
+    assert "Adaptive Polishing" in _series_note(["adaptive"])
+    assert _series_note([]) == "\nNo images of any series"
+    assert _series_note(None) == ""

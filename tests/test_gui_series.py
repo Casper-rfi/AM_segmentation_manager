@@ -287,3 +287,62 @@ def test_the_choice_survives_a_lamella_that_cannot_show_it():
 
     controller.select_lamella(2)
     assert controller.series == "reference"
+
+
+# ---------------------------------------------------------------------------
+# Which series a project holds
+# ---------------------------------------------------------------------------
+
+def test_a_project_reports_the_series_it_holds(controller: CurationController):
+    """Read off the records, so a project can never claim a series whose
+    timeline would open empty."""
+    assert controller.project_series() == [["adaptive", "reference", "alignment"]]
+
+
+def test_a_project_with_nothing_to_proofread_says_so():
+    """A quarter of the reference archive holds reference and alignment images
+    and no Adaptive Polishing ones at all. Nothing else on the row says it."""
+    controller = make_controller([
+        Lamella(
+            name=LAMELLA.name,
+            path=LAMELLA,
+            number="01",
+            stages=[
+                loose_stage([
+                    ("ref_MillRough_start_eb.tif", "SEM", "reference"),
+                    ("ref_alignment_ib.tif", "FIB", "alignment"),
+                ])
+            ],
+        )
+    ])
+
+    assert controller.project_series() == [["reference", "alignment"]]
+
+
+def test_the_series_are_reported_in_display_order():
+    """Read by position on the chip, so the order cannot be the order the
+    records happened to be scanned in."""
+    controller = make_controller([
+        Lamella(
+            name=LAMELLA.name,
+            path=LAMELLA,
+            number="01",
+            stages=[
+                loose_stage([
+                    ("ref_alignment_ib.tif", "FIB", "alignment"),
+                    ("ref_MillRough_start_eb.tif", "SEM", "reference"),
+                ]),
+                adaptive_stage(1),
+            ],
+        )
+    ])
+
+    assert controller.project_series() == [["adaptive", "reference", "alignment"]]
+
+
+def test_a_project_holding_no_images_reports_nothing():
+    controller = make_controller([
+        Lamella(name=LAMELLA.name, path=LAMELLA, number="01", stages=[])
+    ])
+
+    assert controller.project_series() == [[]]
