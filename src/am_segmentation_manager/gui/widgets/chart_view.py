@@ -15,12 +15,13 @@ from collections.abc import Callable
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
-    QCheckBox,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
     QWidget,
 )
+
+from .common import ToggleSwitch
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class ChartView(QWidget):
         self.message.setWordWrap(True)
         self._layout.addWidget(self.message)
 
-        self.normalise = QCheckBox("Shade by share of each row")
+        self.normalise = ToggleSwitch("Shade by share of each row")
         self.normalise.setToolTip(
             "Colour each cell by its share of its own row instead of by the "
             "count, so one large row stops hiding the pattern in the small ones."

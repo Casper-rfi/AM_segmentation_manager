@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -31,9 +30,14 @@ from ...display import DEFAULT_ALPHA, compose_overlay
 from ...layout import SERIES_LABELS
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
-from .common import LABEL_BADGES, class_legend_html, fill_choice_combo
+from .common import (
+    LABEL_BADGES,
+    ToggleSwitch,
+    class_legend_html,
+    fill_choice_combo,
+)
 from .image_view import ImageView, LinkedImageViews
-from .theme import BADGE_STYLES
+from .theme import BADGE_STYLES, SWITCH_RUN_GAP
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     pass
@@ -140,15 +144,20 @@ class ImagePanel(QWidget):
         controls.addWidget(self.variant_combo)
 
         controls.addSpacing(20)
-        self.overlay_check = QCheckBox("Show label")
+        self.overlay_check = ToggleSwitch("Show label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip(
-            "Draw the label over the right-hand image\nShortcut: Space"
+            "Draw the label over the right-hand image\nShortcut: V"
         )
         self.overlay_check.toggled.connect(self.overlay_toggled.emit)
         controls.addWidget(self.overlay_check)
 
-        self.image_check = QCheckBox("Show image")
+        # A switch ends at its caption, where a tick box carried padding past
+        # it. Without this the two switches and the slider's label ran together
+        # into one phrase -- "Show label Show image Opacity" -- and nothing said
+        # which caption belonged to which control.
+        controls.addSpacing(SWITCH_RUN_GAP)
+        self.image_check = ToggleSwitch("Show image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
             "Draw the label over the acquisition, or over black.\n"
@@ -158,6 +167,7 @@ class ImagePanel(QWidget):
         self.image_check.toggled.connect(self.image_toggled.emit)
         controls.addWidget(self.image_check)
 
+        controls.addSpacing(SWITCH_RUN_GAP)
         opacity_label = QLabel("Opacity")
         controls.addWidget(opacity_label)
         self.alpha_slider = QSlider(Qt.Horizontal)

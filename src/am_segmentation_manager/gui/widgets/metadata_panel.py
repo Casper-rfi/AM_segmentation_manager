@@ -16,7 +16,6 @@ from pathlib import Path
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QGridLayout,
@@ -44,6 +43,7 @@ from ..metadata_controller import (
 from .common import (
     ChipEditor,
     GripSplitter,
+    ToggleSwitch,
     add_path_menu,
     chip_icon,
     match_anywhere,
@@ -336,7 +336,7 @@ class MetadataPanel(QWidget):
             self.captions[entry.name] = caption
         column.addLayout(form)
 
-        self.enable = QCheckBox("Enable editing")
+        self.enable = ToggleSwitch("Enable editing")
         self.enable.setToolTip(
             "Unlock the fields. Only AM_metadata.yaml is written; "
             "experiment.yaml is never touched."

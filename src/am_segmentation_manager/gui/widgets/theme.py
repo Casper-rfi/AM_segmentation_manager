@@ -92,6 +92,30 @@ COMPACT_BUTTON = "compactButton"
 #: tuning the fill against one theme.
 SWATCH_OUTLINE = QColor("#1a1a1a")
 
+#: How a standalone on/off control is drawn -- the track, the knob on it, and
+#: the gap before its caption. Painted by :class:`.common.ToggleSwitch`, so no
+#: stylesheet rule below may name ``QCheckBox``: a rule would send the control
+#: back through ``QStyle`` and the switch would be drawn twice.
+#:
+#: The track is *filled* when off rather than outlined. A switch that is off is
+#: still a control, and an outline at this size reads as an empty field.
+SWITCH_OFF = "#c2c8d2"
+SWITCH_KNOB = "#ffffff"
+SWITCH_WIDTH = 34
+SWITCH_HEIGHT = 18
+SWITCH_INSET = 2.0
+SWITCH_GAP = 8
+
+#: Room kept clear around the track for the focus ring. Reserved rather than
+#: drawn over the edge: a ring painted outside the widget is clipped flat on the
+#: side it runs off, which reads as a drawing fault rather than as focus.
+SWITCH_FOCUS = 3.0
+
+#: Room between a switch's caption and whatever control follows it on the same
+#: row. A switch ends at its caption where a tick box carried padding past one,
+#: so a row of them reads as a single phrase without this.
+SWITCH_RUN_GAP = 16
+
 #: How a splitter handle is drawn: how thick the handle is, and the rounded bar
 #: down the middle of it. A bar rather than a row of dots, which at this size is
 #: three specks that read as dirt on the screen; short enough against the length

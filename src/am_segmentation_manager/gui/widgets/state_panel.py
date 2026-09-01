@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState
 from ..controller import MIXED
+from .common import ToggleSwitch
 from .frame_strip import STATE_COLOURS
 from .theme import BADGE_STYLES, SHARED_NOTE_STYLE
 
@@ -64,9 +65,7 @@ class StatePanel(QWidget):
         layout = QVBoxLayout(self)
 
         # -- the guard -----------------------------------------------------
-        from qtpy.QtWidgets import QCheckBox
-
-        self.enable_check = QCheckBox("Enable editing")
+        self.enable_check = ToggleSwitch("Enable editing")
         self.enable_check.setToolTip(
             "Unlock the controls below. Off by default so that reviewing data "
             "cannot change it by accident."

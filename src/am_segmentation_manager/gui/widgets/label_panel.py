@@ -15,7 +15,6 @@ from qtpy.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPainter, QPen, QPixmap, QPolygonF
 from qtpy.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -37,7 +36,13 @@ from ...operations.label_measure import (
     PROOFREADING_SPECK_PIXELS,
 )
 from ..label_controller import LabelController
-from .common import LABEL_BADGES, ElidingLabel, chip_icon, fill_choice_combo
+from .common import (
+    LABEL_BADGES,
+    ElidingLabel,
+    ToggleSwitch,
+    chip_icon,
+    fill_choice_combo,
+)
 from .frame_strip import FrameTimeline
 from .label_canvas import (
     DEFAULT_BRUSH_RADIUS,
@@ -45,7 +50,7 @@ from .label_canvas import (
     TOOL_FILL,
     LabelCanvas,
 )
-from .theme import BADGE_STYLES, TEXT
+from .theme import BADGE_STYLES, SWITCH_RUN_GAP, TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -379,13 +384,14 @@ class LabelPanel(QWidget):
         controls.addWidget(self.variant_combo)
 
         controls.addSpacing(20)
-        self.overlay_check = QCheckBox("Show label")
+        self.overlay_check = ToggleSwitch("Show label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip("Draw the label over the image\nShortcut: V")
         self.overlay_check.toggled.connect(self._overlay_toggled)
         controls.addWidget(self.overlay_check)
 
-        self.image_check = QCheckBox("Show image")
+        controls.addSpacing(SWITCH_RUN_GAP)
+        self.image_check = ToggleSwitch("Show image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
             "Draw the acquisition under the label, or leave the label alone "
@@ -395,6 +401,7 @@ class LabelPanel(QWidget):
         self.image_check.toggled.connect(self._image_toggled)
         controls.addWidget(self.image_check)
 
+        controls.addSpacing(SWITCH_RUN_GAP)
         opacity_label = QLabel("Opacity")
         controls.addWidget(opacity_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
@@ -413,7 +420,7 @@ class LabelPanel(QWidget):
         controls.addWidget(self.fit_button)
 
         controls.addSpacing(20)
-        self.speck_check = QCheckBox("Find specks")
+        self.speck_check = ToggleSwitch("Find specks")
         self.speck_check.setToolTip(
             "Ring every component of a few pixels: a stray annotation, or a "
             "hole that size inside one.\nSets the view that shows them, and "
@@ -422,6 +429,7 @@ class LabelPanel(QWidget):
         self.speck_check.toggled.connect(self._finding_toggled)
         controls.addWidget(self.speck_check)
 
+        controls.addSpacing(SWITCH_RUN_GAP)
         self.speck_slider = QSlider(Qt.Horizontal)
         self.speck_slider.setRange(MIN_SPECK_PIXELS, MAX_SPECK_PIXELS)
         self.speck_slider.setValue(self.controller.speck_size)

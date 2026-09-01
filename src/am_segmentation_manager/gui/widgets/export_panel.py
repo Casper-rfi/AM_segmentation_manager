@@ -18,7 +18,6 @@ from pathlib import Path
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QGroupBox,
@@ -50,6 +49,7 @@ from .chart_view import ChartView
 from .common import (
     CheckList,
     StepCombo,
+    ToggleSwitch,
     caption_for,
     choose_directory,
     choose_open_file,
@@ -353,13 +353,13 @@ class ExportPanel(QWidget):
         # Checkboxes rather than a dropdown: the three are independent, and an
         # export covering two of them is a real request. The only filter that
         # does not start on everything -- see export_controller.DEFAULT_SERIES.
-        self.series_boxes: dict[str, QCheckBox] = {}
+        self.series_boxes: dict[str, ToggleSwitch] = {}
         series_holder = QWidget()
         series_column = QVBoxLayout(series_holder)
         series_column.setContentsMargins(0, 0, 0, 0)
         series_column.setSpacing(0)
         for name in SERIES:
-            checkbox = QCheckBox(SERIES_LABELS[name])
+            checkbox = ToggleSwitch(SERIES_LABELS[name])
             checkbox.setChecked(name in DEFAULT_SERIES)
             checkbox.toggled.connect(self._controls_changed)
             self.series_boxes[name] = checkbox
@@ -375,7 +375,7 @@ class ExportPanel(QWidget):
         )
         column.addWidget(series_holder)
 
-        self.conditions = QCheckBox("One image per label")
+        self.conditions = ToggleSwitch("One image per label")
         self.conditions.setToolTip(
             "Several imaging conditions of one scene share one label. "
             "Ticked, keep one image per label rather than every condition. "
@@ -741,7 +741,7 @@ class ExportPanel(QWidget):
         grid.addLayout(row)
 
         row = QHBoxLayout()
-        self.seeded = QCheckBox("Seed")
+        self.seeded = ToggleSwitch("Seed")
         self.seeded.setChecked(True)
         self.seeded.setToolTip(
             "Shuffle reproducibly, so the same selection and seed always give "

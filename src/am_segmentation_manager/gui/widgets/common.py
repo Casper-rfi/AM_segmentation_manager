@@ -15,13 +15,16 @@ from qtpy.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
 from qtpy.QtGui import (
     QColor,
     QFont,
+    QFontMetrics,
     QIcon,
     QPainter,
+    QPen,
     QPixmap,
     QStandardItem,
     QStandardItemModel,
 )
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QCompleter,
     QFileDialog,
@@ -183,6 +186,104 @@ def match_anywhere(completer: QCompleter) -> None:
     completer.setCaseSensitivity(Qt.CaseInsensitive)
     completer.setFilterMode(Qt.MatchContains)
     completer.setCompletionMode(QCompleter.PopupCompletion)
+
+
+class ToggleSwitch(QCheckBox):
+    """A standalone on/off control, drawn as a switch rather than a tick box.
+
+    **A subclass of** :class:`QCheckBox` **on purpose.** Only the painting
+    differs, so ``isChecked``, ``setChecked``, ``toggled``, the caption, Space,
+    focus and the disabled state all behave exactly as they did -- which is
+    what let every control that should be a switch become one by changing a
+    word, with nothing else about any panel touched.
+
+    For a control that is on or off by itself. A row of a list is ticked, not
+    switched: see :class:`CheckList`, where the tick means something a switch
+    cannot say.
+    """
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Draw the track, the knob on it, and the caption beside it.
+
+        Everything, rather than deferring to ``QStyle``: half a switch drawn
+        here and half by the style would be two controls on top of each other.
+        """
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+            track = self._track()
+            radius = track.height() / 2
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(self._track_colour()))
+            painter.drawRoundedRect(track, radius, radius)
+
+            if self.hasFocus():
+                # A control reachable by keyboard has to show where the
+                # keyboard is; nothing else here would say so.
+                ring = track.adjusted(-2.5, -2.5, 2.5, 2.5)
+                pen = QPen(QColor(theme.ACCENT))
+                pen.setWidthF(1.5)
+                painter.setPen(pen)
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRoundedRect(ring, ring.height() / 2, ring.height() / 2)
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(theme.SWITCH_KNOB))
+            painter.drawEllipse(self._knob(track))
+
+            painter.setPen(QColor(self._text_colour()))
+            painter.drawText(
+                self._caption(), Qt.AlignLeft | Qt.AlignVCenter, self.text()
+            )
+        finally:
+            painter.end()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        """Return the room the switch, its focus ring and its caption need."""
+        metrics = QFontMetrics(self.font())
+        width = theme.SWITCH_WIDTH + 2 * theme.SWITCH_FOCUS
+        if self.text():
+            width += theme.SWITCH_GAP + metrics.horizontalAdvance(self.text())
+        height = max(theme.SWITCH_HEIGHT + 2 * theme.SWITCH_FOCUS, metrics.height())
+        return QSize(int(width), int(height))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        return self.sizeHint()
+
+    def _track(self) -> QRectF:
+        """Return the rounded bar, centred on the widget's height.
+
+        Indented by :data:`theme.SWITCH_FOCUS`, which is the room the focus
+        ring is drawn into.
+        """
+        top = (self.height() - theme.SWITCH_HEIGHT) / 2
+        return QRectF(
+            theme.SWITCH_FOCUS, top, theme.SWITCH_WIDTH, theme.SWITCH_HEIGHT
+        )
+
+    def _knob(self, track: QRectF) -> QRectF:
+        """Return the circle on the track, at whichever end it belongs."""
+        size = track.height() - 2 * theme.SWITCH_INSET
+        left = (
+            track.right() - theme.SWITCH_INSET - size
+            if self.isChecked()
+            else track.left() + theme.SWITCH_INSET
+        )
+        return QRectF(left, track.top() + theme.SWITCH_INSET, size, size)
+
+    def _caption(self) -> QRectF:
+        """Return where the text goes, to the right of the track."""
+        left = theme.SWITCH_FOCUS + theme.SWITCH_WIDTH + theme.SWITCH_GAP
+        return QRectF(left, 0.0, max(0.0, self.width() - left), float(self.height()))
+
+    def _track_colour(self) -> str:
+        if not self.isEnabled():
+            return theme.BORDER_LIGHT
+        return theme.ACCENT if self.isChecked() else theme.SWITCH_OFF
+
+    def _text_colour(self) -> str:
+        return theme.TEXT if self.isEnabled() else theme.DISABLED_TEXT
 
 
 class CheckList(QListWidget):

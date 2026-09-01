@@ -423,6 +423,14 @@ entry in place rather than appending to it.
   something *renders* is asserted on the pixels**. The stylesheet also suppresses Qt's emphasis on
   a dialog's default button and a checked tool button, so anything relying on either must re-state
   it; and its padding clips a one-character button blank, which `COMPACT_BUTTON` exempts.
+- **A row is ticked; a control on its own is switched.** Two different questions wore the same
+  widget: a tick says which of many rows a change covers, where a standalone control is simply on
+  or off. `common.ToggleSwitch` draws the second as a switch and is a **subclass of `QCheckBox`**,
+  which is the point rather than a detail — only `paintEvent` differs, so `isChecked`, `toggled`,
+  Space, focus and the disabled state are unchanged, and eleven controls across six panels became
+  switches by changing a word each with no test rewritten. It paints everything itself, so no
+  stylesheet rule may name `QCheckBox`: a rule would send the control back through `QStyle` and
+  draw it twice.
 - **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is also
   how Qt marks the row you are looking at, it is lost whenever the list is rebuilt, and over dozens
   of values there is no seeing what is chosen without scrolling. `CheckList` is the one
