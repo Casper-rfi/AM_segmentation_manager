@@ -162,18 +162,20 @@ correction to it.
 A fact belongs in exactly one place. Before writing something down, check whether a
 module docstring, the README or `docs/` already says it, and update that instead.
 
-**`docs/` holds three files. Adding a fourth is a decision, not a default.**
+**`docs/` holds four files. Adding a fifth is a decision, not a default.**
 
 | File | Holds |
 |---|---|
 | `00_roadmap.md` | What the software does today, and what to pick up next |
 | `decisions.md` | Why the built software is the way it is, and environment traps |
+| `display.md` | Why the window is the way it is, and the Qt traps behind it |
 | `04_future_work.md` | What is not built, and the questions to answer before designing it |
 
 Place a fact before writing it: how one module behaves goes in that module's
-docstring; why the design is this way goes in `decisions.md`; work not yet built
-goes in `04_future_work.md`; how to install or use the package goes in
-`README.md`. If nothing fits, say so and ask, rather than starting a new document.
+docstring; why the design is this way goes in `decisions.md`or `display.md` for 
+anything under gui; work not yet built goes in `04_future_work.md`; how to install or 
+use the package goes in`README.md`. If nothing fits, say so and ask, rather than 
+starting a new document.
 
 **Checking the documentation is part of finishing a feature, not a step after
 it.** Before reporting work done, re-read whatever documents mention the thing
@@ -181,7 +183,7 @@ you changed and correct what is no longer true — including status lines and
 anything that describes the old behaviour. Documentation goes stale because
 nobody re-reads it, not because anyone decides to leave it wrong.
 
-**Keep `docs/` short enough to read in one sitting — around 800 lines in total.**
+**Keep `docs/` short enough to read in one sitting — around 900 lines in total.**
 Approaching that ceiling means something in there has finished and should be
 deleted, not that the limit needs raising.
 
