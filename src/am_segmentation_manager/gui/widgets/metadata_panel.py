@@ -41,7 +41,13 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import ChipEditor, GripSplitter, add_path_menu, chip_icon
+from .common import (
+    ChipEditor,
+    GripSplitter,
+    add_path_menu,
+    chip_icon,
+    match_anywhere,
+)
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
@@ -129,9 +135,7 @@ def _suggestion_box() -> QComboBox:
     box.setEditable(True)
     box.setInsertPolicy(QComboBox.NoInsert)
     box.lineEdit().setPlaceholderText("unset")
-    completer = box.completer()
-    completer.setCaseSensitivity(Qt.CaseInsensitive)
-    completer.setFilterMode(Qt.MatchContains)
+    match_anywhere(box.completer())
     return box
 
 

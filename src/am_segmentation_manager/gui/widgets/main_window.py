@@ -1506,8 +1506,18 @@ class CurationWindow(QMainWindow):
         return failure is None
 
     def _select_project(self, row: int) -> None:
+        """Move to a project, rebuilding its lamellae and nothing else.
+
+        **The project list must not be rebuilt here.** This runs from that
+        list's own ``currentRowChanged``, delivered while Qt is still part-way
+        through the mouse press that caused it -- and rebuilding a list from
+        inside its own signal empties the rows Qt is holding a position in. It
+        also threw the reviewer back to the top of the list on every click,
+        which on an archive of a hundred projects loses their place entirely.
+        """
         self.controller.select_project(row)
-        self.refresh(reload_lists=True)
+        self._refresh_lamellae()
+        self.refresh()
 
     def _select_lamella(self, row: int) -> None:
         self.controller.select_lamella(row)
@@ -1523,8 +1533,10 @@ class CurationWindow(QMainWindow):
         self.refresh()
 
     def _step_lamella(self, delta: int) -> None:
+        """Move within the project on screen, which the project list outlives."""
         self.controller.step_lamella(delta)
-        self.refresh(reload_lists=True)
+        self._refresh_lamellae()
+        self.refresh()
 
     def _set_mode(self, mode: str, from_user: bool = False) -> None:
         if from_user and mode not in self.controller.available_modes():
@@ -1829,12 +1841,29 @@ class CurationWindow(QMainWindow):
         self._schedule_loads()
 
     def _refresh_lists(self) -> None:
+        """Rebuild both lists. What a scan, or a change of state, needs.
+
+        Moving *within* a project rebuilds only the lamellae -- see
+        :meth:`_refresh_lamellae`.
+        """
+        self._refresh_projects()
+        self._refresh_lamellae()
+
+    def _refresh_projects(self) -> None:
         self.project_panel.show_projects(
             [project.display_name for project in self.controller.projects],
             self.controller.project_position,
             self.controller.project_statuses(),
             self.controller.project_checks(),
         )
+
+    def _refresh_lamellae(self) -> None:
+        """Rebuild the lamella list alone, leaving the project list standing.
+
+        The two are separable because nothing about a project row changes when
+        a project is picked: its label, its progress chip and its tick are the
+        same before and after. Only the lamellae are the chosen project's own.
+        """
         self.project_panel.show_lamellae(
             [lamella.display_name for lamella in self.controller.lamellae],
             self.controller.lamella_position,

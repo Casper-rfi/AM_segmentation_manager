@@ -222,7 +222,13 @@ entry in place rather than appending to it.
 
 - **The Add data tab suggests, and a suggestion is never a value.** The values other projects use
   are computed in the controller and reach a file only when the user saves, so
-  `build_experiment_metadata` still resolves from the two files and nothing else.
+  `build_experiment_metadata` still resolves from the two files and nothing else. **A completer
+  that matches anywhere must complete into a popup**, never in place: an editable `QComboBox`
+  builds its completer in `InlineCompletion` mode, which keeps what was typed and appends the tail
+  of the match — correct only when the match is a prefix. Typing `a` against `UltrAuFoil Au R2/2
+  200 mesh` wrote `altrAuFoil Au R2/2 200 mesh` into the field, a value nobody typed, in metadata
+  that is exported. `common.match_anywhere` sets both, and is the only place either is set.
+  Matching anywhere is worth keeping: `Quantifoil` and `UltrAuFoil` differ in their middles.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and a
   `metadata_project` in another. The directory is what the scanner indexes and Curate lists, so it
@@ -426,6 +432,13 @@ entry in place rather than appending to it.
   whose colour *is* the information comes out wrong on exactly the row being looked at
   (`chip_icon()` supplies every such pixmap); and a `QListWidget` with a horizontal scrollbar
   scrolls instead of eliding, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
+- **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
+  and nothing else, because nothing about a project row changes when one is picked: its label, its
+  chip and its tick are the same before and after. Rebuilding it there ran while Qt was still
+  part-way through the mouse press that caused it, emptying the rows Qt held a position in — and
+  the rebuild's own `setCurrentRow` re-framed the list around the clicked row, throwing the
+  reviewer from the bottom of a scrolled list back near the top on every click. `_refresh_lists`
+  is for a scan or a state change, where every chip really has moved.
 - **The window asks to be the one in front, and asks after the event loop has started.** Launched
   from a terminal, macOS leaves the terminal in front, and a window that is not in front receives
   no key presses and no pointer motion at all — so F1 does nothing, no tooltip appears, and the
@@ -522,6 +535,14 @@ entry in place rather than appending to it.
   For the same reason `am-seg gui` writes a log without being asked — it is the one command whose
   failures are not visible in the terminal that started it — capped at one rollover, where a path
   the user names is left to accumulate.
+- **A worker thread that will not stop outlives the window rather than being collected.** A frame
+  read is one call into an image library and cannot be interrupted part-way, so a file on a
+  cloud-synced volume outlasts any deadline worth waiting for on close. Raising the loader's token
+  ends the batch at its next item, but not the read already running — and a `QThread` still running
+  keeps calling into its Python worker, so letting the interpreter collect that worker is a use
+  after free whose crash lands on the worker thread with nothing to say why. `loader.keep_alive`
+  holds one object per abandoned thread for the life of the process; both `BackgroundLoader` and
+  `BackgroundOperation` use it, so the reason is written down once.
 
 ## Environment
 

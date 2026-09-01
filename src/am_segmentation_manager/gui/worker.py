@@ -21,7 +21,14 @@ import logging
 
 from qtpy.QtCore import QObject, QThread, Signal, Slot
 
+from .loader import keep_alive
+
 logger = logging.getLogger(__name__)
+
+#: How long an operation is given to finish before the window stops waiting for
+#: it. Far longer than the loader's, because the work here is measured in
+#: minutes and a cancellation is only polled between units.
+STOP_TIMEOUT_MS = 30000
 
 
 class OperationWorker(QObject):
@@ -68,6 +75,11 @@ class BackgroundOperation:
         self._thread.start()
 
     def stop(self) -> None:
-        """Shut the thread down, waiting for any running operation to finish."""
+        """Shut the thread down, waiting for any running operation to finish.
+
+        An operation still running at the deadline is left to finish and this
+        object goes with it, for the reason :func:`.loader.keep_alive` gives.
+        """
         self._thread.quit()
-        self._thread.wait(30000)
+        if not self._thread.wait(STOP_TIMEOUT_MS):
+            keep_alive(self)

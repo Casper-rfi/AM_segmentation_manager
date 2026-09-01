@@ -240,16 +240,22 @@ def _equalise(buttons) -> None:
         button.setMinimumWidth(widest)
 
 
-def _lock_button(caption: str) -> QToolButton:
+def _lock_button(caption: str, *, locked: bool = True) -> QToolButton:
     """Return one cell of the lock row, built like the row above it.
 
     Same construction as an edit button -- icon beside text, expanding to its
     column -- so the two rows line up as a table rather than as two bars that
     happen to be stacked.
+
+    Args:
+        locked: Which padlock to start with. A class button starts unlocked and
+            its shackle is kept in step by :meth:`LabelPanel._locks_changed`;
+            the "All" button is not a state, so it keeps the closed padlock as
+            the glyph for locking.
     """
     button = QToolButton()
     button.setText(caption)
-    button.setIcon(lock_icon())
+    button.setIcon(lock_icon(locked))
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
     return button
@@ -609,7 +615,7 @@ class LabelPanel(QWidget):
                 grid.addWidget(self.lock_all_button, 1, column)
                 continue
 
-            lock = _lock_button(name)
+            lock = _lock_button(name, locked=False)
             lock.setCheckable(True)
             lock.setToolTip("A locked class cannot be painted over by any tool")
             lock.toggled.connect(self._locks_changed)
@@ -855,9 +861,19 @@ class LabelPanel(QWidget):
             button.setChecked(locked)
 
     def _locks_changed(self) -> None:
-        self.canvas.set_protected(
-            {index for index, button in self.lock_buttons.items() if button.isChecked()}
-        )
+        """Protect the locked classes, and open the shackle on the rest.
+
+        The padlock is redrawn here rather than where it is toggled so that a
+        lock changed from the keyboard looks like one changed by clicking it.
+        A checked button whose icon says "open" is a control that reports the
+        opposite of what it is doing.
+        """
+        locked = {
+            index for index, button in self.lock_buttons.items() if button.isChecked()
+        }
+        for index, button in self.lock_buttons.items():
+            button.setIcon(lock_icon(index in locked))
+        self.canvas.set_protected(locked)
 
     def _stroke_finished(self, patch) -> None:
         """Record a stroke and show what it changed."""

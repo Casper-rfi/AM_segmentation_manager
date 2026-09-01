@@ -23,6 +23,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QComboBox,
+    QCompleter,
     QFileDialog,
     QFrame,
     QLabel,
@@ -163,6 +164,25 @@ def ticked_caption(noun: str, total: int, ticked: int) -> str:
     if ticked:
         return f"{noun} ({ticked} of {total} ticked)"
     return f"{noun} ({total})"
+
+
+def match_anywhere(completer: QCompleter) -> None:
+    """Have *completer* suggest on any part of a value, and offer them in a list.
+
+    **The popup is not cosmetic.** An editable ``QComboBox`` builds its
+    completer in ``InlineCompletion`` mode, which assumes the match is a prefix
+    and keeps what was typed while appending the rest of the completion. Set to
+    match anywhere and left inline, typing ``a`` against "UltrAuFoil Au R2/2 200
+    mesh" writes "altrAuFoil Au R2/2 200 mesh" into the field -- a plausible
+    value nobody typed, in metadata that is exported. A popup replaces the whole
+    text instead, which is what makes matching anywhere safe.
+
+    Matching anywhere is worth this: "Quantifoil" and "UltrAuFoil" are told
+    apart by their middles, not by how they start.
+    """
+    completer.setCaseSensitivity(Qt.CaseInsensitive)
+    completer.setFilterMode(Qt.MatchContains)
+    completer.setCompletionMode(QCompleter.PopupCompletion)
 
 
 class CheckList(QListWidget):
@@ -790,9 +810,7 @@ class ChipEditor(QWidget):
         self.entry.setEditable(True)
         self.entry.setInsertPolicy(QComboBox.NoInsert)
         self.entry.lineEdit().setPlaceholderText(placeholder)
-        completer = self.entry.completer()
-        completer.setCaseSensitivity(Qt.CaseInsensitive)
-        completer.setFilterMode(Qt.MatchContains)
+        match_anywhere(self.entry.completer())
         # Three ways in, and the third is the one that matters: Return, picking
         # a value already in use, and simply leaving the box. Without that last
         # one a value typed and left there is discarded by the next thing that

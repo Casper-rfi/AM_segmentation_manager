@@ -19,6 +19,29 @@ from .cache import FrameCache, LoadRequest
 
 logger = logging.getLogger(__name__)
 
+#: How long the loader is given to finish what it is reading before the window
+#: stops waiting for it. A read is one call into an image library and cannot be
+#: interrupted part-way, so this is a limit on how long closing the window may
+#: take, not on the read.
+STOP_TIMEOUT_MS = 5000
+
+#: Things kept alive because a thread of theirs is still running. Never read
+#: again; holding the reference is the whole point.
+_ABANDONED: list[object] = []
+
+
+def keep_alive(owner: object) -> None:
+    """Hold *owner* for the life of the process, its thread having outlived it.
+
+    A ``QThread`` that has not stopped keeps calling into its Python worker.
+    Letting the interpreter collect that worker while the thread runs is a use
+    after free, and the crash lands on the worker thread with no traceback to
+    say why -- which is exactly how it has been seen. Leaking one object per
+    abandoned thread is the cheap end of that trade.
+    """
+    logger.warning("A worker thread outlived its owner; leaving it to finish")
+    _ABANDONED.append(owner)
+
 
 class FrameLoadWorker(QObject):
     """Prepares frames on a worker thread, newest request first.
@@ -97,7 +120,16 @@ class BackgroundLoader:
         return self._token
 
     def stop(self) -> None:
-        """Stop accepting work and shut the thread down."""
+        """Stop accepting work and shut the thread down.
+
+        Raising the token stops the batch at its next item, but the read
+        already running cannot be interrupted: it is a single call into an
+        image library, and a file on a cloud-synced volume can hold it for far
+        longer than anyone will wait for a window to close. A thread still
+        inside one at the deadline is left to finish, and this loader goes with
+        it rather than being collected out from under it.
+        """
         self.next_token()
         self._thread.quit()
-        self._thread.wait(5000)
+        if not self._thread.wait(STOP_TIMEOUT_MS):
+            keep_alive(self)
