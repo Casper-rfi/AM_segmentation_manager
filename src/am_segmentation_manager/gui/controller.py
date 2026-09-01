@@ -221,6 +221,30 @@ def project_status(project: Project) -> CurationStatus:
 
 
 @dataclass(frozen=True)
+class FolderSummary:
+    """What is under one folder of the scan root, counted rather than opened.
+
+    With the folders closed by default the tree is a list of sessions, and the
+    question a reader has of each is whether it is worth opening. Counting
+    answers it without their having to.
+
+    Attributes:
+        folder: The folder this describes, relative to the scan root.
+        projects: Autolamella projects filed under it.
+        lamellae: Lamellae across those projects.
+        images: Indexed images across those projects, every series.
+        status: How far curation has got, per series and beam, over the whole
+            folder -- read the same way a project's own chip is.
+    """
+
+    folder: str
+    projects: int
+    lamellae: int
+    images: int
+    status: CurationStatus
+
+
+@dataclass(frozen=True)
 class StateChangeReach:
     """How far a state change would reach, counted before it is made.
 
@@ -732,6 +756,28 @@ class CurationController:
     def lamella_statuses(self) -> list[CurationStatus]:
         """Return each lamella's curation status for the selected project."""
         return [lamella_status(lamella) for lamella in self._lamellae]
+
+    def folder_summary(self, folder: str) -> FolderSummary:
+        """Return what is under *folder*, counted across the projects in it.
+
+        A folder holding no projects -- one that has just been renamed out from
+        under the window -- counts zero rather than raising: this answers a
+        question about the tree on screen, and the tree is redrawn by the
+        rescan that follows, not by this.
+        """
+        projects = [
+            project for project in self._projects if project.folder == folder
+        ]
+        records = [
+            record for project in projects for record in project.image_records
+        ]
+        return FolderSummary(
+            folder=folder,
+            projects=len(projects),
+            lamellae=sum(len(project.lamellae) for project in projects),
+            images=len(records),
+            status=CurationStatus(status_cells(records)),
+        )
 
     def project_path(self, position: int | None = None) -> Path | None:
         """Return the absolute path of a project, or of the selected one."""

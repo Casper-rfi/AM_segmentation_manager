@@ -321,3 +321,41 @@ def test_the_tooltip_says_when_there_is_nothing_to_proofread(qt_app):
     summary = _status(reference_SEM="not started").summary
 
     assert summary.startswith("No Adaptive Polishing images: nothing to proofread")
+
+
+# ---------------------------------------------------------------------------
+# Choosing a folder
+# ---------------------------------------------------------------------------
+
+def test_moving_to_a_folder_reports_the_folder(tree):
+    """A folder is not a project, so it asks a different question rather than
+    silently changing nothing."""
+    reported: list[str] = []
+    tree.folder_selected.connect(reported.append)
+
+    tree.setCurrentItem(_folder(tree, "session_b"))
+
+    assert reported == ["session_b"]
+
+
+def test_moving_to_a_folder_reports_no_project(tree):
+    """Nothing about the frame on screen changes: a folder holds no view."""
+    reported: list[int] = []
+    tree.project_selected.connect(reported.append)
+
+    tree.setCurrentItem(_folder(tree, "session_b"))
+
+    assert reported == []
+
+
+def test_moving_back_to_a_project_reports_the_project(tree):
+    tree.setCurrentItem(_folder(tree, "session_b"))
+    projects: list[int] = []
+    folders: list[str] = []
+    tree.project_selected.connect(projects.append)
+    tree.folder_selected.connect(folders.append)
+
+    tree.setCurrentItem(tree.project_item(3))
+
+    assert projects == [3]
+    assert folders == []

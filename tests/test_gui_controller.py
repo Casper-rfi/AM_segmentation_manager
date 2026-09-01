@@ -1151,3 +1151,99 @@ def test_statuses_line_up_with_the_lists_they_annotate():
 
     assert len(controller.project_statuses()) == len(controller.projects)
     assert len(controller.lamella_statuses()) == len(controller.lamellae)
+
+
+# ---------------------------------------------------------------------------
+# What is under a folder
+# ---------------------------------------------------------------------------
+
+def _in_folder(folder: str, name: str, lamellae: list) -> Project:
+    """A project filed under *folder*, as the scanner records one."""
+    relative = f"{folder}/{name}" if folder else name
+    return Project(
+        name=name, path=Path(relative), relative_path=relative, lamellae=lamellae
+    )
+
+
+def _folder_controller(projects: list[Project]):
+    """A controller over *projects*, scanned as the window scans."""
+    from am_segmentation_manager.gui.cache import FrameCache
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.scanner import ProjectIndex
+
+    def scan(path: Path) -> ProjectIndex:
+        index = ProjectIndex(start_path=path)
+        for project in projects:
+            index.add(project)
+        return index
+
+    controller = CurationController(
+        cache=FrameCache(lambda image, label=None: "img", lambda plot: "plot"),
+        config=SegmentationConfig(
+            class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+            class_labels={0: "background", 1: "GIS"},
+        ),
+        scan=scan,
+    )
+    controller.scan(Path("/scan-root"))
+    return controller
+
+
+def test_a_folder_counts_what_is_under_it():
+    """With the folders closed the tree is a list of sessions, and the question
+    of each is whether it is worth opening."""
+    controller = _folder_controller([
+        _in_folder("session", "one", [
+            status_lamella("a", [image("selected"), image("selected", "FIB")]),
+            status_lamella("b", [image("corrected")]),
+        ]),
+        _in_folder("session", "two", [status_lamella("c", [image("selected")])]),
+        _in_folder("elsewhere", "three", [status_lamella("d", [image("selected")])]),
+    ])
+
+    summary = controller.folder_summary("session")
+
+    assert (summary.projects, summary.lamellae, summary.images) == (2, 3, 4)
+
+
+def test_a_folder_reports_progress_over_everything_beneath_it():
+    controller = _folder_controller([
+        _in_folder("session", "one", [status_lamella("a", [image("corrected")])]),
+        _in_folder("session", "two", [status_lamella("b", [image("corrected")])]),
+    ])
+
+    assert controller.folder_summary("session").status.of("adaptive", "SEM") == "done"
+
+
+def test_a_folder_that_is_part_done_says_so():
+    controller = _folder_controller([
+        _in_folder("session", "one", [status_lamella("a", [image("corrected")])]),
+        _in_folder("session", "two", [status_lamella("b", [image("selected")])]),
+    ])
+
+    status = controller.folder_summary("session").status
+
+    assert status.of("adaptive", "SEM") == "in progress"
+
+
+def test_a_folder_holding_nothing_counts_zero_rather_than_raising():
+    """It answers a question about the tree on screen, and the tree is redrawn
+    by the rescan that follows a folder being renamed away, not by this."""
+    controller = _folder_controller([
+        _in_folder("session", "one", [status_lamella("a", [image("selected")])])
+    ])
+
+    summary = controller.folder_summary("gone")
+
+    assert (summary.projects, summary.lamellae, summary.images) == (0, 0, 0)
+
+
+def test_projects_at_the_scan_root_are_a_folder_of_their_own():
+    """Their folder is the empty string, which is what the tree hangs at the
+    top level rather than under a row."""
+    controller = _folder_controller([
+        _in_folder("", "loose", [status_lamella("a", [image("selected")])]),
+        _in_folder("session", "one", [status_lamella("b", [image("selected")])]),
+    ])
+
+    assert controller.folder_summary("").projects == 1

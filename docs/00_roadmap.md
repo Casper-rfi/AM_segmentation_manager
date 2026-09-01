@@ -19,10 +19,13 @@ same work for scripting and testing. Predictions need the second environment
 ## What to pick up next
 
 **The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-Curate has its folder tree, and each project says which series it holds; what it still owes is a
-folder that can be *chosen* — a summary of what is beneath one, rather than only somewhere to fold.
-Add data and Export get the tree once that shape has held, Add data wanting it most: editing one
-folder's projects together is the point of grouping them. Then a contrast control applied after
+Curate's folder tree is built: projects grouped under their session, folded by default, each row
+saying which series it holds and how far each has got, and a folder that can be chosen to count
+what is under it. What it still owes is the one shape that needs the controller to change — a
+folder whose *lamellae* can all be listed at once, across the projects in it, an Autolamella
+restart being an artifact rather than a boundary anyone works to. Add data and Export get the tree
+once that has held, Add data wanting it most: editing one folder's projects together is the point
+of grouping them. Then a contrast control applied after
 the cache, so moving it costs a lookup table rather than a re-read; a curation timeline carrying one
 colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a macOS `.icns` icon, the current
 one being a full-bleed PNG where macOS wants a squircle inset in its canvas.

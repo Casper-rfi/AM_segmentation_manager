@@ -415,6 +415,9 @@ class CurationWindow(QMainWindow):
 
         self._build_layout()
         self._connect()
+        #: The folder the tree is on, when it is on one rather than a
+        #: project. What the summary line describes; None means the frame.
+        self._folder_scope: str | None = None
         #: The shortcut list, built the first time F1 asks for it.
         self._help: ShortcutHelp | None = None
         self._add_shortcuts()
@@ -530,6 +533,7 @@ class CurationWindow(QMainWindow):
         self.label_panel.save_requested.connect(self.save_labels)
         self.project_panel.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
+        self.project_panel.folder_selected.connect(self._select_folder)
         self.project_panel.lamella_selected.connect(self._select_lamella)
         self.project_panel.project_path_requested.connect(
             lambda row: self._copy_path(self.controller.project_path(row), "Project")
@@ -1647,6 +1651,16 @@ class CurationWindow(QMainWindow):
             QMessageBox.critical(self, "Scan failed", str(failure))
         return failure is None
 
+    def _select_folder(self, folder: str) -> None:
+        """Describe what is under a folder, leaving the view where it is.
+
+        A folder is not a project: moving to one changes no frame, no
+        lamella and no state. It asks a question, which is the one a closed
+        folder raises -- is there anything in here worth opening.
+        """
+        self._folder_scope = folder
+        self.project_panel.show_summary(self._summary_text())
+
     def _select_project(self, row: int) -> None:
         """Move to a project, rebuilding its lamellae and nothing else.
 
@@ -1657,6 +1671,7 @@ class CurationWindow(QMainWindow):
         also threw the reviewer back to the top of the list on every click,
         which on an archive of a hundred projects loses their place entirely.
         """
+        self._folder_scope = None
         self.controller.select_project(row)
         self._refresh_lamellae()
         self.refresh()
@@ -2024,12 +2039,18 @@ class CurationWindow(QMainWindow):
         )
 
     def _summary_text(self) -> str:
-        """Describe the lamella's curation progress, per modality.
+        """Describe whatever the tree is on: a folder, or the lamella in view.
 
         Counted per modality to match the timeline. A combined count would have
         to report frames whose modalities differ as "mixed", which says nothing
         about how much work is left in either.
+
+        Held as state rather than written straight to the label, so that a
+        refresh for any other reason does not replace a folder's count with the
+        frame's while the folder is still the row selected.
         """
+        if self._folder_scope is not None:
+            return self._folder_text(self._folder_scope)
         if self.controller.project is None:
             return "No project loaded"
 
@@ -2049,6 +2070,23 @@ class CurationWindow(QMainWindow):
             )
             lines.append(f"{modality}: {breakdown}")
         return "\n".join(lines)
+
+    def _folder_text(self, folder: str) -> str:
+        """Describe what is under a folder, so a closed one can be judged shut.
+
+        Progress is read out only for a series anyone labels, the same rule the
+        rows follow: a folder of untouched reference images is not work waiting
+        to be done.
+        """
+        summary = self.controller.folder_summary(folder)
+        if not summary.projects:
+            return f"{folder}\nNothing under this folder"
+        counted = (
+            f"{summary.projects} project{'s' if summary.projects != 1 else ''} · "
+            f"{summary.lamellae} lamella{'e' if summary.lamellae != 1 else ''} · "
+            f"{summary.images} image{'s' if summary.images != 1 else ''}"
+        )
+        return f"{folder}\n{counted}\n{summary.status.summary}"
 
     def _refresh_timeline(self) -> None:
         total = len(self.controller.frames)

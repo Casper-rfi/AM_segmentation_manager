@@ -124,6 +124,14 @@ an entry in place rather than appending to it.
   project whose Adaptive Polishing work was *finished* reported as part-done. Twenty of the
   reference collection's 123 projects, under-reporting the only work anyone does. `status_cells`
   keys by series and beam and nothing combines across the two.
+- **A folder can be chosen, and choosing one asks a question rather than answering a different
+  one.** With the folders closed the tree is a list of sessions, and what a reader wants of each is
+  whether it is worth opening: moving to a folder row counts what is under it — projects, lamellae,
+  images, and how far Adaptive Polishing has got across the lot — into the line the frame summary
+  usually occupies. It moves no frame, no lamella and no state, a folder holding none of those.
+  Which folder the tree is on is held in the window rather than written straight to the label,
+  because everything the window does ends in a refresh and one of those would otherwise replace the
+  answer with the frame's.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
   and nothing else: nothing about a project row changes when one is picked. Rebuilding it there ran
   while Qt was still part-way through the mouse press that caused it, emptying the rows Qt held a

@@ -78,9 +78,12 @@ class ProjectTree(QTreeWidget):
     #: Emitted with a project's number and whether it is now ticked. Not
     #: emitted for the ticks the tree puts back itself when it is refilled.
     row_ticked = Signal(int, bool)
-    #: Emitted with the number of the project the user moved to. A folder row
-    #: emits nothing: it is not a project, and the view stays where it was.
+    #: Emitted with the number of the project the user moved to.
     project_selected = Signal(int)
+    #: Emitted with the name of the folder the user moved to. A folder is not a
+    #: project and moving to one does not change the frame on screen: it asks
+    #: what is under the folder, which is the question a closed one raises.
+    folder_selected = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -312,12 +315,14 @@ class ProjectTree(QTreeWidget):
         self.row_ticked.emit(index, item.checkState(0) == Qt.Checked)
 
     def _current_changed(self, current, _previous) -> None:
-        """Report a move to a project, and nothing for a move to a folder."""
+        """Report a move, saying whether it landed on a project or a folder."""
         if self._filling or current is None:
             return
         index = self.project_of(current)
         if index is not None:
             self.project_selected.emit(index)
+        else:
+            self.folder_selected.emit(current.text(0))
 
 
 class ProjectPanel(QWidget):
@@ -327,6 +332,9 @@ class ProjectPanel(QWidget):
     scan_requested = Signal(str)
     #: Emitted with the index of the project the user picked.
     project_selected = Signal(int)
+    #: Emitted with the folder the user picked, which is a question about
+    #: what is under it rather than a change of what is on screen.
+    folder_selected = Signal(str)
     #: Emitted with the index of the lamella the user picked.
     lamella_selected = Signal(int)
     #: Emitted with the row the user right-clicked, to have its path copied.
@@ -461,6 +469,7 @@ class ProjectPanel(QWidget):
             "ticks its projects, and ticking here clears the lamellae."
         )
         tree.project_selected.connect(self._project_changed)
+        tree.folder_selected.connect(self.folder_selected)
         tree.row_ticked.connect(self.project_checked)
         box_layout.addWidget(tree)
 

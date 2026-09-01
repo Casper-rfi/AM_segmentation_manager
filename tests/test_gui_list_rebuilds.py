@@ -198,3 +198,88 @@ def test_a_scan_does_rebuild_both_lists(window, archive: Path):
     window.scan(str(archive))
 
     assert all(new is not old for new, old in zip(_project_rows(window), before))
+
+
+# ---------------------------------------------------------------------------
+# Choosing a folder
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def foldered(qt_app, tmp_path: Path):
+    """A window over two session folders, which is what the tree is for."""
+    root = tmp_path / "sessions"
+    for folder, count in (("session_a", 2), ("session_b", 1)):
+        for index in range(count):
+            project = root / folder / f"AutoLamella-2026-07-28-13-{index:02d}"
+            project.mkdir(parents=True)
+            (project / "experiment.yaml").write_text("name: p")
+            stage = project / "01-alpha" / "adaptive_polish_2026-07-28-11-15-36AM"
+            path = stage / "sem" / "01-alpha_AP_img_000_SEM.tif"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tifffile.imwrite(str(path), np.full((32, 32), 100, dtype=np.uint8))
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    settings = QSettings(str(tmp_path / "preferences.ini"), QSettings.IniFormat)
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    window.scan(str(root))
+    qt_app.processEvents()
+    yield window
+    window.close()
+
+
+def _folder_row(window, name: str):
+    tree = window.project_panel.project_list
+    return next(
+        tree.topLevelItem(row)
+        for row in range(tree.topLevelItemCount())
+        if tree.topLevelItem(row).text(0) == name
+    )
+
+
+def test_choosing_a_folder_says_what_is_under_it(foldered):
+    """The question a closed folder raises: is there anything in here worth
+    opening."""
+    tree = foldered.project_panel.project_list
+
+    tree.setCurrentItem(_folder_row(foldered, "session_a"))
+
+    summary = foldered.project_panel.summary.text()
+    assert "session_a" in summary
+    assert "2 projects" in summary
+    assert "2 lamellae" in summary
+
+
+def test_choosing_a_folder_leaves_the_view_where_it_was(foldered):
+    """A folder holds no frame, so moving to one must not move the view."""
+    tree = foldered.project_panel.project_list
+    before = foldered.controller.project.name
+
+    tree.setCurrentItem(_folder_row(foldered, "session_b"))
+
+    assert foldered.controller.project.name == before
+
+
+def test_choosing_a_project_again_describes_the_frame(foldered):
+    """The folder's count is what the tree is on, not a mode it stays in."""
+    tree = foldered.project_panel.project_list
+    tree.setCurrentItem(_folder_row(foldered, "session_a"))
+
+    tree.setCurrentItem(tree.project_item(0))
+
+    assert "frames" in foldered.project_panel.summary.text()
+
+
+def test_a_refresh_does_not_replace_a_folder_count_with_the_frame(foldered):
+    """Held as state rather than written straight to the label: everything the
+    window does ends in a refresh, and one of those must not undo the answer."""
+    tree = foldered.project_panel.project_list
+    tree.setCurrentItem(_folder_row(foldered, "session_a"))
+
+    foldered.refresh()
+
+    assert "2 projects" in foldered.project_panel.summary.text()
