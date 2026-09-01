@@ -65,6 +65,20 @@ an entry in place rather than appending to it.
   something *renders* is asserted on the pixels**. The stylesheet also suppresses Qt's emphasis on
   a dialog's default button and a checked tool button, so anything relying on either must re-state
   it; and its padding clips a one-character button blank, which `COMPACT_BUTTON` exempts.
+- **A group of controls is a card, and its title outweighs the captions inside it.** A group title
+  set in the same muted grey as the field captions under it is the quietest thing in its own box,
+  so the clusters a panel is built from stopped reading as clusters — the fault was worst on the
+  tabs with the most of them. The title takes `HEADING` and bold, the border takes `BORDER` rather
+  than the hairline, and that is one rule reaching all eleven boxes on all four tabs, which is what
+  makes them agree. **The weight goes on `QGroupBox`, never on `QGroupBox::title`**: Qt ignores
+  font properties set on a subcontrol, so the obvious rule is silently no rule — and it reaches the
+  title without reaching the controls inside, a stylesheet font not descending the way a CSS one
+  would. No background: the inputs inside are white, and a white card behind them would take away
+  the one thing separating "you can type here" from the panel.
+- **The tabs are sized and weighted as navigation.** They are the only control on screen whatever
+  is being done, and a stage of the workflow nobody notices is one nobody uses. The folder shape
+  stays: it is what joins the tab to the pane below it, where an underline would leave the pane
+  belonging to nothing.
 - **A row is ticked; a control on its own is switched.** Two different questions wore the same
   widget: a tick says which of many rows a change covers, where a standalone control is simply on
   or off. `common.ToggleSwitch` draws the second as a switch and is a **subclass of `QCheckBox`**,

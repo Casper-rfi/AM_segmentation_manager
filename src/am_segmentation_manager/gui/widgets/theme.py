@@ -21,8 +21,12 @@ BASE = "#ffffff"
 ALTERNATE = "#eef0f3"
 
 TEXT = "#1d1f23"
-#: Secondary text: group box titles, placeholders, provenance notes.
+#: Secondary text: placeholders, provenance notes, a caption beside a control.
 MUTED = "#6b7280"
+#: The title of a group of controls. Between :data:`MUTED` and :data:`TEXT`, and
+#: set bold below: a heading quieter than the captions under it reads as the
+#: least important thing in its own box, which is what a group title must not be.
+HEADING = "#474e5c"
 DISABLED_TEXT = "#a3a8b0"
 
 BORDER = "#d6d9df"
@@ -175,17 +179,27 @@ def stylesheet() -> str:
     input, for the reason :func:`build_palette` gives.
     """
     return f"""
+    /* A group of controls is a card: a title that reads as a heading, and a
+       boundary you can see. Both are what say where one cluster of controls
+       ends and the next begins, on every tab at once. No background of its
+       own -- the inputs inside are white, and a white card behind them would
+       take away the one thing separating "you can type here" from the panel. */
+    /* The weight goes on the box, not on ``::title``: Qt ignores font
+       properties set on a subcontrol, so the obvious rule is silently no rule
+       at all. It reaches the title without reaching the controls inside, the
+       stylesheet font not descending the way a CSS one would. */
     QGroupBox {{
-        border: 1px solid {BORDER_LIGHT};
+        border: 1px solid {BORDER};
         border-radius: 6px;
-        margin-top: 9px;
-        padding: 8px 6px 6px 6px;
+        margin-top: 10px;
+        padding: 10px 6px 6px 6px;
+        font-weight: bold;
     }}
     QGroupBox::title {{
         subcontrol-origin: margin;
         left: 8px;
         padding: 0 4px;
-        color: {MUTED};
+        color: {HEADING};
     }}
 
     QLineEdit, QComboBox, QPlainTextEdit, QListWidget, QAbstractSpinBox {{
@@ -269,20 +283,26 @@ def stylesheet() -> str:
         border-radius: 6px;
         top: -1px;
     }}
+    /* The tabs are the window's top-level navigation, and the only control
+       that is on screen whatever is being done. They are sized and weighted to
+       say so: a tab the eye passes over is a stage of the workflow nobody
+       finds. The folder shape is kept -- it is what joins the tab to the pane
+       below it, and an underline would leave the pane belonging to nothing. */
     QTabBar::tab {{
         background: transparent;
         border: 1px solid transparent;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
-        padding: 6px 16px;
-        margin-right: 2px;
-        color: {MUTED};
+        padding: 8px 22px;
+        margin-right: 3px;
+        color: {HEADING};
     }}
     QTabBar::tab:selected {{
         background: {BASE};
         border-color: {BORDER};
         border-bottom-color: {BASE};
         color: {TEXT};
+        font-weight: bold;
     }}
     QTabBar::tab:hover:!selected {{ background: {HOVER}; color: {TEXT}; }}
 

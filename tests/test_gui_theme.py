@@ -339,3 +339,63 @@ def test_the_startup_work_waits_for_the_window_to_appear(qt_app, tmp_path, monke
     assert order == ["show", "exec", "front", "scan"], (
         "both must be queued behind the event loop, not run before it"
     )
+
+
+# ---------------------------------------------------------------------------
+# A group of controls reads as a group
+# ---------------------------------------------------------------------------
+
+def _ink(widget, top: int, bottom: int) -> int:
+    """Count the dark pixels in a horizontal band of a rendered widget.
+
+    Asserted on the pixels because that is the only thing that reports whether
+    a rule applied: a font-weight Qt ignored still reads back off the widget.
+    """
+    image = widget.grab().toImage()
+    return sum(
+        1
+        for y in range(top, bottom)
+        for x in range(widget.width())
+        if image.pixelColor(x, y).lightness() < 150
+    )
+
+
+def _titled_box(qt_app):
+    """A group box with one plain caption inside it, laid out and shown."""
+    from qtpy.QtWidgets import QGroupBox, QLabel, QVBoxLayout
+
+    box = QGroupBox("Filters")
+    column = QVBoxLayout(box)
+    column.addWidget(QLabel("Modality"))
+    box.resize(220, 90)
+    box.show()
+    qt_app.processEvents()
+    return box
+
+
+def test_a_group_title_is_heavier_than_the_captions_inside_it(qt_app):
+    """A heading quieter than its own contents is the fault being fixed.
+
+    **The weight has to go on `QGroupBox`, not on `QGroupBox::title`.** Qt
+    ignores font properties set on a subcontrol, so the obvious rule is no rule
+    at all -- and nothing says so except the pixels.
+    """
+    style = qt_app.styleSheet()
+    try:
+        # Cleared rather than assumed: the QApplication is session-wide, and a
+        # baseline measured under a theme another test left on is the themed
+        # rendering compared against itself.
+        qt_app.setStyleSheet("")
+        plain = _titled_box(qt_app)
+        bare_title, bare_caption = _ink(plain, 0, 16), _ink(plain, 20, 44)
+        plain.close()
+
+        theme.apply_theme(qt_app)
+        themed_box = _titled_box(qt_app)
+        title, caption = _ink(themed_box, 0, 16), _ink(themed_box, 20, 44)
+        themed_box.close()
+    finally:
+        qt_app.setStyleSheet(style)
+
+    assert title > bare_title, "the group title did not get its weight"
+    assert caption == bare_caption, "the weight reached the controls inside"
