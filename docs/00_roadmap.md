@@ -23,7 +23,7 @@ Left to do: a folder/project tree in Curate, the other tabs following only once 
 contrast control applied after the cache, so moving it costs a lookup table rather than a re-read; a
 curation timeline carrying one colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a
 macOS `.icns` icon, the current one being a full-bleed PNG where macOS wants a squircle inset in its
-canvas. Section headers and a shared block for the batch operations still owe `theme.py`.
+canvas.
 
 The rest, in no particular order.
 
