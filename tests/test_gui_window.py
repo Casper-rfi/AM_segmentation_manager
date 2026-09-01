@@ -952,7 +952,99 @@ def test_every_gesture_is_described(window):
     from am_segmentation_manager.gui.widgets.main_window import TAB_GESTURES
 
     for gestures in TAB_GESTURES.values():
-        assert all(action and description for action, description in gestures)
+        assert all(
+            group and action and description
+            for group, action, description in gestures
+        )
+
+
+def _headings() -> set[str]:
+    """The headings F1 is allowed to file a row under, named one by one.
+
+    Deliberately not derived from the module: a heading is added by writing it
+    here as well, which is the moment to ask whether the list needs another
+    one or the row belongs under a heading that already exists.
+    """
+    from am_segmentation_manager.gui.widgets import main_window as window_module
+
+    return {
+        window_module.GROUP_VIEW,
+        window_module.GROUP_CHOOSE,
+        window_module.GROUP_STATE,
+        window_module.GROUP_TOOLS,
+        window_module.GROUP_CLASSES,
+        window_module.GROUP_SPECKS,
+        window_module.GROUP_EDITS,
+        window_module.GROUP_ELSEWHERE,
+        window_module.GROUP_HELP,
+    }
+
+
+def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
+    """A row with nowhere to go is one the reader has to place themselves."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_GESTURES
+
+    headings = _headings()
+    assert {binding.group for binding in window._bindings} <= headings
+    for gestures in TAB_GESTURES.values():
+        assert {group for group, _action, _description in gestures} <= headings
+
+
+def test_the_curate_keys_are_grouped_by_what_they_are_for(window):
+    from am_segmentation_manager.gui.widgets.main_window import (
+        GROUP_CHOOSE,
+        GROUP_STATE,
+        GROUP_VIEW,
+        TAB_CURATE,
+    )
+
+    help_text = window.shortcut_help(TAB_CURATE)
+
+    for heading in (GROUP_VIEW, GROUP_CHOOSE, GROUP_STATE):
+        assert heading in help_text
+    # In the order the work is done: look, choose, then change.
+    assert (
+        help_text.index(GROUP_VIEW)
+        < help_text.index(GROUP_CHOOSE)
+        < help_text.index(GROUP_STATE)
+    )
+
+
+def test_a_gesture_sits_under_the_same_heading_as_the_keys_it_belongs_with(window):
+    """Picking frames out is one idea, done with Esc or with Ctrl-click.
+
+    Listing the keys and then the gestures separately made the reader do the
+    grouping the list is for.
+    """
+    from am_segmentation_manager.gui.widgets.main_window import (
+        GROUP_CHOOSE,
+        GROUP_STATE,
+        TAB_CURATE,
+    )
+
+    help_text = window.shortcut_help(TAB_CURATE)
+
+    choose = help_text.index(GROUP_CHOOSE)
+    state = help_text.index(GROUP_STATE)
+    assert choose < help_text.index("Esc") < state
+    assert choose < help_text.index("Ctrl-click a frame") < state
+
+
+def test_the_key_that_opens_the_list_is_listed_last(window):
+    from am_segmentation_manager.gui.widgets.main_window import (
+        GROUP_HELP,
+        TAB_CURATE,
+        TAB_LABEL,
+    )
+
+    for tab in (TAB_CURATE, TAB_LABEL):
+        help_text = window.shortcut_help(tab)
+        heading = help_text.index(GROUP_HELP)
+        assert all(
+            heading > help_text.index(other)
+            for other in _headings()
+            if other != GROUP_HELP and other in help_text
+        ), tab
 
 
 def test_a_tab_with_no_keys_of_its_own_says_so(window):

@@ -463,7 +463,13 @@ entry in place rather than appending to it.
   parented `QDialog` is one — so the key that opens the shortcut list could not close it again;
   and closing on `isVisible()` dismissed a list buried behind the window, unseen. The key now
   arrives from any window, so it is guarded to do nothing while a modal dialog is up, a list
-  opened over one being neither readable nor closable until the operation ends.
+  opened over one being neither readable nor closable until the operation ends. **The list is
+  grouped by what a row is for, and a mouse gesture is filed beside the keys it belongs with** —
+  picking frames out is one idea whether it is done with `Esc` or with Ctrl-click, and a keys
+  table above a gestures table made the reader do the grouping the list exists to do. Every
+  `Binding` and every `TAB_GESTURES` row names its heading; the *order* of the headings is the
+  order the bindings first name them, so the list is rearranged by moving a binding rather than by
+  keeping a second table in step with it. Only "This list" is placed, and it is placed last.
 - **The brush outline is redrawn from state, never from mouse movement alone.** It is drawn in
   *scene* coordinates, so anything moving the scene under a stationary pointer — a pan, a fit,
   centring on the next speck, a frame arriving on the loader thread — leaves a ring around a pixel

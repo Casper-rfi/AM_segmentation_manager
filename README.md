@@ -198,8 +198,10 @@ Getting help
   `PYTHONDEVMODE=1` set: that turns on the debugging allocator, which stops at
   the point memory is actually damaged instead of at the unrelated place it is
   next touched.
-* **`F1`** in the window lists the keys and gestures available on that tab.
-  It stays open beside the window while you try them, and `F1` puts it away.
+* **`F1`** in the window lists the keys and gestures available on that tab,
+  under a heading per job — what changes the view, what chooses which images a
+  change covers, what changes them. It stays open beside the window while you
+  try them, and `F1` puts it away.
 * [`docs/00_roadmap.md`](docs/00_roadmap.md) — what is built and what is next.
 * [`docs/decisions.md`](docs/decisions.md) — why it works this way, and the
   environment traps worth knowing.

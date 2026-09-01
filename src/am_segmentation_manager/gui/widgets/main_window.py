@@ -112,32 +112,79 @@ BLOCKED_ACTIONS: dict[str, str] = {
     "existing": "Replace them",
 }
 
-#: Mouse gestures worth listing beside the keys, per tab.
+#: The headings the F1 list groups its rows under.
+#:
+#: A row belongs to exactly one, and the *order* the headings appear in is the
+#: order the rows below declare them -- so the list is arranged by moving a
+#: binding, not by keeping a second table of headings in step with it.
+#: :data:`GROUP_HELP` is the exception, and is always last.
+GROUP_VIEW = "Change the view"
+GROUP_CHOOSE = "Choose what changes"
+GROUP_STATE = "Set the segmentation state"
+GROUP_TOOLS = "Choose a tool"
+GROUP_CLASSES = "Choose a class"
+GROUP_SPECKS = "Find specks"
+GROUP_EDITS = "Save and undo"
+GROUP_ELSEWHERE = "Elsewhere in the window"
+GROUP_HELP = "This list"
+
+#: Mouse gestures worth listing beside the keys, per tab, as
+#: ``(heading, what to do, what it does)``.
 #:
 #: Not bindings: nothing registers these, the widgets read the modifiers
 #: themselves. They are here because F1 is the one place that answers "what can
 #: I do here?", and a gesture nobody can discover is a gesture nobody uses.
-TAB_GESTURES: dict[str, tuple[tuple[str, str], ...]] = {
+#: They carry a heading for the same reason the keys do -- picking frames out
+#: is one idea whether it is done with Esc or with Ctrl-click, and splitting it
+#: into a keys half and a mouse half hid that.
+TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
     TAB_CURATE: (
-        ("Click or drag the timeline", "Move to a frame"),
-        ("Ctrl-click a frame", "Pick it out for a state change, or drop it again"),
-        ("Shift-click a frame", "Extend the picked run from the last frame you pointed at"),
-        ("Ctrl or Shift + drag", "Sweep a run of frames"),
-        ("Tick a project or lamella", "Apply a state change to the whole of it"),
-        ("Right-click a row or an image", "Copy its path, or open its folder"),
-        ("Operations", "Act on the same selection; each previews before it applies"),
+        (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
+        (
+            GROUP_CHOOSE, "Ctrl-click a frame",
+            "Pick it out for a state change, or drop it again",
+        ),
+        (
+            GROUP_CHOOSE, "Shift-click a frame",
+            "Extend the picked run from the last frame you pointed at",
+        ),
+        (GROUP_CHOOSE, "Ctrl or Shift + drag", "Sweep a run of frames"),
+        (
+            GROUP_CHOOSE, "Tick a project or lamella",
+            "Apply a state change to the whole of it",
+        ),
+        (
+            GROUP_ELSEWHERE, "Right-click a row or an image",
+            "Copy its path, or open its folder",
+        ),
+        (
+            GROUP_ELSEWHERE, "Operations",
+            "Act on the same selection; each previews before it applies",
+        ),
     ),
     TAB_ADD_DATA: (
-        ("Right-click a project", "Copy its path, or open its folder"),
+        (
+            GROUP_ELSEWHERE, "Right-click a project",
+            "Copy its path, or open its folder",
+        ),
     ),
     TAB_LABEL: (
-        ("Drag with the left button", "Paint with the brush"),
-        ("Click with the fill tool", "Flood the area of one class you clicked in"),
-        ("Hold Space, or drag with the middle button", "Pan instead of painting"),
-        ("Scroll wheel", "Zoom about the pointer"),
-        ("Shift + scroll wheel", "Make the brush bigger or smaller"),
-        ("Click or drag the timeline", "Move to a frame"),
-        ("A white band on the timeline", "That label has unsaved edits"),
+        (GROUP_TOOLS, "Drag with the left button", "Paint with the brush"),
+        (
+            GROUP_TOOLS, "Click with the fill tool",
+            "Flood the area of one class you clicked in",
+        ),
+        (GROUP_TOOLS, "Shift + scroll wheel", "Make the brush bigger or smaller"),
+        (
+            GROUP_VIEW, "Hold Space, or drag with the middle button",
+            "Pan instead of painting",
+        ),
+        (GROUP_VIEW, "Scroll wheel", "Zoom about the pointer"),
+        (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
+        (
+            GROUP_EDITS, "A white band on the timeline",
+            "That label has unsaved edits",
+        ),
     ),
 }
 
@@ -161,6 +208,8 @@ class Binding:
         description: The line shown in the F1 list. Every binding has one.
         action: What pressing the key does.
         tab: The tab this key belongs to, or :data:`ANY_TAB`.
+        group: The heading the F1 list files this key under. Required, because
+            a key with nowhere to go is one the reader has to place themselves.
         scope: Restrict the key to this widget and its children instead of the
             whole window. Needed where a tab holds editors with arrow-key
             behaviour of their own, which a window-wide key would take first.
@@ -174,6 +223,7 @@ class Binding:
     description: str
     action: Callable[[], None]
     tab: str
+    group: str
     scope: QWidget | None = None
     anywhere: bool = False
 
@@ -1252,93 +1302,162 @@ class CurationWindow(QMainWindow):
         logger.info("Revealed %s", folder)
 
     def _add_shortcuts(self) -> None:
-        """Bind the keys, each tagged with the tab it belongs to.
+        """Bind the keys, each tagged with the tab and the heading it belongs to.
 
         A binding scoped to a widget uses ``WidgetWithChildrenShortcut`` and so
         only fires with focus inside it; every other binding belongs to the
         window and is switched on and off as tabs change.
+
+        **The order below is the order F1 reads in.** Headings appear in the
+        order the bindings first name them, so grouping the list is a matter of
+        moving a line here rather than of maintaining a table of headings
+        elsewhere that can fall out of step with it.
         """
         curate = TAB_CURATE
-        # Built first so they can sit beside the tools in the F1 list, which is
-        # read top to bottom and groups by what the keys are for.
         paint_keys = [
             Binding(
                 key,
                 f"Paint {name}",
                 lambda position=position: self.label_panel.select_class_at(position),
                 TAB_LABEL,
+                GROUP_CLASSES,
             )
             for position, (key, name) in enumerate(
                 zip(CLASS_KEYS, self.label_panel.class_names())
             )
         ]
         self._bindings = [
-            Binding("Right", "Next frame", lambda: self._step_frame(1), curate),
-            Binding("Left", "Previous frame", lambda: self._step_frame(-1), curate),
-            Binding("Down", "Next lamella", lambda: self._step_lamella(1), curate),
-            Binding("Up", "Previous lamella", lambda: self._step_lamella(-1), curate),
-            Binding("1", "SEM view", lambda: self._set_mode("sem", from_user=True), curate),
-            Binding("2", "FIB view", lambda: self._set_mode("fib", from_user=True), curate),
-            Binding("3", "Plot view", lambda: self._set_mode("plot", from_user=True), curate),
-            Binding("V", "Show / hide the label overlay", self._toggle_overlay, curate),
-            Binding("D", "Set state: deselected", lambda: self.apply_state("deselected"), curate),
-            Binding("S", "Set state: selected", lambda: self.apply_state("selected"), curate),
-            Binding("C", "Set state: corrected", lambda: self.apply_state("corrected"), curate),
-            Binding("G", "Fit the view to the pane", self.image_panel.fit, curate),
+            # -- curate --------------------------------------------------
+            Binding("Right", "Next frame", lambda: self._step_frame(1), curate, GROUP_VIEW),
+            Binding("Left", "Previous frame", lambda: self._step_frame(-1), curate, GROUP_VIEW),
+            Binding("Down", "Next lamella", lambda: self._step_lamella(1), curate, GROUP_VIEW),
+            Binding("Up", "Previous lamella", lambda: self._step_lamella(-1), curate, GROUP_VIEW),
             Binding(
-                "Esc", "Clear the picked-out frames", self._clear_frame_selection, curate
+                "1", "SEM view", lambda: self._set_mode("sem", from_user=True),
+                curate, GROUP_VIEW,
             ),
+            Binding(
+                "2", "FIB view", lambda: self._set_mode("fib", from_user=True),
+                curate, GROUP_VIEW,
+            ),
+            Binding(
+                "3", "Plot view", lambda: self._set_mode("plot", from_user=True),
+                curate, GROUP_VIEW,
+            ),
+            Binding(
+                "V", "Show / hide the label overlay", self._toggle_overlay,
+                curate, GROUP_VIEW,
+            ),
+            Binding(
+                "G", "Fit the view to the pane", self.image_panel.fit, curate, GROUP_VIEW
+            ),
+            Binding(
+                "Esc", "Clear the picked-out frames", self._clear_frame_selection,
+                curate, GROUP_CHOOSE,
+            ),
+            Binding(
+                "D", "Set state: deselected", lambda: self.apply_state("deselected"),
+                curate, GROUP_STATE,
+            ),
+            Binding(
+                "S", "Set state: selected", lambda: self.apply_state("selected"),
+                curate, GROUP_STATE,
+            ),
+            Binding(
+                "C", "Set state: corrected", lambda: self.apply_state("corrected"),
+                curate, GROUP_STATE,
+            ),
+            # -- add data ------------------------------------------------
             # Scoped to the project list: the fields beside it include editable
             # combo boxes, whose own Up/Down a window-wide key would swallow.
             Binding(
                 "Down", "Next project", lambda: self.metadata_panel.step_project(1),
-                TAB_ADD_DATA, scope=self.metadata_panel.projects,
+                TAB_ADD_DATA, GROUP_VIEW, scope=self.metadata_panel.projects,
             ),
             Binding(
                 "Up", "Previous project", lambda: self.metadata_panel.step_project(-1),
-                TAB_ADD_DATA, scope=self.metadata_panel.projects,
+                TAB_ADD_DATA, GROUP_VIEW, scope=self.metadata_panel.projects,
+            ),
+            # -- label ---------------------------------------------------
+            Binding(
+                "Right", "Next frame", lambda: self.label_panel.step_frame(1),
+                TAB_LABEL, GROUP_VIEW,
             ),
             Binding(
-                "Right", "Next frame", lambda: self.label_panel.step_frame(1), TAB_LABEL
+                "Left", "Previous frame", lambda: self.label_panel.step_frame(-1),
+                TAB_LABEL, GROUP_VIEW,
             ),
             Binding(
-                "Left", "Previous frame", lambda: self.label_panel.step_frame(-1), TAB_LABEL
-            ),
-            Binding("Down", "Next lamella", lambda: self._step_label_lamella(1), TAB_LABEL),
-            Binding("Up", "Previous lamella", lambda: self._step_label_lamella(-1), TAB_LABEL),
-            Binding("1", "SEM images", lambda: self.label_panel.set_modality("SEM"), TAB_LABEL),
-            Binding("2", "FIB images", lambda: self.label_panel.set_modality("FIB"), TAB_LABEL),
-            Binding("V", "Show / hide the label", self.label_panel.toggle_label, TAB_LABEL),
-            Binding("G", "Fit the image to the pane", self.label_panel.canvas_fit, TAB_LABEL),
-            Binding(
-                "D", "Brush tool", lambda: self.label_panel.set_tool("brush"), TAB_LABEL
+                "Down", "Next lamella", lambda: self._step_label_lamella(1),
+                TAB_LABEL, GROUP_VIEW,
             ),
             Binding(
-                "F", "Fill tool", lambda: self.label_panel.set_tool("fill"), TAB_LABEL
+                "Up", "Previous lamella", lambda: self._step_label_lamella(-1),
+                TAB_LABEL, GROUP_VIEW,
+            ),
+            Binding(
+                "1", "SEM images", lambda: self.label_panel.set_modality("SEM"),
+                TAB_LABEL, GROUP_VIEW,
+            ),
+            Binding(
+                "2", "FIB images", lambda: self.label_panel.set_modality("FIB"),
+                TAB_LABEL, GROUP_VIEW,
+            ),
+            Binding(
+                "V", "Show / hide the label", self.label_panel.toggle_label,
+                TAB_LABEL, GROUP_VIEW,
+            ),
+            Binding(
+                "G", "Fit the image to the pane", self.label_panel.canvas_fit,
+                TAB_LABEL, GROUP_VIEW,
+            ),
+            Binding(
+                "D", "Brush tool", lambda: self.label_panel.set_tool("brush"),
+                TAB_LABEL, GROUP_TOOLS,
+            ),
+            Binding(
+                "F", "Fill tool", lambda: self.label_panel.set_tool("fill"),
+                TAB_LABEL, GROUP_TOOLS,
+            ),
+            Binding(
+                "[", "Smaller brush", lambda: self.label_panel.step_brush(-1),
+                TAB_LABEL, GROUP_TOOLS,
+            ),
+            Binding(
+                "]", "Larger brush", lambda: self.label_panel.step_brush(1),
+                TAB_LABEL, GROUP_TOOLS,
             ),
             *paint_keys,
             Binding(
                 "A", "Lock or unlock every class",
-                self.label_panel.toggle_all_locks, TAB_LABEL,
+                self.label_panel.toggle_all_locks, TAB_LABEL, GROUP_CLASSES,
             ),
             Binding(
                 "X", "Find specks: ring the small components",
-                self.label_panel.toggle_specks, TAB_LABEL,
+                self.label_panel.toggle_specks, TAB_LABEL, GROUP_SPECKS,
             ),
             Binding(
                 "N", "Go to the next speck",
-                lambda: self.label_panel.step_speck(1), TAB_LABEL,
+                lambda: self.label_panel.step_speck(1), TAB_LABEL, GROUP_SPECKS,
             ),
-            Binding("[", "Smaller brush", lambda: self.label_panel.step_brush(-1), TAB_LABEL),
-            Binding("]", "Larger brush", lambda: self.label_panel.step_brush(1), TAB_LABEL),
-            Binding("Ctrl+S", "Save this lamella's labels", self.save_labels, TAB_LABEL),
-            Binding("Ctrl+Z", "Undo the last stroke", self.label_panel.undo, TAB_LABEL),
             Binding(
-                "Ctrl+Shift+Z", "Redo the last stroke", self.label_panel.redo, TAB_LABEL
+                "Ctrl+S", "Save this lamella's labels", self.save_labels,
+                TAB_LABEL, GROUP_EDITS,
+            ),
+            Binding(
+                "Ctrl+Z", "Undo the last stroke", self.label_panel.undo,
+                TAB_LABEL, GROUP_EDITS,
+            ),
+            Binding(
+                "Ctrl+Shift+Z", "Redo the last stroke", self.label_panel.redo,
+                TAB_LABEL, GROUP_EDITS,
             ),
             # The one key that has to work while the list it opens holds the
             # keyboard, since closing it again is what it is for.
-            Binding("F1", "Show this list", self.show_shortcuts, ANY_TAB, anywhere=True),
+            Binding(
+                "F1", "Show this list", self.show_shortcuts,
+                ANY_TAB, GROUP_HELP, anywhere=True,
+            ),
         ]
         self._shortcuts = []
         for binding in self._bindings:
@@ -1372,23 +1491,24 @@ class CurationWindow(QMainWindow):
     def shortcut_help(self, tab: str | None = None) -> str:
         """Return the shortcut table for a tab, as the help dialog's HTML.
 
+        Under a heading per group, keys and mouse gestures together: what a
+        reader is looking for is "how do I pick frames out", and answering that
+        across a list of keys and a separate list of gestures makes them do the
+        grouping the list should have done.
+
         Separate from showing it so what the dialog says can be tested without
         opening a modal window.
         """
         tab = tab if tab is not None else self._current_tab()
         applicable = [b for b in self._bindings if b.tab in (tab, ANY_TAB)]
-        help_text = _table(
-            (binding.key, binding.description) for binding in applicable
+        grouped = self._grouped_rows(applicable, TAB_GESTURES.get(tab, ()))
+        help_text = "".join(
+            f"<p style='margin-top: 12px;'><b>{group}</b></p>{_table(rows)}"
+            for group, rows in grouped.items()
         )
         if not any(binding.tab != ANY_TAB for binding in applicable):
             help_text += (
                 "<p style='margin-top: 10px;'>This tab has no keys of its own.</p>"
-            )
-        gestures = TAB_GESTURES.get(tab, ())
-        if gestures:
-            help_text += (
-                "<p style='margin-top: 12px;'><b>With the mouse</b></p>"
-                + _table(gestures)
             )
         if tab == TAB_CURATE:
             help_text += (
@@ -1402,6 +1522,28 @@ class CurationWindow(QMainWindow):
                 "<i>Enable editing</i> switched on.</p>"
             )
         return help_text
+
+    @staticmethod
+    def _grouped_rows(
+        bindings: list[Binding], gestures: tuple[tuple[str, str, str], ...]
+    ) -> dict[str, list[tuple[str, str]]]:
+        """Return the rows of each heading, in the order the headings arise.
+
+        Keys first, then the gestures that belong beside them, so a heading
+        reads as its keys and then the pointer equivalents. :data:`GROUP_HELP`
+        is moved to the end: the key that opens this list is the one the reader
+        has already found.
+        """
+        grouped: dict[str, list[tuple[str, str]]] = {}
+        for binding in bindings:
+            grouped.setdefault(binding.group, []).append(
+                (binding.key, binding.description)
+            )
+        for group, action, description in gestures:
+            grouped.setdefault(group, []).append((action, description))
+        if GROUP_HELP in grouped:
+            grouped[GROUP_HELP] = grouped.pop(GROUP_HELP)
+        return grouped
 
     def show_shortcuts(self) -> None:
         """List the keys for the tab now showing, or put the list away.
