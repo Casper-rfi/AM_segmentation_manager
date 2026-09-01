@@ -9,13 +9,17 @@ fixture for.
 
 Opt in by pointing an environment variable at a collection::
 
-    AM_SEG_REFERENCE_COLLECTION=~/Data/20260807_lamella_segmentations_new pytest -q
+    AM_SEG_REFERENCE_COLLECTION=<path to a collection> pytest -q
 
-Unset, every test here skips, so the suite runs anywhere.
+Unset, every test here skips, so the suite runs anywhere and nothing here is
+part of an ordinary run. It asserts on shape rather than on any particular
+collection's contents, so any collection can be pointed at it.
 
-**It never writes.** The collection is real data; a test that modified it would
-be worse than no test. :func:`test_scanning_never_writes_to_the_collection`
-checks that by comparing a snapshot of every file before and after.
+**It never writes.** A collection worth pointing at this is real acquisition
+data holding proofread labels that cannot be reconstructed, so a test that
+modified one would be worse than no test.
+:func:`test_scanning_never_writes_to_the_collection` checks that by comparing a
+snapshot of every file before and after.
 """
 from __future__ import annotations
 
@@ -36,10 +40,10 @@ STATE_DIRECTORIES = {"deselected", "corrected"}
 #: Directory names that are never image sets.
 NON_IMAGE_DIRECTORIES = {"predictions", "plots", "raw", "clean"}
 
-#: Finding categories that the collection is *expected* to raise as errors.
-#: Two projects there share a name and differ only by path -- a real condition
-#: the survey is supposed to report, not a regression. Anything else appearing
-#: at error severity should fail this test and be looked at.
+#: Finding categories tolerated at error severity. A collection may legitimately
+#: hold two projects that share a name and differ only by path -- a real
+#: condition the survey is supposed to report, not a regression. Anything else
+#: appearing at error severity should fail this test and be looked at.
 EXPECTED_ERROR_CATEGORIES = {"duplicate-project-name"}
 
 
@@ -86,8 +90,15 @@ def image_set_directory(image: Path) -> Path | None:
 
     The rule: an image lives in a directory whose own name starts with a
     modality and is not a label directory, or in a state subdirectory of one.
-    Images sitting directly in a lamella directory -- alignment and reference
-    shots -- are context, never segmentation targets, and are excluded.
+
+    **This is a lower bound, not the whole index.** Loose images -- reference,
+    alignment and prototype-era Adaptive Polishing shots sitting directly in a
+    lamella directory -- are indexed too, and no rule this file could state
+    without reimplementing ``layout.py`` separates the ones that should be from
+    the overviews and debug output that should not. So it models the population
+    it can state independently, and is used only to check that nothing in it
+    went missing. Do not derive the converse from it: an image being outside
+    this set says nothing about whether indexing it was wrong.
     """
     parent = image.parent
     if parent.name.lower() in STATE_DIRECTORIES:
@@ -138,13 +149,18 @@ def test_every_image_on_disk_is_indexed(root: Path, index):
 
 
 def test_nothing_is_indexed_that_is_not_on_disk(root: Path, index):
-    """The converse: no invented records, and no stale paths."""
-    indexed = {record.image_path.resolve() for record in records_of(index)}
-    unexpected = indexed - images_on_disk(root)
+    """The converse: no invented records, and no stale paths.
 
-    assert not unexpected, (
-        f"{len(unexpected)} indexed image(s) are not where the index says. "
-        f"First few: {sorted(str(p) for p in unexpected)[:5]}"
+    Asked as file existence rather than against :func:`images_on_disk`, which
+    models only part of what is indexed -- see its docstring. Existence is the
+    question this one is really asking, and it covers every series.
+    """
+    indexed = {record.image_path.resolve() for record in records_of(index)}
+    missing = {path for path in indexed if not path.exists()}
+
+    assert not missing, (
+        f"{len(missing)} indexed image(s) are not where the index says. "
+        f"First few: {sorted(str(p) for p in missing)[:5]}"
     )
 
 

@@ -85,10 +85,6 @@ hidden persistent state; persist any state the package introduces to disk in an
 appropriate format; and keep the package able to reconstruct its understanding of a
 project by scanning it.
 
-Nothing is inherited from parent directories. A directory can hold several projects
-prepared on different samples, so resolving a field from a parent risks attributing
-the wrong sample to a project — an error that would be invisible in the output.
-
 Do not introduce architectural abstractions, databases, frameworks or dependencies
 without a concrete requirement. Prefer the simplest architecture that preserves
 future extensibility.
@@ -146,7 +142,7 @@ class and function gets one: a summary line, `Args:`/`Returns:`/`Raises:` only w
 the signature does not already say it, and at most one sentence of constraint or
 invariant.
 
-A module docstring orients a reader in a few sentences: what the module is for, and 
+A module docstring orients a reader in up to a few sentences: what the module is for, and 
 any invariant holding across it. Keep it under ten lines. Detail about one function belongs 
 on that function; reasoning about why the design is this way belongs in docs/decisions.md.
 
