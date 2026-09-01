@@ -172,9 +172,9 @@ module docstring, the README or `docs/` already says it, and update that instead
 | `04_future_work.md` | What is not built, and the questions to answer before designing it |
 
 Place a fact before writing it: how one module behaves goes in that module's
-docstring; why the design is this way goes in `decisions.md`or `display.md` for 
-anything under gui; work not yet built goes in `04_future_work.md`; how to install or 
-use the package goes in`README.md`. If nothing fits, say so and ask, rather than 
+docstring; why the design is this way goes in `decisions.md` or `display.md` for 
+anything under `gui`; work not yet built goes in `04_future_work.md`; how to install or 
+use the package goes in `README.md`. If nothing fits, say so and ask, rather than 
 starting a new document.
 
 **Checking the documentation is part of finishing a feature, not a step after
