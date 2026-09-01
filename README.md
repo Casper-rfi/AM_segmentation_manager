@@ -205,6 +205,8 @@ Getting help
 * [`docs/00_roadmap.md`](docs/00_roadmap.md) — what is built and what is next.
 * [`docs/decisions.md`](docs/decisions.md) — why it works this way, and the
   environment traps worth knowing.
+* [`docs/display.md`](docs/display.md) — the same for the window itself, and
+  the Qt traps behind it.
 
 Contributing
 ------------
@@ -228,8 +230,9 @@ only under `gui/widgets/`; everything the window knows lives in plain Python
 controllers that test without a display.
 
 Read [`CLAUDE.md`](CLAUDE.md) for the working agreement and the package
-philosophy, and [`docs/decisions.md`](docs/decisions.md) before changing
-anything in `operations/`.
+philosophy, [`docs/decisions.md`](docs/decisions.md) before changing anything in
+`operations/`, and [`docs/display.md`](docs/display.md) before changing anything
+under `gui/`.
 
 Maintainer and status
 ---------------------

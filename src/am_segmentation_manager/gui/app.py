@@ -7,7 +7,7 @@ create a Qt application, and so the CLI has one obvious entry point.
 printer**, which has crashed the process outright on macOS. An exception
 escaping a Qt slot propagates nowhere this package can catch it, so
 :func:`install_error_reporting` replaces the interpreter's reporter with one
-written in Python. See `docs/decisions.md` § Display.
+written in Python. See `docs/display.md`.
 """
 from __future__ import annotations
 

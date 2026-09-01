@@ -2,8 +2,9 @@
 
 Where the work stands and what to pick up next — the entry point for starting fresh. `README.md`
 is the user and developer entry point and its command tables are the catalogue of what each
-command does; [`decisions.md`](decisions.md) says why the software is the way it is; `CLAUDE.md`
-holds the working agreement. Nothing those say is restated here.
+command does; [`decisions.md`](decisions.md) says why the software is the way it is and
+[`display.md`](display.md) why the window is; `CLAUDE.md` holds the working agreement. Nothing
+those say is restated here.
 
 ---
 
