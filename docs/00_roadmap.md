@@ -17,7 +17,14 @@ same work for scripting and testing. Predictions need the second environment
 
 ## What to pick up next
 
-In no particular order.
+**The window's remaining rework** is the work in hand, and the only entry here with an order to it.
+Left to do: a folder/project tree in Curate, the other tabs following only once its shape holds; a
+contrast control applied after the cache, so moving it costs a lookup table rather than a re-read; a
+curation timeline carrying one colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a
+macOS `.icns` icon, the current one being a full-bleed PNG where macOS wants a squircle inset in its
+canvas. Section headers and a shared block for the batch operations still owe `theme.py`.
+
+The rest, in no particular order.
 
 **An "other" series** making unindexed images visible instead of merely counted.
 [`04_future_work.md`](04_future_work.md) §6.

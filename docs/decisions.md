@@ -24,14 +24,10 @@ entry in place rather than appending to it.
   directories are the only ones anything here renames — we do not own `sem` and `fib`, and renaming
   those breaks reopening the project in Autolamella. **Legacy spellings stay readable indefinitely**
   (`labels`, `labels_fib`, `labels_FIB`), a new label landing in whichever directory an image set
-  already has, so normalising is cosmetic — hence `scripts/rename_legacy_label_dirs.py` rather
-  than a command.
+  already has, so normalising is cosmetic and lives in `scripts/` rather than in a command.
 - **A copy is paired back to its original by what the acquisition software recorded, never by name
-  or order.** Labels segmented out-of-tree came back through `scripts/place_renamed_labels.py`,
-  which pairs on the FEI XML tag (34683) — unique across a project — falling back, for the
-  script-based stack that writes none, to the directory, filename and timestamp its fibsem header
-  says it wrote, all three of which a copy carries unchanged. It then checks the two files still
-  decode identically, and refuses the whole batch over one doubt. It reads that tag itself,
+  or order.** Both name and order survive a copy unchanged, so neither identifies an acquisition.
+  `scripts/place_renamed_labels.py` names the header facts that do and reads them itself,
   `image_metadata.py` having no use for an identity.
 - **Adaptive Polishing images can sit loose in the lamella directory.** Usually they fill a
   `<modality>` directory that names them, but the script-based prototype wrote them beside
@@ -40,13 +36,10 @@ entry in place rather than appending to it.
   three series are in `LOOSE_SERIES`, and such a set's labels go to `adaptive_sem_labels/` by the
   same naming rule the other loose series use. That name has no shared form on purpose: a shared
   `sem_labels/` would let a reference set claim the same lamella's Adaptive Polishing labels.
-- **A condition that repeats its variant in the filename is renamed, not parsed around.** Two 2023
-  projects name a TLD image `Image_000_TLD.tif` beside `SEM_8/Image_000.tif`, so it pairs with no
-  label. Stripping such a suffix in code would change the identity an image and its label share in
-  four places, one of them the state key, and would parse a variant the model keeps opaque.
-  `scripts/share_variant_labels.py` renames the data instead, rewriting the state keys in the same
-  pass — a label directory's name is part of its group's key, so moving one without them silently
-  drops every group back to *selected*.
+- **A condition that repeats its variant in the filename is renamed, not parsed around.** Stripping
+  such a suffix in code would change the identity an image and its label share in four places, one
+  of them the state key, and would parse a variant the model keeps opaque.
+  `scripts/share_variant_labels.py` renames the data instead.
 - **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
   variant may not be named `labels`, `deselected`, `corrected` or `predictions`: those collide with
@@ -426,27 +419,25 @@ entry in place rather than appending to it.
 - **A row is ticked; a control on its own is switched.** Two different questions wore the same
   widget: a tick says which of many rows a change covers, where a standalone control is simply on
   or off. `common.ToggleSwitch` draws the second as a switch and is a **subclass of `QCheckBox`**,
-  which is the point rather than a detail — only `paintEvent` differs, so `isChecked`, `toggled`,
-  Space, focus and the disabled state are unchanged, and eleven controls across six panels became
-  switches by changing a word each with no test rewritten. It paints everything itself, so no
-  stylesheet rule may name `QCheckBox`: a rule would send the control back through `QStyle` and
-  draw it twice.
+  which is the point rather than a detail: only `paintEvent` differs, so `isChecked`, `toggled`,
+  Space, focus and the disabled state stay Qt's. It paints everything itself, so **no stylesheet
+  rule may name `QCheckBox`** — a rule sends the control back through `QStyle` and draws it twice.
+  It also reserves room around the track for its own focus ring, a ring painted past the widget's
+  edge being clipped flat on the side it runs off.
 - **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is also
   how Qt marks the row you are looking at, it is lost whenever the list is rebuilt, and over dozens
   of values there is no seeing what is chosen without scrolling. `CheckList` is the one
   implementation, and it reports nothing while its contents are replaced — a redraw rather than a
-  gesture, and an owner rebuilding its list when the current row changes drives itself in a circle.
-  Two further traps: Qt blends a selected row's icon with the highlight colour, so a status chip
+  gesture. Two further traps: Qt blends a selected row's icon with the highlight colour, so a status chip
   whose colour *is* the information comes out wrong on exactly the row being looked at
   (`chip_icon()` supplies every such pixmap); and a `QListWidget` with a horizontal scrollbar
   scrolls instead of eliding, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
-  and nothing else, because nothing about a project row changes when one is picked: its label, its
-  chip and its tick are the same before and after. Rebuilding it there ran while Qt was still
-  part-way through the mouse press that caused it, emptying the rows Qt held a position in — and
-  the rebuild's own `setCurrentRow` re-framed the list around the clicked row, throwing the
-  reviewer from the bottom of a scrolled list back near the top on every click. `_refresh_lists`
-  is for a scan or a state change, where every chip really has moved.
+  and nothing else: nothing about a project row changes when one is picked. Rebuilding it there ran
+  while Qt was still part-way through the mouse press that caused it, emptying the rows Qt held a
+  position in — and the rebuild's own `setCurrentRow` re-framed the list around the clicked row,
+  losing the reviewer's place on every click. `_refresh_lists` is for a scan or a state change,
+  where every chip really has moved.
 - **The window asks to be the one in front, and asks after the event loop has started.** Launched
   from a terminal, macOS leaves the terminal in front, and a window that is not in front receives
   no key presses and no pointer motion at all — so F1 does nothing, no tooltip appears, and the
@@ -540,23 +531,20 @@ entry in place rather than appending to it.
 - **The window never lets CPython print a traceback.** Qt calls Python from C++, so an exception
   escaping a slot propagates nowhere this package can catch it: the interpreter reports it and Qt
   carries on. That reporter opens the source file to quote the failing line, and on macOS it has
-  segfaulted the process mid-write — taking with it the traceback that said what went wrong, and
-  leaving one orphan frame on stderr. So `gui/app.py` replaces `sys.excepthook` and
-  `threading.excepthook` with handlers built on `traceback.format_exception`, which is Python.
+  segfaulted the process mid-write, taking the traceback with it. So `gui/app.py` replaces
+  `sys.excepthook` and `threading.excepthook` with handlers built on `traceback.format_exception`.
   Every failure is logged; one at a time is also offered in a dialog, **queued through a zero-delay
   timer** because a hook runs part-way through whatever Qt was doing and a modal dialog re-enters
-  the event loop at exactly that point. Off the thread that owns the widgets only the log gets it.
-  For the same reason `am-seg gui` writes a log without being asked — it is the one command whose
-  failures are not visible in the terminal that started it — capped at one rollover, where a path
-  the user names is left to accumulate.
+  the event loop at exactly that point. Off the thread that owns the widgets only the log gets it —
+  which is why `am-seg gui` logs to a file without being asked, being the one command whose failures
+  are not visible in the terminal that started it.
 - **A worker thread that will not stop outlives the window rather than being collected.** A frame
   read is one call into an image library and cannot be interrupted part-way, so a file on a
-  cloud-synced volume outlasts any deadline worth waiting for on close. Raising the loader's token
-  ends the batch at its next item, but not the read already running — and a `QThread` still running
+  cloud-synced volume outlasts any deadline worth waiting for on close. A `QThread` still running
   keeps calling into its Python worker, so letting the interpreter collect that worker is a use
   after free whose crash lands on the worker thread with nothing to say why. `loader.keep_alive`
-  holds one object per abandoned thread for the life of the process; both `BackgroundLoader` and
-  `BackgroundOperation` use it, so the reason is written down once.
+  holds one object per abandoned thread for the life of the process; `BackgroundOperation` uses it
+  too, so the reason is written down once.
 
 ## Environment
 
@@ -574,9 +562,10 @@ entry in place rather than appending to it.
   which looks exactly like a hang. Run it in conda's `base` and the imports resolve to a different
   stack, giving several hundred failures that are all one wrong interpreter.
 - **The reference collection is the live archive, and there is no disposable copy of it.**
-  `<collection>/` — 115 projects, 740 lamellae, 34,418
-  indexed images, 199 GB, every layout era from pre-Autolamella to 2026-05. Point the smoke test at
-  it with `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
+  `<collection>/` — a couple of hundred gigabytes covering
+  every layout era from pre-Autolamella to 2026-05, and still being added to, so any count of it
+  written down here is wrong by the time it is read. Point the smoke test at it with
+  `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
   **Never write to it.** Not a test, not a script, not an exploratory one-liner: nothing may create,
   move, overwrite or delete anything inside it without permission asked for and given for that
   specific change. It holds thousands of proofread labels that cannot be reconstructed, and the copy
