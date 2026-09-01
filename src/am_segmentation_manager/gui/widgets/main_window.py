@@ -1996,7 +1996,9 @@ class CurationWindow(QMainWindow):
 
         The name shown is the project's own rather than its whole relative
         path, the folder above it saying the rest -- which is what the tree is
-        for and why the two are asked for separately.
+        for and why the two are asked for separately. Which series a project
+        holds is not asked for at all: its status chip is a cell per series, so
+        an empty column already says it.
         """
         projects = self.controller.projects
         self.project_panel.show_projects(
@@ -2005,7 +2007,6 @@ class CurationWindow(QMainWindow):
             self.controller.project_statuses(),
             self.controller.project_checks(),
             folders=[project.folder for project in projects],
-            series=self.controller.project_series(),
         )
 
     def _refresh_lamellae(self) -> None:

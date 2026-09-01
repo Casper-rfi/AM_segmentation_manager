@@ -290,59 +290,64 @@ def test_the_choice_survives_a_lamella_that_cannot_show_it():
 
 
 # ---------------------------------------------------------------------------
-# Which series a project holds
+# Which series a project holds, and how far each has been curated
 # ---------------------------------------------------------------------------
 
-def test_a_project_reports_the_series_it_holds(controller: CurationController):
+def test_a_project_reports_a_cell_per_series_and_beam(controller: CurationController):
     """Read off the records, so a project can never claim a series whose
     timeline would open empty."""
-    assert controller.project_series() == [["adaptive", "reference", "alignment"]]
+    status = controller.project_statuses()[0]
+
+    assert [s for s in ("adaptive", "reference", "alignment") if status.holds(s)] == [
+        "adaptive", "reference", "alignment"
+    ]
 
 
 def test_a_project_with_nothing_to_proofread_says_so():
     """A quarter of the reference archive holds reference and alignment images
-    and no Adaptive Polishing ones at all. Nothing else on the row says it."""
+    and no Adaptive Polishing ones at all."""
     controller = make_controller([
         Lamella(
-            name=LAMELLA.name,
-            path=LAMELLA,
-            number="01",
-            stages=[
-                loose_stage([
-                    ("ref_MillRough_start_eb.tif", "SEM", "reference"),
-                    ("ref_alignment_ib.tif", "FIB", "alignment"),
-                ])
-            ],
+            name=LAMELLA.name, path=LAMELLA, number="01",
+            stages=[loose_stage([
+                ("ref_MillRough_start_eb.tif", "SEM", "reference"),
+                ("ref_alignment_ib.tif", "FIB", "alignment"),
+            ])],
         )
     ])
+    status = controller.project_statuses()[0]
 
-    assert controller.project_series() == [["reference", "alignment"]]
-
-
-def test_the_series_are_reported_in_display_order():
-    """Read by position on the chip, so the order cannot be the order the
-    records happened to be scanned in."""
-    controller = make_controller([
-        Lamella(
-            name=LAMELLA.name,
-            path=LAMELLA,
-            number="01",
-            stages=[
-                loose_stage([
-                    ("ref_alignment_ib.tif", "FIB", "alignment"),
-                    ("ref_MillRough_start_eb.tif", "SEM", "reference"),
-                ]),
-                adaptive_stage(1),
-            ],
-        )
-    ])
-
-    assert controller.project_series() == [["adaptive", "reference", "alignment"]]
+    assert not status.holds("adaptive")
+    assert status.holds("reference") and status.holds("alignment")
 
 
-def test_a_project_holding_no_images_reports_nothing():
+def test_finished_adaptive_work_is_not_dragged_back_by_untouched_references():
+    """The bug this replaced. Reference images sit at the default state for
+    ever, so combining the series turned "adaptive done" into "in progress" --
+    twenty of the reference collection's 123 projects reported as part-done
+    when the only work anyone intends to do in them was finished.
+    """
+
+    lamella = Lamella(
+        name=LAMELLA.name, path=LAMELLA, number="01",
+        stages=[
+            adaptive_stage(1),
+            loose_stage([("ref_MillRough_start_eb.tif", "SEM", "reference")]),
+        ],
+    )
+    for record in lamella.stages[0].images:
+        record.state = "corrected"
+    controller = make_controller([lamella])
+    status = controller.project_statuses()[0]
+
+    assert status.of("adaptive", "SEM") == "done"
+    assert status.of("reference", "SEM") == "not started"
+
+
+def test_a_project_holding_no_images_holds_no_series():
     controller = make_controller([
         Lamella(name=LAMELLA.name, path=LAMELLA, number="01", stages=[])
     ])
+    status = controller.project_statuses()[0]
 
-    assert controller.project_series() == [[]]
+    assert not any(status.holds(s) for s in ("adaptive", "reference", "alignment"))

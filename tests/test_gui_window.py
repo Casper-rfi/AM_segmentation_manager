@@ -512,13 +512,25 @@ def test_a_chip_is_the_same_pixmap_in_every_icon_mode(qt_app):
         assert icon.pixmap(14, 10, mode).toImage() == normal
 
 
-def _chip_image(sem: str, fib: str):
-    """Render one status chip on its own, at its natural size."""
+def _status(**cells):
+    """Build a status from the cells named, the rest holding no images.
+
+    Keys are ``series_MODALITY``: ``adaptive_SEM="done"``.
+    """
     from am_segmentation_manager.gui.controller import CurationStatus
+    from am_segmentation_manager.layout import MODALITIES, SERIES
+
+    grid = {(s, m): "empty" for s in SERIES for m in MODALITIES}
+    grid.update({tuple(key.rsplit("_", 1)): value for key, value in cells.items()})
+    return CurationStatus(grid)
+
+
+def _chip_image(**cells):
+    """Render one status chip on its own, at its natural size."""
     from am_segmentation_manager.gui.widgets.project_panel import _status_icon
     from am_segmentation_manager.gui.widgets.theme import SWATCH_HEIGHT, SWATCH_WIDTH
 
-    icon = _status_icon(CurationStatus(sem=sem, fib=fib))
+    icon = _status_icon(_status(**cells))
     return icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage()
 
 
@@ -528,17 +540,13 @@ def test_the_two_modalities_are_stacked_not_side_by_side(qt_app):
     said which boundary separated the modalities. SEM above FIB also matches
     the timeline's rows."""
     from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
-    from am_segmentation_manager.gui.widgets.theme import (
-        SWATCH_BAND,
-        SWATCH_GAP,
-        SWATCH_WIDTH,
-    )
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL, SWATCH_GAP
 
-    image = _chip_image(sem="done", fib="not started")
-    middle = SWATCH_WIDTH // 2
+    image = _chip_image(adaptive_SEM="done", adaptive_FIB="not started")
+    middle = SWATCH_CELL // 2
 
     assert image.pixelColor(middle, 2) == STATE_COLOURS["corrected"]
-    assert image.pixelColor(middle, SWATCH_BAND + SWATCH_GAP + 2) == (
+    assert image.pixelColor(middle, SWATCH_CELL + SWATCH_GAP + 2) == (
         STATE_COLOURS["selected"]
     )
 
@@ -547,27 +555,23 @@ def test_a_part_finished_modality_reads_as_a_progress_bar(qt_app):
     """Filled from the left in the finished colour, which is the one thing a
     half-and-half band can be without needing a fourth colour explained."""
     from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
-    from am_segmentation_manager.gui.widgets.theme import SWATCH_WIDTH
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL
 
-    image = _chip_image(sem="in progress", fib="empty")
+    image = _chip_image(adaptive_SEM="in progress")
 
-    assert image.pixelColor(2, 2) == STATE_COLOURS["corrected"]
-    assert image.pixelColor(SWATCH_WIDTH - 3, 2) == STATE_COLOURS["selected"]
+    assert image.pixelColor(1, 2) == STATE_COLOURS["corrected"]
+    assert image.pixelColor(SWATCH_CELL - 2, 2) == STATE_COLOURS["selected"]
 
 
-def test_a_modality_with_no_images_draws_no_band(qt_app):
+def test_a_cell_with_no_images_is_left_hollow(qt_app):
     """Absent has to read as absent, not as a state: many older datasets have
-    no FIB whatsoever."""
-    from am_segmentation_manager.gui.widgets.theme import (
-        SWATCH_BAND,
-        SWATCH_GAP,
-        SWATCH_WIDTH,
-    )
+    no FIB whatsoever, and a quarter of the archive no Adaptive Polishing."""
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL, SWATCH_GAP
 
-    image = _chip_image(sem="done", fib="empty")
-    band = image.pixelColor(SWATCH_WIDTH // 2, SWATCH_BAND + SWATCH_GAP + 2)
+    image = _chip_image(adaptive_SEM="done")
+    inside = image.pixelColor(SWATCH_CELL // 2, SWATCH_CELL + SWATCH_GAP + 2)
 
-    assert band.alpha() == 0
+    assert inside.alpha() == 0
 
 
 def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
@@ -577,7 +581,6 @@ def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
     from qtpy.QtGui import QColor
     from qtpy.QtWidgets import QListWidget
 
-    from am_segmentation_manager.gui.controller import CurationStatus
     from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
     from am_segmentation_manager.gui.widgets.project_panel import _status_icon
     from am_segmentation_manager.gui.widgets.theme import apply_theme
@@ -585,7 +588,7 @@ def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
     stylesheet, palette = qt_app.styleSheet(), qt_app.palette()
     apply_theme(qt_app)
     try:
-        done = CurationStatus(sem="done", fib="done")
+        done = _status(adaptive_SEM="done", adaptive_FIB="done")
         widget = QListWidget()
         widget.addItems(["current", "other"])
         for row in range(2):
@@ -2284,7 +2287,9 @@ def test_changing_a_state_updates_the_status_chips(window, monkeypatch):
     """
     controller = window.controller
     position = controller.lamella_position
-    assert controller.lamella_statuses()[position].sem == "not started"
+    assert controller.lamella_statuses()[position].of("adaptive", "SEM") == (
+        "not started"
+    )
 
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
     controller.set_editing_enabled(True)
@@ -2292,7 +2297,7 @@ def test_changing_a_state_updates_the_status_chips(window, monkeypatch):
     controller.set_lamella_checked(position, True)
     window.apply_state("corrected")
 
-    assert controller.lamella_statuses()[position].sem == "done"
+    assert controller.lamella_statuses()[position].of("adaptive", "SEM") == "done"
     # The widget, not just the controller, reflects it.
     item = window.project_panel.lamella_list.item(position)
     assert "SEM: done" in item.toolTip()

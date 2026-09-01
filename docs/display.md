@@ -112,16 +112,18 @@ an entry in place rather than appending to it.
   cleared, opening a folder to search being the search's doing rather than the reader's. A tree
   needs the same two settings the lists do — `ElideMiddle` and `ScrollBarAlwaysOff` — and the same
   stylesheet rules, or its rows truncate and Qt paints the current one in the full accent.
-- **A project row says which series it holds, in outline rather than in colour.** Three marks after
-  the progress bands, filled where the project has images of that series and hollow where it has
-  not, always all three so they are read by position. A quarter of the reference archive holds
-  reference and alignment images and no Adaptive Polishing ones at all — a project there is nothing
-  to proofread in, which no other mark on the row says. **Drawn in the outline colour and no
-  other**: the workflow states, the label lines and the class palette have spent every colour that
-  means something, and "does this series exist" is a fourth question that must not look like an
-  answer to any of them. The chip grows by half again, so any view showing one must be told its
-  `iconSize`: a view scales an icon to about a text line, which the bands alone survived and the
-  marks do not.
+- **The status chip is a cell per series and beam, not two bands and a row of marks beside them.**
+  Three columns in `SERIES` order, SEM above FIB, in exactly the twenty pixels the two bands took —
+  so saying which series a row holds costs nothing it was not already spending. A cell is hollow
+  where there are no images, the outline colour where there are and nobody labels that series, and
+  a progress colour where anyone does. Only `LABELS_EXPECTED` — Adaptive Polishing — is ever
+  coloured, which is the point rather than a shortcoming: a reference column that changed would be
+  claiming work nobody intends to do.
+- **Combining the series was wrong, and this is what fixed it.** Reference and alignment images sit
+  at the default state for ever, and "selected beside corrected" combines to "in progress" — so a
+  project whose Adaptive Polishing work was *finished* reported as part-done. Twenty of the
+  reference collection's 123 projects, under-reporting the only work anyone does. `status_cells`
+  keys by series and beam and nothing combines across the two.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
   and nothing else: nothing about a project row changes when one is picked. Rebuilding it there ran
   while Qt was still part-way through the mouse press that caused it, emptying the rows Qt held a

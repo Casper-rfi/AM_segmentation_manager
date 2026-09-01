@@ -11,7 +11,7 @@ render and forward events; decisions live here.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -23,7 +23,7 @@ from ..frames import (
     resolve_series,
     series_present,
 )
-from ..layout import MODALITIES, SERIES
+from ..layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..models import Lamella, Project
 from ..operations import label_io
 from ..operations.label_groups import expand_to_groups
@@ -118,29 +118,51 @@ EMPTY: CurationState = "empty"
 
 @dataclass(frozen=True)
 class CurationStatus:
-    """How far curation has progressed, reported per modality.
+    """How far curation has progressed, per series and per beam.
 
     SEM and FIB are separate because finishing one and not having started the
-    other is a normal and important situation that a single combined mark
-    cannot express.
+    other is normal and important, and a single combined mark cannot say it.
+
+    **The series are separate for a stronger reason: combining them was
+    wrong.** Reference and alignment images are not labelled by anyone, so they
+    sit at the default state for ever, and "selected beside corrected" combines
+    to "in progress" -- which reported twenty of the reference collection's 123
+    projects as part-done when the only work anyone intends to do in them was
+    finished.
     """
 
-    sem: CurationState
-    fib: CurationState
+    cells: Mapping[tuple[str, str], CurationState]
 
-    def of(self, modality: str) -> CurationState:
-        """Return the status for ``'SEM'`` or ``'FIB'``."""
-        normalised = modality.upper()
-        if normalised == "SEM":
-            return self.sem
-        if normalised == "FIB":
-            return self.fib
-        raise ValueError(f"Unknown modality: {modality}")
+    def of(self, series: str, modality: str) -> CurationState:
+        """Return the status of one series' images of one beam."""
+        return self.cells.get((series, modality.upper()), EMPTY)
+
+    def holds(self, series: str) -> bool:
+        """Return whether there are images of *series* at all, either beam."""
+        return any(self.of(series, modality) != EMPTY for modality in MODALITIES)
 
     @property
     def summary(self) -> str:
-        """Return the long form shown as a tooltip."""
-        return f"SEM: {self.sem} · FIB: {self.fib}"
+        """Return the long form shown as a tooltip.
+
+        Only a series anyone labels gets its progress read out. For the rest
+        the useful fact is that they are there, a state nobody drives being no
+        more informative spelled out than drawn.
+        """
+        lines = []
+        for series in SERIES:
+            if not self.holds(series):
+                continue
+            if series in LABELS_EXPECTED:
+                lines.append(
+                    f"{SERIES_LABELS[series]} — SEM: {self.of(series, 'SEM')}"
+                    f" · FIB: {self.of(series, 'FIB')}"
+                )
+            else:
+                lines.append(f"Also holds {SERIES_LABELS[series]} images")
+        if not any(self.holds(series) for series in LABELS_EXPECTED):
+            lines.insert(0, "No Adaptive Polishing images: nothing to proofread")
+        return "\n".join(lines) or "No images"
 
 
 def _modality_status(records: list) -> CurationState:
@@ -159,50 +181,43 @@ def _modality_status(records: list) -> CurationState:
     return "in progress"
 
 
+def status_cells(records: Iterable) -> dict[tuple[str, str], CurationState]:
+    """Return the state of each series-and-beam pair among *records*.
+
+    Every pair is present in the answer, so a caller reads a cell by position
+    rather than asking whether it is there; a pair with no images is
+    :data:`EMPTY`.
+    """
+    grouped: dict[tuple[str, str], list] = {
+        (series, modality): [] for series in SERIES for modality in MODALITIES
+    }
+    for record in records:
+        key = (record.series, (record.modality or "").upper())
+        if key in grouped:
+            grouped[key].append(record)
+    return {key: _modality_status(got) for key, got in grouped.items()}
+
+
 def lamella_status(lamella: Lamella) -> CurationStatus:
-    """Return how far curation has progressed in *lamella*, per modality.
+    """Return how far curation has progressed in *lamella*, per series and beam.
 
     Reads the records directly rather than building frames: the chronological
     pairing that :func:`~am_segmentation_manager.frames.build_lamella_frames`
     does is not needed to count states, and skipping it keeps this cheap enough
     to compute for every lamella of a project on demand.
     """
-    by_modality: dict[str, list] = {modality: [] for modality in MODALITIES}
-    for stage in lamella.stages:
-        for record in stage.images:
-            if record.modality in by_modality:
-                by_modality[record.modality].append(record)
-    return CurationStatus(
-        sem=_modality_status(by_modality["SEM"]),
-        fib=_modality_status(by_modality["FIB"]),
-    )
-
-
-def _combine(statuses: list[CurationState]) -> CurationState:
-    """Return the status of a whole from its parts, for one modality.
-
-    The weakest wins rather than an average: "90% done" is not something you can
-    act on, whereas "one lamella left" is. Lamellae with no images of the
-    modality contribute nothing -- a project is not part-finished because half
-    its lamellae never had a FIB image.
-    """
-    present = [status for status in statuses if status != EMPTY]
-    if not present:
-        return EMPTY
-    if len(set(present)) == 1:
-        return present[0]
-    return "in progress"
+    return CurationStatus(status_cells(lamella.image_records))
 
 
 def project_status(project: Project) -> CurationStatus:
-    """Return how far curation has progressed across *project*, per modality."""
-    statuses = [lamella_status(lamella) for lamella in project.lamellae]
-    if not statuses:
-        return CurationStatus(sem=EMPTY, fib=EMPTY)
-    return CurationStatus(
-        sem=_combine([status.sem for status in statuses]),
-        fib=_combine([status.fib for status in statuses]),
-    )
+    """Return how far curation has progressed across *project*, per series and beam.
+
+    Taken from the project's records rather than combined from its lamellae.
+    Combining lost which series each answer was about, which is the whole of
+    what made the old one wrong; and the weakest-wins rule it used is what a
+    cell already does across the images inside it.
+    """
+    return CurationStatus(status_cells(project.image_records))
 
 
 @dataclass(frozen=True)
@@ -717,30 +732,6 @@ class CurationController:
     def lamella_statuses(self) -> list[CurationStatus]:
         """Return each lamella's curation status for the selected project."""
         return [lamella_status(lamella) for lamella in self._lamellae]
-
-    def project_series(self) -> list[list[str]]:
-        """Return the series each project holds images of, in list order.
-
-        Read off the records, like :func:`~..frames.series_present`, rather
-        than assumed from the vocabulary: a quarter of the reference archive
-        holds reference and alignment images and no Adaptive Polishing ones at
-        all, which is a project there is nothing to proofread in and nothing
-        else on the row says so.
-        """
-        return [
-            [
-                name
-                for name in SERIES
-                if name in {record.series for record in project.image_records}
-            ]
-            for project in self._projects
-        ]
-
-    # -- paths, for copying out of the window ------------------------------
-    #
-    # Absolute paths throughout. The relative path is a project's identity
-    # within an index, but a path pasted into a terminal or a file manager has
-    # to be absolute to be any use, and that is the whole point of copying one.
 
     def project_path(self, position: int | None = None) -> Path | None:
         """Return the absolute path of a project, or of the selected one."""

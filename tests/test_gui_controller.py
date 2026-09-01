@@ -1067,33 +1067,35 @@ def test_a_modality_with_no_images_is_empty_not_done():
     many older datasets have no FIB whatsoever."""
     status = lamella_status(status_lamella("lam", [image("corrected", "SEM")]))
 
-    assert status.sem == "done"
-    assert status.fib == "empty"
+    assert status.of("adaptive", "SEM") == "done"
+    assert status.of("adaptive", "FIB") == "empty"
 
 
 def test_all_selected_is_not_started():
     status = lamella_status(status_lamella("lam", [image("selected"), image("selected", name="b")]))
-    assert status.sem == "not started"
+    assert status.of("adaptive", "SEM") == "not started"
 
 
 def test_deselected_and_corrected_together_count_as_done():
     """Done means nothing is left awaiting a decision, not that all were kept."""
     records = [image("deselected"), image("corrected", name="b")]
-    assert lamella_status(status_lamella("lam", records)).sem == "done"
+    assert lamella_status(status_lamella("lam", records)).of("adaptive", "SEM") == "done"
 
 
 def test_a_mix_of_decided_and_undecided_is_in_progress():
     records = [image("corrected"), image("selected", name="b")]
-    assert lamella_status(status_lamella("lam", records)).sem == "in progress"
+    assert lamella_status(status_lamella("lam", records)).of("adaptive", "SEM") == "in progress"
 
 
 def test_modalities_are_reported_separately():
     records = [image("corrected", "SEM"), image("selected", "FIB")]
     status = lamella_status(status_lamella("lam", records))
 
-    assert status.sem == "done"
-    assert status.fib == "not started"
-    assert status.summary == "SEM: done · FIB: not started"
+    assert status.of("adaptive", "SEM") == "done"
+    assert status.of("adaptive", "FIB") == "not started"
+    # Named, because a row now reports a cell per series and "SEM: done" alone
+    # would leave which series it was about to be guessed.
+    assert status.summary == "Adaptive Polishing — SEM: done · FIB: not started"
 
 
 def test_a_project_is_only_done_when_every_lamella_is():
@@ -1106,7 +1108,7 @@ def test_a_project_is_only_done_when_every_lamella_is():
         ],
     )
 
-    assert project_status(project).sem == "in progress"
+    assert project_status(project).of("adaptive", "SEM") == "in progress"
 
 
 def test_a_project_of_finished_lamellae_is_done():
@@ -1119,7 +1121,7 @@ def test_a_project_of_finished_lamellae_is_done():
         ],
     )
 
-    assert project_status(project).sem == "done"
+    assert project_status(project).of("adaptive", "SEM") == "done"
 
 
 def test_lamellae_without_a_modality_do_not_drag_a_project_down():
@@ -1133,15 +1135,15 @@ def test_lamellae_without_a_modality_do_not_drag_a_project_down():
         ],
     )
 
-    assert project_status(project).fib == "done"
+    assert project_status(project).of("adaptive", "FIB") == "done"
 
 
 def test_a_project_with_no_lamellae_is_empty():
     project = Project(name="p", path=Path("p"), lamellae=[])
     status = project_status(project)
 
-    assert status.sem == "empty"
-    assert status.fib == "empty"
+    assert status.of("adaptive", "SEM") == "empty"
+    assert status.of("adaptive", "FIB") == "empty"
 
 
 def test_statuses_line_up_with_the_lists_they_annotate():

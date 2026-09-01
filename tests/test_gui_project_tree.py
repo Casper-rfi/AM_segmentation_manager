@@ -244,55 +244,80 @@ def test_a_project_at_the_root_is_filtered_like_any_other(tree):
 # Which series a project holds
 # ---------------------------------------------------------------------------
 
-def _chip(status, series):
+def _status(**cells):
+    """Build a status from the cells named, the rest holding no images."""
+    from am_segmentation_manager.gui.controller import CurationStatus
+    from am_segmentation_manager.layout import MODALITIES, SERIES
+
+    grid = {(s, m): "empty" for s in SERIES for m in MODALITIES}
+    grid.update({tuple(key.rsplit("_", 1)): value for key, value in cells.items()})
+    return CurationStatus(grid)
+
+
+def _chip(status) -> bytes:
     """Return the pixels of a row's chip, so two can be told apart."""
     from am_segmentation_manager.gui.widgets.project_panel import _status_icon
-    from am_segmentation_manager.gui.widgets.theme import CHIP_WIDTH, SWATCH_HEIGHT
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_HEIGHT, SWATCH_WIDTH
 
-    icon = _status_icon(status, series)
-    return icon.pixmap(CHIP_WIDTH, SWATCH_HEIGHT).toImage().constBits().tobytes()
-
-
-@pytest.fixture
-def status():
-    from am_segmentation_manager.gui.controller import CurationStatus
-
-    return CurationStatus(sem="in progress", fib="not started")
+    icon = _status_icon(status)
+    return icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage().constBits().tobytes()
 
 
-def test_a_project_missing_a_series_is_drawn_differently(qt_app, status):
+def test_a_project_missing_a_series_is_drawn_differently(qt_app):
     """The whole point: the row with nothing to proofread has to be findable
     among the ones that have."""
-    all_three = _chip(status, ["adaptive", "reference", "alignment"])
+    all_three = _chip(_status(
+        adaptive_SEM="not started", reference_SEM="not started",
+        alignment_FIB="not started",
+    ))
+    nothing_to_do = _chip(_status(
+        reference_SEM="not started", alignment_FIB="not started",
+    ))
 
-    assert _chip(status, ["reference", "alignment"]) != all_three
-    assert _chip(status, ["adaptive"]) != all_three
-    assert _chip(status, []) != all_three
-
-
-def test_the_marks_are_read_by_position(qt_app, status):
-    """Always all three, so holding two leaves no question which two."""
-    assert _chip(status, ["adaptive"]) != _chip(status, ["reference"])
-    assert _chip(status, ["reference"]) != _chip(status, ["alignment"])
+    assert nothing_to_do != all_three
 
 
-def test_a_row_without_series_is_the_bands_alone(qt_app, status):
-    """What a lamella row wants: it is reached through a project that said."""
-    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
-    from am_segmentation_manager.gui.widgets.theme import CHIP_WIDTH, SWATCH_WIDTH
+def test_the_cells_are_read_by_position(qt_app):
+    """Three columns in series order, so which series a mark is about is its
+    place rather than something to be guessed."""
+    assert _chip(_status(adaptive_SEM="not started")) != _chip(
+        _status(reference_SEM="not started")
+    )
+    assert _chip(_status(reference_SEM="not started")) != _chip(
+        _status(alignment_SEM="not started")
+    )
 
-    bare = _status_icon(status).availableSizes()[0]
-    marked = _status_icon(status, ["adaptive"]).availableSizes()[0]
 
-    assert bare.width() == SWATCH_WIDTH
-    assert marked.width() == CHIP_WIDTH
+def test_a_series_nobody_labels_claims_no_progress(qt_app):
+    """Reference images sit at the default state for ever. Drawing that as
+    "not started" would claim work is outstanding that nobody intends to do,
+    so presence is all the cell says."""
+    started = _chip(_status(reference_SEM="not started"))
+    finished = _chip(_status(reference_SEM="done"))
+
+    assert started == finished
 
 
-def test_the_tooltip_spells_out_what_the_marks_mean(qt_app):
-    """Three squares say which by position, and a reader meeting them for the
-    first time has nothing to read that from."""
-    from am_segmentation_manager.gui.widgets.project_panel import _series_note
+def test_a_series_anyone_labels_shows_its_progress(qt_app):
+    """The column that does vary, which is the one worth looking at."""
+    assert _chip(_status(adaptive_SEM="not started")) != _chip(
+        _status(adaptive_SEM="done")
+    )
 
-    assert "Adaptive Polishing" in _series_note(["adaptive"])
-    assert _series_note([]) == "\nNo images of any series"
-    assert _series_note(None) == ""
+
+def test_the_tooltip_reads_out_only_the_progress_that_means_anything(qt_app):
+    status = _status(
+        adaptive_SEM="done", adaptive_FIB="not started",
+        reference_SEM="not started",
+    )
+
+    summary = status.summary
+    assert "Adaptive Polishing — SEM: done · FIB: not started" in summary
+    assert "Also holds reference images" in summary
+    assert "reference — SEM" not in summary
+
+
+def test_the_tooltip_says_when_there_is_nothing_to_proofread(qt_app):
+    summary = _status(reference_SEM="not started").summary
+
+    assert summary.startswith("No Adaptive Polishing images: nothing to proofread")

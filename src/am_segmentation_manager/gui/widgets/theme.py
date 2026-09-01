@@ -130,36 +130,22 @@ HANDLE_WIDTH = 6
 GRIP_THICKNESS = 3.0
 GRIP_LENGTH = 28.0
 
-#: A status chip is one band per modality, **SEM above FIB** -- the same
-#: arrangement as the timeline's two rows, so the layout means the same thing in
-#: both places.
+#: A status chip is a grid: one column per series in ``layout.SERIES`` order,
+#: **SEM above FIB** -- the same arrangement as the timeline's two rows, so the
+#: layout means the same thing in both places.
 #:
-#: Stacking them is what makes a part-finished modality readable. Progress runs
-#: left to right within a band, so with the modalities side by side a chip was
-#: up to four segments in a row and nothing said which boundary separated the
-#: modalities and which separated started from finished -- it read as a gradient.
-#: On different axes neither can be mistaken for the other.
-SWATCH_WIDTH = 20
-SWATCH_BAND = 6
+#: Stacking the beams is what makes a part-finished modality readable. Progress
+#: once ran left to right within a band, so with the modalities side by side a
+#: chip was up to four segments in a row and nothing said which boundary
+#: separated the modalities and which separated started from finished -- it read
+#: as a gradient. On different axes neither can be mistaken for the other.
+#:
+#: Three columns of six fit exactly the twenty pixels two bands took, so saying
+#: which series a row holds costs nothing it was not already spending.
+SWATCH_CELL = 6
 SWATCH_GAP = 1
-SWATCH_HEIGHT = SWATCH_BAND * 2 + SWATCH_GAP
-
-#: One mark per series, on the same chip as the progress bands and after them:
-#: filled where the project holds images of that series, an outline where it
-#: does not. **Drawn in the outline colour and nothing else** -- the states, the
-#: label lines and the class palette have spent every colour that means
-#: something, and whether a series exists is a fourth question that must not
-#: look like an answer to any of them. Filled against hollow says it without
-#: one.
-SERIES_MARK = 5
-SERIES_MARK_GAP = 2
-SERIES_LEAD = 4
-
-#: How wide a row's chip is with the series marks on it. A view scales an icon
-#: to its own ``iconSize``, which defaults to about a text line: the bands alone
-#: survived that, and a chip half again as wide is squashed to a smudge. Any
-#: view showing one has to be told this.
-CHIP_WIDTH = SWATCH_WIDTH + SERIES_LEAD + 3 * SERIES_MARK + 2 * SERIES_MARK_GAP
+SWATCH_WIDTH = 3 * SWATCH_CELL + 2 * SWATCH_GAP
+SWATCH_HEIGHT = 2 * SWATCH_CELL + SWATCH_GAP
 
 
 def build_palette() -> QPalette:
