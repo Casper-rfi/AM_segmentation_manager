@@ -1,9 +1,9 @@
 # Decisions
 
 Why the software is built this way, and facts not safely derivable from the code: the code shows
-what happens, not what breaks if it changes. Everything below the interface — the window's own
-reasoning and the Qt traps behind it are [`display.md`](display.md). Anything one module does
-belongs in that module's docstring; work not built yet belongs in
+what happens, not what breaks if it changes. Everything below the interface — the window, the Qt
+binding and every trap in either are [`display.md`](display.md). Anything one module does belongs
+in that module's docstring; work not built yet belongs in
 [`04_future_work.md`](04_future_work.md). Correct an entry in place rather than appending to it.
 
 ---
@@ -425,33 +425,6 @@ belongs in that module's docstring; work not built yet belongs in
   and copy *out* of it; `<collection>/` holds the original
   labels those were placed from, read-only on the same terms. `test_reference_collection.py`
   snapshots every file before and after; nothing enforces this for anything else you run.
-- **PySide6 is the binding, and PyQt5 is no longer one.** The `qtpy` compatibility stays, costing
-  nothing, but nothing runs the suite under PyQt5 and it had already broken there unnoticed on one
-  `setBrush(Qt.NoBrush)`. It may still open; nothing promises it.
-- **The window is written for a binding and a platform other than the one it is developed on.**
-  Where Qt's behaviour is a style's or a platform's to decide, this package decides instead: every
-  file dialog is Qt's own rather than the platform's (`common.build_path_dialog` sets
-  `DontUseNativeDialog`; revealing a folder in the file manager stays native), Up and Down step
-  through a combo box via `StepCombo` rather than Qt's own keys, and `common.fixed_width_font` names
-  real monospace families per platform. That last is asserted on the metrics (`"i"` and `"W"` advance
-  equally) and never on `QFont.fixedPitch()` or `QFontDatabase.systemFont(FixedFont)`, both of which
-  report the family requested rather than the one that resolved.
-- **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side effect,
-  and `test_gui_*` sorts before most other tests. That is how a locale-dependent `strptime('%p')`
-  bug appears only in full runs on a non-English locale. `LC_ALL=… pytest` does **not** test this;
-  `AM_SEG_TEST_LOCALE=… pytest` does.
-- **Never disconnect a signal from inside the handler for that signal.** A connection list mutated
-  mid-emit works under PyQt5 and hangs under PySide6, with no traceback. Connect once and track
-  what is pending in an attribute; the same shape hides in any connect-per-call pattern.
-- **`QProxyStyle.styleHint` segfaults PySide6.** Overriding it to answer `SH_DialogButtonLayout` —
-  to fix the button order in every dialog at once, Fusion reporting the Windows order wherever it
-  runs — crashes the process while a `QMessageBox` is being built. The save dialog lays its own
-  buttons out instead; any dialog that cares about the order has to.
-- **An offscreen window cannot answer three questions**, and asking anyway produces tests that
-  pass on nothing. It is never activated, so `hasFocus()` is False for every widget and
-  `focusWidget()` records who asked. Nothing is shown, so `isVisible()` is False whatever the code
-  did and `isHidden()` is the state to assert. And a modal dialog has nobody to dismiss it, so its
-  `exec_` must be intercepted per dialog class, not just `QMessageBox`, or the suite hangs.
 - **`matplotlib` is in the `gui` and `all` extras rather than only `plots`**: against the OpenCV
   and Qt those already install, its size is not what makes an environment large. Why figures are
   never built through `pyplot` is `plots.py`'s own docstring.
@@ -469,7 +442,6 @@ belongs in that module's docstring; work not built yet belongs in
   does for the image stack. `ml/preprocessing.py` is a verbatim copy of AM_training's module,
   excluded from ruff: reformatting it destroys the only cheap answer to "is this still the
   preprocessing the model was trained with" — `diff`.
-
 ## Inference
 
 - **A fact recoverable from the weights is never declared**, the division `ml/model.py` sets out.

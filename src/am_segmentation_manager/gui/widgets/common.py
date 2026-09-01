@@ -527,7 +527,7 @@ class StepCombo(QComboBox):
     style sets it, the keys open the popup instead of stepping. Under PyQt5
     here they step, but that hint is a style's to answer and this window runs
     under a different binding and a different macOS than it is developed on --
-    the gap ``docs/decisions.md`` § Environment is about. One code path rather
+    the gap ``docs/display.md`` § The binding is about. One code path rather
     than a style's is the same choice already made for the file dialogs.
 
     Stepping skips disabled rows, so a grouped list arrows through its entries
@@ -647,7 +647,7 @@ def build_path_dialog(
 
     Every dialog in the window is built here, non-native, so that one binding
     and one platform cannot behave differently from another; see
-    ``docs/decisions.md`` § Environment.
+    ``docs/display.md`` § The binding.
 
     Args:
         mode: What the user is picking -- a file, or a directory.

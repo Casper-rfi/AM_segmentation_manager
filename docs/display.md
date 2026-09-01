@@ -1,10 +1,13 @@
 # Display
 
-Why the window looks and behaves as it does, and the Qt traps behind that: the code shows what is
-drawn, not what breaks when a widget, a thread or a paint path changes.
-[`decisions.md`](decisions.md) holds the same kind of reasoning for everything below the interface.
-Anything one module does belongs in that module's docstring; work not built yet belongs in
-[`04_future_work.md`](04_future_work.md). Correct an entry in place rather than appending to it.
+Why the window looks and behaves as it does, which binding and platform it is written for, and how
+it is tested without a display: the code shows what is drawn, not what breaks when a widget, a
+thread or a paint path changes. **Every Qt trap is here**, including the ones that only bite the
+test suite — a segfault under PySide6 is looked for in one file, not two.
+[`decisions.md`](decisions.md) holds the same kind of reasoning for everything below the interface,
+and the environment the package is *installed* into. Anything one module does belongs in that
+module's docstring; work not built yet belongs in [`04_future_work.md`](04_future_work.md). Correct
+an entry in place rather than appending to it.
 
 ---
 
@@ -162,3 +165,36 @@ Anything one module does belongs in that module's docstring; work not built yet 
   a badge saying so, a figure describing five frames read as describing one being worse than no
   figure. `displayed_plot` prefers `frame.plot_path` over `stage_plot`; `centring.png` is excluded
   as recording where the plugin looked rather than what the run achieved.
+
+## The binding
+
+- **PySide6 is the binding, and PyQt5 is no longer one.** The `qtpy` compatibility stays, costing
+  nothing, but nothing runs the suite under PyQt5 and it had already broken there unnoticed on one
+  `setBrush(Qt.NoBrush)`. It may still open; nothing promises it.
+- **The window is written for a binding and a platform other than the one it is developed on.**
+  Where Qt's behaviour is a style's or a platform's to decide, this package decides instead: every
+  file dialog is Qt's own rather than the platform's (`common.build_path_dialog` sets
+  `DontUseNativeDialog`; revealing a folder in the file manager stays native), Up and Down step
+  through a combo box via `StepCombo` rather than Qt's own keys, and `common.fixed_width_font` names
+  real monospace families per platform. That last is asserted on the metrics (`"i"` and `"W"` advance
+  equally) and never on `QFont.fixedPitch()` or `QFontDatabase.systemFont(FixedFont)`, both of which
+  report the family requested rather than the one that resolved.
+- **Never disconnect a signal from inside the handler for that signal.** A connection list mutated
+  mid-emit works under PyQt5 and hangs under PySide6, with no traceback. Connect once and track
+  what is pending in an attribute; the same shape hides in any connect-per-call pattern.
+- **`QProxyStyle.styleHint` segfaults PySide6.** Overriding it to answer `SH_DialogButtonLayout` —
+  to fix the button order in every dialog at once, Fusion reporting the Windows order wherever it
+  runs — crashes the process while a `QMessageBox` is being built. The save dialog lays its own
+  buttons out instead; any dialog that cares about the order has to.
+
+## Testing the window
+
+- **An offscreen window cannot answer three questions**, and asking anyway produces tests that
+  pass on nothing. It is never activated, so `hasFocus()` is False for every widget and
+  `focusWidget()` records who asked. Nothing is shown, so `isVisible()` is False whatever the code
+  did and `isHidden()` is the state to assert. And a modal dialog has nobody to dismiss it, so its
+  `exec_` must be intercepted per dialog class, not just `QMessageBox`, or the suite hangs.
+- **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side effect,
+  and `test_gui_*` sorts before most other tests. That is how a locale-dependent `strptime('%p')`
+  bug appears only in full runs on a non-English locale. `LC_ALL=… pytest` does **not** test this;
+  `AM_SEG_TEST_LOCALE=… pytest` does.
