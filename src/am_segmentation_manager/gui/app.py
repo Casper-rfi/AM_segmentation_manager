@@ -1,13 +1,21 @@
-"""Launching the curation window.
+"""Launching the curation window, and reporting anything it fails to handle.
 
 Kept separate from the window itself so that importing the widgets does not
 create a Qt application, and so the CLI has one obvious entry point.
+
+**No exception raised in the window may reach CPython's own traceback
+printer**, which has crashed the process outright on macOS. An exception
+escaping a Qt slot propagates nowhere this package can catch it, so
+:func:`install_error_reporting` replaces the interpreter's reporter with one
+written in Python. See `docs/decisions.md` § Display.
 """
 from __future__ import annotations
 
 import importlib.util
 import logging
 import sys
+import threading
+import traceback
 from pathlib import Path
 
 from ..config import load_segmentation_config
@@ -23,6 +31,108 @@ QT_BINDINGS = ("PyQt5", "PyQt6", "PySide2", "PySide6")
 #: outside Windows. Located the way :mod:`..config` locates the packaged
 #: segmentation config, for the reason given there.
 ICON_PATH = Path(__file__).parent.parent / "data" / "AM_icon.png"
+
+
+#: Whether a failure is already on screen. A slot that raises once usually
+#: raises again on the next repaint, and a dialog per repaint buries the window
+#: it is describing. Every failure is logged; this only limits how many are
+#: shown at a time.
+_reporting = False
+
+#: What a reported failure says above the traceback. The traceback itself is
+#: behind "Show Details", because the first thing the reviewer needs is whether
+#: their work is safe, not which line raised.
+FAILURE_TITLE = "Something went wrong"
+FAILURE_ADVICE = (
+    "The window is still open, but what is on screen may no longer describe "
+    "the collection. Scan the folder again before changing anything.\n\n"
+    "The details below are also in the log file."
+)
+
+
+def install_error_reporting() -> None:
+    """Report unhandled exceptions through the log and a dialog.
+
+    Replaces :data:`sys.excepthook` and :func:`threading.excepthook`, which is
+    what Qt reaches when an exception escapes a slot. Both formats are built
+    with :func:`traceback.format_exception` rather than by the interpreter, for
+    the reason in the module docstring.
+
+    Called by :func:`run`; a command that is not the window keeps Python's own
+    behaviour, a traceback on stderr and a non-zero exit being right there.
+    """
+    sys.excepthook = _handle_exception
+    threading.excepthook = _handle_thread_exception
+
+
+def _handle_exception(exc_type, exc, tb) -> None:
+    """Log an unhandled exception, and offer it to the reviewer."""
+    detail = "".join(traceback.format_exception(exc_type, exc, tb))
+    logger.error("Unhandled exception in the window\n%s", detail)
+    _offer(f"{exc_type.__name__}: {exc}", detail)
+
+
+def _handle_thread_exception(args) -> None:
+    """As :func:`_handle_exception`, naming the thread it came off.
+
+    Reached only by threads Python started. Qt's own worker threads are foreign
+    to it and report through :data:`sys.excepthook` like anything else, so both
+    hooks are needed to cover the window.
+    """
+    if args.exc_type is SystemExit:
+        return
+    detail = "".join(
+        traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)
+    )
+    logger.error("Unhandled exception on thread %s\n%s", args.thread, detail)
+    _offer(f"{args.exc_type.__name__}: {args.exc_value}", detail)
+
+
+def _offer(summary: str, detail: str) -> None:
+    """Put a failure on screen, unless there is nowhere to put it.
+
+    **Queued rather than shown here.** A hook runs inside whatever Qt was doing
+    when the exception was raised -- often part-way through delivering a mouse
+    press -- and a modal dialog re-enters the event loop at exactly that point.
+    Deferring to the next turn of the loop lets Qt finish the event it is on
+    before anything else is asked of it.
+
+    Does nothing off the thread that owns the widgets, where a dialog cannot be
+    built at all. The log has it either way.
+    """
+    global _reporting
+
+    from qtpy.QtCore import QThread, QTimer
+    from qtpy.QtWidgets import QApplication
+
+    application = QApplication.instance()
+    if application is None or QThread.currentThread() is not application.thread():
+        return
+    if _reporting:
+        return
+    _reporting = True
+    QTimer.singleShot(0, lambda: _show(summary, detail))
+
+
+def _show(summary: str, detail: str) -> None:
+    """Show one failure and let the next one be reported."""
+    global _reporting
+
+    from qtpy.QtWidgets import QApplication, QMessageBox
+
+    try:
+        box = QMessageBox(QApplication.activeWindow())
+        box.setIcon(QMessageBox.Critical)
+        box.setWindowTitle(FAILURE_TITLE)
+        box.setText(summary)
+        box.setInformativeText(FAILURE_ADVICE)
+        box.setDetailedText(detail)
+        box.setStandardButtons(QMessageBox.Close)
+        box.exec_() if hasattr(box, "exec_") else box.exec()
+    except Exception:  # noqa: BLE001 - a failure reporting a failure
+        logger.exception("Could not show the failure dialog")
+    finally:
+        _reporting = False
 
 
 def _apply_icon(application) -> None:
@@ -116,6 +226,10 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
 
     from .widgets.main_window import CurationWindow
     from .widgets.theme import apply_theme
+
+    # Before anything is built, so a failure while the window is being
+    # assembled is reported the same way as one after it is on screen.
+    install_error_reporting()
 
     config = load_segmentation_config(explicit_path=config_path, start_path=start_path)
     logger.info("Using segmentation config: %s", config.source)

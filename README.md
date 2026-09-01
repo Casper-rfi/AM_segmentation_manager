@@ -185,16 +185,19 @@ Getting help
 
 * `am-seg --help` lists every command in workflow order; `am-seg <command>
   --help` explains one, including how to read its output.
-* **If the window disappears without an error**, run it again with a log file
-  and reproduce it: `am-seg --log-file ~/am-seg.log gui <folder>`. The option
-  goes before the command, and the file receives both the log and a native
-  stack trace if the process is killed by a signal. It appends, so several
-  attempts accumulate in one file. On macOS the system writes its own report
-  to `~/Library/Logs/DiagnosticReports/` at the same moment, which names the
-  library that faulted. If the stack points at Python's own allocator rather
-  than at any of this code, run it again with `PYTHONDEVMODE=1` set: that
-  turns on the debugging allocator, which stops at the point memory is
-  actually damaged instead of at the unrelated place it is next touched.
+* **If something goes wrong in the window**, it says so in a dialog and writes
+  the traceback to `~/.am_segmentation_manager/gui.log`. That file also receives
+  a native stack trace if the process is killed by a signal, so it is the first
+  place to look when the window disappears without an error. It appends, and is
+  moved to `gui.log.1` once it passes 5 MB. To keep one session separate, name
+  a file of your own: `am-seg --log-file ~/am-seg.log gui <folder>` — the option
+  goes before the command, and a file you name is never rolled aside. On macOS
+  the system writes its own report to `~/Library/Logs/DiagnosticReports/` at
+  the same moment, which names the library that faulted. If the stack points
+  at Python's own allocator rather than at any of this code, run it again with
+  `PYTHONDEVMODE=1` set: that turns on the debugging allocator, which stops at
+  the point memory is actually damaged instead of at the unrelated place it is
+  next touched.
 * **`F1`** in the window lists the keys and gestures available on that tab.
   It stays open beside the window while you try them, and `F1` puts it away.
 * [`docs/00_roadmap.md`](docs/00_roadmap.md) — what is built and what is next.

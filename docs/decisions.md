@@ -510,6 +510,18 @@ entry in place rather than appending to it.
   a badge saying so, a figure describing five frames read as describing one being worse than no
   figure. `displayed_plot` prefers `frame.plot_path` over `stage_plot`; `centring.png` is excluded
   as recording where the plugin looked rather than what the run achieved.
+- **The window never lets CPython print a traceback.** Qt calls Python from C++, so an exception
+  escaping a slot propagates nowhere this package can catch it: the interpreter reports it and Qt
+  carries on. That reporter opens the source file to quote the failing line, and on macOS it has
+  segfaulted the process mid-write — taking with it the traceback that said what went wrong, and
+  leaving one orphan frame on stderr. So `gui/app.py` replaces `sys.excepthook` and
+  `threading.excepthook` with handlers built on `traceback.format_exception`, which is Python.
+  Every failure is logged; one at a time is also offered in a dialog, **queued through a zero-delay
+  timer** because a hook runs part-way through whatever Qt was doing and a modal dialog re-enters
+  the event loop at exactly that point. Off the thread that owns the widgets only the log gets it.
+  For the same reason `am-seg gui` writes a log without being asked — it is the one command whose
+  failures are not visible in the terminal that started it — capped at one rollover, where a path
+  the user names is left to accumulate.
 
 ## Environment
 

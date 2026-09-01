@@ -147,6 +147,44 @@ def test_the_log_file_carries_the_thread_and_appends(tmp_path: Path):
     assert "MainThread" in written
 
 
+def test_a_log_the_user_named_grows_without_limit(tmp_path: Path):
+    """Naming a path is what asks for everything to accumulate in it."""
+    from am_segmentation_manager.cli import open_log_file
+
+    path = tmp_path / "am-seg.log"
+    path.write_text("x" * 100, encoding="utf-8")
+    open_log_file(path)
+
+    assert path.read_text(encoding="utf-8").startswith("x")
+    assert not path.with_name("am-seg.log.1").exists()
+
+
+def test_a_capped_log_moves_the_previous_run_aside_rather_than_erasing_it(
+    tmp_path: Path,
+):
+    """The window's own log is on by default, so it cannot grow for ever --
+    but what it held is renamed, never deleted."""
+    from am_segmentation_manager.cli import open_log_file
+
+    path = tmp_path / "gui.log"
+    path.write_text("y" * 100, encoding="utf-8")
+    open_log_file(path, max_bytes=50)
+
+    assert path.read_text(encoding="utf-8") == ""
+    assert path.with_name("gui.log.1").read_text(encoding="utf-8") == "y" * 100
+
+
+def test_a_capped_log_below_the_cap_is_left_alone(tmp_path: Path):
+    from am_segmentation_manager.cli import open_log_file
+
+    path = tmp_path / "gui.log"
+    path.write_text("z" * 10, encoding="utf-8")
+    open_log_file(path, max_bytes=50)
+
+    assert path.read_text(encoding="utf-8") == "z" * 10
+    assert not path.with_name("gui.log.1").exists()
+
+
 def test_the_log_file_receives_crash_dumps(tmp_path: Path):
     """The point of the file: a window that vanishes must leave a stack in it.
 

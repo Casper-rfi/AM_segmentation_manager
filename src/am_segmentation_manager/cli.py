@@ -61,8 +61,18 @@ _LOG_FILE: TextIO | None = None
 #: the object names Qt gives them.
 LOG_FILE_FORMAT = "%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"
 
+#: Where the window logs when nothing else was asked for. Under the user's home
+#: rather than beside the data: a log is this package's own record of a session,
+#: not part of any collection being reviewed.
+DEFAULT_GUI_LOG = Path.home() / ".am_segmentation_manager" / "gui.log"
 
-def open_log_file(path: Path) -> logging.Handler:
+#: How large a rolled log may grow before the previous run's file is moved
+#: aside. Only the window's own log is capped -- a path the user named is left
+#: to accumulate, that being what naming it asks for.
+LOG_FILE_MAX_BYTES = 5_000_000
+
+
+def open_log_file(path: Path, *, max_bytes: int | None = None) -> logging.Handler:
     """Return a handler writing to *path*, with crash dumps going there too.
 
     The Python log and the native stack trace share one file on purpose: a
@@ -74,18 +84,42 @@ def open_log_file(path: Path) -> logging.Handler:
     Appends, so several runs accumulate rather than the last one erasing the
     crash before it.
 
+    Args:
+        max_bytes: Move the file to ``<name>.1`` once it reaches this size,
+            replacing any previous ``.1``. Omit to let it grow without limit,
+            which is right for a file the user asked for by name.
+
     Raises:
         OSError: If *path* cannot be opened for writing.
     """
     global _LOG_FILE
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    _roll_if_large(path, max_bytes)
     _LOG_FILE = path.open("a", buffering=1, encoding="utf-8")
     faulthandler.enable(file=_LOG_FILE, all_threads=True)
 
     handler = logging.StreamHandler(_LOG_FILE)
     handler.setFormatter(logging.Formatter(LOG_FILE_FORMAT))
     return handler
+
+
+def _roll_if_large(path: Path, max_bytes: int | None) -> None:
+    """Move *path* aside when it has grown past *max_bytes*.
+
+    One generation, not a series: what makes a log worth keeping is the crash
+    at the end of it, and two files is enough to survive a session that starts
+    fresh. A log that cannot be rolled is left to grow rather than refusing to
+    open -- losing the session's log is worse than a large file.
+    """
+    if max_bytes is None:
+        return
+    try:
+        if not path.exists() or path.stat().st_size < max_bytes:
+            return
+        path.replace(path.with_name(path.name + ".1"))
+    except OSError as error:
+        logger.debug("Could not roll %s aside: %s", path, error)
 
 
 # ---------------------------------------------------------------------------
@@ -331,8 +365,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Also write the log to this file, and write a native stack trace "
             "there if the process crashes outright. Appends, so runs "
-            "accumulate. Use this to report a window that vanishes without an "
-            "error"
+            f"accumulate. 'gui' already does this in {DEFAULT_GUI_LOG}; name a "
+            "path here to send one session somewhere of its own"
         ),
     )
     parser.add_argument(
@@ -1004,17 +1038,36 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
     # -- configure logging --------------------------------------------------
     level = logging.DEBUG if getattr(args, "verbose", False) else logging.INFO
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
-    log_file = getattr(args, "log_file", None)
-    if log_file:
-        handlers.append(open_log_file(Path(log_file)))
+    # The window logs without being asked to. It is the one command whose
+    # failures are not visible where it was started: it detaches from the
+    # terminal on some platforms, and a crash that kills the process takes
+    # anything stderr had not flushed with it. Every other command prints where
+    # you can see it, and writes a file only when you name one.
+    chosen = getattr(args, "log_file", None)
+    log_file = Path(chosen) if chosen else None
+    cap = None
+    if log_file is None and args.command == "gui":
+        log_file, cap = DEFAULT_GUI_LOG, LOG_FILE_MAX_BYTES
+
+    log_failure: OSError | None = None
+    if log_file is not None:
+        try:
+            handlers.append(open_log_file(log_file, max_bytes=cap))
+        except OSError as error:
+            # Never fatal. A command that will not run because it could not
+            # open its own log is worse than one that runs without a log.
+            log_failure, log_file = error, None
+
     logging.basicConfig(
         level=level,
         format="%(message)s",
         handlers=handlers,
         force=True,
     )
-    if log_file:
+    if log_file is not None:
         logger.info("Logging to %s", log_file)
+    if log_failure is not None:
+        logger.warning("Could not open the log file: %s", log_failure)
 
     # -- dispatch -----------------------------------------------------------
     if args.command in {"list-projects", "scan"}:
