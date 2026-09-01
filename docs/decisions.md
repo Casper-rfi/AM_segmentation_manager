@@ -1,10 +1,9 @@
 # Decisions
 
 Why the software is built this way, and facts not safely derivable from the code: the code shows
-what happens, not what breaks if it changes. Everything below the interface — the window, the Qt
-binding and every trap in either are [`display.md`](display.md). Anything one module does belongs
-in that module's docstring; work not built yet belongs in
-[`04_future_work.md`](04_future_work.md). Correct an entry in place rather than appending to it.
+what happens, not what breaks if it changes. The window, the Qt binding and every trap in either
+are [`display.md`](display.md). `CLAUDE.md` says where a fact belongs; correct an entry in place
+rather than appending to it.
 
 ---
 
@@ -217,16 +216,14 @@ in that module's docstring; work not built yet belongs in
 - **The Add data tab suggests, and a suggestion is never a value.** The values other projects use
   are computed in the controller and reach a file only when the user saves, so
   `build_experiment_metadata` still resolves from the two files and nothing else. **A completer
-  that matches anywhere must complete into a popup**, never in place: an editable `QComboBox`
-  builds its completer in `InlineCompletion` mode, which keeps what was typed and appends the tail
-  of the match — correct only when the match is a prefix. Typing `a` against `UltrAuFoil Au R2/2
-  200 mesh` wrote `altrAuFoil Au R2/2 200 mesh` into the field, a value nobody typed, in metadata
-  that is exported. **And the popup has to be taught Tab**, which is the same fault from the other
-  side: a completer's popup answers Return and a click, so Tab reached the field, moved the focus
-  and left the half-typed letter behind as the value — `g` committed as a chip. Both belong to
-  `common.match_anywhere`, which is the only place any of it is set; where the key has to be caught
-  is a Qt matter and is in [`display.md`](display.md) § The binding. Matching anywhere is worth
-  both: `Quantifoil` and `UltrAuFoil` differ in their middles.
+  that matches anywhere must complete into a popup, and the popup must be taught Tab** — two halves
+  of one fault, both of which put a value nobody typed into metadata that is exported. Left inline,
+  an editable `QComboBox` keeps what was typed and appends the tail of a match that was never a
+  prefix (`a` against `UltrAuFoil Au R2/2 200 mesh` wrote `altrAuFoil …`); left alone, Tab is not
+  the popup's key, so it moved the focus and committed the half-typed letter. `common.match_anywhere`
+  is the only place any of it is set, and where the key has to be caught is a Qt matter in
+  [`display.md`](display.md) § The binding. Matching anywhere is worth both: `Quantifoil` and
+  `UltrAuFoil` differ in their middles.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and a
   `metadata_project` in another. The directory is what the scanner indexes and Curate lists, so it

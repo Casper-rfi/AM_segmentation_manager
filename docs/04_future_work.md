@@ -30,40 +30,34 @@ acquisition an *image* is, and three of its callers want exactly that.
 ## 6. An "other" series, so what is not indexed can be looked at
 
 **What is wrong:** every image the conventions do not reach is counted by `unindexed-images` and
-is then invisible. A count says a couple of hundred images went unseen across the collection; it
-does not let anyone open one and decide whether the rule or the data is wrong. Making them a
-series turns a dead end into something the window can show.
+is then invisible. A count does not let anyone open one and decide whether the rule or the data is
+wrong. Making them a series turns a dead end into something the window can show.
 
-**The set already exists.** `survey._unindexed_findings` computes exactly it: every file under a
-project with an image extension that no image set claims, less `is_ignored_image_name` and less
-anything inside a `labels`, `predictions`, `plots` or `state` directory. Reuse that predicate
+**The set already exists.** `survey._unindexed_findings` computes exactly it. Reuse that predicate
 rather than writing a second one — two definitions of "not indexed" drifting apart is the one way
-this ends up worse than the count. Today it holds grid overviews and their tiles, `ml-<epoch>`
-model snapshots, `cc_peaks/` cross-correlation frames, loose per-project overviews, hand-made
-folders, and two lamella final images. Only that last group looks like data anyone would want
-labelled, which is itself the finding the series exists to surface.
+this ends up worse than the count. Most of what it holds is machinery nobody would label: grid
+overviews, model snapshots, cross-correlation frames. That only a handful look like data anyone
+wants labelled is itself the finding the series exists to surface.
 
 **The questions to answer first:**
 
 *Does the series silence the finding?* If these become indexed, `unindexed-images` counts nothing
-and the alarm that made them findable is gone. Decide whether it stays as-is, becomes a count of
-the `other` series, or goes. Losing it would be the worst outcome of this work.
+and the alarm that made them findable is gone. Decide whether it stays, becomes a count of the
+`other` series, or goes. Losing it would be the worst outcome of this work.
 
 *Is `other` in `Series` at all?* Adding it to the `Literal` makes `--series other` valid
 everywhere, including for the commands that predict, convert, export and change state — on images
-with no label directory and often no readable beam. The safer shape is a record carrying
-`labels_directory=None` and `predictions_directory=None`, so every write path already raises rather
-than guessing; but that refuses at runtime where a vocabulary never offering it refuses earlier. It
-must also stay out of `LABELS_EXPECTED`, or every one reports `no-labels-yet`.
+with no label directory and often no readable beam. A record carrying `labels_directory=None` makes
+every write path raise rather than guess, but that refuses at runtime where a vocabulary never
+offering it refuses earlier. It must also stay out of `LABELS_EXPECTED`, or every one reports
+`no-labels-yet`.
 
 *What is its modality, and what orders it?* Many have no beam suffix and no readable header —
-`unresolved-beam` is exactly this population — and Curate filters by modality, so decide what the
-beam control does with a beamless frame first. Loose frames sort by header acquisition time, which
-these may not carry at all; path order is the honest fallback, and saying so beats a timeline
-implying a sequence.
+`unresolved-beam` is this population — and Curate filters by modality, so decide what the beam
+control does with a beamless frame first. Path order is the honest fallback where no header
+timestamp exists, and saying so beats a timeline implying a sequence.
 
 **Worth knowing:** an image can be missed for two unrelated reasons and this addresses one. These
 match no naming rule; separately, a directory that *does* classify as an image set stops the stage
-search descending, so one hand-made `SEM_fiducial_current/` at a session root hid 71 ordinary
-images below it. An `other` series makes the first kind visible and leaves the second as hidden as
-it is now.
+search descending, hiding everything below it. An `other` series makes the first kind visible and
+leaves the second as hidden as it is now.

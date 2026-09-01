@@ -1,13 +1,10 @@
 # Display
 
 Why the window looks and behaves as it does, which binding and platform it is written for, and how
-it is tested without a display: the code shows what is drawn, not what breaks when a widget, a
-thread or a paint path changes. **Every Qt trap is here**, including the ones that only bite the
+it is tested without a display. **Every Qt trap is here**, including the ones that only bite the
 test suite — a segfault under PySide6 is looked for in one file, not two.
-[`decisions.md`](decisions.md) holds the same kind of reasoning for everything below the interface,
-and the environment the package is *installed* into. Anything one module does belongs in that
-module's docstring; work not built yet belongs in [`04_future_work.md`](04_future_work.md). Correct
-an entry in place rather than appending to it.
+[`decisions.md`](decisions.md) holds the same for everything below the interface, and the
+environment the package is *installed* into.
 
 ---
 
@@ -65,28 +62,25 @@ an entry in place rather than appending to it.
   something *renders* is asserted on the pixels**. The stylesheet also suppresses Qt's emphasis on
   a dialog's default button and a checked tool button, so anything relying on either must re-state
   it; and its padding clips a one-character button blank, which `COMPACT_BUTTON` exempts.
-- **A group of controls is a card, and its title outweighs the captions inside it.** A group title
-  set in the same muted grey as the field captions under it is the quietest thing in its own box,
-  so the clusters a panel is built from stopped reading as clusters — the fault was worst on the
-  tabs with the most of them. The title takes `HEADING` and bold, the border takes `BORDER` rather
-  than the hairline, and that is one rule reaching all eleven boxes on all four tabs, which is what
-  makes them agree. **The weight goes on `QGroupBox`, never on `QGroupBox::title`**: Qt ignores
-  font properties set on a subcontrol, so the obvious rule is silently no rule — and it reaches the
-  title without reaching the controls inside, a stylesheet font not descending the way a CSS one
-  would. No background: the inputs inside are white, and a white card behind them would take away
-  the one thing separating "you can type here" from the panel.
-- **The tabs are sized and weighted as navigation.** They are the only control on screen whatever
-  is being done, and a stage of the workflow nobody notices is one nobody uses. The folder shape
-  stays: it is what joins the tab to the pane below it, where an underline would leave the pane
-  belonging to nothing.
+- **A group of controls is a card, and its title outweighs the captions inside it.** Set in the
+  same muted grey as the captions under it, a group title was the quietest thing in its own box and
+  the clusters stopped reading as clusters. One rule — `HEADING` and bold, `BORDER` rather than the
+  hairline — reaches every box on every tab, which is what makes them agree. **The weight goes on
+  `QGroupBox`, never on `QGroupBox::title`**: Qt ignores font properties on a subcontrol, so the
+  obvious rule is silently no rule, and this one reaches the title without reaching the controls
+  inside. No background: the inputs are white, and a white card behind them takes away the one
+  thing separating "you can type here" from the panel.
+- **The tabs are sized and weighted as navigation**, being the only control on screen whatever is
+  being done. The folder shape stays: it joins the tab to the pane below it, where an underline
+  would leave the pane belonging to nothing.
 - **A row is ticked; a control on its own is switched.** Two different questions wore the same
   widget: a tick says which of many rows a change covers, where a standalone control is simply on
   or off. `common.ToggleSwitch` draws the second as a switch and is a **subclass of `QCheckBox`**,
   which is the point rather than a detail: only `paintEvent` differs, so `isChecked`, `toggled`,
   Space, focus and the disabled state stay Qt's. It paints everything itself, so **no stylesheet
-  rule may name `QCheckBox`** — a rule sends the control back through `QStyle` and draws it twice.
-  It also reserves room around the track for its own focus ring, a ring painted past the widget's
-  edge being clipped flat on the side it runs off.
+  rule may name `QCheckBox`** — a rule sends the control back through `QStyle` and draws it twice —
+  and it reserves room for its own focus ring, one painted past the widget's edge coming out
+  clipped flat.
 - **A chosen row is ticked, never highlighted.** Highlighting cannot say what it means: it is also
   how Qt marks the row you are looking at, it is lost whenever the list is rebuilt, and over dozens
   of values there is no seeing what is chosen without scrolling. `CheckList` is the one
@@ -96,42 +90,35 @@ an entry in place rather than appending to it.
   (`chip_icon()` supplies every such pixmap); and a `QListWidget` with a horizontal scrollbar
   scrolls instead of eliding, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
 - **The projects are grouped under the folder each one sits in.** An Autolamella project is named
-  for the minute it started, so a hundred of them in a flat list are a hundred timestamps; the
-  folder somebody filed them under is what a person recognises. `Project.folder` and
-  `Project.own_name` split the `relative_path` the scanner already writes, so the tree costs the
-  scanner nothing and is testable without a display. A project at the scan root stays at the top
-  level rather than gaining a `(root)` folder row, which would name a directory that is not there.
-  **A tick still means what it meant**: a folder's box is Qt's own tri-state, so ticking one ticks
-  its projects and each reports itself — the folder is a convenience over the projects, never a
-  fourth thing that can disagree with them. Which folders are open and where the tree is scrolled
-  to survive a rebuild, an operation being followed by a rescan. **A folder is closed until it is
-  opened**, thirty session rows being what a reader can look down where a hundred projects are the
-  flat list this replaced; the folder holding the current project opens even so, and so does one
-  the *filter* matches inside — hiding a folder's siblings while leaving its own matches folded
-  away reads as having found nothing. The folds in force before a filter are put back when it is
-  cleared, opening a folder to search being the search's doing rather than the reader's. A tree
-  needs the same two settings the lists do — `ElideMiddle` and `ScrollBarAlwaysOff` — and the same
-  stylesheet rules, or its rows truncate and Qt paints the current one in the full accent.
-- **The status chip is a cell per series and beam, not two bands and a row of marks beside them.**
-  Three columns in `SERIES` order, SEM above FIB, in exactly the twenty pixels the two bands took —
-  so saying which series a row holds costs nothing it was not already spending. A cell is hollow
-  where there are no images, the outline colour where there are and nobody labels that series, and
-  a progress colour where anyone does. Only `LABELS_EXPECTED` — Adaptive Polishing — is ever
-  coloured, which is the point rather than a shortcoming: a reference column that changed would be
-  claiming work nobody intends to do.
-- **Combining the series was wrong, and this is what fixed it.** Reference and alignment images sit
-  at the default state for ever, and "selected beside corrected" combines to "in progress" — so a
-  project whose Adaptive Polishing work was *finished* reported as part-done. Twenty of the
-  reference collection's 123 projects, under-reporting the only work anyone does. `status_cells`
-  keys by series and beam and nothing combines across the two.
-- **A folder can be chosen, and choosing one asks a question rather than answering a different
-  one.** With the folders closed the tree is a list of sessions, and what a reader wants of each is
-  whether it is worth opening: moving to a folder row counts what is under it — projects, lamellae,
-  images, and how far Adaptive Polishing has got across the lot — into the line the frame summary
-  usually occupies. It moves no frame, no lamella and no state, a folder holding none of those.
-  Which folder the tree is on is held in the window rather than written straight to the label,
-  because everything the window does ends in a refresh and one of those would otherwise replace the
-  answer with the frame's.
+  for the minute it started, so a hundred in a flat list are a hundred timestamps; the folder
+  somebody filed them under is what a person recognises. `Project.folder` and `Project.own_name`
+  split the `relative_path` the scanner already writes, so the tree costs the scanner nothing and
+  is testable without a display, and a project at the scan root stays at the top level rather than
+  gaining a `(root)` row naming a directory that is not there. **A tick still means what it
+  meant**: a folder's box is Qt's tri-state, so ticking one ticks its projects and each reports
+  itself — a convenience over them, never a fourth thing that can disagree. A tree needs the list
+  rules of `theme.py` as well as the list *settings*, or Qt paints its current row in the full
+  accent.
+- **A folder is closed until it is opened, and what is open survives a rebuild.** Thirty session
+  rows are what a reader can look down; a hundred projects are the flat list this replaced. Three
+  things open one anyway: holding the current project, being rebuilt after a rescan having been
+  open before, and matching a *filter* — hiding a folder's siblings while leaving its own matches
+  folded away reads as having found nothing. The folds before a filter are put back when it is
+  cleared, opening a folder to search being the search's doing rather than the reader's.
+- **The status chip is a cell per series and beam, which is also what made it correct.** Three
+  columns in `SERIES` order, SEM above FIB, in exactly the twenty pixels two bands took — so
+  saying which series a row holds costs nothing it was not already spending. A cell is hollow with
+  no images, the outline colour where nobody labels that series, and a progress colour where
+  anyone does; only `LABELS_EXPECTED` is ever coloured, a reference column that changed being a
+  claim that work nobody intends to do is outstanding. **Combining the series was the fault this
+  cured**: reference and alignment images sit at the default state for ever, and "selected beside
+  corrected" combines to "in progress", so a project whose Adaptive Polishing work was *finished*
+  reported as part-done. `status_cells` keys by series and beam and nothing combines across the two.
+- **Choosing a folder asks what is under it and changes nothing else.** Moving to a folder row
+  counts its projects, lamellae, images and Adaptive Polishing progress into the line the frame
+  summary occupies; it moves no frame, no lamella and no state, a folder holding none of those.
+  The scope is held in the window rather than written straight to the label, because everything
+  the window does ends in a refresh and one would otherwise replace the answer with the frame's.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
   and nothing else: nothing about a project row changes when one is picked. Rebuilding it there ran
   while Qt was still part-way through the mouse press that caused it, emptying the rows Qt held a
@@ -152,16 +139,15 @@ an entry in place rather than appending to it.
   measures zero, which reads as a field that refuses a value *and* loses the one already in it.
 - **F1 is an application shortcut, and the list closes only when it is the window in front.** A
   window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
-  parented `QDialog` is one — so the key that opens the shortcut list could not close it again;
-  and closing on `isVisible()` dismissed a list buried behind the window, unseen. The key now
-  arrives from any window, so it is guarded to do nothing while a modal dialog is up, a list
-  opened over one being neither readable nor closable until the operation ends. **The list is
-  grouped by what a row is for, and a mouse gesture is filed beside the keys it belongs with** —
-  picking frames out is one idea whether it is done with `Esc` or with Ctrl-click, and a keys
-  table above a gestures table made the reader do the grouping the list exists to do. Every
-  `Binding` and every `TAB_GESTURES` row names its heading; the *order* of the headings is the
-  order the bindings first name them, so the list is rearranged by moving a binding rather than by
-  keeping a second table in step with it. Only "This list" is placed, and it is placed last.
+  parented `QDialog` is one — so the key that opened the list could not close it again; and closing
+  on `isVisible()` dismissed a list buried behind the window, unseen. It is guarded to do nothing
+  while a modal dialog is up, a list opened over one being neither readable nor closable.
+- **The shortcut list is grouped by what a row is for, mouse gestures beside the keys they belong
+  with.** Picking frames out is one idea whether done with `Esc` or Ctrl-click, and a keys table
+  above a gestures table made the reader do the grouping the list exists to do. Every `Binding` and
+  every `TAB_GESTURES` row names its heading, and the heading *order* is the order the bindings
+  first name them — so the list is rearranged by moving a binding rather than by keeping a second
+  table in step with one. Only "This list" is placed, and it is placed last.
 
 ## Images and plots
 

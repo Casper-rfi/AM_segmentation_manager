@@ -14,21 +14,19 @@ All five main functions in `CLAUDE.md` are built, across the three series of ima
 writes and every layout era from pre-Autolamella to 2026-05. Curating, proofreading, quantifying
 and exporting are four tabs, each with a controller holding no Qt, and the command line does the
 same work for scripting and testing. Predictions need the second environment
-`scripts/setup_ml.sh` builds.
+`scripts/setup_ml.sh` builds. Curate lists its projects as a tree under the session folder each
+one sits in; [`display.md`](display.md) says how that behaves and why.
 
 ## What to pick up next
 
 **The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-Curate's folder tree is built: projects grouped under their session, folded by default, each row
-saying which series it holds and how far each has got, and a folder that can be chosen to count
-what is under it. What it still owes is the one shape that needs the controller to change — a
-folder whose *lamellae* can all be listed at once, across the projects in it, an Autolamella
-restart being an artifact rather than a boundary anyone works to. Add data and Export get the tree
-once that has held, Add data wanting it most: editing one folder's projects together is the point
-of grouping them. Then a contrast control applied after
-the cache, so moving it costs a lookup table rather than a re-read; a curation timeline carrying one
-colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a macOS `.icns` icon, the current
-one being a full-bleed PNG where macOS wants a squircle inset in its canvas.
+First the one shape that needs the controller to change: a folder whose *lamellae* can all be
+listed at once across the projects in it, an Autolamella restart being an artifact rather than a
+boundary anyone works to. Then the tree in Add data and Export, Add data wanting it most — editing
+one folder's projects together is the point of grouping them. Then a contrast control applied
+after the cache, so moving it costs a lookup table rather than a re-read; a curation timeline
+carrying one colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a macOS `.icns`
+icon, the current one being a full-bleed PNG where macOS wants a squircle inset in its canvas.
 
 The rest, in no particular order.
 
