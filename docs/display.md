@@ -193,6 +193,13 @@ an entry in place rather than appending to it.
   real monospace families per platform. That last is asserted on the metrics (`"i"` and `"W"` advance
   equally) and never on `QFont.fixedPitch()` or `QFontDatabase.systemFont(FixedFont)`, both of which
   report the family requested rather than the one that resolved.
+- **A key pressed while a completer's popup is open does not reach the field's event filters.** The
+  popup grabs the keyboard and gets the key; `QCompleter` then passes it on by calling
+  `widget->event()`, which reaches the field's own handlers and skips every filter installed on it.
+  So a filter watching only the field watches the one route the key does not take — and **the
+  offscreen platform hides this**, being unable to grab a keyboard and so delivering to the field
+  directly. A test written against it passed while the window did nothing. `common.match_anywhere`
+  installs on both, and `test_gui_completion.py` sends the key both ways.
 - **Never disconnect a signal from inside the handler for that signal.** A connection list mutated
   mid-emit works under PyQt5 and hangs under PySide6, with no traceback. Connect once and track
   what is pending in an attribute; the same shape hides in any connect-per-call pattern.

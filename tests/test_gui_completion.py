@@ -88,13 +88,26 @@ def test_what_a_suggestion_offers_is_a_whole_value(box):
 # Taking a suggestion
 # ---------------------------------------------------------------------------
 
-def _press_tab(qt_app, box) -> None:
-    """Send Tab to the field, as pressing it does."""
+#: Where a Tab press is delivered. **Both are real.** An open popup grabs the
+#: keyboard and gets the key, which is what happens in the window; the offscreen
+#: platform cannot grab one and delivers to the field instead, which is what
+#: happens in this suite. A test covering only the second passed against a
+#: window in which Tab did nothing at all.
+ROUTES = ("popup", "field")
+
+
+@pytest.fixture(params=ROUTES)
+def route(request) -> str:
+    return request.param
+
+
+def _press_tab(qt_app, box, route: str) -> None:
+    """Send Tab where the platform would put it."""
     from qtpy.QtGui import QKeyEvent
 
-    line = box.lineEdit()
+    target = box.completer().popup() if route == "popup" else box.lineEdit()
     for kind in (QKeyEvent.KeyPress, QKeyEvent.KeyRelease):
-        qt_app.sendEvent(line, QKeyEvent(kind, Qt.Key_Tab, Qt.NoModifier, "\t"))
+        qt_app.sendEvent(target, QKeyEvent(kind, Qt.Key_Tab, Qt.NoModifier, "\t"))
     qt_app.processEvents()
 
 
@@ -106,7 +119,7 @@ def _offer(qt_app, box, typed: str) -> None:
     qt_app.processEvents()
 
 
-def test_tab_takes_the_suggestion_the_popup_is_showing(qt_app, box):
+def test_tab_takes_the_suggestion_the_popup_is_showing(qt_app, box, route):
     """A popup answers Return and a click; Tab is not its key.
 
     Left alone, Tab moved the focus and the half-typed letter stayed behind as
@@ -115,7 +128,7 @@ def test_tab_takes_the_suggestion_the_popup_is_showing(qt_app, box):
     box.show()
     _offer(qt_app, box, "a")
 
-    _press_tab(qt_app, box)
+    _press_tab(qt_app, box, route)
 
     assert box.currentText() in GRID_TYPES
 
@@ -125,19 +138,19 @@ def test_tab_is_left_alone_when_nothing_is_being_offered(qt_app, box):
     box.show()
     box.lineEdit().setText("nothing matches this")
 
-    _press_tab(qt_app, box)
+    _press_tab(qt_app, box, "field")
 
     assert box.currentText() == "nothing matches this"
 
 
-def test_a_chip_is_the_whole_value_and_not_the_letter_that_found_it(qt_app):
+def test_a_chip_is_the_whole_value_and_not_the_letter_that_found_it(qt_app, route):
     """The editor that keeps what it is given: what Tab leaves is committed."""
     editor = ChipEditor()
     editor.set_suggestions(GRID_TYPES)
     editor.show()
     _offer(qt_app, editor.entry, "a")
 
-    _press_tab(qt_app, editor.entry)
+    _press_tab(qt_app, editor.entry, route)
     editor.commit_pending()
 
     # Not compared against the box, which committing empties.

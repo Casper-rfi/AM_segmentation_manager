@@ -224,7 +224,8 @@ in that module's docstring; work not built yet belongs in
   that is exported. **And the popup has to be taught Tab**, which is the same fault from the other
   side: a completer's popup answers Return and a click, so Tab reached the field, moved the focus
   and left the half-typed letter behind as the value — `g` committed as a chip. Both belong to
-  `common.match_anywhere`, which is the only place any of it is set. Matching anywhere is worth
+  `common.match_anywhere`, which is the only place any of it is set; where the key has to be caught
+  is a Qt matter and is in [`display.md`](display.md) § The binding. Matching anywhere is worth
   both: `Quantifoil` and `UltrAuFoil` differ in their middles.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and a

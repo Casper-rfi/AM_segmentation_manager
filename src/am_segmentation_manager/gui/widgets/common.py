@@ -196,6 +196,15 @@ def match_anywhere(box: QComboBox) -> None:
     half-typed behind as the value -- one letter, committed as a chip nobody
     meant. So Tab takes the suggestion on show and stays in the field.
 
+    **The filter goes on the popup, and on the field.** An open popup grabs the
+    keyboard, so the key arrives at the popup; ``QCompleter`` then passes it on
+    by calling ``widget->event()``, which reaches the field's own handlers but
+    **not the event filters installed on it**. Watching only the field is
+    therefore watching the one route the key does not take -- except under the
+    offscreen platform, which cannot grab a keyboard and so delivers straight to
+    the field. Both are watched, because a test that only proves the second
+    proves nothing about the window.
+
     Matching anywhere is worth both: "Quantifoil" and "UltrAuFoil" are told
     apart by their middles, not by how they start.
     """
@@ -203,16 +212,24 @@ def match_anywhere(box: QComboBox) -> None:
     completer.setCaseSensitivity(Qt.CaseInsensitive)
     completer.setFilterMode(Qt.MatchContains)
     completer.setCompletionMode(QCompleter.PopupCompletion)
+
+    taking = _CompleteOnTab(box)
     line = box.lineEdit()
     if line is not None:
-        line.installEventFilter(_CompleteOnTab(box))
+        line.installEventFilter(taking)
+    # Creates the popup if it does not exist yet, which is what makes it
+    # filterable now rather than on first use. It outlives the suggestions
+    # being replaced, so it is installed on once.
+    completer.popup().installEventFilter(taking)
 
 
 class _CompleteOnTab(QObject):
     """Makes Tab take what the completer's popup is offering.
 
-    Parented to the box, an event filter being kept alive by whoever installed
-    it and by nothing else.
+    Installed on both the popup and the field, one of which gets the key
+    depending on whether the platform grants the popup a keyboard grab. Parented
+    to the box, an event filter being kept alive by whoever installed it and by
+    nothing else.
     """
 
     def __init__(self, box: QComboBox) -> None:
