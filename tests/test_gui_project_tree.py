@@ -133,28 +133,45 @@ def test_putting_ticks_back_reports_nothing(tree):
 # Folding, and what survives a rebuild
 # ---------------------------------------------------------------------------
 
-def test_a_folder_starts_open(tree):
-    """Nothing a scan found is hidden by a preference nobody expressed."""
-    assert _folder(tree, "session_a").isExpanded()
+def test_a_folder_starts_closed(tree):
+    """Thirty sessions open as thirty rows to look down, not as a hundred
+    projects -- which is the flat list this replaced."""
+    assert not _folder(tree, "session_a").isExpanded()
 
 
-def test_a_folded_folder_stays_folded_across_a_rescan(tree):
-    _folder(tree, "session_a").setExpanded(False)
+def test_an_opened_folder_stays_open_across_a_rescan(tree):
+    """An operation is followed by a rescan, which must not undo the reader's
+    arranging."""
+    _folder(tree, "session_a").setExpanded(True)
 
     tree.set_projects(FOLDERS, LABELS)
 
-    assert not _folder(tree, "session_a").isExpanded()
-    assert _folder(tree, "session_b").isExpanded()
+    assert _folder(tree, "session_a").isExpanded()
+    assert not _folder(tree, "session_b").isExpanded()
 
 
-def test_a_folder_that_is_new_opens(tree):
-    """Folded is remembered by name, so a folder never seen before is open."""
-    _folder(tree, "session_a").setExpanded(False)
+def test_a_folder_that_is_new_stays_closed(tree):
+    """Open is remembered by name, so a folder never seen before is closed."""
+    _folder(tree, "session_a").setExpanded(True)
 
     tree.set_projects([*FOLDERS, "session_c"], [*LABELS, "007: AutoLamella-15-00"])
 
-    assert not _folder(tree, "session_a").isExpanded()
-    assert _folder(tree, "session_c").isExpanded()
+    assert _folder(tree, "session_a").isExpanded()
+    assert not _folder(tree, "session_c").isExpanded()
+
+
+def test_every_folder_can_be_opened_and_closed_at_once(tree):
+    """What the two buttons under the tree do, with a hundred projects being
+    too many to fold one at a time."""
+    tree.expandAll()
+    assert all(
+        _folder(tree, name).isExpanded() for name in ("session_a", "session_b")
+    )
+
+    tree.collapseAll()
+    assert not any(
+        _folder(tree, name).isExpanded() for name in ("session_a", "session_b")
+    )
 
 
 def test_the_folder_holding_the_current_project_is_opened(tree):
@@ -186,6 +203,14 @@ def test_a_folder_with_nothing_left_in_it_goes_too(tree):
     assert not _folder(tree, "session_b").isHidden()
 
 
+def test_a_folder_holding_a_match_is_opened_to_show_it(tree):
+    """With the folders closed, hiding the folder's siblings and leaving its
+    own matches folded away reads as having found nothing."""
+    tree.hide_rows_without("14-0", LABELS)
+
+    assert _folder(tree, "session_b").isExpanded()
+
+
 def test_clearing_the_filter_brings_everything_back(tree):
     tree.hide_rows_without("14-0", LABELS)
 
@@ -193,6 +218,18 @@ def test_clearing_the_filter_brings_everything_back(tree):
 
     assert not any(item.isHidden() for item in tree.project_items())
     assert not _folder(tree, "session_a").isHidden()
+
+
+def test_clearing_the_filter_puts_the_folds_back_as_the_reader_left_them(tree):
+    """Opening a folder to search inside it is the search's doing, not a
+    change of mind about which folders the reader wanted open."""
+    _folder(tree, "session_a").setExpanded(True)
+
+    tree.hide_rows_without("14-0", LABELS)
+    tree.hide_rows_without("", LABELS)
+
+    assert _folder(tree, "session_a").isExpanded()
+    assert not _folder(tree, "session_b").isExpanded()
 
 
 def test_a_project_at_the_root_is_filtered_like_any_other(tree):

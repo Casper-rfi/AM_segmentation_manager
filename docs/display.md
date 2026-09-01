@@ -103,9 +103,13 @@ an entry in place rather than appending to it.
   level rather than gaining a `(root)` folder row, which would name a directory that is not there.
   **A tick still means what it meant**: a folder's box is Qt's own tri-state, so ticking one ticks
   its projects and each reports itself — the folder is a convenience over the projects, never a
-  fourth thing that can disagree with them. Which folders are folded away and where the tree is
-  scrolled to survive a rebuild, an operation being followed by a rescan; a folder seen for the
-  first time opens, so nothing a scan finds is hidden by a preference nobody expressed. A tree
+  fourth thing that can disagree with them. Which folders are open and where the tree is scrolled
+  to survive a rebuild, an operation being followed by a rescan. **A folder is closed until it is
+  opened**, thirty session rows being what a reader can look down where a hundred projects are the
+  flat list this replaced; the folder holding the current project opens even so, and so does one
+  the *filter* matches inside — hiding a folder's siblings while leaving its own matches folded
+  away reads as having found nothing. The folds in force before a filter are put back when it is
+  cleared, opening a folder to search being the search's doing rather than the reader's. A tree
   needs the same two settings the lists do — `ElideMiddle` and `ScrollBarAlwaysOff` — and the same
   stylesheet rules, or its rows truncate and Qt paints the current one in the full accent.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae

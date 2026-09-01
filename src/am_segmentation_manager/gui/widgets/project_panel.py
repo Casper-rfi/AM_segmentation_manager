@@ -84,6 +84,9 @@ class ProjectTree(QTreeWidget):
     def __init__(self) -> None:
         super().__init__()
         self._filling = False
+        #: Which folders were open when a filter was last typed into, so
+        #: clearing it can put them back. None while no filter is in force.
+        self._before_filter: set[str] | None = None
         self.setHeaderHidden(True)
         self.setColumnCount(1)
         self.setExpandsOnDoubleClick(False)
@@ -113,16 +116,20 @@ class ProjectTree(QTreeWidget):
     ) -> None:
         """Replace the rows, keeping what the reader had arranged.
 
-        Which folders were folded away and where the tree was scrolled to are
-        the reader's, not the data's: a rescan after an operation must not put
-        a hundred projects back on screen and send them to the top. A folder
-        seen for the first time opens, so nothing a scan finds is hidden by a
-        preference nobody expressed.
+        Which folders were opened and where the tree was scrolled to are the
+        reader's, not the data's: a rescan after an operation must not undo the
+        arranging and send the tree back to the top.
+
+        **A folder seen for the first time is closed.** An archive of a hundred
+        projects across thirty sessions opens as thirty rows a reader can look
+        down, where opening them all is the flat list this replaced. The folder
+        holding the current project is opened even so, a selection nobody can
+        see being worse than a row nobody asked for.
 
         Reports nothing while it runs, for the reason
         :meth:`~.common.CheckList.set_values` gives.
         """
-        folded = self._folded()
+        opened = self._opened()
         scrolled = self.verticalScrollBar().value()
 
         self._filling = True
@@ -147,7 +154,7 @@ class ProjectTree(QTreeWidget):
                 self._parent_for(folder, parents).addChild(item)
 
             for folder, parent in parents.items():
-                parent.setExpanded(folder not in folded)
+                parent.setExpanded(folder in opened)
             if current is not None:
                 self._make_current(current)
         finally:
@@ -179,13 +186,13 @@ class ProjectTree(QTreeWidget):
             parents[folder] = item
         return parents[folder]
 
-    def _folded(self) -> set[str]:
-        """Return the folders the reader had collapsed."""
+    def _opened(self) -> set[str]:
+        """Return the folders the reader had opened."""
         return {
             self.topLevelItem(row).text(0)
             for row in range(self.topLevelItemCount())
             if self.topLevelItem(row).childCount()
-            and not self.topLevelItem(row).isExpanded()
+            and self.topLevelItem(row).isExpanded()
         }
 
     def _make_current(self, index: int) -> None:
@@ -256,8 +263,17 @@ class ProjectTree(QTreeWidget):
 
         A folder whose every project is hidden goes with them: leaving it
         behind would offer somewhere to look that has nothing in it.
+
+        **A folder holding a match is opened**, or with the folders closed the
+        filter would answer by showing the folder and hiding what it found in
+        it -- which reads as finding nothing. The folds in force before the
+        filter are put back when it is cleared, opening a folder to search
+        being the search's doing rather than the reader's.
         """
         wanted = text.strip().lower()
+        if wanted and self._before_filter is None:
+            self._before_filter = self._opened()
+
         for row in range(self.topLevelItemCount()):
             top = self.topLevelItem(row)
             if self.project_of(top) is not None:
@@ -270,6 +286,15 @@ class ProjectTree(QTreeWidget):
                 item.setHidden(hidden)
                 shown += not hidden
             top.setHidden(shown == 0)
+            if wanted and shown:
+                top.setExpanded(True)
+
+        if not wanted and self._before_filter is not None:
+            for row in range(self.topLevelItemCount()):
+                top = self.topLevelItem(row)
+                if top.childCount():
+                    top.setExpanded(top.text(0) in self._before_filter)
+            self._before_filter = None
 
     # -- reporting ---------------------------------------------------------
 
@@ -435,7 +460,21 @@ class ProjectPanel(QWidget):
         tree.row_ticked.connect(self.project_checked)
         box_layout.addWidget(tree)
 
-        box_layout.addLayout(self._build_check_all(self.projects_check_all, "projects"))
+        # Opening and closing every folder goes on the same row as ticking
+        # every project, both being "do this to the whole tree" -- but past the
+        # stretch, so what the ticks decide stays apart from what is merely on
+        # screen. Neither reaches the controller: which folders are open is the
+        # widget's own business and nothing else asks.
+        row = self._build_check_all(self.projects_check_all, "projects")
+        for caption, hint, act in (
+            ("Expand", "Open every folder", tree.expandAll),
+            ("Collapse", "Close every folder", tree.collapseAll),
+        ):
+            button = QPushButton(caption)
+            button.setToolTip(hint)
+            button.clicked.connect(act)
+            row.addWidget(button)
+        box_layout.addLayout(row)
         return box, filter_edit, tree
 
     def _build_list(
