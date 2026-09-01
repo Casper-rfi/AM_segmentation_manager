@@ -151,7 +151,7 @@ def _settle(app, condition=None, timeout: float = 10.0) -> None:
 def test_scanning_populates_the_window(window):
     assert window.controller.project.name == "test-project"
     assert window.frame_label.text() == "1 / 4"
-    assert window.project_panel.project_list.count() == 1
+    assert len(list(window.project_panel.project_list.project_items())) == 1
     assert window.project_panel.lamella_list.count() == 2
     assert "(1/2)" in window.image_panel.status.text()
 
@@ -1323,11 +1323,13 @@ def test_the_summary_follows_the_lamella_being_looked_at(window):
 def test_ticking_a_lamella_unticks_the_project_box_on_screen(window):
     """The clearing has to reach the widget, not only the model: a box still
     drawn ticked is exactly the tick somebody counts on."""
-    window.project_panel.project_list.item(0).setCheckState(Qt.Checked)
+    window.project_panel.project_list.project_item(0).setCheckState(0, Qt.Checked)
 
     _tick_lamella(window)
 
-    assert window.project_panel.project_list.item(0).checkState() == Qt.Unchecked
+    assert (
+        window.project_panel.project_list.project_item(0).checkState(0) == Qt.Unchecked
+    )
     assert window.project_panel.project_box.title() == "Projects (1)"
 
 

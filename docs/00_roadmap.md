@@ -19,11 +19,13 @@ same work for scripting and testing. Predictions need the second environment
 ## What to pick up next
 
 **The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-Left to do: a folder/project tree in Curate, the other tabs following only once its shape holds; a
-contrast control applied after the cache, so moving it costs a lookup table rather than a re-read; a
-curation timeline carrying one colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a
-macOS `.icns` icon, the current one being a full-bleed PNG where macOS wants a squircle inset in its
-canvas.
+Curate has its folder tree; what it still owes is a folder that can be *chosen* — a summary of what
+is beneath one, rather than only somewhere to fold — and a mark per project saying which series it
+holds. Add data and Export get the tree once that shape has held, Add data wanting it most: editing
+one folder's projects together is the point of grouping them. Then a contrast control applied after
+the cache, so moving it costs a lookup table rather than a re-read; a curation timeline carrying one
+colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a macOS `.icns` icon, the current
+one being a full-bleed PNG where macOS wants a squircle inset in its canvas.
 
 The rest, in no particular order.
 

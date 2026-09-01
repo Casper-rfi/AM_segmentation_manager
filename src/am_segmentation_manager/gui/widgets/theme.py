@@ -202,7 +202,8 @@ def stylesheet() -> str:
         color: {HEADING};
     }}
 
-    QLineEdit, QComboBox, QPlainTextEdit, QListWidget, QAbstractSpinBox {{
+    QLineEdit, QComboBox, QPlainTextEdit, QListWidget, QTreeWidget,
+    QAbstractSpinBox {{
         background: {BASE};
         border: 1px solid {BORDER};
         border-radius: 4px;
@@ -210,7 +211,8 @@ def stylesheet() -> str:
         selection-background-color: {ACCENT};
         selection-color: {ACCENT_TEXT};
     }}
-    QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus {{
+    QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus,
+    QTreeWidget:focus {{
         border-color: {ACCENT};
     }}
     /* A locked field is read, not merely unavailable: the Add data tab opens
@@ -223,14 +225,18 @@ def stylesheet() -> str:
         color: {TEXT};
         background: {WINDOW};
     }}
-    QListWidget::item {{ padding: 3px 2px; border-radius: 3px; }}
-    QListWidget::item:hover:!selected {{ background: {HOVER}; }}
+    QListWidget::item, QTreeWidget::item {{ padding: 3px 2px; border-radius: 3px; }}
+    QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected {{
+        background: {HOVER};
+    }}
     /* Styling ::item at all stops Qt drawing the selection from the palette,
        which leaves highlighted text painted white on the list's white
        background -- the selected row simply goes blank. Both states are set
        here because an inactive window uses its own. */
-    QListWidget::item:selected {{ background: {SELECTED}; color: {TEXT}; }}
-    QListWidget::item:selected:!active {{
+    QListWidget::item:selected, QTreeWidget::item:selected {{
+        background: {SELECTED}; color: {TEXT};
+    }}
+    QListWidget::item:selected:!active, QTreeWidget::item:selected:!active {{
         background: {SELECTED}; color: {TEXT};
     }}
 

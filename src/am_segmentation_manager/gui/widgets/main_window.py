@@ -1992,11 +1992,19 @@ class CurationWindow(QMainWindow):
         self._refresh_lamellae()
 
     def _refresh_projects(self) -> None:
+        """Rebuild the project tree: its rows, its folders, chips and ticks.
+
+        The name shown is the project's own rather than its whole relative
+        path, the folder above it saying the rest -- which is what the tree is
+        for and why the two are asked for separately.
+        """
+        projects = self.controller.projects
         self.project_panel.show_projects(
-            [project.display_name for project in self.controller.projects],
+            [project.own_name for project in projects],
             self.controller.project_position,
             self.controller.project_statuses(),
             self.controller.project_checks(),
+            folders=[project.folder for project in projects],
         )
 
     def _refresh_lamellae(self) -> None:

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
 from .state import DEFAULT_STATE, RecordState
@@ -222,8 +222,32 @@ class Project:
         The relative path is shown rather than the bare name, so two projects
         of the same name in different directories are distinguishable on sight.
         For a project at the scan root the two are identical.
+
+        Where the folder is shown separately -- a tree groups by it -- that
+        distinction is already made, and :attr:`own_name` is the label to use.
         """
         label = self.relative_path or self.name
         if self.number:
             return f"{self.number}: {label}"
         return label
+
+    @property
+    def folder(self) -> str:
+        """Return the directory holding this project, relative to the scan root.
+
+        Empty for a project sitting at the scan root. This is what groups
+        projects for a reader: an Autolamella project is named for the minute it
+        started, where the folder somebody put it in says what it was.
+        """
+        parent = PurePath(self.relative_path or self.name).parent
+        return "" if str(parent) == "." else str(parent)
+
+    @property
+    def own_name(self) -> str:
+        """Return the label for a project shown beneath its own folder.
+
+        :attr:`display_name` without the directory part, which a tree has
+        already said once and would otherwise repeat on every row under it.
+        """
+        name = PurePath(self.relative_path or self.name).name
+        return f"{self.number}: {name}" if self.number else name

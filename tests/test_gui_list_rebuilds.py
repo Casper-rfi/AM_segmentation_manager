@@ -87,8 +87,14 @@ def window(qt_app, archive: Path, tmp_path: Path):
 
 
 def _project_rows(window) -> list:
-    listing = window.project_panel.project_list
-    return [listing.item(row) for row in range(listing.count())]
+    """The project rows, folders aside -- what a rebuild would replace."""
+    return list(window.project_panel.project_list.project_items())
+
+
+def _select(window, index: int) -> None:
+    """Move the cursor to a project, as clicking its row does."""
+    tree = window.project_panel.project_list
+    tree.setCurrentItem(tree.project_item(index))
 
 
 def test_the_archive_is_listed(window):
@@ -104,7 +110,7 @@ def test_picking_a_project_leaves_the_project_rows_untouched(window):
     """
     before = _project_rows(window)
 
-    window.project_panel.project_list.setCurrentRow(PROJECT_COUNT - 2)
+    _select(window, PROJECT_COUNT - 2)
 
     after = _project_rows(window)
     assert len(after) == len(before)
@@ -121,7 +127,7 @@ def test_picking_a_project_keeps_the_list_where_it_was_scrolled(window, qt_app):
     """
     listing = window.project_panel.project_list
     listing.resize(200, 120)
-    listing.scrollToItem(listing.item(PROJECT_COUNT - 1))
+    listing.scrollToItem(listing.project_item(PROJECT_COUNT - 1))
     qt_app.processEvents()
 
     scrolled = listing.verticalScrollBar().value()
@@ -130,26 +136,24 @@ def test_picking_a_project_keeps_the_list_where_it_was_scrolled(window, qt_app):
 
     _click_row(qt_app, listing, target)
 
-    assert listing.currentRow() == target
+    assert listing.currentItem() is target
     assert listing.verticalScrollBar().value() == scrolled
 
 
-def _a_visible_row(listing) -> int:
-    """Return a row the reviewer could actually click on, as it is scrolled."""
+def _a_visible_row(listing):
+    """Return a project row the reviewer could actually click on."""
     on_screen = [
-        row
-        for row in range(listing.count())
-        if listing.viewport().rect().contains(
-            listing.visualRect(listing.model().index(row, 0)).center()
-        )
+        item
+        for item in listing.project_items()
+        if listing.viewport().rect().contains(listing.visualItemRect(item).center())
     ]
     assert on_screen, "no row is on screen; the test cannot click one"
     return on_screen[len(on_screen) // 2]
 
 
-def _click_row(app, listing, row: int) -> None:
-    """Press and release the pointer on *row*, as Qt would deliver it."""
-    point = listing.visualRect(listing.model().index(row, 0)).center()
+def _click_row(app, listing, item) -> None:
+    """Press and release the pointer on *item*, as Qt would deliver it."""
+    point = listing.visualItemRect(item).center()
     for kind in (QMouseEvent.MouseButtonPress, QMouseEvent.MouseButtonRelease):
         app.sendEvent(
             listing.viewport(),
@@ -167,7 +171,7 @@ def _click_row(app, listing, row: int) -> None:
 
 def test_picking_a_project_does_rebuild_its_lamellae(window):
     """The half that must still happen: the lamellae are the project's own."""
-    window.project_panel.project_list.setCurrentRow(3)
+    _select(window, 3)
     listed = [
         window.project_panel.lamella_list.item(row).text()
         for row in range(window.project_panel.lamella_list.count())
@@ -178,7 +182,7 @@ def test_picking_a_project_does_rebuild_its_lamellae(window):
 
 def test_stepping_a_lamella_leaves_the_project_rows_untouched(window):
     """Moving within a project is not a change to the list of projects."""
-    window.project_panel.project_list.setCurrentRow(5)
+    _select(window, 5)
     before = _project_rows(window)
 
     window._step_lamella(1)

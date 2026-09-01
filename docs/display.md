@@ -95,6 +95,19 @@ an entry in place rather than appending to it.
   whose colour *is* the information comes out wrong on exactly the row being looked at
   (`chip_icon()` supplies every such pixmap); and a `QListWidget` with a horizontal scrollbar
   scrolls instead of eliding, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
+- **The projects are grouped under the folder each one sits in.** An Autolamella project is named
+  for the minute it started, so a hundred of them in a flat list are a hundred timestamps; the
+  folder somebody filed them under is what a person recognises. `Project.folder` and
+  `Project.own_name` split the `relative_path` the scanner already writes, so the tree costs the
+  scanner nothing and is testable without a display. A project at the scan root stays at the top
+  level rather than gaining a `(root)` folder row, which would name a directory that is not there.
+  **A tick still means what it meant**: a folder's box is Qt's own tri-state, so ticking one ticks
+  its projects and each reports itself — the folder is a convenience over the projects, never a
+  fourth thing that can disagree with them. Which folders are folded away and where the tree is
+  scrolled to survive a rebuild, an operation being followed by a rescan; a folder seen for the
+  first time opens, so nothing a scan finds is hidden by a preference nobody expressed. A tree
+  needs the same two settings the lists do — `ElideMiddle` and `ScrollBarAlwaysOff` — and the same
+  stylesheet rules, or its rows truncate and Qt paints the current one in the full accent.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
   and nothing else: nothing about a project row changes when one is picked. Rebuilding it there ran
   while Qt was still part-way through the mouse press that caused it, emptying the rows Qt held a
