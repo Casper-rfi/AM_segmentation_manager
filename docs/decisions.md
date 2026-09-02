@@ -391,12 +391,13 @@ rather than appending to it.
   open and compared before writing, and a mismatch stops the entire batch rather than the one
   file: which version is wanted is not a question this package can answer.
 - **Run the suite from the repository root, in `am_segmentation_manager` or
-  `am_segmentation_manager_ml`.** Two ways to get this wrong, neither of which announces itself.
+  `am_segmentation_manager_ml`.** Two ways to get this wrong, only one of which announces itself.
   Run `pytest` from *outside* the repository and there is no `pyproject.toml` above the working
   directory, so rootdir becomes that directory, `testpaths` never applies, and pytest recurses into
   everything below it — from `$HOME` that means importing every `.py` under the data archives,
   which looks exactly like a hang. Run it in conda's `base` and the imports resolve to a different
-  stack, giving several hundred failures that are all one wrong interpreter.
+  stack; that one is now caught before any test runs, the Qt binding being the part of the wrong
+  stack the suite can name — [`display.md`](display.md) § The binding.
 - **The reference collection is the live archive, and there is no disposable copy of it.**
   `<collection>/` — a couple of hundred gigabytes covering
   every layout era from pre-Autolamella to 2026-05, and still being added to, so any count of it

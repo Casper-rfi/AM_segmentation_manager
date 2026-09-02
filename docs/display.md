@@ -293,8 +293,11 @@ reasoning now lives in a test and the entry can point at it instead.
 ## The binding
 
 - **PySide6 is the binding, and PyQt5 is no longer one.** The `qtpy` compatibility stays, costing
-  nothing, but nothing runs the suite under PyQt5 and it had already broken there unnoticed on one
-  `setBrush(Qt.NoBrush)`. It may still open; nothing promises it.
+  nothing, but it had already broken under PyQt5 unnoticed on one `setBrush(Qt.NoBrush)`, and the
+  suite now refuses to start there rather than failing a dozen pixel comparisons whose message names
+  a `sip.voidptr` and not the binding
+  (`test_an_unsupported_binding_stops_the_run_before_any_test`). The window may still open; nothing
+  promises it.
 - **The window is written for a binding and a platform other than the one it is developed on.**
   Where Qt's behaviour is a style's or a platform's to decide, this package decides instead: every
   file dialog is Qt's own (`common.build_path_dialog` sets `DontUseNativeDialog`; revealing a folder

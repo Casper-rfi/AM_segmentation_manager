@@ -26,6 +26,7 @@ when you are editing it anyway. See ``docs/00_roadmap.md``.
 """
 from __future__ import annotations
 
+import importlib.util
 import locale
 import os
 from dataclasses import dataclass, field, replace
@@ -49,13 +50,52 @@ import pytest
 #: hook is for sweeping the rest of the suite.
 LOCALE_ENV_VAR = "AM_SEG_TEST_LOCALE"
 
+#: The binding the window is written for; `docs/display.md` § The binding says
+#: PyQt5 is no longer one. The suite states it here rather than leaving it to be
+#: found out, because under the wrong binding it does not fail in a way that
+#: names the binding: the widgets that compare pixels fail on a `sip.voidptr`,
+#: about a dozen at once and spread over seven files, which reads as a set of
+#: unrelated GUI regressions rather than as one wrong interpreter.
+REQUIRED_QT_BINDING = "PySide6"
+
+
+def installed_qt_binding() -> str | None:
+    """Return the binding qtpy would use here, or None when qtpy is absent.
+
+    Asked of qtpy rather than of the binding packages, because ``QT_API`` can
+    select one other than the one that would otherwise be preferred; the answer
+    has to be the binding the tests will actually run against. Importing qtpy
+    imports ``QtCore``, which needs no platform plugin, but the offscreen
+    platform is set first so this cannot be the one import that opens a display.
+    """
+    if importlib.util.find_spec("qtpy") is None:
+        return None
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import qtpy
+
+    return qtpy.API_NAME
+
 
 def pytest_configure(config) -> None:
-    """Apply the requested locale, loudly failing if it is unavailable.
+    """Refuse an unsupported Qt binding, then apply any requested locale.
 
-    Failing rather than skipping is deliberate: a locale sweep that silently
-    ran under "C" would report a clean result for a check that never happened.
+    Both fail loudly rather than skipping, for the same reason: a run that
+    quietly went ahead would report a result for a check that never happened.
+    A missing qtpy is not one of these -- the curation environment without the
+    window is a supported way to run, and the GUI tests skip themselves there.
     """
+    binding = installed_qt_binding()
+    if binding is not None and binding != REQUIRED_QT_BINDING:
+        raise pytest.UsageError(
+            f"qtpy resolves to {binding} here, and the window is written for "
+            f"{REQUIRED_QT_BINDING}. Running anyway fails about a dozen GUI "
+            f"tests on differences between the bindings rather than on "
+            f"anything wrong with the package. Activate the "
+            f"am_segmentation_manager or am_segmentation_manager_ml "
+            f"environment and run again -- conda's `base` is the usual cause. "
+            f"See docs/decisions.md § Environment."
+        )
+
     requested = os.environ.get(LOCALE_ENV_VAR)
     if not requested:
         return
