@@ -21,11 +21,12 @@ environment the package is *installed* into.
   sets out; the window owns it and detaches it before closing it.
 - **The window asks to be the one in front, and asks after the event loop has started.** Launched
   from a terminal, macOS leaves the terminal in front, and a window that is not in front receives no
-  key presses and no pointer motion at all — so F1 does nothing, no tooltip appears, and the brush
-  outline sits where it was last drawn. Three faults that look unrelated, one cause, and it clears
+  key presses and no pointer motion at all — so F1 does nothing and no tooltip appears. It clears
   the instant anything is clicked, which is what makes it read as occasional.
   `raise_()`/`activateWindow()` go through the same zero-delay timer the startup scan does, ahead of
-  it. `changeEvent` logs activation under `-v`, which is not recoverable after the fact.
+  it. `changeEvent` logs activation under `-v`, which is not recoverable after the fact. **Anything
+  that must work anyway asks the window system rather than waiting for an event** — the brush
+  outline and the wheel's anchor both do, under Images and plots.
 - **The window never lets CPython print a traceback.** Qt calls Python from C++, so an exception
   escaping a slot propagates nowhere this package can catch: the interpreter reports it and Qt
   carries on. That reporter opens the source file to quote the failing line, and on macOS it has
@@ -217,8 +218,21 @@ environment the package is *installed* into.
   *scene* coordinates, so anything moving the scene under a stationary pointer — a pan, a fit,
   centring on the next speck, a frame arriving on the loader thread — leaves a ring around a pixel
   the pointer is no longer over, and every state that hides it left it hidden until the pointer was
-  nudged. `_sync_brush` is the single answer to "should there be a ring, and where"; wheel zoom
-  needs nothing, `AnchorUnderMouse` holding the scene point under the pointer.
+  nudged. `_sync_brush` is the single answer to "should there be a ring, and where", and
+  `_poll_pointer` asks it every 50 ms while the window is *not* the one in front, that being the
+  case where no event will ask it: `QCursor.pos` is answered by the window system rather than by an
+  event, so it is right when nothing else is. It runs exactly while the brush would paint, started
+  and stopped beside the cursor it moves.
+- **Nothing may depend on the scene point Qt recorded from the last mouse event a view handled.**
+  That is what `AnchorUnderMouse` anchors on, and two ordinary things stop such events arriving:
+  the window not being in front, which on macOS means no pointer motion at all; and the
+  proofreading canvas accepting a mouse move without passing it on for the whole of a stroke, which
+  freezes the recorded point wherever the stroke began until some later move happens to fall
+  through. Either way the next wheel zoom pulls the image towards a pixel the pointer left some
+  time ago, which is why it looked occasional and why restarting sometimes appeared to fix it. So
+  the anchor is `NoAnchor` and `zoom_by` takes the point to hold: the wheel event's own position,
+  the one thing that always knows where the pointer was. It is put back by `centerOn` rather than
+  by translating, the linked pane copying this one's transform.
 - **Which intensities read as black and as white is a view of the frame, applied after the cache and
   never in it.** A lookup table over the uint8 array `DisplayImage` already holds, so moving a
   slider costs one pass over a 1024-pixel array rather than invalidating the frame and re-reading

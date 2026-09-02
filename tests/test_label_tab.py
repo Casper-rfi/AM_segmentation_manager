@@ -567,6 +567,91 @@ def test_the_canvas_zooms_one_step_out_past_fit(window):
     assert LABEL_MIN_FIT_FRACTION == pytest.approx(1 / 1.1)
 
 
+def test_the_pointer_is_polled_only_while_there_is_an_outline(window):
+    """The poll exists to move the brush outline, so it runs exactly while
+    there is one -- not while filling, panning or looking at a locked frame."""
+    canvas = window.label_panel.canvas
+    assert canvas.editable
+    assert canvas._pointer_poll.isActive(), "the brush tool draws an outline"
+
+    canvas.set_tool(TOOL_FILL)
+    assert not canvas._pointer_poll.isActive()
+
+    canvas.set_tool(TOOL_BRUSH)
+    canvas.set_editable(False)
+    assert not canvas._pointer_poll.isActive()
+
+
+def test_the_poll_leaves_an_active_window_alone(window, monkeypatch):
+    """While the window is in front, real pointer events arrive and the poll
+    must not spend anything looking the pointer up itself."""
+    canvas = window.label_panel.canvas
+    synced = []
+    monkeypatch.setattr(canvas, "_sync_brush", lambda: synced.append(None))
+    monkeypatch.setattr(canvas, "isActiveWindow", lambda: True)
+
+    canvas._poll_pointer()
+
+    assert not synced
+
+    monkeypatch.setattr(canvas, "isActiveWindow", lambda: False)
+    canvas._poll_pointer()
+
+    assert synced, "a window that is not in front gets no pointer motion at all"
+
+
+def test_the_wheel_holds_the_point_it_is_pointed_at(window):
+    """Zooming has to keep the pixel under the pointer under the pointer.
+
+    Anchored on the wheel event's own position rather than on the scene point
+    Qt recorded from the last mouse event the view handled, which is a
+    different thing whenever no such event arrived.
+    """
+    canvas = window.label_panel.canvas
+    canvas.resize(200, 200)
+    canvas.fit()
+    at = QPoint(150, 60)
+    before = canvas.mapToScene(at)
+
+    canvas.wheelEvent(wheel_event(at, 120))
+
+    after = canvas.mapToScene(at)
+    assert (after.x(), after.y()) == pytest.approx((before.x(), before.y()), abs=1.0)
+
+
+def test_painting_does_not_move_where_the_wheel_zooms(window):
+    """The canvas accepts a mouse move without passing it on for the whole of
+    a stroke, so Qt's own recorded anchor freezes wherever the stroke began.
+    Nothing may depend on it."""
+    canvas = window.label_panel.canvas
+    canvas.resize(200, 200)
+    canvas.fit()
+    drag(canvas, QPoint(30, 30), QPoint(60, 60))
+    at = QPoint(170, 20)
+    before = canvas.mapToScene(at)
+
+    canvas.wheelEvent(wheel_event(at, 120))
+
+    after = canvas.mapToScene(at)
+    assert (after.x(), after.y()) == pytest.approx((before.x(), before.y()), abs=1.0)
+
+
+def test_zooming_out_holds_the_point_too(window):
+    """Both directions, until the floor takes over and centres instead."""
+    canvas = window.label_panel.canvas
+    canvas.resize(200, 200)
+    canvas.fit()
+    for _ in range(4):
+        canvas.zoom_by(1.25)
+    at = QPoint(40, 150)
+    before = canvas.mapToScene(at)
+
+    canvas.wheelEvent(wheel_event(at, -120))
+
+    after = canvas.mapToScene(at)
+    assert (after.x(), after.y()) == pytest.approx((before.x(), before.y()), abs=1.0)
+
+
 def test_zooming_fully_out_centres_the_frame(window):
     """The wheel keeps the point under the pointer fixed, which is what makes
     zooming *in* follow the eye -- and what left a fully zoomed-out frame in

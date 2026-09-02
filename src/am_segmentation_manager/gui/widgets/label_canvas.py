@@ -18,14 +18,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtGui import QBrush, QColor, QCursor, QImage, QPen, QPixmap
 from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsView
 
 from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
 from ...display import DEFAULT_ALPHA
 from ...operations.label_edit import fill, paint, patch_between
-from .image_view import LABEL_MIN_FIT_FRACTION, ImageView
+from .image_view import LABEL_MIN_FIT_FRACTION, ImageView, event_position
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -119,14 +119,12 @@ def label_to_qimage(label: np.ndarray, colour_table: list[int]) -> QImage:
     return image.copy()
 
 
-def event_position(event):
-    """Return a mouse event's position as a QPoint, under either Qt version.
-
-    Qt 6 replaced ``pos()`` with ``position()``, and this package supports both
-    bindings.
-    """
-    position = getattr(event, "position", None)
-    return position().toPoint() if position is not None else event.pos()
+#: How often the pointer is looked up while the window is not the one in
+#: front, in milliseconds. macOS delivers no pointer motion at all to a window
+#: that is not active, so the brush outline would otherwise sit where it was
+#: last drawn until something was clicked. Fast enough to read as tracking,
+#: and it runs only while there is an outline to track with.
+POINTER_POLL_MS = 50
 
 
 class LabelCanvas(ImageView):
@@ -181,6 +179,12 @@ class LabelCanvas(ImageView):
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
+
+        # Started and stopped by _apply_tool_cursor, which already runs on
+        # every state that decides whether there is an outline at all.
+        self._pointer_poll = QTimer(self)
+        self._pointer_poll.setInterval(POINTER_POLL_MS)
+        self._pointer_poll.timeout.connect(self._poll_pointer)
 
         self._label_array: np.ndarray | None = None
         self._editable = False
@@ -332,10 +336,16 @@ class LabelCanvas(ImageView):
         The outline goes wherever the cursor does: every state this reads is
         also a state that decides whether there is a brush to draw, and keeping
         the two apart is what left a ring on screen after a fill was chosen and
-        no ring at all after a pan ended.
+        no ring at all after a pan ended. The pointer poll starts and stops
+        here for the same reason -- it exists to move that outline, so it runs
+        exactly while there is one.
         """
         viewport = self.viewport()
         self._sync_brush()
+        if self._brush_is_live:
+            self._pointer_poll.start()
+        else:
+            self._pointer_poll.stop()
         if not self.editable or self._space_held:
             # The left button pans in both cases, so the hand is the truth.
             viewport.setCursor(Qt.OpenHandCursor)
@@ -386,6 +396,25 @@ class LabelCanvas(ImageView):
             QGraphicsView.NoDrag if painting else QGraphicsView.ScrollHandDrag
         )
 
+    @property
+    def _brush_is_live(self) -> bool:
+        """Return whether the left button would paint, so there is a ring to draw."""
+        return self.editable and not self._space_held and self._tool == TOOL_BRUSH
+
+    def _poll_pointer(self) -> None:
+        """Follow the pointer while no event says where it is.
+
+        A window that is not in front receives no pointer motion on macOS, so
+        the outline stopped tracking until something was clicked -- one of the
+        three faults that share that cause. ``QCursor.pos`` is answered by the
+        window system rather than by an event, so it is right either way; this
+        only asks it often enough for the answer to be worth having, and does
+        nothing at all while the window is the one in front and real events are
+        arriving.
+        """
+        if not self.isActiveWindow():
+            self._sync_brush()
+
     def _move_brush_cursor(self, position) -> None:
         """Put the brush outline under a pointer at *position*, or take it away.
 
@@ -393,7 +422,7 @@ class LabelCanvas(ImageView):
         other caller either reports where the pointer is or asks
         :meth:`_sync_brush` to find out.
         """
-        if not self.editable or self._space_held or self._tool != TOOL_BRUSH:
+        if not self._brush_is_live:
             self._brush_item.setVisible(False)
             return
         scene = self.mapToScene(position)

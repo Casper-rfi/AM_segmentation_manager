@@ -54,6 +54,18 @@ LABEL_MIN_FIT_FRACTION = 1 / 1.1
 SCENE_MARGIN = 0.25
 
 
+def event_position(event):
+    """Return a mouse or wheel event's position as a QPoint, under either binding.
+
+    Qt 6 replaced ``pos()`` with ``position()``, and this package supports
+    both. Here rather than beside the canvas that paints, because the wheel
+    zoom reads it too: the event is the one thing that always knows where the
+    pointer was.
+    """
+    position = getattr(event, "position", None)
+    return position().toPoint() if position is not None else event.pos()
+
+
 def to_qimage(array: np.ndarray) -> QImage:
     """Convert a display array to a QImage.
 
@@ -104,7 +116,17 @@ class ImageView(QGraphicsView):
         # so bars would be permanently visible and permanently not full.
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        # NoAnchor, and the wheel anchors itself: see zoom_by. Qt's own
+        # AnchorUnderMouse anchors on the scene point recorded by the last
+        # mouse event this view handled, which is not where the pointer is
+        # whenever no such event arrived -- and two ordinary things stop them
+        # arriving. A window that is not in front receives no pointer motion at
+        # all on macOS; and the proofreading canvas accepts a mouse move
+        # without passing it on for the whole of a stroke, so painting freezes
+        # the recorded point until some later move happens to fall through.
+        # Either way the next wheel zoom pulls the image towards a pixel the
+        # pointer left some time ago.
+        self.setTransformationAnchor(QGraphicsView.NoAnchor)
         self.setRenderHints(QPainter.SmoothPixmapTransform)
         self.setBackgroundBrush(Qt.black)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -287,7 +309,7 @@ class ImageView(QGraphicsView):
         viewport = self.viewport().rect()
         return min(viewport.width() / rect.width(), viewport.height() / rect.height())
 
-    def zoom_by(self, factor: float) -> None:
+    def zoom_by(self, factor: float, at=None) -> None:
         """Scale the view by *factor*, within limits, and report the change.
 
         Zooming out stops at :attr:`min_fit_fraction` of the fit scale, which
@@ -303,6 +325,12 @@ class ImageView(QGraphicsView):
 
         Separate from :meth:`wheelEvent` so the limits can be exercised without
         synthesising wheel events.
+
+        Args:
+            at: The point in the viewport to hold still, or None for its
+                centre. Passed rather than looked up, because the event that
+                asks for the zoom is the only thing that reliably knows where
+                the pointer was -- see the anchor note in ``__init__``.
         """
         current = self.transform().m11()
         target = current * factor
@@ -321,12 +349,24 @@ class ImageView(QGraphicsView):
         elif target > MAX_SCALE:
             return
 
+        anchor = self.viewport().rect().center() if at is None else at
+        before = self.mapToScene(anchor)
         self.scale(factor, factor)
+        # Put back under *anchor* whatever was under it, by moving the view
+        # rather than the transform: the linked pane copies this one's
+        # transform, so the transform has to stay a plain scale.
+        self.centerOn(
+            self.mapToScene(self.viewport().rect().center())
+            + (before - self.mapToScene(anchor))
+        )
         self.zoomed.emit()
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Zoom about the cursor."""
-        self.zoom_by(ZOOM_STEP if event.angleDelta().y() > 0 else 1 / ZOOM_STEP)
+        """Zoom about the pointer, which the event itself says where it is."""
+        self.zoom_by(
+            ZOOM_STEP if event.angleDelta().y() > 0 else 1 / ZOOM_STEP,
+            at=event_position(event),
+        )
 
 
 class LinkedImageViews(QWidget):
