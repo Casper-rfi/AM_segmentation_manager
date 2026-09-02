@@ -1033,3 +1033,33 @@ def test_every_other_filter_stays_a_flat_list(panel):
     assert not row.tree.isVisible() or row.tree.isHidden()
     assert row.values.count() == 2
     assert row.ticked_values() == []
+
+
+def test_the_project_filter_offers_expand_and_collapse(panel):
+    """Thirty session rows are what a reader can look down, but finding one
+    project among them means opening folders, and putting them away again is
+    the other half of that."""
+    row = panel.filter_rows[0]
+    row._property = "autolamella-project"
+    _project_filter(panel)
+    row.show_filled()
+
+    assert not row.folds.isHidden()
+    captions = [
+        row.folds.layout().itemAt(i).widget().text()
+        for i in range(row.folds.layout().count())
+        if row.folds.layout().itemAt(i).widget() is not None
+    ]
+    assert captions == ["Expand", "Collapse"]
+
+
+def test_a_flat_filter_offers_no_folds(panel):
+    """There is nothing to fold, and a control that does nothing reads as one
+    that is broken."""
+    row = panel.filter_rows[0]
+    row._property = "microscope"
+
+    row.show_values(["Helios 5"], set(), "Microscope model")
+    row.show_filled()
+
+    assert row.folds.isHidden()

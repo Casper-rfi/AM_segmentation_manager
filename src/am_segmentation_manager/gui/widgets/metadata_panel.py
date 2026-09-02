@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
 from ...metadata import split_values
 from ..metadata_controller import (
     FIELDS,
+    MIXED_MARKER,
     SUGGESTED_FIELDS,
     TODO_MARKER,
     VALUE_SEPARATOR,
@@ -44,6 +45,7 @@ from .common import (
     GripSplitter,
     ProjectTree,
     ToggleSwitch,
+    add_fold_buttons,
     add_path_menu,
     chip_icon,
     match_anywhere,
@@ -89,6 +91,26 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
         # reporting it.
         painter.end()
     return chip_icon(pixmap)
+
+
+def _describe(changes: list) -> str:
+    """Return what a set of metadata changes did, at the length it deserves.
+
+    One project reads out in full, as it always did. A folder reads as a count
+    and the fields touched: a dozen identical blocks say the same thing twelve
+    times and bury whether any of them failed.
+    """
+    if len(changes) == 1:
+        return "\n".join(changes[0].describe())
+    fields = sorted({
+        edit.field for change in changes for edit in change.changes
+    })
+    touched = sum(1 for change in changes if not change.is_empty)
+    if not fields:
+        return f"{len(changes)} projects: nothing to change"
+    return (
+        f"{touched} of {len(changes)} projects: {', '.join(fields)}"
+    )
 
 
 def editor_text(editor: QWidget) -> str:
@@ -186,12 +208,19 @@ class MetadataPanel(QWidget):
         # at a time, so a box would offer a set it cannot act on.
         self.projects = ProjectTree(checkable=False)
         self.projects.project_selected.connect(self._select)
+        self.projects.folder_selected.connect(self._select_folder)
         add_path_menu(
             self.projects, "project",
             self.project_path_requested, self.project_reveal_requested,
             row_of=self.projects.project_of,
         )
         column.addWidget(self.projects)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        add_fold_buttons(row, self.projects)
+        row.addStretch(1)
+        column.addLayout(row)
         column.addWidget(self._build_collection_actions())
         return box
 
@@ -400,6 +429,18 @@ class MetadataPanel(QWidget):
         self.controller.select(row)
         self.refresh()
 
+    def _select_folder(self, folder: str) -> None:
+        """Describe every project under a folder at once.
+
+        A session's projects share their sample, their grid and their operator,
+        so typing that once is the point of grouping them. Fields they disagree
+        on show as mixed and are left alone unless touched.
+        """
+        if self._loading:
+            return
+        self.controller.select_folder(folder)
+        self.refresh()
+
     def _set_editing(self, enabled: bool) -> None:
         self.controller.editing_enabled = enabled
         for editor in self.editors.values():
@@ -436,37 +477,84 @@ class MetadataPanel(QWidget):
             self.status.setText("No changes")
             return
         try:
-            change = self.controller.plan(edits)
+            changes = self.controller.plan(edits)
         except (MetadataValidationError, ValueError) as error:
             self.status.setText(f"Cannot apply: {error}")
             return
-        self.status.setText("\n".join(change.describe()))
+        self.status.setText(_describe(changes))
 
     def _save(self) -> None:
         edits = self._edits()
         if not edits:
             self.status.setText("No changes")
             return
+        if not self._confirm_removals(edits):
+            self.status.setText("Not saved")
+            return
         try:
-            change = self.controller.apply(edits)
+            changes = self.controller.apply(edits)
         except (MetadataValidationError, ValueError, PermissionError) as error:
             QMessageBox.warning(self, "Cannot save", str(error))
             self.status.setText(f"Not saved: {error}")
             return
-        self.status.setText("Saved.\n" + "\n".join(change.describe()))
+        self.status.setText("Saved.\n" + _describe(changes))
         self.refresh()
         self.metadata_changed.emit()
 
-    def _show_note(self, field: str, source: str, outstanding: bool) -> None:
+    def _confirm_removals(self, edits: dict[str, str | None]) -> bool:
+        """Ask before clearing a field across a folder of projects.
+
+        Writing a value to a folder is what describing one together is *for*,
+        and needs no asking. Clearing one is the asymmetric case, and it is
+        reachable by a single click: a field the projects disagree on shows as
+        a chip reading ``(mixed)`` with a cross on it, which looks like tidying
+        away a placeholder rather than like emptying that field in every
+        project under the folder.
+
+        One project keeps the behaviour it had. The edit is visible in the box
+        there, and it is the project on screen.
+        """
+        cleared = sorted(field for field, value in edits.items() if value is None)
+        if not cleared or len(self.controller.scope) < 2:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Clear fields",
+            f"Remove {', '.join(cleared)} from all "
+            f"{len(self.controller.scope)} projects under "
+            f"{self.controller.scope_folder}?\n\n"
+            "Their values in AM_metadata.yaml are deleted. Anything "
+            "experiment.yaml supplies applies again.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return answer == QMessageBox.Yes
+
+    def _show_note(
+        self, field: str, source: str, outstanding: bool, *, mixed: bool = False
+    ) -> None:
         """Annotate one field with where its value came from, or that it is due.
 
-        The two never coincide -- a field still holding a placeholder resolves
-        to no value and so has no source -- but they are not the same kind of
-        remark, and drawing an outstanding field in the dimmest colour on the
-        panel put the state that matters most where it was hardest to see.
+        Provenance and a placeholder never coincide -- a field still holding one
+        resolves to no value and so has no source -- but they are not the same
+        kind of remark, and drawing an outstanding field in the dimmest colour
+        on the panel put the state that matters most where it was hardest to
+        see.
+
+        *mixed* comes first of the three. It is the one that says the box is not
+        showing a value at all, and it is the authoritative statement: the
+        marker in the box is editable text that could in principle have been
+        typed, where this is derived from the projects in scope.
         """
         note = self.notes[field]
-        if outstanding:
+        if mixed:
+            note.setText(f"[{MIXED_MARKER.strip('()')}]")
+            note.setStyleSheet(BADGE_STYLES["info"])
+            note.setToolTip(
+                "These projects do not agree on this field. Leave it and none "
+                "of them is written; type a value and every one of them is."
+            )
+        elif outstanding:
             note.setText(f"[{TODO_MARKER}]")
             note.setStyleSheet(BADGE_STYLES["warning"])
             note.setToolTip("Still a placeholder; nobody has filled this in")
@@ -485,6 +573,7 @@ class MetadataPanel(QWidget):
             values = self.controller.values()
             sources = self.controller.sources()
             outstanding = set(self.controller.outstanding())
+            mixed = set(self.controller.mixed_fields())
             for field, editor in self.editors.items():
                 value = values.get(field, "")
                 if field in SUGGESTED_FIELDS:
@@ -492,7 +581,12 @@ class MetadataPanel(QWidget):
                     # offered on the next without rescanning.
                     set_editor_suggestions(editor, self.controller.suggestions(field))
                 set_editor_text(editor, value)
-                self._show_note(field, sources.get(field, ""), field in outstanding)
+                self._show_note(
+                    field,
+                    sources.get(field, ""),
+                    field in outstanding,
+                    mixed=field in mixed,
+                )
             # Saving is exactly when a project stops being incomplete, so the
             # marks in the list must not be left describing the state before
             # it. Put back rather than rebuilt: a save is not a change of what

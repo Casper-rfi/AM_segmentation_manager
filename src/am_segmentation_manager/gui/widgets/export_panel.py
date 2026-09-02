@@ -52,6 +52,7 @@ from .common import (
     ProjectTree,
     StepCombo,
     ToggleSwitch,
+    add_fold_buttons,
     caption_for,
     choose_directory,
     choose_open_file,
@@ -188,6 +189,17 @@ class FilterRow(QWidget):
         self.tree.row_ticked.connect(lambda _row, _on: self.changed.emit())
         self.tree.setVisible(False)
         column.addWidget(self.tree)
+
+        # Under the tree rather than beside the property box: they act on what
+        # is below them, and a filter row on a flat property has no folds.
+        self.folds = QWidget()
+        fold_row = QHBoxLayout(self.folds)
+        fold_row.setContentsMargins(0, 0, 0, 0)
+        fold_row.setSpacing(4)
+        add_fold_buttons(fold_row, self.tree)
+        fold_row.addStretch(1)
+        self.folds.setVisible(False)
+        column.addWidget(self.folds)
         #: The values behind the tree's rows, which are addressed by number.
         self._nested_values: list[str] = []
 
@@ -295,12 +307,14 @@ class FilterRow(QWidget):
         """Hide the list, for a row not on a property yet."""
         self.values.setVisible(False)
         self.tree.setVisible(False)
+        self.folds.setVisible(False)
         self.count.setVisible(False)
 
     def show_filled(self) -> None:
         """Show whichever list this row's property calls for."""
         self.values.setVisible(not self._nested)
         self.tree.setVisible(self._nested)
+        self.folds.setVisible(self._nested)
         self.count.setVisible(True)
 
     def untick(self) -> None:

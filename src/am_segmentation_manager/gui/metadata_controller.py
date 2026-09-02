@@ -44,6 +44,7 @@ __all__ = [
     "LAMELLA_TYPES",
     "SUGGESTED_FIELDS",
     "SUGGESTION_LIMIT",
+    "MIXED_MARKER",
     "TODO_MARKER",
     "VALUE_SEPARATOR",
     "MetadataValidationError",
@@ -102,12 +103,38 @@ class ProjectSummary:
         return f"{counted} -- missing: {', '.join(self.missing)}"
 
 
+#: What a field shows when the projects being described do not agree on it.
+#:
+#: Held in the editor rather than beside it, because the panel decides what to
+#: write by comparing the box against the resolved value: a field left showing
+#: this matches and so is never written, which is the whole rule. The badge
+#: beside the field is what *says* it -- this is the editable stand-in, and a
+#: value that happened to be typed as ``(mixed)`` would read as untouched, the
+#: same trade already made for :data:`TODO_MARKER`.
+#:
+#: Deliberately not the curation controller's ``MIXED``: that is the state of a
+#: frame whose two beams disagree, never shown in a box, and the two sharing a
+#: word does not make them the same fact.
+MIXED_MARKER = "(mixed)"
+
+
 class MetadataController:
-    """Show and edit one project's descriptive metadata."""
+    """Show and edit the descriptive metadata of a project, or of a folder of them.
+
+    **The scope is a list, and one project is a list of one.** Describing a
+    collection is done a session at a time -- a folder holds a dozen Autolamella
+    projects sharing a sample, a grid and an operator -- so everything here
+    reads the projects in scope rather than a selected one, and the two cases
+    are the same code path.
+    """
 
     def __init__(self) -> None:
         self._projects: list[Project] = []
         self._position = 0
+        #: The projects being described. One, or every project under a folder.
+        self._scope: list[Project] = []
+        #: The folder whose projects are in scope, or None for a single one.
+        self._scope_folder: str | None = None
         self.editing_enabled = False
 
     # -- selection ---------------------------------------------------------
@@ -116,6 +143,7 @@ class MetadataController:
         """Replace the project list, selecting the first."""
         self._projects = list(projects)
         self._position = 0
+        self.select(0)
 
     @property
     def projects(self) -> list[Project]:
@@ -128,16 +156,46 @@ class MetadataController:
         return self._position
 
     def select(self, position: int) -> None:
-        """Select a project by index, clamped to the available range."""
-        if self._projects:
-            self._position = max(0, min(position, len(self._projects) - 1))
+        """Describe one project, by index, clamped to the available range."""
+        if not self._projects:
+            self._scope, self._scope_folder = [], None
+            return
+        self._position = max(0, min(position, len(self._projects) - 1))
+        self._scope = [self._projects[self._position]]
+        self._scope_folder = None
+
+    def select_folder(self, folder: str) -> None:
+        """Describe every project under *folder* at once.
+
+        A session's projects share their sample, their grid and their operator,
+        and typing that a dozen times is how a collection ends up with ``HeLa``
+        beside ``Hela``. Fields the projects disagree on show
+        :data:`MIXED_MARKER` and are left alone unless touched.
+        """
+        self._scope_folder = folder
+        self._scope = [
+            project for project in self._projects if project.folder == folder
+        ]
+
+    @property
+    def scope(self) -> list[Project]:
+        """Return the projects being described, in list order."""
+        return self._scope
+
+    @property
+    def scope_folder(self) -> str | None:
+        """Return the folder being described, or None for a single project."""
+        return self._scope_folder
 
     @property
     def project(self) -> Project | None:
-        """Return the selected project, or None when the list is empty."""
-        if not self._projects:
-            return None
-        return self._projects[self._position]
+        """Return the one project in scope, or None where several or none are.
+
+        For the callers that can only mean one -- the path to copy, the
+        provenance of a single value. Anything that must work over a folder
+        reads :attr:`scope`.
+        """
+        return self._scope[0] if len(self._scope) == 1 else None
 
     # -- reading -----------------------------------------------------------
 
@@ -148,27 +206,72 @@ class MetadataController:
         what an editor shows is what saving would compare against: a number read
         back as ``30.0`` and shown as ``30`` would otherwise register as an edit
         on every project the user merely looked at.
+
+        Over several projects a field they agree on reads as that value, and one
+        they do not reads as :data:`MIXED_MARKER` -- which the panel puts in the
+        box, so an untouched field compares equal and is never written.
         """
-        project = self.project
-        resolved = project.experiment_metadata if project else None
-        return {
-            field: format_field_value(getattr(resolved, field, None)) if resolved else ""
-            for field in DESCRIPTIVE_FIELDS
+        return {field: self._shared(field) for field in DESCRIPTIVE_FIELDS}
+
+    def _shared(self, field: str) -> str:
+        """Return what every project in scope says for *field*, or the marker."""
+        seen = {
+            format_field_value(getattr(project.experiment_metadata, field, None))
+            if project.experiment_metadata is not None
+            else ""
+            for project in self._scope
         }
+        if not seen:
+            return ""
+        return seen.pop() if len(seen) == 1 else MIXED_MARKER
+
+    def mixed_fields(self) -> tuple[str, ...]:
+        """Return the fields the projects in scope disagree on.
+
+        Asked for separately from :meth:`values` so the panel can badge them:
+        the marker in the box is editable text and a value typed as that text
+        would be indistinguishable, where this is derived and cannot be typed.
+        """
+        return tuple(
+            field
+            for field in DESCRIPTIVE_FIELDS
+            if self._shared(field) == MIXED_MARKER
+        )
 
     def sources(self) -> dict[str, str]:
         """Return which file supplied each value, for display beside it.
 
         Surfacing this is most of the point of a metadata view: a value that
         looks wrong is explained by which of the two files it came from.
+
+        Only where every project in scope agrees. A value shared across a folder
+        can still have come from ``experiment.yaml`` in one and
+        ``AM_metadata.yaml`` in another, and naming one of them would be a
+        statement about provenance that is not true.
         """
-        project = self.project
-        resolved = project.experiment_metadata if project else None
-        if resolved is None:
-            return {}
+        named: dict[str, set[str]] = {}
+        for project in self._scope:
+            resolved = project.experiment_metadata
+            for field, path in (resolved.sources if resolved else {}).items():
+                named.setdefault(field, set()).add(path.name)
         return {
-            field: path.name for field, path in resolved.sources.items()
+            field: next(iter(names))
+            for field, names in named.items()
+            if len(names) == 1 and self._named_by_all(field)
         }
+
+    def _named_by_all(self, field: str) -> bool:
+        """Return whether every project in scope names a source for *field*.
+
+        A field one project leaves unset has no shared provenance even when the
+        others agree, which for a scope of one is simply "this project has a
+        source for it".
+        """
+        return all(
+            project.experiment_metadata is not None
+            and field in project.experiment_metadata.sources
+            for project in self._scope
+        )
 
     def suggestions(self, field: str) -> list[str]:
         """Return values already recorded for *field*, most projects first.
@@ -214,10 +317,21 @@ class MetadataController:
         return offered
 
     def outstanding(self) -> tuple[str, ...]:
-        """Return fields still marked TODO."""
-        project = self.project
-        resolved = project.experiment_metadata if project else None
-        return resolved.todo_fields if resolved else ()
+        """Return fields still marked TODO in any project in scope.
+
+        Any, not all: a placeholder left in one project of a dozen is work
+        outstanding, and a badge that appeared only once every project agreed
+        would go quiet exactly as the folder was nearly finished.
+        """
+        return tuple(
+            field
+            for field in DESCRIPTIVE_FIELDS
+            if any(
+                project.experiment_metadata is not None
+                and field in project.experiment_metadata.todo_fields
+                for project in self._scope
+            )
+        )
 
     def project_summaries(self) -> list[ProjectSummary]:
         """Return one row per project, in list order.
@@ -229,11 +343,23 @@ class MetadataController:
         return [self._summarise(project) for project in self._projects]
 
     def summary(self) -> str:
-        """Return a one-line description of how complete this project is."""
-        project = self.project
-        if project is None:
+        """Return a one-line description of what is being described, and how far.
+
+        For a folder the projects are counted rather than read out: a dozen
+        names do not fit and would not help, where how many are still short of
+        a field is the reason to be looking at the folder at all.
+        """
+        if not self._scope:
             return "No project selected"
-        return f"{project.display_name}: {self._summarise(project).describe()}"
+        if self._scope_folder is None:
+            project = self._scope[0]
+            return f"{project.display_name}: {self._summarise(project).describe()}"
+        summaries = [self._summarise(project) for project in self._scope]
+        complete = sum(1 for summary in summaries if summary.is_complete)
+        return (
+            f"{self._scope_folder}: {len(summaries)} projects, "
+            f"{complete} fully described"
+        )
 
     @staticmethod
     def _summarise(project: Project) -> ProjectSummary:
@@ -270,37 +396,50 @@ class MetadataController:
 
     # -- editing -----------------------------------------------------------
 
-    def plan(self, edits: dict[str, str | None]) -> MetadataChange:
-        """Return what *edits* would do, writing nothing.
+    def plan(self, edits: dict[str, str | None]) -> list[MetadataChange]:
+        """Return what *edits* would do to every project in scope, writing nothing.
 
         Raises:
-            MetadataValidationError: If any edit is invalid.
+            MetadataValidationError: If any edit is invalid for any project.
+            ValueError: If nothing is in scope.
         """
-        project = self.project
-        if project is None:
+        if not self._scope:
             raise ValueError("No project selected")
-        return plan_metadata_update(
-            project.path, edits, project_name=project.display_name
-        )
+        return [
+            plan_metadata_update(
+                project.path, edits, project_name=project.display_name
+            )
+            for project in self._scope
+        ]
 
-    def apply(self, edits: dict[str, str | None]) -> MetadataChange:
-        """Write *edits*, refreshing the project's metadata afterwards.
+    def apply(self, edits: dict[str, str | None]) -> list[MetadataChange]:
+        """Write *edits* to every project in scope, refreshing them afterwards.
+
+        **The whole set is planned before any of it is written.** A folder of a
+        dozen projects is a batch, and one that stopped half way through on the
+        seventh invalid value would leave six described and six not, with
+        nothing on screen saying which -- the failure the batch rule exists to
+        prevent.
 
         Raises:
-            MetadataValidationError: If any edit is invalid.
+            MetadataValidationError: If any edit is invalid for any project in
+                scope. Nothing is written.
             PermissionError: If editing has not been enabled.
+            ValueError: If nothing is in scope.
         """
         if not self.editing_enabled:
             raise PermissionError("Editing is disabled")
-        project = self.project
-        if project is None:
-            raise ValueError("No project selected")
+        self.plan(edits)
 
-        change = update_project_metadata(
-            project.path, edits, project_name=project.display_name
-        )
-        self._refresh(project)
-        return change
+        changes = [
+            update_project_metadata(
+                project.path, edits, project_name=project.display_name
+            )
+            for project in self._scope
+        ]
+        for project in self._scope:
+            self._refresh(project)
+        return changes
 
     def _refresh(self, project: Project) -> None:
         """Re-resolve the project's metadata from disk after a write.

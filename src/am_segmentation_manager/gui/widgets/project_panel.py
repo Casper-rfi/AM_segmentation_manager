@@ -34,6 +34,7 @@ from .common import (
     CheckList,
     GripSplitter,
     ProjectTree,
+    add_fold_buttons,
     add_path_menu,
     chip_icon,
     choose_directory,
@@ -200,16 +201,11 @@ class ProjectPanel(QWidget):
         # stretch, so what the ticks decide stays apart from what is merely on
         # screen. Neither reaches the controller: which folders are open is the
         # widget's own business and nothing else asks.
-        row = self._build_check_all(self.projects_check_all, "projects")
-        for caption, hint, act in (
-            ("Expand", "Open every folder", tree.expandAll),
-            ("Collapse", "Close every folder", tree.collapseAll),
-        ):
-            button = QPushButton(caption)
-            button.setToolTip(hint)
-            button.clicked.connect(act)
-            row.addWidget(button)
-        box_layout.addLayout(row)
+        box_layout.addLayout(
+            add_fold_buttons(
+                self._build_check_all(self.projects_check_all, "projects"), tree
+            )
+        )
         return box, filter_edit, tree
 
     def _build_list(

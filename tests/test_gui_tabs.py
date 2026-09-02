@@ -834,9 +834,11 @@ def test_the_view_refreshes_after_a_write(metadata: MetadataController):
 
 
 def test_planning_writes_nothing(metadata: MetadataController):
-    change = metadata.plan({"sample": "HeLa"})
+    """One change per project in scope, which for one project is one."""
+    changes = metadata.plan({"sample": "HeLa"})
 
-    assert not change.is_empty
+    assert len(changes) == 1
+    assert not changes[0].is_empty
     assert metadata.values()["sample"] == ""
 
 
@@ -1269,3 +1271,127 @@ def test_the_breakdown_counts_an_image_under_each_of_its_values(
 
     assert counts == {"Diamond": 4, "RFI": 4}
     assert sum(counts.values()) > several.preview().matched
+
+
+# ---------------------------------------------------------------------------
+# Describing a whole folder at once
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def session(tmp_path: Path) -> MetadataController:
+    """Three projects filed under one session folder, as Autolamella leaves them."""
+    folder = tmp_path / "20250428_AM"
+    projects = []
+    for name in ("run-one", "run-two", "run-three"):
+        root = folder / name
+        root.mkdir(parents=True)
+        (root / "AM_metadata.yaml").write_text("metadata:\n  organisation: RFI\n")
+        projects.append(
+            Project(
+                name=name,
+                path=root,
+                relative_path=f"20250428_AM/{name}",
+                experiment_metadata=build_experiment_metadata(
+                    {}, {"metadata": {"organisation": "RFI"}},
+                    am_metadata_path=root / "AM_metadata.yaml",
+                ),
+            )
+        )
+    controller = MetadataController()
+    controller.set_projects(projects)
+    controller.editing_enabled = True
+    return controller
+
+
+def test_choosing_a_folder_describes_every_project_under_it(session):
+    session.select_folder("20250428_AM")
+
+    assert len(session.scope) == 3
+    assert session.scope_folder == "20250428_AM"
+    assert session.project is None, "several projects means no single one to name"
+
+
+def test_a_field_they_agree_on_reads_as_that_value(session):
+    session.select_folder("20250428_AM")
+    session.apply({"sample": "HeLa"})
+
+    assert session.values()["sample"] == "HeLa"
+
+
+def test_a_field_they_disagree_on_reads_as_mixed(session):
+    """The rule: fields that differ show mixed and are left alone unless
+    touched."""
+    from am_segmentation_manager.gui.metadata_controller import MIXED_MARKER
+
+    session.select(0)
+    session.apply({"sample": "HeLa"})
+    session.select_folder("20250428_AM")
+
+    assert session.values()["sample"] == MIXED_MARKER
+    assert "sample" in session.mixed_fields()
+
+
+def test_saving_writes_to_every_project_in_the_folder(session):
+    session.select_folder("20250428_AM")
+
+    changes = session.apply({"sample": "HeLa"})
+
+    assert len(changes) == 3
+    for project in session.scope:
+        assert "HeLa" in (project.path / "AM_metadata.yaml").read_text()
+
+
+def test_an_invalid_edit_writes_nothing_at_all(session):
+    """A folder is a batch: stopping half way through would leave six projects
+    described and six not, with nothing on screen saying which."""
+    session.select_folder("20250428_AM")
+    before = [
+        (project.path / "AM_metadata.yaml").read_text() for project in session.scope
+    ]
+
+    with pytest.raises(MetadataValidationError):
+        session.apply({"lamella_type": "not-a-lamella-type"})
+
+    after = [
+        (project.path / "AM_metadata.yaml").read_text() for project in session.scope
+    ]
+    assert after == before
+
+
+def test_a_source_is_named_only_where_they_all_agree_on_it(session):
+    """A value shared across a folder can still have come from a different file
+    in each, and naming one would be a claim about provenance that is untrue."""
+    session.select(0)
+    session.apply({"sample": "HeLa"})
+    session.select(1)
+    session.apply({"sample": "HeLa"})
+    session.select(2)
+    session.apply({"sample": "HeLa"})
+    session.select_folder("20250428_AM")
+
+    assert session.values()["sample"] == "HeLa"
+    assert session.sources()["sample"] == "AM_metadata.yaml"
+
+
+def test_a_placeholder_in_one_project_is_outstanding_for_the_folder(session):
+    """Any, not all: a badge that appeared only once every project agreed would
+    go quiet exactly as the folder was nearly finished."""
+    session.select(1)
+    session.apply({"sample": "TODO"})
+    session.select_folder("20250428_AM")
+
+    assert "sample" in session.outstanding()
+
+
+def test_a_folder_is_summarised_by_count_rather_than_read_out(session):
+    session.select_folder("20250428_AM")
+
+    assert session.summary() == "20250428_AM: 3 projects, 0 fully described"
+
+
+def test_describing_one_project_again_narrows_the_scope_back(session):
+    session.select_folder("20250428_AM")
+    session.select(1)
+
+    assert session.scope_folder is None
+    assert session.project is session.projects[1]

@@ -2598,6 +2598,37 @@ def test_the_projects_are_grouped_under_their_session_folder(metadata_panel):
     assert len(tree.project_items()) == 2
 
 
+def test_add_data_offers_expand_and_collapse(metadata_panel):
+    """Describing a collection means working down one session at a time, which
+    needs its folder opened; thirty left open is the other half of that."""
+    tree = metadata_panel.projects
+    tree.collapseAll()
+    assert not any(
+        tree.topLevelItem(row).isExpanded()
+        for row in range(tree.topLevelItemCount())
+        if tree.topLevelItem(row).childCount()
+    )
+
+    from qtpy.QtWidgets import QPushButton
+
+    buttons = metadata_panel.findChildren(QPushButton)
+    expand = next(b for b in buttons if b.text() == "Expand")
+    collapse = next(b for b in buttons if b.text() == "Collapse")
+    expand.click()
+
+    assert all(
+        tree.topLevelItem(row).isExpanded()
+        for row in range(tree.topLevelItemCount())
+        if tree.topLevelItem(row).childCount()
+    )
+    collapse.click()
+    assert not any(
+        tree.topLevelItem(row).isExpanded()
+        for row in range(tree.topLevelItemCount())
+        if tree.topLevelItem(row).childCount()
+    )
+
+
 def test_the_add_data_tree_has_no_tick_boxes(metadata_panel):
     """This tab describes one project at a time, so a box would offer a set it
     cannot act on."""
@@ -2994,3 +3025,128 @@ def test_a_mark_survives_the_round_trip_into_the_list(qt_app):
 
     assert restored.size() == pixmap.size()
     assert restored.pixelColor(12, 8) == QColor("#12604f")
+
+
+# ---------------------------------------------------------------------------
+# Describing a folder of projects at once
+# ---------------------------------------------------------------------------
+
+def _choose_folder(panel, folder: str) -> None:
+    """Move the tree onto a folder row, as clicking one would."""
+    tree = panel.projects
+    row = next(
+        tree.topLevelItem(i)
+        for i in range(tree.topLevelItemCount())
+        if tree.topLevelItem(i).text(0) == folder
+    )
+    tree.setCurrentItem(row)
+
+
+def test_choosing_a_folder_describes_its_projects_together(metadata_panel):
+    """The point of grouping them: a session's projects share their sample,
+    their grid and their operator."""
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+
+    assert len(metadata_panel.controller.scope) == 2
+    assert metadata_panel.controller.scope_folder == "20260728_CB_AM_bitmap"
+
+
+def test_a_field_the_projects_disagree_on_shows_mixed(metadata_panel):
+    from am_segmentation_manager.gui.metadata_controller import MIXED_MARKER
+
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+
+    assert editor_text(metadata_panel.editors["sample"]) == MIXED_MARKER
+    assert metadata_panel.notes["sample"].text() == "[mixed]"
+
+
+def test_a_mixed_field_left_alone_is_not_written(metadata_panel):
+    """The whole rule. The marker is what the box holds *and* what the value
+    resolves to, so an untouched field compares equal and never reaches a
+    file -- accepted knowing it means a field can be edited without being
+    written."""
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+
+    assert metadata_panel._edits() == {}
+
+
+def test_typing_over_mixed_writes_it_to_every_project(metadata_panel):
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+    set_editor_text(metadata_panel.editors["sample"], "HeLa")
+
+    assert metadata_panel._edits() == {"sample": "HeLa"}
+
+    metadata_panel.enable.setChecked(True)
+    metadata_panel._save()
+
+    for project in metadata_panel.controller.scope:
+        assert "HeLa" in (project.path / "AM_metadata.yaml").read_text()
+
+
+def test_the_summary_counts_the_folder_rather_than_reading_it_out(metadata_panel):
+    """A dozen project names do not fit and would not help."""
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+    metadata_panel.refresh()
+
+    assert metadata_panel.summary.text() == (
+        "20260728_CB_AM_bitmap: 2 projects, 0 fully described"
+    )
+
+
+
+def test_clearing_a_field_across_a_folder_is_confirmed_first(metadata_panel, monkeypatch):
+    """A field the projects disagree on shows as a chip with a cross on it,
+    which looks like tidying away a placeholder rather than like emptying that
+    field in every project under the folder."""
+    from qtpy.QtWidgets import QMessageBox
+
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+    metadata_panel.enable.setChecked(True)
+    set_editor_text(metadata_panel.editors["sample"], "")
+    asked: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *args, **kwargs: (asked.append(args[2]), QMessageBox.No)[1],
+    )
+
+    metadata_panel._save()
+
+    assert asked and "all 2 projects" in asked[0]
+    assert metadata_panel.status.text() == "Not saved"
+
+
+def test_describing_one_project_needs_no_such_confirmation(metadata_panel, monkeypatch):
+    """The edit is visible in the box, on the project on screen."""
+    from qtpy.QtWidgets import QMessageBox
+
+    metadata_panel.enable.setChecked(True)
+    asked: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *args, **kwargs: (asked.append(args[2]), QMessageBox.Yes)[1],
+    )
+    set_editor_text(metadata_panel.editors["user"], "")
+
+    metadata_panel._save()
+
+    assert not asked
+
+
+def test_writing_a_value_across_a_folder_is_not_confirmed(metadata_panel, monkeypatch):
+    """That is what describing them together is for."""
+    from qtpy.QtWidgets import QMessageBox
+
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+    metadata_panel.enable.setChecked(True)
+    asked: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *args, **kwargs: (asked.append(args[2]), QMessageBox.Yes)[1],
+    )
+    set_editor_text(metadata_panel.editors["sample"], "HeLa")
+
+    metadata_panel._save()
+
+    assert not asked
+    for project in metadata_panel.controller.scope:
+        assert "HeLa" in (project.path / "AM_metadata.yaml").read_text()

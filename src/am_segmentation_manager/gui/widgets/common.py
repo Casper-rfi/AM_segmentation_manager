@@ -43,6 +43,7 @@ from qtpy.QtWidgets import (
     QCompleter,
     QFileDialog,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QLayout,
     QLayoutItem,
@@ -150,6 +151,29 @@ PROJECT_INDEX = Qt.UserRole + 1
 #: How far a project is indented under its folder. Enough to read as beneath it
 #: and no more: the panel is narrow and the rows carry names that need the room.
 TREE_INDENT = 12
+
+
+def add_fold_buttons(row: QHBoxLayout, tree: ProjectTree) -> QHBoxLayout:
+    """Append Expand and Collapse for *tree* to an existing row, and return it.
+
+    A folder opens when it is clicked and stays as the reader left it, which is
+    right for working down one session and wrong at the two moments when the
+    whole shape is the question: finding a project whose folder you have
+    forgotten, and putting thirty open folders away again.
+
+    Appended rather than given a row of their own, so a panel can put them
+    beside whatever else acts on the whole tree. Neither reaches a controller:
+    which folders are open is the widget's own business and nothing else asks.
+    """
+    for caption, hint, act in (
+        ("Expand", "Open every folder", tree.expandAll),
+        ("Collapse", "Close every folder", tree.collapseAll),
+    ):
+        button = QPushButton(caption)
+        button.setToolTip(hint)
+        button.clicked.connect(act)
+        row.addWidget(button)
+    return row
 
 
 class ProjectTree(QTreeWidget):

@@ -101,9 +101,26 @@ environment the package is *installed* into.
   folder's box is Qt's tri-state, so ticking one ticks its projects and each reports itself — a
   convenience over them, never a fourth thing that can disagree. A tree needs the list rules of
   `theme.py` as well as the list *settings*, or Qt paints its current row in the full accent.
+- **Add data describes a folder of projects at once, and a field they disagree on is left alone.**
+  A session's projects share their sample, their grid and their operator, and typing that a dozen
+  times is how a collection ends up with `HeLa` beside `Hela`. The scope is a list and one project
+  is a list of one, so both are one code path. A field they differ on resolves to `MIXED_MARKER`,
+  which goes *in the box*: what to write is decided by comparing the box against the resolved
+  value, so an untouched field matches and is never written — a field can be edited without being
+  written, which is the accepted cost. The badge beside it is the authoritative statement, being
+  derived where the marker is text somebody could have typed. A source is named only where every
+  project agrees which file supplied it; a field is outstanding if *any* still holds a placeholder,
+  a badge waiting for agreement going quiet exactly as the folder is nearly finished.
+- **A folder is a batch: the whole set is planned before any of it is written, and clearing a field
+  across one is confirmed.** Stopping half way down a dozen projects on an invalid value would
+  leave six described and six not with nothing saying which. Writing a value needs no asking, that
+  being the point; clearing one is a single click on the `(mixed)` chip's cross, which reads as
+  tidying a placeholder rather than as emptying that field everywhere under the folder.
 - **What differs between the three is passed in.** The chip is a curation status on Curate and a
   completeness bar on Add data; `checkable=False` takes the tick boxes off Add data, which acts on
-  the row being *looked at*, a box offering a set the tab cannot act on being worse than no box.
+  the row being *looked at*, a box offering a set the tab cannot act on being worse than no box. Expand and
+  Collapse come from `common.add_fold_buttons`, appended to whatever row a panel already has that
+  acts on the whole tree.
   **That flag has to be cleared rather than merely not set** — `ItemIsUserCheckable` is on by
   default and Qt just draws no box while no check state exists, so the rows would report as
   checkable and the first `setCheckState` would put the boxes back. Export has no project list at
@@ -112,12 +129,11 @@ environment the package is *installed* into.
   which is a display decision and so belongs in the interface rather than as a flag on `Breakdown`
   below it. Every other filter stays a list, its values having no hierarchy, and the row holds both
   widgets and shows one rather than having either pretend to be the other.
-- **A folder is closed until it is opened, and what is open survives a rebuild.** Thirty session
-  rows are what a reader can look down; a hundred projects are the flat list this replaced. Three
-  things open one anyway: holding the current project, being rebuilt after a rescan having been
-  open before, and matching a *filter* — hiding a folder's siblings while leaving its own matches
-  folded away reads as having found nothing. The folds before a filter are put back when it is
-  cleared, opening a folder to search being the search's doing rather than the reader's.
+- **A folder is closed until it is opened, and what is open survives a rebuild.** Three things open
+  one anyway: holding the current project, being rebuilt after a rescan having been open before,
+  and matching a *filter* — hiding a folder's siblings while leaving its own matches folded away
+  reads as having found nothing. The folds before a filter are put back when it is cleared, opening
+  a folder to search being the search's doing rather than the reader's.
 - **The status chip is a cell per series and beam, which is also what made it correct.** Three
   columns in `SERIES` order, SEM above FIB. Only `LABELS_EXPECTED` ever varies, a reference column
   that changed being a claim that work nobody intends to do is outstanding. **Combining the series
@@ -138,14 +154,12 @@ environment the package is *installed* into.
   **`SWATCH_HEIGHT` must stay even.** Qt centres a row's check indicator on the row — Fusion's is
   eighteen pixels — but rounds the decoration differently, so an odd-height icon lands half a pixel
   below the tick beside it and the name after it. At thirteen that was visible.
-- **Choosing a folder lists every lamella under it.** An Autolamella run restarts for reasons
-  that have nothing to do with the specimen — a crash, a change of parameters, an overnight queue —
-  so one session's lamellae are spread over a dozen projects holding one or two each: thirteen
-  projects and twenty-four lamellae in one folder of the reference collection, eleven of those
-  projects holding exactly one. Listing them together is how they are worked through, and Up and
-  Down then cross a project boundary without stopping, the boundary being an artifact. **The rows
-  need no project prefix**: Autolamella names a lamella `01-caring-dragon`, and no folder in the
-  collection holds two of the same name.
+- **Choosing a folder lists every lamella under it.** An Autolamella run restarts for reasons that
+  have nothing to do with the specimen — a crash, a change of parameters, an overnight queue — so
+  one session's lamellae are spread over a dozen projects mostly holding one each. Listing them
+  together is how they are worked through, and Up and Down then cross a project boundary without
+  stopping, the boundary being an artifact. **The rows need no project prefix**: Autolamella names
+  a lamella `01-caring-dragon`, and no folder in the collection holds two of the same name.
 - **The lamella list is what a row was *clicked*, never what was ticked.** Ticking is what a change
   applies to, and `Selection` keeps one level at a time — so ticking a lamella clears the project
   ticks. A list filled from the project ticks would therefore empty itself, taking the lamella just
@@ -204,10 +218,10 @@ environment the package is *installed* into.
   neither. The timeline sample is *grabbed from a `FrameTimeline`*, which is the only way to be
   sure the legend cannot show something the widget does not draw — `MISMATCH` was commented as an
   amber wash over frames disagreeing with their label, and `_paint` has never drawn one.
-- **The list scrolls, and is capped to the screen.** With the legend in it two tabs run past 800
-  pixels, and a dialog merely sized past the screen has no scrollbar the user can reach either.
-  `fit_to_screen` sizes from the label's own hint rather than `adjustSize`, a scroll area reporting
-  a small default hint instead of the size of what is inside it.
+  With the legend in it two tabs run past 800 pixels, so the list scrolls and is capped to the
+  screen, a dialog merely sized past it having no scrollbar the user can reach either;
+  `fit_to_screen` sizes from the label's own hint, `adjustSize` being useless when a scroll area
+  reports a small default instead of what is inside it.
 
 ## Images and plots
 
