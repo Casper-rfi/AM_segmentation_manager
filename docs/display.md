@@ -85,6 +85,21 @@ environment the package is *installed* into.
   font properties on a subcontrol, so the obvious rule is silently no rule, and this one reaches the
   title without reaching the controls inside. No background: the inputs are white, and a white card
   behind them takes away the one thing separating "you can type here" from the panel.
+- **One of a small closed set is a run of segments, not a row of dots.** Which beam, which view,
+  what a change applies to: three or four fixed answers all worth showing at once, where a dropdown
+  hides the alternatives behind a click and a radio group spends a row of loose dots saying what the
+  captions already say. `common.SegmentedControl` is one widget holding checkable `QToolButton`s in
+  an exclusive group, which also means the run **cannot be split across two lines of a flow
+  layout** — the three view buttons could wrap apart, leaving one choice reading as two. The chosen
+  segment is *filled* with the accent where a checked tool button elsewhere is merely tinted: those
+  answer "is this on", this answers "which of these", and the two must not look alike. The joining
+  is object names (`segmentFirst`/`segmentMiddle`/`segmentLast`/`segmentOnly`) and rules in
+  `theme.py`, chrome being decided there; **every name has to be spelled out in every rule**, Qt's
+  stylesheets having no wildcard, and a name left out is a segment silently drawn as a plain button.
+  `buttons` exposes the segments so a caller can grey one out on its own, which is how a view the
+  frame has nothing to show for is disabled. **The State group is deliberately not one**: it is
+  non-exclusive so that a frame whose SEM and FIB disagree can show *nothing* chosen, and a
+  segmented control cannot say that.
 - **A row is ticked; a control on its own is switched.** A tick says which of many rows a change
   covers, where a standalone control is simply on or off. `common.ToggleSwitch` draws the second and
   is a **subclass of `QCheckBox`**, which is the point rather than a detail: only `paintEvent`

@@ -280,6 +280,46 @@ def stylesheet() -> str:
     QToolButton:checked {{ background: {SELECTED}; border-color: {ACCENT}; }}
     QToolButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
 
+    /* A run of segments is one control: they share their borders, the inner
+       corners are square, and the chosen one is filled rather than tinted --
+       this answers "which of these" where a checked tool button elsewhere
+       answers "is this on", and the two must not look alike. Named rather than
+       styled where they are built, because chrome is set here and nowhere
+       else; `common.SegmentedControl` puts the names on. Every name has to be
+       spelled out in every rule, Qt's stylesheets having no wildcard. */
+    QToolButton#segmentOnly, QToolButton#segmentFirst,
+    QToolButton#segmentMiddle, QToolButton#segmentLast {{
+        border-radius: 0;
+        padding: 4px 12px;
+    }}
+    QToolButton#segmentOnly {{ border-radius: 4px; }}
+    QToolButton#segmentFirst {{
+        border-top-left-radius: 4px;
+        border-bottom-left-radius: 4px;
+    }}
+    QToolButton#segmentLast {{
+        border-top-right-radius: 4px;
+        border-bottom-right-radius: 4px;
+    }}
+    /* One border between neighbours, not two abutting ones. */
+    QToolButton#segmentMiddle, QToolButton#segmentLast {{ border-left: none; }}
+    QToolButton#segmentOnly:checked, QToolButton#segmentFirst:checked,
+    QToolButton#segmentMiddle:checked, QToolButton#segmentLast:checked {{
+        background: {ACCENT};
+        color: {ACCENT_TEXT};
+        border-color: {ACCENT};
+    }}
+    QToolButton#segmentOnly:hover:!checked, QToolButton#segmentFirst:hover:!checked,
+    QToolButton#segmentMiddle:hover:!checked, QToolButton#segmentLast:hover:!checked {{
+        background: {HOVER};
+        border-color: {BORDER};
+    }}
+    QToolButton#segmentOnly:disabled, QToolButton#segmentFirst:disabled,
+    QToolButton#segmentMiddle:disabled, QToolButton#segmentLast:disabled {{
+        color: {DISABLED_TEXT};
+        background: {WINDOW};
+    }}
+
     QTabWidget::pane {{
         border: 1px solid {BORDER};
         border-radius: 6px;

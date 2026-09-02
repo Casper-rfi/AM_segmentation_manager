@@ -20,7 +20,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QRadioButton,
     QSizePolicy,
     QSlider,
     QToolButton,
@@ -39,6 +38,7 @@ from ..label_controller import LabelController
 from .common import (
     LABEL_BADGES,
     ElidingLabel,
+    SegmentedControl,
     ToggleSwitch,
     chip_icon,
     fill_choice_combo,
@@ -409,25 +409,20 @@ class LabelPanel(QWidget):
         """Build the row of view controls."""
         controls = QHBoxLayout()
 
-        self.modality_buttons: dict[str, QRadioButton] = {}
-        group = QButtonGroup(self)
-        for modality, key in zip(MODALITIES, ("1", "2")):
-            button = QRadioButton(modality)
-            button.setToolTip(
-                f"Proofread the {modality} images of this lamella\nShortcut: {key}"
+        self.modality_control = SegmentedControl([
+            (
+                modality, modality,
+                f"Proofread the {modality} images of this lamella\nShortcut: {key}",
             )
-            button.toggled.connect(
-                lambda checked, m=modality: checked and self._modality_chosen(m)
-            )
-            group.addButton(button)
-            controls.addWidget(button)
-            self.modality_buttons[modality] = button
-        # Checked without emitting: the panel is still being built, and the
+            for modality, key in zip(MODALITIES, ("1", "2"))
+        ])
+        self.modality_control.chosen.connect(self._modality_chosen)
+        #: The segments, so a caller can reach one at a time.
+        self.modality_buttons = self.modality_control.buttons
+        controls.addWidget(self.modality_control)
+        # Chosen without emitting: the panel is still being built, and the
         # handler redraws a timeline that does not exist yet.
-        first = self.modality_buttons[MODALITIES[0]]
-        first.blockSignals(True)
-        first.setChecked(True)
-        first.blockSignals(False)
+        self.modality_control.set_current(MODALITIES[0])
 
         # Beside the beam buttons and before the variant, in the same order and
         # for the same reasons as the curation view: the series decides which

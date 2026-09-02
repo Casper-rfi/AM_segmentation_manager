@@ -38,6 +38,7 @@ from qtpy.QtGui import (
     QStandardItemModel,
 )
 from qtpy.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QCompleter,
@@ -55,6 +56,7 @@ from qtpy.QtWidgets import (
     QSpacerItem,
     QSplitter,
     QSplitterHandle,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -1871,3 +1873,90 @@ def _event_x(event) -> float:
     """Return a mouse event's x, under either binding."""
     position = getattr(event, "position", None)
     return float(position().x()) if position is not None else float(event.x())
+
+
+#: The object names the stylesheet joins a run of segments with. Set on each
+#: button by :class:`SegmentedControl`; the rules are in :mod:`theme`, chrome
+#: being decided there and nowhere else.
+SEGMENT_NAMES = ("segmentOnly", "segmentFirst", "segmentMiddle", "segmentLast")
+
+
+def _segment_name(index: int, count: int) -> str:
+    """Return which end of the run a segment is, or that it is the whole run."""
+    if count == 1:
+        return "segmentOnly"
+    if index == 0:
+        return "segmentFirst"
+    return "segmentLast" if index == count - 1 else "segmentMiddle"
+
+
+class SegmentedControl(QWidget):
+    """One of a small closed set, drawn as a joined run rather than as dots.
+
+    For a question with three or four fixed answers that are all worth showing
+    at once -- which beam, which view, what a change applies to. A dropdown
+    hides the alternatives behind a click and a radio group spends a row of
+    loose dots saying what the captions already say.
+
+    One widget rather than loose buttons, which also means the run cannot be
+    split across two lines of a flow layout: the three view buttons could wrap
+    apart, leaving what is plainly one choice reading as two.
+
+    Exclusive, so exactly one segment is chosen; :meth:`set_current` reflects a
+    choice made elsewhere without reporting it back. Each segment is an
+    ordinary ``QToolButton`` and they are reachable through :attr:`buttons`, so
+    a caller can enable and disable them one at a time.
+    """
+
+    #: Emitted with the key of the segment the user chose.
+    chosen = Signal(str)
+
+    def __init__(
+        self,
+        segments: Sequence[tuple[str, str, str]],
+        parent: QWidget | None = None,
+    ) -> None:
+        """Build a run from ``(key, caption, tooltip)`` triples, in order."""
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        # No spacing: the segments share their borders, which is what makes the
+        # run read as one control rather than as a row of buttons.
+        row.setSpacing(0)
+
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self.buttons: dict[str, QToolButton] = {}
+
+        for index, (key, caption, hint) in enumerate(segments):
+            button = QToolButton()
+            button.setObjectName(_segment_name(index, len(segments)))
+            button.setText(caption)
+            button.setCheckable(True)
+            button.setToolTip(hint)
+            button.setCursor(Qt.PointingHandCursor)
+            button.toggled.connect(
+                lambda checked, k=key: checked and self.chosen.emit(k)
+            )
+            self._group.addButton(button)
+            row.addWidget(button)
+            self.buttons[key] = button
+
+    def current(self) -> str | None:
+        """Return the key of the chosen segment, or None while none is."""
+        for key, button in self.buttons.items():
+            if button.isChecked():
+                return key
+        return None
+
+    def set_current(self, key: str) -> None:
+        """Choose *key* without reporting it, for reflecting a change elsewhere.
+
+        Raises:
+            KeyError: If *key* is not one of the segments, a caller asking for
+                one that is not there having got the vocabulary wrong.
+        """
+        button = self.buttons[key]
+        button.blockSignals(True)
+        button.setChecked(True)
+        button.blockSignals(False)

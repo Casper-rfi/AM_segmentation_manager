@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState
 from ..controller import MIXED
-from .common import ToggleSwitch
+from .common import SegmentedControl, ToggleSwitch
 from .frame_strip import STATE_COLOURS
 from .theme import BADGE_STYLES, SHARED_NOTE_STYLE
 
@@ -163,30 +163,22 @@ class StatePanel(QWidget):
             "different states."
         )
         row = QHBoxLayout(box)
-        self.target_buttons: dict[str, QRadioButton] = {}
-        group = QButtonGroup(self)
-        for target, caption, hint in (
+        self.target_control = SegmentedControl([
             ("SEM", "SEM", "Change the SEM image only"),
             ("FIB", "FIB", "Change the FIB image only"),
             ("both", "Both", "Change both images together"),
-        ):
-            button = QRadioButton(caption)
-            button.setToolTip(hint)
-            button.toggled.connect(
-                lambda checked, t=target: checked and self.target_changed.emit(t)
-            )
-            group.addButton(button)
-            row.addWidget(button)
-            self.target_buttons[target] = button
+        ])
+        self.target_control.chosen.connect(self.target_changed.emit)
+        #: The segments, so a caller can reach one at a time.
+        self.target_buttons = self.target_control.buttons
+        row.addWidget(self.target_control)
+        row.addStretch()
         self.target_buttons["SEM"].setChecked(True)
         return box
 
     def set_target(self, target: str) -> None:
         """Reflect the current modality without re-emitting a change."""
-        button = self.target_buttons[target]
-        button.blockSignals(True)
-        button.setChecked(True)
-        button.blockSignals(False)
+        self.target_control.set_current(target)
 
     def _editing_toggled(self, enabled: bool) -> None:
         self.set_editing_enabled(enabled)

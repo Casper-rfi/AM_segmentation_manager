@@ -12,12 +12,10 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
-    QButtonGroup,
     QComboBox,
     QLabel,
     QMenu,
     QPushButton,
-    QRadioButton,
     QSlider,
     QStackedWidget,
     QVBoxLayout,
@@ -39,6 +37,7 @@ from .common import (
     FlowArea,
     FlowLayout,
     RangeSlider,
+    SegmentedControl,
     ToggleSwitch,
     class_legend_html,
     fill_choice_combo,
@@ -112,19 +111,18 @@ class ImagePanel(QWidget):
         self.controls = FlowArea()
         controls = FlowLayout(spacing=6)
         self.controls.setLayout(controls)
-        self.mode_buttons: dict[str, QRadioButton] = {}
-        group = QButtonGroup(self)
-        for mode, caption, key in (
-            ("sem", "SEM", "1"), ("fib", "FIB", "2"), ("plot", "Plots", "3"),
-        ):
-            button = QRadioButton(caption)
-            button.setToolTip(f"Show the {caption} view\nShortcut: {key}")
-            button.toggled.connect(
-                lambda checked, m=mode: checked and self.mode_changed.emit(m)
+        # One widget rather than three loose buttons: in a flow layout the run
+        # could wrap apart, leaving what is plainly one choice reading as two.
+        self.mode_control = SegmentedControl([
+            (mode, caption, f"Show the {caption} view\nShortcut: {key}")
+            for mode, caption, key in (
+                ("sem", "SEM", "1"), ("fib", "FIB", "2"), ("plot", "Plots", "3"),
             )
-            group.addButton(button)
-            controls.addWidget(button)
-            self.mode_buttons[mode] = button
+        ])
+        self.mode_control.chosen.connect(self.mode_changed.emit)
+        #: The segments, so a caller can enable and disable them one at a time.
+        self.mode_buttons = self.mode_control.buttons
+        controls.addWidget(self.mode_control)
         self.mode_buttons["sem"].setChecked(True)
 
         # -- series --------------------------------------------------------
@@ -293,10 +291,7 @@ class ImagePanel(QWidget):
 
     def set_mode(self, mode: DisplayMode) -> None:
         """Reflect the current view without re-emitting a change."""
-        button = self.mode_buttons[mode]
-        button.blockSignals(True)
-        button.setChecked(True)
-        button.blockSignals(False)
+        self.mode_control.set_current(mode)
         self.stack.setCurrentIndex(1 if mode == "plot" else 0)
 
     def set_available_modes(self, modes: list[str]) -> None:
