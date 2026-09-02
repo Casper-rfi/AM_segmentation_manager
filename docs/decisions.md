@@ -18,13 +18,13 @@ rather than appending to it.
 ## Filesystem and identity
 
 - **A label directory is `<image-directory>_labels`, a sibling of the image directory.** A pure
-  string function both ways with no lookup table, so one module holds the convention; `sem/` is no
-  special case, its private and shared names coinciding. Conditions share a label by default, and
-  giving one its own means creating the directory rather than configuring anything. Label
-  directories are the only ones anything here renames — we do not own `sem` and `fib`, and renaming
-  those breaks reopening the project in Autolamella. **Legacy spellings stay readable indefinitely**
-  (`labels`, `labels_fib`, `labels_FIB`), a new label landing in whichever directory an image set
-  already has, so normalising is cosmetic and lives in `scripts/` rather than in a command.
+  string function both ways with no lookup table; `sem/` is no special case, its private and shared
+  names coinciding. Conditions share a label by default, and giving one its own means creating the
+  directory rather than configuring anything. **Label directories are the only ones anything here
+  renames** — we do not own `sem` and `fib`, and renaming those breaks reopening the project in
+  Autolamella. **Legacy spellings stay readable indefinitely** (`labels`, `labels_fib`,
+  `labels_FIB`), a new label landing in whichever directory an image set already has, so normalising
+  is cosmetic and lives in `scripts/` rather than in a command.
 - **A copy is paired back to its original by what the acquisition software recorded, never by name
   or order**, both of which survive a copy unchanged. `scripts/place_renamed_labels.py` names the
   header facts that do and reads them itself, `image_metadata.py` having no use for an identity.
@@ -53,15 +53,12 @@ rather than appending to it.
   `project_placement_problem` is the single guard both interfaces ask, testing two shapes — a
   gathering directory only sometimes holds *marked* projects to give it away, and one project's
   stages sit at a single depth whatever its era. The search is reliable and the levelling is not, so
-  they are separate calls: `find_dataset_candidates` proposes, `describe_dataset_candidate` says
-  what each proposal would become, and `dataset_candidates_below` descends into one proposed too
-  high. The *Add projects* dialog confirms; `--recursive` writes what it is sure of and reports the
-  rest. What a proposal *would become* is the useful column: lamella names reading like dataset
-  names tell a reader the level is wrong.
+  proposing and levelling are separate calls, and a person confirms. What a proposal *would become*
+  is the useful column: lamella names reading like dataset names tell a reader the level is wrong.
 - **Identity is the path relative to the scan root, never the name** — for a project, and for a
   lamella within its project. Two projects can have identical names, `created_at` and recorded
-  paths, so keying by name silently drops one; and two projects each holding an `05-pet-mutt` were
-  reported as one lamella of 140 images. A lamella is counted as `project / lamella`.
+  paths, so keying by name silently drops one, and two lamellae sharing a petname merge. A lamella
+  is counted as `project / lamella`.
 - **The lamella and stage levels are not always directories.** Older datasets collapse them; the
   missing level is synthesised in memory with the parent standing in, and the model records that it
   is synthetic. Data on disk is never reorganised to fit the newest layout.
@@ -86,7 +83,7 @@ rather than appending to it.
 - **The survey counts what it could not reach at all.** Every other finding describes something
   the conventions recognised; `unindexed-images` counts image files no image set claims, and
   `unindexed-dataset` counts whole directories no project claims — the two failures that hide best.
-  A project holding 430 images can survey as holding 100 with nothing saying so. Labels,
+  A project can survey as holding a fraction of its images with nothing saying so. Labels,
   predictions and ignored names are excluded, or annotating a project would report thousands.
   Turning that count into something viewable is [`04_future_work.md`](04_future_work.md) §6.
 - **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing in
@@ -99,12 +96,11 @@ rather than appending to it.
   `alignment_run_order`: a run takes several images inside the whole second a header records.
 - **Only the scanner opens an image, and only a loose one**, for the beam its filename may not
   state and the time it never does — one memoised read. Discovery opens nothing: it asks
-  `holds_loose_images`, which reads filenames. **It is the largest single cost of a scan** and was
-  long thought a second or two: the collection has since grown to 23,603 loose images of 37,569,
-  and reading their headers is 6.4s of a 14s scan. So a stage's are read together in a pool of
-  threads, on `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look
-  at. Half of a read waits on the disk and overlaps; the other half parses tags under the GIL and
-  is the ceiling, which is why more threads stop helping at eight.
+  `holds_loose_images`, which reads filenames. **It is the largest single cost of a scan**, most
+  images in this collection being loose, so a stage's headers are read together in a pool of
+  threads — on `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look
+  at. Half of a read waits on the disk and overlaps; the other half parses tags under the GIL and is
+  the ceiling, which is why more threads stop helping at eight.
 - **One record per acquisition, where a lamella holds the same picture several times.** Autolamella
   duplicates the image an alignment aligns *against* in two ways and one rule cannot see both: it
   copies it into every run using it, and saves it outside the runs under a name of its own
@@ -112,11 +108,11 @@ rather than appending to it.
   that run's `Alignment/` folder already holds an image of the same acquisition time, and **the
   original is kept**. Directory and time must agree independently on every match — **neither signal
   carries it alone**, time and size having merged genuinely different pictures — and **nothing is
-  hashed**, the time being already read and partitioning these as contents do. A third pass runs
-  over the whole *project*, the prototype having duplicated across lamellae; it keeps the
-  filename-and-time key rather than loosening to time alone, which would also merge a misfiled
-  reference whose indexing keeps the misfiling visible. **It never empties a lamella**, a duplicate
-  that can be seen beating a directory dropped out of the index and the survey at once.
+  hashed**, the time being already read. A third pass runs over the whole *project*, the prototype
+  having duplicated across lamellae, keeping the filename-and-time key rather than loosening to time
+  alone, which would merge a misfiled reference whose indexing keeps the misfiling visible. **It
+  never empties a lamella**, a duplicate that can be seen beating a directory dropped out of the
+  index and the survey at once.
 - **A fixed filename marker is matched to the shape Autolamella writes, not loosely.** Everything
   after `ref_` is a *task* name somebody chose, so a loose marker collides with one.
   `ref_alignment` is matched entire rather than as a prefix — as a prefix it reads a task called
@@ -144,12 +140,12 @@ rather than appending to it.
 
 ## Workflow state
 
-- **State is declared in a file, not implied by location, and the key names the label.**
-  `state.py` states the format; why the *label* is the key is that it makes an image disagreeing
-  with its label unrepresentable rather than merely detectable — the conditions of one scene
-  resolve to one key, so a change reaches all or none — and it is resolved rather than located, so
-  it survives annotation beginning. The cost of "no entry means selected" is that "reviewed and
-  kept" cannot be told from "not yet looked at".
+- **State is declared in a file, not implied by location, and the key names the label.** `state.py`
+  states the format. The *label* is the key because that makes an image disagreeing with its label
+  unrepresentable rather than merely detectable — the conditions of one scene resolve to one key, so
+  a change reaches all or none — and it is resolved rather than located, so it survives annotation
+  beginning. The cost of "no entry means selected" is that "reviewed and kept" cannot be told from
+  "not yet looked at".
 - **The three states are mutually exclusive, and both representations enforce it.** A mapping of
   key to state cannot express two states for one group, where a file grouping keys under
   `corrected:` / `deselected:` headings could. `ImageRecord` carries one `state` field rather than
@@ -178,11 +174,10 @@ rather than appending to it.
   happened"; each write then checks again for itself. That is what lets `plan_transition` and
   `apply_plan` be separate — previewed decisions, fresh safety check.
 - **Every label write goes through `io/atomic.py`, including compression.** It restores the
-  destination's own permissions before the rename, because `mkstemp` creates owner-only and OpenCV
-  truncates rather than recreates — a recompressed label kept `0o600` becomes unreadable to everyone
-  but its author, which on a shared archive is the same as losing it. Compression decides *after*
-  encoding, so `write_atomically` takes a `commit_if` predicate and reports whether it committed: a
-  skipped file says which of no saving, a dry run, or "somebody else rewrote it" applied.
+  destination's own permissions before the rename, because `mkstemp` creates owner-only — a
+  recompressed label kept `0o600` becomes unreadable to everyone but its author, which on a shared
+  archive is the same as losing it. Compression decides *after* encoding, so `write_atomically`
+  takes a `commit_if` predicate and reports whether it committed.
 - **Overwriting a label is tiered by what replacing it would cost, not by one flag.** Conversion
   sorts destinations three ways: an empty placeholder costs nothing to replace; a pseudo-label
   holding annotation is regenerable machine output, replaced once the user confirms; a corrected
@@ -194,10 +189,9 @@ rather than appending to it.
 - **Corrected is a claim, and it is checked where it is made.** A group marked corrected with no
   label or with a placeholder breaks the claim, and a training export is *right* to drop it — what
   is wrong is doing so in silence, leaving a training set short of exactly the images you believe
-  you annotated. So the window asks on either side of the gap, both times through
-  `classify_labels` so the two dialogs cannot disagree, and only about *corrected* groups: an
-  unlabelled selected image is the ordinary condition of an archive being worked through. The
-  command line warns and proceeds where the window asks.
+  you annotated. So the window asks, through `classify_labels` so two dialogs cannot disagree, and
+  only about *corrected* groups: an unlabelled selected image is the ordinary condition of an
+  archive being worked through. The command line warns and proceeds where the window asks.
 - **What a state change applies to is a set the user builds, at one level at a time.** Ticking a
   project clears the ticked lamellae and vice versa, and picking frames out clears both — so what
   is ticked on screen is the whole of what a change will touch. Not a precedence rule between
@@ -213,11 +207,10 @@ rather than appending to it.
   neighbouring frame is a nuisance, acting on one is a fault.
 - **Saving labels is the write that does not rescan**, being the one whose whole effect is already
   in memory when it finishes: `_attach_created_labels` names a label that did not exist on the
-  records proofread through it, and declaring a group corrected writes a state file and brings
-  those records with it, moving nothing. It is also the action taken most often — one lamella at a
-  time, all day — and reading a collection again to learn what is already known cost twenty seconds
-  of each one and discarded the prepared frames of the lamella being worked on. So it recounts from
-  the records instead, and `LabelController.save` settles the frames worth visiting itself.
+  records proofread through it, and declaring a group corrected writes a state file and brings those
+  records with it, moving nothing. It is also the action taken most often, and a scan there costs
+  the reviewer a walk of the collection *and* the prepared frames of the lamella they are working
+  on. So it recounts from the records, and `LabelController.save` settles the frames worth visiting.
 
 ## Metadata
 
@@ -237,17 +230,17 @@ rather than appending to it.
   is qualified wherever written; the metadata field keeps the plain name. Neither is derived from
   the other, which is why Add data offers no button to copy one across.
 - **A descriptive field is a row in `metadata.FIELDS`**, as a header value is a row in
-  `image_metadata.FIELDS`: adding a field is one row rather than an edit in six modules, and
-  adding a header *dialect* is a column rather than a hand-written extraction block per field.
-  Nothing names a particular field to find out what it is; a field with a `breakdown_label` gets
-  its count, its `--by` selector and its Export filter row without `aggregate.py` naming it.
-  `defaults` are the usual answers, offered where `choices` would require: two freezing methods
-  cover almost every sample, and jet freezing still has to be typable.
+  `image_metadata.FIELDS`: adding a field is one row rather than an edit in six modules, and adding
+  a header *dialect* is a column rather than an extraction block per field. Nothing names a
+  particular field to find out what it is; a field with a `breakdown_label` gets its count, its
+  `--by` selector and its Export filter row unasked. `defaults` are the usual answers offered where
+  `choices` would require — two freezing methods cover almost every sample, and jet freezing still
+  has to be typable.
 - **A value is the type its field says, from the moment it is typed.** One `format_field_value`
-  renders every one of them back, because the editor decides whether you edited a field by comparing
-  what it shows against the resolved value: a deposition time shown as `30.0` where `30` was typed
-  makes every project merely looked at report an edit. So a number is refused unless it parses,
-  written unquoted, and carried as a float — which makes zero a recorded value and a falsy one, so
+  renders every one back, because the editor decides whether you edited a field by comparing what it
+  shows against the resolved value: a deposition time shown as `30.0` where `30` was typed makes
+  every project merely looked at report an edit. So a number is refused unless it parses, written
+  unquoted, and carried as a float — **which makes zero a recorded value and a falsy one**, so
   `is_recorded` asks rather than testing for truth. A number that is not one is dropped with a
   warning, a column of sums being worth less than an admitted gap.
 - **A field holding several values stores them as a YAML list, and a bare scalar is one value.**
@@ -258,9 +251,8 @@ rather than appending to it.
   `VALUE_SEPARATOR` is presentation only; storage being a list is what lets a value hold a comma.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of four
   things and a typo is a real error; a grid is a material, a mesh and a film in combinations no list
-  would survive, and rejecting a real grid is worse than tolerating two spellings of one. Like
-  `sample` it cannot be defaulted from a shared file: a grid belongs to the specimen, and one
-  collection directory can hold a yeast project beside a virus one.
+  would survive. Like `sample` it cannot be defaulted from a shared file: a grid belongs to the
+  specimen, and one collection directory can hold a yeast project beside a virus one.
 - **Every image header carries settings for both beams, and some values exist for only one.**
   `microscope_state.*` describes the beam that took the image; `system.*` holds both beams'
   configured defaults, so reading `system.ion.voltage` from an SEM image yields the FIB's 30 kV —
@@ -271,12 +263,11 @@ rather than appending to it.
   a gallium column having no plasma.
 - **A value is stored in the unit its field name states, converted where the header is read**, so
   `acceleration_voltage_kv` is kV even though both dialects record volts. A breakdown grouping a
-  *measured* value rounds it, a header recording what was measured rather than what was set: a
-  voltage to 0.1 kV, a pixel size and beam current to four significant figures — the latter two
-  derived from the magnification and so differing in the last decimal between two images of one
-  field of view. Significant figures rather than decimal places, pixel sizes spanning decades. The
-  conversion rounds to six decimals in the stored unit, binary floating point turning 6e-05 m into
-  59.99999999999999 um.
+  *measured* value rounds it, a header recording what was measured rather than what was set: pixel
+  size and beam current are derived from the magnification and differ in the last decimal between
+  two images of one field of view. Significant figures rather than decimal places, pixel sizes
+  spanning decades. The conversion rounds to six decimals in the stored unit, binary floating point
+  turning 6e-05 m into 59.99999999999999 um.
 - **A declared path counts as matched only if its value converts.** A key can be present and still
   state nothing: a blank, a `"None"` marker, or uninitialised memory, which is what the FEI dialect
   leaves in the stage keys it never fills — `Stage.StageX` reads 6.95e-310 while the real position
@@ -306,12 +297,11 @@ rather than appending to it.
 ## Counting and export
 
 - **A record can be in more than one group, and the table says so.** A property an image has
-  several of — two organisations, a sample both infected and differentiated — counts the image under
-  each. The alternative, a bucket per combination, answers "how many images are of infected samples"
-  with nothing, which is the question holding them apart exists for. The rows then add to more than
-  the images counted, so the percentages stay a share of the *images* and a line says why. Which
-  kind a key is comes from `Breakdown.multi`, off the field table, never from what it returned;
-  `groups_of` is the one place either kind is read.
+  several of counts the image under each; a bucket per combination answers "how many images are of
+  infected samples" with nothing, which is the question holding them apart exists for. The rows then
+  add to more than the images counted, so the percentages stay a share of the *images* and a line
+  says why. Which kind a key is comes from `Breakdown.multi`, off the field table, never from what
+  it returned; `groups_of` is the one place either kind is read.
 - **A filter and a breakdown are one declaration.** The same key function used two ways — group by
   it, or keep the records whose group was chosen — so the filter lists come from `BREAKDOWNS`
   rather than a second table, and cannot disagree with it about what a value *is*. Hence
@@ -330,12 +320,11 @@ rather than appending to it.
   thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the
   *lamella* directory is never offered, or a petname sharing a word with a task claims every image
   below it, and a name two tasks claim is dropped rather than guessed. **None is a real answer** for
-  over half these images. **Timestamps were ruled out**, the windows in `history` being sparse
-  rather than tiling the session: `ref_MillRough_start_eb.tif` falls inside the `SetupLamella` one.
-- **Counting is split between the tab and the commands, not moved.** The Export tab counts the set
-  its filters describe, choosing a training set meaning looking at what survives a filter, and that
-  loop cannot run through a command that prints and exits. `stats` keeps the whole-collection sweep
-  and `quantify-labels` the per-lamella table, which nobody acts on one row at a time.
+  over half these images. **Timestamps cannot do this**: the windows in `history` are sparse rather
+  than tiling the session, so `ref_MillRough_start_eb.tif` falls inside the `SetupLamella` one.
+- **Counting is split between the tab and the commands, not moved.** Choosing a training set means
+  looking at what survives a filter, and that loop cannot run through a command that prints and
+  exits; `stats` keeps the whole-collection sweep and `quantify-labels` the per-lamella table.
 - **Opening the Export tab reads the headers and nothing else.** Under a millisecond an image,
   and it is what every acquisition filter and breakdown is made of. Offering them greyed out until
   a button was found and pressed was a control that did nothing with no way to tell why.
@@ -374,9 +363,9 @@ rather than appending to it.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
   workflow-state filter starts on "all" rather than *corrected*: the tab is narrowed towards an
   export rather than opening on one and hiding the archive. The cost is that an image somebody
-  decided against can reach a training set — only if it was labelled and deselected afterwards —
-  so the summary line counts the deselected images that would actually be written. Visible rather
-  than impossible, "show me everything I rejected" being a real question.
+  decided against can reach a training set — only if it was labelled and deselected afterwards — so
+  the summary line counts those. Visible rather than impossible, "show me everything I rejected"
+  being a real question.
 - **Both modalities means side by side, not mixed together.** A training CSV holding SEM and FIB
   rows under one `image` column is not something anyone trains on, the two beams needing different
   models. So a selection holding both writes `sem_image, sem_label, fib_image, fib_label`, one row
@@ -387,20 +376,16 @@ rather than appending to it.
   `frames.group_by_acquisition`. They do not reliably share a stem — older projects name the file
   inside `fib/` with the same `_SEM` suffix — and **what pairs them depends on the era of the
   filename**: Adaptive Polishing images carry an acquisition number, matched within one stage
-  directory, while reference and alignment filenames carry none and differ only by an `_eb`/`_ib`
-  suffix, so those match on the stem with the suffix removed (`layout.acquisition_stem`). Conditions
-  multiply out into genuine pairs nothing here can rank, and "one image per label" collapses it. The
-  train/validation split groups by the *acquisition*: split a paired row and the model is scored on
-  a scene it has seen.
+  directory, while reference and alignment filenames differ only by an `_eb`/`_ib` suffix and match
+  on the stem with it removed (`layout.acquisition_stem`). **The train/validation split groups by
+  the acquisition**: split a paired row and the model is scored on a scene it has seen.
 - **An export can also copy the files out**, state files and project metadata included, which is
-  what makes the copy a collection rather than a pile — `copy_export.py` states the shape and how
-  it refuses to overwrite. Two checks are not its: free space is estimated first, and a
-  destination inside the folder being copied from is refused, it being about to walk into its own
-  output.
+  what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
+  checks are not its: free space is estimated first, and a destination inside the folder being
+  copied from is refused, it being about to walk into its own output.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called `image` or
-  `label`, or ending in `_image` or `_label`, holds a path, so one command checks either shape
-  above and files written before both. A blank cell is its own answer rather than an absent
-  column: it records nothing, so it cannot have gone missing.
+  `label`, or ending in `_image` or `_label`, holds a path, so one command checks either shape above
+  and files written before both. A blank cell records nothing, so it cannot have gone missing.
 
 ## Environment
 
@@ -443,9 +428,10 @@ rather than appending to it.
   switch mid-workflow.
 - **Nothing outside `ml/` may import torch.** The subpackage is the boundary, and
   `ml/environment.py` answers "is inference possible here" without importing it, as `io/image.py`
-  does for the image stack. `ml/preprocessing.py` is a verbatim copy of AM_training's module,
+  does for the image stack. **`ml/preprocessing.py` is a verbatim copy of AM_training's module**,
   excluded from ruff: reformatting it destroys the only cheap answer to "is this still the
   preprocessing the model was trained with" — `diff`.
+
 ## Inference
 
 - **A fact recoverable from the weights is never declared**, the division `ml/model.py` sets out.

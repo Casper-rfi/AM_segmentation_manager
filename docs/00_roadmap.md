@@ -1,8 +1,7 @@
 # Roadmap
 
 Where the work stands and what to pick up next — the entry point for starting fresh. `README.md`
-is the user and developer entry point and its command tables are the catalogue of what each
-command does; [`decisions.md`](decisions.md) says why the software is the way it is and
+catalogues the commands; [`decisions.md`](decisions.md) says why the software is the way it is and
 [`display.md`](display.md) why the window is; `CLAUDE.md` holds the working agreement. Nothing
 those say is restated here.
 
@@ -14,7 +13,6 @@ All five main functions in `CLAUDE.md` are built, across the three series of ima
 writes and every layout era the collection holds. Curating, proofreading, quantifying and exporting
 are four tabs, each with a controller holding no Qt, and the command line does the same work for
 scripting and testing. Predictions need the second environment `scripts/setup_ml.sh` builds.
-What the window does, and why, is [`display.md`](display.md) — not restated here.
 
 ## What to pick up next
 
