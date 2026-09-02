@@ -103,6 +103,32 @@ def project(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def unlabelled(qt_app, config, tmp_path: Path):
+    """A window on a project whose images have no label file at all.
+
+    What proves a save can create a label rather than only replace one, which
+    is the case the record has to be told about.
+    """
+    root = tmp_path / "bare"
+    dataset = build_dataset(root, acquisitions=1, labels="none")
+    for modality in ("SEM", "FIB"):
+        tifffile.imwrite(
+            str(dataset.image(modality, 0)), np.full((48, 64), 120, dtype=np.uint8)
+        )
+    controller = CurationController(cache=FrameCache(), config=config)
+    window = CurationWindow(
+        controller,
+        settings=QSettings(str(tmp_path / "bare.ini"), QSettings.IniFormat),
+    )
+    window.scan(str(root))
+    window.tabs.setCurrentWidget(window.label_panel)
+    _settle(qt_app, lambda: drawn(window))
+    yield window
+    window.label_controller.discard_edits()
+    window.close()
+
+
+@pytest.fixture
 def window(qt_app, project: Path, config, tmp_path: Path):
     """A window with the project scanned and the Label tab in front."""
     controller = CurationController(cache=FrameCache(), config=config)
@@ -1516,7 +1542,7 @@ def test_saving_leaves_the_reviewer_on_the_lamella_they_saved(qt_app, two_lamell
     assert two_lamellae.controller.lamella.path == lamella
 
 
-def test_a_saved_lamella_is_rescanned(qt_app, window):
+def test_a_save_leaves_the_two_views_on_one_lamella(qt_app, window):
     paint_on(window)
 
     save_with(window, mark_corrected=False)
@@ -1524,6 +1550,65 @@ def test_a_saved_lamella_is_rescanned(qt_app, window):
 
     assert window.label_controller.lamella is window.controller.lamella
     assert window.label_panel.frame_label.text() == "1 / 3"
+
+
+def test_saving_does_not_read_the_collection_again(qt_app, window, monkeypatch):
+    """A save writes what is already in memory, so it must not scan.
+
+    The whole effect of a save is known where it happens: the labels it created
+    are named on their records and a declared state carries its own records
+    with it. Scanning to find that out again is the difference between a save
+    that is instant and one that costs a walk of the whole collection.
+    """
+    scans = []
+    monkeypatch.setattr(
+        window.controller, "rescan", lambda: scans.append(None) or []
+    )
+    paint_on(window)
+
+    save_with(window, mark_corrected=False)
+    _settle(qt_app, lambda: saved(window))
+
+    assert not scans, "a save must not re-read the collection"
+
+
+def test_a_label_a_save_created_is_known_without_a_rescan(qt_app, unlabelled):
+    """An image annotated from nothing carries its new label straight away.
+
+    Nothing re-reads the collection after a save, so the record has to be told
+    where the label it did not have now is -- or the next state change would be
+    keyed on a label the window does not know exists.
+    """
+    window = unlabelled
+    record = window.label_controller.record
+    assert not record.labels, "the fixture must start with no label"
+    key = window.label_controller.current_key
+    paint_on(window)
+
+    save_with(window, mark_corrected=False)
+    _settle(qt_app, lambda: saved(window))
+
+    assert key.exists(), "the label was not written"
+    assert record.labels == [key], "the record does not know its own new label"
+
+
+def test_marking_corrected_is_visible_without_a_rescan(qt_app, window, monkeypatch):
+    """The lists recount from the records the save moved, not from a new scan."""
+    window.controller.set_editing_enabled(True)
+    scans = []
+    monkeypatch.setattr(
+        window.controller, "rescan", lambda: scans.append(None) or []
+    )
+    paint_on(window)
+
+    save_with(window, mark_corrected=True)
+    _settle(qt_app, lambda: saved(window))
+
+    assert not scans
+    assert window.label_controller.record.state == "corrected"
+    assert window.label_panel.frame_label.text() == "1 / 3", (
+        "a corrected frame is still one to proofread"
+    )
 
 
 def test_saving_nothing_writes_nothing(window, monkeypatch):

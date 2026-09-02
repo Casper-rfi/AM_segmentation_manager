@@ -31,7 +31,7 @@ from ..operations.predictions import (
     plan_conversions,
 )
 from ..operations.selection import current_state
-from ..progress import Cancellation
+from ..progress import Cancellation, timed
 from ..reporting import format_bytes
 
 logger = logging.getLogger(__name__)
@@ -635,7 +635,8 @@ class OperationsController:
         it answers the question the project list cannot: what is sitting here
         that nothing has indexed.
         """
-        candidates = self.propose_projects(root)
+        with timed(logger, "Counting what is not indexed"):
+            candidates = self.propose_projects(root)
         return len(candidates), sum(item.images for item in candidates)
 
     def propose_projects(self, root: Path) -> list[DatasetCandidate]:

@@ -9,10 +9,18 @@ Cancellation is cooperative and lands between whole units of work, never inside
 one. That is what makes it safe rather than merely responsive: a prediction is
 written atomically and recorded before the next begins, so a stopped run leaves
 finished work and an accurate account of it.
+
+:func:`timed` answers the other question about a long operation -- how long its
+parts actually take -- so that a decision to make one faster is taken against
+measurements rather than against a guess about which part is slow.
 """
 from __future__ import annotations
 
+import logging
 import threading
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 
 class OperationCancelled(Exception):
@@ -53,3 +61,20 @@ class Cancellation:
         """
         if self._event.is_set():
             raise OperationCancelled()
+
+
+@contextmanager
+def timed(log: logging.Logger, phase: str, level: int = logging.INFO) -> Iterator[None]:
+    """Log how long *phase* took, reporting a failed phase as well as a finished one.
+
+    Args:
+        log: The module logger of whatever is being timed, so the line is
+            attributed where the work is.
+        phase: What is being timed, as a noun phrase for the log line.
+        level: Kept at INFO for a phase worth seeing without ``-v``.
+    """
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        log.log(level, "%s: %.2fs", phase, time.perf_counter() - start)

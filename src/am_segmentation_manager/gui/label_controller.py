@@ -593,13 +593,13 @@ class LabelController:
     def save(self, *, mark_corrected: bool = False, allow_corrected: bool = False) -> str:
         """Write every edited label, and optionally mark the reviewed set corrected.
 
-        The labels are written before any file moves, because marking corrected
-        moves them and a path resolved beforehand would no longer be where the
-        file is.
+        Leaves the view in step with what was written, so nothing has to scan
+        the collection again to catch up: the state change declares itself in a
+        file without moving anything, and brings the records it touched with it.
 
         Args:
-            mark_corrected: Also move the reviewed labels, and the images
-                sharing them, as corrected.
+            mark_corrected: Also declare the reviewed labels, and the images
+                sharing them, corrected.
             allow_corrected: Confirm replacing labels that are already
                 proofread.
 
@@ -623,6 +623,12 @@ class LabelController:
 
         self.session.discard()
         self._label_states.clear()
+        # The frames worth visiting are recomputed here rather than by the
+        # rescan that used to follow a save: marking corrected moves the state
+        # this reads, and a label written where there was none changes what a
+        # frame's line reports. Both are known here, so nothing has to re-read
+        # the collection to find them out.
+        self._refresh_positions(keep_frame=self.frame_index)
         return headline
 
     def _attach_created_labels(self, created: Iterable[Path]) -> None:

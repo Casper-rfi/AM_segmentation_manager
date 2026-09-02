@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import datetime
@@ -46,6 +47,7 @@ from .metadata import (
     merge_metadata,
 )
 from .models import ImageRecord, Lamella, Project, Stage
+from .progress import timed
 from .state import StageState, StateFileError, read_state, state_key
 from .tasks import NO_TASKS, TaskVocabulary, read_vocabularies
 
@@ -147,16 +149,24 @@ class Scanner:
         # double the only part of a scan that is not a filesystem walk.
         self._headers: dict[Path, LooseHeader] = {}
         self._read_header = header_reader()
+        #: How many headers this scan opened and what they cost, reported at
+        #: the end of :meth:`build_index`. The only part of a scan that is not
+        #: a filesystem walk, so a scan that is slow is one or the other.
+        self._header_reads = 0
+        self._header_seconds = 0.0
 
     def _header(self, image_path: Path) -> LooseHeader:
         """Return a loose image's beam and acquisition time, reading once."""
         cached = self._headers.get(image_path)
         if cached is None:
+            start = time.perf_counter()
             cached = (
                 self._read_header(image_path)
                 if self._read_header is not None
                 else (None, None)
             )
+            self._header_seconds += time.perf_counter() - start
+            self._header_reads += 1
             self._headers[image_path] = cached
         return cached
 
@@ -173,7 +183,8 @@ class Scanner:
         phantom nested project.
         """
         logger.info("Scanning for projects under %s", self.start_path)
-        roots = find_project_roots(self.start_path)
+        with timed(logger, "Finding project roots"):
+            roots = find_project_roots(self.start_path)
         logger.debug("Found %d project root(s)", len(roots))
         return roots
 
@@ -199,11 +210,19 @@ class Scanner:
         """
         index = ProjectIndex(start_path=self.start_path)
 
-        for project_index, project_root in enumerate(sorted(self.find_project_roots()), start=1):
-            project = self._build_project(project_root, project_index)
-            index.add(project)
-            logger.info("Indexed project %s with %d lamellae", project.key, len(project.lamellae))
-
+        with timed(logger, "Building the index"):
+            roots = sorted(self.find_project_roots())
+            for project_index, project_root in enumerate(roots, start=1):
+                with timed(logger, f"  {project_root.name}", level=logging.DEBUG):
+                    project = self._build_project(project_root, project_index)
+                index.add(project)
+                logger.info(
+                    "Indexed project %s with %d lamellae", project.key, len(project.lamellae)
+                )
+        logger.info(
+            "Read %d image header(s): %.2fs",
+            self._header_reads, self._header_seconds,
+        )
         return index
 
     def _build_project(self, project_root: Path, project_index: int) -> Project:

@@ -2494,14 +2494,21 @@ class CurationWindow(QMainWindow):
         ) + "."
 
     def _labels_saved(self, headline: str) -> None:
-        """Record what a save did and bring the window back in step."""
+        """Record what a save did and bring the window back in step.
+
+        Refreshed rather than rescanned. A save is the one write whose whole
+        effect is already in memory when it finishes: the labels it created are
+        named on their records, and declaring a group corrected writes a file
+        and updates those records without moving anything. Reading the
+        collection again to learn what is already known cost twenty seconds of
+        the action taken most often, and threw away the prepared frames of the
+        lamella being proofread on the way.
+        """
         self.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
         logger.info("%s: %s", SAVE_TITLE, headline)
         self._flash(headline, 4000)
-        # Rescanned rather than refreshed: a save writes labels that were not
-        # there when the scan ran, and marking corrected moves the files.
-        self.rescan()
-        self._point_label_tab()
+        self.refresh(reload_lists=True)
+        self.label_panel.refresh()
 
     def _schedule_label_loads(self) -> None:
         """Ask the Label tab's loader to prepare the frames around this one."""
