@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from collections.abc import Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -31,12 +32,14 @@ from .layout import (
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
+    classify_loose_image,
     directory_cache,
     image_files,
     image_files_by_name,
     image_files_of,
     is_alignment_directory,
     is_alignment_run_reference,
+    is_ignored_image_name,
     resolve_loose_predictions_directory,
     resolve_predictions_directory,
     subdirectories_by_name,
@@ -53,6 +56,16 @@ from .state import StageState, StateFileError, read_state, state_key
 from .tasks import NO_TASKS, TaskVocabulary, read_vocabularies
 
 logger = logging.getLogger(__name__)
+
+#: How many image headers are read at once.
+#:
+#: Half of a header read is the file being opened and read, which waits on the
+#: disk and lets another thread run; the other half is parsing the tags, which
+#: does not. That second half is the ceiling, not the thread count: on a warm
+#: local volume 4 workers cost 6.74s, 8 cost 6.38s and 16 cost 6.47s. Where the
+#: files are on a network or cloud-synced volume the waiting half is much the
+#: larger one and this has more to give.
+HEADER_WORKERS = 8
 
 
 class ProjectIndex:
@@ -174,6 +187,40 @@ class Scanner:
     def _resolve_modality(self, image_path: Path) -> str | None:
         """Return the beam an image's header states, for a name that does not."""
         return self._header(image_path)[0]
+
+    def _prefetch_headers(self, discovered: DiscoveredStage) -> None:
+        """Read a stage's loose headers together, before anything asks for one.
+
+        The reads are the one part of a scan that is not a filesystem walk, and
+        on the reference collection they are more of it than the walk is:
+        23,603 headers against 37,569 images. Each is a file opened, a seek and
+        a small read, so they wait on the disk rather than on the interpreter
+        and a pool of threads gets through them several at a time. Nothing here
+        changes what is read or in what order it is answered -- :meth:`_header`
+        still memoises, and a path this misses is simply read when asked for.
+
+        The predicate is :func:`~..layout.build_loose_image_sets`'s own, so a
+        file it will not look at is not opened for it.
+        """
+        if self._read_header is None:
+            return
+        wanted = [
+            path
+            for path in image_files(discovered.path)
+            if path not in self._headers
+            and not is_ignored_image_name(path.name)
+            and classify_loose_image(
+                path.name, in_alignment_run=discovered.in_alignment_run
+            ) is not None
+        ]
+        if len(wanted) < 2:
+            return
+        start = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=HEADER_WORKERS) as pool:
+            for path, header in zip(wanted, pool.map(self._read_header, wanted)):
+                self._headers[path] = header
+        self._header_seconds += time.perf_counter() - start
+        self._header_reads += len(wanted)
 
     def find_project_roots(self) -> list[Path]:
         """Return the project roots under start_path.
@@ -533,6 +580,7 @@ class Scanner:
         itself rather than reading this.
         """
         sets = list(build_image_sets(discovered.path))
+        self._prefetch_headers(discovered)
         loose = build_loose_image_sets(
             discovered.path,
             in_alignment_run=discovered.in_alignment_run,

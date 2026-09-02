@@ -224,6 +224,26 @@ def test_only_loose_images_are_opened(project, monkeypatch):
     }
 
 
+def test_the_headers_of_a_stage_are_read_together(project, monkeypatch):
+    """The reads are the one part of a scan that is not a filesystem walk, and
+    on the reference collection more of it than the walk is. Half of each waits
+    on the disk, so they overlap; a change that quietly serialised them again
+    would cost seconds per scan with nothing to show it."""
+    import threading
+
+    threads: set[int] = set()
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (
+            lambda path: (threads.add(threading.get_ident()), ("FIB", None))[1]
+        ),
+    )
+
+    Scanner(project.parent).build_index()
+
+    assert len(threads) > 1, "the headers of one stage were read one at a time"
+
+
 def test_each_image_is_opened_once(project, monkeypatch):
     """The beam and the acquisition time come out of the same read."""
     opened: list[str] = []

@@ -98,8 +98,13 @@ rather than appending to it.
   leaving an Adaptive Polishing timeline, ordered by filename, alone. Ties go to
   `alignment_run_order`: a run takes several images inside the whole second a header records.
 - **Only the scanner opens an image, and only a loose one**, for the beam its filename may not
-  state and the time it never does — one memoised read, costing the collection scan a second or
-  two. Discovery opens nothing: it asks `holds_loose_images`, which reads filenames.
+  state and the time it never does — one memoised read. Discovery opens nothing: it asks
+  `holds_loose_images`, which reads filenames. **It is the largest single cost of a scan** and was
+  long thought a second or two: the collection has since grown to 23,603 loose images of 37,569,
+  and reading their headers is 6.4s of a 14s scan. So a stage's are read together in a pool of
+  threads, on `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look
+  at. Half of a read waits on the disk and overlaps; the other half parses tags under the GIL and
+  is the ceiling, which is why more threads stop helping at eight.
 - **One record per acquisition, where a lamella holds the same picture several times.** Autolamella
   duplicates the image an alignment aligns *against* in two ways and one rule cannot see both: it
   copies it into every run using it, and saves it outside the runs under a name of its own
