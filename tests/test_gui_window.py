@@ -37,12 +37,13 @@ if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
     from qtpy.QtCore import QSettings, Qt
-    from qtpy.QtWidgets import QApplication, QMessageBox
+    from qtpy.QtWidgets import QApplication, QMessageBox, QToolButton
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
+    from am_segmentation_manager.gui.widgets.branding import PRODUCT_NAME
     from am_segmentation_manager.gui.widgets.common import ChipEditor
     from am_segmentation_manager.gui.widgets.image_view import MIN_FIT_FRACTION
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
@@ -1945,6 +1946,168 @@ def test_the_collection_actions_wait_for_a_folder(qt_app, settings):
         assert panel.compress_button.isEnabled()
     finally:
         fresh.close()
+
+
+def test_a_first_run_opens_on_add_data(qt_app, settings):
+    """Curate is the right tab to come back to and the wrong one to arrive on.
+
+    With nothing ever scanned it holds an empty tree, no cue about what comes
+    first, and none of the three buttons that could do anything about it.
+    """
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    controller = CurationController(cache=FrameCache(), config=CONFIG)
+    fresh = CurationWindow(controller, settings=settings)
+    try:
+        assert fresh.tabs.currentWidget() is fresh.metadata_panel
+    finally:
+        fresh.close()
+
+
+def test_the_first_scan_hands_over_to_curate(qt_app, project: Path, settings):
+    """Opening on Add data is only half of it: once a folder has been scanned
+    there is something to curate, and leaving the reviewer on the tab they
+    started from would hide the tree they just filled."""
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    controller = CurationController(cache=FrameCache(), config=CONFIG)
+    fresh = CurationWindow(controller, settings=settings)
+    try:
+        assert fresh.tabs.currentWidget() is fresh.metadata_panel
+
+        fresh.scan(str(project))
+
+        assert fresh.tabs.currentWidget() is fresh.curate
+    finally:
+        fresh.close()
+
+
+def test_a_later_scan_leaves_the_reviewer_where_they_are(window, project: Path):
+    """The hand-over happens once. Pressing Scan from Export is how a reviewer
+    picks up files changed outside the window, and being thrown to Curate for
+    it would cost them the filters they had set."""
+    window.tabs.setCurrentWidget(window.export_panel)
+
+    window.scan(str(project))
+
+    assert window.tabs.currentWidget() is window.export_panel
+
+
+def test_the_title_names_the_folder_that_is_open(window, project: Path):
+    """Two windows on two collections are told apart by this and nothing else."""
+    assert project.name in window.windowTitle()
+    assert PRODUCT_NAME in window.windowTitle()
+
+
+def test_a_remembered_folder_still_opens_on_curate(qt_app, settings, tmp_path):
+    """Which is the ordinary case: a scan root, once chosen, is remembered, so
+    this changes where a first run lands and nothing else."""
+    from am_segmentation_manager.gui.widgets.main_window import (
+        SETTING_SCAN_ROOT,
+        CurationWindow,
+    )
+
+    settings.setValue(SETTING_SCAN_ROOT, str(tmp_path))
+    controller = CurationController(cache=FrameCache(), config=CONFIG)
+    fresh = CurationWindow(controller, settings=settings)
+    try:
+        assert fresh.tabs.currentWidget() is fresh.curate
+    finally:
+        fresh.close()
+
+
+def _menu_items(window, title: str) -> dict[str, str]:
+    """Return ``{item text: shortcut}`` for one menu of the bar.
+
+    Plain strings rather than live QActions. PySide6 keeps a wrapper alive only
+    while the wrapper that vended it lives, so a QMenu read out of the bar and
+    returned past its QAction -- or a QAction returned past its QMenu -- is an
+    already-deleted object by the time anything asks it a question. Everything
+    is read while the whole chain is still in scope. To *press* an item, go
+    through ``window._menu_actions``, which the window holds for this reason.
+    """
+    bar_action = next(
+        action
+        for action in window.menuBar().actions()
+        if action.text().replace("&", "") == title
+    )
+    menu = bar_action.menu()
+    return {
+        item.text(): item.shortcut().toString()
+        for item in menu.actions()
+        if not item.isSeparator()
+    }
+
+
+def test_the_window_has_the_menus_a_desktop_application_has(window):
+    """Nothing here is a second way to drive the window: it is where someone
+    looks for the things a window is expected to have and this one had nowhere
+    to put."""
+    assert set(_menu_items(window, "File")) == {
+        "Open folder...", "Rescan", "Quit",
+    }
+    assert set(_menu_items(window, "Help")) == {
+        "Keyboard shortcuts", f"About {PRODUCT_NAME}",
+    }
+
+
+def test_the_shortcut_menu_item_binds_no_key_of_its_own(window):
+    """F1 is already an application shortcut, and Qt answers two bindings of
+    one key with an ambiguous overload where neither fires reliably. The list
+    teaches its own key instead -- it holds a row for F1."""
+    assert _menu_items(window, "Help")["Keyboard shortcuts"] == ""
+
+
+def test_the_shortcut_menu_item_opens_the_same_list_f1_does(window, qt_app):
+    window._menu_actions["Keyboard shortcuts"].trigger()
+    try:
+        assert window._help is not None
+        assert not window._help.isHidden()
+    finally:
+        if window._help is not None:
+            window._help.close()
+
+
+def test_the_help_button_in_the_corner_opens_the_list(window):
+    """F1 is the only way in, and nothing on screen mentions F1."""
+    corner = window.tabs.cornerWidget(Qt.TopRightCorner)
+    button = next(
+        child for child in corner.findChildren(QToolButton) if child.text() == "?"
+    )
+
+    button.click()
+    try:
+        assert window._help is not None
+    finally:
+        if window._help is not None:
+            window._help.close()
+
+
+def test_about_says_the_version_and_where_the_log_went(window, monkeypatch, tmp_path):
+    """The two things anybody reporting a problem is asked for first, and
+    neither was anywhere on screen. The log is read back from the handlers, so
+    a run started with --log-file reports where its output actually went."""
+    import logging
+
+    from am_segmentation_manager import __version__
+
+    shown = {}
+
+    def capture(self):
+        shown["text"] = self.text()
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec_", capture, raising=False)
+    handler = logging.FileHandler(tmp_path / "run.log")
+    logging.getLogger().addHandler(handler)
+    try:
+        window._show_about()
+    finally:
+        logging.getLogger().removeHandler(handler)
+        handler.close()
+
+    assert __version__ in shown["text"]
+    assert "run.log" in shown["text"]
 
 
 def test_the_tab_says_how_much_of_the_folder_is_not_indexed(

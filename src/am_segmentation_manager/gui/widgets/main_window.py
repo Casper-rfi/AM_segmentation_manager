@@ -7,11 +7,13 @@ tells the controller what the user did.
 from __future__ import annotations
 
 import logging
+import os
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from qtpy import API_NAME, QT_VERSION
 from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl, Signal
 from qtpy.QtGui import QCursor, QDesktopServices, QPixmap
 from qtpy.QtWidgets import (
@@ -28,6 +30,7 @@ from qtpy.QtWidgets import (
     QSplitter,
     QStyle,
     QTabWidget,
+    QToolButton,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -67,7 +70,7 @@ from .project_panel import ProjectPanel, status_legend
 from .report_dialog import ReportDialog
 from .scan_banner import ScanBanner
 from .state_panel import StatePanel
-from .theme import BORDER_LIGHT, HEADING, MUTED
+from .theme import BORDER_LIGHT, COMPACT_BUTTON, HEADING, MUTED
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +95,11 @@ MAX_LISTED_FILES = 12
 
 #: Names the save in every dialog and log line it produces.
 SAVE_TITLE = "Save labels"
+
+#: The em dash between the product name and the folder in the window title.
+#: Two windows on two collections are told apart by the title and by nothing
+#: else, the taskbar and the window switcher showing only that.
+TITLE_SEPARATOR = " — "
 
 try:  # Qt 6 moved QShortcut out of QtWidgets.
     from qtpy.QtGui import QKeySequence, QShortcut
@@ -204,12 +212,19 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
 }
 
 
-def _brand_mark() -> QWidget:
-    """Return the mark and the product name, for the corner of the tab row.
+def _brand_mark(on_help) -> QWidget:
+    """Return the mark, the product name and the help button, for the tab row.
 
     A widget rather than a `QLabel`, a label showing either a pixmap or text
-    and this needing both. Nothing is clickable: it says whose window this is
-    and answers no question, so giving it behaviour would only invite pressing.
+    and this needing both. **The mark and the name are still not clickable**:
+    they say whose window this is and answer no question, so giving either
+    behaviour would only invite pressing. The button beside them is a separate
+    control that looks like one, and it is here because the shortcut list is
+    the best thing in the window and F1 is the only way in -- a key nothing on
+    screen mentions.
+
+    Args:
+        on_help: Called when the help button is pressed.
     """
     row = QWidget()
     layout = QHBoxLayout(row)
@@ -223,12 +238,40 @@ def _brand_mark() -> QWidget:
     name = QLabel(PRODUCT_NAME)
     name.setStyleSheet(f"color: {MUTED};")
     layout.addWidget(name)
+
+    # A one-character caption, which the stylesheet's button padding would
+    # otherwise clip blank; see `theme.COMPACT_BUTTON`.
+    help_button = QToolButton()
+    help_button.setObjectName(COMPACT_BUTTON)
+    help_button.setText("?")
+    help_button.setToolTip("Show the keyboard shortcuts for this tab (F1)")
+    help_button.clicked.connect(on_help)
+    layout.addWidget(help_button)
     return row
 
 
 #: The mark's side beside the tabs, in logical pixels. Sized to the tab text
 #: rather than to the mark: it sits on that row and must not set its height.
 CORNER_LOGO = 16
+
+#: The mark's side in the About dialog, where it is the one place in the window
+#: it is shown at a size worth looking at.
+ABOUT_LOGO = 64
+
+
+def _log_file_path() -> str | None:
+    """Return the file the root logger is writing to, or None.
+
+    Asked of the handlers rather than assumed, so this reports where the log is
+    going rather than where it usually goes.
+    """
+    for handler in logging.getLogger().handlers:
+        filename = getattr(handler, "baseFilename", None)
+        # os.devnull is what a test runner attaches when nothing asked for a
+        # log, and reporting it would send someone to read an empty file.
+        if filename and Path(filename) != Path(os.devnull):
+            return str(filename)
+    return None
 
 
 #: How a heading is set apart from the rows under it.
@@ -484,7 +527,7 @@ class CurationWindow(QMainWindow):
         """
         super().__init__()
         self.controller = controller
-        self.setWindowTitle("Adaptive milling segmentation curation")
+        self.setWindowTitle(PRODUCT_NAME)
         self.resize(1600, 950)
 
         self.settings = settings if settings is not None else QSettings(
@@ -562,11 +605,27 @@ class CurationWindow(QMainWindow):
         remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
         if remembered:
             self.project_panel.set_path(remembered)
+            self._show_folder_in_title(Path(remembered))
+
+        #: Whether the window opened on Add data for want of anything to
+        #: curate, and so still owes the reviewer the move to Curate that a
+        #: first scan earns. Cleared by that move, and never set again.
+        self._awaiting_first_scan = not remembered
 
         self.refresh()
-        # The window opens on Curate, and _tab_changed does not fire for the
-        # tab that was already showing.
-        self._focus_curate()
+        if remembered:
+            # The window opens on Curate, and _tab_changed does not fire for
+            # the tab that was already showing.
+            self._focus_curate()
+        else:
+            # Nothing has ever been scanned on this machine, so Curate opens on
+            # an empty tree with nothing to curate and no cue about what comes
+            # first. Add data holds the two things that do -- reading a folder
+            # and naming its projects -- so a first run opens where it can act,
+            # and `scan` moves on to Curate once there is something in it.
+            # Ordinary use is unaffected: a scan root, once chosen, is
+            # remembered.
+            self.tabs.setCurrentWidget(self.metadata_panel)
 
     # -- construction ------------------------------------------------------
 
@@ -616,12 +675,64 @@ class CurationWindow(QMainWindow):
         # window has spare that a reader already looks at. Only here and on the
         # banner -- the orange and green in it are segmentation class colours
         # everywhere else, so a third use would be read as data.
-        self.tabs.setCornerWidget(_brand_mark(), Qt.TopRightCorner)
+        self.tabs.setCornerWidget(
+            _brand_mark(self.show_shortcuts), Qt.TopRightCorner
+        )
         self.setCentralWidget(self.tabs)
+        self._build_menus()
 
         # Parented to the window rather than to a tab: a scan can be asked for
         # from any of them, and what it holds up is the whole window.
         self.banner = ScanBanner(self)
+
+    def _build_menus(self) -> None:
+        """Build the menu bar.
+
+        Deliberately short. Every action here is reachable in the window
+        already, so this is not a second way to drive the application: it is
+        where someone looks for the things a window is expected to have and
+        this one had nowhere to put -- what the folder is, what version this
+        is, where the log went, and that the shortcut list exists at all.
+
+        macOS moves About and Quit into the application menu by their text, so
+        neither is spelled to read well under File.
+
+        **Every menu and action is kept in an attribute.** `addMenu` does not
+        hand PySide6 ownership of what it returns, so a menu nothing holds is
+        collected and its C++ object deleted underneath the bar that is still
+        showing it -- the same shape as the connect-per-call trap in
+        `docs/display.md`.
+        """
+        menus = self.menuBar()
+
+        self._menus = {}
+        self._menu_actions = {}
+        file_menu = self._menus["file"] = menus.addMenu("&File")
+        self._add_action(
+            file_menu, "Open folder...", self.project_panel.browse,
+            QKeySequence.Open,
+        )
+        self._add_action(
+            file_menu, "Rescan", self.rescan, QKeySequence.Refresh,
+        )
+        file_menu.addSeparator()
+        self._add_action(file_menu, "Quit", self.close, QKeySequence.Quit)
+
+        help_menu = self._menus["help"] = menus.addMenu("&Help")
+        # No shortcut on this one, deliberately: F1 is already an application
+        # shortcut, and a second binding of one key is Qt's "ambiguous
+        # shortcut", where neither fires reliably. The list teaches its own
+        # key -- "F1  Show this list" is a row in it.
+        self._add_action(help_menu, "Keyboard shortcuts", self.show_shortcuts)
+        self._add_action(help_menu, f"About {PRODUCT_NAME}", self._show_about)
+
+    def _add_action(self, menu, text: str, slot, shortcut=None) -> None:
+        """Add one menu item, keeping the reference that stops it being freed."""
+        action = menu.addAction(text)
+        if shortcut is not None:
+            action.setShortcut(shortcut)
+        action.triggered.connect(slot)
+        self._menu_actions[text] = action
 
     def _build_timeline(self) -> QHBoxLayout:
         """Build the frame timeline row.
@@ -717,6 +828,41 @@ class CurationWindow(QMainWindow):
         self.metadata_panel.project_reveal_requested.connect(
             lambda row: self._reveal_path(self.metadata_controller.project_path(row))
         )
+
+    def _show_folder_in_title(self, directory: Path) -> None:
+        """Name the open collection in the window title.
+
+        The folder rather than the whole path: a collection is recognised by
+        what it is called, and a title long enough to be elided in the window
+        switcher says nothing at all there.
+        """
+        self.setWindowTitle(f"{PRODUCT_NAME}{TITLE_SEPARATOR}{directory.name}")
+
+    def _show_about(self) -> None:
+        """Say what this is, which version, and where its log is going.
+
+        The version and the log path are the two things anybody reporting a
+        problem is asked for first, and neither was anywhere on screen. The log
+        is read back from the handlers rather than from the path the command
+        line would have chosen, so a run started with ``--log-file`` reports
+        where its output actually went.
+        """
+        from ... import __version__
+
+        lines = [
+            f"<b>{PRODUCT_NAME}</b>",
+            f"Version {__version__}",
+            f"Qt binding: {API_NAME} {QT_VERSION}",
+        ]
+        log = _log_file_path()
+        lines.append(f"Log: {log}" if log else "Not logging to a file")
+
+        about = QMessageBox(self)
+        about.setWindowTitle(f"About {PRODUCT_NAME}")
+        about.setIconPixmap(logo_pixmap(ABOUT_LOGO))
+        about.setText("<br>".join(lines))
+        about.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        about.exec_()
 
     # -- being the window in front -----------------------------------------
 
@@ -1775,6 +1921,14 @@ class CurationWindow(QMainWindow):
         ):
             self.project_panel.set_path(str(directory))
             self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
+            self._show_folder_in_title(directory)
+            if self._awaiting_first_scan:
+                # A first run opened on Add data with nothing to curate. There
+                # is now something, so this hands over to the tab that shows
+                # it -- once. Every later scan leaves the reviewer on the tab
+                # they asked from, which is as often Export as anywhere.
+                self._awaiting_first_scan = False
+                self.tabs.setCurrentWidget(self.curate)
 
     def rescan(self) -> None:
         """Read the same folder again, staying on the lamella being reviewed.

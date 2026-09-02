@@ -114,7 +114,7 @@ class ProjectPanel(QWidget):
 
         browse = QPushButton("Browse...")
         browse.setToolTip("Choose a folder to scan")
-        browse.clicked.connect(self._browse)
+        browse.clicked.connect(self.browse)
         row.addWidget(browse)
 
         # Not full width any more: Scan is not the window's primary action, and
@@ -252,7 +252,12 @@ class ProjectPanel(QWidget):
         row.addStretch(1)
         return row
 
-    def _browse(self) -> None:
+    def browse(self) -> None:
+        """Ask for a folder to scan, and request a scan of it if one is chosen.
+
+        Public because the File menu offers the same thing: two ways in, one
+        behaviour, rather than the menu opening a dialog of its own.
+        """
         directory = choose_directory(
             self, "Choose a folder to scan", self.path_edit.text() or None
         )

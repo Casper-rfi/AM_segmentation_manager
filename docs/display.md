@@ -313,6 +313,13 @@ reasoning now lives in a test and the entry can point at it instead.
   offscreen platform hides this**, being unable to grab a keyboard and so delivering to the field
   directly. A test written against it passed while the window did nothing. `common.match_anywhere`
   installs on both, and `test_gui_completion.py` sends the key both ways.
+- **A PySide6 wrapper lives only while the wrapper that vended it does.** `bar.actions()[0].menu()`
+  hands back a `QMenu` that is *already deleted* by the time it is used, the `QAction` wrapper
+  having been collected on the way out of the expression — and a `QAction` read from that menu and
+  returned past it goes the same way. Nothing warns; the object raises "Internal C++ object already
+  deleted" when asked anything. So the window keeps every menu and item it builds in an attribute
+  (`test_the_window_has_the_menus_a_desktop_application_has`), and a reader walking the bar holds
+  each link of the chain in a local and takes plain values out rather than live objects.
 - **Never disconnect a signal from inside the handler for that signal.** A connection list mutated
   mid-emit works under PyQt5 and hangs under PySide6, with no traceback. Connect once and track what
   is pending in an attribute; the same shape hides in any connect-per-call pattern.
