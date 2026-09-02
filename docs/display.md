@@ -206,6 +206,15 @@ environment the package is *installed* into.
   every `TAB_GESTURES` row names its heading, and the heading *order* is the order the bindings
   first name them — so the list is rearranged by moving a binding rather than by keeping a second
   table in step with one. Only "This list" is placed, and it is placed last.
+- **The list opens with a keyboard, and the keys the tab binds are picked out on it.** Which of the
+  keys under your hands do anything here is a question a picture answers faster than a list, and
+  what each one does is the table directly below. Drawn with `QPainter` like the tool marks: it
+  takes the window's own colours, is right at any display scale, and has no asset to keep in step
+  with the bindings — `_keys_of` reads them, so a key added to the window appears on the diagram
+  without anything else being edited, and a chord lights its modifiers too. One tint rather than a
+  colour per group, the window having exactly one accent. A compact layout, no key beyond those
+  bound being on it; a tab with no keys of its own gets no diagram, an almost empty keyboard saying
+  nothing the sentence beneath it does not.
 - **The list also says what the marks mean, and shows them rather than describing them.** Each
   module supplies the legend for what it paints — `project_panel.status_legend`,
   `frame_strip.timeline_legend`, `metadata_panel.completeness_legend` — and the timeline's sample is

@@ -17,16 +17,20 @@ same work for scripting and testing. Predictions need the second environment
 `scripts/setup_ml.sh` builds. Curate lists its projects as a tree under the session folder each
 one sits in, as do Add data and Export. Choosing a folder lists the lamellae of every project
 under it on Curate and describes all of them together on Add data, F1 lists the keys of the tab in
-front along with what every mark on it means, and which intensities read as black
-and as white can be set per view without touching what is exported. [`display.md`](display.md) says
+front along with what every mark on it means, which intensities read as black and as
+white can be set per view without touching what is exported, and F1 opens with a keyboard showing
+which keys the tab in front binds. [`display.md`](display.md) says
 how those behave and why.
 
 ## What to pick up next
 
 **The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-First a curation timeline carrying one
-colour vocabulary fewer; then a `QPainter` keyboard diagram for F1; and a macOS `.icns` icon, the
-current one being a full-bleed PNG where macOS wants a squircle inset in its canvas.
+A macOS `.icns` icon, the current one being a
+full-bleed PNG where macOS wants a squircle inset in its canvas. The curation timeline was to carry
+one colour vocabulary fewer, by folding the selection band into how the picked frames are drawn;
+that is on hold — the count of five vocabularies included the mismatch wash, which turned out never
+to have been painted, and brightening a state cell would put "picked" in the same channel as the
+state's own colour.
 
 The rest, in no particular order.
 

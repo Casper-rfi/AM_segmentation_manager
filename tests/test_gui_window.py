@@ -3306,3 +3306,84 @@ def test_a_wrapped_control_row_takes_the_height_it_needs(qt_app):
     qt_app.processEvents()
 
     assert panel.controls.height() > wide, "narrower means more lines"
+
+
+# ---------------------------------------------------------------------------
+# The keyboard diagram
+# ---------------------------------------------------------------------------
+
+def test_the_list_opens_with_a_keyboard(window):
+    """Which of the keys under your hands do anything here is a question a
+    picture answers faster than a list."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+
+    help_text = window.shortcut_help(TAB_CURATE)
+
+    assert help_text.startswith("<p><img src=\"data:image/png;base64,")
+
+
+def test_a_tab_with_no_keys_of_its_own_gets_no_keyboard(window):
+    """An almost empty keyboard says nothing the sentence beneath it does not."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_EXPORT
+
+    help_text = window.shortcut_help(TAB_EXPORT)
+
+    assert "<img" not in help_text
+    assert "no keys of its own" in help_text
+
+
+def test_a_chord_lights_its_modifiers_too(window):
+    """Ctrl+Shift+Z is three keys somebody has to find, and a diagram showing
+    only the letter would be saying the shortcut is one."""
+    from am_segmentation_manager.gui.widgets.main_window import Binding, _keys_of
+
+    def binding(key: str) -> Binding:
+        return Binding(key, "", lambda: None, "any", "group")
+
+    assert _keys_of([binding("Ctrl+Shift+Z")]) == {"Ctrl", "Shift", "Z"}
+    assert _keys_of([binding("Left"), binding("Ctrl+S")]) == {"Left", "Ctrl", "S"}
+
+
+def test_the_keyboard_picks_out_the_keys_it_is_given(qt_app):
+    """Drawn from the bindings, so a key added to the window appears here
+    without anything else being edited."""
+    from qtpy.QtGui import QColor
+
+    from am_segmentation_manager.gui.widgets.common import keyboard_diagram
+    from am_segmentation_manager.gui.widgets.theme import ACCENT, apply_theme
+
+    stylesheet, palette = qt_app.styleSheet(), qt_app.palette()
+    apply_theme(qt_app)
+    try:
+        plain = keyboard_diagram(set()).toImage()
+        marked = keyboard_diagram({"G"}).toImage()
+
+        assert plain.size() == marked.size(), "one key does not change the shape"
+        assert plain != marked
+        accent = QColor(ACCENT).rgb()
+        assert not any(
+            plain.pixel(x, y) == accent
+            for x in range(plain.width())
+            for y in range(plain.height())
+        )
+        assert any(
+            marked.pixel(x, y) == accent
+            for x in range(marked.width())
+            for y in range(marked.height())
+        )
+    finally:
+        qt_app.setStyleSheet(stylesheet)
+        qt_app.setPalette(palette)
+
+
+def test_every_bound_key_has_somewhere_to_be_drawn(window):
+    """A key the diagram has no cap for is one the reader is told about in the
+    table and cannot find on the picture."""
+    from am_segmentation_manager.gui.widgets.common import KEY_ROWS
+    from am_segmentation_manager.gui.widgets.main_window import _keys_of
+
+    drawable = {name for row in KEY_ROWS for name in row}
+    drawable |= {"Up", "Down", "Left", "Right"}
+
+    assert _keys_of(window._bindings) <= drawable
+

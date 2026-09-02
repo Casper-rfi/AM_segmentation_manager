@@ -49,7 +49,7 @@ from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
 from .busy_dialog import BusyDialog
-from .common import GripSplitter, mark_image
+from .common import GripSplitter, keyboard_diagram, mark_image
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline, timeline_legend
 from .image_panel import ImagePanel
@@ -206,6 +206,21 @@ def _table(rows) -> str:
         for action, description in rows
     )
     return f"<table>{body}</table>"
+
+
+def _keys_of(bindings: list) -> set[str]:
+    """Return every key the diagram should pick out, chords broken apart.
+
+    ``Ctrl+Shift+Z`` lights Ctrl, Shift and Z: the modifiers are keys somebody
+    has to find too, and a diagram that showed only the letter would be saying
+    the shortcut is one key.
+    """
+    return {
+        part.strip()
+        for binding in bindings
+        for part in binding.key.split("+")
+        if part.strip()
+    }
 
 
 @dataclass(frozen=True)
@@ -1560,7 +1575,16 @@ class CurationWindow(QMainWindow):
             f"<p style='margin-top: 12px;'><b>{group}</b></p>{_table(rows)}"
             for group, rows in grouped.items()
         )
-        if not any(binding.tab != ANY_TAB for binding in applicable):
+        own_keys = [b for b in applicable if b.tab != ANY_TAB]
+        if own_keys:
+            # Above the tables: which of the keys under your hands do anything
+            # here is a question a picture answers faster than a list, and what
+            # each one does is the list's own job directly below.
+            help_text = (
+                f"<p>{mark_image(keyboard_diagram(_keys_of(applicable)))}</p>"
+                + help_text
+            )
+        else:
             help_text += (
                 "<p style='margin-top: 10px;'>This tab has no keys of its own.</p>"
             )
