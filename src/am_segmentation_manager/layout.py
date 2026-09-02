@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 MODALITIES: Final[tuple[str, ...]] = ("SEM", "FIB")
 
 #: The subdirectory names a pre-declaration dataset kept its state in. Nothing
-#: reads state from them any more -- :mod:`~..operations.migrate_state` does
+#: in the package reads state from them -- ``scripts/migrate_state.py`` does
 #: that, once -- but they stay reserved so an unmigrated dataset reads as
 #: *missing* those images rather than as holding selected ones.
 STATE_FOLDER_NAMES: Final[frozenset[str]] = frozenset({"deselected", "corrected"})

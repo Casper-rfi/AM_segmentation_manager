@@ -14,7 +14,6 @@ import faulthandler
 import logging
 import sys
 import time
-from collections import Counter
 from pathlib import Path
 from typing import TextIO
 
@@ -659,46 +658,6 @@ def build_parser() -> argparse.ArgumentParser:
             "--dry-run", action="store_true",
             help="Show the groups that would change without writing anything",
         )
-
-    # -- migrate-state ------------------------------------------------------
-    migrate_state_cmd = sub.add_parser(
-        "migrate-state",
-        help="Record each stage's workflow state in an AM_state.yaml file",
-        description=(
-            "Read the workflow state every label group's files currently imply "
-            "and write it into an AM_state.yaml beside the image directories. "
-            "Nothing is moved, deleted or overwritten: a run is undone by "
-            "deleting the files it wrote, and a stage that already has one is "
-            "left alone. A stage is transcribed whole or not at all, so one "
-            "holding images that disagree with their label, or a file sitting "
-            "in two state folders at once, is reported instead -- put those "
-            "files right and run it again."
-        ),
-    )
-    migrate_state_cmd.add_argument(
-        "start_path", nargs="?", default=".",
-        help="Directory to migrate (default: current directory)",
-    )
-    migrate_state_cmd.add_argument(
-        "--move-files", action="store_true",
-        help=(
-            "After the state is declared, move images and labels out of the "
-            "deselected/ and corrected/ folders they no longer need. A stage "
-            "whose state is not declared yet is left alone, since there the "
-            "folders are the only record of it"
-        ),
-    )
-    migrate_state_cmd.add_argument(
-        "--remove-empty-dirs", action="store_true",
-        help=(
-            "With --move-files, remove the state folders once they are empty. "
-            "One still holding anything is reported, never cleared"
-        ),
-    )
-    migrate_state_cmd.add_argument(
-        "--dry-run", action="store_true",
-        help="Report what would be written and moved without changing anything",
-    )
 
     # -- find-specks ---------------------------------------------------------
     find_specks_cmd = sub.add_parser(
@@ -1748,80 +1707,6 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         logger.info("Total %s: %d", args.command, changed)
         return 0
-
-    if args.command == "migrate-state":
-        from .operations.migrate_state import migrate_projects
-
-        start_path = Path(args.start_path)
-        projects = Scanner(start_path).build_index().all_projects()
-        if not projects:
-            logger.error("No projects found under %s", start_path)
-            return 2
-
-        results = migrate_projects(projects, dry_run=args.dry_run)
-        for result in results:
-            location = make_path_relative(result.stage_directory, start_path)
-            if result.outcome in ("blocked", "conflict"):
-                logger.warning("%s: not migrated", location)
-                for problem in result.problems:
-                    logger.warning("    %s: %s", problem.key, problem.detail)
-            elif result.outcome == "migrated":
-                logger.info(
-                    "%s %s: %d group(s) declared",
-                    "Would migrate" if args.dry_run else "Migrated",
-                    location, len(result.declared),
-                )
-
-        counted = Counter(result.outcome for result in results)
-        logger.info(
-            "Total: %d stage(s), %d %s, %d already selected throughout, "
-            "%d already had a file, %d left alone",
-            len(results), counted["migrated"],
-            "would be migrated" if args.dry_run else "migrated",
-            counted["nothing-to-declare"],
-            counted["unchanged"],
-            counted["blocked"] + counted["conflict"],
-        )
-        left_alone = counted["blocked"] + counted["conflict"]
-
-        if args.move_files:
-            from .operations.migrate_state import unnest_projects
-
-            moved = unnest_projects(
-                projects,
-                dry_run=args.dry_run,
-                remove_empty_directories=args.remove_empty_dirs,
-            )
-            for result in moved:
-                location = make_path_relative(result.stage_directory, start_path)
-                if result.outcome == "blocked":
-                    logger.warning("%s: nothing moved", location)
-                    for problem in result.problems:
-                        logger.warning("    %s: %s", problem.key, problem.detail)
-                elif result.outcome == "moved":
-                    logger.info(
-                        "%s %s: %d file(s) out of state folders",
-                        "Would move" if args.dry_run else "Moved",
-                        location, len(result.moves),
-                    )
-            counted_moves = Counter(result.outcome for result in moved)
-            cleared = sum(len(result.removed) for result in moved)
-            logger.info(
-                "Files: %d stage(s) %s, %d already flat, %d left alone",
-                counted_moves["moved"],
-                "would be un-nested" if args.dry_run else "un-nested",
-                counted_moves["nothing-nested"],
-                counted_moves["blocked"],
-            )
-            if args.remove_empty_dirs:
-                logger.info(
-                    "State folders: %d %s. Any still holding something is "
-                    "named above and left alone.",
-                    cleared, "would be removed" if args.dry_run else "removed",
-                )
-            left_alone += counted_moves["blocked"]
-
-        return 1 if left_alone else 0
 
     if args.command == "create-training-csv":
         from .operations.csv import export_training_csv

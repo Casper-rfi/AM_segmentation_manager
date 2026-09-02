@@ -150,10 +150,11 @@ rather than appending to it.
 - **Whether a group is corrected is asked of the record, never of a path.** Every guard protecting
   proofread work — conversion, compression, label saving — reads the declared state the scanner put
   on the record; a guard that quietly stops firing is worse than none.
-- **A stage is transcribed whole or not at all.** `migrate-state` leaves a stage alone if anything
-  in it is ambiguous — images disagreeing with their label, a file in two state folders — writing
-  the groups that were fine leaving the rest unlisted, and unlisted reads as *selected*. It is also
-  **the only thing that reads a folder name as a state**: the scanner does not look inside
+- **A stage is transcribed whole or not at all.** `scripts/migrate_state.py` leaves a stage alone if
+  anything in it is ambiguous — images disagreeing with their label, a file in two state folders —
+  writing the groups that were fine leaving the rest unlisted, and unlisted reads as *selected*. It
+  is **the only thing anywhere that reads a folder name as a state**, and it is a script rather than
+  a command because the collection holds no stage it applies to: the scanner does not look inside
   `deselected/` or `corrected/`, so a nested file is *missing and reported* rather than present and
   wrong, and those names stay reserved.
 - **A stale entry is reported, never repaired.** Declared state can disagree with the filesystem

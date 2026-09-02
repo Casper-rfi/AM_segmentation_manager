@@ -1,39 +1,59 @@
-"""Recording the workflow state a stage's folders currently imply.
+#!/usr/bin/env python3
+"""Record in a state file the workflow state a stage's folders currently imply.
 
-A one-shot transcription for datasets curated before state was declared, and
-the only place in the package that still reads state from a folder name. It
-walks the filesystem itself rather than working from the index, because the
-scanner no longer looks inside ``deselected/`` and ``corrected/`` at all --
-which is what keeps a nested image invisible and reported rather than readable
-as selected.
+Before state was declared in ``AM_state.yaml``, it was implied by which folder
+a file sat in: ``deselected/`` or ``corrected/`` beside the images. This
+transcribes that into a state file, once, per stage.
+
+**This is a standalone script, not an ``am-seg`` command.** The reference
+collection was migrated in full and holds no folder-state stage any more, and
+no curation since can create one -- so this is a one-shot job for data that
+predates the state file, in the same class as the other scripts here rather
+than a step in anyone's workflow. It is kept, rather than deleted, because the
+package still *detects* the shape it repairs: ``inspect-layout`` reports an
+unmigrated stage, and a state change on one is refused outright, both because
+the scanner does not look inside those folders and would otherwise read a
+deselected image as selected.
+
+It walks the filesystem itself rather than working from the index, for the same
+reason -- and it is the only code anywhere that reads a state from a folder
+name.
 
 Nothing moves, nothing is deleted and nothing existing is overwritten, so a run
-is undone by deleting the files it wrote.
+is undone by deleting the files it wrote. ``--move-files`` then takes the
+images and labels back out of the folders they no longer need.
 
 **A stage is migrated whole or not at all.** Writing part of one leaves the
 groups it skipped with no entry, and no entry reads as selected -- a deselected
 image silently promoted into a training set, which is the one migration failure
 with no visible symptom. So a stage holding anything ambiguous is reported and
 left alone.
+
+    python scripts/migrate_state.py <collection root> [--dry-run] [--move-files]
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import shutil
+import sys
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ..layout import (
+from am_segmentation_manager.io.path import make_path_relative
+from am_segmentation_manager.layout import (
     STATE_FOLDER_NAMES,
     ImageSet,
     build_image_sets,
     image_files,
     state_directories,
 )
-from ..models import Project
-from ..state import (
+from am_segmentation_manager.models import Project
+from am_segmentation_manager.scanner import Scanner
+from am_segmentation_manager.state import (
     AM_STATE_FILENAME,
     RecordState,
     StateFileError,
@@ -468,3 +488,135 @@ def _empty_state_directories(
             candidate.rmdir()
         empty.append(candidate)
     return tuple(empty)
+
+
+# ---------------------------------------------------------------------------
+# Running it
+#
+# A stage left alone is named along with the problem that stopped it: "13
+# stages migrated" without the other four is the half-answer that sends
+# someone looking through the collection by hand.
+# ---------------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for this script."""
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "start_path", nargs="?", default=".",
+        help="Directory to migrate (default: current directory)",
+    )
+    parser.add_argument(
+        "--move-files", action="store_true",
+        help=(
+            "After the state is declared, move images and labels out of the "
+            "deselected/ and corrected/ folders they no longer need. A stage "
+            "whose state is not declared yet is left alone, since there the "
+            "folders are the only record of it"
+        ),
+    )
+    parser.add_argument(
+        "--remove-empty-dirs", action="store_true",
+        help=(
+            "With --move-files, remove the state folders once they are empty. "
+            "One still holding anything is reported, never cleared"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Report what would be written and moved without changing anything",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the migration, returning a process exit status.
+
+    Returns 1 when any stage was left alone, so a run that could not finish the
+    job is distinguishable from one that had nothing to do.
+    """
+    args = build_parser().parse_args(argv)
+    # On stdout, because a report sent to stderr is one a shell redirect loses;
+    # forced, because `basicConfig` does nothing where logging is already set up.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True,
+    )
+
+    start_path = Path(args.start_path)
+    projects = Scanner(start_path).build_index().all_projects()
+    if not projects:
+        logger.error("No projects found under %s", start_path)
+        return 2
+
+    results = migrate_projects(projects, dry_run=args.dry_run)
+    for result in results:
+        location = make_path_relative(result.stage_directory, start_path)
+        if result.outcome in ("blocked", "conflict"):
+            logger.warning("%s: not migrated", location)
+            for problem in result.problems:
+                logger.warning("    %s: %s", problem.key, problem.detail)
+        elif result.outcome == "migrated":
+            logger.info(
+                "%s %s: %d group(s) declared",
+                "Would migrate" if args.dry_run else "Migrated",
+                location, len(result.declared),
+            )
+
+    counted = Counter(result.outcome for result in results)
+    logger.info(
+        "Total: %d stage(s), %d %s, %d already selected throughout, "
+        "%d already had a file, %d left alone",
+        len(results), counted["migrated"],
+        "would be migrated" if args.dry_run else "migrated",
+        counted["nothing-to-declare"],
+        counted["unchanged"],
+        counted["blocked"] + counted["conflict"],
+    )
+    left_alone = counted["blocked"] + counted["conflict"]
+
+    if args.move_files:
+        moved = unnest_projects(
+            projects,
+            dry_run=args.dry_run,
+            remove_empty_directories=args.remove_empty_dirs,
+        )
+        for result in moved:
+            location = make_path_relative(result.stage_directory, start_path)
+            if result.outcome == "blocked":
+                logger.warning("%s: nothing moved", location)
+                for problem in result.problems:
+                    logger.warning("    %s: %s", problem.key, problem.detail)
+            elif result.outcome == "moved":
+                logger.info(
+                    "%s %s: %d file(s) out of state folders",
+                    "Would move" if args.dry_run else "Moved",
+                    location, len(result.moves),
+                )
+        counted_moves = Counter(result.outcome for result in moved)
+        cleared = sum(len(result.removed) for result in moved)
+        logger.info(
+            "Files: %d stage(s) %s, %d already flat, %d left alone",
+            counted_moves["moved"],
+            "would be un-nested" if args.dry_run else "un-nested",
+            counted_moves["nothing-nested"],
+            counted_moves["blocked"],
+        )
+        if args.remove_empty_dirs:
+            logger.info(
+                "State folders: %d %s. Any still holding something is "
+                "named above and left alone.",
+                cleared, "would be removed" if args.dry_run else "removed",
+            )
+        left_alone += counted_moves["blocked"]
+
+    return 1 if left_alone else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

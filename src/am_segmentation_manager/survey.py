@@ -685,7 +685,7 @@ def _declared_state_findings(
                     path=stage_path,
                     message=(
                         f"{len(holding_files)} state folder(s) still hold files and "
-                        f"there is no {AM_STATE_FILENAME}; run 'am-seg migrate-state'"
+                        f"there is no {AM_STATE_FILENAME}; run scripts/migrate_state.py"
                     ),
                 )
             )
@@ -699,7 +699,7 @@ def _declared_state_findings(
                 path=stage_path,
                 message=(
                     f"{len(holding_files)} state folder(s) still hold files even though "
-                    f"state is declared; run 'am-seg migrate-state --move-files'"
+                    f"state is declared; run scripts/migrate_state.py --move-files"
                 ),
             )
         )

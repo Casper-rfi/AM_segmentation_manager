@@ -407,7 +407,7 @@ def test_a_stage_still_keeping_state_in_folders_is_reported(tmp_path: Path):
     findings = _findings_for(tmp_path, "unmigrated-state")
 
     assert len(findings) == 1
-    assert "migrate-state" in findings[0].message
+    assert "migrate_state.py" in findings[0].message
 
 
 def test_nested_files_after_migration_ask_for_the_move(tmp_path: Path):

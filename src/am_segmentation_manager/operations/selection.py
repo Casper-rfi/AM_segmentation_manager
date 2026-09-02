@@ -16,7 +16,7 @@ would take one out of the corrected state refuses unless the caller passes
 **A stage that has not been migrated is refused.** Declaring one group's state
 there would leave every other group unlisted, and unlisted reads as selected --
 promoting deselected images into a training set. Such a stage keeps its folders
-until ``migrate-state`` transcribes them.
+until ``scripts/migrate_state.py`` transcribes them.
 """
 from __future__ import annotations
 
@@ -196,7 +196,7 @@ def _stage_state(stage_directory: Path) -> StageState:
     if declared.fingerprint is None and _has_nested_files(stage_directory):
         raise UnmigratedStage(
             f"{stage_directory} still keeps its workflow state in folders; "
-            "run migrate-state on it first"
+            "run scripts/migrate_state.py on it first"
         )
     return declared
 

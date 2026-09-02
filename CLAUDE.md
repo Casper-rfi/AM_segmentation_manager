@@ -36,7 +36,7 @@ Code quality, maintainability and extensibility therefore matter.
 	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
 	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
 	3. `edit-metadata` is used to add any missing metadata or make corrections
-	4. `migrate-state` declares in an AM_state.yaml the workflow state a dataset still keeps in `deselected/` and `corrected/` folders. Required before such a dataset curates correctly.
+	4. `scripts/migrate_state.py` declares in an AM_state.yaml the workflow state a dataset kept in `deselected/` and `corrected/` folders (script). Legacy: the collection holds no such dataset and nothing can create one, but the package still detects the shape and refuses to curate it.
 	5. import legacy projects (script)
 	6. `compress-labels` reduces the disk space labels occupy (in the GUI under Add data, since it acts on the whole collection rather than on a selection)
 1. View & curate data and create predictions:

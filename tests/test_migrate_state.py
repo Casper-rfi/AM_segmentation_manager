@@ -11,12 +11,8 @@ import shutil
 from pathlib import Path
 
 import pytest
+from migrate_state import migrate_projects, migrate_stage, unnest_stage
 
-from am_segmentation_manager.operations.migrate_state import (
-    migrate_projects,
-    migrate_stage,
-    unnest_stage,
-)
 from am_segmentation_manager.scanner import Scanner
 from am_segmentation_manager.state import (
     AM_STATE_FILENAME,
@@ -74,7 +70,7 @@ def _records_of(root: Path) -> list:
 def deselect_group(dataset, index: int = 0, modality: str = "SEM") -> None:
     """Put an image and the label it owns in ``deselected/``, as a pair.
 
-    Building the pre-migration layout that ``migrate-state`` reads, which is the
+    Building the pre-migration layout that ``migrate_state.py`` reads, which is the
     one place folders still mean anything.
     """
     name = dataset.filenames[modality][index]
@@ -338,51 +334,51 @@ def test_a_blocked_stage_does_not_stop_the_others(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Through the command line
+# Through the script's own entry point
 # ---------------------------------------------------------------------------
 
-def test_the_command_migrates_and_reports(tmp_path: Path, capsys):
-    from am_segmentation_manager.cli import main
+def test_the_script_migrates_and_reports(tmp_path: Path, capsys):
+    from migrate_state import main
 
     dataset = build_dataset(tmp_path, modalities=("SEM",))
     deselect_group(dataset)
 
-    assert main(["migrate-state", str(tmp_path)]) == 0
+    assert main([str(tmp_path)]) == 0
 
     assert state_file_path(dataset.stage).exists()
     assert "1 group(s) declared" in capsys.readouterr().out
 
 
-def test_the_command_reports_a_blocked_stage_without_writing(tmp_path: Path, capsys):
+def test_the_script_reports_a_blocked_stage_without_writing(tmp_path: Path, capsys):
     """A run that could not finish must not exit as if it had."""
-    from am_segmentation_manager.cli import main
+    from migrate_state import main
 
     dataset = build_dataset(tmp_path, modalities=("SEM",))
     move_state(dataset.image_dir("SEM") / dataset.filenames["SEM"][0], "deselected")
 
-    assert main(["migrate-state", str(tmp_path)]) == 1
+    assert main([str(tmp_path)]) == 1
 
     captured = capsys.readouterr()
     assert "not migrated" in captured.out + captured.err
     assert not state_file_path(dataset.stage).exists()
 
 
-def test_the_command_dry_run_writes_nothing(tmp_path: Path, capsys):
-    from am_segmentation_manager.cli import main
+def test_the_script_dry_run_writes_nothing(tmp_path: Path, capsys):
+    from migrate_state import main
 
     dataset = build_dataset(tmp_path, modalities=("SEM",))
     deselect_group(dataset)
 
-    assert main(["migrate-state", str(tmp_path), "--dry-run"]) == 0
+    assert main([str(tmp_path), "--dry-run"]) == 0
 
     assert "Would migrate" in capsys.readouterr().out
     assert not state_file_path(dataset.stage).exists()
 
 
-def test_the_command_needs_a_project(tmp_path: Path):
-    from am_segmentation_manager.cli import main
+def test_the_script_needs_a_project(tmp_path: Path):
+    from migrate_state import main
 
-    assert main(["migrate-state", str(tmp_path)]) == 2
+    assert main([str(tmp_path)]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -499,14 +495,14 @@ def test_a_state_folder_holding_something_else_is_left_alone(tmp_path: Path):
     assert (nested / "notes.txt").exists()
 
 
-def test_the_command_migrates_and_moves_in_one_run(tmp_path: Path, capsys):
-    from am_segmentation_manager.cli import main
+def test_the_script_migrates_and_moves_in_one_run(tmp_path: Path, capsys):
+    from migrate_state import main
 
     dataset = build_dataset(tmp_path, modalities=("SEM",))
     deselect_group(dataset)
     name = dataset.filenames["SEM"][0]
 
-    assert main(["migrate-state", str(tmp_path), "--move-files"]) == 0
+    assert main([str(tmp_path), "--move-files"]) == 0
 
     output = capsys.readouterr().out
     assert "2 file(s) out of state folders" in output
