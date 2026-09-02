@@ -19,6 +19,24 @@ environment the package is *installed* into.
   window, so giving an operation a counter is a callback in its loop. Only the applying run counts,
   never the preview. That dialog is not a `QProgressDialog`, for the re-entrancy `busy_dialog.py`
   sets out; the window owns it and detaches it before closing it.
+- **A scan is the one long thing that still runs on the interface thread, so it carries its own
+  panel.** `ScanBanner` covers the whole window for the length of a scan and is repainted *from
+  inside it* — the scan being the only thing still running — through the same
+  `on_progress(done, total)` the worker uses, threaded from `Scanner.build_index` through
+  `CurationController.scan`. An overlay parented to the window rather than a dialog, a modal dialog
+  needing the event loop to appear at all and the event loop being exactly what is not running; and
+  parented to the *window* rather than to a tab, since a scan can be asked for from any of them and
+  what it holds up is all of them. Painted rather than laid out, so one `repaint` puts the whole of
+  it on screen where a layout of children would need each repainted in turn. **No bar until there
+  is a number**: finding the roots comes first and cannot say how many there will be, and an
+  indeterminate bar has to animate to mean anything. It comes down on the way out of the read
+  whether that read returned or raised.
+- **The mark is the only place the orange and green appear.** Both are segmentation class colours
+  and the timeline draws its states beside that legend, so a third meaning for either reads as
+  data — which is why the banner's progress bar is the ordinary accent and why nothing else is
+  tinted. The mark itself carries them, at size on the banner and at 16 pixels in the corner of the
+  tab row, `branding.py` holding the one path to it and the one spelling of the product name. A
+  checkout without the asset gets an empty pixmap and draws nothing rather than failing.
 - **The window asks to be the one in front, and asks after the event loop has started.** Launched
   from a terminal, macOS leaves the terminal in front, and a window that is not in front receives no
   key presses and no pointer motion at all — so F1 does nothing and no tooltip appears. It clears

@@ -279,7 +279,7 @@ def test_the_icon_ships_inside_the_package(qt_app):
     """
     from qtpy.QtGui import QIcon
 
-    from am_segmentation_manager.gui.app import ICON_PATH
+    from am_segmentation_manager.gui.widgets.branding import ICON_PATH
 
     assert ICON_PATH.exists()
     assert not QIcon(str(ICON_PATH)).isNull()
@@ -288,9 +288,28 @@ def test_the_icon_ships_inside_the_package(qt_app):
 def test_a_missing_icon_does_not_stop_the_window_opening(qt_app, monkeypatch):
     """A source checkout without the asset must still run."""
     from am_segmentation_manager.gui import app
+    from am_segmentation_manager.gui.widgets import branding
 
-    monkeypatch.setattr(app, "ICON_PATH", Path("/nowhere/absent.png"))
+    monkeypatch.setattr(branding, "ICON_PATH", Path("/nowhere/absent.png"))
     app._apply_icon(qt_app)
+
+
+def test_a_missing_logo_draws_nothing_rather_than_failing(qt_app, monkeypatch):
+    """Every caller of the mark has to survive a checkout without the asset."""
+    from am_segmentation_manager.gui.widgets import branding
+
+    monkeypatch.setattr(branding, "ICON_PATH", Path("/nowhere/absent.png"))
+
+    assert branding.logo_pixmap(96).isNull()
+
+
+def test_the_mark_is_square_at_whatever_size_it_is_asked_for(qt_app):
+    """Letting a layout stretch it is the one way this mark looks wrong."""
+    from am_segmentation_manager.gui.widgets.branding import logo_pixmap
+
+    for size in (18, 96):
+        pixmap = logo_pixmap(size)
+        assert pixmap.width() == pixmap.height() == size
 
 
 def test_the_icon_is_set_on_the_application_so_dialogs_inherit_it(qt_app):

@@ -62,7 +62,7 @@ def loose_stage(names: list[tuple[str, str, str]]) -> Stage:
 def make_controller(lamellae: list[Lamella]) -> CurationController:
     project = Project(name="bitmap", path=Path("bitmap"), lamellae=lamellae, number="001")
 
-    def scan(path: Path) -> ProjectIndex:
+    def scan(path: Path, on_progress=None) -> ProjectIndex:
         index = ProjectIndex(start_path=path)
         index.add(project)
         return index

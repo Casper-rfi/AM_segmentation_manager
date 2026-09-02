@@ -71,8 +71,12 @@ MODALITY_MODES: dict[str, DisplayMode] = {
 #: alignment runs with polishing frames is not something anyone proofreads.
 DEFAULT_SERIES: str = "adaptive"
 
-#: Scans a directory and returns the projects found in it.
-ProjectScanner = Callable[[Path], ProjectIndex]
+#: Reports how many projects have been indexed, and how many there are.
+ScanProgress = Callable[[int, int], None]
+
+#: Scans a directory and returns the projects found in it, reporting as it
+#: goes where it is given somewhere to report to.
+ProjectScanner = Callable[[Path, "ScanProgress | None"], ProjectIndex]
 
 
 @dataclass(frozen=True)
@@ -363,7 +367,9 @@ class CurationController:
         """
         self.cache = cache if cache is not None else FrameCache()
         self.config = config if config is not None else load_segmentation_config()
-        self._scan: ProjectScanner = scan or (lambda path: Scanner(path).build_index())
+        self._scan: ProjectScanner = scan or (
+            lambda path, on_progress=None: Scanner(path).build_index(on_progress)
+        )
 
         self.start_path: Path | None = None
         self.index: ProjectIndex | None = None
@@ -426,8 +432,15 @@ class CurationController:
 
     # -- scanning ----------------------------------------------------------
 
-    def scan(self, start_path: Path) -> list[Project]:
+    def scan(
+        self, start_path: Path, on_progress: ScanProgress | None = None
+    ) -> list[Project]:
         """Discover projects under *start_path* and select the first one.
+
+        Args:
+            on_progress: Passed to the scanner, which calls it once per
+                project. The scan holds whichever thread it is on, so this is
+                the only chance anything has to say how far it has got.
 
         Returns:
             The projects found, in scan order.
@@ -436,13 +449,13 @@ class CurationController:
         # Proofreading happens in another application while this one is open,
         # so a rescan must not answer from labels read before it.
         self._label_states.clear()
-        self.index = self._scan(self.start_path)
+        self.index = self._scan(self.start_path, on_progress)
         self._projects = self.index.all_projects()
         logger.info("Found %d project(s) under %s", len(self._projects), self.start_path)
         self.select_project(0)
         return self._projects
 
-    def rescan(self) -> list[Project]:
+    def rescan(self, on_progress: ScanProgress | None = None) -> list[Project]:
         """Read the same root again, keeping the view and what is ticked.
 
         What follows an operation that changed the collection. The index is
@@ -461,7 +474,7 @@ class CurationController:
             raise RuntimeError("Nothing has been scanned yet")
         position = self.position()
         picked = self._snapshot_selection()
-        projects = self.scan(self.start_path)
+        projects = self.scan(self.start_path, on_progress)
         self.restore(position)
         self._restore_selection(picked)
         return projects

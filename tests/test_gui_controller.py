@@ -70,7 +70,7 @@ def make_controller(projects: list[Project] | None = None) -> CurationController
         make_project("project-b", [("01-gamma", 3)]),
     ]
 
-    def scan(path: Path) -> ProjectIndex:
+    def scan(path: Path, on_progress=None) -> ProjectIndex:
         index = ProjectIndex(start_path=path)
         for project in projects:
             index.add(project)
@@ -987,7 +987,8 @@ def test_paths_are_none_when_the_position_does_not_exist():
 def test_paths_are_none_before_anything_is_scanned():
     cache = FrameCache(lambda image, label=None: "", lambda plot: "")
     controller = CurationController(
-        cache=cache, config=CONFIG, scan=lambda path: ProjectIndex(start_path=path)
+        cache=cache, config=CONFIG,
+        scan=lambda path, on_progress=None: ProjectIndex(start_path=path),
     )
 
     assert controller.project_path() is None
@@ -1171,7 +1172,7 @@ def _folder_controller(projects: list[Project]):
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.scanner import ProjectIndex
 
-    def scan(path: Path) -> ProjectIndex:
+    def scan(path: Path, on_progress=None) -> ProjectIndex:
         index = ProjectIndex(start_path=path)
         for project in projects:
             index.add(project)

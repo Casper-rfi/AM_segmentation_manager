@@ -230,13 +230,21 @@ def test_the_headers_of_a_stage_are_read_together(project, monkeypatch):
     on the disk, so they overlap; a change that quietly serialised them again
     would cost seconds per scan with nothing to show it."""
     import threading
+    import time
 
     threads: set[int] = set()
+
+    def read(path):
+        threads.add(threading.get_ident())
+        # A real read waits on the disk, which is the whole reason these
+        # overlap. An instant one lets a single worker drain the queue before
+        # the pool has reason to start a second, which is a property of the
+        # fake and not of the scanner.
+        time.sleep(0.02)
+        return ("FIB", None)
+
     monkeypatch.setattr(
-        "am_segmentation_manager.scanner.header_reader",
-        lambda: (
-            lambda path: (threads.add(threading.get_ident()), ("FIB", None))[1]
-        ),
+        "am_segmentation_manager.scanner.header_reader", lambda: read
     )
 
     Scanner(project.parent).build_index()

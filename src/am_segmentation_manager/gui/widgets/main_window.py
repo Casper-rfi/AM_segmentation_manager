@@ -41,13 +41,19 @@ from ...operations.selection import (
     current_state,
 )
 from ...progress import Cancellation
-from ..controller import MODE_MODALITIES, CurationController, EditingDisabled
+from ..controller import (
+    MODE_MODALITIES,
+    CurationController,
+    EditingDisabled,
+    ScanProgress,
+)
 from ..export_controller import ExportController
 from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
+from .branding import PRODUCT_NAME, logo_pixmap
 from .busy_dialog import BusyDialog
 from .common import GripSplitter, keyboard_diagram, mark_image
 from .export_panel import ExportPanel
@@ -59,8 +65,9 @@ from .operations_panel import OperationsPanel
 from .project_dialog import AddProjectsDialog
 from .project_panel import ProjectPanel, status_legend
 from .report_dialog import ReportDialog
+from .scan_banner import ScanBanner
 from .state_panel import StatePanel
-from .theme import BORDER_LIGHT, HEADING
+from .theme import BORDER_LIGHT, HEADING, MUTED
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +202,33 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
         (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
     ),
 }
+
+
+def _brand_mark() -> QWidget:
+    """Return the mark and the product name, for the corner of the tab row.
+
+    A widget rather than a `QLabel`, a label showing either a pixmap or text
+    and this needing both. Nothing is clickable: it says whose window this is
+    and answers no question, so giving it behaviour would only invite pressing.
+    """
+    row = QWidget()
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 10, 0)
+    layout.setSpacing(6)
+
+    mark = QLabel()
+    mark.setPixmap(logo_pixmap(CORNER_LOGO))
+    layout.addWidget(mark)
+
+    name = QLabel(PRODUCT_NAME)
+    name.setStyleSheet(f"color: {MUTED};")
+    layout.addWidget(name)
+    return row
+
+
+#: The mark's side beside the tabs, in logical pixels. Sized to the tab text
+#: rather than to the mark: it sits on that row and must not set its height.
+CORNER_LOGO = 16
 
 
 #: How a heading is set apart from the rows under it.
@@ -578,7 +612,16 @@ class CurationWindow(QMainWindow):
         # keyboard shortcuts, which do not exist until _add_shortcuts runs.
         self.tabs.setCurrentWidget(self.curate)
         self.tabs.currentChanged.connect(self._tab_changed)
+        # The mark, quietly, at the end of the tab row: the one place the
+        # window has spare that a reader already looks at. Only here and on the
+        # banner -- the orange and green in it are segmentation class colours
+        # everywhere else, so a third use would be read as data.
+        self.tabs.setCornerWidget(_brand_mark(), Qt.TopRightCorner)
         self.setCentralWidget(self.tabs)
+
+        # Parented to the window rather than to a tab: a scan can be asked for
+        # from any of them, and what it holds up is the whole window.
+        self.banner = ScanBanner(self)
 
     def _build_timeline(self) -> QHBoxLayout:
         """Build the frame timeline row.
@@ -1726,8 +1769,9 @@ class CurationWindow(QMainWindow):
             return
 
         if self._reading(
-            lambda: self.controller.scan(directory),
+            lambda on_progress: self.controller.scan(directory, on_progress),
             f"Scanning {directory.name} for projects...",
+            phase=f"Reading {directory.name}",
         ):
             self.project_panel.set_path(str(directory))
             self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
@@ -1742,34 +1786,54 @@ class CurationWindow(QMainWindow):
         if self.controller.start_path is None:  # pragma: no cover - always set by here
             self.refresh(reload_lists=True)
             return
-        self._reading(self.controller.rescan, "Reading the folder again...")
+        self._reading(
+            lambda on_progress: self.controller.rescan(on_progress),
+            "Reading the folder again...",
+            phase=f"Reading {self.controller.start_path.name} again",
+        )
 
-    def _reading(self, read: Callable[[], object], announcement: str = "") -> bool:
-        """Run *read* under a wait cursor and redraw; return whether it worked.
+    def _reading(
+        self,
+        read: Callable[[ScanProgress], object],
+        announcement: str = "",
+        phase: str = "",
+    ) -> bool:
+        """Run *read* behind the scan banner and redraw; return whether it worked.
 
-        Under a wait cursor throughout, and behind a line saying what is
-        happening: scanning a collection is the slowest thing the window does
-        on its own thread, and a cursor alone does not say whether a window is
-        working or stuck. The line is painted before the read starts, because
-        the read is what stops anything else being painted.
+        The read holds the interface thread for as long as it takes -- fifteen
+        seconds on a large collection -- so nothing else can paint, answer or
+        report while it runs. The banner covers the window for the whole of it
+        and is repainted from inside the read, which is the only thing still
+        running; each repaint is synchronous and processes no events, so
+        nothing can be re-entered on the way. The wait cursor stays, for the
+        moment before the banner is up and for whatever is outside it.
 
         Args:
+            read: Called with the progress callback to report through.
             announcement: Shown where the project summary goes while the read
                 runs. Empty leaves whatever is there.
+            phase: What the banner says is happening. Empty puts up no banner,
+                for a read too short to be worth covering the window for.
         """
         failure: Exception | None = None
         if announcement:
             self.project_panel.announce(announcement)
+        if phase:
+            self.banner.begin(phase)
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            read()
+            read(self.banner.set_progress)
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
             logger.exception("Scan failed")
             failure = exc
         else:
+            # Down before the lists are rebuilt: the banner says the reading is
+            # happening, and what follows it is the window catching up.
+            self.banner.end()
             self._share_scan()
             self.refresh(reload_lists=True)
         finally:
+            self.banner.end()
             QApplication.restoreOverrideCursor()
 
         # Reported after the cursor is back: a modal dialog under an hourglass

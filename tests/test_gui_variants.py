@@ -40,7 +40,8 @@ def make_controller(root: Path) -> CurationController:
     """Return a controller over a real scanned project, with a stub cache."""
     cache = FrameCache(load_image=lambda path, label=None: f"image:{path.name}")
     controller = CurationController(
-        cache=cache, config=CONFIG, scan=lambda path: Scanner(path).build_index()
+        cache=cache, config=CONFIG,
+        scan=lambda path, on_progress=None: Scanner(path).build_index(on_progress),
     )
     controller.scan(root)
     return controller
@@ -211,7 +212,7 @@ def test_reach_is_always_available_even_with_nothing_selected():
     controller = CurationController(
         cache=FrameCache(load_image=lambda path, label=None: "x"),
         config=CONFIG,
-        scan=lambda path: Scanner(path).build_index(),
+        scan=lambda path, on_progress=None: Scanner(path).build_index(on_progress),
     )
     assert controller.reach().summary() == "Nothing selected"
 

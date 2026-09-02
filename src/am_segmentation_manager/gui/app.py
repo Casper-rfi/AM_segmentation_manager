@@ -26,12 +26,6 @@ logger = logging.getLogger(__name__)
 
 QT_BINDINGS = ("PyQt5", "PyQt6", "PySide2", "PySide6")
 
-#: The window and taskbar icon. A PNG rather than the ``.ico`` beside it: Qt
-#: reads PNG through a built-in plugin on every platform, where ICO buys nothing
-#: outside Windows. Located the way :mod:`..config` locates the packaged
-#: segmentation config, for the reason given there.
-ICON_PATH = Path(__file__).parent.parent / "data" / "AM_icon.png"
-
 
 #: Whether a failure is already on screen. A slot that raises once usually
 #: raises again on the next repaint, and a dialog per repaint buries the window
@@ -143,6 +137,8 @@ def _apply_icon(application) -> None:
     without the asset must still open the window.
     """
     from qtpy.QtGui import QIcon
+
+    from .widgets.branding import ICON_PATH
 
     if not ICON_PATH.exists():
         logger.debug("No window icon at %s", ICON_PATH)

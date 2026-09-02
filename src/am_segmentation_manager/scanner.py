@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
@@ -56,6 +56,11 @@ from .state import StageState, StateFileError, read_state, state_key
 from .tasks import NO_TASKS, TaskVocabulary, read_vocabularies
 
 logger = logging.getLogger(__name__)
+
+#: Called with the projects indexed so far and how many there are. Spelled out
+#: because the window and the command line both pass one, and neither should
+#: have to guess the argument order.
+ProgressCallback = Callable[[int, int], None]
 
 #: How many image headers are read at once.
 #:
@@ -248,13 +253,20 @@ class Scanner:
             if candidate.is_file():
                 yield candidate
 
-    def build_index(self) -> ProjectIndex:
+    def build_index(self, on_progress: ProgressCallback | None = None) -> ProjectIndex:
         """Scan and build a ProjectIndex for discovered projects.
 
         Discovers projects, their lamellae and the stages within them,
         indexing each stage's image sets -- of every series -- and matching
         predictions and labels by filename, so downstream operations work on
         in-memory objects rather than re-traversing the filesystem.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` after each
+                project, and once with ``(0, total)`` as soon as there is a
+                total to report -- finding the roots comes first and cannot say
+                how many there will be. The same contract the worker thread
+                uses, so a scan reports the same way wherever it is run from.
         """
         index = ProjectIndex(start_path=self.start_path)
 
@@ -263,10 +275,14 @@ class Scanner:
         # the filesystem either way. Nothing in here writes.
         with directory_cache(), timed(logger, "Building the index"):
             roots = sorted(self.find_project_roots())
+            if on_progress is not None:
+                on_progress(0, len(roots))
             for project_index, project_root in enumerate(roots, start=1):
                 with timed(logger, f"  {project_root.name}", level=logging.DEBUG):
                     project = self._build_project(project_root, project_index)
                 index.add(project)
+                if on_progress is not None:
+                    on_progress(project_index, len(roots))
                 logger.info(
                     "Indexed project %s with %d lamellae", project.key, len(project.lamellae)
                 )
