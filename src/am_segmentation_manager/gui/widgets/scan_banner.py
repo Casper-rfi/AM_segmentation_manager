@@ -5,9 +5,21 @@ answer, repaint or say anything -- and on a large collection that is fifteen
 seconds of an empty project list above two black panes, which reads as a hang
 rather than as work. This says what is happening and how far it has got.
 
-**Nothing here processes events**, for the reason `busy_dialog.py` sets out.
-The banner is repainted synchronously by the scan that is blocking, one widget
-at a time, so no queued signal can be delivered part-way through a scan.
+**A repaint is not enough to be seen.** It reaches a backing store, and the
+frame is only put on the screen when the main thread next returns to the run
+loop -- which a blocking scan never does. Painted and never presented, the
+banner was drawn 125 times during one scan of the reference collection while
+the window showed the desktop behind it, the run loop never once serviced. So
+each update is followed by one pass of the event loop.
+
+**Which means input has to be stopped, and it is stopped by this widget rather
+than by asking the loop nicely.** ``ExcludeUserInputEvents`` does not hold: a
+press already posted is delivered through it. So the banner filters the
+application while it is up and swallows every press, key and wheel, which is
+what makes turning the loop safe where `busy_dialog.py` says it is not --
+nothing anybody does can re-enter the scan or reach the controls being covered.
+What is still delivered is a repaint, a timer, or a frame the loader finished,
+against an index the scan has not yet replaced.
 
 An overlay parented to the window rather than a dialog: a modal dialog needs
 the event loop to appear at all, and the event loop is exactly what is not
@@ -15,12 +27,26 @@ running.
 """
 from __future__ import annotations
 
-from qtpy.QtCore import QRect, Qt
+from qtpy.QtCore import QEvent, QEventLoop, QRect, Qt
 from qtpy.QtGui import QColor, QFont, QPainter
-from qtpy.QtWidgets import QWidget
+from qtpy.QtWidgets import QApplication, QWidget
 
 from .branding import PRODUCT_NAME, logo_pixmap
 from .theme import ACCENT, BORDER_LIGHT, HEADING, MUTED, WINDOW
+
+#: What the banner swallows while it is up. Everything a person can do: the
+#: shortcut events as well as the key ones, or F1 would still open the list
+#: over a window mid-scan.
+BLOCKED_EVENTS = frozenset({
+    QEvent.MouseButtonPress,
+    QEvent.MouseButtonRelease,
+    QEvent.MouseButtonDblClick,
+    QEvent.KeyPress,
+    QEvent.KeyRelease,
+    QEvent.Wheel,
+    QEvent.Shortcut,
+    QEvent.ShortcutOverride,
+})
 
 #: The mark's side, in logical pixels. Large enough to be the thing the eye
 #: lands on: this is the one moment the window has nothing else to show.
@@ -53,6 +79,9 @@ class ScanBanner(QWidget):
         self._phase = ""
         self._done = 0
         self._total = 0
+        #: Whether the application filter is installed, so that begin() twice
+        #: over does not stack two of them and end() can take the right one off.
+        self._filtering = False
         self.hide()
 
     # -- what it says ------------------------------------------------------
@@ -60,7 +89,7 @@ class ScanBanner(QWidget):
     def begin(self, phase: str) -> None:
         """Show the banner over the whole of its parent, saying *phase*.
 
-        Shown and painted here rather than left to the next turn of the event
+        Put on the screen here rather than left to the next turn of the event
         loop, there being no next turn until the scan this announces returns.
         """
         self._phase = phase
@@ -69,7 +98,11 @@ class ScanBanner(QWidget):
         self.setGeometry(self.parentWidget().rect())
         self.show()
         self.raise_()
-        self.repaint()
+        application = QApplication.instance()
+        if application is not None and not self._filtering:
+            application.installEventFilter(self)
+            self._filtering = True
+        self._present()
 
     def set_phase(self, phase: str) -> None:
         """Say what is happening now, keeping whatever count is showing."""
@@ -87,18 +120,42 @@ class ScanBanner(QWidget):
         self._repaint_if_visible()
 
     def end(self) -> None:
-        """Take the banner away."""
+        """Take the banner away, and let input through again.
+
+        Called from a ``finally``, so a scan that raised does not leave the
+        window unable to be typed into.
+        """
+        application = QApplication.instance()
+        if application is not None and self._filtering:
+            application.removeEventFilter(self)
+        self._filtering = False
         self.hide()
 
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt naming
+        """Swallow anything a person does while the banner is up."""
+        if event.type() in BLOCKED_EVENTS:
+            return True
+        return super().eventFilter(watched, event)
+
     def _repaint_if_visible(self) -> None:
-        """Repaint now, unless nothing is showing.
+        """Put the new state on the screen, unless nothing is showing.
 
         ``isHidden`` rather than ``isVisible``: offscreen nothing is ever
         visible, and a banner that refused to update there would be one the
         tests could not read.
         """
         if not self.isHidden():
-            self.repaint()
+            self._present()
+
+    def _present(self) -> None:
+        """Paint, and let the platform put the frame on the screen.
+
+        The one pass of the event loop this costs is what the module docstring
+        is about. Input is asked to stay out and, where it does not, is
+        swallowed by :meth:`eventFilter`.
+        """
+        self.repaint()
+        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
     # -- what it looks like ------------------------------------------------
 

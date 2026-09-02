@@ -199,6 +199,88 @@ def _painted_with_progress(banner) -> int:
     return _painted(banner)
 
 
+def test_each_update_is_put_on_the_screen(qt_app):
+    """A repaint reaches a backing store. The frame is only composited when the
+    main thread returns to the run loop, which a scan never does -- so without
+    this the banner was painted 125 times during one scan of the reference
+    collection while the window showed the desktop behind it."""
+    from qtpy.QtCore import QTimer
+
+    host = QWidget()
+    host.resize(400, 300)
+    banner = ScanBanner(host)
+    banner.begin("Reading")
+    serviced = []
+    timer = QTimer()
+    timer.setInterval(0)
+    timer.timeout.connect(lambda: serviced.append(None))
+    timer.start()
+
+    banner.set_progress(1, 4)
+
+    assert serviced, "the run loop was not serviced, so nothing reached the screen"
+
+
+def test_input_is_let_through_again_once_the_scan_is_over(qt_app):
+    """A filter left installed is a window nobody can type into."""
+    from qtpy.QtCore import QCoreApplication, QEvent, QPointF, Qt
+    from qtpy.QtGui import QMouseEvent
+    from qtpy.QtWidgets import QPushButton
+
+    host = QWidget()
+    host.resize(400, 300)
+    banner = ScanBanner(host)
+    banner.begin("Reading")
+    banner.end()
+
+    pressed = []
+    button = QPushButton("Scan", host)
+    button.pressed.connect(lambda: pressed.append(None))
+    point = QPointF(5, 5)
+    QCoreApplication.postEvent(
+        button,
+        QMouseEvent(
+            QEvent.MouseButtonPress, point, point,
+            Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+        ),
+    )
+    QCoreApplication.processEvents()
+
+    assert pressed, "the banner never let go of the application"
+
+
+def test_no_user_input_is_delivered_while_the_banner_is_up(qt_app):
+    """The one thing that separates this from the QProgressDialog trap: a
+    click cannot re-enter the scan or reach the controls being covered.
+
+    ``ExcludeUserInputEvents`` is not enough on its own -- a press already
+    posted is delivered through it -- so the banner swallows them itself."""
+    from qtpy.QtCore import QCoreApplication, QEvent, QPointF, Qt
+    from qtpy.QtGui import QMouseEvent
+    from qtpy.QtWidgets import QPushButton
+
+    host = QWidget()
+    host.resize(400, 300)
+    banner = ScanBanner(host)
+    banner.begin("Reading")
+
+    pressed = []
+    button = QPushButton("Scan", host)
+    button.pressed.connect(lambda: pressed.append(None))
+    point = QPointF(5, 5)
+    QCoreApplication.postEvent(
+        button,
+        QMouseEvent(
+            QEvent.MouseButtonPress, point, point,
+            Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+        ),
+    )
+
+    banner.set_progress(1, 4)
+
+    assert not pressed, "a press reached a control the banner is covering"
+
+
 def test_the_banner_draws_the_mark_and_the_name(qt_app):
     """It is the one moment the window has nothing else to show."""
     host = QWidget()

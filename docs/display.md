@@ -26,11 +26,22 @@ environment the package is *installed* into.
   `CurationController.scan`. An overlay parented to the window rather than a dialog, a modal dialog
   needing the event loop to appear at all and the event loop being exactly what is not running; and
   parented to the *window* rather than to a tab, since a scan can be asked for from any of them and
-  what it holds up is all of them. Painted rather than laid out, so one `repaint` puts the whole of
-  it on screen where a layout of children would need each repainted in turn. **No bar until there
-  is a number**: finding the roots comes first and cannot say how many there will be, and an
+  what it holds up is all of them. Painted rather than laid out, so one `repaint` covers the whole
+  of it where a layout of children would need each repainted in turn. **No bar until there is a
+  number**: finding the roots comes first and cannot say how many there will be, and an
   indeterminate bar has to animate to mean anything. It comes down on the way out of the read
   whether that read returned or raised.
+- **A repaint is not a frame on the screen, and the difference is the whole of why this was
+  invisible.** `repaint` reaches a backing store; the frame is composited when the main thread next
+  returns to the run loop, and a blocking scan never does — measured, the run loop was serviced *no
+  times at all* across sixteen seconds, while the banner painted 125 times into a buffer nobody saw.
+  So every update turns the loop once. **Which means input has to be stopped, and
+  `ExcludeUserInputEvents` does not stop it** — a press already posted is delivered through it, which
+  a test pins. The banner filters the application while it is up and swallows every press, key,
+  wheel and shortcut instead, so nothing anybody does can re-enter the scan or reach the controls it
+  is covering; that guarantee, held by the widget rather than asked of the loop, is what makes
+  turning the loop here safe where `busy_dialog.py` says it is not. The filter comes off in the same
+  `finally` that hides the banner, a filter left on being a window nobody can type into.
 - **The mark is the only place the orange and green appear.** Both are segmentation class colours
   and the timeline draws its states beside that legend, so a third meaning for either reads as
   data — which is why the banner's progress bar is the ordinary accent and why nothing else is
