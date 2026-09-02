@@ -6,45 +6,48 @@ test suite — a segfault under PySide6 is looked for in one file, not two.
 [`decisions.md`](decisions.md) holds the same for everything below the interface, and the
 environment the package is *installed* into.
 
+**An entry states a rule and names the test that guards it** rather than rehearsing an argument that
+test's own docstring already makes — `test_docs.py` fails if a name stops resolving, or if all four
+files together pass 900 lines. Reaching that ceiling means an entry has finished, or that its
+reasoning now lives in a test and the entry can point at it instead.
+
 ---
 
 ## The window
 
-- **A window that has not been drawn cannot say it is working.** A startup scan run before the
-  event loop gives seconds of blank grey indistinguishable from a hang, so it is queued with the
-  activation below. Where the interface thread must block, the line saying so is `repaint`ed rather
-  than merely set: an ordinary `setText` reaches the screen only after the work it announces has
-  finished. Anything longer goes to `gui/worker.py` behind the busy dialog — one
-  `on_progress(done, total)` contract and one `progressed` signal connected once for the whole
-  window, so giving an operation a counter is a callback in its loop. Only the applying run counts,
-  never the preview. That dialog is not a `QProgressDialog`, for the re-entrancy `busy_dialog.py`
-  sets out; the window owns it and detaches it before closing it.
+- **A window that has not been drawn cannot say it is working**, so the startup scan is queued with
+  the activation below (`test_the_startup_work_waits_for_the_window_to_appear`). Where the interface
+  thread must block, the line saying so is `repaint`ed rather than merely set: an ordinary `setText`
+  reaches the screen only after the work it announces has finished. Anything longer goes to
+  `gui/worker.py` behind the busy dialog — one `on_progress(done, total)` contract and one
+  `progressed` signal connected once for the whole window, so giving an operation a counter is a
+  callback in its loop. Only the applying run counts, never the preview. That dialog is not a
+  `QProgressDialog`, for the re-entrancy `busy_dialog.py` sets out; the window owns it and detaches
+  it before closing it.
 - **A scan still runs on the interface thread, so it carries its own panel.** `ScanBanner` covers
   the window for the length of one, reporting through the same `on_progress(done, total)`, threaded
   from `Scanner.build_index` through `CurationController.scan`. An overlay rather than a dialog, a
-  modal dialog needing the event loop to appear at all; parented to the window rather than to a
-  tab, since a scan can be asked for from any of them. **No bar until there is a number** — finding
-  the roots comes first and cannot say how many there will be, and an indeterminate bar has to
-  animate to mean anything. It comes down in a `finally`, whether the read returned or raised.
-- **A repaint is not a frame on the screen.** `repaint` reaches a backing store; the frame is
-  composited when the main thread next returns to the run loop, which a blocking scan never does —
-  so the banner was painted throughout and never once seen. Every update therefore turns the loop
-  once. **Which means input has to be stopped, and `ExcludeUserInputEvents` does not stop it**: a
-  press already posted is delivered through it. The banner filters the application and swallows
-  every press, key, wheel and shortcut itself — that guarantee, held by the widget rather than
-  asked of the loop, is what makes turning the loop safe where `busy_dialog.py` says it is not. The
-  filter comes off in the same `finally`, one left on being a window nobody can type into.
+  modal dialog needing the event loop to appear at all; parented to the window rather than to a tab,
+  since a scan can be asked for from any of them. **No bar until there is a number**
+  (`test_a_scan_that_cannot_count_yet_says_so_without_a_bar`). It comes down in a `finally`, whether
+  the read returned or raised (`test_a_failed_scan_still_takes_the_banner_down`).
+- **A repaint is not a frame on the screen** (`test_each_update_is_put_on_the_screen`), so every
+  banner update turns the event loop once. **Which means input has to be stopped, and
+  `ExcludeUserInputEvents` does not stop it**: a press already posted is delivered through it
+  (`test_no_user_input_is_delivered_while_the_banner_is_up`). The banner filters the application and
+  swallows every press, key, wheel and shortcut itself — that guarantee, held by the widget rather
+  than asked of the loop, is what makes turning the loop safe where `busy_dialog.py` says it is not.
+  The filter comes off in the same `finally`, one left on being a window nobody can type into.
 - **The mark is the only place the orange and green appear.** Both are segmentation class colours
   and the timeline draws its states beside that legend, so a third meaning for either reads as
   data — which is why the banner's bar is the ordinary accent and nothing else is tinted.
   `branding.py` holds the one path to the asset and the one spelling of the product name; a
   checkout without it draws nothing rather than failing.
-- **The window asks to be the one in front, and asks after the event loop has started.** Launched
-  from a terminal, macOS leaves the terminal in front, and a window that is not in front receives no
-  key presses and no pointer motion at all — so F1 does nothing and no tooltip appears. It clears
-  the instant anything is clicked, which is what makes it read as occasional.
+- **The window asks to be the one in front, and asks after the event loop has started** —
+  `test_the_window_asks_to_be_the_one_in_front` says what a window without the keyboard loses on
+  macOS. It clears the instant anything is clicked, which is what makes it read as occasional.
   `raise_()`/`activateWindow()` go through the same zero-delay timer the startup scan does, ahead of
-  it. `changeEvent` logs activation under `-v`, which is not recoverable after the fact. **Anything
+  it; `changeEvent` logs activation under `-v`, which is not recoverable after the fact. **Anything
   that must work anyway asks the window system rather than waiting for an event** — the brush
   outline and the wheel's anchor both do, under Images and plots.
 - **The window never lets CPython print a traceback.** Qt calls Python from C++, so an exception
@@ -78,10 +81,10 @@ environment the package is *installed* into.
   default button and a checked tool button, so anything relying on either must re-state it; and its
   padding clips a one-character button blank, which `COMPACT_BUTTON` exempts.
 - **A group of controls is a card, and its title outweighs the captions inside it.** One rule
-  reaches every box on every tab. **The weight goes on `QGroupBox`, never on `QGroupBox::title`**:
-  Qt ignores font properties on a subcontrol, so the obvious rule is silently no rule, and this one
-  reaches the title without reaching the controls inside. No background: the inputs are white, and a
-  white card behind them takes away the one thing separating "you can type here" from the panel.
+  reaches every box on every tab, and **the weight goes on `QGroupBox`, never on
+  `QGroupBox::title`** — `test_a_group_title_is_heavier_than_the_captions_inside_it` says why. No
+  background: the inputs are white, and a white card behind them takes away the one thing separating
+  "you can type here" from the panel.
 - **One of a small closed set is a run of segments, not a row of dots.** `common.SegmentedControl`
   is one widget holding checkable `QToolButton`s in an exclusive group, which also means the run
   **cannot be split across two lines of a flow layout** — loose buttons wrap apart, leaving one
@@ -95,18 +98,16 @@ environment the package is *installed* into.
   disabled. **The State group is deliberately not one**: it is non-exclusive so a frame whose SEM
   and FIB disagree can show *nothing* chosen, which a run of segments cannot say.
 - **A row is ticked; a control on its own is switched.** `common.ToggleSwitch` draws the second and
-  is a **subclass of `QCheckBox`**, which is the point rather than a detail: only `paintEvent`
-  differs, so `isChecked`, `toggled`, Space, focus and the disabled state stay Qt's. It paints
-  everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the control back
-  through `QStyle` and draws it twice — and it reserves room for its own focus ring, one painted
-  past the widget's edge coming out clipped flat.
+  is a **subclass of `QCheckBox`** (`test_it_is_a_check_box`), so only `paintEvent` differs. It
+  paints everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the
+  control back through `QStyle` and draws it twice — and it reserves room for its own focus ring
+  (`test_the_focus_ring_fits_inside_the_widget`).
 - **A chosen row is ticked, never highlighted**, highlighting being also how Qt marks the row you
   are looking at and lost whenever the list is rebuilt. `CheckList` is the one implementation, and
-  it reports nothing while its contents are replaced — a redraw rather than a gesture. Two traps: Qt
-  blends a selected row's icon with the highlight colour, so a status chip whose colour *is* the
-  information comes out wrong on exactly the row being looked at (`chip_icon()` supplies every such
-  pixmap); and a `QListWidget` with a horizontal scrollbar scrolls instead of eliding, so
-  `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
+  it reports nothing while its contents are replaced — a redraw rather than a gesture. Two traps,
+  each pinned: a status chip must come from `chip_icon()`
+  (`test_a_chip_is_the_same_pixmap_in_every_icon_mode`), and a list elides rather than scrolling
+  sideways (`test_a_long_filter_row_elides_rather_than_scrolling_sideways`).
 - **The projects are grouped under the folder each sits in, on all three tabs that list them.** An
   Autolamella project is named for the minute it started, so a hundred in a flat list are a hundred
   timestamps; the folder somebody filed them under is what a person recognises. `common.ProjectTree`
@@ -117,20 +118,18 @@ environment the package is *installed* into.
   it meant**: a folder's box is Qt's tri-state, so ticking one ticks its projects and each reports
   itself. A tree needs the list rules of `theme.py` as well as the list *settings*, or Qt paints its
   current row in the full accent.
-- **What differs between the three is passed in.** The chip is a curation status on Curate and a
-  completeness bar on Add data; `checkable=False` takes the tick boxes off Add data, which acts on
-  the row being *looked at*. **That flag is cleared rather than merely not set** —
-  `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state exists, so
-  every row would report as checkable and the first `setCheckState` would put the boxes back.
-  Export has no project list but a project *filter*, whose values are relative paths: that one draws
-  as a tree, named in `NESTED_FILTERS`, a display decision belonging in the interface rather than as
-  a flag on `Breakdown` below it. Every other filter stays a list, and the row holds both widgets
-  and shows one rather than having either pretend to be the other.
+- **What differs between the three is passed in** — the chip, and whether rows are checkable at all
+  (`test_a_tree_can_be_built_without_tick_boxes`). **That flag is cleared rather than merely not
+  set**: `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state
+  exists, so every row would report as checkable and the first `setCheckState` would put the boxes
+  back. Export has no project list but a project *filter*, whose values are relative paths: that one
+  draws as a tree, named in `NESTED_FILTERS`, a display decision belonging in the interface rather
+  than as a flag on `Breakdown` below it. Every other filter stays a list, and the row holds both
+  widgets and shows one rather than having either pretend to be the other.
 - **A folder is closed until it is opened, and what is open survives a rebuild.** Three things open
   one anyway: holding the current project, being rebuilt after a rescan having been open before, and
-  matching a *filter* — hiding a folder's siblings while leaving its own matches folded away reads
-  as having found nothing. The folds before a filter are put back when it is cleared, opening a
-  folder to search being the search's doing rather than the reader's.
+  matching a *filter* (`test_a_folder_holding_a_match_is_opened_to_show_it`). The folds before a
+  filter are put back when it is cleared, opening a folder to search being the search's doing.
 - **Add data describes a folder of projects at once, and a field they disagree on is left alone.** A
   session's projects share their sample, their grid and their operator, and typing that a dozen
   times is how a collection ends up with `HeLa` beside `Hela`. The scope is a list and one project
@@ -154,9 +153,8 @@ environment the package is *installed* into.
   states repeated — a "done" cell counts deselected images as finished, and those are grey on the
   timeline — which is what lets it have a ramp of its own. An outline round a seven-pixel cell takes
   more of it than the colour it frames, so the fills hold against the white row and the `SELECTED`
-  tint instead. **`SWATCH_HEIGHT` must stay even**: Qt centres a row's check indicator on the row —
-  Fusion's is eighteen pixels — but rounds the decoration differently, so an odd-height icon lands
-  half a pixel below the tick beside it.
+  tint instead. **`SWATCH_HEIGHT` must stay even**, for the reason
+  `test_the_chip_is_an_even_number_of_pixels_tall` gives.
 - **Choosing a folder lists every lamella under it, and `controller.project` is then the project of
   the lamella in view rather than the row last clicked.** An Autolamella run restarts for reasons
   that have nothing to do with the specimen, so one session's lamellae are spread over a dozen
@@ -173,17 +171,14 @@ environment the package is *installed* into.
   line is what says which project you are in — load-bearing rather than decorative.
   Choosing a folder moves no frame and no state: the lamella in view is kept when the new list holds
   it, which it does whenever the folder chosen is the one already being worked in.
-- **A list is never rebuilt from inside its own signal, and breaking the rule corrupts the heap
-  rather than merely glitching.** Selecting a project rebuilds the lamellae and nothing else:
-  rebuilding the project list there runs while Qt is part-way through the mouse press that caused
-  it, emptying the rows Qt holds a position in. `_refresh_lists` is for a scan or a state change,
-  where every chip really has moved. The Export tab broke it and segfaulted: refilling a filter row
-  clears the tree it is drawn in, so doing that from inside `itemChanged` destroys the item whose
-  signal is being emitted while Qt is still propagating the tick to that folder's other children —
-  and the process dies later, with nothing to connect it to. **Where the signal comes from Qt rather
-  than from this package the answer is a zero-delay single-shot timer** (`ExportPanel._recount`),
-  which also collapses a gesture moving many controls into one recount. The property dropdown
-  refills itself from inside its own `currentIndexChanged` and goes through the same timer.
+- **A list is never rebuilt from inside its own signal**, which corrupts the heap rather than merely
+  glitching — `test_ticking_a_folder_ticks_every_project_under_it` sets out how. Selecting a project
+  rebuilds the lamellae and nothing else; `_refresh_lists` is for a scan or a state change, where
+  every chip really has moved. **Where the signal comes from Qt rather than from this package the
+  answer is a zero-delay single-shot timer** (`ExportPanel._recount`,
+  `test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered`), which also collapses a gesture
+  moving many controls into one recount. The property dropdown refills itself from inside its own
+  `currentIndexChanged` and goes through the same timer.
 - **A widget that wraps takes its height from the width it actually has.** A form asks a field how
   tall it would be at one width and then hands it another, so a flow layout answering only
   `heightForWidth` lays its later rows below the bottom edge — addressable, reported and invisible.
@@ -197,68 +192,52 @@ environment the package is *installed* into.
   typed by someone who then reaches straight for Save is discarded without a word: a chip editor
   commits on Return, on a pick, and on losing focus, and `_edits` asks it to anyway. **Adding a
   widget to a layout reparents it, and reparenting hides it**, so it must be shown again before
-  anything measures it: a layout of hidden widgets measures zero, which reads as a field that
-  refuses a value *and* loses the one already in it.
-- **F1 is an application shortcut, and the list closes only when it is the window in front.** A
-  window-scoped `QShortcut` is dead while a second top-level window holds the keyboard, and a
-  parented `QDialog` is one — so the key that opened the list could not close it again; and closing
-  on `isVisible()` dismissed a list buried behind the window, unseen. Guarded to do nothing while a
-  modal dialog is up.
-- **The list is grouped by what a row is for, mouse gestures beside the keys they belong with.**
-  Picking frames out is one idea whether done with `Esc` or Ctrl-click. Every `Binding` and every
-  `TAB_GESTURES` row names its heading, and the heading *order* is the order the bindings first name
-  them — so the list is rearranged by moving a binding rather than by keeping a second table in
-  step, and *within* a heading by moving a row up its own table: keys first, then gestures in
-  `TAB_GESTURES` order. Only "This list" is placed, and it is placed last. **A heading is not bold
-  alone**, every left-hand cell being bold as the column a reader scans; it takes the colour and
-  weight a `QGroupBox` title takes over its card.
-- **It opens with a keyboard, the keys the tab binds picked out on it.** Drawn with `QPainter` like
-  the tool marks, so it has no asset to keep in step with the bindings — `_keys_of` reads them, so a
-  key added to the window appears on the diagram unasked, and a chord lights its modifiers too. A
-  tab with no keys of its own gets no diagram.
-- **It also says what the marks mean, and shows them rather than describing them.** Each module
-  supplies the legend for what it paints, and the timeline's sample is *grabbed from a
-  `FrameTimeline`* — the only way a legend cannot claim a mark the widget never draws.
-  `common.mark_image` puts each sample into the HTML as a `data:` URI, there being no file to point
-  at; **`QBuffer(QByteArray())` segfaults PySide6**, the array dying under the buffer, so it is held
-  in a name. The white band is listed per tab, one mark with two meanings listed on both meaning
-  neither. The list scrolls and is capped to the screen; `fit_to_screen` sizes from the label's own
-  hint, `adjustSize` being useless when a scroll area reports a small default instead of its
-  contents.
+  anything measures it (`test_a_chip_is_tall_enough_to_be_seen_as_soon_as_it_exists`).
+- **F1 is an application shortcut, and the list closes only when it is the window in front** —
+  `test_f1_works_from_the_list_it_opened` and `test_f1_fetches_back_a_list_left_behind_the_window`
+  say why neither a window-scoped shortcut nor `isVisible()` will do. It is guarded to do nothing
+  while a modal dialog is up (`test_f1_is_ignored_while_an_operation_holds_the_window`).
+- **The list is arranged by moving a binding, never by keeping a second table in step with one.**
+  Every `Binding` and every `TAB_GESTURES` row names its heading; the heading *order* is the order
+  the bindings first name them, and within a heading keys come first, then gestures in
+  `TAB_GESTURES` order (`test_a_gesture_sits_under_the_same_heading_as_the_keys_it_belongs_with`,
+  `test_the_three_ways_to_resize_the_brush_are_listed_together`). Only "This list" is placed, and it
+  is placed last. A heading takes the colour and weight a `QGroupBox` title takes over its card
+  (`test_a_heading_is_not_drawn_like_the_rows_under_it`).
+- **The diagram and the legend are drawn by whatever draws the real thing**, so neither can claim a
+  key or a mark the window does not have: `_keys_of` reads the bindings, and each module supplies
+  its own legend with the timeline's sample *grabbed from a `FrameTimeline`*
+  (`test_the_legend_shows_the_marks_rather_than_describing_them`). Two Qt facts have no test:
+  `common.mark_image` must hold its `QByteArray` in a name, **`QBuffer(QByteArray())` segfaulting
+  PySide6** as the array dies under the buffer; and `fit_to_screen` sizes from the label's own hint,
+  `adjustSize` being useless when a scroll area reports a small default instead of its contents.
 
 ## Images and plots
 
-- **The brush outline is redrawn from state, never from mouse movement alone.** It is drawn in
-  *scene* coordinates, so anything moving the scene under a stationary pointer — a pan, a fit,
-  centring on the next speck, a frame arriving on the loader thread — leaves a ring around a pixel
-  the pointer is no longer over, and every state that hides it left it hidden until the pointer was
-  nudged. `_sync_brush` is the single answer to "should there be a ring, and where", and
+- **The brush outline is redrawn from state, never from mouse movement alone**, being drawn in
+  *scene* coordinates: anything moving the scene under a stationary pointer leaves a ring around a
+  pixel the pointer is no longer over, which
+  `test_the_brush_follows_the_scene_when_the_view_moves_under_it` pins.
+  `_sync_brush` is the single answer to "should there be a ring, and where", and
   `_poll_pointer` asks it every 50 ms while the window is *not* the one in front, that being the
   case where no event will ask it: `QCursor.pos` is answered by the window system rather than by an
-  event, so it is right when nothing else is. It runs exactly while the brush would paint, started
-  and stopped beside the cursor it moves.
-- **Nothing may depend on the scene point Qt recorded from the last mouse event a view handled.**
-  That is what `AnchorUnderMouse` anchors on, and two ordinary things stop such events arriving:
-  the window not being in front, which on macOS means no pointer motion at all; and the
-  proofreading canvas accepting a mouse move without passing it on for the whole of a stroke, which
-  freezes the recorded point wherever the stroke began until some later move happens to fall
-  through. Either way the next wheel zoom pulls the image towards a pixel the pointer left some
-  time ago, which is why it looked occasional and why restarting sometimes appeared to fix it. So
-  the anchor is `NoAnchor` and `zoom_by` takes the point to hold: the wheel event's own position,
-  the one thing that always knows where the pointer was. It is put back by `centerOn` rather than
-  by translating, the linked pane copying this one's transform.
+  event. It runs exactly while the brush would paint.
+- **Nothing may depend on the scene point Qt recorded from the last mouse event a view handled** —
+  what `AnchorUnderMouse` anchors on, and `test_the_wheel_holds_the_point_it_is_pointed_at` and
+  `test_painting_does_not_move_where_the_wheel_zooms` are the two ordinary ways such an event never
+  arrives. So the anchor is `NoAnchor` and `zoom_by` takes the point to hold: the wheel event's own
+  position, the one thing that always knows where the pointer was. It is put back by `centerOn`
+  rather than by translating, the linked pane copying this one's transform.
 - **The intensity limits are a view of the frame, applied after the cache and never in it.** A
   lookup table over the uint8 array `DisplayImage` already holds, so moving a handle costs one pass
-  over 256 values rather than invalidating the frame and re-reading the file behind it. It opens on
-  the whole range, and at that setting hands the cached array straight back. Everything outside the
-  limits is clipped, which is the point — an acquisition whose data sits in a narrow band is
-  reviewed by throwing away the empty ends — and is why this is a *view*: `to_display_8bit`, what a
-  written file goes through, clips nothing. **It is kept when the frame changes**, comparing one
-  frame with the next being what it is for, and `common.intensity_badge` says so in the warning
-  colour whenever it is not the whole range: this is the one control that makes the picture differ
-  from the file. Curate and Label each hold their own, reviewing and proofreading looking at a frame
-  for different reasons; on the canvas only the picture is rescaled, the label being painted into as
-  it is or a stroke would be recorded against something that is not on disk.
+  over 256 values rather than re-reading the file behind it, and at the whole range it hands the
+  cached array straight back. Everything outside the limits is clipped
+  (`test_everything_outside_the_limits_is_clipped`), which is why this is a *view*:
+  `to_display_8bit`, what a written file goes through, clips nothing. **It is kept when the frame
+  changes**, comparing one frame with the next being what it is for, and `common.intensity_badge`
+  says so in the warning colour whenever it is not the whole range. Curate and Label each hold their
+  own; on the canvas only the picture is rescaled, the label being painted into as it is or a stroke
+  would be recorded against something that is not on disk.
 - **One control sets both limits, and they are called Minimum and Maximum.** Fiji's words, which is
   the vocabulary the people using this already have; "black / white" named the *result* and left the
   reader working out which end each of two sliders was. `common.RangeSlider` draws the interval — a
@@ -286,11 +265,10 @@ environment the package is *installed* into.
 - **Where a copy is placed is read off the copy, and remembered across a swap.** The copy is reduced
   to a box in *physical* pixels, so drawing it at whatever device ratio the widget reports comes out
   half or twice the size wherever the two disagree; whichever of its edges touches that box gives
-  the ratio back exactly. An identity transform says nothing about where the view is looking and the
-  scene is larger than the picture, so drawing 1:1 has to centre as fitting would. Where the view
-  *is* looking is held as a fraction of the picture rather than re-derived through the whole-number
-  scroll position, which crept it towards a corner while stepping; it is dropped the moment the user
-  pans.
+  the ratio back exactly. An identity transform says nothing about where the view is looking, so
+  drawing 1:1 has to centre as fitting would. Where the view *is* looking is held as a fraction of
+  the picture rather than re-derived through the whole-number scroll position
+  (`test_swapping_resolution_repeatedly_does_not_drift`); it is dropped the moment the user pans.
 - **`QGraphicsPixmapItem` overrides the view's render hint with its own transformation mode**, which
   defaults to nearest neighbour. A pane showing something several times its own size drops pixels
   rather than averaging them: against a figure of one-pixel rules, nearest loses whole gridlines, so

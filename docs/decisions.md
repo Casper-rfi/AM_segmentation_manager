@@ -47,13 +47,12 @@ rather than appending to it.
   directory that is gets decided by a person.** `init-project` writes the latter rather than
   fabricating the former: `experiment.yaml` is Autolamella's file, and writing one misrepresents
   provenance and could collide if Autolamella ever opens that directory. `protocol.yaml` looks like
-  a third marker and is not usable as one. A folder gathering unmarked datasets is shaped exactly
-  like a project whose lamellae hold subdirectories, so no structural test separates them in
-  general, and a marker on the gathering one makes every dataset beneath it a *lamella*.
-  `project_placement_problem` is the single guard both interfaces ask, testing two shapes — a
-  gathering directory only sometimes holds *marked* projects to give it away, and one project's
-  stages sit at a single depth whatever its era. The search is reliable and the levelling is not, so
-  proposing and levelling are separate calls, and a person confirms. What a proposal *would become*
+  a third marker and is not usable as one. **A marker in a gathering directory makes every dataset
+  beneath it a lamella** — the mistake most likely to be made by hand, since one file per collection
+  is the obvious shortcut (`test_a_marker_in_a_collection_directory_does_not_swallow_its_projects`,
+  `test_metadata_is_not_inherited_from_a_collection_directory`). No structural test separates the
+  two shapes in general, so `project_placement_problem` is the single guard both interfaces ask, the
+  search and the levelling are separate calls, and a person confirms. What a proposal *would become*
   is the useful column: lamella names reading like dataset names tell a reader the level is wrong.
 - **Identity is the path relative to the scan root, never the name** — for a project, and for a
   lamella within its project. Two projects can have identical names, `created_at` and recorded
@@ -65,16 +64,14 @@ rather than appending to it.
 - **The series is a property of an image set, not of a directory.** A lamella directory holds
   reference images of both beams and alignment images at once, so a set is a *group of filenames*
   within a directory rather than the directory itself; `image_files_of` reads back either shape.
-- **A loose-image stage does not end the stage search; a directory-shaped one does.** The
-  invariant the 2026 layout rests on: a lamella holds reference images loose and its milling tasks
-  below, each task holding its own references loose and its Adaptive Polishing stages below. Were
-  a lamella of reference images to end the search the way `sem/` does, every stage beneath it would
-  vanish silently. Nothing sits below an image directory.
+- **A loose-image stage does not end the stage search; a directory-shaped one does.** The invariant
+  the 2026 layout rests on: a lamella holds reference images loose and its milling tasks below, each
+  task holding its own references loose and its stages below
+  (`test_reference_images_above_a_stage_do_not_hide_it`). Nothing sits below an image directory.
 - **A loose set's label directory is resolved exactly, with no fallback chain**, unlike
-  `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. A dataset
-  collapsing the stage level keeps its Adaptive Polishing images and its `labels/` in the lamella
-  directory, so a reference set falling back would pair every reference image with a label of a
-  different scene: right dimensions, plausible shapes, wrong data.
+  `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. Falling back would
+  pair a reference image with a label of a different scene — right dimensions, plausible shapes,
+  wrong data (`test_a_loose_set_never_falls_back_to_the_shared_directory`).
 - **A series nobody has started labelling is not reported as unlabelled.** `no-labels-yet` fires
   per image set, and the loose series add hundreds of sets nothing has annotated — enough to bury
   every finding worth acting on. `layout.LABELS_EXPECTED` names the series that get the report; a
@@ -106,19 +103,17 @@ rather than appending to it.
   copies it into every run using it, and saves it outside the runs under a name of its own
   (`ref_alignment_ib`). So a run's `reference_image.tif` is a copy wherever the directory holding
   that run's `Alignment/` folder already holds an image of the same acquisition time, and **the
-  original is kept**. Directory and time must agree independently on every match — **neither signal
-  carries it alone**, time and size having merged genuinely different pictures — and **nothing is
-  hashed**, the time being already read. A third pass runs over the whole *project*, the prototype
-  having duplicated across lamellae, keeping the filename-and-time key rather than loosening to time
-  alone, which would merge a misfiled reference whose indexing keeps the misfiling visible. **It
-  never empties a lamella**, a duplicate that can be seen beating a directory dropped out of the
-  index and the survey at once.
-- **A fixed filename marker is matched to the shape Autolamella writes, not loosely.** Everything
-  after `ref_` is a *task* name somebody chose, so a loose marker collides with one.
-  `ref_alignment` is matched entire rather than as a prefix — as a prefix it reads a task called
-  `Alignment Check` as an alignment image, moving that task's references into a series nothing
-  predicts or labels. `_centring_` is anchored to the end for the same reason: as a bare substring
-  it silently drops every image of a task called `Centring`, ignored images not being reported.
+  original is kept**. **Directory and time must agree independently on every match** — neither
+  signal carries it alone (`test_two_runs_are_told_apart_by_when_they_ran`) — and **nothing is
+  hashed**, the time being already read. A third pass runs over the whole *project*, keeping the
+  filename-and-time key rather than loosening to time alone, which would merge a misfiled reference
+  whose indexing keeps the misfiling visible. **It never empties a lamella**, a duplicate that can
+  be seen beating a directory dropped out of the index and the survey at once.
+- **A fixed filename marker is matched to the shape Autolamella writes, not loosely**, everything
+  after `ref_` being a *task* name somebody chose:
+  `test_a_task_named_after_alignment_is_still_a_reference_image` says what a prefix match costs, and
+  `_centring_` is anchored to the end for the same reason — as a bare substring it silently drops
+  every image of a task called `Centring`, ignored images not being reported.
 - **Where a record's label and predictions live is carried, never re-derived.** Walking up from the
   image path only works for an Adaptive Polishing image, one level below its stage in a directory
   naming a modality; a reference image sits *directly* in a directory naming a lamella, so deriving
@@ -130,13 +125,13 @@ rather than appending to it.
   lamella while looking at its Adaptive Polishing timeline predicted its reference and alignment
   images too. Each lamella is asked what it can show of the chosen series, as navigating to it
   would — `frames.resolve_series` — so one holding none of it contributes what it has.
-- **`predictions/clean/` is indexed but can never become a label.** Adaptive Polishing's
-  post-processing rewrites the intensity values, so they no longer index the segmentation classes:
-  a label converted from one looks entirely valid and teaches a model the wrong classes. That will
-  not change upstream, so it is a property of `layout.py` (`is_convertible_prediction`) rather
-  than a choice offered to the caller. Still indexed deliberately: otherwise a project holding
-  only post-processed predictions reports "no predictions", indistinguishable from one the
-  pipeline never reached, and those need opposite actions.
+- **`predictions/clean/` is indexed but can never become a label**, for the reason
+  `test_post_processed_predictions_are_never_converted` gives. That will not change upstream, so it
+  is a property of `layout.py` (`is_convertible_prediction`) rather than a choice offered to the
+  caller — and the rule excludes post-processed output rather than requiring `raw/`, a flat
+  predictions directory being common. Still indexed deliberately: otherwise a project holding only
+  post-processed predictions reports "no predictions", indistinguishable from one the pipeline never
+  reached, and those need opposite actions.
 
 ## Workflow state
 
@@ -167,17 +162,17 @@ rather than appending to it.
   state folder; and an entry naming a group that is not there. That last is kept rather than
   dropped — a group that vanished because a drive was not mounted must not lose its curation.
 - **A write is read-modify-write, and the whole batch is checked before any of it is written** —
-  the rule every batch here follows, state changes, conversion and folder-wide metadata alike. Two
-  windows on one collection, or a window and a command line, would otherwise discard each other's
-  curation with no error. Every file the batch will touch is compared against what the plan read
-  *before the first is written*, so the answer is "nothing happened" rather than "some of it
-  happened"; each write then checks again for itself. That is what lets `plan_transition` and
+  the rule every batch here follows, state changes, conversion and folder-wide metadata alike, and
+  what stops two windows on one collection discarding each other's curation
+  (`test_a_stage_changed_since_planning_stops_the_whole_batch`). Every file is compared against what
+  the plan read *before the first is written*, so the answer is "nothing happened" rather than "some
+  of it happened"; each write then checks again for itself. That is what lets `plan_transition` and
   `apply_plan` be separate — previewed decisions, fresh safety check.
 - **Every label write goes through `io/atomic.py`, including compression.** It restores the
   destination's own permissions before the rename, because `mkstemp` creates owner-only — a
   recompressed label kept `0o600` becomes unreadable to everyone but its author, which on a shared
-  archive is the same as losing it. Compression decides *after* encoding, so `write_atomically`
-  takes a `commit_if` predicate and reports whether it committed.
+  archive is the same as losing it (`test_a_committed_file_keeps_the_destination_permissions`).
+  Compression decides *after* encoding, so `write_atomically` takes a `commit_if` predicate.
 - **Overwriting a label is tiered by what replacing it would cost, not by one flag.** Conversion
   sorts destinations three ways: an empty placeholder costs nothing to replace; a pseudo-label
   holding annotation is regenerable machine output, replaced once the user confirms; a corrected
@@ -185,7 +180,8 @@ rather than appending to it.
   `compress-labels`, which *can* be confirmed for corrected labels, compression preserving the
   pixels where conversion replaces proofread work with a machine guess. That is also why
   **compressing is not scoped to a selection**: a per-selection button leaves uncompressed exactly
-  the labels nobody happened to tick.
+  the labels nobody happened to tick. An overwrite that fails part way must still leave the label
+  readable (`test_an_interrupted_conversion_leaves_the_original_label_intact`).
 - **Corrected is a claim, and it is checked where it is made.** A group marked corrected with no
   label or with a placeholder breaks the claim, and a training export is *right* to drop it — what
   is wrong is doing so in silence, leaving a training set short of exactly the images you believe
@@ -218,12 +214,11 @@ rather than appending to it.
   are computed in the controller and reach a file only when the user saves, so
   `build_experiment_metadata` still resolves from the two files and nothing else. **A completer that
   matches anywhere must complete into a popup, and the popup must be taught Tab** — two halves of
-  one fault, both putting a value nobody typed into metadata that is exported: inline, an editable
-  `QComboBox` appends the tail of a match that was never a prefix (`a` against `UltrAuFoil Au R2/2
-  200 mesh` wrote `altrAuFoil …`); untaught, Tab moves the focus and commits the half-typed letter.
-  `common.match_anywhere` is the only place any of it is set, and where the key has to be caught is
-  a Qt matter in [`display.md`](display.md) § The binding. Matching anywhere is worth both:
-  `Quantifoil` and `UltrAuFoil` differ in their middles.
+  one fault, both putting a value nobody typed into exported metadata
+  (`test_matching_anywhere_never_completes_in_place`). `common.match_anywhere` is the only place any
+  of it is set, and where the key has to be caught is a Qt matter in [`display.md`](display.md)
+  § The binding. Matching anywhere is worth both: `Quantifoil` and `UltrAuFoil` differ in their
+  middles.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and a
   `metadata_project` in another. The directory is what the scanner indexes and Curate lists, so it
@@ -231,11 +226,12 @@ rather than appending to it.
   the other, which is why Add data offers no button to copy one across.
 - **A descriptive field is a row in `metadata.FIELDS`**, as a header value is a row in
   `image_metadata.FIELDS`: adding a field is one row rather than an edit in six modules, and adding
-  a header *dialect* is a column rather than an extraction block per field. Nothing names a
-  particular field to find out what it is; a field with a `breakdown_label` gets its count, its
-  `--by` selector and its Export filter row unasked. `defaults` are the usual answers offered where
-  `choices` would require — two freezing methods cover almost every sample, and jet freezing still
-  has to be typable.
+  a header *dialect* is a column rather than an extraction block per field. **Nothing names a
+  particular field to find out what it is**, pinned from both sides by
+  `test_a_field_that_can_be_counted_by_gets_a_breakdown_of_its_own` and
+  `test_a_vocabulary_is_rejected_by_name_rather_than_by_a_named_field`. `defaults` are the usual
+  answers offered where `choices` would require — two freezing methods cover almost every sample,
+  and jet freezing still has to be typable.
 - **A value is the type its field says, from the moment it is typed.** One `format_field_value`
   renders every one back, because the editor decides whether you edited a field by comparing what it
   shows against the resolved value: a deposition time shown as `30.0` where `30` was typed makes
@@ -268,11 +264,10 @@ rather than appending to it.
   two images of one field of view. Significant figures rather than decimal places, pixel sizes
   spanning decades. The conversion rounds to six decimals in the stored unit, binary floating point
   turning 6e-05 m into 59.99999999999999 um.
-- **A declared path counts as matched only if its value converts.** A key can be present and still
-  state nothing: a blank, a `"None"` marker, or uninitialised memory, which is what the FEI dialect
-  leaves in the stage keys it never fills — `Stage.StageX` reads 6.95e-310 while the real position
-  sits in `Stage.CompustageX`. So a subnormal or non-finite number reads as absent and the reader
-  moves on, rather than stopping at a key that merely exists.
+- **A declared path counts as matched only if its value converts**, a key being able to state
+  nothing while present: the FEI dialect leaves uninitialised memory in the stage keys it never
+  fills, so `Stage.StageX` is a subnormal float while the real position sits in
+  `Stage.CompustageX`. `test_uninitialised_memory_is_not_a_measurement` pins what reads as absent.
 - **A stage position is comparable only within its coordinate system, so the system is a column of
   its own.** One archive holds specimen positions with z around −59 µm beside RAW ones around
   +32 487 µm, and spells the system `Specimen`, `SPECIMEN` and `RAW` — carried as the header
@@ -283,10 +278,10 @@ rather than appending to it.
   openfibsem fills `system.info.hardware_version` from the *microscope server's* version and
   `system.info.software_version` from the *scripting client's*, so both keys say the opposite of
   what they hold; `experiment.application_version` is the application's own. They are on unrelated
-  release series — xT at 28.x, AutoScript at 4.x, autolamella at 0.x — so one "software version"
-  column would answer a different question per image. The microscope's own version is the only one
+  release series, so one "software version" column would answer a different question per image
+  (`test_the_three_software_versions_are_kept_apart`). The microscope's own version is the only one
   the FEI dialect states, under `System.Software`, and so the only one covering the pre-Autolamella
-  datasets; that it is the same quantity is measured, not assumed.
+  datasets.
 - **A label carries no header.** Its scale comes from the image it was drawn from, rescaled by the
   ratio of their widths, a label converted from a prediction not necessarily sharing its image's
   dimensions. `label_measure` returns no areas rather than assuming 1:1.
@@ -363,15 +358,15 @@ rather than appending to it.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
   workflow-state filter starts on "all" rather than *corrected*: the tab is narrowed towards an
   export rather than opening on one and hiding the archive. The cost is that an image somebody
-  decided against can reach a training set — only if it was labelled and deselected afterwards — so
-  the summary line counts those. Visible rather than impossible, "show me everything I rejected"
-  being a real question.
-- **Both modalities means side by side, not mixed together.** A training CSV holding SEM and FIB
-  rows under one `image` column is not something anyone trains on, the two beams needing different
-  models. So a selection holding both writes `sem_image, sem_label, fib_image, fib_label`, one row
-  per acquisition; one naming a single beam writes `image, label`. A cell is blank where that beam
-  has no image or no label worth pairing with one, and a row survives only if at least one beam has
-  a label — the empty-label rule drops a one-beam row and empties a cell where there are two.
+  decided against can reach a training set, so the summary line counts those
+  (`test_a_deselected_image_that_would_be_exported_is_counted`).
+- **Both modalities means side by side, not mixed together**
+  (`test_both_modalities_put_the_two_beams_on_one_row`): a selection holding both writes
+  `sem_image, sem_label, fib_image, fib_label`, one row per acquisition, where one naming a single
+  beam writes `image, label`. A cell is blank where that beam has no image or no label worth pairing
+  with one, and a row survives only if at least one beam has a label — the empty-label rule drops a
+  one-beam row and empties a cell where there are two
+  (`test_an_empty_label_is_not_paired_with_its_image`).
 - **What makes an SEM and a FIB image the same acquisition is stated once**, in
   `frames.group_by_acquisition`. They do not reliably share a stem — older projects name the file
   inside `fib/` with the same `_SEM` suffix — and **what pairs them depends on the era of the
