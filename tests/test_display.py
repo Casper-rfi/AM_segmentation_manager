@@ -540,3 +540,66 @@ def test_fit_within_uses_the_limiting_dimension():
     array = np.zeros((1000, 1000, 3), dtype=np.uint8)
 
     assert fit_within(array, (500, 200)).shape[:2] == (200, 200)
+
+
+# ---------------------------------------------------------------------------
+# The contrast control, which is a view of the data and never a change to it
+# ---------------------------------------------------------------------------
+
+def test_neutral_contrast_hands_back_the_array_itself():
+    """The control costs nothing until it is used: the cached array is what the
+    panel draws, not a copy of it."""
+    from am_segmentation_manager.display import apply_contrast
+
+    image = np.full((8, 8), 60, dtype=np.uint8)
+
+    assert apply_contrast(image, 0) is image
+
+
+def test_contrast_is_pivoted_at_the_image_mean():
+    """Pushed about mid-grey instead, an acquisition whose mean is 60 maps to
+    below zero at a gain of two and comes out black -- on exactly the frames
+    too flat to review."""
+    from am_segmentation_manager.display import apply_contrast
+
+    image = np.full((8, 8), 60, dtype=np.uint8)
+    image[0, 0], image[0, 1] = 40, 80
+
+    stretched = apply_contrast(image, 0.5)
+
+    assert stretched[1, 1] == 60, "the mean stays where it is"
+    assert stretched[0, 0] < 40 and stretched[0, 1] > 80
+    assert stretched.any(), "and the frame does not go black"
+
+
+def test_more_contrast_spreads_the_values_and_less_gathers_them():
+    from am_segmentation_manager.display import apply_contrast
+
+    image = np.array([[40, 60, 80]], dtype=np.uint8)
+
+    spread = np.ptp(image)
+
+    assert np.ptp(apply_contrast(image, 0.5)) > spread
+    assert np.ptp(apply_contrast(image, -0.5)) < spread
+
+
+def test_contrast_stays_inside_the_byte_range():
+    """Whatever the gain: a lookup table that ran past 255 would wrap."""
+    from am_segmentation_manager.display import apply_contrast
+
+    image = np.array([[0, 128, 255]], dtype=np.uint8)
+
+    for amount in (-1.0, -0.5, 0.5, 1.0):
+        result = apply_contrast(image, amount)
+        assert result.dtype == np.uint8
+        assert 0 <= result.min() and result.max() <= 255
+
+
+def test_a_step_of_the_control_is_the_same_proportion_wherever_it_is_taken():
+    """Exponential rather than linear, which is how contrast is perceived."""
+    from am_segmentation_manager.display import contrast_gain
+
+    assert contrast_gain(0) == 1.0
+    assert contrast_gain(0.5) == pytest.approx(2.0)
+    assert contrast_gain(-0.5) == pytest.approx(0.5)
+    assert contrast_gain(0.25) ** 2 == pytest.approx(contrast_gain(0.5))

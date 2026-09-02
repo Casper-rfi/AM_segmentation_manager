@@ -3150,3 +3150,99 @@ def test_writing_a_value_across_a_folder_is_not_confirmed(metadata_panel, monkey
     assert not asked
     for project in metadata_panel.controller.scope:
         assert "HeLa" in (project.path / "AM_metadata.yaml").read_text()
+
+
+# ---------------------------------------------------------------------------
+# The contrast control
+# ---------------------------------------------------------------------------
+
+def test_contrast_says_so_on_screen_when_it_is_off_neutral(window):
+    """The one control that makes the picture differ from the file. A reviewer
+    who has forgotten it is on is deciding about an image no export contains."""
+    panel = window.image_panel
+
+    panel.contrast_slider.setValue(50)
+
+    assert "contrast x2" in panel.badges.text()
+    assert BADGE_STYLES["warning"] in panel.badges.text()
+
+
+def test_neutral_contrast_says_nothing(window):
+    """A line that is always there is a line nobody reads."""
+    window.image_panel.contrast_slider.setValue(0)
+
+    assert "contrast" not in window.image_panel.badges.text()
+
+
+def test_the_contrast_control_returns_to_neutral_on_a_double_click(window):
+    """Reaching neutral by dragging is a thing nobody quite manages, which for
+    this control means being left slightly off it without noticing."""
+    from qtpy.QtCore import QEvent, QPointF, Qt
+    from qtpy.QtGui import QMouseEvent
+
+    slider = window.image_panel.contrast_slider
+    slider.setValue(-70)
+
+    # QPointF, not QPoint: the integer overload is deprecated in Qt 6 and warns.
+    slider.mouseDoubleClickEvent(
+        QMouseEvent(
+            QEvent.MouseButtonDblClick, QPointF(5, 5), QPointF(5, 5),
+            Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+        )
+    )
+
+    assert slider.value() == 0
+    assert window.image_panel._contrast == 0.0
+
+
+def test_moving_the_contrast_redraws_without_rereading(window, monkeypatch):
+    """The whole reason it is applied after the cache: a slider movement must
+    not invalidate a frame and send the loader back to a cloud-synced volume."""
+    from am_segmentation_manager.gui import cache as cache_module
+
+    reads: list = []
+    monkeypatch.setattr(
+        cache_module, "prepare_display_image",
+        lambda *args, **kwargs: reads.append(args) or None,
+    )
+
+    window.image_panel.contrast_slider.setValue(40)
+
+    assert reads == []
+
+
+def test_the_overlay_is_composed_from_the_contrasted_image(window, monkeypatch):
+    """The two panes must not disagree about how the same acquisition looks, so
+    the transform runs once and the label is drawn over its result -- not over
+    the array as it came out of the cache."""
+    from am_segmentation_manager.gui.widgets import image_panel as module
+
+    panel = window.image_panel
+    shown: list = []
+    composed: list = []
+    monkeypatch.setattr(
+        module, "apply_contrast",
+        lambda image, amount: shown.append(image) or image,
+    )
+    monkeypatch.setattr(
+        module, "compose_overlay",
+        lambda image, *args, **kwargs: composed.append(image) or image,
+    )
+    panel.pair.left.set_array = lambda array, **kwargs: shown.append(("left", array))
+
+    panel.contrast_slider.setValue(80)
+
+    assert composed, "the frame under test carries a label to draw"
+    assert composed[0] is shown[0], "composed from what the control produced"
+
+
+def test_a_flat_frame_cannot_be_given_contrast(qt_app):
+    """Nothing to spread: every pixel already is the mean. Worth pinning, since
+    it is what makes a synthetic fixture look like a broken control."""
+    import numpy as np
+
+    from am_segmentation_manager.display import apply_contrast
+
+    flat = np.full((4, 4), 100, dtype=np.uint8)
+
+    assert (apply_contrast(flat, 0.8) == flat).all()

@@ -135,6 +135,61 @@ def to_display_8bit(
     return np.rint(np.clip(scaled, 0, 255)).astype(np.uint8)
 
 
+#: How far the contrast control reaches, as a gain either side of neutral. At
+#: the ends a frame is shown at a quarter or four times its recorded contrast,
+#: which is past what any acquisition here needs and short of a black-and-white
+#: threshold.
+CONTRAST_RANGE = 2.0
+
+
+def contrast_gain(amount: float) -> float:
+    """Return the gain a contrast setting of *amount* asks for.
+
+    *amount* runs -1 to 1 and is neutral at 0. Exponential rather than linear,
+    so a step of the control changes what is seen by the same proportion
+    wherever it is taken from -- halving and doubling are one step either way,
+    which is how contrast is perceived and not how a linear scale delivers it.
+    """
+    return float(2.0 ** (CONTRAST_RANGE * amount))
+
+
+def apply_contrast(image: np.ndarray, amount: float) -> np.ndarray:
+    """Return *image* with its contrast changed, for display only.
+
+    A view control, applied where the picture is drawn rather than where it is
+    prepared: :class:`DisplayImage` holds a uint8 array already in memory, and
+    folding this into the preparation would invalidate that cache on every
+    movement of a slider and re-read the file behind it.
+
+    **Pivoted at the image's own mean rather than at mid-grey.** An acquisition
+    whose mean is 60 pushed about 128 at a gain of two maps to below zero and
+    comes out black -- on exactly the frames too flat to review, which are the
+    ones the control exists for.
+
+    Nothing here reaches an export: :func:`to_display_8bit` is what a written
+    file goes through, and it does not touch contrast.
+
+    Args:
+        image: 2D uint8 array, as :attr:`DisplayImage.image` holds.
+        amount: -1 to 1, neutral at 0.
+
+    Returns:
+        A uint8 array of the same shape. At neutral, *image* itself: the
+        control costs nothing until it is used.
+    """
+    import numpy as np
+
+    if not amount:
+        return image
+    gain = contrast_gain(amount)
+    pivot = float(image.mean())
+    levels = np.arange(256, dtype=np.float32)
+    table = np.rint(
+        np.clip(pivot + (levels - pivot) * gain, 0, 255)
+    ).astype(np.uint8)
+    return table[image]
+
+
 def downscale_to_fit(
     array: np.ndarray, max_edge: int, *, nearest: bool = False
 ) -> np.ndarray:

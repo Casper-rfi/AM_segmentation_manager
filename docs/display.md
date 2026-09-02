@@ -206,18 +206,17 @@ environment the package is *installed* into.
   every `TAB_GESTURES` row names its heading, and the heading *order* is the order the bindings
   first name them — so the list is rearranged by moving a binding rather than by keeping a second
   table in step with one. Only "This list" is placed, and it is placed last.
-- **The list also says what the marks mean, and shows them rather than describing them.** A colour
-  explained in words drifts from the colour drawn; the same pixmap cannot. Each module supplies the
-  legend for what it paints — `project_panel.status_legend`, `frame_strip.timeline_legend`,
-  `metadata_panel.completeness_legend` — and `common.mark_image` puts each sample into the list's
-  HTML as a `data:` URI, there being no file to point at and no document on a `QLabel` to attach a
-  resource to. **`QBuffer(QByteArray())` segfaults PySide6**, the array dying under the buffer, so
-  it is held in a name. Two headings rather than one, because a reader arrives asking about a
-  particular mark. The white band is listed per tab: it means frames picked out while curating and
-  unsaved edits while proofreading, and one mark with two meanings listed on both tabs means
-  neither. The timeline sample is *grabbed from a `FrameTimeline`*, which is the only way to be
-  sure the legend cannot show something the widget does not draw — `MISMATCH` was commented as an
-  amber wash over frames disagreeing with their label, and `_paint` has never drawn one.
+- **The list also says what the marks mean, and shows them rather than describing them.** Each
+  module supplies the legend for what it paints — `project_panel.status_legend`,
+  `frame_strip.timeline_legend`, `metadata_panel.completeness_legend` — and the timeline's sample is
+  *grabbed from a `FrameTimeline`*, which is the only way a legend cannot show what the widget does
+  not draw: `MISMATCH` was commented as an amber wash over frames disagreeing with their label, and
+  `_paint` has never drawn one. `common.mark_image` puts each sample into the HTML as a `data:` URI,
+  there being no file to point at and no document on a `QLabel` to attach a resource to;
+  **`QBuffer(QByteArray())` segfaults PySide6**, the array dying under the buffer, so it is held in
+  a name. Two headings, a reader arriving with one mark in mind. The white band is listed per tab —
+  frames picked out while curating, unsaved edits while proofreading — one mark with two meanings
+  listed on both tabs meaning neither.
   With the legend in it two tabs run past 800 pixels, so the list scrolls and is capped to the
   screen, a dialog merely sized past it having no scrollbar the user can reach either;
   `fit_to_screen` sizes from the label's own hint, `adjustSize` being useless when a scroll area
@@ -231,6 +230,17 @@ environment the package is *installed* into.
   the pointer is no longer over, and every state that hides it left it hidden until the pointer was
   nudged. `_sync_brush` is the single answer to "should there be a ring, and where"; wheel zoom
   needs nothing, `AnchorUnderMouse` holding the scene point under the pointer.
+- **Contrast is a view of the frame, applied after the cache and never in it.** A lookup table over
+  the uint8 array `DisplayImage` already holds, so moving the slider costs one pass over a
+  1024-pixel array rather than invalidating a frame and re-reading the file behind it.
+  **Pivoted at the image's own mean**: pushed about mid-grey instead, an acquisition whose
+  mean is 60 maps below zero at a gain of two and comes out black, on exactly the frames too flat
+  to review. The gain is exponential, halving and doubling being one step either way. Both panes
+  get the one transformed array, the overlay composed over it rather than over the cached one, and
+  a flat frame cannot be given contrast at all — every pixel already is the mean. It says so in the
+  warning colour whenever it is off neutral, this being the one control that makes the picture
+  differ from the file, and `to_display_8bit` — what a written file goes through — still does not
+  touch contrast.
 - **The image panes have no scrollbars, their scene is bigger than the image, and zooming out
   lands through `fitInView`.** The scene carries a quarter of the image as slack on every side, so
   an edge can be dragged into the middle of the pane to be worked on — which is also why

@@ -603,6 +603,7 @@ class CurationWindow(QMainWindow):
         self.image_panel.overlay_toggled.connect(self._set_overlay)
         self.image_panel.image_toggled.connect(self._set_image_shown)
         self.image_panel.alpha_changed.connect(lambda _alpha: self._render())
+        self.image_panel.contrast_changed.connect(lambda _amount: self._render())
         self.image_panel.path_requested.connect(
             lambda: self._copy_path(self._displayed_path(), "Image")
         )

@@ -16,18 +16,17 @@ and exporting are four tabs, each with a controller holding no Qt, and the comma
 same work for scripting and testing. Predictions need the second environment
 `scripts/setup_ml.sh` builds. Curate lists its projects as a tree under the session folder each
 one sits in, as do Add data and Export. Choosing a folder lists the lamellae of every project
-under it on Curate and describes all of them together on Add data, and F1 lists the keys of the tab
-in front along with what every mark on it means. [`display.md`](display.md) says
+under it on Curate and describes all of them together on Add data, F1 lists the keys of the tab in
+front along with what every mark on it means, and a contrast control shows a frame with more or
+less contrast than it was recorded with without touching what is exported. [`display.md`](display.md) says
 how those behave and why.
 
 ## What to pick up next
 
 **The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-First a contrast control
-applied after the cache, so moving it costs a lookup table rather than a re-read; a curation
-timeline carrying one colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a macOS
-`.icns` icon, the current one being a full-bleed PNG where macOS wants a squircle inset in its
-canvas.
+First a curation timeline carrying one
+colour vocabulary fewer; then a `QPainter` keyboard diagram for F1; and a macOS `.icns` icon, the
+current one being a full-bleed PNG where macOS wants a squircle inset in its canvas.
 
 The rest, in no particular order.
 

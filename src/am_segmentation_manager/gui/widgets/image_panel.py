@@ -26,7 +26,12 @@ from qtpy.QtWidgets import (
 )
 
 from ...config import SegmentationConfig
-from ...display import DEFAULT_ALPHA, compose_overlay
+from ...display import (
+    DEFAULT_ALPHA,
+    apply_contrast,
+    compose_overlay,
+    contrast_gain,
+)
 from ...layout import SERIES_LABELS
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
@@ -51,6 +56,26 @@ logger = logging.getLogger(__name__)
 #: exact. Nothing flaps at this margin: a wheel step is 25%.
 PLOT_DETAIL_MAGNIFICATION = 1.01
 
+class ResetSlider(QSlider):
+    """A slider that goes back to a resting value when it is double-clicked.
+
+    For a control whose neutral position is the one it should mostly sit at.
+    Qt offers no gesture for that, and reaching neutral by dragging is a thing
+    nobody quite manages -- which for a control that changes what an image
+    looks like means being left slightly off it without noticing.
+    """
+
+    def __init__(self, orientation, resting: int = 0) -> None:
+        """Build the slider, resting at *resting*."""
+        super().__init__(orientation)
+        self._resting = resting
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Return to the resting value instead of jumping to the click."""
+        self.setValue(self._resting)
+        event.accept()
+
+
 class ImagePanel(QWidget):
     """The frame view, its mode controls, legend and badges."""
 
@@ -60,6 +85,8 @@ class ImagePanel(QWidget):
     overlay_toggled = Signal(bool)
     #: Emitted with the new label opacity, 0.0-1.0.
     alpha_changed = Signal(float)
+    #: Emitted with the contrast asked for, -1 to 1 and neutral at 0.
+    contrast_changed = Signal(float)
 
     #: Emitted when the acquisition under the label is shown or hidden.
     image_toggled = Signal(bool)
@@ -77,6 +104,10 @@ class ImagePanel(QWidget):
         super().__init__()
         self.config = config
         self._alpha = DEFAULT_ALPHA
+        #: How far the contrast control is from neutral. A property of the
+        #: *view*, held here rather than in the controller and never reaching
+        #: an export -- see :func:`~...display.apply_contrast`.
+        self._contrast = 0.0
         #: Whether the figure on show describes the whole stage; see
         #: :meth:`set_plot_scope`.
         self._plot_is_shared = False
@@ -179,6 +210,22 @@ class ImagePanel(QWidget):
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
         controls.addWidget(self.alpha_slider)
 
+        controls.addSpacing(SWITCH_RUN_GAP)
+        contrast_label = QLabel("Contrast")
+        controls.addWidget(contrast_label)
+        self.contrast_slider = ResetSlider(Qt.Horizontal)
+        self.contrast_slider.setRange(-100, 100)
+        self.contrast_slider.setValue(0)
+        self.contrast_slider.setFixedWidth(120)
+        self.contrast_slider.setToolTip(
+            "Show the acquisition with more or less contrast than it was "
+            "recorded with.\nA view control: it changes nothing on disk and "
+            "reaches no export.\nDouble-click to return to neutral."
+        )
+        contrast_label.setToolTip(self.contrast_slider.toolTip())
+        self.contrast_slider.valueChanged.connect(self._contrast_moved)
+        controls.addWidget(self.contrast_slider)
+
         controls.addSpacing(20)
         self.fit_button = QPushButton("Fit")
         self.fit_button.setToolTip("Scale the view to the pane\nShortcut: G")
@@ -238,6 +285,14 @@ class ImagePanel(QWidget):
     def _alpha_moved(self, value: int) -> None:
         self._alpha = value / 100.0
         self.alpha_changed.emit(self._alpha)
+
+    def _contrast_moved(self, value: int) -> None:
+        self._contrast = value / 100.0
+        self.contrast_changed.emit(self._contrast)
+
+    def reset_contrast(self) -> None:
+        """Put the contrast control back to neutral."""
+        self.contrast_slider.setValue(0)
 
     def set_mode(self, mode: DisplayMode) -> None:
         """Reflect the current view without re-emitting a change."""
@@ -367,18 +422,22 @@ class ImagePanel(QWidget):
             return
 
         display = frame_image.display
-        self.pair.left.set_array(display.image)
+        # Once, for both panes: the two must not disagree about how the same
+        # acquisition looks, and at neutral this hands back the cached array
+        # itself rather than a copy of it.
+        image = apply_contrast(display.image, self._contrast)
+        self.pair.left.set_array(image)
 
         if display.label is not None and show_overlay:
             overlay = compose_overlay(
-                display.image, display.label, self.config,
+                image, display.label, self.config,
                 alpha=self._alpha, hide_image=not with_image,
             )
             self.pair.right.set_array(overlay)
         else:
-            self.pair.right.set_array(display.image)
+            self.pair.right.set_array(image)
 
-        self._set_badges(self._label_badges(display))
+        self._set_badges(self._contrast_badge() + self._label_badges(display))
 
     def show_plot(
         self, frame_plot: FramePlot | None, whole: FramePlot | None = None
@@ -506,6 +565,19 @@ class ImagePanel(QWidget):
         if display.label_resized:
             badges.append(("label resized to match image", "warning"))
         return badges
+
+    def _contrast_badge(self) -> list[tuple[str, str]]:
+        """Say so, whenever what is on screen is not what was recorded.
+
+        First of the badges, and in the warning colour. This is the one control
+        that makes the picture differ from the file, and a reviewer who has
+        forgotten it is on is deciding about an image the export will not
+        contain. It says nothing at neutral, a line that is always there being
+        a line nobody reads.
+        """
+        if not self._contrast:
+            return []
+        return [(f"contrast x{contrast_gain(self._contrast):.2g}", "warning")]
 
     def _set_badges(self, badges: list[tuple[str, str]]) -> None:
         if not badges:
