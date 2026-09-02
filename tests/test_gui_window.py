@@ -2794,3 +2794,157 @@ def test_setting_the_values_is_a_redraw_rather_than_an_edit(qt_app):
 
     assert editor.values() == ["RFI", "Diamond"]
     assert reported == []
+
+
+
+
+# ---------------------------------------------------------------------------
+# The legend
+#
+# A mark and its explanation must be drawn by the same code, or they drift.
+# ---------------------------------------------------------------------------
+
+def _legend_images(help_text: str) -> list[bytes]:
+    """Return the pictures embedded in a help list, decoded."""
+    import base64
+    import re
+
+    return [
+        base64.b64decode(match)
+        for match in re.findall(r'<img src="data:image/png;base64,([^"]+)">', help_text)
+    ]
+
+
+def test_the_legend_shows_the_marks_rather_than_describing_them(window, qt_app):
+    """Every legend row carries a picture drawn by whatever draws the real
+    mark. A described colour and a drawn one drift apart; the same pixmap
+    cannot."""
+    from qtpy.QtGui import QImage
+
+    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+
+    images = _legend_images(window.shortcut_help(TAB_CURATE))
+
+    assert len(images) >= 10
+    for encoded in images:
+        picture = QImage.fromData(encoded, "PNG")
+        assert not picture.isNull()
+        assert picture.width() > 0 and picture.height() > 0
+
+
+def test_the_chip_legend_is_the_chip_the_rows_carry(window, qt_app):
+    """The point of the legend: the fill named here is the fill drawn there."""
+    from qtpy.QtGui import QImage
+
+    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+    from am_segmentation_manager.gui.widgets.project_panel import CELL_COLOURS
+
+    shown = {
+        QImage.fromData(encoded, "PNG").pixelColor(1, 1).name()
+        for encoded in _legend_images(window.shortcut_help(TAB_CURATE))
+    }
+
+    assert {colour.name() for colour in CELL_COLOURS.values()} <= shown
+
+
+def test_the_legend_says_what_the_tab_actually_draws(window):
+    """The white band means frames picked out while curating and unsaved edits
+    while proofreading. One mark, two meanings: listing both on both tabs would
+    make it mean neither."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE, TAB_LABEL
+
+    curate = window.shortcut_help(TAB_CURATE)
+    label = window.shortcut_help(TAB_LABEL)
+
+    assert "Picked out for a state change" in curate
+    assert "unsaved edits" not in curate
+    assert "unsaved edits" in label
+    assert "Picked out for a state change" not in label
+
+
+def test_a_tab_with_no_marks_gets_no_legend(window):
+    """Export draws neither a chip nor the bar, and a heading with nothing
+    under it is a question raised and not answered."""
+    from am_segmentation_manager.gui.widgets.main_window import (
+        GROUP_ROW_MARK,
+        GROUP_STRIP_MARK,
+        TAB_EXPORT,
+    )
+
+    help_text = window.shortcut_help(TAB_EXPORT)
+
+    assert GROUP_ROW_MARK not in help_text
+    assert GROUP_STRIP_MARK not in help_text
+
+
+def test_the_legend_comes_after_the_keys_and_before_this_list(window):
+    """A reader looking for a key should not have to read past the pictures,
+    and the key that opened the list is the one they have already found."""
+    from am_segmentation_manager.gui.widgets.main_window import (
+        GROUP_HELP,
+        GROUP_ROW_MARK,
+        GROUP_STRIP_MARK,
+        GROUP_VIEW,
+        TAB_CURATE,
+    )
+
+    help_text = window.shortcut_help(TAB_CURATE)
+    places = [
+        help_text.index(group)
+        for group in (GROUP_VIEW, GROUP_ROW_MARK, GROUP_STRIP_MARK, GROUP_HELP)
+    ]
+
+    assert places == sorted(places)
+
+
+def test_the_shortcut_list_is_capped_to_the_screen(window, qt_app):
+    """The list runs past 800 pixels on two tabs now the legend is in it, and a
+    dialog merely sized past the screen has no scrollbar the user can reach
+    either. Built directly rather than through F1, which does nothing while any
+    modal dialog is up."""
+    from am_segmentation_manager.gui.widgets.main_window import (
+        SCREEN_MARGIN,
+        TAB_LABEL,
+        ShortcutHelp,
+    )
+
+    dialog = ShortcutHelp(window)
+    dialog.show_for("Label", window.shortcut_help(TAB_LABEL))
+    room = qt_app.primaryScreen().availableGeometry()
+
+    assert dialog.height() <= room.height() - SCREEN_MARGIN
+    assert dialog.width() <= room.width() - SCREEN_MARGIN
+    # And the rows past the cap are still reachable rather than cut off.
+    assert dialog._text.sizeHint().height() > dialog.height()
+    assert dialog._scroll.verticalScrollBarPolicy() != Qt.ScrollBarAlwaysOff
+
+
+def test_the_timeline_legend_describes_nothing_the_timeline_omits(qt_app):
+    """`MISMATCH` was commented as a wash over frames disagreeing with their
+    label, and `_paint` has never drawn one. A legend row for it would have
+    been a mark the reader could look for for ever."""
+    from am_segmentation_manager.gui.widgets.frame_strip import timeline_legend
+
+    meanings = " ".join(text for _, text in timeline_legend("picked out")).lower()
+
+    assert "amber" not in meanings
+    assert "disagree" not in meanings
+
+
+def test_a_mark_survives_the_round_trip_into_the_list(qt_app):
+    """`QBuffer(QByteArray())` lets the array die under the buffer and
+    segfaults PySide6, so the bytes have to be held in a name."""
+    import base64
+    import re
+
+    from qtpy.QtGui import QColor, QImage, QPixmap
+
+    from am_segmentation_manager.gui.widgets.common import mark_image
+
+    pixmap = QPixmap(25, 16)
+    pixmap.fill(QColor("#12604f"))
+    encoded = re.search(r'base64,([^"]+)"', mark_image(pixmap)).group(1)
+    restored = QImage.fromData(base64.b64decode(encoded), "PNG")
+
+    assert restored.size() == pixmap.size()
+    assert restored.pixelColor(12, 8) == QColor("#12604f")

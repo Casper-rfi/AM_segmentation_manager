@@ -10,7 +10,7 @@ could only report that the two disagree.
 from __future__ import annotations
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QPainter
+from qtpy.QtGui import QColor, QPainter, QPixmap
 from qtpy.QtWidgets import QSizePolicy, QWidget
 
 #: Workflow state colours.
@@ -35,14 +35,12 @@ BACKGROUND = QColor("#232323")
 TICK = QColor("#1a1a1a")
 CURSOR = QColor("#f5f5f5")
 
-#: Drawn over a frame whose images disagree with the label they share. Warning
-#: amber rather than another workflow colour: this is not a fourth state, it is
-#: a sign that the state shown cannot be trusted.
+#: Warning amber: something wants attention rather than reporting a state.
+#: Deliberately not a workflow colour, so it cannot be read as a fourth one.
 #:
-#: Painted as a translucent wash over the frame's whole column rather than as
-#: another stripe. The stripes are all "here is a fact about this row"; a
-#: mismatch is "do not trust this frame", which needs to read differently and
-#: has nowhere of its own to sit now the label lines occupy both edges.
+#: **Nothing on this timeline is painted with it.** It is here because it sits
+#: with the colours that carry meaning rather than with the chrome, and the Add
+#: data tab's completeness bar uses it for a project still short of fields.
 MISMATCH = QColor("#d08c00")
 
 #: Whether each modality's label exists, and whether it holds an annotation.
@@ -80,9 +78,9 @@ CURSOR_WIDTH = 2
 
 #: Frames picked out for a state change, drawn as a band above everything else.
 #:
-#: The cursor's white rather than a new hue. The widget already carries four
-#: colour vocabularies -- workflow states, label lines, the mismatch wash and
-#: the class legend directly above it -- and a fifth would have to be explained.
+#: The cursor's white rather than a new hue. The widget already carries three
+#: colour vocabularies -- workflow states, label lines, and the class legend
+#: directly above it -- and a fourth would have to be explained.
 #: White is already the user's own mark here: the cursor says where you are and
 #: this says what you picked, and neither is a fact about the data. A horizontal
 #: band cannot be confused with the vertical cursor line.
@@ -137,8 +135,7 @@ class FrameTimeline(QWidget):
         self.setToolTip(
             "Curation progress: SEM above, FIB below, each with a thin line "
             "for its labels, bright where one holds an annotation.\n"
-            "Amber means a frame disagrees with its label.\n"
-            "Click to jump; F1 lists the rest."
+            "Click to jump; F1 says what every mark means."
         )
 
     def set_states(
@@ -302,3 +299,148 @@ class FrameTimeline(QWidget):
             self.frame_selected.emit(frame)
         else:
             self.extend_reached.emit(frame)
+
+
+#: How wide a legend sample is drawn. Wide enough to read as a band rather than
+#: a speck, and every one of them is drawn on :data:`BACKGROUND`: these marks
+#: are colours against a near-black ground, and the same colour on the dialog's
+#: white is a different mark.
+LEGEND_WIDTH = 30
+
+
+def _legend_tile(height: int | None = None) -> QPixmap:
+    """Return a blank sample at the timeline's own ground colour."""
+    pixmap = QPixmap(LEGEND_WIDTH, height if height is not None else ROW_HEIGHT)
+    pixmap.fill(BACKGROUND)
+    return pixmap
+
+
+def _state_sample(state: str) -> QPixmap:
+    """Return one frame's worth of a workflow state, as the timeline draws it."""
+    pixmap = _legend_tile()
+    painter = QPainter(pixmap)
+    try:
+        painter.fillRect(
+            0, 0, LEGEND_WIDTH, ROW_HEIGHT - 1, STATE_COLOURS[state]
+        )
+    finally:
+        # A painter outliving its pixmap crashes the process rather than
+        # reporting it.
+        painter.end()
+    return pixmap
+
+
+def _label_line_sample() -> QPixmap:
+    """Return the three label states side by side, in the order they are named.
+
+    One sample rather than three rows: the line is the same mark throughout and
+    what varies is only how much of a label there is, which reads as a sequence.
+    """
+    pixmap = _legend_tile(_band_sample_height())
+    painter = QPainter(pixmap)
+    try:
+        third = LEGEND_WIDTH // 3
+        for index, state in enumerate(("present", "empty", "missing")):
+            colour = LABEL_COLOURS[state]
+            width = LEGEND_WIDTH - 2 * third if index == 2 else third
+            if colour is not None:
+                painter.fillRect(index * third, 0, width, LABEL_LINE_HEIGHT, colour)
+            painter.fillRect(
+                index * third,
+                LABEL_LINE_HEIGHT + LABEL_LINE_GAP,
+                width,
+                ROW_HEIGHT - 1,
+                STATE_COLOURS["selected"],
+            )
+    finally:
+        painter.end()
+    return pixmap
+
+
+def _band_sample_height() -> int:
+    """Return the height of a label line and the state row under it."""
+    return LABEL_LINE_HEIGHT + LABEL_LINE_GAP + ROW_HEIGHT
+
+
+def _whole_sample() -> QPixmap:
+    """Return a miniature timeline, so the layout can be seen before the parts.
+
+    Drawn by the widget itself rather than reproduced here: a legend showing
+    something the timeline does not draw is worse than no legend, and this is
+    the only way to be sure it cannot happen.
+    """
+    strip = FrameTimeline()
+    strip.resize(3 * LEGEND_WIDTH, strip.height())
+    states = ["deselected", "selected", "corrected", "corrected"]
+    labels = ["missing", "empty", "present", "present"]
+    strip.set_states(
+        {"SEM": states, "FIB": ["deselected", *states[:3]]},
+        1,
+        {"SEM": labels, "FIB": ["missing", *labels[:3]]},
+    )
+    return strip.grab()
+
+
+def timeline_legend(band: str) -> list[tuple[QPixmap, str]]:
+    """Return what each mark on the timeline means, as ``(sample, meaning)``.
+
+    Args:
+        band: What the white band across the top says on the tab asking. It
+            marks frames picked out for a state change while curating and
+            labels with unsaved edits while proofreading -- one mark, two
+            meanings, which is why the caller supplies it rather than this.
+    """
+    return [
+        (
+            _whole_sample(),
+            "One column per frame, in order. SEM above, FIB below, each with a "
+            "thin line for its label.",
+        ),
+        (_state_sample("deselected"), "Deselected: no label is wanted here"),
+        (_state_sample("selected"), "Selected: a label is wanted and not yet finished"),
+        (_state_sample("corrected"), "Corrected: the label has been proofread"),
+        (
+            _label_line_sample(),
+            "The label line, left to right: it holds an annotation, the file is "
+            "there but empty, there is no label file",
+        ),
+        (_selection_sample(), band),
+        (_cursor_sample(), "Where you are"),
+    ]
+
+
+def _selection_sample() -> QPixmap:
+    """Return the white band, drawn where it sits above the rows."""
+    pixmap = _legend_tile(SELECTION_BAND + ROW_HEIGHT)
+    painter = QPainter(pixmap)
+    try:
+        painter.fillRect(0, 0, LEGEND_WIDTH, SELECTION_HEIGHT, SELECTION)
+        painter.fillRect(
+            0, SELECTION_BAND, LEGEND_WIDTH, ROW_HEIGHT - 1,
+            STATE_COLOURS["selected"],
+        )
+    finally:
+        painter.end()
+    return pixmap
+
+
+def _cursor_sample() -> QPixmap:
+    """Return the position marker, crossing a row and the ground around it.
+
+    Taller than the row it crosses on purpose: drawn against a tile the row
+    fills, the marker reads as a gap between two bands rather than as a line
+    over them, which is the opposite of what it is.
+    """
+    height = SELECTION_BAND + ROW_HEIGHT
+    pixmap = _legend_tile(height)
+    painter = QPainter(pixmap)
+    try:
+        painter.fillRect(
+            0, SELECTION_BAND, LEGEND_WIDTH, ROW_HEIGHT - 1, STATE_COLOURS["selected"]
+        )
+        painter.fillRect(
+            LEGEND_WIDTH // 2 - CURSOR_WIDTH // 2, 0, CURSOR_WIDTH, height, CURSOR
+        )
+    finally:
+        painter.end()
+    return pixmap

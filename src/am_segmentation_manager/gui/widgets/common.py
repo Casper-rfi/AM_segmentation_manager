@@ -7,11 +7,14 @@ belongs in a controller, and anything only one panel uses belongs in that panel.
 """
 from __future__ import annotations
 
+import base64
 import logging
 from collections.abc import Sequence
 from pathlib import Path
 
 from qtpy.QtCore import (
+    QBuffer,
+    QByteArray,
     QEvent,
     QObject,
     QPoint,
@@ -108,6 +111,30 @@ def chip_icon(pixmap: QPixmap) -> QIcon:
         for state in (QIcon.On, QIcon.Off):
             icon.addPixmap(pixmap, mode, state)
     return icon
+
+
+def mark_image(pixmap: QPixmap) -> str:
+    """Return *pixmap* as an ``<img>`` tag Qt's rich text will draw inline.
+
+    So that a legend shows the mark itself rather than a description of it: the
+    pixmap comes from the same painter that draws the real thing, and the two
+    cannot drift apart. The bytes travel in the tag as a ``data:`` URI, there
+    being no file to point at and ``QLabel`` offering no document to attach a
+    resource to.
+
+    The byte array is held in a name rather than passed as a temporary:
+    ``QBuffer(QByteArray())`` lets the array die under the buffer and segfaults
+    PySide6 on the write.
+    """
+    data = QByteArray()
+    buffer = QBuffer(data)
+    buffer.open(QBuffer.WriteOnly)
+    try:
+        pixmap.save(buffer, "PNG")
+    finally:
+        buffer.close()
+    encoded = base64.b64encode(bytes(data)).decode("ascii")
+    return f'<img src="data:image/png;base64,{encoded}">'
 
 
 #: Monospaced families to try, in the order they are looked for. The style hint

@@ -509,3 +509,26 @@ class MetadataPanel(QWidget):
             self.summary.setText(self.controller.summary())
         finally:
             self._loading = False
+
+
+def completeness_legend() -> list[tuple[QPixmap, str]]:
+    """Return what the bar beside each project means, as ``(sample, meaning)``.
+
+    Drawn through :func:`_completeness_icon`, so the legend cannot describe a
+    bar the list does not draw.
+    """
+    def sample(filled: int, total: int) -> QPixmap:
+        summary = ProjectSummary(
+            label="", filled=filled, total=total,
+            missing=() if filled == total else ("...",),
+        )
+        return _completeness_icon(summary).pixmap(COMPLETENESS_WIDTH, SWATCH_HEIGHT)
+
+    return [
+        (sample(4, 4), "Every field this project can carry has a value"),
+        (
+            sample(2, 4),
+            "How full the bar is, is how much of the project is described; "
+            "hover a row for what is missing",
+        ),
+    ]

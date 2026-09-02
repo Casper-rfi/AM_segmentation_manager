@@ -32,7 +32,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...layout import LABELS_EXPECTED, MODALITIES, SERIES
+from ...layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..controller import CurationStatus
 from .common import (
     CheckList,
@@ -757,3 +757,59 @@ def _cell_colour(status: str, *, expected: bool) -> QColor:
     if not expected:
         return CELL_COLOURS[STATUS_UNLABELLED]
     return CELL_COLOURS[status]
+
+
+#: How big a single colour is drawn in the F1 legend. Twice a cell, so it reads
+#: as a colour beside a line of text where a lone cell reads as a speck; the
+#: fill is the one the chip actually uses, which is the part that has to match.
+LEGEND_SWATCH = 2 * SWATCH_CELL
+
+
+def _legend_swatch(status: str, *, expected: bool) -> QPixmap:
+    """Return one of the chip's fills, alone and big enough to see."""
+    pixmap = QPixmap(LEGEND_SWATCH, LEGEND_SWATCH)
+    pixmap.fill(_cell_colour(status, expected=expected))
+    return pixmap
+
+
+def status_legend() -> list[tuple[QPixmap, str]]:
+    """Return what the chip beside each row means, as ``(sample, meaning)``.
+
+    The samples are drawn by the same painter as the chips themselves, so a
+    colour cannot be explained here as one thing and drawn there as another.
+    """
+    example = CurationStatus(
+        {
+            **{(series, modality): "not started"
+               for series in SERIES for modality in MODALITIES},
+            ("adaptive", "SEM"): "done",
+            ("adaptive", "FIB"): "in progress",
+        }
+    )
+    columns = ", ".join(SERIES_LABELS[series] for series in SERIES)
+    return [
+        (
+            _status_icon(example).pixmap(SWATCH_WIDTH, SWATCH_HEIGHT),
+            f"Left to right: {columns}. SEM above, FIB below.",
+        ),
+        (
+            _legend_swatch(STATUS_EMPTY, expected=True),
+            "No images of that series at all",
+        ),
+        (
+            _legend_swatch("not started", expected=False),
+            "Images are there, and nobody labels that series",
+        ),
+        (
+            _legend_swatch("not started", expected=True),
+            "Nothing proofread yet",
+        ),
+        (
+            _legend_swatch("in progress", expected=True),
+            "Part proofread",
+        ),
+        (
+            _legend_swatch("done", expected=True),
+            "Proofread, or deselected as not wanted",
+        ),
+    ]

@@ -159,6 +159,22 @@ environment the package is *installed* into.
   every `TAB_GESTURES` row names its heading, and the heading *order* is the order the bindings
   first name them — so the list is rearranged by moving a binding rather than by keeping a second
   table in step with one. Only "This list" is placed, and it is placed last.
+- **The list also says what the marks mean, and shows them rather than describing them.** A colour
+  explained in words drifts from the colour drawn; the same pixmap cannot. Each module supplies the
+  legend for what it paints — `project_panel.status_legend`, `frame_strip.timeline_legend`,
+  `metadata_panel.completeness_legend` — and `common.mark_image` puts each sample into the list's
+  HTML as a `data:` URI, there being no file to point at and no document on a `QLabel` to attach a
+  resource to. **`QBuffer(QByteArray())` segfaults PySide6**, the array dying under the buffer, so
+  it is held in a name. Two headings rather than one, because a reader arrives asking about a
+  particular mark. The white band is listed per tab: it means frames picked out while curating and
+  unsaved edits while proofreading, and one mark with two meanings listed on both tabs means
+  neither. The timeline sample is *grabbed from a `FrameTimeline`*, which is the only way to be
+  sure the legend cannot show something the widget does not draw — `MISMATCH` was commented as an
+  amber wash over frames disagreeing with their label, and `_paint` has never drawn one.
+- **The list scrolls, and is capped to the screen.** With the legend in it two tabs run past 800
+  pixels, and a dialog merely sized past the screen has no scrollbar the user can reach either.
+  `fit_to_screen` sizes from the label's own hint rather than `adjustSize`, a scroll area reporting
+  a small default hint instead of the size of what is inside it.
 
 ## Images and plots
 

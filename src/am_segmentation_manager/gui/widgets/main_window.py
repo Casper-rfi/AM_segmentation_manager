@@ -13,16 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl, Signal
-from qtpy.QtGui import QCursor, QDesktopServices
+from qtpy.QtGui import QCursor, QDesktopServices, QPixmap
 from qtpy.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QStyle,
     QTabWidget,
@@ -47,15 +49,15 @@ from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
 from .busy_dialog import BusyDialog
-from .common import GripSplitter
+from .common import GripSplitter, mark_image
 from .export_panel import ExportPanel
-from .frame_strip import FrameTimeline
+from .frame_strip import FrameTimeline, timeline_legend
 from .image_panel import ImagePanel
 from .label_panel import CLASS_KEYS, LabelPanel
-from .metadata_panel import MetadataPanel
+from .metadata_panel import MetadataPanel, completeness_legend
 from .operations_panel import OperationsPanel
 from .project_dialog import AddProjectsDialog
-from .project_panel import ProjectPanel
+from .project_panel import ProjectPanel, status_legend
 from .report_dialog import ReportDialog
 from .state_panel import StatePanel
 
@@ -126,6 +128,11 @@ GROUP_CLASSES = "Choose a class"
 GROUP_SPECKS = "Find specks"
 GROUP_EDITS = "Save and undo"
 GROUP_ELSEWHERE = "Elsewhere in the window"
+#: The two legend headings. Separate rather than one "what the marks mean",
+#: because a reader arrives asking about a particular mark and the heading is
+#: what tells them which half to read.
+GROUP_ROW_MARK = "The mark beside each row"
+GROUP_STRIP_MARK = "The bar under the images"
 GROUP_HELP = "This list"
 
 #: Mouse gestures worth listing beside the keys, per tab, as
@@ -181,19 +188,21 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
         ),
         (GROUP_VIEW, "Scroll wheel", "Zoom about the pointer"),
         (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
-        (
-            GROUP_EDITS, "A white band on the timeline",
-            "That label has unsaved edits",
-        ),
     ),
 }
 
 
 def _table(rows) -> str:
-    """Return an HTML table of ``(what to do, what it does)`` pairs."""
+    """Return an HTML table of ``(what to do, what it does)`` pairs.
+
+    The left cell also carries the legend's pictures, which is why it is
+    middle-aligned: a sample taller than its line otherwise sits on the text
+    baseline and drags the row apart.
+    """
     body = "".join(
-        f"<tr><td style='padding-right: 14px;'><b>{action}</b></td>"
-        f"<td>{description}</td></tr>"
+        f"<tr><td style='padding-right: 14px; vertical-align: middle;'>"
+        f"<b>{action}</b></td>"
+        f"<td style='vertical-align: middle;'>{description}</td></tr>"
         for action, description in rows
     )
     return f"<table>{body}</table>"
@@ -228,6 +237,12 @@ class Binding:
     anywhere: bool = False
 
 
+#: Kept clear of the screen edges when the list is capped to fit, so it still
+#: reads as a window that can be moved rather than something wedged into the
+#: corner.
+SCREEN_MARGIN = 64
+
+
 class ShortcutHelp(QDialog):
     """The keys for the tab in front, listed beside the window.
 
@@ -242,10 +257,41 @@ class ShortcutHelp(QDialog):
         layout = QVBoxLayout(self)
         self._text = QLabel()
         self._text.setTextFormat(Qt.RichText)
-        layout.addWidget(self._text)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        buttons.rejected.connect(self.close)
-        layout.addWidget(buttons)
+        # Two tabs run past 800 pixels now the legend is in the list, so it
+        # scrolls rather than being cut short: every row answers a question
+        # somebody has had. A dialog merely sized past the screen is worse than
+        # either, having no scrollbar the user can reach.
+        self._scroll = QScrollArea()
+        self._scroll.setWidget(self._text)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.NoFrame)
+        layout.addWidget(self._scroll)
+        self._buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        self._buttons.rejected.connect(self.close)
+        layout.addWidget(self._buttons)
+
+    def fit_to_screen(self) -> None:
+        """Size to the whole list, or to the screen where that is smaller.
+
+        Not ``adjustSize``: a scroll area reports a small default hint rather
+        than the size of what is inside it, so the dialog would come up a stub
+        whatever the list said.
+        """
+        self._text.adjustSize()
+        wanted = self._text.sizeHint()
+        margins = self.layout().contentsMargins()
+        around = margins.top() + margins.bottom() + self.layout().spacing()
+        tall = wanted.height() + around + self._buttons.sizeHint().height()
+        wide = wanted.width() + margins.left() + margins.right()
+
+        screen = self.screen() or QApplication.primaryScreen()
+        room = screen.availableGeometry()
+        height = min(tall, room.height() - SCREEN_MARGIN)
+        if height < tall:
+            # Room for the scrollbar the cap has just made necessary, or the
+            # last column of the table goes under it.
+            wide += self._scroll.verticalScrollBar().sizeHint().width()
+        self.resize(min(wide, room.width() - SCREEN_MARGIN), height)
 
     def is_in_front(self) -> bool:
         """Return whether this list is the window a key press is aimed at.
@@ -260,7 +306,7 @@ class ShortcutHelp(QDialog):
         """List *tab_name*'s keys, replacing whatever was listed before."""
         self.setWindowTitle(f"Keyboard shortcuts: {tab_name}")
         self._text.setText(help_text)
-        self.adjustSize()
+        self.fit_to_screen()
         self.show()
         self.raise_()
         # Not just raised: a window that is on top but not activated still
@@ -1505,7 +1551,9 @@ class CurationWindow(QMainWindow):
         """
         tab = tab if tab is not None else self._current_tab()
         applicable = [b for b in self._bindings if b.tab in (tab, ANY_TAB)]
-        grouped = self._grouped_rows(applicable, TAB_GESTURES.get(tab, ()))
+        grouped = self._grouped_rows(
+            applicable, TAB_GESTURES.get(tab, ()), self._tab_marks(tab)
+        )
         help_text = "".join(
             f"<p style='margin-top: 12px;'><b>{group}</b></p>{_table(rows)}"
             for group, rows in grouped.items()
@@ -1529,12 +1577,15 @@ class CurationWindow(QMainWindow):
 
     @staticmethod
     def _grouped_rows(
-        bindings: list[Binding], gestures: tuple[tuple[str, str, str], ...]
+        bindings: list[Binding],
+        gestures: tuple[tuple[str, str, str], ...],
+        marks: tuple[tuple[str, str, str], ...] = (),
     ) -> dict[str, list[tuple[str, str]]]:
         """Return the rows of each heading, in the order the headings arise.
 
         Keys first, then the gestures that belong beside them, so a heading
-        reads as its keys and then the pointer equivalents. :data:`GROUP_HELP`
+        reads as its keys and then the pointer equivalents; the legend last,
+        under headings of its own that nothing else names. :data:`GROUP_HELP`
         is moved to the end: the key that opens this list is the one the reader
         has already found.
         """
@@ -1543,11 +1594,42 @@ class CurationWindow(QMainWindow):
             grouped.setdefault(binding.group, []).append(
                 (binding.key, binding.description)
             )
-        for group, action, description in gestures:
+        for group, action, description in (*gestures, *marks):
             grouped.setdefault(group, []).append((action, description))
         if GROUP_HELP in grouped:
             grouped[GROUP_HELP] = grouped.pop(GROUP_HELP)
         return grouped
+
+    @staticmethod
+    def _tab_marks(tab: str) -> tuple[tuple[str, str, str], ...]:
+        """Return the legend for *tab*, as ``(heading, picture, meaning)``.
+
+        Every picture is drawn by the module that draws the real mark, so the
+        list cannot explain one thing and the window show another. Only the
+        marks on the tab are listed: the white band means frames picked out
+        while curating and unsaved edits while proofreading, which is one mark
+        with two meanings and no way to say both at once.
+        """
+        rows: list[tuple[str, list[tuple[QPixmap, str]]]] = []
+        if tab == TAB_CURATE:
+            rows = [
+                (GROUP_ROW_MARK, status_legend()),
+                (
+                    GROUP_STRIP_MARK,
+                    timeline_legend("Picked out for a state change"),
+                ),
+            ]
+        elif tab == TAB_LABEL:
+            rows = [
+                (GROUP_STRIP_MARK, timeline_legend("This label has unsaved edits")),
+            ]
+        elif tab == TAB_ADD_DATA:
+            rows = [(GROUP_ROW_MARK, completeness_legend())]
+        return tuple(
+            (group, mark_image(sample), meaning)
+            for group, legend in rows
+            for sample, meaning in legend
+        )
 
     def show_shortcuts(self) -> None:
         """List the keys for the tab now showing, or put the list away.
