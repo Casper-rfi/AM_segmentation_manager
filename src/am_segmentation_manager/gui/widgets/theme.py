@@ -54,8 +54,8 @@ GRIP = "#b0b6c0"
 #: The row being looked at, in a list whose rows also carry a checkbox and a
 #: status chip. A tint rather than a solid accent fill: Qt draws the check
 #: indicator in its own colours, so a saturated row left the tick at low
-#: contrast on exactly the row the user is on -- and the chips are outlined for
-#: legibility on any background, not for surviving white-on-blue.
+#: contrast on exactly the row the user is on. A chip is not outlined, so every
+#: fill it uses has to hold against this tint as well as against white.
 SELECTED = "#dbe6fb"
 
 #: Text colours for a short annotation beside a value.
@@ -90,10 +90,9 @@ VALUE_CHIP_STYLE = (
 #: ``setObjectName``; see the rule of the same name below.
 COMPACT_BUTTON = "compactButton"
 
-#: Every chip drawn into a list row gets a dark outline. Without one a chip
-#: whose fill is near the selection highlight disappears on exactly the row the
-#: user is looking at. An outline makes it legible on any background rather than
-#: tuning the fill against one theme.
+#: The outline round the completeness bar, which is partly filled and so needs
+#: its unfilled end drawn to be a bar at all. The status chip has none: its
+#: cells are filled edge to edge.
 SWATCH_OUTLINE = QColor("#1a1a1a")
 
 #: How a standalone on/off control is drawn -- the track, the knob on it, and
@@ -131,19 +130,13 @@ GRIP_THICKNESS = 3.0
 GRIP_LENGTH = 28.0
 
 #: A status chip is a grid: one column per series in ``layout.SERIES`` order,
-#: **SEM above FIB** -- the same arrangement as the timeline's two rows, so the
-#: layout means the same thing in both places.
+#: **SEM above FIB**. The gap shows the row behind it rather than a border,
+#: which is what separates one cell from the next.
 #:
-#: Stacking the beams is what makes a part-finished modality readable. Progress
-#: once ran left to right within a band, so with the modalities side by side a
-#: chip was up to four segments in a row and nothing said which boundary
-#: separated the modalities and which separated started from finished -- it read
-#: as a gradient. On different axes neither can be mistaken for the other.
-#:
-#: Three columns of six fit exactly the twenty pixels two bands took, so saying
-#: which series a row holds costs nothing it was not already spending.
-SWATCH_CELL = 6
-SWATCH_GAP = 1
+#: **The height must stay even**, or the chip lands half a pixel below the tick
+#: beside it -- `docs/display.md` § Controls says why.
+SWATCH_CELL = 7
+SWATCH_GAP = 2
 SWATCH_WIDTH = 3 * SWATCH_CELL + 2 * SWATCH_GAP
 SWATCH_HEIGHT = 2 * SWATCH_CELL + SWATCH_GAP
 

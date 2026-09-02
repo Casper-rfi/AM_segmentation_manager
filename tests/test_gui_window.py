@@ -534,44 +534,93 @@ def _chip_image(**cells):
     return icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage()
 
 
-def test_the_two_modalities_are_stacked_not_side_by_side(qt_app):
-    """Progress fills a band left to right, so the modalities must not also be
-    split left to right: a chip was up to four segments in a row and nothing
-    said which boundary separated the modalities. SEM above FIB also matches
-    the timeline's rows."""
-    from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
+def _cell_centre(column: int, row: int):
+    """Return a point inside the cell at *column* and *row* of a chip."""
     from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL, SWATCH_GAP
 
-    image = _chip_image(adaptive_SEM="done", adaptive_FIB="not started")
-    middle = SWATCH_CELL // 2
+    step, middle = SWATCH_CELL + SWATCH_GAP, SWATCH_CELL // 2
+    return column * step + middle, row * step + middle
 
-    assert image.pixelColor(middle, 2) == STATE_COLOURS["corrected"]
-    assert image.pixelColor(middle, SWATCH_CELL + SWATCH_GAP + 2) == (
-        STATE_COLOURS["selected"]
+
+def _luminance(colour) -> float:
+    """Return the relative luminance of *colour*, as the eye weights it."""
+    def channel(value: int) -> float:
+        value /= 255
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    return (
+        0.2126 * channel(colour.red())
+        + 0.7152 * channel(colour.green())
+        + 0.0722 * channel(colour.blue())
     )
 
 
-def test_a_part_finished_modality_reads_as_a_progress_bar(qt_app):
-    """Filled from the left in the finished colour, which is the one thing a
-    half-and-half band can be without needing a fourth colour explained."""
-    from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
+def test_the_two_modalities_are_stacked_not_side_by_side(qt_app):
+    """SEM above FIB, the same arrangement as the timeline's two rows, so a
+    beam is found in the same place in both."""
+    from am_segmentation_manager.gui.widgets.project_panel import CELL_COLOURS
+
+    image = _chip_image(adaptive_SEM="done", adaptive_FIB="not started")
+
+    assert image.pixelColor(*_cell_centre(0, 0)) == CELL_COLOURS["done"]
+    assert image.pixelColor(*_cell_centre(0, 1)) == CELL_COLOURS["not started"]
+
+
+def test_a_part_finished_modality_gets_a_colour_rather_than_a_split(qt_app):
+    """A split showed two pixels of each colour once the outline had taken the
+    rest, and the two were the same brightness. The cell is one flat colour."""
+    from am_segmentation_manager.gui.widgets.project_panel import CELL_COLOURS
     from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL
 
     image = _chip_image(adaptive_SEM="in progress")
+    row = SWATCH_CELL // 2
+    across = {image.pixelColor(x, row).name() for x in range(SWATCH_CELL)}
 
-    assert image.pixelColor(1, 2) == STATE_COLOURS["corrected"]
-    assert image.pixelColor(SWATCH_CELL - 2, 2) == STATE_COLOURS["selected"]
+    assert across == {CELL_COLOURS["in progress"].name()}
 
 
-def test_a_cell_with_no_images_is_left_hollow(qt_app):
+def test_the_progress_steps_are_told_apart_by_brightness(qt_app):
+    """Hue is the channel the eye cannot use in a cell this small, so the three
+    steps have to separate in luminance whatever their colour."""
+    from am_segmentation_manager.gui.widgets.project_panel import CELL_COLOURS
+
+    ramp = [
+        _luminance(CELL_COLOURS[state])
+        for state in ("not started", "in progress", "done")
+    ]
+
+    assert ramp == sorted(ramp, reverse=True)
+    assert all(
+        (before + 0.05) / (after + 0.05) >= 1.5
+        for before, after in zip(ramp, ramp[1:])
+    )
+
+
+def test_a_cell_with_no_images_is_the_palest_thing_on_the_chip(qt_app):
     """Absent has to read as absent, not as a state: many older datasets have
-    no FIB whatsoever, and a quarter of the archive no Adaptive Polishing."""
-    from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL, SWATCH_GAP
+    no FIB whatsoever, and a quarter of the archive no Adaptive Polishing. It is
+    drawn rather than left hollow, so it does not depend on what is behind."""
+    from am_segmentation_manager.gui.widgets.project_panel import CELL_COLOURS
 
     image = _chip_image(adaptive_SEM="done")
-    inside = image.pixelColor(SWATCH_CELL // 2, SWATCH_CELL + SWATCH_GAP + 2)
+    inside = image.pixelColor(*_cell_centre(0, 1))
 
-    assert inside.alpha() == 0
+    assert inside == CELL_COLOURS["empty"]
+    assert inside.alpha() == 255
+    assert _luminance(inside) > max(
+        _luminance(colour)
+        for state, colour in CELL_COLOURS.items()
+        if state != "empty"
+    )
+
+
+def test_the_chip_is_an_even_number_of_pixels_tall(qt_app):
+    """Qt centres a row's check indicator on the row but rounds the decoration
+    differently, so an odd-height icon lands half a pixel below the tick beside
+    it. The chip was 13 and sat visibly low."""
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_HEIGHT
+
+    assert SWATCH_HEIGHT % 2 == 0
 
 
 def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
@@ -581,8 +630,10 @@ def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
     from qtpy.QtGui import QColor
     from qtpy.QtWidgets import QListWidget
 
-    from am_segmentation_manager.gui.widgets.frame_strip import STATE_COLOURS
-    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
+    from am_segmentation_manager.gui.widgets.project_panel import (
+        CELL_COLOURS,
+        _status_icon,
+    )
     from am_segmentation_manager.gui.widgets.theme import apply_theme
 
     stylesheet, palette = qt_app.styleSheet(), qt_app.palette()
@@ -597,7 +648,7 @@ def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
         widget.resize(300, 60)
         image = widget.grab().toImage()
 
-        teal = STATE_COLOURS["corrected"].name()
+        teal = CELL_COLOURS["done"].name()
         found = [
             any(
                 QColor(image.pixel(x, y)).name() == teal

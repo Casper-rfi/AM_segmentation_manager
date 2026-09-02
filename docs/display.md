@@ -106,14 +106,25 @@ environment the package is *installed* into.
   folded away reads as having found nothing. The folds before a filter are put back when it is
   cleared, opening a folder to search being the search's doing rather than the reader's.
 - **The status chip is a cell per series and beam, which is also what made it correct.** Three
-  columns in `SERIES` order, SEM above FIB, in exactly the twenty pixels two bands took — so
-  saying which series a row holds costs nothing it was not already spending. A cell is hollow with
-  no images, the outline colour where nobody labels that series, and a progress colour where
-  anyone does; only `LABELS_EXPECTED` is ever coloured, a reference column that changed being a
-  claim that work nobody intends to do is outstanding. **Combining the series was the fault this
-  cured**: reference and alignment images sit at the default state for ever, and "selected beside
-  corrected" combines to "in progress", so a project whose Adaptive Polishing work was *finished*
-  reported as part-done. `status_cells` keys by series and beam and nothing combines across the two.
+  columns in `SERIES` order, SEM above FIB. Only `LABELS_EXPECTED` ever varies, a reference column
+  that changed being a claim that work nobody intends to do is outstanding. **Combining the series
+  was the fault this cured**: reference and alignment images sit at the default state for ever, and
+  "selected beside corrected" combines to "in progress", so a project whose Adaptive Polishing work
+  was *finished* reported as part-done. `status_cells` keys by series and beam and nothing combines
+  across the two.
+- **The chip's cells are told apart by brightness, not by hue, and none of them is outlined.**
+  Progress once ran left to right within a cell, and the timeline's blue and teal are 1.12:1 apart
+  in luminance — the same brightness — so a part-finished cell was two pixels of each colour
+  separated by the one channel the eye cannot use at that size. `CELL_COLOURS` is a ramp instead,
+  lightest for a series with no images and darkest for one finished; the greys of a series nobody
+  labels sit off it. Its hues are still the timeline's, but the chip is a *summary* rather than
+  those states repeated — a "done" cell counts deselected images as finished, and those are grey on
+  the timeline — which is what lets it have a ramp of its own. Dropping the outline is what makes a
+  flat fill legible: a one-pixel rule round a seven-pixel cell takes more of it than the colour it
+  frames, and the fills are chosen to hold against the white row and the `SELECTED` tint alike.
+  **`SWATCH_HEIGHT` must stay even.** Qt centres a row's check indicator on the row — Fusion's is
+  eighteen pixels — but rounds the decoration differently, so an odd-height icon lands half a pixel
+  below the tick beside it and the name after it. At thirteen that was visible.
 - **Choosing a folder asks what is under it and changes nothing else.** Moving to a folder row
   counts its projects, lamellae, images and Adaptive Polishing progress into the line the frame
   summary occupies; it moves no frame, no lamella and no state, a folder holding none of those.

@@ -42,12 +42,10 @@ from .common import (
     choose_directory,
     ticked_caption,
 )
-from .frame_strip import STATE_COLOURS
 from .theme import (
     SWATCH_CELL,
     SWATCH_GAP,
     SWATCH_HEIGHT,
-    SWATCH_OUTLINE,
     SWATCH_WIDTH,
 )
 
@@ -674,21 +672,27 @@ class ProjectPanel(QWidget):
         widget.hide_rows_without(text, labels)
 
 
-#: A curation status mapped to the colour that represents it.
+#: What each thing a cell can say is filled with, lightest to darkest.
 #:
-#: Reuses the timeline's progress ramp rather than inventing a third colour
-#: vocabulary for the same idea: a status here is exactly the states in that
-#: row, summarised. "not started" is the selected blue because that is what an
-#: untouched image is; "done" is the corrected teal; "in progress" is drawn as
-#: a split of the two rather than given a colour of its own.
-STATUS_COLOURS = {
-    "not started": STATE_COLOURS["selected"],
-    "done": STATE_COLOURS["corrected"],
+#: A ramp in lightness rather than in hue, and the order here is the order of
+#: the ramp: brightness is what tells the steps apart at this size, and the
+#: timeline's two hues only confirm it. `docs/display.md` § Controls says why,
+#: and the F1 list says it to the reader.
+CELL_COLOURS = {
+    "empty": QColor("#e9ecf1"),
+    "unlabelled": QColor("#aeb6c2"),
+    "not started": QColor("#9dbcea"),
+    "in progress": QColor("#4c9c8b"),
+    "done": QColor("#12604f"),
 }
 
-#: Nothing is drawn for a modality with no images. An absent modality should
-#: read as absent rather than as a state, and many older datasets have no FIB.
+#: A modality with no images. It gets the palest fill rather than nothing drawn:
+#: absent has to read as absent, and many older datasets have no FIB at all.
 STATUS_EMPTY = "empty"
+
+#: A series that is present and that nobody labels. Off the ramp entirely, so
+#: it cannot be read as a step of one.
+STATUS_UNLABELLED = "unlabelled"
 
 def _status_icon(status: CurationStatus) -> QIcon:
     """Return the chip: a cell per series and beam, SEM above FIB.
@@ -700,12 +704,10 @@ def _status_icon(status: CurationStatus) -> QIcon:
     were about, and saying it separately cost half again the width for
     something the cells already carry.
 
-    Three states a cell can be in: hollow for a series with no images, the
-    outline colour for one nobody labels, and a progress colour for one anyone
-    does. Only Adaptive Polishing is in
-    :data:`~...layout.LABELS_EXPECTED`, so only its column ever varies -- which
-    is the point rather than a shortcoming, a reference column that changed
-    would be claiming work nobody intends to do.
+    Every cell is a flat tile from :data:`CELL_COLOURS`. Only Adaptive Polishing
+    is in :data:`~...layout.LABELS_EXPECTED`, so only its column ever varies --
+    which is the point rather than a shortcoming, a reference column that
+    changed would be claiming work nobody intends to do.
     """
     pixmap = QPixmap(SWATCH_WIDTH, SWATCH_HEIGHT)
     pixmap.fill(Qt.transparent)
@@ -730,26 +732,28 @@ def _status_icon(status: CurationStatus) -> QIcon:
 def _paint_cell(
     painter: QPainter, left: int, top: int, status: str, *, expected: bool
 ) -> None:
-    """Paint one series-and-beam cell, outlined so it reads on any row."""
+    """Paint one series-and-beam cell as a flat tile of one colour.
+
+    One colour rather than a part-filled one. A part-finished cell used to be
+    split between the two progress colours, which at this size showed two pixels
+    of each; anything divided inside seven pixels is a smudge whatever it is
+    made of, so the middle step is a colour instead of a boundary.
+    """
+    painter.fillRect(
+        left, top, SWATCH_CELL, SWATCH_CELL, _cell_colour(status, expected=expected)
+    )
+
+
+def _cell_colour(status: str, *, expected: bool) -> QColor:
+    """Return the fill for a cell in *status*, in a series anyone labels or not.
+
+    A series nobody labels reports presence and claims nothing about progress:
+    reference and alignment images sit at the default state for ever, and a
+    progress colour there would say work is outstanding that nobody intends to
+    do.
+    """
     if status == STATUS_EMPTY:
-        painter.setBrush(Qt.NoBrush)
-    elif not expected:
-        # There are images, and nobody labels this series: the cell says it is
-        # there and claims nothing about progress, which is the honest answer
-        # where a progress colour would imply work is outstanding.
-        painter.setBrush(SWATCH_OUTLINE)
-    elif status == "in progress":
-        # Part started, part finished, filling left to right like any progress
-        # bar -- which reads as "between the two" without needing a fourth
-        # colour explained anywhere.
-        half = SWATCH_CELL // 2
-        painter.fillRect(left, top, half, SWATCH_CELL, STATUS_COLOURS["done"])
-        painter.fillRect(
-            left + half, top, SWATCH_CELL - half, SWATCH_CELL,
-            STATUS_COLOURS["not started"],
-        )
-        painter.setBrush(Qt.NoBrush)
-    else:
-        painter.setBrush(STATUS_COLOURS.get(status, QColor(Qt.transparent)))
-    painter.setPen(SWATCH_OUTLINE)
-    painter.drawRect(left, top, SWATCH_CELL - 1, SWATCH_CELL - 1)
+        return CELL_COLOURS[STATUS_EMPTY]
+    if not expected:
+        return CELL_COLOURS[STATUS_UNLABELLED]
+    return CELL_COLOURS[status]
