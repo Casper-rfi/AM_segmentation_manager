@@ -38,6 +38,7 @@ from .common import (
     LABEL_BADGES,
     FlowArea,
     FlowLayout,
+    RangeSlider,
     ToggleSwitch,
     class_legend_html,
     fill_choice_combo,
@@ -56,26 +57,6 @@ logger = logging.getLogger(__name__)
 #: side leaves the fitted view resampled, which is the one view that has to be
 #: exact. Nothing flaps at this margin: a wheel step is 25%.
 PLOT_DETAIL_MAGNIFICATION = 1.01
-
-class ResetSlider(QSlider):
-    """A slider that goes back to a resting value when it is double-clicked.
-
-    For a control whose neutral position is the one it should mostly sit at.
-    Qt offers no gesture for that, and reaching neutral by dragging is a thing
-    nobody quite manages -- which for a control that changes what an image
-    looks like means being left slightly off it without noticing.
-    """
-
-    def __init__(self, orientation, resting: int = 0) -> None:
-        """Build the slider, resting at *resting*."""
-        super().__init__(orientation)
-        self._resting = resting
-
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Return to the resting value instead of jumping to the click."""
-        self.setValue(self._resting)
-        event.accept()
-
 
 class ImagePanel(QWidget):
     """The frame view, its mode controls, legend and badges."""
@@ -125,7 +106,7 @@ class ImagePanel(QWidget):
         # -- view controls -------------------------------------------------
         # Wrapped, not a row: these already needed more width than the centre
         # pane opens at, so the Fit button and part of the opacity slider were
-        # off the edge before the black/white sliders were added to them. A row
+        # off the edge before the intensity control was added to them. A row
         # that wraps costs a second line only on the panes too narrow to hold
         # one, where the alternative is controls nobody can reach.
         self.controls = FlowArea()
@@ -223,24 +204,20 @@ class ImagePanel(QWidget):
         controls.addSpacing(SWITCH_RUN_GAP)
         low, high = DEFAULT_INTENSITY_RANGE
         hint = (
-            "Which intensities are shown as black and as white; outside them "
-            "is clipped.\nChanges nothing on disk and reaches no export. "
-            "Double-click to put one back."
+            "The intensities shown as black and as white; outside them is "
+            "clipped.\nChanges nothing on disk and reaches no export. "
+            "Double-click a handle to put it back."
         )
-        range_label = QLabel("Black / white")
+        # Fiji's words for these two, which is the vocabulary the people using
+        # this already have. "Black / white" named the *result* and left the
+        # reader to work out which end each slider was.
+        range_label = QLabel("Minimum / maximum")
         range_label.setToolTip(hint)
         controls.addWidget(range_label)
-        self.black_slider = ResetSlider(Qt.Horizontal, resting=low)
-        self.white_slider = ResetSlider(Qt.Horizontal, resting=high)
-        for slider, value in (
-            (self.black_slider, low), (self.white_slider, high)
-        ):
-            slider.setRange(0, 255)
-            slider.setValue(value)
-            slider.setFixedWidth(84)
-            slider.setToolTip(hint)
-            slider.valueChanged.connect(self._range_moved)
-            controls.addWidget(slider)
+        self.intensity_slider = RangeSlider(0, 255, low, high)
+        self.intensity_slider.setToolTip(hint)
+        self.intensity_slider.range_changed.connect(self._range_moved)
+        controls.addWidget(self.intensity_slider)
 
         controls.addSpacing(20)
         self.fit_button = QPushButton("Fit")
@@ -300,30 +277,19 @@ class ImagePanel(QWidget):
         self._alpha = value / 100.0
         self.alpha_changed.emit(self._alpha)
 
-    def _range_moved(self, _value: int) -> None:
-        """Take the new limits, keeping black below white.
+    def _range_moved(self, low: int, high: int) -> None:
+        """Take the new limits and pass them on.
 
-        Clamped here rather than left to the transform: a reader who has
-        dragged the two past each other should see the control refuse, not
-        watch the picture turn into a threshold and wonder what it did.
+        The two are held apart by the control rather than here: a reader who
+        drags one into the other should see it refuse, not watch the picture
+        turn into a threshold and wonder what they did.
         """
-        low, high = self.black_slider.value(), self.white_slider.value()
-        if low >= high:
-            if self.sender() is self.black_slider:
-                low = high - 1
-                self.black_slider.setValue(low)
-            else:
-                high = low + 1
-                self.white_slider.setValue(high)
-            return
         self._intensity_range = (low, high)
         self.intensity_range_changed.emit(low, high)
 
     def reset_intensity_range(self) -> None:
         """Show the whole range again."""
-        low, high = DEFAULT_INTENSITY_RANGE
-        self.black_slider.setValue(low)
-        self.white_slider.setValue(high)
+        self.intensity_slider.reset()
 
     def set_mode(self, mode: DisplayMode) -> None:
         """Reflect the current view without re-emitting a change."""

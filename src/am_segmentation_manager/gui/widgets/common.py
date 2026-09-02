@@ -1619,3 +1619,255 @@ def _paint_key(painter: QPainter, x: int, y: int, name: str, used: bool) -> None
 KEY_CAPTIONS: dict[str, str] = {
     "Up": "↑", "Down": "↓", "Left": "←", "Right": "→",
 }
+
+
+#: The range slider's handle radius and groove, in logical pixels, and the room
+#: kept clear for a focus ring the way :data:`theme.SWITCH_FOCUS` is -- a ring
+#: painted past the widget's edge comes out clipped flat.
+RANGE_HANDLE = 7
+RANGE_GROOVE = 4
+RANGE_FOCUS = 3.0
+
+#: How wide the control asks to be. Narrower than the two separate sliders and
+#: their caption were together, which the flow row it sits in needed.
+RANGE_WIDTH = 150
+
+
+class RangeSlider(QWidget):
+    """One control for a low and a high limit, with a handle for each.
+
+    Two sliders for one interval leave the reader working out which is which
+    and let them be dragged past each other; one control shows the interval
+    itself -- the filled span between the handles is the answer, and the empty
+    ends are what is being thrown away.
+
+    **Painted entirely here**, like :class:`ToggleSwitch`, so **no stylesheet
+    rule may name it**: a rule would send it back through ``QStyle`` and draw a
+    second control underneath this one.
+
+    The limits are held apart rather than allowed to cross: a picture turning
+    into a threshold reads as a fault instead of as a setting.
+    """
+
+    #: Emitted with the low and high limits whenever either moves.
+    range_changed = Signal(int, int)
+
+    def __init__(
+        self,
+        minimum: int,
+        maximum: int,
+        low: int,
+        high: int,
+        parent: QWidget | None = None,
+    ) -> None:
+        """Build the control over ``minimum..maximum``, resting at *low*, *high*.
+
+        The resting pair is where a double-click on a handle puts it back:
+        Qt offers no gesture for returning a slider to neutral, and reaching
+        neutral by dragging is a thing nobody quite manages -- which for a
+        control that changes what an image looks like means being left slightly
+        off it without noticing.
+        """
+        super().__init__(parent)
+        self._minimum = int(minimum)
+        self._maximum = int(maximum)
+        self._resting = (int(low), int(high))
+        self._low = int(low)
+        self._high = int(high)
+        #: Which handle the pointer took hold of, and which the keys move.
+        self._active = "low"
+        self._dragging = False
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.PointingHandCursor)
+
+    # -- the values --------------------------------------------------------
+
+    def values(self) -> tuple[int, int]:
+        """Return the low and high limits."""
+        return self._low, self._high
+
+    def set_range(self, low: int, high: int, *, notify: bool = True) -> None:
+        """Set both limits, clamped into range and kept at least one apart.
+
+        Where the two would cross, the *high* one gives way, the low being the
+        one a caller states first.
+
+        Args:
+            notify: Clear to reflect a change made elsewhere without reporting
+                it back and round again.
+        """
+        self._apply(int(low), int(high), moved="high", notify=notify)
+
+    def reset(self) -> None:
+        """Put both limits back where they rest, reporting the change."""
+        self.set_range(*self._resting)
+
+    def _apply(self, low: int, high: int, *, moved: str, notify: bool = True) -> None:
+        """Take a new pair, held apart and clamped, and report it if it moved."""
+        low, high = self._held_apart(low, high, moved=moved)
+        if (low, high) == (self._low, self._high):
+            return
+        self._low, self._high = low, high
+        self.update()
+        if notify:
+            self.range_changed.emit(low, high)
+
+    def _held_apart(self, low: int, high: int, *, moved: str) -> tuple[int, int]:
+        """Return the pair clamped into range and kept at least one apart.
+
+        Whichever handle was *moved* gives way, so a handle dragged into the
+        other stops rather than pushing it along -- being pushed reads as the
+        control having taken hold of the wrong one.
+        """
+        low = max(self._minimum, min(low, self._maximum))
+        high = max(self._minimum, min(high, self._maximum))
+        if low >= high:
+            if moved == "low":
+                low = max(self._minimum, high - 1)
+            else:
+                high = min(self._maximum, low + 1)
+        return low, high
+
+    # -- the pointer -------------------------------------------------------
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Take hold of whichever handle is nearer the press."""
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+        x = _event_x(event)
+        self._active = (
+            "low"
+            if abs(x - self._x_of(self._low)) <= abs(x - self._x_of(self._high))
+            else "high"
+        )
+        self._dragging = True
+        self._drag_to(x)
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Move the handle that was taken hold of."""
+        if not self._dragging:
+            super().mouseMoveEvent(event)
+            return
+        self._drag_to(_event_x(event))
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Let go."""
+        self._dragging = False
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Put the nearer handle back where it rests, leaving the other alone."""
+        x = _event_x(event)
+        near_low = abs(x - self._x_of(self._low)) <= abs(x - self._x_of(self._high))
+        # Not dragging: the press that opened the double-click already took
+        # hold, and leaving it held would drag the handle on the way out.
+        self._dragging = False
+        if near_low:
+            self._apply(self._resting[0], self._high, moved="low")
+        else:
+            self._apply(self._low, self._resting[1], moved="high")
+        event.accept()
+
+    def _drag_to(self, x: float) -> None:
+        """Move the active handle to the value at *x*."""
+        value = self._value_at(x)
+        if self._active == "low":
+            self._apply(value, self._high, moved="low")
+        else:
+            self._apply(self._low, value, moved="high")
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Step the active handle, where the window has not claimed the key."""
+        step = {Qt.Key_Left: -1, Qt.Key_Right: 1}.get(event.key())
+        if step is None:
+            super().keyPressEvent(event)
+            return
+        if self._active == "low":
+            self._apply(self._low + step, self._high, moved="low")
+        else:
+            self._apply(self._low, self._high + step, moved="high")
+        event.accept()
+
+    # -- how it is drawn ---------------------------------------------------
+
+    def _span(self) -> tuple[float, float]:
+        """Return the x range the handles' centres move between."""
+        return RANGE_HANDLE + RANGE_FOCUS, self.width() - RANGE_HANDLE - RANGE_FOCUS
+
+    def _x_of(self, value: int) -> float:
+        """Return where *value* sits along the track."""
+        left, right = self._span()
+        if self._maximum == self._minimum:  # pragma: no cover - a degenerate range
+            return left
+        fraction = (value - self._minimum) / (self._maximum - self._minimum)
+        return left + fraction * (right - left)
+
+    def _value_at(self, x: float) -> int:
+        """Return the value at *x* along the track."""
+        left, right = self._span()
+        if right <= left:  # pragma: no cover - not yet laid out
+            return self._minimum
+        fraction = (x - left) / (right - left)
+        span = self._maximum - self._minimum
+        return round(self._minimum + max(0.0, min(1.0, fraction)) * span)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt naming
+        """Draw the groove, the span between the handles, and the handles."""
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+            left, right = self._span()
+            middle = self.height() / 2
+            groove = QRectF(
+                left, middle - RANGE_GROOVE / 2, right - left, RANGE_GROOVE
+            )
+            radius = RANGE_GROOVE / 2
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(theme.BORDER))
+            painter.drawRoundedRect(groove, radius, radius)
+
+            low_x, high_x = self._x_of(self._low), self._x_of(self._high)
+            painter.setBrush(QColor(theme.ACCENT))
+            painter.drawRoundedRect(
+                QRectF(low_x, groove.top(), high_x - low_x, RANGE_GROOVE),
+                radius, radius,
+            )
+            for name, x in (("low", low_x), ("high", high_x)):
+                self._paint_handle(painter, x, middle, focused=name == self._active)
+        finally:
+            painter.end()
+
+    def _paint_handle(
+        self, painter: QPainter, x: float, middle: float, *, focused: bool
+    ) -> None:
+        """Draw one handle, ringed when it is the one the keys would move."""
+        centre = QPointF(x, middle)
+        if focused and self.hasFocus():
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(theme.ACCENT))
+            painter.drawEllipse(centre, RANGE_HANDLE + RANGE_FOCUS, RANGE_HANDLE + RANGE_FOCUS)
+        pen = QPen(QColor(theme.BORDER))
+        pen.setWidthF(1.0)
+        painter.setPen(pen)
+        painter.setBrush(QColor(theme.BASE))
+        painter.drawEllipse(centre, RANGE_HANDLE, RANGE_HANDLE)
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        """Return the room the track, the handles and a focus ring need."""
+        side = int(2 * (RANGE_HANDLE + RANGE_FOCUS))
+        return QSize(RANGE_WIDTH, side)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        """Return enough for both handles side by side and nothing more."""
+        side = int(2 * (RANGE_HANDLE + RANGE_FOCUS))
+        return QSize(4 * side, side)
+
+
+def _event_x(event) -> float:
+    """Return a mouse event's x, under either binding."""
+    position = getattr(event, "position", None)
+    return float(position().x()) if position is not None else float(event.x())

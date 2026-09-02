@@ -3187,7 +3187,7 @@ def test_writing_a_value_across_a_folder_is_not_confirmed(metadata_panel, monkey
 
 
 # ---------------------------------------------------------------------------
-# The black/white range
+# The minimum/maximum range
 # ---------------------------------------------------------------------------
 
 def test_the_shown_range_says_so_on_screen(window):
@@ -3195,8 +3195,7 @@ def test_the_shown_range_says_so_on_screen(window):
     who has forgotten it is on is deciding about an image no export contains."""
     panel = window.image_panel
 
-    panel.black_slider.setValue(40)
-    panel.white_slider.setValue(200)
+    panel.intensity_slider.set_range(40, 200)
 
     assert "shown 40-200" in panel.badges.text()
     assert BADGE_STYLES["warning"] in panel.badges.text()
@@ -3213,13 +3212,18 @@ def test_the_two_limits_cannot_be_dragged_past_each_other(window):
     """A picture that turned into a threshold would read as a fault rather than
     as a setting, so the control refuses instead."""
     panel = window.image_panel
-    panel.white_slider.setValue(100)
+    slider = panel.intensity_slider
+    slider.resize(200, 20)
+    slider.set_range(0, 100)
 
-    panel.black_slider.setValue(150)
+    # Dragging the low handle past the high one, which is the gesture that
+    # would produce a threshold if the control let it.
+    slider._active = "low"
+    slider._drag_to(slider._x_of(150))
 
-    assert panel.black_slider.value() < panel.white_slider.value()
-    low, high = panel._intensity_range
+    low, high = slider.values()
     assert low < high
+    assert panel._intensity_range == (low, high)
 
 
 def test_a_limit_returns_to_its_end_on_a_double_click(window):
@@ -3229,16 +3233,19 @@ def test_a_limit_returns_to_its_end_on_a_double_click(window):
     from qtpy.QtGui import QMouseEvent
 
     panel = window.image_panel
-    panel.black_slider.setValue(70)
+    slider = panel.intensity_slider
+    slider.resize(200, 20)
+    slider.set_range(70, 200)
+    at = slider._x_of(70)
     # QPointF, not QPoint: the integer overload is deprecated in Qt 6 and warns.
     event = QMouseEvent(
-        QEvent.MouseButtonDblClick, QPointF(5, 5), QPointF(5, 5),
+        QEvent.MouseButtonDblClick, QPointF(at, 10), QPointF(at, 10),
         Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
     )
 
-    panel.black_slider.mouseDoubleClickEvent(event)
+    slider.mouseDoubleClickEvent(event)
 
-    assert panel.black_slider.value() == 0
+    assert slider.values() == (0, 200), "only the handle clicked goes back"
 
 
 def test_the_range_opens_on_everything(window):
@@ -3252,8 +3259,7 @@ def test_the_range_is_kept_when_the_frame_changes(window):
     """Comparing one frame with the next is what it is for, and a setting lost
     on every step could not do that."""
     panel = window.image_panel
-    panel.black_slider.setValue(30)
-    panel.white_slider.setValue(210)
+    panel.intensity_slider.set_range(30, 210)
 
     window._step_frame(1)
 
@@ -3272,7 +3278,7 @@ def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
         lambda *args, **kwargs: reads.append(args) or None,
     )
 
-    window.image_panel.black_slider.setValue(40)
+    window.image_panel.intensity_slider.set_range(40, 255)
 
     assert reads == []
 
@@ -3295,7 +3301,7 @@ def test_the_overlay_is_composed_from_the_ranged_image(window, monkeypatch):
         lambda image, *args, **kwargs: composed.append(image) or image,
     )
 
-    panel.black_slider.setValue(40)
+    panel.intensity_slider.set_range(40, 255)
 
     assert composed, "the frame under test carries a label to draw"
     assert composed[0] is shown[0], "composed from what the control produced"

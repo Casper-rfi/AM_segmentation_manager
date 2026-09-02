@@ -256,19 +256,27 @@ environment the package is *installed* into.
   the anchor is `NoAnchor` and `zoom_by` takes the point to hold: the wheel event's own position,
   the one thing that always knows where the pointer was. It is put back by `centerOn` rather than
   by translating, the linked pane copying this one's transform.
-- **Which intensities read as black and as white is a view of the frame, applied after the cache and
-  never in it.** A lookup table over the uint8 array `DisplayImage` already holds, so moving a
-  slider costs one pass over a 1024-pixel array rather than invalidating the frame and re-reading
-  the file behind it. It opens on the whole range, so a frame shows exactly what was recorded, and
+- **The intensity limits are a view of the frame, applied after the cache and never in it.** A
+  lookup table over the uint8 array `DisplayImage` already holds, so moving a handle costs one pass
+  over a 1024-pixel array rather than invalidating the frame and re-reading the file behind it. It opens on the whole range, so a frame shows exactly what was recorded, and
   at that setting hands the cached array straight back. Everything outside the limits is clipped,
   which is the point — an acquisition whose data sits in a narrow band is reviewed by throwing away
   the empty ends — and is why this is a *view*: `to_display_8bit`, what a written file goes through,
   clips nothing. Both panes get the one transformed array, the overlay composed over it rather than
-  over the cached one. The limits are held apart by the control rather than the transform, a picture
-  turning into a threshold reading as a fault instead of a setting. **It is kept when the frame
-  changes**, comparing one frame with the next being what it is for, and says so in the warning
-  colour whenever it is not the whole range: this is the one control that makes the picture differ
-  from the file.
+  over the cached one. **It is kept when the frame changes**, comparing one frame with the next
+  being what it is for, and says so in the warning colour whenever it is not the whole range: this
+  is the one control that makes the picture differ from the file.
+- **One control sets both limits, and they are called Minimum and Maximum.** Fiji's words, which is
+  the vocabulary the people using this already have; "black / white" named the *result* and left the
+  reader working out which end each of two sliders was. `common.RangeSlider` draws the interval — a
+  filled span between two handles, the grey ends being what is thrown away — where two sliders drew
+  only its ends. The limits are held apart by the control rather than by the transform, a picture
+  turning into a threshold reading as a fault instead of a setting; the handle being *moved* is the
+  one that gives way, being pushed along reading as the control having taken the wrong one. Double
+  click puts one handle back without touching the other, Qt offering no gesture for neutral and
+  nobody quite reaching it by dragging. **Painted entirely itself like `ToggleSwitch`, so no
+  stylesheet rule may name it.** It is also narrower than the two sliders and their caption were,
+  which the flow row it sits in needed.
 - **The image panes have no scrollbars, their scene is bigger than the image, and zooming out lands
   through `fitInView`.** The scene carries a quarter of the image as slack on every side, so an edge
   can be dragged into the middle of the pane to be worked on — which is also why scrollbars go, a
