@@ -3153,51 +3153,83 @@ def test_writing_a_value_across_a_folder_is_not_confirmed(metadata_panel, monkey
 
 
 # ---------------------------------------------------------------------------
-# The contrast control
+# The black/white range
 # ---------------------------------------------------------------------------
 
-def test_contrast_says_so_on_screen_when_it_is_off_neutral(window):
+def test_the_shown_range_says_so_on_screen(window):
     """The one control that makes the picture differ from the file. A reviewer
     who has forgotten it is on is deciding about an image no export contains."""
     panel = window.image_panel
 
-    panel.contrast_slider.setValue(50)
+    panel.black_slider.setValue(40)
+    panel.white_slider.setValue(200)
 
-    assert "contrast x2" in panel.badges.text()
+    assert "shown 40-200" in panel.badges.text()
     assert BADGE_STYLES["warning"] in panel.badges.text()
 
 
-def test_neutral_contrast_says_nothing(window):
+def test_the_whole_range_says_nothing(window):
     """A line that is always there is a line nobody reads."""
-    window.image_panel.contrast_slider.setValue(0)
+    window.image_panel.reset_intensity_range()
 
-    assert "contrast" not in window.image_panel.badges.text()
+    assert "shown" not in window.image_panel.badges.text()
 
 
-def test_the_contrast_control_returns_to_neutral_on_a_double_click(window):
-    """Reaching neutral by dragging is a thing nobody quite manages, which for
+def test_the_two_limits_cannot_be_dragged_past_each_other(window):
+    """A picture that turned into a threshold would read as a fault rather than
+    as a setting, so the control refuses instead."""
+    panel = window.image_panel
+    panel.white_slider.setValue(100)
+
+    panel.black_slider.setValue(150)
+
+    assert panel.black_slider.value() < panel.white_slider.value()
+    low, high = panel._intensity_range
+    assert low < high
+
+
+def test_a_limit_returns_to_its_end_on_a_double_click(window):
+    """Reaching an end by dragging is a thing nobody quite manages, which for
     this control means being left slightly off it without noticing."""
     from qtpy.QtCore import QEvent, QPointF, Qt
     from qtpy.QtGui import QMouseEvent
 
-    slider = window.image_panel.contrast_slider
-    slider.setValue(-70)
-
+    panel = window.image_panel
+    panel.black_slider.setValue(70)
     # QPointF, not QPoint: the integer overload is deprecated in Qt 6 and warns.
-    slider.mouseDoubleClickEvent(
-        QMouseEvent(
-            QEvent.MouseButtonDblClick, QPointF(5, 5), QPointF(5, 5),
-            Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
-        )
+    event = QMouseEvent(
+        QEvent.MouseButtonDblClick, QPointF(5, 5), QPointF(5, 5),
+        Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
     )
 
-    assert slider.value() == 0
-    assert window.image_panel._contrast == 0.0
+    panel.black_slider.mouseDoubleClickEvent(event)
+
+    assert panel.black_slider.value() == 0
 
 
-def test_moving_the_contrast_redraws_without_rereading(window, monkeypatch):
+def test_the_range_opens_on_everything(window):
+    """A frame opens showing exactly what was recorded."""
+    from am_segmentation_manager.display import DEFAULT_INTENSITY_RANGE
+
+    assert window.image_panel._intensity_range == DEFAULT_INTENSITY_RANGE
+
+
+def test_the_range_is_kept_when_the_frame_changes(window):
+    """Comparing one frame with the next is what it is for, and a setting lost
+    on every step could not do that."""
+    panel = window.image_panel
+    panel.black_slider.setValue(30)
+    panel.white_slider.setValue(210)
+
+    window._step_frame(1)
+
+    assert panel._intensity_range == (30, 210)
+    assert "shown 30-210" in panel.badges.text()
+
+
+def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
     """The whole reason it is applied after the cache: a slider movement must
-    not invalidate a frame and send the loader back to a cloud-synced volume."""
+    not invalidate a frame and send the loader back to re-read the file."""
     from am_segmentation_manager.gui import cache as cache_module
 
     reads: list = []
@@ -3206,12 +3238,12 @@ def test_moving_the_contrast_redraws_without_rereading(window, monkeypatch):
         lambda *args, **kwargs: reads.append(args) or None,
     )
 
-    window.image_panel.contrast_slider.setValue(40)
+    window.image_panel.black_slider.setValue(40)
 
     assert reads == []
 
 
-def test_the_overlay_is_composed_from_the_contrasted_image(window, monkeypatch):
+def test_the_overlay_is_composed_from_the_ranged_image(window, monkeypatch):
     """The two panes must not disagree about how the same acquisition looks, so
     the transform runs once and the label is drawn over its result -- not over
     the array as it came out of the cache."""
@@ -3221,28 +3253,56 @@ def test_the_overlay_is_composed_from_the_contrasted_image(window, monkeypatch):
     shown: list = []
     composed: list = []
     monkeypatch.setattr(
-        module, "apply_contrast",
-        lambda image, amount: shown.append(image) or image,
+        module, "apply_intensity_range",
+        lambda image, low, high: shown.append(image) or image,
     )
     monkeypatch.setattr(
         module, "compose_overlay",
         lambda image, *args, **kwargs: composed.append(image) or image,
     )
-    panel.pair.left.set_array = lambda array, **kwargs: shown.append(("left", array))
 
-    panel.contrast_slider.setValue(80)
+    panel.black_slider.setValue(40)
 
     assert composed, "the frame under test carries a label to draw"
     assert composed[0] is shown[0], "composed from what the control produced"
 
 
-def test_a_flat_frame_cannot_be_given_contrast(qt_app):
-    """Nothing to spread: every pixel already is the mean. Worth pinning, since
-    it is what makes a synthetic fixture look like a broken control."""
-    import numpy as np
+def test_the_view_controls_wrap_rather_than_run_off_the_pane(qt_app):
+    """They need more width than the centre pane opens at, so before this the
+    Fit button and part of the opacity slider were past the edge."""
+    from am_segmentation_manager.gui.widgets.common import FlowLayout
+    from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
 
-    from am_segmentation_manager.display import apply_contrast
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    panel = ImagePanel(config)
+    layout = panel.controls.layout()
 
-    flat = np.full((4, 4), 100, dtype=np.uint8)
+    assert isinstance(layout, FlowLayout)
+    # A minimum with no width is what lets it wrap; a floor would force the
+    # pane wider than the longest row instead.
+    assert layout.minimumSize().width() == 0
+    assert layout.sizeHint().width() > 1080, "one row does not fit the pane"
 
-    assert (apply_contrast(flat, 0.8) == flat).all()
+
+def test_a_wrapped_control_row_takes_the_height_it_needs(qt_app):
+    """Answered from the width it actually has: asked at one width and handed
+    another, the second line lands below the bottom edge."""
+    from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    panel = ImagePanel(config)
+    panel.resize(1900, 400)
+    panel.show()
+    qt_app.processEvents()
+    wide = panel.controls.height()
+
+    panel.resize(900, 400)
+    qt_app.processEvents()
+
+    assert panel.controls.height() > wide, "narrower means more lines"

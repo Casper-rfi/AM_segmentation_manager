@@ -52,6 +52,7 @@ from qtpy.QtWidgets import (
     QMenu,
     QPushButton,
     QSizePolicy,
+    QSpacerItem,
     QSplitter,
     QSplitterHandle,
     QTreeWidget,
@@ -1267,6 +1268,17 @@ class FlowLayout(QLayout):
     def addItem(self, item) -> None:  # noqa: N802 - Qt naming
         self._items.append(item)
 
+    def addSpacing(self, size: int) -> None:  # noqa: N802 - Qt naming
+        """Add a fixed gap, separating one group of items from the next.
+
+        ``QBoxLayout`` has this and ``QLayout`` does not, so a row moved here
+        from a box layout would otherwise lose the gaps that group it. A gap
+        landing at the start of a wrapped line is left as it falls: nudging it
+        would mean knowing where the wrap will be, which is the width's answer
+        rather than this one's.
+        """
+        self.addItem(QSpacerItem(size, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+
     def count(self) -> int:
         return len(self._items)
 
@@ -1343,7 +1355,7 @@ class FlowLayout(QLayout):
         return y + row_height - rect.y() + margins.bottom()
 
 
-class _FlowArea(QWidget):
+class FlowArea(QWidget):
     """A widget whose height is whatever the flow layout inside it needs.
 
     Height-for-width alone is not enough inside a form: the form asks how tall
@@ -1352,6 +1364,10 @@ class _FlowArea(QWidget):
     addressable, and invisible. Answering from the width it actually has,
     every time it gets one, is the only account that cannot disagree with
     itself.
+
+    Used for a field holding several values and for the image panel's row of
+    controls, which are the same problem: however many things there are, at
+    whatever width the pane happens to have.
     """
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
@@ -1391,7 +1407,7 @@ class ChipEditor(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(3)
 
-        self._chips = _FlowArea()
+        self._chips = FlowArea()
         self._chip_layout = FlowLayout()
         self._chips.setLayout(self._chip_layout)
         column.addWidget(self._chips)

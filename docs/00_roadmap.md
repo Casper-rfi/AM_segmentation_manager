@@ -17,8 +17,8 @@ same work for scripting and testing. Predictions need the second environment
 `scripts/setup_ml.sh` builds. Curate lists its projects as a tree under the session folder each
 one sits in, as do Add data and Export. Choosing a folder lists the lamellae of every project
 under it on Curate and describes all of them together on Add data, F1 lists the keys of the tab in
-front along with what every mark on it means, and a contrast control shows a frame with more or
-less contrast than it was recorded with without touching what is exported. [`display.md`](display.md) says
+front along with what every mark on it means, and which intensities read as black
+and as white can be set per view without touching what is exported. [`display.md`](display.md) says
 how those behave and why.
 
 ## What to pick up next

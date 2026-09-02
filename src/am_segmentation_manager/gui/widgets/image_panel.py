@@ -14,7 +14,6 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QButtonGroup,
     QComboBox,
-    QHBoxLayout,
     QLabel,
     QMenu,
     QPushButton,
@@ -28,15 +27,17 @@ from qtpy.QtWidgets import (
 from ...config import SegmentationConfig
 from ...display import (
     DEFAULT_ALPHA,
-    apply_contrast,
+    DEFAULT_INTENSITY_RANGE,
+    apply_intensity_range,
     compose_overlay,
-    contrast_gain,
 )
 from ...layout import SERIES_LABELS
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
 from .common import (
     LABEL_BADGES,
+    FlowArea,
+    FlowLayout,
     ToggleSwitch,
     class_legend_html,
     fill_choice_combo,
@@ -85,8 +86,8 @@ class ImagePanel(QWidget):
     overlay_toggled = Signal(bool)
     #: Emitted with the new label opacity, 0.0-1.0.
     alpha_changed = Signal(float)
-    #: Emitted with the contrast asked for, -1 to 1 and neutral at 0.
-    contrast_changed = Signal(float)
+    #: Emitted with the intensity limits asked for, as ``(low, high)``.
+    intensity_range_changed = Signal(int, int)
 
     #: Emitted when the acquisition under the label is shown or hidden.
     image_toggled = Signal(bool)
@@ -104,10 +105,12 @@ class ImagePanel(QWidget):
         super().__init__()
         self.config = config
         self._alpha = DEFAULT_ALPHA
-        #: How far the contrast control is from neutral. A property of the
+        #: The intensities shown as black and as white. A property of the
         #: *view*, held here rather than in the controller and never reaching
-        #: an export -- see :func:`~...display.apply_contrast`.
-        self._contrast = 0.0
+        #: an export -- see :func:`~...display.apply_intensity_range`. Kept
+        #: across frames on purpose: comparing one frame with the next is what
+        #: it is for, and a setting lost on every step could not do that.
+        self._intensity_range = DEFAULT_INTENSITY_RANGE
         #: Whether the figure on show describes the whole stage; see
         #: :meth:`set_plot_scope`.
         self._plot_is_shared = False
@@ -120,7 +123,14 @@ class ImagePanel(QWidget):
         self.customContextMenuRequested.connect(self._show_path_menu)
 
         # -- view controls -------------------------------------------------
-        controls = QHBoxLayout()
+        # Wrapped, not a row: these already needed more width than the centre
+        # pane opens at, so the Fit button and part of the opacity slider were
+        # off the edge before the black/white sliders were added to them. A row
+        # that wraps costs a second line only on the panes too narrow to hold
+        # one, where the alternative is controls nobody can reach.
+        self.controls = FlowArea()
+        controls = FlowLayout(spacing=6)
+        self.controls.setLayout(controls)
         self.mode_buttons: dict[str, QRadioButton] = {}
         group = QButtonGroup(self)
         for mode, caption, key in (
@@ -211,29 +221,33 @@ class ImagePanel(QWidget):
         controls.addWidget(self.alpha_slider)
 
         controls.addSpacing(SWITCH_RUN_GAP)
-        contrast_label = QLabel("Contrast")
-        controls.addWidget(contrast_label)
-        self.contrast_slider = ResetSlider(Qt.Horizontal)
-        self.contrast_slider.setRange(-100, 100)
-        self.contrast_slider.setValue(0)
-        self.contrast_slider.setFixedWidth(120)
-        self.contrast_slider.setToolTip(
-            "Show the acquisition with more or less contrast than it was "
-            "recorded with.\nA view control: it changes nothing on disk and "
-            "reaches no export.\nDouble-click to return to neutral."
+        low, high = DEFAULT_INTENSITY_RANGE
+        hint = (
+            "Which intensities are shown as black and as white; outside them "
+            "is clipped.\nChanges nothing on disk and reaches no export. "
+            "Double-click to put one back."
         )
-        contrast_label.setToolTip(self.contrast_slider.toolTip())
-        self.contrast_slider.valueChanged.connect(self._contrast_moved)
-        controls.addWidget(self.contrast_slider)
+        range_label = QLabel("Black / white")
+        range_label.setToolTip(hint)
+        controls.addWidget(range_label)
+        self.black_slider = ResetSlider(Qt.Horizontal, resting=low)
+        self.white_slider = ResetSlider(Qt.Horizontal, resting=high)
+        for slider, value in (
+            (self.black_slider, low), (self.white_slider, high)
+        ):
+            slider.setRange(0, 255)
+            slider.setValue(value)
+            slider.setFixedWidth(84)
+            slider.setToolTip(hint)
+            slider.valueChanged.connect(self._range_moved)
+            controls.addWidget(slider)
 
         controls.addSpacing(20)
         self.fit_button = QPushButton("Fit")
         self.fit_button.setToolTip("Scale the view to the pane\nShortcut: G")
         self.fit_button.clicked.connect(self.fit)
         controls.addWidget(self.fit_button)
-
-        controls.addStretch()
-        layout.addLayout(controls)
+        layout.addWidget(self.controls)
 
         # -- the views -----------------------------------------------------
         self.pair = LinkedImageViews("image", "image + label")
@@ -286,13 +300,30 @@ class ImagePanel(QWidget):
         self._alpha = value / 100.0
         self.alpha_changed.emit(self._alpha)
 
-    def _contrast_moved(self, value: int) -> None:
-        self._contrast = value / 100.0
-        self.contrast_changed.emit(self._contrast)
+    def _range_moved(self, _value: int) -> None:
+        """Take the new limits, keeping black below white.
 
-    def reset_contrast(self) -> None:
-        """Put the contrast control back to neutral."""
-        self.contrast_slider.setValue(0)
+        Clamped here rather than left to the transform: a reader who has
+        dragged the two past each other should see the control refuse, not
+        watch the picture turn into a threshold and wonder what it did.
+        """
+        low, high = self.black_slider.value(), self.white_slider.value()
+        if low >= high:
+            if self.sender() is self.black_slider:
+                low = high - 1
+                self.black_slider.setValue(low)
+            else:
+                high = low + 1
+                self.white_slider.setValue(high)
+            return
+        self._intensity_range = (low, high)
+        self.intensity_range_changed.emit(low, high)
+
+    def reset_intensity_range(self) -> None:
+        """Show the whole range again."""
+        low, high = DEFAULT_INTENSITY_RANGE
+        self.black_slider.setValue(low)
+        self.white_slider.setValue(high)
 
     def set_mode(self, mode: DisplayMode) -> None:
         """Reflect the current view without re-emitting a change."""
@@ -425,7 +456,7 @@ class ImagePanel(QWidget):
         # Once, for both panes: the two must not disagree about how the same
         # acquisition looks, and at neutral this hands back the cached array
         # itself rather than a copy of it.
-        image = apply_contrast(display.image, self._contrast)
+        image = apply_intensity_range(display.image, *self._intensity_range)
         self.pair.left.set_array(image)
 
         if display.label is not None and show_overlay:
@@ -437,7 +468,7 @@ class ImagePanel(QWidget):
         else:
             self.pair.right.set_array(image)
 
-        self._set_badges(self._contrast_badge() + self._label_badges(display))
+        self._set_badges(self._range_badge() + self._label_badges(display))
 
     def show_plot(
         self, frame_plot: FramePlot | None, whole: FramePlot | None = None
@@ -566,18 +597,19 @@ class ImagePanel(QWidget):
             badges.append(("label resized to match image", "warning"))
         return badges
 
-    def _contrast_badge(self) -> list[tuple[str, str]]:
+    def _range_badge(self) -> list[tuple[str, str]]:
         """Say so, whenever what is on screen is not what was recorded.
 
         First of the badges, and in the warning colour. This is the one control
         that makes the picture differ from the file, and a reviewer who has
         forgotten it is on is deciding about an image the export will not
-        contain. It says nothing at neutral, a line that is always there being
-        a line nobody reads.
+        contain. It says nothing over the whole range, a line that is always
+        there being a line nobody reads.
         """
-        if not self._contrast:
+        if self._intensity_range == DEFAULT_INTENSITY_RANGE:
             return []
-        return [(f"contrast x{contrast_gain(self._contrast):.2g}", "warning")]
+        low, high = self._intensity_range
+        return [(f"shown {low}-{high}", "warning")]
 
     def _set_badges(self, badges: list[tuple[str, str]]) -> None:
         if not badges:

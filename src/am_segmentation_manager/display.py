@@ -135,57 +135,49 @@ def to_display_8bit(
     return np.rint(np.clip(scaled, 0, 255)).astype(np.uint8)
 
 
-#: How far the contrast control reaches, as a gain either side of neutral. At
-#: the ends a frame is shown at a quarter or four times its recorded contrast,
-#: which is past what any acquisition here needs and short of a black-and-white
-#: threshold.
-CONTRAST_RANGE = 2.0
+#: The intensity limits a frame is shown between until anybody moves them: the
+#: whole 8-bit range, which is the display array's own, so a frame opens
+#: showing exactly what was recorded.
+DEFAULT_INTENSITY_RANGE = (0, 255)
 
 
-def contrast_gain(amount: float) -> float:
-    """Return the gain a contrast setting of *amount* asks for.
-
-    *amount* runs -1 to 1 and is neutral at 0. Exponential rather than linear,
-    so a step of the control changes what is seen by the same proportion
-    wherever it is taken from -- halving and doubling are one step either way,
-    which is how contrast is perceived and not how a linear scale delivers it.
-    """
-    return float(2.0 ** (CONTRAST_RANGE * amount))
-
-
-def apply_contrast(image: np.ndarray, amount: float) -> np.ndarray:
-    """Return *image* with its contrast changed, for display only.
+def apply_intensity_range(
+    image: np.ndarray, low: int, high: int
+) -> np.ndarray:
+    """Return *image* rescaled so *low* maps to black and *high* to white.
 
     A view control, applied where the picture is drawn rather than where it is
     prepared: :class:`DisplayImage` holds a uint8 array already in memory, and
     folding this into the preparation would invalidate that cache on every
-    movement of a slider and re-read the file behind it.
+    movement of a slider and re-read the file behind it. It is a lookup table
+    over 256 values whatever the size of the frame.
 
-    **Pivoted at the image's own mean rather than at mid-grey.** An acquisition
-    whose mean is 60 pushed about 128 at a gain of two maps to below zero and
-    comes out black -- on exactly the frames too flat to review, which are the
-    ones the control exists for.
-
-    Nothing here reaches an export: :func:`to_display_8bit` is what a written
-    file goes through, and it does not touch contrast.
+    Everything below *low* comes out black and everything above *high* white,
+    which is the point: an acquisition whose data sits in a narrow band is
+    reviewed by throwing away the empty ends of the range. That clipping is why
+    it is a *view*, and why nothing here reaches an export --
+    :func:`to_display_8bit` is what a written file goes through, and it clips
+    nothing.
 
     Args:
         image: 2D uint8 array, as :attr:`DisplayImage.image` holds.
-        amount: -1 to 1, neutral at 0.
+        low: Intensity shown as black, 0-255.
+        high: Intensity shown as white. Held at least one above *low*, the two
+            meeting being a threshold rather than a range.
 
     Returns:
-        A uint8 array of the same shape. At neutral, *image* itself: the
-        control costs nothing until it is used.
+        A uint8 array of the same shape. Over the full range, *image* itself:
+        the control costs nothing until it is used.
     """
     import numpy as np
 
-    if not amount:
+    if (low, high) == DEFAULT_INTENSITY_RANGE:
         return image
-    gain = contrast_gain(amount)
-    pivot = float(image.mean())
+    low = int(np.clip(low, 0, 254))
+    high = int(np.clip(high, low + 1, 255))
     levels = np.arange(256, dtype=np.float32)
     table = np.rint(
-        np.clip(pivot + (levels - pivot) * gain, 0, 255)
+        np.clip((levels - low) * (255.0 / (high - low)), 0, 255)
     ).astype(np.uint8)
     return table[image]
 

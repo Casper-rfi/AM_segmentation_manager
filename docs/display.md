@@ -230,17 +230,24 @@ environment the package is *installed* into.
   the pointer is no longer over, and every state that hides it left it hidden until the pointer was
   nudged. `_sync_brush` is the single answer to "should there be a ring, and where"; wheel zoom
   needs nothing, `AnchorUnderMouse` holding the scene point under the pointer.
-- **Contrast is a view of the frame, applied after the cache and never in it.** A lookup table over
-  the uint8 array `DisplayImage` already holds, so moving the slider costs one pass over a
-  1024-pixel array rather than invalidating a frame and re-reading the file behind it.
-  **Pivoted at the image's own mean**: pushed about mid-grey instead, an acquisition whose
-  mean is 60 maps below zero at a gain of two and comes out black, on exactly the frames too flat
-  to review. The gain is exponential, halving and doubling being one step either way. Both panes
-  get the one transformed array, the overlay composed over it rather than over the cached one, and
-  a flat frame cannot be given contrast at all — every pixel already is the mean. It says so in the
-  warning colour whenever it is off neutral, this being the one control that makes the picture
-  differ from the file, and `to_display_8bit` — what a written file goes through — still does not
-  touch contrast.
+- **Which intensities read as black and as white is a view of the frame, applied after the cache
+  and never in it.** A lookup table over the uint8 array `DisplayImage` already holds, so moving a
+  slider costs one pass over a 1024-pixel array rather than invalidating the frame and re-reading
+  the file behind it. It opens on the whole range, so a frame shows exactly what was recorded, and
+  at that setting hands the cached array straight back. Everything outside the limits is clipped,
+  which is the point — an acquisition whose data sits in a narrow band is reviewed by throwing away
+  the empty ends — and is why this is a *view*: `to_display_8bit`, what a written file goes
+  through, clips nothing. Both panes get the one transformed array, the overlay composed over it
+  rather than over the cached one. The limits are held apart by the control rather than by the
+  transform, a picture turning into a threshold reading as a fault instead of a setting. **It is
+  kept when the frame changes**, comparing one frame with the next being what it is for, and says
+  so in the warning colour whenever it is not the whole range: this is the one control that makes
+  the picture differ from the file.
+- **The view controls wrap.** They needed 1161 pixels against a centre pane that opens at 1080
+  before the black and white sliders were added to them, so the Fit button and part of the opacity
+  slider were already past the edge. `FlowArea` and `FlowLayout` were built for a field holding
+  however many values it is given, which is the same problem at a different scale; `addSpacing` is
+  the one thing a row moved off a box layout needs and `QLayout` does not have.
 - **The image panes have no scrollbars, their scene is bigger than the image, and zooming out
   lands through `fitInView`.** The scene carries a quarter of the image as slack on every side, so
   an edge can be dragged into the middle of the pane to be worked on — which is also why
