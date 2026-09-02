@@ -22,8 +22,8 @@ files. Its main functions are to:
 3. Prepare labels from predictions for manual proofreading
 4. Manually Proofread and correct labels and create new labels
 5. Quantify the data, through its project and image metadata and through measurements on the labels
-5. Export filtered CSV files containing per-project and per-image metadata for deposition of the data in scientific repositories
-6. Export filtered CSV files with image and label file paths for ML model training
+6. Export filtered CSV files containing per-project and per-image metadata for deposition of the data in scientific repositories
+7. Export filtered CSV files with image and label file paths for ML model training
 
 The package will initially be used by me, and will be made open source in the future.
 Code quality, maintainability and extensibility therefore matter.
@@ -36,13 +36,15 @@ Code quality, maintainability and extensibility therefore matter.
 	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
 	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
 	3. `edit-metadata` is used to add any missing metadata or make corrections
-	4. import legacy projects (not yet implemented)
-	5. `compress-labels` reduces the disk space labels occupy of legacy projects (still in GUI under curate)
+	4. `migrate-state` declares in an AM_state.yaml the workflow state a dataset still keeps in `deselected/` and `corrected/` folders. Required before such a dataset curates correctly.
+	5. import legacy projects (script)
+	6. `compress-labels` reduces the disk space labels occupy (in the GUI under Add data, since it acts on the whole collection rather than on a selection)
 1. View & curate data and create predictions:
 	1. The `gui` is used to set the state of FIB and SEM images to `deselect` (don't create and proofread labels), `select` (create pseudolabels and proofread) or `correct` (has proofread pseudolabels)
-	2. Create predictions (planned, not yet implemented)
+	2. `predict` creates predictions with a trained model, in a process of its own. Needs the second environment; also a button in the GUI under Curate.
 	3. `convert-predictions` creates pseudo-labels from the predictions
 2. create labels & correct predictions manually in the GUI
+	1. `find-specks` reports labels holding components too small to be real. It reports rather than repairs: which are genuine is judged by opening them.
 3. Quantify metadata and labels & export:
 	1. `stats` quantifies the proportion of images with given project and image metadata
 	2. `quantify-labels` measures label surface areas
@@ -68,8 +70,8 @@ For every new feature:
 4. Suggest appropriate unit tests.
 5. Wait before moving to the next feature.
 
-Current development state: developmental. Most features implemented, but may require
-revision based on testing.
+Current development state: `docs/00_roadmap.md` says what is built and what to pick
+up next. It is the one place that answers this.
 
 ---
 
@@ -92,6 +94,10 @@ future extensibility.
 The core is four layers — `layout.py` (what things are called), `discovery.py` (where
 they are), `scanner.py` (what they mean), `operations/` (what you can do to them).
 Higher layers depend on lower ones, never the reverse; `io/` sits below all four.
+Around that spine: `models.py`, `state.py` and `metadata.py` are the data the layers
+pass between them; `survey.py`, `aggregate.py`, `filtering.py` and `reporting.py` read
+an index without writing to it; `gui/` and `ml/` sit above everything, and nothing
+below them may import either. A new module states which of those it is.
 Outside `scanner.py` and `survey.py`, operate on the ProjectIndex and the dataclasses
 rather than re-traversing the filesystem. Keep data models, filesystem scanning,
 metadata handling, file operations, CSV generation, prediction handling and the CLI
@@ -128,6 +134,10 @@ writing code that is difficult to test because of tightly coupled filesystem acc
 Use as testing environments:
 am_segmentation_manager (without ml)
 am_segmentation_manager_ml (with ml)
+
+Run the suite from the repository root in one of those two. `docs/decisions.md`
+§ Environment says what running it anywhere else looks like, which is worth reading
+before believing a failure.
 
 ---
 
