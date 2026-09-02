@@ -107,6 +107,14 @@ DEFAULT_SERIES: tuple[str, ...] = ("adaptive",)
 #: scarcest space being the column those lists sit in.
 UNFILTERABLE = frozenset({"lamella", "stage", "electron-source"})
 
+#: Filters whose values are relative paths, and so read as a tree rather than a
+#: flat list. An Autolamella project is identified by its relative path, so a
+#: hundred of them are a hundred timestamps with the session folder repeated on
+#: every row -- the same list the Curate tab stopped showing. Which filters draw
+#: this way is a display decision, and so is settled here rather than as a flag
+#: on :class:`~...aggregate.Breakdown` below the interface.
+NESTED_FILTERS = frozenset({"autolamella-project"})
+
 
 #: What the label filter starts on: everything. The tab opens on the whole
 #: collection and is narrowed towards an export, rather than opening on the

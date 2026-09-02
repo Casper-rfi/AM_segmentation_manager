@@ -75,12 +75,19 @@ class ProjectSummary:
         total: How many there are.
         missing: The fields with no value, in declaration order. A field still
             holding a ``TODO`` placeholder counts as missing, because it is.
+        folder: The directory the project sits in, relative to the scan root,
+            or empty at the root. What a tree groups the rows under.
+        own_name: The label to show beneath that folder, the folder having
+            already said the rest. Both are taken from the project rather than
+            split out of :attr:`label` here, the split being the model's.
     """
 
     label: str
     filled: int
     total: int
     missing: tuple[str, ...] = ()
+    folder: str = ""
+    own_name: str = ""
 
     @property
     def is_complete(self) -> bool:
@@ -244,6 +251,8 @@ class MetadataController:
             filled=len(DESCRIPTIVE_FIELDS) - len(missing),
             total=len(DESCRIPTIVE_FIELDS),
             missing=missing,
+            folder=project.folder,
+            own_name=project.own_name,
         )
 
     # -- paths, for copying out of the window ------------------------------

@@ -89,16 +89,29 @@ environment the package is *installed* into.
   whose colour *is* the information comes out wrong on exactly the row being looked at
   (`chip_icon()` supplies every such pixmap); and a `QListWidget` with a horizontal scrollbar
   scrolls instead of eliding, so `ElideMiddle` plus `ScrollBarAlwaysOff` keeps both ends.
-- **The projects are grouped under the folder each one sits in.** An Autolamella project is named
-  for the minute it started, so a hundred in a flat list are a hundred timestamps; the folder
-  somebody filed them under is what a person recognises. `Project.folder` and `Project.own_name`
-  split the `relative_path` the scanner already writes, so the tree costs the scanner nothing and
-  is testable without a display, and a project at the scan root stays at the top level rather than
-  gaining a `(root)` row naming a directory that is not there. **A tick still means what it
-  meant**: a folder's box is Qt's tri-state, so ticking one ticks its projects and each reports
-  itself — a convenience over them, never a fourth thing that can disagree. A tree needs the list
-  rules of `theme.py` as well as the list *settings*, or Qt paints its current row in the full
-  accent.
+- **The projects are grouped under the folder each one sits in, on all three tabs that list them.**
+  An Autolamella project is named for the minute it started, so a hundred in a flat list are a
+  hundred timestamps; the folder somebody filed them under is what a person recognises. Curate moves
+  through them, Add data describes them and Export filters on them, so `common.ProjectTree` is one
+  widget beside `CheckList` — a tab panel importing from another tab panel is a dependency between
+  two things with nothing to do with each other. `Project.folder` and `Project.own_name` split the
+  `relative_path` the scanner already writes, so the tree costs the scanner nothing and is testable
+  without a display, and a project at the scan root stays at the top level rather than gaining a
+  `(root)` row naming a directory that is not there. **A tick still means what it meant**: a
+  folder's box is Qt's tri-state, so ticking one ticks its projects and each reports itself — a
+  convenience over them, never a fourth thing that can disagree. A tree needs the list rules of
+  `theme.py` as well as the list *settings*, or Qt paints its current row in the full accent.
+- **What differs between the three is passed in.** The chip is a curation status on Curate and a
+  completeness bar on Add data; `checkable=False` takes the tick boxes off Add data, which acts on
+  the row being *looked at*, a box offering a set the tab cannot act on being worse than no box.
+  **That flag has to be cleared rather than merely not set** — `ItemIsUserCheckable` is on by
+  default and Qt just draws no box while no check state exists, so the rows would report as
+  checkable and the first `setCheckState` would put the boxes back. Export has no project list at
+  all but a project *filter*, whose values are relative paths (`by_autolamella_project` keys on
+  `project.key`): that one filter draws as a tree, named in `NESTED_FILTERS` beside `UNFILTERABLE`,
+  which is a display decision and so belongs in the interface rather than as a flag on `Breakdown`
+  below it. Every other filter stays a list, its values having no hierarchy, and the row holds both
+  widgets and shows one rather than having either pretend to be the other.
 - **A folder is closed until it is opened, and what is open survives a rebuild.** Thirty session
   rows are what a reader can look down; a hundred projects are the flat list this replaced. Three
   things open one anyway: holding the current project, being rebuilt after a rescan having been

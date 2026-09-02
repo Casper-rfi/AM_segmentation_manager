@@ -14,7 +14,7 @@ numbers on screen describing different collections.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
@@ -42,12 +42,14 @@ from ..export_controller import (
     DEFAULT_SERIES,
     LABEL_FILTERS,
     MODALITIES,
+    NESTED_FILTERS,
     STATES,
     ExportController,
 )
 from .chart_view import ChartView
 from .common import (
     CheckList,
+    ProjectTree,
     StepCombo,
     ToggleSwitch,
     caption_for,
@@ -90,6 +92,17 @@ CHOOSE_PROPERTY = "(choose a property)"
 #: carries; the button is named :data:`COMPACT_BUTTON` so the stylesheet's
 #: usual padding does not clip it away.
 REMOVE_GLYPH = "\u2715"
+
+
+def _folder_of(value: str) -> str:
+    """Return the directory part of a relative path, empty at the root."""
+    parent = PurePath(value).parent
+    return "" if str(parent) == "." else str(parent)
+
+
+def _name_of(value: str) -> str:
+    """Return the last part of a relative path, the folder having said the rest."""
+    return PurePath(value).name
 
 
 class FilterRow(QWidget):
@@ -164,6 +177,20 @@ class FilterRow(QWidget):
         self.values.setVisible(False)
         column.addWidget(self.values)
 
+        # One property's values are relative paths -- see NESTED_FILTERS -- and
+        # a flat list of those is a run of timestamps with the session folder
+        # repeated on every row. Both widgets are built and one is shown, which
+        # is simpler than one widget pretending to be either: they answer the
+        # same three questions and nothing else is shared.
+        self.tree = ProjectTree()
+        self.tree.setMaximumHeight(FILTER_LIST_HEIGHT)
+        self.tree.setToolTip(self.values.toolTip())
+        self.tree.row_ticked.connect(lambda _row, _on: self.changed.emit())
+        self.tree.setVisible(False)
+        column.addWidget(self.tree)
+        #: The values behind the tree's rows, which are addressed by number.
+        self._nested_values: list[str] = []
+
     # -- what this row is on -----------------------------------------------
 
     @property
@@ -171,8 +198,19 @@ class FilterRow(QWidget):
         """Return the breakdown this row filters on, or "" for none yet."""
         return self._property
 
+    @property
+    def _nested(self) -> bool:
+        """Return whether this row's values are drawn as a tree."""
+        return self._property in NESTED_FILTERS
+
     def ticked_values(self) -> list[str]:
         """Return the values this row keeps. Empty means it narrows nothing."""
+        if self._nested:
+            return [
+                self._nested_values[row]
+                for row in self.tree.ticked_rows()
+                if row is not None and row < len(self._nested_values)
+            ]
         return self.values.ticked_values()
 
     def offer(self, groups, taken: set[str]) -> None:
@@ -232,12 +270,23 @@ class FilterRow(QWidget):
         """Put the property's values in the list, keeping what was ticked."""
         self._filling = True
         try:
-            self.values.set_values(
-                values,
-                ticked=[value in chosen for value in values],
-                # Elided rows lose their middle; the tooltip keeps it.
-                tooltips=values,
-            )
+            if self._nested:
+                self._nested_values = list(values)
+                self.tree.set_projects(
+                    [_folder_of(value) for value in values],
+                    [_name_of(value) for value in values],
+                    ticked=[value in chosen for value in values],
+                    # The row carries the name and the folder above says the
+                    # rest, so the whole path goes here as it does in the list.
+                    tooltips=values,
+                )
+            else:
+                self.values.set_values(
+                    values,
+                    ticked=[value in chosen for value in values],
+                    # Elided rows lose their middle; the tooltip keeps it.
+                    tooltips=values,
+                )
         finally:
             self._filling = False
         self.count.setText(ticked_caption(label, len(values), len(chosen)))
@@ -245,11 +294,13 @@ class FilterRow(QWidget):
     def show_empty(self) -> None:
         """Hide the list, for a row not on a property yet."""
         self.values.setVisible(False)
+        self.tree.setVisible(False)
         self.count.setVisible(False)
 
     def show_filled(self) -> None:
-        """Show the list, for a row that is on one."""
-        self.values.setVisible(True)
+        """Show whichever list this row's property calls for."""
+        self.values.setVisible(not self._nested)
+        self.tree.setVisible(self._nested)
         self.count.setVisible(True)
 
     def untick(self) -> None:
@@ -257,6 +308,7 @@ class FilterRow(QWidget):
         self._filling = True
         try:
             self.values.show_ticks([])
+            self.tree.show_ticks([])
         finally:
             self._filling = False
 

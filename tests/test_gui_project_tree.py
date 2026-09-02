@@ -25,7 +25,7 @@ if HAS_QT:
     from qtpy.QtCore import Qt
     from qtpy.QtWidgets import QApplication
 
-    from am_segmentation_manager.gui.widgets.project_panel import ProjectTree
+    from am_segmentation_manager.gui.widgets.common import ProjectTree
 
 #: One folder of three, one of two, and a project sitting at the scan root.
 FOLDERS = ["session_a", "session_a", "session_a", "session_b", "session_b", ""]
@@ -397,3 +397,26 @@ def test_a_folder_beats_a_project_for_the_cursor(tree):
     tree.set_projects(FOLDERS, LABELS, current=2, current_folder="session_b")
 
     assert tree.currentItem() is _folder(tree, "session_b")
+
+
+def test_a_tree_can_be_built_without_tick_boxes(qt_app):
+    """Add data describes the project being looked at, one at a time. A box
+    there offers a set the tab cannot act on, which is worse than no box."""
+    from qtpy.QtCore import Qt
+
+    from am_segmentation_manager.gui.widgets.common import ProjectTree
+
+    tree = ProjectTree(checkable=False)
+    tree.set_projects(FOLDERS, LABELS)
+
+    for item in tree.project_items():
+        assert not item.flags() & Qt.ItemIsUserCheckable
+    assert not _folder(tree, "session_a").flags() & Qt.ItemIsUserCheckable
+
+
+def test_a_tree_carries_tick_boxes_by_default(tree):
+    """Curate and Export both act on a ticked set."""
+    from qtpy.QtCore import Qt
+
+    for item in tree.project_items():
+        assert item.flags() & Qt.ItemIsUserCheckable

@@ -23,7 +23,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -43,6 +42,7 @@ from ..metadata_controller import (
 from .common import (
     ChipEditor,
     GripSplitter,
+    ProjectTree,
     ToggleSwitch,
     add_path_menu,
     chip_icon,
@@ -178,21 +178,18 @@ class MetadataPanel(QWidget):
         box = QGroupBox("Projects")
         box.setMinimumWidth(PROJECT_PANE_MIN_WIDTH)
         column = QVBoxLayout(box)
-        self.projects = QListWidget()
-        # Elided in the middle rather than the end: these paths differ in the
-        # timestamp they end with, so cutting the tail off makes a run of
-        # projects from one session indistinguishable. The tooltip carries the
-        # whole label regardless.
-        #
-        # The horizontal scrollbar has to go for that to happen at all -- with
-        # one, the view scrolls instead of eliding, and a row is simply cut off
-        # at the edge.
-        self.projects.setTextElideMode(Qt.ElideMiddle)
-        self.projects.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.projects.currentRowChanged.connect(self._select)
+        # The same tree the Curate tab lists projects in: an Autolamella
+        # project is named for the minute it started, and describing a
+        # collection means working down the folder somebody filed them under.
+        # Eliding, the scrollbar and the folds are all the widget's own.
+        # No tick boxes: this tab describes the project being looked at, one
+        # at a time, so a box would offer a set it cannot act on.
+        self.projects = ProjectTree(checkable=False)
+        self.projects.project_selected.connect(self._select)
         add_path_menu(
             self.projects, "project",
             self.project_path_requested, self.project_reveal_requested,
+            row_of=self.projects.project_of,
         )
         column.addWidget(self.projects)
         column.addWidget(self._build_collection_actions())
@@ -369,28 +366,18 @@ class MetadataPanel(QWidget):
         """List the projects, selecting the first."""
         self._loading = True
         try:
-            self.projects.clear()
-            self.projects.addItems([summary.label for summary in summaries])
-            self._show_completeness(summaries)
-            if summaries:
-                self.projects.setCurrentRow(0)
+            self.projects.set_projects(
+                [summary.folder for summary in summaries],
+                [summary.own_name for summary in summaries],
+                icons=[_completeness_icon(summary) for summary in summaries],
+                tooltips=[
+                    f"{summary.label}\n{summary.describe()}" for summary in summaries
+                ],
+                current=0 if summaries else None,
+            )
         finally:
             self._loading = False
         self.refresh()
-
-    def _show_completeness(self, summaries: list[ProjectSummary]) -> None:
-        """Mark each row with how much of its metadata is filled in.
-
-        The row text is already carrying a path, so the count and the fields
-        still wanted go in the tooltip -- which is also where the full label
-        goes, since the list elides long ones.
-        """
-        for row, summary in enumerate(summaries):
-            item = self.projects.item(row)
-            if item is None:
-                break
-            item.setIcon(_completeness_icon(summary))
-            item.setToolTip(f"{summary.label}\n{summary.describe()}")
 
     def step_project(self, delta: int) -> None:
         """Move *delta* rows through the project list, stopping at its ends.
@@ -398,11 +385,14 @@ class MetadataPanel(QWidget):
         Walking the collection a project at a time is the way this tab is used,
         so it is worth a key rather than a click per project.
         """
-        count = self.projects.count()
-        if not count:
+        rows = self.projects.project_items()
+        if not rows:
             return
-        row = max(0, min(self.projects.currentRow() + delta, count - 1))
-        self.projects.setCurrentRow(row)
+        current = self.projects.project_of(self.projects.currentItem() or rows[0])
+        here = current if current is not None else 0
+        self.projects.setCurrentItem(
+            rows[max(0, min(here + delta, len(rows) - 1))]
+        )
 
     def _select(self, row: int) -> None:
         if self._loading or row < 0:
@@ -504,8 +494,14 @@ class MetadataPanel(QWidget):
                 set_editor_text(editor, value)
                 self._show_note(field, sources.get(field, ""), field in outstanding)
             # Saving is exactly when a project stops being incomplete, so the
-            # marks in the list must not be left describing the state before it.
-            self._show_completeness(self.controller.project_summaries())
+            # marks in the list must not be left describing the state before
+            # it. Put back rather than rebuilt: a save is not a change of what
+            # is listed, and rebuilding would refold the tree.
+            summaries = self.controller.project_summaries()
+            self.projects.show_icons(
+                [_completeness_icon(summary) for summary in summaries],
+                [f"{summary.label}\n{summary.describe()}" for summary in summaries],
+            )
             self.summary.setText(self.controller.summary())
         finally:
             self._loading = False

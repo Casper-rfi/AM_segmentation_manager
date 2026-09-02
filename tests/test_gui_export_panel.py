@@ -949,3 +949,87 @@ def test_the_file_export_is_named_for_what_it_does_and_kept_off_the_csv_run(
     assert all(text.endswith("CSV...") for text in labelled[:-1])
     # Under a rule, so the eye does not run the two groups together.
     assert isinstance(ordered[ordered.index(panel.files_button) - 1], QFrame)
+
+
+# ---------------------------------------------------------------------------
+# The project filter, as a tree
+# ---------------------------------------------------------------------------
+
+def _project_filter(panel) -> FilterRow:
+    """Return a filter row put on the Autolamella project, with values in it."""
+    from qtpy.QtCore import Qt
+
+    row = panel.filter_rows[0]
+    row.show_values(
+        [
+            "20250428_AM/AutoLamella-2025-04-28-16-59",
+            "20250428_AM/AutoLamella-2025-04-29-07-42",
+            "20250512_AM_all/AutoLamella-2025-05-12-09-11",
+            "Grid21_adaptive_milling",
+        ],
+        set(),
+        "Autolamella project",
+    )
+    assert Qt  # imported for the tick helper below
+    return row
+
+
+def test_the_project_filter_groups_its_values_by_session(panel):
+    """Its values are relative paths: a flat list of them is a run of
+    timestamps with the session folder repeated on every row."""
+    from am_segmentation_manager.gui.widgets.export_panel import FilterRow
+
+    row = panel.filter_rows[0]
+    row._property = "autolamella-project"
+    _project_filter(panel)
+
+    folders = [
+        row.tree.topLevelItem(i).text(0)
+        for i in range(row.tree.topLevelItemCount())
+        if row.tree.project_of(row.tree.topLevelItem(i)) is None
+    ]
+    assert folders == ["20250428_AM", "20250512_AM_all"]
+    assert isinstance(row, FilterRow)
+
+
+def test_a_project_at_the_scan_root_stays_at_the_top_level(panel):
+    """Inventing a "(root)" row would name a directory that is not there."""
+    row = panel.filter_rows[0]
+    row._property = "autolamella-project"
+    _project_filter(panel)
+
+    tops = [
+        row.tree.topLevelItem(i).text(0)
+        for i in range(row.tree.topLevelItemCount())
+        if row.tree.project_of(row.tree.topLevelItem(i)) is not None
+    ]
+    assert tops == ["Grid21_adaptive_milling"]
+
+
+def test_ticking_in_the_tree_keeps_the_whole_path(panel):
+    """The row shows the name under its folder; the filter needs the identity,
+    which is the relative path the breakdown keys on."""
+    from qtpy.QtCore import Qt
+
+    row = panel.filter_rows[0]
+    row._property = "autolamella-project"
+    _project_filter(panel)
+    row.tree.project_item(2).setCheckState(0, Qt.Checked)
+
+    assert row.ticked_values() == [
+        "20250512_AM_all/AutoLamella-2025-05-12-09-11"
+    ]
+
+
+def test_every_other_filter_stays_a_flat_list(panel):
+    """Their values have no hierarchy, and a tree of one level is a list with
+    an indent."""
+    row = panel.filter_rows[0]
+    row._property = "microscope"
+
+    row.show_values(["Helios 5", "Aquilos 2"], set(), "Microscope model")
+    row.show_filled()
+
+    assert not row.tree.isVisible() or row.tree.isHidden()
+    assert row.values.count() == 2
+    assert row.ticked_values() == []

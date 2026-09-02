@@ -1764,7 +1764,7 @@ def test_creating_projects_rescans_so_the_new_projects_appear(
 
     assert (project / "loose-dataset" / "AM_metadata.yaml").exists()
     assert len(window.controller.projects) == 2
-    assert window.metadata_panel.projects.count() == 2
+    assert len(window.metadata_panel.projects.project_items()) == 2
 
 
 def test_cancelling_the_dialog_writes_nothing(project: Path, window, monkeypatch):
@@ -2438,25 +2438,32 @@ def test_a_value_is_annotated_with_the_file_it_came_from(metadata_panel):
     assert metadata_panel.notes["sample"].styleSheet() == BADGE_STYLES["info"]
 
 
+def _current_project(panel) -> int | None:
+    """Return the project number the tree's cursor is on."""
+    item = panel.projects.currentItem()
+    return panel.projects.project_of(item) if item is not None else None
+
+
 def test_stepping_moves_to_the_next_project_and_stops_at_the_ends(metadata_panel):
-    """What Up/Down are bound to on this tab."""
+    """What Up/Down are bound to on this tab. It steps through *projects*: the
+    folders are rows too, and stepping onto one would describe nothing."""
     metadata_panel.step_project(1)
-    assert metadata_panel.projects.currentRow() == 1
+    assert _current_project(metadata_panel) == 1
     assert metadata_panel.controller.position == 1
 
     # The last project: stepping past it stays there rather than wrapping.
     metadata_panel.step_project(1)
-    assert metadata_panel.projects.currentRow() == 1
+    assert _current_project(metadata_panel) == 1
 
     metadata_panel.step_project(-1)
-    assert metadata_panel.projects.currentRow() == 0
+    assert _current_project(metadata_panel) == 0
     assert metadata_panel.controller.position == 0
 
 
 def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
     """A placeholder is the state that most needs seeing; it used to be drawn
     in the dimmest colour on the panel, in the same grey as provenance."""
-    metadata_panel.projects.setCurrentRow(1)
+    metadata_panel.projects.setCurrentItem(metadata_panel.projects.project_item(1))
 
     note = metadata_panel.notes["sample"]
     assert note.text() == "[TODO]"
@@ -2563,40 +2570,79 @@ def test_the_wider_project_holds_several_like_the_rest(metadata_panel):
 
 def test_the_list_says_which_projects_still_need_describing(metadata_panel):
     """Without this you have to click every project to find the empty ones."""
-    described = metadata_panel.projects.item(0)
-    outstanding = metadata_panel.projects.item(1)
+    described = metadata_panel.projects.project_item(0)
+    outstanding = metadata_panel.projects.project_item(1)
 
     total = len(DESCRIPTIVE_FIELDS)
-    assert f"3 of {total} fields set" in described.toolTip()
-    assert "missing: description, project, " in described.toolTip()
-    assert "grid_type, " in described.toolTip()
+    assert f"3 of {total} fields set" in described.toolTip(0)
+    assert "missing: description, project, " in described.toolTip(0)
+    assert "grid_type, " in described.toolTip(0)
     # Only the organisation, from experiment.yaml: its sample is a placeholder.
-    assert f"1 of {total} fields set" in outstanding.toolTip()
-    assert "sample" in outstanding.toolTip()
-    assert not described.icon().isNull()
+    assert f"1 of {total} fields set" in outstanding.toolTip(0)
+    assert "sample" in outstanding.toolTip(0)
+    assert not described.icon(0).isNull()
+
+
+def test_the_projects_are_grouped_under_their_session_folder(metadata_panel):
+    """The same tree the Curate tab lists them in. Describing a collection is
+    done a session at a time, and an Autolamella project is named for the
+    minute it started."""
+    tree = metadata_panel.projects
+    folders = [
+        tree.topLevelItem(row).text(0)
+        for row in range(tree.topLevelItemCount())
+        if tree.project_of(tree.topLevelItem(row)) is None
+    ]
+
+    assert folders == ["20260728_CB_AM_bitmap"]
+    assert len(tree.project_items()) == 2
+
+
+def test_the_add_data_tree_has_no_tick_boxes(metadata_panel):
+    """This tab describes one project at a time, so a box would offer a set it
+    cannot act on."""
+    from qtpy.QtCore import Qt as _Qt
+
+    for item in metadata_panel.projects.project_items():
+        assert not item.flags() & _Qt.ItemIsUserCheckable
+
+
+def test_a_row_carries_its_own_name_and_not_the_folder_again(metadata_panel):
+    """The folder above has said it once, and repeating it on every row is
+    what made the flat list a column of identical prefixes."""
+    item = metadata_panel.projects.project_item(0)
+
+    assert "20260728_CB_AM_bitmap" not in item.text(0)
+    assert "20260728_CB_AM_bitmap" in item.toolTip(0)
 
 
 def test_a_long_row_is_elided_rather_than_scrolled(metadata_panel):
     """These paths differ in the timestamp they end with. With a horizontal
     scrollbar the view scrolls instead of eliding, and a run of projects from
     one session is cut off at the edge into identical-looking rows."""
-    item = metadata_panel.projects.item(0)
+    item = metadata_panel.projects.project_item(0)
 
     assert metadata_panel.projects.textElideMode() == Qt.ElideMiddle
     assert metadata_panel.projects.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
-    assert item.toolTip().startswith(item.text())
+    # The folder is a row of its own now, so the tooltip carries the whole
+    # relative path where the row carries only the name under it.
+    assert item.text(0) in item.toolTip(0)
 
 
 def test_saving_updates_the_mark_in_the_list(metadata_panel):
     """Saving is exactly when a project stops being incomplete, so leaving the
     list describing the state before it is how a user learns to distrust it."""
     total = len(DESCRIPTIVE_FIELDS)
-    assert f"3 of {total} fields set" in metadata_panel.projects.item(0).toolTip()
+    assert f"3 of {total} fields set" in (
+        metadata_panel.projects.project_item(0).toolTip(0)
+    )
     metadata_panel.enable.setChecked(True)
     set_editor_text(metadata_panel.editors["description"], "A lamella series")
     metadata_panel._save()
 
-    assert f"4 of {total} fields set" in metadata_panel.projects.item(0).toolTip()
+    assert f"4 of {total} fields set" in (
+        metadata_panel.projects.project_item(0).toolTip(0)
+    )
 
 
 def test_right_clicking_a_project_asks_for_its_path(metadata_panel):
