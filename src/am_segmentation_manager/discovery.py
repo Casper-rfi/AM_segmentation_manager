@@ -25,6 +25,7 @@ from pathlib import Path
 from .layout import (
     build_image_sets,
     classify_loose_image,
+    directory_cache,
     directory_role,
     image_files,
     is_alignment_directory,
@@ -282,11 +283,17 @@ def describe_dataset_candidate(
 def describe_dataset_candidates(
     root: Path, max_depth: int = DEFAULT_MAX_DEPTH
 ) -> list[DatasetCandidate]:
-    """Return every unindexed dataset under *root*, described."""
-    return [
-        describe_dataset_candidate(path, max_depth=max_depth)
-        for path in find_dataset_candidates(root, max_depth=max_depth)
-    ]
+    """Return every unindexed dataset under *root*, described.
+
+    Under one :func:`~..layout.directory_cache`: the search walks the tree once
+    to ask whether a directory holds a marked project and again to ask whether
+    it holds images, and describing what it found walks it a third time.
+    """
+    with directory_cache():
+        return [
+            describe_dataset_candidate(path, max_depth=max_depth)
+            for path in find_dataset_candidates(root, max_depth=max_depth)
+        ]
 
 
 def dataset_candidates_below(

@@ -12,14 +12,19 @@ nothing here reads it; the ``deselected/`` and ``corrected/`` names stay
 reserved so an unmigrated dataset is never read as selected.
 
 Except for the two image-set builders and the helpers at the end of the module,
-nothing here touches the filesystem.
+nothing here touches the filesystem. Those helpers list a directory through one
+function, so :func:`directory_cache` can hold the listings for the length of a
+traversal that reads each directory several times.
 """
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
@@ -1092,7 +1097,53 @@ def image_files_of(image_set: ImageSet) -> dict[str, Path]:
 # Filesystem helpers
 # ---------------------------------------------------------------------------
 
-def _list_directory(directory: Path) -> list[Path]:
+@dataclass(frozen=True)
+class _Entry:
+    """One directory entry, and what the listing already knew it was.
+
+    ``os.scandir`` reports the kind of an entry from the directory read itself,
+    where asking a :class:`~pathlib.Path` costs a ``stat`` apiece -- 73,564 of
+    them in one scan of the reference collection. Both flags follow symlinks,
+    as ``Path.is_dir`` and ``Path.is_file`` do, and both are False for an entry
+    that could not be inspected.
+    """
+
+    path: Path
+    is_dir: bool
+    is_file: bool
+
+
+#: The listings held for the length of one :func:`directory_cache` block, or
+#: None outside one. A :class:`~contextvars.ContextVar` rather than a module
+#: global so that a scan running on a worker thread gets its own.
+_listings: ContextVar[dict[Path, list[_Entry]] | None] = ContextVar(
+    "_listings", default=None
+)
+
+
+@contextmanager
+def directory_cache() -> Iterator[None]:
+    """List each directory at most once for the length of this block.
+
+    A scan reads the same directory several times -- once to ask whether it
+    marks a project, once for its image sets, once for its loose images, once
+    for the children to descend into -- and each listing is a syscall per entry
+    on top of the read. Held for one scan the answers cannot go stale, because
+    a scan is a snapshot of the filesystem either way; held any longer they
+    could, which is why this is a block rather than a permanent memo. **Nothing
+    that writes files may run inside one.** Nesting reuses the outer block.
+    """
+    if _listings.get() is not None:
+        yield
+        return
+    token = _listings.set({})
+    try:
+        yield
+    finally:
+        _listings.reset(token)
+
+
+def _list_directory(directory: Path) -> list[_Entry]:
     """Return the entries in *directory*, treating unreadable ones as empty.
 
     A directory that does not exist is silently empty: callers routinely ask
@@ -1100,14 +1151,50 @@ def _list_directory(directory: Path) -> list[Path]:
     a permissions problem, or a cloud-storage placeholder that has not synced --
     is warned about but still does not raise, so one bad directory cannot abort
     a survey of an entire collection.
+
+    Ordered by :func:`os.path.normcase` of the name, which is how sorting the
+    paths themselves ordered them: case-insensitively where the platform's
+    paths are.
     """
+    cache = _listings.get()
+    if cache is not None:
+        cached = cache.get(directory)
+        if cached is not None:
+            return cached
+    entries = _read_directory(directory)
+    if cache is not None:
+        cache[directory] = entries
+    return entries
+
+
+def _read_directory(directory: Path) -> list[_Entry]:
+    """Return *directory*'s entries, unconditionally reading it."""
     try:
-        return sorted(directory.iterdir())
+        with os.scandir(directory) as scan:
+            entries = [
+                _Entry(Path(entry.path), _kind(entry, "is_dir"), _kind(entry, "is_file"))
+                for entry in scan
+            ]
     except (FileNotFoundError, NotADirectoryError):
         return []
     except OSError as exc:
         logger.warning("Could not read directory %s: %s", directory, exc)
         return []
+    entries.sort(key=lambda entry: os.path.normcase(entry.path.name))
+    return entries
+
+
+def _kind(entry: os.DirEntry, question: str) -> bool:
+    """Return what *entry* answers to ``is_dir`` or ``is_file``, errors being no.
+
+    ``os.DirEntry`` swallows the errors that mean "gone" and raises the rest,
+    which here is the same warning a whole unreadable directory gets.
+    """
+    try:
+        return bool(getattr(entry, question)())
+    except OSError as exc:  # pragma: no cover - transient filesystem error
+        logger.warning("Could not inspect %s: %s", entry.path, exc)
+        return False
 
 
 def subdirectories_by_name(directory: Path) -> dict[str, Path]:
@@ -1115,25 +1202,18 @@ def subdirectories_by_name(directory: Path) -> dict[str, Path]:
 
     Hidden directories are skipped.
     """
-    result: dict[str, Path] = {}
-    for entry in _list_directory(directory):
-        if entry.name.startswith("."):
-            continue
-        try:
-            if not entry.is_dir():
-                continue
-        except OSError as exc:  # pragma: no cover - transient filesystem error
-            logger.warning("Could not inspect %s: %s", entry, exc)
-            continue
-        result[entry.name.lower()] = entry
-    return result
+    return {
+        entry.path.name.lower(): entry.path
+        for entry in _list_directory(directory)
+        if entry.is_dir and not entry.path.name.startswith(".")
+    }
 
 
 def image_files(directory: Path) -> list[Path]:
     """Return the image files directly inside *directory*, sorted by name."""
     return [
-        entry for entry in _list_directory(directory)
-        if entry.suffix.lower() in IMAGE_EXTENSIONS and _is_file(entry)
+        entry.path for entry in _list_directory(directory)
+        if entry.is_file and entry.path.suffix.lower() in IMAGE_EXTENSIONS
     ]
 
 
@@ -1147,11 +1227,3 @@ def image_files_by_name(directory: Path) -> dict[str, Path]:
     """
     return {path.name: path for path in image_files(directory)}
 
-
-def _is_file(path: Path) -> bool:
-    """Return whether *path* is a regular file, treating errors as 'no'."""
-    try:
-        return path.is_file()
-    except OSError as exc:  # pragma: no cover - transient filesystem error
-        logger.warning("Could not inspect %s: %s", path, exc)
-        return False

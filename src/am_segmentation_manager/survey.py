@@ -39,6 +39,7 @@ from .layout import (
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
+    directory_cache,
     directory_role,
     image_files,
     image_files_by_name,
@@ -309,17 +310,20 @@ def survey_collection(
         A :class:`CollectionSurvey` describing what was found, including
         findings for anything that does not fit the conventions.
     """
-    roots = find_project_roots(root, max_depth=max_depth)
-    projects = tuple(
-        sorted(
-            (
-                survey_project(path, root, max_depth=max_depth, check_labels=check_labels)
-                for path in roots
-            ),
-            key=lambda project: project.relative_path,
+    with directory_cache():
+        roots = find_project_roots(root, max_depth=max_depth)
+        projects = tuple(
+            sorted(
+                (
+                    survey_project(
+                        path, root, max_depth=max_depth, check_labels=check_labels
+                    )
+                    for path in roots
+                ),
+                key=lambda project: project.relative_path,
+            )
         )
-    )
-    unindexed = tuple(describe_dataset_candidates(root, max_depth=max_depth))
+        unindexed = tuple(describe_dataset_candidates(root, max_depth=max_depth))
     findings = tuple(
         [*_collection_findings(projects), *_unindexed_dataset_findings(unindexed)]
     )

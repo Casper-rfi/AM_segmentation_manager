@@ -31,6 +31,7 @@ from .layout import (
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
+    directory_cache,
     image_files,
     image_files_by_name,
     image_files_of,
@@ -210,7 +211,10 @@ class Scanner:
         """
         index = ProjectIndex(start_path=self.start_path)
 
-        with timed(logger, "Building the index"):
+        # One listing per directory for the whole scan: a stage is read four
+        # times over on the way to being indexed, and a scan is a snapshot of
+        # the filesystem either way. Nothing in here writes.
+        with directory_cache(), timed(logger, "Building the index"):
             roots = sorted(self.find_project_roots())
             for project_index, project_root in enumerate(roots, start=1):
                 with timed(logger, f"  {project_root.name}", level=logging.DEBUG):
