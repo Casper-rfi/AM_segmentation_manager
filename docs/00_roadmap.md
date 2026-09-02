@@ -11,28 +11,15 @@ those say is restated here.
 ## What the software does today
 
 All five main functions in `CLAUDE.md` are built, across the three series of images Autolamella
-writes and every layout era from pre-Autolamella to 2026-05. Curating, proofreading, quantifying
-and exporting are four tabs, each with a controller holding no Qt, and the command line does the
-same work for scripting and testing. Predictions need the second environment
-`scripts/setup_ml.sh` builds. Curate lists its projects as a tree under the session folder each
-one sits in, as do Add data and Export. Choosing a folder lists the lamellae of every project
-under it on Curate and describes all of them together on Add data, F1 lists the keys of the tab in
-front along with what every mark on it means, which intensities read as black and as
-white can be set per view without touching what is exported, and F1 opens with a keyboard showing
-which keys the tab in front binds. [`display.md`](display.md) says
-how those behave and why.
+writes and every layout era the collection holds. Curating, proofreading, quantifying and exporting
+are four tabs, each with a controller holding no Qt, and the command line does the same work for
+scripting and testing. Predictions need the second environment `scripts/setup_ml.sh` builds.
+What the window does, and why, is [`display.md`](display.md) — not restated here.
 
 ## What to pick up next
 
-**The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-A macOS `.icns` icon, the current one being a
-full-bleed PNG where macOS wants a squircle inset in its canvas. The curation timeline was to carry
-one colour vocabulary fewer, by folding the selection band into how the picked frames are drawn;
-that is on hold — the count of five vocabularies included the mismatch wash, which turned out never
-to have been painted, and brightening a state cell would put "picked" in the same channel as the
-state's own colour.
-
-The rest, in no particular order.
+**A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
+in its canvas. Artwork rather than code, and Casper's to draw.
 
 **An "other" series** making unindexed images visible instead of merely counted.
 [`04_future_work.md`](04_future_work.md) §6.

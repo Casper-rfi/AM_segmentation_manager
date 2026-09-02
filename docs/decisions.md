@@ -26,9 +26,8 @@ rather than appending to it.
   (`labels`, `labels_fib`, `labels_FIB`), a new label landing in whichever directory an image set
   already has, so normalising is cosmetic and lives in `scripts/` rather than in a command.
 - **A copy is paired back to its original by what the acquisition software recorded, never by name
-  or order.** Both name and order survive a copy unchanged, so neither identifies an acquisition.
-  `scripts/place_renamed_labels.py` names the header facts that do and reads them itself,
-  `image_metadata.py` having no use for an identity.
+  or order**, both of which survive a copy unchanged. `scripts/place_renamed_labels.py` names the
+  header facts that do and reads them itself, `image_metadata.py` having no use for an identity.
 - **Adaptive Polishing images can sit loose in the lamella directory.** Usually they fill a
   `<modality>` directory that names them, but the script-based prototype wrote them beside
   Autolamella's own references as `adapt_mill_img_000_electron_000.tif` — spelling the beam out
@@ -37,29 +36,28 @@ rather than appending to it.
   same naming rule the other loose series use. That name has no shared form on purpose: a shared
   `sem_labels/` would let a reference set claim the same lamella's Adaptive Polishing labels.
 - **A condition that repeats its variant in the filename is renamed, not parsed around.** Stripping
-  such a suffix in code would change the identity an image and its label share in four places, one
-  of them the state key, and would parse a variant the model keeps opaque.
+  the suffix in code would change the identity an image and its label share in four places, one of
+  them the state key, and would parse a variant the model keeps opaque.
   `scripts/share_variant_labels.py` renames the data instead.
 - **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
   variant may not be named `labels`, `deselected`, `corrected` or `predictions`: those collide with
   the label naming rule, so `layout.py` validates it and `inspect-layout` reports a violation.
-- **A project is a directory containing `experiment.yaml` or `AM_metadata.yaml`.** `init-project`
-  writes the latter rather than fabricating the former: `experiment.yaml` is Autolamella's file, and
-  writing one misrepresents provenance and could collide if Autolamella ever opens that directory.
-  `protocol.yaml` looks like a third marker and is not usable as one. `init-project` **refuses a
-  directory that gathers datasets rather than being one**: a marker there makes every dataset
-  beneath it a *lamella* of one project. `project_placement_problem` is the single guard both
-  interfaces ask, testing two shapes — a gathering directory only sometimes holds *marked* projects
-  to give it away, and one project's stages sit at a single depth whatever its layout era.
-- **Which directory is "the project" is decided by a person, not inferred.** A folder gathering
-  unmarked datasets is shaped exactly like a project whose lamellae hold subdirectories, so no
-  structural test separates them in general. The search is reliable and the levelling is not, so
+- **A project is a directory containing `experiment.yaml` or `AM_metadata.yaml`, and which
+  directory that is gets decided by a person.** `init-project` writes the latter rather than
+  fabricating the former: `experiment.yaml` is Autolamella's file, and writing one misrepresents
+  provenance and could collide if Autolamella ever opens that directory. `protocol.yaml` looks like
+  a third marker and is not usable as one. A folder gathering unmarked datasets is shaped exactly
+  like a project whose lamellae hold subdirectories, so no structural test separates them in
+  general, and a marker on the gathering one makes every dataset beneath it a *lamella*.
+  `project_placement_problem` is the single guard both interfaces ask, testing two shapes — a
+  gathering directory only sometimes holds *marked* projects to give it away, and one project's
+  stages sit at a single depth whatever its era. The search is reliable and the levelling is not, so
   they are separate calls: `find_dataset_candidates` proposes, `describe_dataset_candidate` says
   what each proposal would become, and `dataset_candidates_below` descends into one proposed too
-  high. The *Add projects* dialog is where the confirming happens; `--recursive` writes the
-  proposals it is sure of and reports the rest. What a proposal *would become* is the useful
-  column: lamella names reading like dataset names tell a reader the level is wrong.
+  high. The *Add projects* dialog confirms; `--recursive` writes what it is sure of and reports the
+  rest. What a proposal *would become* is the useful column: lamella names reading like dataset
+  names tell a reader the level is wrong.
 - **Identity is the path relative to the scan root, never the name** — for a project, and for a
   lamella within its project. Two projects can have identical names, `created_at` and recorded
   paths, so keying by name silently drops one; and two projects each holding an `05-pet-mutt` were
@@ -76,8 +74,8 @@ rather than appending to it.
   a lamella of reference images to end the search the way `sem/` does, every stage beneath it would
   vanish silently. Nothing sits below an image directory.
 - **A loose set's label directory is resolved exactly, with no fallback chain**, unlike
-  `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. A dataset that
-  collapses the stage level keeps its Adaptive Polishing images and its `labels/` in the lamella
+  `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. A dataset
+  collapsing the stage level keeps its Adaptive Polishing images and its `labels/` in the lamella
   directory, so a reference set falling back would pair every reference image with a label of a
   different scene: right dimensions, plausible shapes, wrong data.
 - **A series nobody has started labelling is not reported as unlabelled.** `no-labels-yet` fires
@@ -91,44 +89,41 @@ rather than appending to it.
   A project holding 430 images can survey as holding 100 with nothing saying so. Labels,
   predictions and ignored names are excluded, or annotating a project would report thousands.
   Turning that count into something viewable is [`04_future_work.md`](04_future_work.md) §6.
-- **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing
-  in a loose filename orders it: many carry no timestamp, and the epochs that do appear are when the
+- **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing in
+  a loose filename orders it: many carry no timestamp, and the epochs that do appear are when the
   milling *stage* started, minutes before the image. **mtime is worse than useless**, the collection
   having been copied. Nor can the stages be walked in order: a lamella holds reference images
-  spanning the whole session while the milling tasks below hold theirs in the middle, so they
-  interleave. `_in_acquisition_order` sorts by time whenever every frame has one — exactly a loose
-  series — leaving an Adaptive Polishing timeline, ordered by filename, alone. Ties go to
+  spanning the whole session while the milling tasks below hold theirs in the middle.
+  `_in_acquisition_order` sorts by time whenever every frame has one — exactly a loose series —
+  leaving an Adaptive Polishing timeline, ordered by filename, alone. Ties go to
   `alignment_run_order`: a run takes several images inside the whole second a header records.
 - **Only the scanner opens an image, and only a loose one**, for the beam its filename may not
   state and the time it never does — one memoised read, costing the collection scan a second or
   two. Discovery opens nothing: it asks `holds_loose_images`, which reads filenames.
-- **One record per acquisition, where a lamella holds the same picture several times.**
-  Autolamella duplicates the image an alignment aligns *against* in two ways and one rule cannot
-  see both: it copies it into every run using it, and saves it outside the runs under a name of its
-  own (`ref_alignment_ib`). So a run's `reference_image.tif` is a copy wherever the directory
-  holding that run's `Alignment/` folder already holds an image of the same acquisition time, and
-  **the original is kept** — the one file several runs copy, its name carrying the milling task.
-  Directory and time must agree independently on every match: **neither signal carries it alone**,
-  time and size alone having merged genuinely different pictures. **Nothing is hashed**: the time is
-  already read, and with either rule's second condition it partitions these as contents do. A third
-  pass runs over the whole *project*, the prototype having duplicated across lamellae rather than
-  within one; it keeps the filename-and-time key rather than loosening to time alone, which would
-  additionally merge a misfiled reference whose indexing keeps the misfiling visible. **It never
-  empties a lamella**: dropping a lamella's every image would take it out of the index and the
-  survey at once, and a duplicate that can be seen beats a directory that cannot.
+- **One record per acquisition, where a lamella holds the same picture several times.** Autolamella
+  duplicates the image an alignment aligns *against* in two ways and one rule cannot see both: it
+  copies it into every run using it, and saves it outside the runs under a name of its own
+  (`ref_alignment_ib`). So a run's `reference_image.tif` is a copy wherever the directory holding
+  that run's `Alignment/` folder already holds an image of the same acquisition time, and **the
+  original is kept**. Directory and time must agree independently on every match — **neither signal
+  carries it alone**, time and size having merged genuinely different pictures — and **nothing is
+  hashed**, the time being already read and partitioning these as contents do. A third pass runs
+  over the whole *project*, the prototype having duplicated across lamellae; it keeps the
+  filename-and-time key rather than loosening to time alone, which would also merge a misfiled
+  reference whose indexing keeps the misfiling visible. **It never empties a lamella**, a duplicate
+  that can be seen beating a directory dropped out of the index and the survey at once.
 - **A fixed filename marker is matched to the shape Autolamella writes, not loosely.** Everything
   after `ref_` is a *task* name somebody chose, so a loose marker collides with one.
   `ref_alignment` is matched entire rather than as a prefix — as a prefix it reads a task called
   `Alignment Check` as an alignment image, moving that task's references into a series nothing
   predicts or labels. `_centring_` is anchored to the end for the same reason: as a bare substring
   it silently drops every image of a task called `Centring`, ignored images not being reported.
-- **Where a record's label and predictions live is carried, never re-derived.** Walking up from
-  the image path only ever worked for an Adaptive Polishing image, one level below its stage in a
-  directory naming a modality. A reference image sits *directly* in a directory naming a lamella,
-  so deriving put its files outside the lamella, where the next scan never looked. The scanner
-  resolves both once per image set and the record carries them, so reading and writing cannot
-  disagree; a record that does not say raises rather than guessing. Predictions follow the label
-  rule above for a loose set too — exact name, no fallback.
+- **Where a record's label and predictions live is carried, never re-derived.** Walking up from the
+  image path only works for an Adaptive Polishing image, one level below its stage in a directory
+  naming a modality; a reference image sits *directly* in a directory naming a lamella, so deriving
+  put its files outside the lamella where the next scan never looked. The scanner resolves both once
+  per image set and the record carries them, so reading and writing cannot disagree; a record that
+  does not say raises rather than guessing.
 - **A ticked lamella covers only the series on screen.** What is ticked has to be the whole of
   what an operation touches; filtering by modality alone reached every series, so predicting a
   lamella while looking at its Adaptive Polishing timeline predicted its reference and alignment
@@ -159,21 +154,22 @@ rather than appending to it.
 - **Whether a group is corrected is asked of the record, never of a path.** Every guard protecting
   proofread work — conversion, compression, label saving — reads the declared state the scanner put
   on the record; a guard that quietly stops firing is worse than none.
-- **A stage is transcribed whole or not at all, and one that has not been is refused.**
-  `migrate-state` leaves a stage alone if anything in it is ambiguous — images disagreeing with
-  their label, a file in two state folders — because writing the groups that were fine leaves the
-  rest unlisted, and unlisted reads as *selected*. It is also **the only thing that reads a folder
-  name as a state**: the scanner does not look inside `deselected/` or `corrected/`, so a nested
-  file is *missing and reported* rather than present and wrong, and those names stay reserved.
+- **A stage is transcribed whole or not at all.** `migrate-state` leaves a stage alone if anything
+  in it is ambiguous — images disagreeing with their label, a file in two state folders — writing
+  the groups that were fine leaving the rest unlisted, and unlisted reads as *selected*. It is also
+  **the only thing that reads a folder name as a state**: the scanner does not look inside
+  `deselected/` or `corrected/`, so a nested file is *missing and reported* rather than present and
+  wrong, and those names stay reserved.
 - **A stale entry is reported, never repaired.** Declared state can disagree with the filesystem
   in ways location could not, and each needs a different action, so `inspect-layout` separates
   them: unmigrated folder state; nested files after migration, wanting `--move-files`; an empty
   state folder; and an entry naming a group that is not there. That last is kept rather than
   dropped — a group that vanished because a drive was not mounted must not lose its curation.
-- **A write is read-modify-write, and the whole batch is checked before any of it is written.**
-  Two windows on one collection, or a window and a command line, would otherwise discard each
-  other's curation with no error. Every file the batch will touch is compared against what the plan
-  read *before the first is written*, so the answer is "nothing happened" rather than "some of it
+- **A write is read-modify-write, and the whole batch is checked before any of it is written** —
+  the rule every batch here follows, state changes, conversion and folder-wide metadata alike. Two
+  windows on one collection, or a window and a command line, would otherwise discard each other's
+  curation with no error. Every file the batch will touch is compared against what the plan read
+  *before the first is written*, so the answer is "nothing happened" rather than "some of it
   happened"; each write then checks again for itself. That is what lets `plan_transition` and
   `apply_plan` be separate — previewed decisions, fresh safety check.
 - **Every label write goes through `io/atomic.py`, including compression.** It restores the
@@ -186,7 +182,7 @@ rather than appending to it.
   sorts destinations three ways: an empty placeholder costs nothing to replace; a pseudo-label
   holding annotation is regenerable machine output, replaced once the user confirms; a corrected
   group is refused, and no argument to `plan_conversions` reaches it. Stricter than
-  `compress-labels`, which *can* be confirmed for corrected labels, because compression preserves the
+  `compress-labels`, which *can* be confirmed for corrected labels, compression preserving the
   pixels where conversion replaces proofread work with a machine guess. That is also why
   **compressing is not scoped to a selection**: a per-selection button leaves uncompressed exactly
   the labels nobody happened to tick.
@@ -215,15 +211,14 @@ rather than appending to it.
 
 - **The Add data tab suggests, and a suggestion is never a value.** The values other projects use
   are computed in the controller and reach a file only when the user saves, so
-  `build_experiment_metadata` still resolves from the two files and nothing else. **A completer
-  that matches anywhere must complete into a popup, and the popup must be taught Tab** — two halves
-  of one fault, both of which put a value nobody typed into metadata that is exported. Left inline,
-  an editable `QComboBox` keeps what was typed and appends the tail of a match that was never a
-  prefix (`a` against `UltrAuFoil Au R2/2 200 mesh` wrote `altrAuFoil …`); left alone, Tab is not
-  the popup's key, so it moved the focus and committed the half-typed letter. `common.match_anywhere`
-  is the only place any of it is set, and where the key has to be caught is a Qt matter in
-  [`display.md`](display.md) § The binding. Matching anywhere is worth both: `Quantifoil` and
-  `UltrAuFoil` differ in their middles.
+  `build_experiment_metadata` still resolves from the two files and nothing else. **A completer that
+  matches anywhere must complete into a popup, and the popup must be taught Tab** — two halves of
+  one fault, both putting a value nobody typed into metadata that is exported: inline, an editable
+  `QComboBox` appends the tail of a match that was never a prefix (`a` against `UltrAuFoil Au R2/2
+  200 mesh` wrote `altrAuFoil …`); untaught, Tab moves the focus and commits the half-typed letter.
+  `common.match_anywhere` is the only place any of it is set, and where the key has to be caught is
+  a Qt matter in [`display.md`](display.md) § The binding. Matching anywhere is worth both:
+  `Quantifoil` and `UltrAuFoil` differ in their middles.
 - **`project` names the wider project; the directory is the `autolamella_project`.** Different
   facts, and holding both under one word showed as a `project_project` column in one export and a
   `metadata_project` in another. The directory is what the scanner indexes and Curate lists, so it
@@ -265,11 +260,11 @@ rather than appending to it.
 - **A value is stored in the unit its field name states, converted where the header is read**, so
   `acceleration_voltage_kv` is kV even though both dialects record volts. A breakdown grouping a
   *measured* value rounds it, a header recording what was measured rather than what was set: a
-  voltage to 0.1 kV, a pixel size and beam current to four significant figures, those two being
+  voltage to 0.1 kV, a pixel size and beam current to four significant figures — the latter two
   derived from the magnification and so differing in the last decimal between two images of one
   field of view. Significant figures rather than decimal places, pixel sizes spanning decades. The
   conversion rounds to six decimals in the stored unit, binary floating point turning 6e-05 m into
-  59.99999999999999 um — finer than anything these instruments report, so only the noise goes.
+  59.99999999999999 um.
 - **A declared path counts as matched only if its value converts.** A key can be present and still
   state nothing: a blank, a `"None"` marker, or uninitialised memory, which is what the FEI dialect
   leaves in the stage keys it never fills — `Stage.StageX` reads 6.95e-310 while the real position
@@ -289,8 +284,6 @@ rather than appending to it.
   column would answer a different question per image. The microscope's own version is the only one
   the FEI dialect states, under `System.Software`, and so the only one covering the pre-Autolamella
   datasets; that it is the same quantity is measured, not assumed.
-- **The integration counts are the one field decoded rather than defaulted**: absence means "not
-  enabled", where every other missing measurement stays missing.
 - **A label carries no header.** Its scale comes from the image it was drawn from, rescaled by the
   ratio of their widths, a label converted from a prediction not necessarily sharing its image's
   dimensions. `label_measure` returns no areas rather than assuming 1:1.
@@ -322,12 +315,11 @@ rather than appending to it.
   is a closed vocabulary, so `--series refrence` raises — a typo, not a request for nothing.
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`
   already answering "which directory". The directory is tried before the filename and is the only
-  thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`);
-  the *lamella* directory is never offered, or a petname sharing a word with a task claims every
-  image below it, and a name two tasks claim is dropped rather than guessed. **None is a real
-  answer** for over half these images. **Timestamps were ruled out**: the windows in `history` are
-  sparse rather than tiling the session, and `ref_MillRough_start_eb.tif` falls inside the
-  `SetupLamella` one.
+  thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the
+  *lamella* directory is never offered, or a petname sharing a word with a task claims every image
+  below it, and a name two tasks claim is dropped rather than guessed. **None is a real answer** for
+  over half these images. **Timestamps were ruled out**, the windows in `history` being sparse
+  rather than tiling the session: `ref_MillRough_start_eb.tif` falls inside the `SetupLamella` one.
 - **Counting is split between the tab and the commands, not moved.** The Export tab counts the set
   its filters describe, choosing a training set meaning looking at what survives a filter, and that
   loop cannot run through a command that prints and exits. `stats` keeps the whole-collection sweep
@@ -355,13 +347,12 @@ rather than appending to it.
   those that barely vary — named by `UNFILTERABLE`; they stay breakdowns, and the command line
   still filters on them.
 - **A stage is filtered on by its name, and counted on by its path.** `stage` names a folder
-  (`project / lamella / adaptive_polish_<timestamp>`), which finds one run again but is useless as
-  a list to choose from; `stage-name` is that with the timestamp removed by
-  `layout.stage_base_name`. **What names no milling stage counts under `LAMELLA_ROOT`**, and **a
-  run counts under the task it aligns for**, the directory its `Alignment/` folder sits in —
-  Autolamella naming a run after the lamella, task and time, which is otherwise a row per run. The
-  timestamp pattern lives in `layout.py`, the scanner reading it to order stages and this to
-  remove one; the two must agree on what one is.
+  (`project / lamella / adaptive_polish_<timestamp>`), which finds one run again but is useless to
+  choose from; `stage-name` is that with the timestamp removed by `layout.stage_base_name`. **What
+  names no milling stage counts under `LAMELLA_ROOT`**, and **a run counts under the task it aligns
+  for**, the directory its `Alignment/` folder sits in — Autolamella naming a run after the lamella,
+  task and time, which is otherwise a row per run. The timestamp pattern lives in `layout.py`, the
+  scanner reading it to order stages and this to remove one.
 - **Series is the one filter that does not open on everything.** Every other control starts wide
   and narrows towards an export; this one starts on Adaptive Polishing, a tab silently counting
   the rest disagreeing with `create-training-csv`. A dedicated control rather than a derived
