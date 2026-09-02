@@ -49,11 +49,15 @@ def stub_cache() -> FrameCache:
 
     The controller's job is deciding *which* frame to show; making that
     testable without decoding anything is why the cache takes a loader.
+
+    Big enough that the background is not itself a small component: a frame of
+    a few dozen pixels makes everything on it a speck, which is a property of
+    the fixture and of nothing real.
     """
     def load(image_path: Path, label_path: Path | None) -> DisplayImage:
         return DisplayImage(
-            image=np.zeros((8, 8), dtype=np.uint8),
-            label=np.zeros((8, 8), dtype=np.uint8) if label_path else None,
+            image=np.zeros((64, 64), dtype=np.uint8),
+            label=np.zeros((64, 64), dtype=np.uint8) if label_path else None,
             label_status="empty" if label_path else "missing",
             source=image_path,
         )

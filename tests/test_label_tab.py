@@ -567,6 +567,55 @@ def test_the_canvas_zooms_one_step_out_past_fit(window):
     assert LABEL_MIN_FIT_FRACTION == pytest.approx(1 / 1.1)
 
 
+def _drawn(icon) -> bytes:
+    """Return an icon's pixels, a drawn mark being testable no other way."""
+    from am_segmentation_manager.gui.widgets.label_panel import ICON
+
+    return icon.pixmap(ICON, ICON).toImage().constBits().tobytes()
+
+
+def test_the_action_buttons_carry_their_own_marks(window):
+    """These three are reached for without reading, so each needs a mark --
+    and each a different one, or the marks say nothing."""
+    from am_segmentation_manager.gui.widgets.label_panel import (
+        redo_icon,
+        save_icon,
+        undo_icon,
+    )
+
+    panel = window.label_panel
+    for button, icon in (
+        (panel.save_button, save_icon()),
+        (panel.undo_button, undo_icon()),
+        (panel.redo_button, redo_icon()),
+    ):
+        assert not button.icon().isNull()
+        assert _drawn(button.icon()) == _drawn(icon)
+
+    marks = {_drawn(save_icon()), _drawn(undo_icon()), _drawn(redo_icon())}
+    assert len(marks) == 3, "undo and redo are mirrored, not the same picture"
+
+
+def test_a_drawn_mark_puts_ink_on_the_pixmap(qt_app):
+    """A painter that draws nothing still returns an icon; only the pixels
+    say whether there is a picture on it."""
+    from am_segmentation_manager.gui.widgets.label_panel import (
+        ICON,
+        redo_icon,
+        save_icon,
+        undo_icon,
+    )
+
+    for icon in (save_icon(), undo_icon(), redo_icon()):
+        image = icon.pixmap(ICON, ICON).toImage()
+        painted = sum(
+            image.pixelColor(x, y).alpha() > 0
+            for x in range(ICON)
+            for y in range(ICON)
+        )
+        assert painted > ICON, "too little ink to be a picture"
+
+
 def test_the_pointer_is_polled_only_while_there_is_an_outline(window):
     """The poll exists to move the brush outline, so it runs exactly while
     there is one -- not while filling, panning or looking at a locked frame."""
@@ -696,8 +745,11 @@ def test_the_filter_opens_wide_enough_to_sweep_a_label(window):
         PROOFREADING_SPECK_PIXELS,
     )
 
-    assert window.label_panel.controller.speck_size == PROOFREADING_SPECK_PIXELS == 36
+    assert window.label_panel.controller.speck_size == PROOFREADING_SPECK_PIXELS == 64
     assert window.label_panel.speck_slider.value() == PROOFREADING_SPECK_PIXELS
+    assert window.label_panel.speck_slider.maximum() >= PROOFREADING_SPECK_PIXELS, (
+        "the slider has to reach the size it starts at, and past it"
+    )
 
 
 def test_switching_the_filter_off_takes_the_rings_away(window):

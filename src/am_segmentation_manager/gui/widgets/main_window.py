@@ -60,6 +60,7 @@ from .project_dialog import AddProjectsDialog
 from .project_panel import ProjectPanel, status_legend
 from .report_dialog import ReportDialog
 from .state_panel import StatePanel
+from .theme import BORDER_LIGHT, HEADING
 
 logger = logging.getLogger(__name__)
 
@@ -176,12 +177,16 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
         ),
     ),
     TAB_LABEL: (
+        # First of the tool gestures, so it lands directly under [ and ]: all
+        # three resize the brush, and a reader looking for how to do that
+        # should not have to step over two other rows to find the third way.
+        # The mouse rows stay together either way, this one leading them.
+        (GROUP_TOOLS, "Shift + scroll wheel", "Make the brush bigger or smaller"),
         (GROUP_TOOLS, "Drag with the left button", "Paint with the brush"),
         (
             GROUP_TOOLS, "Click with the fill tool",
             "Flood the area of one class you clicked in",
         ),
-        (GROUP_TOOLS, "Shift + scroll wheel", "Make the brush bigger or smaller"),
         (
             GROUP_VIEW, "Hold Space, or drag with the middle button",
             "Pan instead of painting",
@@ -190,6 +195,20 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
         (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
     ),
 }
+
+
+#: How a heading is set apart from the rows under it.
+#:
+#: Every left-hand cell of the tables is bold, being the column a reader scans,
+#: so bold alone left the headings looking like one more key. They take the
+#: colour and the weight a `QGroupBox` title takes over the captions inside its
+#: card, plus a size and a rule -- the same idea as the cards, so the list
+#: agrees with the window rather than inventing a second hierarchy.
+HEADING_STYLE = (
+    f"margin-top: 16px; margin-bottom: 2px; color: {HEADING}; "
+    f"font-size: 12pt; font-weight: bold; "
+    f"border-bottom: 1px solid {BORDER_LIGHT};"
+)
 
 
 def _table(rows) -> str:
@@ -1572,7 +1591,7 @@ class CurationWindow(QMainWindow):
             applicable, TAB_GESTURES.get(tab, ()), self._tab_marks(tab)
         )
         help_text = "".join(
-            f"<p style='margin-top: 12px;'><b>{group}</b></p>{_table(rows)}"
+            f"<p style='{HEADING_STYLE}'>{group}</p>{_table(rows)}"
             for group, rows in grouped.items()
         )
         own_keys = [b for b in applicable if b.tab != ANY_TAB]

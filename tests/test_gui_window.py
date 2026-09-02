@@ -1044,6 +1044,40 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
         assert {group for group, _action, _description in gestures} <= headings
 
 
+def test_the_three_ways_to_resize_the_brush_are_listed_together(window):
+    """[ and ] and Shift with the wheel all do one thing, so they read as one
+    group -- and the mouse rows still run together, this one leading them."""
+    from am_segmentation_manager.gui.widgets.main_window import TAB_LABEL
+
+    help_text = window.shortcut_help(TAB_LABEL)
+
+    assert (
+        help_text.index("Larger brush")
+        < help_text.index("Shift + scroll wheel")
+        < help_text.index("Drag with the left button")
+        < help_text.index("Click with the fill tool")
+    )
+
+
+def test_a_heading_is_not_drawn_like_the_rows_under_it(window):
+    """Every left-hand cell is bold, being the column a reader scans, so bold
+    alone left a heading looking like one more key."""
+    from am_segmentation_manager.gui.widgets.main_window import (
+        GROUP_TOOLS,
+        TAB_LABEL,
+    )
+    from am_segmentation_manager.gui.widgets.theme import HEADING
+
+    help_text = window.shortcut_help(TAB_LABEL)
+
+    heading = help_text[: help_text.index(GROUP_TOOLS)].rsplit("<p", 1)[-1]
+    assert HEADING in heading, "a heading takes the group-title colour"
+    assert "font-size" in heading and "border-bottom" in heading
+    assert f"<b>{GROUP_TOOLS}</b>" not in help_text, (
+        "a heading has to differ from a key, not merely repeat its weight"
+    )
+
+
 def test_the_curate_keys_are_grouped_by_what_they_are_for(window):
     from am_segmentation_manager.gui.widgets.main_window import (
         GROUP_CHOOSE,

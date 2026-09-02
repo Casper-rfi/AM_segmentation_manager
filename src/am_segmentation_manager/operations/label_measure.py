@@ -74,7 +74,9 @@ DEFAULT_SPECK_PIXELS = 4
 #: have been put there by hand, and anything larger buries that in ordinary
 #: small structures; a reviewer sweeping one label is looking for whatever is
 #: small enough to be worth a second glance, and moves the slider from here.
-PROOFREADING_SPECK_PIXELS = 36
+#: Set from proofreading the collection: the components worth a second glance
+#: run larger than this started out assuming.
+PROOFREADING_SPECK_PIXELS = 64
 
 
 @dataclass(frozen=True)

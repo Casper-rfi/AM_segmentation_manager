@@ -189,7 +189,12 @@ environment the package is *installed* into.
   gestures table made the reader do the grouping the list exists to do. Every `Binding` and every
   `TAB_GESTURES` row names its heading, and the heading *order* is the order the bindings first name
   them — so the list is rearranged by moving a binding rather than by keeping a second table in step
-  with one. Only "This list" is placed, and it is placed last.
+  with one, and *within* a heading by moving a row up its own table: keys come first, then the
+  gestures in the order `TAB_GESTURES` gives them, which is what puts Shift and the wheel beside
+  `[` and `]`. Only "This list" is placed, and it is placed last. **A heading is not bold alone**,
+  every left-hand cell being bold as the column a reader scans; it takes the colour and weight a
+  `QGroupBox` title takes over its card, plus a size and a rule, so the list agrees with the window
+  instead of inventing a second hierarchy.
 - **It opens with a keyboard, the keys the tab binds picked out on it.** Which of the keys under
   your hands do anything here is a question a picture answers faster than a list, and what each does
   is the table directly below. Drawn with `QPainter` like the tool marks: it takes the window's own

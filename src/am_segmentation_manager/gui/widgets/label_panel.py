@@ -67,9 +67,10 @@ SWATCH = 12
 SPECK_RECOUNT_MS = 400
 
 #: The sizes the speck slider offers, in pixels. One pixel is the smallest
-#: thing there is; the top is where "small component" stops meaning anything.
+#: thing there is; the top is where "small component" stops meaning anything,
+#: which proofreading has put further out than it first appeared.
 MIN_SPECK_PIXELS = 1
-MAX_SPECK_PIXELS = 64
+MAX_SPECK_PIXELS = 128
 
 #: The keys that choose a class to paint, one per button in the order the
 #: classes are shown.
@@ -215,6 +216,83 @@ def lock_icon(locked: bool = True):
     finally:
         painter.end()
     return chip_icon(pixmap)
+
+
+def save_icon():
+    """Return the save button's icon: a disk, its shutter and label punched out.
+
+    The one mark on this bar that stands for writing to the filesystem rather
+    than for a tool, so it is the familiar shape rather than an invention: at
+    sixteen pixels a reader recognises the outline before reading the caption.
+    Both openings are inset from the body's edges -- reaching them cuts the
+    body into two columns joined by a band, which draws an H.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        # The body, its lower right corner cut as a real one is.
+        painter.drawPolygon(
+            QPolygonF([
+                QPointF(2.0, 2.0), QPointF(11.8, 2.0), QPointF(14.0, 4.2),
+                QPointF(14.0, 14.0), QPointF(2.0, 14.0),
+            ])
+        )
+        # Punched out rather than drawn over, so the two read as openings in
+        # the body and the shape is a disk rather than a square with marks on.
+        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        painter.drawRect(QRectF(5.6, 3.0, 4.4, 3.2))
+        painter.drawRect(QRectF(4.6, 8.6, 6.8, 3.4))
+    finally:
+        # Always: a QPainter outliving its paint device crashes the process
+        # rather than reporting an error.
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def _history_icon(forwards: bool):
+    """Return an arrow curving over and back on itself, pointing left or right.
+
+    One drawing for undo and redo, mirrored about the centre line: they are one
+    gesture in two directions, and two arrows drawn by hand at this size never
+    quite match. The head sits at the end of the arc and points across it, an
+    arc and a head that overlap being a blob at sixteen pixels.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        if forwards:
+            painter.translate(ICON, 0)
+            painter.scale(-1.0, 1.0)
+        pen = QPen(QColor(TEXT))
+        pen.setWidthF(1.7)
+        pen.setCapStyle(Qt.FlatCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        # The top half of an ellipse: over the top and down both sides.
+        painter.drawArc(QRectF(3.4, 4.6, 9.6, 9.0), 0, 180 * 16)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        # On the left leg, pointing down: where the stroke is going.
+        painter.drawPolygon(
+            QPolygonF([QPointF(0.9, 8.6), QPointF(5.9, 8.6), QPointF(3.4, 13.4)])
+        )
+    finally:
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def undo_icon():
+    """Return the undo button's icon: an arrow curving back the way it came."""
+    return _history_icon(forwards=False)
+
+
+def redo_icon():
+    """Return the redo button's icon: the undo arrow, mirrored."""
+    return _history_icon(forwards=True)
 
 
 def _row_header(icon, caption: str, hint: str) -> QWidget:
@@ -638,23 +716,28 @@ class LabelPanel(QWidget):
         return grid
 
     def _build_actions(self) -> QGridLayout:
-        """Build undo and redo, above the save they lead to."""
+        """Build undo and redo, above the save they lead to.
+
+        Marked like the tools beside them, and drawn the same way: these three
+        are the buttons a reviewer reaches for without reading, so what each
+        one is has to be legible before its caption is.
+        """
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(4)
         grid.setVerticalSpacing(2)
 
-        self.undo_button = QPushButton("Undo")
+        self.undo_button = QPushButton(undo_icon(), "Undo")
         self.undo_button.setToolTip("Undo the last stroke on this label\nShortcut: Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
         grid.addWidget(self.undo_button, 0, 0)
 
-        self.redo_button = QPushButton("Redo")
+        self.redo_button = QPushButton(redo_icon(), "Redo")
         self.redo_button.setToolTip("Redo the last undone stroke\nShortcut: Ctrl+Shift+Z")
         self.redo_button.clicked.connect(self.redo)
         grid.addWidget(self.redo_button, 0, 1)
 
-        self.save_button = QPushButton("Save labels...")
+        self.save_button = QPushButton(save_icon(), "Save labels...")
         self.save_button.setToolTip(
             "Write every label edited in this lamella, and choose whether to "
             "mark them corrected\nShortcut: Ctrl+S"
