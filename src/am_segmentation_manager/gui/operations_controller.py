@@ -1,10 +1,10 @@
 """The batch operations the window offers, in one shape.
 
-Converting predictions into labels, recompressing labels and repairing groups
-whose images disagree with their label each return a different result type. Each
+Predicting, converting predictions into labels, recompressing labels, copying a
+selection out and naming new projects each return a different result type. Each
 is offered the same way -- preview what it would do, confirm, then apply -- so
-this turns all three into one :class:`OperationReport` and the window gets one
-dialog rather than three.
+this turns them all into one :class:`OperationReport` and the window gets one
+dialog rather than one per operation.
 
 Qt-free, like the other controllers here. Paths are reported relative to the
 scan root: an absolute path eight directories deep is unreadable in a dialog.

@@ -314,11 +314,6 @@ def by_detector(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     return _metadata_key(metadata, "detector_type")
 
 
-def by_header_modality(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
-    """Group by the beam the *instrument* reported, not the directory."""
-    return _metadata_key(metadata, "modality")
-
-
 # ---------------------------------------------------------------------------
 # Keys needing label measurements
 #

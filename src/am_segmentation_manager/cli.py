@@ -1030,8 +1030,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI runner
-    """Parse arguments and dispatch to the appropriate operation."""
+def main(argv: list[str] | None = None) -> int:
+    """Parse arguments and dispatch to the appropriate operation.
+
+    Takes *argv* so the suite can drive a command the way a shell would, which
+    is how all but ``gui`` and ``predict`` are covered.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
 

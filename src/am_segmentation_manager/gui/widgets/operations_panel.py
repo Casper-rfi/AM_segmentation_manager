@@ -54,8 +54,6 @@ class OperationsPanel(QWidget):
     devices_requested = Signal()
     #: Emitted when the user asks to convert the selection's predictions.
     convert_requested = Signal()
-    #: Emitted when the user asks to repair inconsistent groups.
-    repair_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()

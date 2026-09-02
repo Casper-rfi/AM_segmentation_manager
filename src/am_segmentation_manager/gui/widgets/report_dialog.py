@@ -1,7 +1,7 @@
 """A scrollable, monospace report, shown before and after an operation runs.
 
 Every operation the window offers produces a list of lines -- files it would
-write, labels it would re-encode, groups it would repair -- and a message box
+write, labels it would re-encode, files it would copy -- and a message box
 is the wrong shape for them: it wraps, it proportional-spaces paths whose
 alignment is the point, and it grows off the screen rather than scrolling.
 

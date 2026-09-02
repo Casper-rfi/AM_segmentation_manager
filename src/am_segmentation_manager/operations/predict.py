@@ -145,11 +145,6 @@ def prediction_destination(record: ImageRecord) -> Path:
     return record.predictions_directory / OWN_PREDICTION_KIND / record.image_path.name
 
 
-def provenance_path(prediction: Path) -> Path:
-    """Return the provenance file recording how *prediction* was made."""
-    return prediction.parent / PREDICTION_PROVENANCE_FILENAME
-
-
 def read_provenance(directory: Path) -> dict[str, Any]:
     """Return what is recorded about the predictions in *directory*.
 
