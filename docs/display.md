@@ -125,11 +125,31 @@ environment the package is *installed* into.
   **`SWATCH_HEIGHT` must stay even.** Qt centres a row's check indicator on the row — Fusion's is
   eighteen pixels — but rounds the decoration differently, so an odd-height icon lands half a pixel
   below the tick beside it and the name after it. At thirteen that was visible.
-- **Choosing a folder asks what is under it and changes nothing else.** Moving to a folder row
-  counts its projects, lamellae, images and Adaptive Polishing progress into the line the frame
-  summary occupies; it moves no frame, no lamella and no state, a folder holding none of those.
-  The scope is held in the window rather than written straight to the label, because everything
-  the window does ends in a refresh and one would otherwise replace the answer with the frame's.
+- **Choosing a folder lists every lamella under it.** An Autolamella run restarts for reasons
+  that have nothing to do with the specimen — a crash, a change of parameters, an overnight queue —
+  so one session's lamellae are spread over a dozen projects holding one or two each: thirteen
+  projects and twenty-four lamellae in one folder of the reference collection, eleven of those
+  projects holding exactly one. Listing them together is how they are worked through, and Up and
+  Down then cross a project boundary without stopping, the boundary being an artifact. **The rows
+  need no project prefix**: Autolamella names a lamella `01-caring-dragon`, and no folder in the
+  collection holds two of the same name.
+- **The lamella list is what a row was *clicked*, never what was ticked.** Ticking is what a change
+  applies to, and `Selection` keeps one level at a time — so ticking a lamella clears the project
+  ticks. A list filled from the project ticks would therefore empty itself, taking the lamella just
+  ticked with it, the moment anyone used it. Ticking projects already reaches every lamella in them
+  for an *operation*, which is the half of that idea that works.
+- **`controller.project` is the project of the lamella in view, not the row last clicked.** With a
+  folder listed the two differ, and every caller — the status line, the variants a project names
+  its own directories with, the path to copy — is asking about what is on screen. A project holding
+  no lamellae has none to answer for, so the tree's row stands in and it still names itself.
+  `ViewPosition` carries the folder for the same reason: restoring the project alone would silently
+  narrow the list to one of the projects in it.
+- **The tree's cursor stays on the folder while the folder is listed.** Moving it onto whichever
+  project a lamella belongs to would re-enter that list's own signal and snap the scope back to the
+  one project. The summary line is the one that says which project you are in, which makes it
+  load-bearing rather than decorative. Choosing a folder still moves no frame and no state: the
+  lamella in view is kept when the new list holds it, which it does whenever the folder chosen is
+  the one already being worked in.
 - **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
   and nothing else: nothing about a project row changes when one is picked. Rebuilding it there ran
   while Qt was still part-way through the mouse press that caused it, emptying the rows Qt held a

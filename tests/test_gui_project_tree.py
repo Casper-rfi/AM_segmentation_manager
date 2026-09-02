@@ -359,3 +359,41 @@ def test_moving_back_to_a_project_reports_the_project(tree):
 
     assert projects == [3]
     assert folders == []
+
+
+# ---------------------------------------------------------------------------
+# The cursor on a folder
+# ---------------------------------------------------------------------------
+
+def test_a_folder_can_be_the_row_the_tree_is_on(tree):
+    """A folder's lamellae are listed below it, so the folder has to come back
+    as the row being looked at when the tree is rebuilt -- otherwise the list
+    says one thing and the tree shows nothing chosen."""
+    tree.set_projects(FOLDERS, LABELS, current_folder="session_b")
+
+    assert tree.currentItem() is _folder(tree, "session_b")
+
+
+def test_a_folder_made_current_is_opened(tree):
+    """A chosen row folded away is a selection nobody can see."""
+    tree.collapseAll()
+
+    tree.set_projects(FOLDERS, LABELS, current_folder="session_a")
+
+    assert _folder(tree, "session_a").isExpanded()
+
+
+def test_a_folder_that_has_gone_leaves_the_cursor_alone(tree):
+    """A rescan can take a folder with it. Naming one that is not there asks a
+    question about the tree on screen, and the tree is what answers."""
+    tree.set_projects(FOLDERS, LABELS, current_folder="renamed_away")
+
+    assert tree.currentItem() is None or tree.project_of(tree.currentItem()) is not None
+
+
+def test_a_folder_beats_a_project_for_the_cursor(tree):
+    """Both are passed on every rebuild: the project position is what the
+    controller last moved to, and the folder is what is actually listed."""
+    tree.set_projects(FOLDERS, LABELS, current=2, current_folder="session_b")
+
+    assert tree.currentItem() is _folder(tree, "session_b")

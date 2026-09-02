@@ -15,16 +15,15 @@ writes and every layout era from pre-Autolamella to 2026-05. Curating, proofread
 and exporting are four tabs, each with a controller holding no Qt, and the command line does the
 same work for scripting and testing. Predictions need the second environment
 `scripts/setup_ml.sh` builds. Curate lists its projects as a tree under the session folder each
-one sits in, and F1 lists the keys of the tab in front along with what every mark on it means;
-[`display.md`](display.md) says how those behave and why.
+one sits in, and choosing a folder lists the lamellae of every project under it; F1 lists the
+keys of the tab in front along with what every mark on it means. [`display.md`](display.md) says
+how those behave and why.
 
 ## What to pick up next
 
 **The window's remaining rework** is the work in hand, and the only entry here with an order to it.
-First the one shape that needs the controller to change: a folder whose *lamellae* can all be
-listed at once across the projects in it, an Autolamella restart being an artifact rather than a
-boundary anyone works to. Then the tree in Add data and Export, Add data wanting it most —
-editing one folder's projects together is the point of grouping them. Then a contrast control
+First the tree in Add data and Export, Add data wanting it most — editing one folder's projects
+together is the point of grouping them. Then a contrast control
 applied after the cache, so moving it costs a lookup table rather than a re-read; a curation
 timeline carrying one colour vocabulary fewer; a `QPainter` keyboard diagram for F1; and a macOS
 `.icns` icon, the current one being a full-bleed PNG where macOS wants a squircle inset in its

@@ -87,11 +87,29 @@ class ViewPosition:
         project: Path of the selected project, or None if there was none.
         lamella: Path of the selected lamella, or None.
         frame: Index of the frame within the lamella.
+        folder: The folder whose lamellae were listed, or None when a single
+            project was. Restoring a folder puts the whole list back, where
+            restoring its project alone would silently narrow the scope.
     """
 
     project: Path | None
     lamella: Path | None
     frame: int
+    folder: str | None = None
+
+
+@dataclass(frozen=True)
+class LamellaEntry:
+    """One row of the lamella list: a lamella, and the project it is in.
+
+    The project travels with the lamella because the list can be drawn from
+    several at once, and a lamella cannot say which one it came from --
+    :class:`~...models.Lamella` has no back-reference, the scanner building
+    projects out of lamellae rather than the other way round.
+    """
+
+    project: Project
+    lamella: Lamella
 
 
 def _index_of(items: Sequence, path: Path | None) -> int | None:
@@ -350,7 +368,13 @@ class CurationController:
         self.start_path: Path | None = None
         self.index: ProjectIndex | None = None
         self._projects: list[Project] = []
-        self._lamellae: list[Lamella] = []
+        #: The lamella list, and the projects its rows came from. Filled from
+        #: one project or from every project under a folder; nothing
+        #: downstream of it can tell the difference, which is the point.
+        self._entries: list[LamellaEntry] = []
+        #: The folder whose lamellae are listed, or None when a single project
+        #: is. Only the summary line and :meth:`position` ask.
+        self._scope_folder: str | None = None
         self._frames: list[LamellaFrame] = []
 
         #: What each record's label turned out to be, keyed by image path, in
@@ -468,7 +492,7 @@ class CurationController:
             projects=picked.projects
             & {selection_key(project.path) for project in self._projects},
             lamellae=picked.lamellae
-            & {selection_key(lamella.path) for lamella in self._lamellae},
+            & {selection_key(entry.lamella.path) for entry in self._entries},
             frames={positions[key] for key in picked.frames if key in positions},
         )
 
@@ -479,6 +503,7 @@ class CurationController:
             project=project.path if project is not None else None,
             lamella=lamella.path if lamella is not None else None,
             frame=self._frame_position,
+            folder=self._scope_folder,
         )
 
     def restore(self, position: ViewPosition) -> None:
@@ -488,11 +513,16 @@ class CurationController:
         lamella that is no longer there is one the reviewer has to be told
         about by seeing where they now are.
         """
-        project = _index_of(self._projects, position.project)
-        if project is None:
-            return
-        self.select_project(project)
-        lamella = _index_of(self._lamellae, position.lamella)
+        if position.folder is not None:
+            self.select_folder(position.folder)
+        else:
+            project = _index_of(self._projects, position.project)
+            if project is None:
+                return
+            self.select_project(project)
+        lamella = _index_of(
+            [entry.lamella for entry in self._entries], position.lamella
+        )
         if lamella is None:
             return
         self.select_lamella(lamella)
@@ -507,8 +537,13 @@ class CurationController:
 
     @property
     def lamellae(self) -> list[Lamella]:
-        """Return the lamellae of the selected project."""
-        return self._lamellae
+        """Return the lamellae listed: one project's, or a whole folder's."""
+        return [entry.lamella for entry in self._entries]
+
+    @property
+    def scope_folder(self) -> str | None:
+        """Return the folder whose lamellae are listed, or None for a project."""
+        return self._scope_folder
 
     @property
     def frames(self) -> list[LamellaFrame]:
@@ -517,13 +552,25 @@ class CurationController:
 
     @property
     def project(self) -> Project | None:
-        """Return the selected project, if any."""
+        """Return the project the lamella in view belongs to.
+
+        The current *lamella's* project, not the row last clicked in the tree.
+        With a folder listed the two differ, and everything that asks -- the
+        status line, the variant names a project gives its own directories, the
+        path to copy -- is asking about what is on screen. A project holding no
+        lamellae has none to answer for, so the tree's own row stands in and it
+        still names itself.
+        """
+        entry = self._at(self._entries, self._lamella_position)
+        if entry is not None:
+            return entry.project
         return self._at(self._projects, self._project_position)
 
     @property
     def lamella(self) -> Lamella | None:
         """Return the selected lamella, if any."""
-        return self._at(self._lamellae, self._lamella_position)
+        entry = self._at(self._entries, self._lamella_position)
+        return entry.lamella if entry is not None else None
 
     @property
     def frame(self) -> LamellaFrame | None:
@@ -537,7 +584,7 @@ class CurationController:
 
     @property
     def lamella_position(self) -> int:
-        """Return the index of the selected lamella within the project."""
+        """Return the index of the selected lamella within the list."""
         return self._lamella_position
 
     @property
@@ -546,18 +593,60 @@ class CurationController:
         return self._frame_position
 
     def select_project(self, position: int) -> None:
-        """Select a project by index and move to its first lamella.
-
-        The ticked lamellae go with it. They belong to the project that was on
-        screen, and a tick nobody can see is one that decides what an operation
-        touches without saying so; the ticked projects stay, since the project
-        list still shows them.
-        """
+        """List one project's lamellae, and move into them."""
         self._project_position = _clamp(position, len(self._projects))
-        project = self.project
-        self._lamellae = list(project.lamellae) if project is not None else []
+        project = self._at(self._projects, self._project_position)
+        self._list_lamellae(
+            [project] if project is not None else [], folder=None
+        )
+
+    def select_folder(self, folder: str) -> None:
+        """List the lamellae of every project under *folder*, in project order.
+
+        An Autolamella run restarts for reasons that have nothing to do with
+        the specimen -- a crash, a change of parameters, an overnight queue --
+        so one session's lamellae are spread over a dozen projects holding one
+        or two each. Listing them together is how they are actually worked
+        through; stepping with Up and Down then crosses a project boundary
+        without stopping, because the boundary is an artifact.
+
+        The tree's current row stays on the folder. Moving it onto whichever
+        project the lamella belongs to would re-enter this list's own signal
+        and snap the scope back to that one project.
+        """
+        self._scope_folder = folder
+        self._list_lamellae(self.projects_in(folder), folder=folder)
+
+    def projects_in(self, folder: str) -> list[Project]:
+        """Return the projects filed under *folder*, in scan order."""
+        return [project for project in self._projects if project.folder == folder]
+
+    def _list_lamellae(self, projects: list[Project], *, folder: str | None) -> None:
+        """Replace the lamella list with the lamellae of *projects*.
+
+        **Where you are is kept if it is still on the list.** Widening from a
+        project to the folder holding it, or narrowing back, then moves nothing
+        -- which is what makes choosing a folder a question about what to look
+        at rather than a jump to somewhere else. A different project never
+        holds the current lamella, so this changes nothing there.
+
+        The ticked lamellae are cleared: they belonged to the list that was on
+        screen, and a tick nobody can see is one that decides what an operation
+        touches without saying so. The ticked projects stay, the tree still
+        showing them.
+        """
+        self._scope_folder = folder
+        was = self.lamella
+        self._entries = [
+            LamellaEntry(project, lamella)
+            for project in projects
+            for lamella in project.lamellae
+        ]
         self.selection.lamellae.clear()
-        self.select_lamella(0)
+        self.select_lamella(
+            _index_of([entry.lamella for entry in self._entries],
+                      was.path if was is not None else None) or 0
+        )
 
     def select_lamella(self, position: int) -> None:
         """Select a lamella by index and rebuild its frame stack.
@@ -566,7 +655,7 @@ class CurationController:
         boundary none of it is worth keeping. The frame selection goes with it,
         since a frame index only means anything within one lamella.
         """
-        self._lamella_position = _clamp(position, len(self._lamellae))
+        self._lamella_position = _clamp(position, len(self._entries))
         self._rebuild_frames()
 
     def _rebuild_frames(self) -> None:
@@ -609,7 +698,11 @@ class CurationController:
         self.select_frame(self._frame_position + delta)
 
     def step_lamella(self, delta: int) -> None:
-        """Move *delta* lamellae, stopping at the ends of the project."""
+        """Move *delta* lamellae, stopping at the ends of the list.
+
+        The list, not the project: with a folder listed this steps from the
+        last lamella of one project into the first of the next.
+        """
         self.select_lamella(self._lamella_position + delta)
 
     # -- display -----------------------------------------------------------
@@ -755,7 +848,7 @@ class CurationController:
 
     def lamella_statuses(self) -> list[CurationStatus]:
         """Return each lamella's curation status for the selected project."""
-        return [lamella_status(lamella) for lamella in self._lamellae]
+        return [lamella_status(entry.lamella) for entry in self._entries]
 
     def folder_summary(self, folder: str) -> FolderSummary:
         """Return what is under *folder*, counted across the projects in it.
@@ -766,7 +859,7 @@ class CurationController:
         rescan that follows, not by this.
         """
         projects = [
-            project for project in self._projects if project.folder == folder
+            project for project in self.projects_in(folder)
         ]
         records = [
             record for project in projects for record in project.image_records
@@ -794,7 +887,7 @@ class CurationController:
         the path always names something that exists on disk.
         """
         lamella = self._at(
-            self._lamellae, self._lamella_position if position is None else position
+            self.lamellae, self._lamella_position if position is None else position
         )
         return lamella.path.resolve() if lamella is not None else None
 
@@ -977,7 +1070,7 @@ class CurationController:
 
     def set_lamella_checked(self, position: int, checked: bool) -> None:
         """Check or uncheck the lamella at a row of the lamella list."""
-        lamella = self._at(self._lamellae, position)
+        lamella = self._at(self.lamellae, position)
         if lamella is not None:
             self.selection.check(LEVEL_LAMELLAE, selection_key(lamella.path), checked)
 
@@ -998,7 +1091,7 @@ class CurationController:
         """
         self.selection.check_all(
             LEVEL_LAMELLAE,
-            [selection_key(lamella.path) for lamella in self._lamellae],
+            [selection_key(entry.lamella.path) for entry in self._entries],
             checked,
         )
 
@@ -1010,10 +1103,12 @@ class CurationController:
         ]
 
     def lamella_checks(self) -> list[bool]:
-        """Return whether each lamella of the selected project is checked."""
+        """Return whether each listed lamella is checked."""
         return [
-            self.selection.is_checked(LEVEL_LAMELLAE, selection_key(lamella.path))
-            for lamella in self._lamellae
+            self.selection.is_checked(
+                LEVEL_LAMELLAE, selection_key(entry.lamella.path)
+            )
+            for entry in self._entries
         ]
 
     def selected_frames(self) -> set[int]:
@@ -1077,7 +1172,7 @@ class CurationController:
             wanted = self.selection.lamellae
             return [
                 lamella
-                for lamella in self._lamellae
+                for lamella in self.lamellae
                 if selection_key(lamella.path) in wanted
             ]
         wanted = self.selection.projects

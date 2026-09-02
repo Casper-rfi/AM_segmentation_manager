@@ -1247,3 +1247,133 @@ def test_projects_at_the_scan_root_are_a_folder_of_their_own():
     ])
 
     assert controller.folder_summary("").projects == 1
+
+
+# ---------------------------------------------------------------------------
+# A folder's lamellae, listed across the projects in it
+# ---------------------------------------------------------------------------
+
+def _session():
+    """A session folder as Autolamella leaves one: several projects, most of
+    them holding a single lamella, and one holding two."""
+    return _folder_controller([
+        _in_folder("session", "run-one", [status_lamella("01-caring-dragon", [image("selected")])]),
+        _in_folder("session", "run-two", [
+            status_lamella("01-amazed-drake", [image("selected")]),
+            status_lamella("02-ample-dodo", [image("selected")]),
+        ]),
+        _in_folder("session", "run-three", [status_lamella("01-new-bee", [image("selected")])]),
+        _in_folder("elsewhere", "other", [status_lamella("01-set-ray", [image("selected")])]),
+    ])
+
+
+def test_choosing_a_folder_lists_every_lamella_under_it():
+    """The point of the whole thing: a session's lamellae are spread over
+    however many projects Autolamella happened to start, and they are worked
+    through as one list."""
+    controller = _session()
+
+    controller.select_folder("session")
+
+    assert [lamella.name for lamella in controller.lamellae] == [
+        "01-caring-dragon", "01-amazed-drake", "02-ample-dodo", "01-new-bee"
+    ]
+
+
+def test_a_folder_lists_nothing_from_any_other_folder():
+    controller = _session()
+
+    controller.select_folder("session")
+
+    assert "01-set-ray" not in [lamella.name for lamella in controller.lamellae]
+
+
+def test_stepping_crosses_a_project_boundary_without_stopping():
+    """An Autolamella restart is an artifact of how the run went, not a
+    boundary anyone works to."""
+    controller = _session()
+    controller.select_folder("session")
+
+    controller.select_lamella(0)
+    controller.step_lamella(1)
+
+    assert controller.lamella.name == "01-amazed-drake"
+    assert controller.project.name == "run-two"
+
+
+def test_the_project_is_the_one_the_lamella_is_in():
+    """Not the row last clicked in the tree. The status line, the variant names
+    and the path to copy all ask this, and with a folder listed a project row
+    would answer for the wrong project -- variants are named per project, so
+    the window would have shown one project's names against another's frames."""
+    controller = _session()
+    controller.select_folder("session")
+
+    controller.select_lamella(3)
+
+    assert controller.project.name == "run-three"
+
+
+def test_choosing_a_folder_keeps_the_lamella_in_view():
+    """Widening from a project to the folder holding it is a question about
+    what to look at, not a jump somewhere else -- and the folder being chosen
+    is nearly always the one already being worked in."""
+    controller = _session()
+    controller.select_project(1)
+    controller.select_lamella(1)
+    assert controller.lamella.name == "02-ample-dodo"
+
+    controller.select_folder("session")
+
+    assert controller.lamella.name == "02-ample-dodo"
+    assert controller.lamella_position == 2
+
+
+def test_choosing_a_project_narrows_back_to_it():
+    controller = _session()
+    controller.select_folder("session")
+
+    controller.select_project(0)
+
+    assert controller.scope_folder is None
+    assert [lamella.name for lamella in controller.lamellae] == ["01-caring-dragon"]
+
+
+def test_changing_what_is_listed_clears_the_ticked_lamellae():
+    """A tick nobody can see is one that decides what an operation touches
+    without saying so."""
+    controller = _session()
+    controller.select_project(1)
+    controller.set_lamella_checked(0, True)
+    assert controller.selection.lamellae
+
+    controller.select_folder("session")
+
+    assert not controller.selection.lamellae
+    assert not any(controller.lamella_checks())
+
+
+def test_a_folder_scope_survives_a_rescan():
+    """Restoring the project alone would silently narrow the list back to one
+    of the projects in the folder."""
+    controller = _session()
+    controller.select_folder("session")
+    controller.select_lamella(2)
+
+    where = controller.position()
+    controller.scan(Path("/scan-root"))
+    controller.restore(where)
+
+    assert controller.scope_folder == "session"
+    assert controller.lamella.name == "02-ample-dodo"
+
+
+def test_a_project_holding_no_lamellae_still_names_itself():
+    """The fallback in `project`: with no lamella to answer for, the row the
+    tree is on stands in, so the summary does not read "No project loaded"."""
+    controller = _folder_controller([_in_folder("session", "empty", [])])
+
+    controller.select_project(0)
+
+    assert controller.lamella is None
+    assert controller.project.name == "empty"

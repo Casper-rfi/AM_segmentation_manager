@@ -118,6 +118,7 @@ class ProjectTree(QTreeWidget):
         icons: Sequence[QIcon] | None = None,
         tooltips: Sequence[str] | None = None,
         current: int | None = None,
+        current_folder: str | None = None,
     ) -> None:
         """Replace the rows, keeping what the reader had arranged.
 
@@ -160,7 +161,9 @@ class ProjectTree(QTreeWidget):
 
             for folder, parent in parents.items():
                 parent.setExpanded(folder in opened)
-            if current is not None:
+            if current_folder is not None:
+                self._make_folder_current(current_folder, parents)
+            elif current is not None:
                 self._make_current(current)
         finally:
             self.blockSignals(False)
@@ -199,6 +202,21 @@ class ProjectTree(QTreeWidget):
             if self.topLevelItem(row).childCount()
             and self.topLevelItem(row).isExpanded()
         }
+
+    def _make_folder_current(
+        self, folder: str, parents: dict[str, QTreeWidgetItem]
+    ) -> None:
+        """Put the cursor back on a folder row, and open it.
+
+        A rescan rebuilds the tree, and a folder whose lamellae are listed must
+        come back as the row being looked at -- otherwise the list below says
+        one thing and the tree shows nothing chosen.
+        """
+        item = parents.get(folder)
+        if item is None:
+            return
+        item.setExpanded(True)
+        self.setCurrentItem(item)
 
     def _make_current(self, index: int) -> None:
         """Put the cursor on a project, opening the folder holding it."""
@@ -559,6 +577,7 @@ class ProjectPanel(QWidget):
         statuses: list[CurationStatus] | None = None,
         checks: list[bool] | None = None,
         folders: list[str] | None = None,
+        current_folder: str | None = None,
     ) -> None:
         """List the discovered projects, selecting the one at *current*.
 
@@ -566,7 +585,9 @@ class ProjectPanel(QWidget):
         the projects with no chips, which is what happens before a scan.
         *checks* says which rows are ticked. *folders* says which folder each
         project hangs under, one entry per label; omitting it puts them all at
-        the top level, which is a flat list by another name.
+        the top level, which is a flat list by another name. *current_folder*
+        puts the cursor on a folder row instead of a project, for when the
+        lamella list is that folder's rather than one project's.
         """
         self._project_labels = list(labels)
         self.project_list.set_projects(
@@ -579,6 +600,7 @@ class ProjectPanel(QWidget):
                 for label, status in zip(labels, statuses or [])
             ],
             current=current,
+            current_folder=current_folder,
         )
         self.project_box.setTitle(
             self._list_title("Projects", labels, checks)

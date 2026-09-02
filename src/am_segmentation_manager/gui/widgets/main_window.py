@@ -463,7 +463,6 @@ class CurationWindow(QMainWindow):
         self._connect()
         #: The folder the tree is on, when it is on one rather than a
         #: project. What the summary line describes; None means the frame.
-        self._folder_scope: str | None = None
         #: The shortcut list, built the first time F1 asks for it.
         self._help: ShortcutHelp | None = None
         self._add_shortcuts()
@@ -1734,14 +1733,21 @@ class CurationWindow(QMainWindow):
         return failure is None
 
     def _select_folder(self, folder: str) -> None:
-        """Describe what is under a folder, leaving the view where it is.
+        """List every lamella under a folder, and say what is in it.
 
-        A folder is not a project: moving to one changes no frame, no
-        lamella and no state. It asks a question, which is the one a closed
-        folder raises -- is there anything in here worth opening.
+        A session's lamellae are spread over however many projects Autolamella
+        happened to start, most of them holding one; choosing the folder puts
+        them in one list to be worked through. Nothing is moved that does not
+        have to be: the lamella in view stays if it is under the folder, which
+        it is whenever the folder being chosen is the one already being worked
+        in.
+
+        **The project list is not rebuilt here**, for the reason
+        :meth:`_select_project` gives -- this runs from that list's own signal.
         """
-        self._folder_scope = folder
-        self.project_panel.show_summary(self._summary_text())
+        self.controller.select_folder(folder)
+        self._refresh_lamellae()
+        self.refresh()
 
     def _select_project(self, row: int) -> None:
         """Move to a project, rebuilding its lamellae and nothing else.
@@ -1753,7 +1759,6 @@ class CurationWindow(QMainWindow):
         also threw the reviewer back to the top of the list on every click,
         which on an archive of a hundred projects loses their place entirely.
         """
-        self._folder_scope = None
         self.controller.select_project(row)
         self._refresh_lamellae()
         self.refresh()
@@ -2098,12 +2103,18 @@ class CurationWindow(QMainWindow):
         an empty column already says it.
         """
         projects = self.controller.projects
+        # The cursor goes on the folder while a folder's lamellae are listed.
+        # Putting it on the project a lamella happens to belong to would
+        # re-enter that list's own signal and snap the scope back to that one
+        # project -- and would say the wrong thing about what is being shown.
+        folder = self.controller.scope_folder
         self.project_panel.show_projects(
             [project.own_name for project in projects],
             self.controller.project_position,
             self.controller.project_statuses(),
             self.controller.project_checks(),
             folders=[project.folder for project in projects],
+            current_folder=folder,
         )
 
     def _refresh_lamellae(self) -> None:
@@ -2131,8 +2142,9 @@ class CurationWindow(QMainWindow):
         refresh for any other reason does not replace a folder's count with the
         frame's while the folder is still the row selected.
         """
-        if self._folder_scope is not None:
-            return self._folder_text(self._folder_scope)
+        folder = self.controller.scope_folder
+        if folder is not None:
+            return self._folder_text(folder)
         if self.controller.project is None:
             return "No project loaded"
 
