@@ -1623,6 +1623,27 @@ KEY_CAPTIONS: dict[str, str] = {
 }
 
 
+def intensity_badge(limits: tuple[int, int]) -> list[tuple[str, str]]:
+    """Return the badge saying the picture differs from the file, or nothing.
+
+    In the warning colour, because the intensity limits are the one control
+    that makes what is on screen differ from what was recorded: a reviewer who
+    has forgotten they are on is deciding about an image no export contains.
+    Nothing at all over the whole range, a line that is always there being a
+    line nobody reads.
+
+    Here rather than in either panel: both the curation panes and the
+    proofreading canvas carry the control, and two spellings of this would be
+    two answers to "is what I am looking at the file".
+    """
+    from ...display import DEFAULT_INTENSITY_RANGE
+
+    if tuple(limits) == tuple(DEFAULT_INTENSITY_RANGE):
+        return []
+    low, high = limits
+    return [(f"shown {low}-{high}", "warning")]
+
+
 #: The range slider's handle radius and groove, in logical pixels, and the room
 #: kept clear for a focus ring the way :data:`theme.SWITCH_FOCUS` is -- a ring
 #: painted past the widget's edge comes out clipped flat.

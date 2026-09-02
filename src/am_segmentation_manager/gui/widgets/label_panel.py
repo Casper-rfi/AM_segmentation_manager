@@ -28,7 +28,11 @@ from qtpy.QtWidgets import (
 )
 
 from ...config import BACKGROUND_CLASS
-from ...display import DEFAULT_ALPHA
+from ...display import (
+    DEFAULT_ALPHA,
+    DEFAULT_INTENSITY_RANGE,
+    apply_intensity_range,
+)
 from ...layout import MODALITIES, SERIES_LABELS
 from ...operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
@@ -38,10 +42,12 @@ from ..label_controller import LabelController
 from .common import (
     LABEL_BADGES,
     ElidingLabel,
+    RangeSlider,
     SegmentedControl,
     ToggleSwitch,
     chip_icon,
     fill_choice_combo,
+    intensity_badge,
 )
 from .frame_strip import FrameTimeline
 from .label_canvas import (
@@ -367,6 +373,13 @@ class LabelPanel(QWidget):
         """Build the tab against *controller*."""
         super().__init__()
         self.controller = controller
+        #: The intensities shown as black and as white while proofreading.
+        #: A property of the *view*, kept across frames on purpose --
+        #: comparing one frame with the next is what it is for -- and never
+        #: reaching the label being painted. Separate from the curation
+        #: panes' own: reviewing and proofreading are looked at differently
+        #: and a shared setting would have each change the other's picture.
+        self._intensity_range = DEFAULT_INTENSITY_RANGE
         #: The classes to offer, in the order they are shown and keyed.
         self._classes = list(controller.config.classes)
         #: Condition names from the project metadata; see
@@ -485,6 +498,21 @@ class LabelPanel(QWidget):
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
         controls.addWidget(self.alpha_slider)
+
+        controls.addSpacing(SWITCH_RUN_GAP)
+        low, high = DEFAULT_INTENSITY_RANGE
+        range_hint = (
+            "The intensities shown as black and as white; outside them is "
+            "clipped.\nChanges nothing on disk and reaches no label. "
+            "Double-click a handle to put it back."
+        )
+        range_label = QLabel("Minimum / maximum")
+        range_label.setToolTip(range_hint)
+        controls.addWidget(range_label)
+        self.intensity_slider = RangeSlider(0, 255, low, high)
+        self.intensity_slider.setToolTip(range_hint)
+        self.intensity_slider.range_changed.connect(self._range_moved)
+        controls.addWidget(self.intensity_slider)
 
         controls.addSpacing(20)
         self.fit_button = QPushButton("Fit")
@@ -1087,6 +1115,16 @@ class LabelPanel(QWidget):
         position = self.controller.position + 1 if count else 0
         self.frame_label.setText(f"{position} / {count}")
 
+    def _range_moved(self, low: int, high: int) -> None:
+        """Take the new limits and redraw the frame under them.
+
+        Held on the panel rather than in the controller, and never reaching a
+        label: this changes what the reviewer *sees* while they paint, not what
+        they paint. The two are held apart by the control, not here.
+        """
+        self._intensity_range = (low, high)
+        self.draw_current()
+
     def draw_current(self) -> None:
         """Draw the frame, or say why there is nothing drawn.
 
@@ -1111,12 +1149,18 @@ class LabelPanel(QWidget):
             return
 
         display = prepared.display
-        self.canvas.set_frame(display.image, self.controller.working_label())
+        # The label is painted into as it is; only the picture under it is
+        # rescaled, or a stroke would be recorded against something that is not
+        # the file.
+        image = apply_intensity_range(display.image, *self._intensity_range)
+        self.canvas.set_frame(image, self.controller.working_label())
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_image_shown(self.controller.show_image)
         self._refresh_specks()
         self.canvas.set_editable(self.controller.editable)
-        self._set_badges(self._label_badges(display))
+        self._set_badges(
+            intensity_badge(self._intensity_range) + self._label_badges(display)
+        )
 
     def _label_badges(self, display) -> list[tuple[str, str]]:
         """Return the badges describing what is on screen."""

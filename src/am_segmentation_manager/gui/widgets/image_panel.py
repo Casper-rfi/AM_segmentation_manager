@@ -41,6 +41,7 @@ from .common import (
     ToggleSwitch,
     class_legend_html,
     fill_choice_combo,
+    intensity_badge,
 )
 from .image_view import ImageView, LinkedImageViews
 from .theme import BADGE_STYLES, SWITCH_RUN_GAP
@@ -429,7 +430,7 @@ class ImagePanel(QWidget):
         else:
             self.pair.right.set_array(image)
 
-        self._set_badges(self._range_badge() + self._label_badges(display))
+        self._set_badges(intensity_badge(self._intensity_range) + self._label_badges(display))
 
     def show_plot(
         self, frame_plot: FramePlot | None, whole: FramePlot | None = None
@@ -557,20 +558,6 @@ class ImagePanel(QWidget):
         if display.label_resized:
             badges.append(("label resized to match image", "warning"))
         return badges
-
-    def _range_badge(self) -> list[tuple[str, str]]:
-        """Say so, whenever what is on screen is not what was recorded.
-
-        First of the badges, and in the warning colour. This is the one control
-        that makes the picture differ from the file, and a reviewer who has
-        forgotten it is on is deciding about an image the export will not
-        contain. It says nothing over the whole range, a line that is always
-        there being a line nobody reads.
-        """
-        if self._intensity_range == DEFAULT_INTENSITY_RANGE:
-            return []
-        low, high = self._intensity_range
-        return [(f"shown {low}-{high}", "warning")]
 
     def _set_badges(self, badges: list[tuple[str, str]]) -> None:
         if not badges:

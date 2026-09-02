@@ -62,15 +62,30 @@ def panel(qt_app) -> ExportPanel:
 
 
 def _tick(widget, row: int, on: bool = True) -> None:
-    """Tick a filter row through the widget, as a user would."""
+    """Tick a filter row through the widget, as a user would.
+
+    Followed by :func:`_settle`, because acting on a tick is deferred to the
+    next turn of the event loop -- see ``ExportPanel._recount``.
+    """
     widget.item(row).setCheckState(Qt.Checked if on else Qt.Unchecked)
+    _settle()
+
+
+def _settle() -> None:
+    """Let the tab catch up with a tick, as the event loop would."""
+    QApplication.processEvents()
 
 
 def _choose(row: FilterRow, name: str) -> None:
-    """Put a filter row on a property, as picking it from the dropdown would."""
+    """Put a filter row on a property, as picking it from the dropdown would.
+
+    Settles for the same reason :func:`_tick` does: the dropdown refills itself
+    from inside its own signal, so the row is filled a turn later.
+    """
     index = row.property_box.findData(name)
     assert index != -1, f"{name} is not on offer"
     row.property_box.setCurrentIndex(index)
+    _settle()
 
 
 def _is_enabled(row: FilterRow, name: str) -> bool:
@@ -1015,10 +1030,97 @@ def test_ticking_in_the_tree_keeps_the_whole_path(panel):
     row._property = "autolamella-project"
     _project_filter(panel)
     row.tree.project_item(2).setCheckState(0, Qt.Checked)
+    _settle()
 
     assert row.ticked_values() == [
         "20250512_AM_all/AutoLamella-2025-05-12-09-11"
     ]
+
+
+def _project_tree_panel(tmp_path) -> ExportPanel:
+    """A panel with records, on the Autolamella project filter.
+
+    Records matter: without them ``refresh`` returns before it refills the
+    filter rows, and the fault these tests are about is in the refilling.
+    """
+    panel = _loaded_panel(tmp_path, name="AutoLamella-2025-04-28-16-59")
+    _choose(_only_row(panel), "autolamella-project")
+    return panel
+
+
+def test_ticking_a_folder_ticks_every_project_under_it(qt_app, tmp_path):
+    """The fault this pins crashed the process.
+
+    Acting on a tick refills the row, and refilling clears the tree -- so doing
+    it from inside ``itemChanged`` destroyed the item whose signal was being
+    emitted while Qt was still propagating the tick to the folder's other
+    children. On the reference collection one project of nine came out ticked,
+    and the heap was corrupted on the way, which shows as a segfault a few
+    gestures later rather than there and then.
+    """
+    from qtpy.QtCore import Qt
+
+    panel = _project_tree_panel(tmp_path)
+    row = _only_row(panel)
+    wanted = len(row._nested_values)
+    assert wanted, "the tree is empty, so this proves nothing"
+
+    for index in range(row.tree.topLevelItemCount()):
+        row.tree.topLevelItem(index).setCheckState(0, Qt.Checked)
+    _settle()
+
+    assert len(row.ticked_values()) == wanted
+
+
+def test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered(qt_app, tmp_path):
+    """The rule the curation lists already keep, now kept here too: a list
+    rebuilt from inside its own signal is a use after free."""
+    from qtpy.QtCore import Qt
+
+    from am_segmentation_manager.gui.widgets.common import ProjectTree
+
+    panel = _project_tree_panel(tmp_path)
+    row = _only_row(panel)
+
+    inside = []
+    original = ProjectTree.set_projects
+
+    def watched(self, *args, **kwargs):
+        import traceback
+
+        inside.append(
+            any("_item_changed" in frame.name for frame in traceback.extract_stack())
+        )
+        return original(self, *args, **kwargs)
+
+    ProjectTree.set_projects = watched
+    try:
+        row.tree.project_item(0).setCheckState(0, Qt.Checked)
+        _settle()
+    finally:
+        ProjectTree.set_projects = original
+
+    assert inside, "the tree was never refilled, so this proves nothing"
+    assert not any(inside), "the tree was rebuilt from inside its own signal"
+
+
+def test_a_gesture_that_moves_many_ticks_recounts_once(qt_app, tmp_path):
+    """Ticking a folder is one signal per project under it, and each recount
+    sweeps every record in the collection."""
+    from qtpy.QtCore import Qt
+
+    panel = _project_tree_panel(tmp_path)
+    row = _only_row(panel)
+    counts = []
+    original = panel._controls_changed
+    panel._recount.timeout.disconnect(original)
+    panel._recount.timeout.connect(lambda: (counts.append(None), original())[1])
+
+    for index in range(row.tree.topLevelItemCount()):
+        row.tree.topLevelItem(index).setCheckState(0, Qt.Checked)
+    _settle()
+
+    assert len(counts) == 1
 
 
 def test_every_other_filter_stays_a_flat_list(panel):

@@ -108,7 +108,8 @@ environment the package is *installed* into.
   `theme.py`, chrome being decided there; **every name has to be spelled out in every rule**, Qt's
   stylesheets having no wildcard, and a name left out is a segment silently drawn as a plain button.
   `buttons` exposes the segments so a caller can grey one out on its own, which is how a view the
-  frame has nothing to show for is disabled. **The State group is deliberately not one**: it is
+  frame has nothing to show for is disabled. It draws the SEM/FIB/Plots view, *Apply to*, the Label
+  tab's beam and Export's Table/Chart. **The State group is deliberately not one**: it is
   non-exclusive so that a frame whose SEM and FIB disagree can show *nothing* chosen, and a
   segmented control cannot say that.
 - **A row is ticked; a control on its own is switched.** A tick says which of many rows a change
@@ -203,10 +204,19 @@ environment the package is *installed* into.
   so the summary line is what says which project you are in — load-bearing rather than decorative.
   Choosing a folder moves no frame and no state: the lamella in view is kept when the new list holds
   it, which it does whenever the folder chosen is the one already being worked in.
-- **A list is never rebuilt from inside its own signal.** Selecting a project rebuilds the lamellae
-  and nothing else: nothing about a project row changes when one is picked, and rebuilding it there
-  runs while Qt is part-way through the mouse press that caused it, emptying the rows Qt holds a
-  position in. `_refresh_lists` is for a scan or a state change, where every chip really has moved.
+- **A list is never rebuilt from inside its own signal, and breaking that rule is a crash rather
+  than a glitch.** Selecting a project rebuilds the lamellae and nothing else: nothing about a
+  project row changes when one is picked, and rebuilding it there runs while Qt is part-way through
+  the mouse press that caused it, emptying the rows Qt holds a position in. `_refresh_lists` is for
+  a scan or a state change, where every chip really has moved. **The Export tab broke it and
+  segfaulted**: acting on a tick refills every filter row, refilling one clears the tree it is drawn
+  in, and doing that from inside `itemChanged` destroys the item whose signal is being emitted while
+  Qt is still propagating the tick to that folder's other children — one project of nine came out
+  ticked, and the heap was corrupted on the way, so the process died a few gestures later with
+  nothing to connect it to. Where the signal comes from Qt rather than from this package, the answer
+  is a zero-delay single-shot timer (`ExportPanel._recount`), which also collapses a gesture that
+  moves many controls into one recount. The property dropdown has the same shape, refilling itself
+  from inside its own `currentIndexChanged`, and goes through the same timer.
 - **A widget that wraps takes its height from the width it actually has.** A form asks a field how
   tall it would be at one width and then hands it another, so a flow layout answering only
   `heightForWidth` lays its later rows below the bottom edge — addressable, reported and invisible.
@@ -292,6 +302,12 @@ environment the package is *installed* into.
   over the cached one. **It is kept when the frame changes**, comparing one frame with the next
   being what it is for, and says so in the warning colour whenever it is not the whole range: this
   is the one control that makes the picture differ from the file.
+- **Both the curation panes and the proofreading canvas carry the limits, and neither shares the
+  other's.** Reviewing and proofreading look at a frame for different reasons, so a shared setting
+  would have each change the other's picture; `common.intensity_badge` is shared instead, two
+  spellings of "what you are looking at is not the file" being two answers to one question. On the
+  canvas only the picture is rescaled — the label is painted into as it is, or a stroke would be
+  recorded against something that is not on disk.
 - **One control sets both limits, and they are called Minimum and Maximum.** Fiji's words, which is
   the vocabulary the people using this already have; "black / white" named the *result* and left the
   reader working out which end each of two sliders was. `common.RangeSlider` draws the interval — a

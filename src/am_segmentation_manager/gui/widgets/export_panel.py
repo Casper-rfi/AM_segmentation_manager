@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path, PurePath
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -26,7 +26,6 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSpinBox,
     QStackedWidget,
@@ -50,6 +49,7 @@ from .chart_view import ChartView
 from .common import (
     CheckList,
     ProjectTree,
+    SegmentedControl,
     StepCombo,
     ToggleSwitch,
     add_fold_buttons,
@@ -348,6 +348,26 @@ class ExportPanel(QWidget):
         super().__init__()
         self.controller = controller
         self._updating = False
+        #: How the tab catches up after a filter row changes.
+        #:
+        #: **A tick may not be acted on while it is still being delivered.**
+        #: Catching up refills every filter row, and refilling one clears the
+        #: list or tree it is drawn in -- so acting on a tick straight away
+        #: destroys the very item whose signal is being emitted, while Qt is
+        #: still propagating the change to that folder's other children.
+        #: Ticking a folder of nine projects left one of them ticked and
+        #: corrupted the heap on the way, which shows as a crash a few gestures
+        #: later rather than there and then. It is the rule the curation lists
+        #: already keep, reached through a timer because the tick arrives from
+        #: Qt rather than from this class.
+        #:
+        #: Zero-delay and single-shot, so a gesture that moves many controls at
+        #: once recounts once: ticking that folder is nine signals, each of
+        #: which would otherwise sweep the whole collection's records.
+        self._recount = QTimer(self)
+        self._recount.setSingleShot(True)
+        self._recount.setInterval(0)
+        self._recount.timeout.connect(self._controls_changed)
         # Where the last dialog left off, so writing a CSV and then checking it
         # does not mean navigating to the same folder twice. Held for the
         # session only: the window's QSettings are injected for test isolation,
@@ -512,7 +532,9 @@ class ExportPanel(QWidget):
     def _add_filter(self) -> None:
         """Put another filter row above the Add button."""
         row = FilterRow(self.controller)
-        row.changed.connect(self._controls_changed)
+        # Queued through the timer, never called straight from the row's
+        # signal: see _recount.
+        row.changed.connect(self._recount.start)
         row.removed.connect(self._remove_filter)
         # Before the trailing stretch, which is what holds the spare height.
         self.filter_column.insertWidget(len(self.filter_rows), row)
@@ -627,22 +649,29 @@ class ExportPanel(QWidget):
         return box
 
     def _build_view_choice(self) -> QHBoxLayout:
-        """Build the Table/Chart switch, directly over the pane it acts on."""
+        """Build the Table/Chart switch, directly over the pane it acts on.
+
+        A segmented run like every other one-of-a-set in the window: two ways
+        of showing the same numbers, both worth having on screen.
+        """
         row = QHBoxLayout()
-        self.as_table = QRadioButton("Table")
-        self.as_chart = QRadioButton("Chart")
-        self.as_table.setChecked(True)
-        for button, tip in (
-            (self.as_table, "Show the counts as numbers."),
-            (self.as_chart, "Show the same counts as a chart, here in the pane."),
-        ):
-            button.setToolTip(tip)
-            row.addWidget(button)
-        self.as_chart.toggled.connect(self._view_changed)
+        self.view_control = SegmentedControl([
+            ("table", "Table", "Show the counts as numbers."),
+            (
+                "chart", "Chart",
+                "Show the same counts as a chart, here in the pane.",
+            ),
+        ])
+        #: The segments, so a caller can reach one at a time.
+        self.as_table = self.view_control.buttons["table"]
+        self.as_chart = self.view_control.buttons["chart"]
+        self.view_control.set_current("table")
+        self.view_control.chosen.connect(self._view_changed)
+        row.addWidget(self.view_control)
         row.addStretch(1)
         return row
 
-    def _view_changed(self, _checked: bool = False) -> None:
+    def _view_changed(self, _chosen: str = "") -> None:
         """Switch the pane, drawing the chart only once it is being looked at."""
         self.views.setCurrentWidget(
             self.chart_view if self.as_chart.isChecked() else self.table
