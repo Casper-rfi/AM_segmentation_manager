@@ -8,7 +8,7 @@ environment the package is *installed* into.
 
 **An entry states a rule and names the test that guards it** rather than rehearsing an argument that
 test's own docstring already makes — `test_docs.py` fails if a name stops resolving, or if all four
-files together pass 900 lines. Reaching that ceiling means an entry has finished, or that its
+files together pass 1000 lines. Reaching that ceiling means an entry has finished, or that its
 reasoning now lives in a test and the entry can point at it instead.
 
 ---
