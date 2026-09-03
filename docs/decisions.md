@@ -202,17 +202,21 @@ rather than appending to it.
   rather than an index. The *view* is still restored by index: landing on a neighbouring frame is a
   nuisance, acting on one is a fault.
 - **A write that says what it created does not rescan.** Saving labels, predicting and converting
-  change the same two fields of `ImageRecord` — `labels` and `predictions` — and the timeline, the
-  chips and the Export counts are all computed from the records, which the other tabs hold by
-  reference rather than copying. So the paths written go straight onto the records
-  (`_attach_created_labels`, `CurationController.attach_written`) and a walk of the collection has
-  nothing left to find; declaring a group corrected likewise writes a state file and brings its
-  records with it. A shared label is named on **every** record of its group, a condition left
-  without it drawing as unlabelled. **Only what was written, never what was planned**: a stopped
-  prediction run plans more than it reaches, and a record claiming a prediction that is not there
-  offers to convert nothing (`test_a_stopped_run_reports_only_what_it_reached`). What a scan still
-  finds is what changed the files from outside, which is what *Scan* is for. `LabelController.save`
-  additionally settles the frames worth visiting, being the action taken most often.
+  change two fields of `ImageRecord` — `labels` and `predictions` — so what was written goes onto
+  the records (`_attach_created_labels`, `CurationController.attach_written`) and a walk of the
+  collection finds nothing more. A shared label is named on **every** record of its group, a
+  condition left without it drawing as unlabelled. **What was written, never what was planned**:
+  a stopped run plans more than it reaches (`test_a_stopped_run_reports_only_what_it_reached`).
+- **Naming a written file is not enough: three caches stand between a record and the screen.** What
+  is drawn is not recomputed from the records. `record_label_state` opens a label once and keeps the
+  answer, the frame cache holds each frame as a composed image *and its label* keyed by position,
+  and the Export tab keys its label states and measurements by path — all three reset by the scan
+  that used to follow, so a record named without clearing them draws as it did before the file
+  existed (`test_a_written_label_changes_what_the_timeline_reports`,
+  `test_a_replaced_label_is_read_again_rather_than_remembered`). `attach_written` and
+  `ExportController.forget_labels` drop them together; the frame cache goes whole, being keyed by
+  position rather than by what made it. A scan still finds what changed the files from outside,
+  which is what *Scan* is for.
 
 ## Metadata
 

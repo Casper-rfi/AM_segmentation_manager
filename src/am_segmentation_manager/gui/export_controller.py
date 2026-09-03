@@ -11,7 +11,7 @@ decisions; the widgets render them.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -53,6 +53,10 @@ from ..operations.label_io import (
 from ..operations.label_measure import LabelMeasurement
 
 logger = logging.getLogger(__name__)
+
+#: Tells "never read" apart from a cached ``None``, which is what an
+#: unreadable label records.
+_ABSENT = object()
 
 #: Workflow states offered as a filter, plus "any".
 STATES = ("all", "selected", "deselected", "corrected")
@@ -358,6 +362,32 @@ class ExportController:
         self._measurements_loaded = False
         self._lookup = project_lookup(self._projects)
         logger.debug("Export view holding %d record(s)", len(self._records))
+
+    def forget_labels(self, paths: Iterable[Path]) -> int:
+        """Drop what was read from the labels at *paths*, so they are read again.
+
+        A conversion replaces labels this view may already have opened,
+        classified and measured, and the path is the key to all three -- so a
+        replaced label would go on reporting the state and the area of the one
+        it replaced. That used to be reset by the scan after converting, which
+        handed the projects over again.
+
+        The header cache is untouched: a label is not an acquisition, and
+        nothing here changes what an image's header says.
+
+        Returns:
+            How many of *paths* this view had actually read.
+        """
+        forgotten = 0
+        for path in paths:
+            dropped = [
+                self._label_empty.pop(path, _ABSENT),
+                self._label_states.pop(path, _ABSENT),
+                self._measurements.pop(path, _ABSENT),
+            ]
+            if any(value is not _ABSENT for value in dropped):
+                forgotten += 1
+        return forgotten
 
     @property
     def records(self) -> list[ImageRecord]:

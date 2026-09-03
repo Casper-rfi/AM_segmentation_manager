@@ -84,6 +84,35 @@ def headers(exporter: ExportController, monkeypatch) -> ExportController:
 
 
 # ---------------------------------------------------------------------------
+# Export: forgetting a label that has been replaced
+# ---------------------------------------------------------------------------
+
+def test_a_replaced_label_is_read_again_rather_than_remembered(
+    measured: ExportController,
+):
+    """Converting can overwrite a label this view has already opened and
+    measured, and all three answers are keyed by path -- so without this the
+    tab goes on reporting the state and the area of the label that is gone.
+    The scan after converting used to reset it by handing the projects over
+    again."""
+    label = next(iter(measured._measurements))
+
+    forgotten = measured.forget_labels([label])
+
+    assert forgotten == 1
+    assert label not in measured._measurements
+    assert label not in measured._label_empty
+
+
+def test_forgetting_a_label_nothing_was_read_from_changes_nothing(
+    measured: ExportController, tmp_path: Path
+):
+    """Every conversion reports its destinations, most of which this view has
+    never opened."""
+    assert measured.forget_labels([tmp_path / "never-read.tif"]) == 0
+
+
+# ---------------------------------------------------------------------------
 # Export: the live count
 # ---------------------------------------------------------------------------
 

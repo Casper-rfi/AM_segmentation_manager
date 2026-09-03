@@ -1187,6 +1187,14 @@ class CurationController:
         all of them: the group is what a conversion writes for, and a condition
         left without it would keep drawing as unlabelled.
 
+        **Two memoised layers sit between a record and the screen, and both are
+        dropped here.** `record_label_state` opens a label once and remembers
+        the answer, and the frame cache holds each frame as a composed image
+        *and its label*, keyed by position rather than by what it was made
+        from. A record named without clearing those keeps drawing exactly as it
+        did before the file was written -- which is the whole of what a scan
+        used to put right.
+
         Returns:
             How many records gained a path. Zero is normal for a preview.
         """
@@ -1197,7 +1205,15 @@ class CurationController:
         for project in self.projects:
             for record in project.image_records:
                 if _add_written(record, wanted):
+                    self._label_states.pop(record.image_path, None)
                     touched += 1
+        if touched:
+            # Cleared whole rather than per frame: the cache is keyed by frame
+            # position, so finding the entries made from these records means
+            # walking the frames anyway, and what it costs is re-reading one
+            # lamella lazily -- which is what the rescan this replaces did
+            # before it also walked the collection.
+            self.cache.clear()
         logger.info(
             "Named %d written file(s) on %d record(s) without rescanning",
             len(wanted), touched,

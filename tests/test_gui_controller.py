@@ -162,6 +162,56 @@ def test_naming_the_same_file_twice_does_not_list_it_twice():
     assert record.labels == [Path("stage/sem_labels/img.tif")]
 
 
+def test_a_written_label_changes_what_the_timeline_reports(tmp_path: Path):
+    """The bug this exists for: naming the label on the record is not enough.
+
+    What the timeline draws comes from `record_label_state`, which memoises per
+    image so a label is opened once. Converting had that answer already cached
+    from before the label existed, so the frame kept drawing as unlabelled
+    until a rescan cleared it -- exactly what dropping the rescan was supposed
+    not to cost.
+    """
+    pytest.importorskip("tifffile")
+    import numpy as np
+    import tifffile
+
+    labels_directory = tmp_path / "sem_labels"
+    labels_directory.mkdir()
+    image = tmp_path / "sem" / "img.tif"
+    image.parent.mkdir()
+    image.write_bytes(b"i")
+
+    project = _written_project(labels_directory, "img.tif")
+    record = project.lamellae[0].stages[0].images[0]
+    record.image_path = image
+    controller = make_controller([project])
+
+    # Asked before the label exists, which is what the window does when it
+    # draws the timeline on arriving at the lamella.
+    assert controller.record_label_state(record) == "missing"
+
+    annotated = np.zeros((8, 8), dtype=np.uint8)
+    annotated[2:5, 2:5] = 2
+    tifffile.imwrite(str(labels_directory / "img.tif"), annotated)
+    controller.attach_written([labels_directory / "img.tif"])
+
+    assert controller.record_label_state(record) == "annotated"
+
+
+def test_naming_a_written_file_drops_what_was_prepared_from_the_old_one(tmp_path: Path):
+    """A frame is cached as a composed image *and its label*, keyed by position
+    rather than by what it was made from -- so a label written under a frame
+    already prepared leaves the pane showing the version with no overlay."""
+    project = _written_project(Path("stage/sem_labels"), "img.tif")
+    controller = make_controller([project])
+    controller.cache.image(0, "SEM")
+    assert controller.cache.holds(0, "SEM")
+
+    controller.attach_written([Path("stage/sem_labels/img.tif")])
+
+    assert not controller.cache.holds(0, "SEM")
+
+
 def test_a_path_belonging_to_no_record_touches_nothing():
     project = _written_project(Path("stage/sem_labels"), "img.tif")
     controller = make_controller([project])

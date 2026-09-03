@@ -1176,8 +1176,12 @@ class CurationWindow(QMainWindow):
         logger.info("%s: %s", title, report.headline)
         self._show_report(title, report)
         # An operation that says what it wrote needs no scan to find it: the
-        # paths go on the records, and everything drawn from them follows.
+        # paths go on the records, and both views drop what they had read from
+        # the files those paths name -- the Export tab keys its label states
+        # and measurements by path, so a replaced label would keep reporting
+        # the one it replaced.
         self.controller.attach_written(report.written)
+        self.export_controller.forget_labels(report.written)
         # Marked on both sides, as the steps of a prediction run are: the last
         # thing an operation does is read the whole collection again, and a
         # window that disappears once the work is finished has to be placed
