@@ -25,12 +25,12 @@ if HAS_QT:
 
     from am_segmentation_manager.gui.export_controller import ExportController
     from am_segmentation_manager.gui.widgets import export_panel as export_panel_module
-    from am_segmentation_manager.gui.widgets.common import (
+    from am_segmentation_manager.gui.widgets.export_panel import ExportPanel
+    from am_segmentation_manager.gui.widgets.paths import (
         ALL_FILES_FILTER,
         CSV_FILTER,
         build_path_dialog,
     )
-    from am_segmentation_manager.gui.widgets.export_panel import ExportPanel
 
 
 @pytest.fixture(scope="session")

@@ -41,16 +41,8 @@ from ...operations.label_measure import (
     PREDICTION_PIXEL_BLOCK,
 )
 from ..label_controller import LabelController
-from .common import (
-    LABEL_BADGES,
-    ElidingLabel,
-    RangeSlider,
-    SegmentedControl,
-    ToggleSwitch,
-    chip_icon,
-    fill_choice_combo,
-    intensity_badge,
-)
+from .common import LABEL_BADGES, chip_icon, fill_choice_combo, intensity_badge
+from .controls import ElidingLabel, RangeSlider, SegmentedControl, ToggleSwitch
 from .frame_strip import FrameTimeline
 from .label_canvas import (
     DEFAULT_BRUSH_RADIUS,

@@ -33,7 +33,7 @@ if importlib.util.find_spec("qtpy") is not None:
     )
 
     from am_segmentation_manager.gui.widgets import theme
-    from am_segmentation_manager.gui.widgets.common import GripSplitter
+    from am_segmentation_manager.gui.widgets.controls import GripSplitter
 
 
 @pytest.fixture(scope="session")

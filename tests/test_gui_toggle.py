@@ -28,10 +28,11 @@ if HAS_QT:
     from am_segmentation_manager.gui.export_controller import ExportController
     from am_segmentation_manager.gui.label_controller import LabelController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
-    from am_segmentation_manager.gui.widgets.common import CheckList, ToggleSwitch
+    from am_segmentation_manager.gui.widgets.controls import ToggleSwitch
     from am_segmentation_manager.gui.widgets.export_panel import ExportPanel
     from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
     from am_segmentation_manager.gui.widgets.label_panel import LabelPanel
+    from am_segmentation_manager.gui.widgets.lists import CheckList
     from am_segmentation_manager.gui.widgets.metadata_panel import MetadataPanel
     from am_segmentation_manager.gui.widgets.state_panel import StatePanel
 

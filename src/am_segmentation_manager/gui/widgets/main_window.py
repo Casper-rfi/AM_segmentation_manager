@@ -58,10 +58,12 @@ from ..operations_controller import OperationReport, OperationsController
 from ..worker import BackgroundOperation
 from .branding import PRODUCT_NAME, logo_pixmap
 from .busy_dialog import BusyDialog
-from .common import GripSplitter, keyboard_diagram, mark_image
+from .common import mark_image
+from .controls import GripSplitter
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline, timeline_legend
 from .image_panel import ImagePanel
+from .keyboard import keyboard_diagram
 from .label_panel import CLASS_KEYS, LabelPanel
 from .metadata_panel import MetadataPanel, completeness_legend
 from .operations_panel import OperationsPanel

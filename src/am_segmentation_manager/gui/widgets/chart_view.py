@@ -21,7 +21,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .common import ToggleSwitch
+from .controls import ToggleSwitch
 
 logger = logging.getLogger(__name__)
 

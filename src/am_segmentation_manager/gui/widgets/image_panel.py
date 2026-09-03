@@ -34,14 +34,16 @@ from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
 from .common import (
     LABEL_BADGES,
+    class_legend_html,
+    fill_choice_combo,
+    intensity_badge,
+)
+from .controls import (
     FlowArea,
     FlowLayout,
     RangeSlider,
     SegmentedControl,
     ToggleSwitch,
-    class_legend_html,
-    fill_choice_combo,
-    intensity_badge,
 )
 from .image_view import ImageView, LinkedImageViews
 from .theme import BADGE_STYLES, SWITCH_RUN_GAP

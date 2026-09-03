@@ -33,7 +33,7 @@ from qtpy.QtWidgets import (
 )
 
 from ..operations_controller import OperationsController
-from .common import choose_directory
+from .paths import choose_directory
 
 logger = logging.getLogger(__name__)
 

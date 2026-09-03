@@ -85,7 +85,7 @@ reasoning now lives in a test and the entry can point at it instead.
   `QGroupBox::title`** — `test_a_group_title_is_heavier_than_the_captions_inside_it` says why. No
   background: the inputs are white, and a white card behind them takes away the one thing separating
   "you can type here" from the panel.
-- **One of a small closed set is a run of segments, not a row of dots.** `common.SegmentedControl`
+- **One of a small closed set is a run of segments, not a row of dots.** `controls.SegmentedControl`
   is one widget holding checkable `QToolButton`s in an exclusive group, which also means the run
   **cannot be split across two lines of a flow layout** — loose buttons wrap apart, leaving one
   choice reading as two. The chosen segment is *filled* with the accent where a checked tool button
@@ -97,20 +97,20 @@ reasoning now lives in a test and the entry can point at it instead.
   segments so a caller can grey one out, which is how a view the frame has nothing to show for is
   disabled. **The State group is deliberately not one**: it is non-exclusive so a frame whose SEM
   and FIB disagree can show *nothing* chosen, which a run of segments cannot say.
-- **A row is ticked; a control on its own is switched.** `common.ToggleSwitch` draws the second and
+- **A row is ticked; a control on its own is switched.** `controls.ToggleSwitch` draws the second and
   is a **subclass of `QCheckBox`** (`test_it_is_a_check_box`), so only `paintEvent` differs. It
   paints everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the
   control back through `QStyle` and draws it twice — and it reserves room for its own focus ring
   (`test_the_focus_ring_fits_inside_the_widget`).
 - **A chosen row is ticked, never highlighted**, highlighting being also how Qt marks the row you
-  are looking at and lost whenever the list is rebuilt. `CheckList` is the one implementation, and
-  it reports nothing while its contents are replaced — a redraw rather than a gesture. Two traps,
+  are looking at and lost whenever the list is rebuilt. `lists.CheckList` is the one implementation,
+  and it reports nothing while its contents are replaced — a redraw rather than a gesture. Two traps,
   each pinned: a status chip must come from `chip_icon()`
   (`test_a_chip_is_the_same_pixmap_in_every_icon_mode`), and a list elides rather than scrolling
   sideways (`test_a_long_filter_row_elides_rather_than_scrolling_sideways`).
 - **The projects are grouped under the folder each sits in, on all three tabs that list them.** An
   Autolamella project is named for the minute it started, so a hundred in a flat list are a hundred
-  timestamps; the folder somebody filed them under is what a person recognises. `common.ProjectTree`
+  timestamps; the folder somebody filed them under is what a person recognises. `lists.ProjectTree`
   is one widget beside `CheckList` — a tab panel importing from another is a dependency between two
   things with nothing to do with each other. `Project.folder` and `Project.own_name` split the
   `relative_path` the scanner already writes, and a project at the scan root stays at the top level
@@ -240,7 +240,7 @@ reasoning now lives in a test and the entry can point at it instead.
   would be recorded against something that is not on disk.
 - **One control sets both limits, and they are called Minimum and Maximum.** Fiji's words, which is
   the vocabulary the people using this already have; "black / white" named the *result* and left the
-  reader working out which end each of two sliders was. `common.RangeSlider` draws the interval — a
+  reader working out which end each of two sliders was. `controls.RangeSlider` draws the interval — a
   filled span between two handles, the grey ends being what is thrown away. The limits are held
   apart by the control rather than by the transform, a picture turning into a threshold reading as a
   fault instead of a setting; the handle being *moved* is the one that gives way, being pushed along
@@ -300,7 +300,7 @@ reasoning now lives in a test and the entry can point at it instead.
   promises it.
 - **The window is written for a binding and a platform other than the one it is developed on.**
   Where Qt's behaviour is a style's or a platform's to decide, this package decides instead: every
-  file dialog is Qt's own (`common.build_path_dialog` sets `DontUseNativeDialog`; revealing a folder
+  file dialog is Qt's own (`paths.build_path_dialog` sets `DontUseNativeDialog`; revealing a folder
   in the file manager stays native), Up and Down step through a combo box via `StepCombo`, and
   `common.fixed_width_font` names real monospace families per platform. That last is asserted on the
   metrics (`"i"` and `"W"` advance equally) and never on `QFont.fixedPitch()` or

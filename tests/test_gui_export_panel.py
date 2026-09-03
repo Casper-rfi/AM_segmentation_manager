@@ -1077,7 +1077,7 @@ def test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered(qt_app, tmp_pa
     rebuilt from inside its own signal is a use after free."""
     from qtpy.QtCore import Qt
 
-    from am_segmentation_manager.gui.widgets.common import ProjectTree
+    from am_segmentation_manager.gui.widgets.lists import ProjectTree
 
     panel = _project_tree_panel(tmp_path)
     row = _only_row(panel)

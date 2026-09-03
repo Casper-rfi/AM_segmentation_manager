@@ -24,7 +24,7 @@ if HAS_QT:
     from qtpy.QtGui import QColor, QImage, QMouseEvent
     from qtpy.QtWidgets import QApplication
 
-    from am_segmentation_manager.gui.widgets.common import RangeSlider
+    from am_segmentation_manager.gui.widgets.controls import RangeSlider
 
 
 @pytest.fixture(scope="session")

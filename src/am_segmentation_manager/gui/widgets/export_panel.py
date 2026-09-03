@@ -47,21 +47,15 @@ from ..export_controller import (
 )
 from .chart_view import ChartView
 from .common import (
-    CheckList,
-    ProjectTree,
-    SegmentedControl,
-    StepCombo,
-    ToggleSwitch,
-    add_fold_buttons,
     caption_for,
-    choose_directory,
-    choose_open_file,
-    choose_save_file,
     fill_grouped_combo,
     fixed_width_font,
     horizontal_rule,
     ticked_caption,
 )
+from .controls import SegmentedControl, StepCombo, ToggleSwitch
+from .lists import CheckList, ProjectTree, add_fold_buttons
+from .paths import choose_directory, choose_open_file, choose_save_file
 from .theme import COMPACT_BUTTON
 
 logger = logging.getLogger(__name__)

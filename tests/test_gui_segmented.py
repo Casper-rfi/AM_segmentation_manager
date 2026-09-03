@@ -23,7 +23,7 @@ if HAS_QT:
     from qtpy.QtWidgets import QApplication, QToolButton
 
     from am_segmentation_manager.gui.widgets import theme
-    from am_segmentation_manager.gui.widgets.common import SegmentedControl
+    from am_segmentation_manager.gui.widgets.controls import SegmentedControl
 
 SEGMENTS = [("sem", "SEM", "the SEM"), ("fib", "FIB", "the FIB"), ("plot", "Plots", "plots")]
 

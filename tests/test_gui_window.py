@@ -44,7 +44,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
     from am_segmentation_manager.gui.widgets.branding import PRODUCT_NAME
-    from am_segmentation_manager.gui.widgets.common import ChipEditor
+    from am_segmentation_manager.gui.widgets.controls import ChipEditor
     from am_segmentation_manager.gui.widgets.image_view import MIN_FIT_FRACTION
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
     from am_segmentation_manager.gui.widgets.metadata_panel import (
@@ -236,7 +236,7 @@ def test_every_division_that_moves_is_marked_as_one(window):
     an ordinary line is one nobody discovers. Asserted over the same mapping
     the window saves its layout through, so a division added without a grip is
     a division added without a saved size as well."""
-    from am_segmentation_manager.gui.widgets.common import GripSplitter
+    from am_segmentation_manager.gui.widgets.controls import GripSplitter
 
     divisions = window._splitters()
 
@@ -3568,7 +3568,7 @@ def test_the_overlay_is_composed_from_the_ranged_image(window, monkeypatch):
 def test_the_view_controls_wrap_rather_than_run_off_the_pane(qt_app):
     """They need more width than the centre pane opens at, so before this the
     Fit button and part of the opacity slider were past the edge."""
-    from am_segmentation_manager.gui.widgets.common import FlowLayout
+    from am_segmentation_manager.gui.widgets.controls import FlowLayout
     from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
 
     config = SegmentationConfig(
@@ -3647,7 +3647,7 @@ def test_the_keyboard_picks_out_the_keys_it_is_given(qt_app):
     without anything else being edited."""
     from qtpy.QtGui import QColor
 
-    from am_segmentation_manager.gui.widgets.common import keyboard_diagram
+    from am_segmentation_manager.gui.widgets.keyboard import keyboard_diagram
     from am_segmentation_manager.gui.widgets.theme import ACCENT, apply_theme
 
     stylesheet, palette = qt_app.styleSheet(), qt_app.palette()
@@ -3677,7 +3677,7 @@ def test_the_keyboard_picks_out_the_keys_it_is_given(qt_app):
 def test_every_bound_key_has_somewhere_to_be_drawn(window):
     """A key the diagram has no cap for is one the reader is told about in the
     table and cannot find on the picture."""
-    from am_segmentation_manager.gui.widgets.common import KEY_ROWS
+    from am_segmentation_manager.gui.widgets.keyboard import KEY_ROWS
     from am_segmentation_manager.gui.widgets.main_window import _keys_of
 
     drawable = {name for row in KEY_ROWS for name in row}

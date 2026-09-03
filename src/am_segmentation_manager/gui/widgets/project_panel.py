@@ -30,16 +30,10 @@ from qtpy.QtWidgets import (
 
 from ...layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..controller import CurationStatus
-from .common import (
-    CheckList,
-    GripSplitter,
-    ProjectTree,
-    add_fold_buttons,
-    add_path_menu,
-    chip_icon,
-    choose_directory,
-    ticked_caption,
-)
+from .common import chip_icon, ticked_caption
+from .controls import GripSplitter
+from .lists import CheckList, ProjectTree, add_fold_buttons
+from .paths import add_path_menu, choose_directory
 from .theme import (
     SWATCH_CELL,
     SWATCH_GAP,

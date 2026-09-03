@@ -23,7 +23,7 @@ if HAS_QT:
     from qtpy.QtCore import Qt
     from qtpy.QtWidgets import QApplication, QCompleter
 
-    from am_segmentation_manager.gui.widgets.common import ChipEditor
+    from am_segmentation_manager.gui.widgets.controls import ChipEditor
     from am_segmentation_manager.gui.widgets.metadata_panel import _suggestion_box
 
 #: Two grid types told apart by their middles, not by how they start -- which

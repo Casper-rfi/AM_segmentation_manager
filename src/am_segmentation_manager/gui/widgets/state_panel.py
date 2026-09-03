@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState
 from ..controller import MIXED
-from .common import SegmentedControl, ToggleSwitch
+from .controls import SegmentedControl, ToggleSwitch
 from .frame_strip import STATE_COLOURS
 from .theme import BADGE_STYLES, SHARED_NOTE_STYLE
 

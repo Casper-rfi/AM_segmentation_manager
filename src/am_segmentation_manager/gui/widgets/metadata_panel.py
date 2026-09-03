@@ -40,17 +40,11 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import (
-    ChipEditor,
-    GripSplitter,
-    ProjectTree,
-    ToggleSwitch,
-    add_fold_buttons,
-    add_path_menu,
-    chip_icon,
-    match_anywhere,
-)
+from .common import chip_icon, match_anywhere
+from .controls import ChipEditor, GripSplitter, ToggleSwitch
 from .frame_strip import MISMATCH, STATE_COLOURS
+from .lists import ProjectTree, add_fold_buttons
+from .paths import add_path_menu
 from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
 
 logger = logging.getLogger(__name__)

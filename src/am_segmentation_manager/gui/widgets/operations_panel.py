@@ -34,12 +34,8 @@ from ...operations.label_measure import (
     MIN_SPECK_PIXELS,
     PREDICTION_PIXEL_BLOCK,
 )
-from .common import (
-    ALL_FILES_FILTER,
-    caption_for,
-    choose_open_file,
-    horizontal_rule,
-)
+from .common import caption_for, horizontal_rule
+from .paths import ALL_FILES_FILTER, choose_open_file
 from .theme import BADGE_STYLES
 
 #: Weights files, as PyTorch writes them.

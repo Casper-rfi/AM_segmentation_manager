@@ -25,7 +25,7 @@ if HAS_QT:
     from qtpy.QtCore import Qt
     from qtpy.QtWidgets import QApplication
 
-    from am_segmentation_manager.gui.widgets.common import ProjectTree
+    from am_segmentation_manager.gui.widgets.lists import ProjectTree
 
 #: One folder of three, one of two, and a project sitting at the scan root.
 FOLDERS = ["session_a", "session_a", "session_a", "session_b", "session_b", ""]
@@ -404,7 +404,7 @@ def test_a_tree_can_be_built_without_tick_boxes(qt_app):
     there offers a set the tab cannot act on, which is worse than no box."""
     from qtpy.QtCore import Qt
 
-    from am_segmentation_manager.gui.widgets.common import ProjectTree
+    from am_segmentation_manager.gui.widgets.lists import ProjectTree
 
     tree = ProjectTree(checkable=False)
     tree.set_projects(FOLDERS, LABELS)
