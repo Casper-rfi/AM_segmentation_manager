@@ -82,9 +82,8 @@ reasoning now lives in a test and the entry can point at it instead.
   padding clips a one-character button blank, which `COMPACT_BUTTON` exempts.
 - **A group of controls is a card, and its title outweighs the captions inside it.** One rule
   reaches every box on every tab, and **the weight goes on `QGroupBox`, never on
-  `QGroupBox::title`** — `test_a_group_title_is_heavier_than_the_captions_inside_it` says why. No
-  background: the inputs are white, and a white card behind them takes away the one thing separating
-  "you can type here" from the panel.
+  `QGroupBox::title`** — `test_a_group_title_is_heavier_than_the_captions_inside_it` says why, and
+  the rule itself says why the card has no background of its own.
 - **One of a small closed set is a run of segments, not a row of dots.** `controls.SegmentedControl`
   is one widget holding checkable `QToolButton`s in an exclusive group, which also means the run
   **cannot be split across two lines of a flow layout** — loose buttons wrap apart, leaving one
@@ -126,14 +125,13 @@ reasoning now lives in a test and the entry can point at it instead.
   draws as a tree, named in `NESTED_FILTERS`, a display decision belonging in the interface rather
   than as a flag on `Breakdown` below it. Every other filter stays a list, and the row holds both
   widgets and shows one rather than having either pretend to be the other.
-- **A folder is closed until it is opened, and what is open survives a rebuild.** Three things open
-  one anyway: holding the current project, being rebuilt after a rescan having been open before, and
-  matching a *filter* (`test_a_folder_holding_a_match_is_opened_to_show_it`). The folds before a
-  filter are put back when it is cleared, opening a folder to search being the search's doing.
-- **Add data describes a folder of projects at once, and a field they disagree on is left alone.** A
-  session's projects share their sample, their grid and their operator, and typing that a dozen
-  times is how a collection ends up with `HeLa` beside `Hela`. The scope is a list and one project
-  is a list of one, so both are one code path. A field they differ on resolves to `MIXED_MARKER`,
+- **A folder is closed until it is opened, and what is open survives a rebuild.** Three things
+  open one anyway: holding the current project, being rebuilt after a rescan having been open
+  before, and matching a *filter* (`test_a_folder_holding_a_match_is_opened_to_show_it`), which
+  `ProjectTree.hide_rows_without` says the rest of.
+- **Add data describes a folder of projects at once, and a field they disagree on is left alone**,
+  for the reason `MetadataController.select_folder` gives. The scope is a list and one project is a
+  list of one, so both are one code path. A field they differ on resolves to `MIXED_MARKER`,
   which goes *in the box*: what to write is decided by comparing the box against the resolved value,
   so an untouched field matches and is never written. The badge beside it is authoritative, being
   derived where the marker is text somebody could have typed; a field is outstanding if *any*
@@ -156,10 +154,9 @@ reasoning now lives in a test and the entry can point at it instead.
   tint instead. **`SWATCH_HEIGHT` must stay even**, for the reason
   `test_the_chip_is_an_even_number_of_pixels_tall` gives.
 - **Choosing a folder lists every lamella under it, and `controller.project` is then the project of
-  the lamella in view rather than the row last clicked.** An Autolamella run restarts for reasons
-  that have nothing to do with the specimen, so one session's lamellae are spread over a dozen
-  projects mostly holding one each; Up and Down cross a project boundary without stopping, the
-  boundary being an artifact. **The rows need no project prefix**: no folder in the collection holds
+  the lamella in view rather than the row last clicked**, `controller.select_folder` saying why one
+  session's lamellae are spread over a dozen projects and why Up and Down cross the boundary between
+  them. **The rows need no project prefix**: no folder in the collection holds
   two lamellae of the same petname. Every caller of `project` is asking about what is on screen; a
   project holding no lamellae has none to answer for, so the tree's row stands in. `ViewPosition`
   carries the folder, restoring the project alone silently narrowing the list to one of them.
@@ -179,15 +176,12 @@ reasoning now lives in a test and the entry can point at it instead.
   `test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered`), which also collapses a gesture
   moving many controls into one recount. The property dropdown refills itself from inside its own
   `currentIndexChanged` and goes through the same timer.
-- **A widget that wraps takes its height from the width it actually has.** A form asks a field how
-  tall it would be at one width and then hands it another, so a flow layout answering only
-  `heightForWidth` lays its later rows below the bottom edge — addressable, reported and invisible.
-  `FlowArea` fixes its own height from its real width on every resize. Its layout's minimum width is
-  zero and its hint one unwrapped row, which must differ: made equal, the minimum is a floor and the
-  pane could never be narrower than the longest value anybody typed. It carries a field holding
-  however many values it is given *and* the image panel's view controls, which have wanted more
-  width than the centre pane opens at since before the intensity control joined them. `addSpacing`
-  is the one thing a row moved off a box layout needs and `QLayout` does not have.
+- **A widget that wraps takes its height from the width it actually has**, for the reason
+  `FlowArea` gives: answering `heightForWidth` alone lays the later rows below the bottom edge,
+  addressable and invisible. Its layout's minimum width is zero and its hint one unwrapped row,
+  which must differ: made equal, the minimum is a floor and the pane could never be narrower than
+  the longest value anybody typed. `addSpacing` is the one thing a row moved off a box layout
+  needs and `QLayout` does not have.
 - **An editor that collects values commits what is in its box before anyone reads it**, or a value
   typed by someone who then reaches straight for Save is discarded without a word: a chip editor
   commits on Return, on a pick, and on losing focus, and `_edits` asks it to anyway. **Adding a
@@ -238,9 +232,8 @@ reasoning now lives in a test and the entry can point at it instead.
   says so in the warning colour whenever it is not the whole range. Curate and Label each hold their
   own; on the canvas only the picture is rescaled, the label being painted into as it is or a stroke
   would be recorded against something that is not on disk.
-- **One control sets both limits, and they are called Minimum and Maximum.** Fiji's words, which is
-  the vocabulary the people using this already have; "black / white" named the *result* and left the
-  reader working out which end each of two sliders was. `controls.RangeSlider` draws the interval — a
+- **One control sets both limits, and they are called Minimum and Maximum** — Fiji's words, for
+  the reason `image_panel` gives where it names them. `controls.RangeSlider` draws the interval: a
   filled span between two handles, the grey ends being what is thrown away. The limits are held
   apart by the control rather than by the transform, a picture turning into a threshold reading as a
   fault instead of a setting; the handle being *moved* is the one that gives way, being pushed along
@@ -269,11 +262,10 @@ reasoning now lives in a test and the entry can point at it instead.
   drawing 1:1 has to centre as fitting would. Where the view *is* looking is held as a fraction of
   the picture rather than re-derived through the whole-number scroll position
   (`test_swapping_resolution_repeatedly_does_not_drift`); it is dropped the moment the user pans.
-- **`QGraphicsPixmapItem` overrides the view's render hint with its own transformation mode**, which
-  defaults to nearest neighbour. A pane showing something several times its own size drops pixels
-  rather than averaging them: against a figure of one-pixel rules, nearest loses whole gridlines, so
-  the plot view asks for smooth scaling. Acquisitions do not — zoomed *in* on a label, nearest is
-  what shows where one pixel ends and the next begins.
+- **`QGraphicsPixmapItem` overrides the view's render hint with its own transformation mode**,
+  which defaults to nearest neighbour, so a pane showing something several times its own size
+  drops pixels rather than averaging them. The plot view therefore asks for smooth scaling and
+  acquisitions do not, for the reason `ImageView.set_smooth_scaling` gives.
 - **Curate and Label show one series at a time; Export ticks several.** A timeline mixing alignment
   runs with polishing frames is not something anyone proofreads. Each tab has one choice, which
   rebuilds its frame stack — the position and the ticks go with it, a frame index meaning anything

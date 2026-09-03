@@ -98,28 +98,25 @@ rather than appending to it.
   threads — on `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look
   at. Half of a read waits on the disk and overlaps; the other half parses tags under the GIL and is
   the ceiling, which is why more threads stop helping at eight.
-- **One record per acquisition, where a lamella holds the same picture several times.** Autolamella
-  duplicates the image an alignment aligns *against* in two ways and one rule cannot see both: it
-  copies it into every run using it, and saves it outside the runs under a name of its own
-  (`ref_alignment_ib`). So a run's `reference_image.tif` is a copy wherever the directory holding
-  that run's `Alignment/` folder already holds an image of the same acquisition time, and **the
-  original is kept**. **Directory and time must agree independently on every match** — neither
-  signal carries it alone (`test_two_runs_are_told_apart_by_when_they_ran`) — and **nothing is
-  hashed**, the time being already read. A third pass runs over the whole *project*, keeping the
-  filename-and-time key rather than loosening to time alone, which would merge a misfiled reference
-  whose indexing keeps the misfiling visible. **It never empties a lamella**, a duplicate that can
-  be seen beating a directory dropped out of the index and the survey at once.
+- **One record per acquisition, where a lamella holds the same picture several times.**
+  Autolamella duplicates the image an alignment aligns *against* in two ways, and
+  `_copied_image_paths` sets out the two rules that see them and which copy is kept.
+  **Directory and time must agree independently on every match** — neither signal carries it
+  alone (`test_two_runs_are_told_apart_by_when_they_ran`) — and **nothing is hashed**, the time
+  being already read. A third pass runs over the whole *project*, keeping the filename-and-time
+  key rather than loosening to time alone, which would merge a misfiled reference whose indexing
+  keeps the misfiling visible. **It never empties a lamella**, a duplicate that can be seen
+  beating a directory dropped out of the index and the survey at once.
 - **A fixed filename marker is matched to the shape Autolamella writes, not loosely**, everything
   after `ref_` being a *task* name somebody chose:
   `test_a_task_named_after_alignment_is_still_a_reference_image` says what a prefix match costs, and
   `_centring_` is anchored to the end for the same reason — as a bare substring it silently drops
   every image of a task called `Centring`, ignored images not being reported.
-- **Where a record's label and predictions live is carried, never re-derived.** Walking up from the
-  image path only works for an Adaptive Polishing image, one level below its stage in a directory
-  naming a modality; a reference image sits *directly* in a directory naming a lamella, so deriving
-  put its files outside the lamella where the next scan never looked. The scanner resolves both once
-  per image set and the record carries them, so reading and writing cannot disagree; a record that
-  does not say raises rather than guessing.
+- **Where a record's label and predictions live is carried, never re-derived**, for the reason
+  `label_destination` gives — deriving from the image path works only for an Adaptive Polishing
+  image and puts a reference image's files outside the lamella, where the next scan never looks.
+  The scanner resolves both once per image set and the record carries them, so reading and writing
+  cannot disagree; a record that does not say raises rather than guessing.
 - **A ticked lamella covers only the series on screen.** What is ticked has to be the whole of
   what an operation touches; filtering by modality alone reached every series, so predicting a
   lamella while looking at its Adaptive Polishing timeline predicted its reference and alignment
@@ -150,13 +147,10 @@ rather than appending to it.
 - **Whether a group is corrected is asked of the record, never of a path.** Every guard protecting
   proofread work — conversion, compression, label saving — reads the declared state the scanner put
   on the record; a guard that quietly stops firing is worse than none.
-- **A stage is transcribed whole or not at all.** `scripts/migrate_state.py` leaves a stage alone if
-  anything in it is ambiguous — images disagreeing with their label, a file in two state folders —
-  writing the groups that were fine leaving the rest unlisted, and unlisted reads as *selected*. It
-  is **the only thing anywhere that reads a folder name as a state**, and it is a script rather than
-  a command because the collection holds no stage it applies to: the scanner does not look inside
-  `deselected/` or `corrected/`, so a nested file is *missing and reported* rather than present and
-  wrong, and those names stay reserved.
+- **Nothing here reads a folder name as a state; `scripts/migrate_state.py` does, once**, and its
+  docstring says why it is a script. The scanner does not look inside `deselected/` or `corrected/`,
+  so a nested file is *missing and reported* rather than present and wrong, and those names stay
+  reserved.
 - **A stale entry is reported, never repaired.** Declared state can disagree with the filesystem
   in ways location could not, and each needs a different action, so `inspect-layout` separates
   them: unmigrated folder state; nested files after migration, wanting `--move-files`; an empty
@@ -334,24 +328,21 @@ rather than appending to it.
   and it is what every acquisition filter and breakdown is made of. Offering them greyed out until
   a button was found and pressed was a control that did nothing with no way to tell why.
 - **Opening a label is asked for, never assumed.** An order of magnitude dearer than a header, and
-  it answers a different question: what is *in* the label. So the summary shows what a record
-  knows about itself and says plainly that the rest needs Measure labels. **Measured over what the
+  it answers a different question: what is *in* the label. So the summary shows what a record knows
+  about itself and says plainly that the rest needs Measure labels. **Measured over what the
   filters match**, not the collection, so widening a filter asks again for what it brought in. One
-  pass answers the exportable count, the label filter and the label-state breakdown together;
-  `classify_label` is the shared rule and `_label_empty` the shared cache, keeping two of either
-  having meant reading every label twice.
+  pass answers three questions at once, for the reason `_remember_label_states` gives;
+  `classify_label` is the shared rule and `_label_empty` the shared cache.
 - **What a measured number means is set beside the breakdown, not among the filters.** The crack
   threshold and the area bin resolution change how a measurement is *read*, not which images are in
   play. Changing the threshold re-measures at once rather than spending the Measure button again:
   `read_label_pixels` caches component pixel counts *without* the threshold, so a new one costs
   arithmetic rather than a second pass.
-- **A filter is added, not permanently shown.** The breakdowns cover far more properties than any
-  one export is chosen by, so one list per property leaves too little of each to read and buries
-  the three that matter among a dozen nobody touches. A row carries the property it is on, and a
-  property already in one row is not offered in another, which stops two rows disagreeing. **A few
-  properties are counted by but never filtered on** — those running to hundreds of values, and
-  those that barely vary — named by `UNFILTERABLE`; they stay breakdowns, and the command line
-  still filters on them.
+- **A filter is added, not permanently shown**, for the reason `FilterRow` gives. A row carries
+  the property it is on, and a property already in one row is not offered in another, which stops
+  two rows disagreeing. **A few properties are counted by but never filtered on** — those running
+  to hundreds of values, and those that barely vary — named by `UNFILTERABLE`; they stay
+  breakdowns, and the command line still filters on them.
 - **A stage is filtered on by its name, and counted on by its path.** `stage` names a folder
   (`project / lamella / adaptive_polish_<timestamp>`), which finds one run again but is useless to
   choose from; `stage-name` is that with the timestamp removed by `layout.stage_base_name`. **What
@@ -378,12 +369,11 @@ rather than appending to it.
   one-beam row and empties a cell where there are two
   (`test_an_empty_label_is_not_paired_with_its_image`).
 - **What makes an SEM and a FIB image the same acquisition is stated once**, in
-  `frames.group_by_acquisition`. They do not reliably share a stem — older projects name the file
-  inside `fib/` with the same `_SEM` suffix — and **what pairs them depends on the era of the
-  filename**: Adaptive Polishing images carry an acquisition number, matched within one stage
-  directory, while reference and alignment filenames differ only by an `_eb`/`_ib` suffix and match
-  on the stem with it removed (`layout.acquisition_stem`). **The train/validation split groups by
-  the acquisition**: split a paired row and the model is scored on a scene it has seen.
+  `frames.group_by_acquisition`, which says why a stem will not do it. **What pairs them depends on
+  the era of the filename**: Adaptive Polishing images match on an acquisition number within one
+  stage directory, reference and alignment ones on the stem with `_eb`/`_ib` removed
+  (`layout.acquisition_stem`). **The train/validation split groups by the acquisition**: split a
+  paired row and the model is scored on a scene it has seen.
 - **An export can also copy the files out**, state files and project metadata included, which is
   what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
   checks are not its: free space is estimated first, and a destination inside the folder being

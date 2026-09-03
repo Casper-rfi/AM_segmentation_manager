@@ -152,7 +152,7 @@ to choose a subset, write out its lists and metadata, or copy the images and lab
 themselves into a folder of their own. Curate and Label each show one series at a time,
 chosen beside the beam buttons, with each alignment run's summary figure on Curate's Plots
 view. Proofreading holds a lamella's edits until you save them, saving offers to mark the
-reviewed set corrected, and the Label tab will ring the stray spots too small to be real.
+reviewed set corrected, and the Label tab rings the spots likely to be too small to be real.
 Autolamella projects are found by their `experiment.yaml`; datasets predating it, or with
 theirs stripped out, are named on *Add data* through **Add projects**, which proposes the
 directories holding images that nothing indexes and lets you confirm them, look inside one
@@ -171,7 +171,7 @@ is the place for anything scripted:
 | Predict labels with a trained model | `predict` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `deselect` / `select` / `correct` |
-| Find stray spots and holes too small to be real | `find-specks` |
+| Find stray spots and holes likely to be too small to be real | `find-specks` |
 | Shrink label files on disk | `compress-labels` |
 | Count images by one or two properties, and chart them | `stats` |
 | Measure what the labels contain, in um^2 | `quantify-labels` |
