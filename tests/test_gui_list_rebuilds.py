@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -83,7 +85,7 @@ def window(qt_app, archive: Path, tmp_path: Path):
     window.scan(str(archive))
     qt_app.processEvents()
     yield window
-    window.close()
+    destroy(window)
 
 
 def _project_rows(window) -> list:
@@ -229,7 +231,7 @@ def foldered(qt_app, tmp_path: Path):
     window.scan(str(root))
     qt_app.processEvents()
     yield window
-    window.close()
+    destroy(window)
 
 
 def _folder_row(window, name: str):

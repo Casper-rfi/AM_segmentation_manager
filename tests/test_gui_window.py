@@ -14,10 +14,11 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
-import time
 from pathlib import Path
 
 import pytest
+
+from conftest import destroy, settle
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -128,21 +129,9 @@ def window(qt_app, project: Path, settings: QSettings):
     controller = CurationController(cache=FrameCache(), config=config)
     window = CurationWindow(controller, settings=settings)
     window.scan(str(project))
-    _settle(qt_app, lambda: window.image_panel.pair.left._item.pixmap().isNull() is False)
+    settle(qt_app, lambda: window.image_panel.pair.left._item.pixmap().isNull() is False)
     yield window
-    window.close()
-
-
-def _settle(app, condition=None, timeout: float = 10.0) -> None:
-    """Run the event loop until *condition* holds, or the timeout expires."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        app.processEvents()
-        if condition is not None and condition():
-            return
-        time.sleep(0.01)
-    if condition is not None and not condition():
-        pytest.fail("Timed out waiting for the window to settle")
+    destroy(window)
 
 
 # ---------------------------------------------------------------------------
@@ -164,14 +153,14 @@ def test_both_panes_are_drawn(window):
 
 
 def test_frames_are_prepared_ahead_of_the_user(qt_app, window):
-    _settle(qt_app, lambda: window.controller.cache.cached_image(1, "SEM") is not None)
+    settle(qt_app, lambda: window.controller.cache.cached_image(1, "SEM") is not None)
 
     assert window.controller.cache.cached_image(1, "SEM") is not None
 
 
 def test_stepping_frames_updates_the_view(qt_app, window):
     window._step_frame(1)
-    _settle(qt_app, lambda: window.frame_label.text() == "2 / 4")
+    settle(qt_app, lambda: window.frame_label.text() == "2 / 4")
 
     assert window.controller.frame_position == 1
     assert window.timeline._current == 1
@@ -186,7 +175,7 @@ def test_frame_navigation_stops_at_the_end(window):
 def test_changing_lamella_resets_to_its_first_frame(qt_app, window):
     window._step_frame(2)
     window._step_lamella(1)
-    _settle(qt_app, lambda: window.controller.lamella.name == "02-beta")
+    settle(qt_app, lambda: window.controller.lamella.name == "02-beta")
 
     assert window.frame_label.text() == "1 / 2"
     assert "(2/2)" in window.image_panel.status.text()
@@ -195,14 +184,14 @@ def test_changing_lamella_resets_to_its_first_frame(qt_app, window):
 def test_missing_fib_label_is_reported_not_hidden(qt_app, window):
     """This project has no labels_fib, which the badge must make plain."""
     window._set_mode("fib")
-    _settle(qt_app, lambda: "no label" in window.image_panel.badges.text())
+    settle(qt_app, lambda: "no label" in window.image_panel.badges.text())
 
     assert "no label" in window.image_panel.badges.text()
 
 
 def test_plot_mode_draws_the_plot(qt_app, window):
     window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
 
     assert window.image_panel.stack.currentIndex() == 1
 
@@ -284,7 +273,7 @@ def test_a_state_change_is_declared_and_shown_in_the_readout(qt_app, window):
     assert original.exists()
 
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.controller.state_of("SEM") == "deselected")
+    settle(qt_app, lambda: window.controller.state_of("SEM") == "deselected")
 
     assert original.exists(), "declaring a state moves nothing"
     assert record.image_path == original
@@ -300,7 +289,7 @@ def test_applying_to_both_declares_both_modalities(qt_app, window):
     window.state_panel.target_buttons["both"].setChecked(True)
 
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
+    settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
     for record in window.controller.frame.records:
         assert record.state != "selected"
@@ -321,7 +310,7 @@ def test_timeline_reflects_the_lamella(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
     window.state_panel.target_buttons["both"].setChecked(True)
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.controller.combined_state() == "deselected")
+    settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
     assert window.timeline._rows["SEM"][0] == "deselected"
     assert window.timeline._rows["FIB"][0] == "deselected"
@@ -333,7 +322,7 @@ def test_mixed_state_shows_no_option_selected(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
     window.state_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.controller.combined_state() == "mixed")
+    settle(qt_app, lambda: window.controller.combined_state() == "mixed")
 
     window.state_panel.target_buttons["both"].setChecked(True)
     window._refresh_state_panel()
@@ -412,7 +401,7 @@ def test_timeline_shows_each_modality_separately(qt_app, window):
     window.state_panel.enable_check.setChecked(True)
     window.state_panel.target_buttons["SEM"].setChecked(True)
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.timeline._rows["SEM"][0] == "deselected")
+    settle(qt_app, lambda: window.timeline._rows["SEM"][0] == "deselected")
 
     assert window.timeline._rows["SEM"][0] == "deselected"
     assert window.timeline._rows["FIB"][0] == "selected"
@@ -783,7 +772,7 @@ def test_the_add_data_tab_opens_before_anything_is_scanned(qt_app, settings):
 
         assert fresh.metadata_panel.summary.text() == "No project selected"
     finally:
-        fresh.close()
+        destroy(fresh)
 
 
 # ---------------------------------------------------------------------------
@@ -802,6 +791,7 @@ def test_the_splitter_positions_survive_closing_the_window(qt_app, project, sett
     first.curate.setSizes([400, 800, 400])
     sizes = first.curate.sizes()
     first.close()
+    destroy(first)
 
     second = CurationWindow(
         CurationController(cache=FrameCache(), config=config), settings=settings
@@ -809,7 +799,7 @@ def test_the_splitter_positions_survive_closing_the_window(qt_app, project, sett
     try:
         assert second.curate.sizes() == sizes
     finally:
-        second.close()
+        destroy(second)
 
 
 def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
@@ -824,7 +814,7 @@ def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
     try:
         assert all(size > 0 for size in fresh.curate.sizes())
     finally:
-        fresh.close()
+        destroy(fresh)
 
 
 #: Longest tooltip worth reading in a hover, as the Export tab already holds
@@ -1221,7 +1211,7 @@ def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
     window.apply_state("corrected")
     window.state_panel.target_buttons["FIB"].setChecked(True)
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.controller.state_of("FIB") == "deselected")
+    settle(qt_app, lambda: window.controller.state_of("FIB") == "deselected")
 
     window.state_panel.target_buttons["both"].setChecked(True)
     at_risk = window.controller.corrected_records()
@@ -1356,7 +1346,7 @@ def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, 
     monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
 
     window.apply_state("deselected")
-    _settle(qt_app, lambda: window.controller.frame_states()[0] == "deselected")
+    settle(qt_app, lambda: window.controller.frame_states()[0] == "deselected")
 
     assert all(state == "deselected" for state in window.controller.frame_states())
     assert "deselected" in window.state_panel.last_change.text()
@@ -1634,7 +1624,7 @@ def test_a_slot_never_filled_opens_on_the_one_path_kept_before(qt_app, settings)
     try:
         assert window.operations_panel.model() == "/models/AM_SEM_All_V01.pth"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_closing_keeps_what_was_typed_into_the_box(window, settings):
@@ -1939,7 +1929,7 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     # The fixture's FIB images have no labels, which this ladder is not about.
     monkeypatch.setattr(window, "_confirm_unannotated", lambda: True)
     window.apply_state("corrected")
-    _settle(qt_app, lambda: window.controller.frame_states()[0] == "corrected")
+    settle(qt_app, lambda: window.controller.frame_states()[0] == "corrected")
 
     monkeypatch.setattr(
         window, "_run_operation",
@@ -2040,7 +2030,7 @@ def test_the_collection_actions_wait_for_a_folder(qt_app, settings):
         panel.enable.setChecked(True)
         assert panel.compress_button.isEnabled()
     finally:
-        fresh.close()
+        destroy(fresh)
 
 
 def test_a_first_run_opens_on_add_data(qt_app, settings):
@@ -2056,7 +2046,7 @@ def test_a_first_run_opens_on_add_data(qt_app, settings):
     try:
         assert fresh.tabs.currentWidget() is fresh.metadata_panel
     finally:
-        fresh.close()
+        destroy(fresh)
 
 
 def test_the_first_scan_hands_over_to_curate(qt_app, project: Path, settings):
@@ -2074,7 +2064,7 @@ def test_the_first_scan_hands_over_to_curate(qt_app, project: Path, settings):
 
         assert fresh.tabs.currentWidget() is fresh.curate
     finally:
-        fresh.close()
+        destroy(fresh)
 
 
 def test_a_later_scan_leaves_the_reviewer_where_they_are(window, project: Path):
@@ -2108,7 +2098,7 @@ def test_a_remembered_folder_still_opens_on_curate(qt_app, settings, tmp_path):
     try:
         assert fresh.tabs.currentWidget() is fresh.curate
     finally:
-        fresh.close()
+        destroy(fresh)
 
 
 def _menu_items(window, title: str) -> dict[str, str]:
@@ -2363,7 +2353,7 @@ def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monke
     )
     results: list = []
     window._run_operation("Test", lambda: threading.current_thread().name, results.append)
-    _settle(qt_app, lambda: bool(results) or bool(failures))
+    settle(qt_app, lambda: bool(results) or bool(failures))
 
     assert not failures
     assert results[0] != threading.current_thread().name
@@ -2381,7 +2371,7 @@ def test_a_failing_operation_is_reported_and_leaves_the_window_usable(
     )
 
     window._run_operation("Test", lambda: 1 / 0, lambda result: pytest.fail("no result"))
-    _settle(qt_app, lambda: bool(reported))
+    settle(qt_app, lambda: bool(reported))
 
     assert "division by zero" in reported[0]
     assert window.operations_panel.convert_button.isEnabled()
@@ -2413,7 +2403,7 @@ def test_stepping_draws_a_plot_sized_to_the_pane(qt_app, window):
     """A plot is ~180 ms to read however it is asked for, so stepping can only
     be smooth if every one is already held -- which bounds them to the pane."""
     window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
 
     stepping = window.controller.cache.plot(0).plot
 
@@ -2424,7 +2414,7 @@ def test_the_figure_is_read_whole_for_the_frame_being_looked_at(qt_app, window):
     """Reducing it on read put a ceiling on what zooming in could ever show,
     which is what these are opened for."""
     window._set_mode("plot")
-    _settle(
+    settle(
         qt_app,
         lambda: window.controller.cache.cached_plot_detail(0) is not None,
     )
@@ -2508,7 +2498,7 @@ def test_swapping_to_the_whole_figure_draws_it_at_the_size_the_zoom_asked_for(
     """The swap happens inside a zoom, so it has to be invisible: the same
     region, at the size that zoom asked for, drawn from more pixels."""
     window._set_mode("plot")
-    _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
+    settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
     window._render_plot()
     view = window.image_panel.plot_view
     drawn = view._item.boundingRect().width() * view.transform().m11()
@@ -2533,7 +2523,7 @@ def test_a_figure_of_another_size_starts_again_rather_than_inheriting_the_zoom(
     from am_segmentation_manager.gui.cache import FramePlot
 
     window._set_mode("plot")
-    _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
+    settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
     window._render_plot()
     panel = window.image_panel
     panel.plot_view.zoom_by(1.25)
@@ -2552,7 +2542,7 @@ def test_a_plot_opens_centred_in_the_pane(qt_app, window):
     and the scene is deliberately larger than the picture -- so on its own it
     left the figure off to one side with a band of empty pane beside it."""
     window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
     view = window.image_panel.plot_view
 
     picture = view.mapFromScene(view._item.boundingRect().center())
@@ -2571,7 +2561,7 @@ def test_a_plot_prepared_for_another_pane_still_fills_this_one(qt_app, window):
     from am_segmentation_manager.gui.cache import FramePlot
 
     window._set_mode("plot")
-    _settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
+    settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
     panel = window.image_panel
     viewport = panel.plot_view.viewport().rect()
 
@@ -2590,13 +2580,13 @@ def test_stepping_to_another_plot_does_not_move_the_picture(qt_app, window):
     the view at all -- it used to refit, then shift again as the whole copy
     landed."""
     window._set_mode("plot")
-    _settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
+    settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
     window._render_plot()
     view = window.image_panel.plot_view
     before = view.transform().m11(), view._item.boundingRect().width()
 
     window._step_frame(1)
-    _settle(qt_app, lambda: window.controller.frame_position == 1)
+    settle(qt_app, lambda: window.controller.frame_position == 1)
 
     assert (view.transform().m11(), view._item.boundingRect().width()) == before
 
@@ -2604,7 +2594,7 @@ def test_stepping_to_another_plot_does_not_move_the_picture(qt_app, window):
 def test_stepping_through_plots_finds_them_ready(qt_app, window):
     """The behaviour that was stuttering: holding an arrow key through plots."""
     window._set_mode("plot")
-    _settle(
+    settle(
         qt_app,
         lambda: all(
             window.controller.cache.cached_plot(i) is not None
@@ -3165,8 +3155,6 @@ def test_setting_the_values_is_a_redraw_rather_than_an_edit(qt_app):
     assert reported == []
 
 
-
-
 # ---------------------------------------------------------------------------
 # The legend
 #
@@ -3383,7 +3371,6 @@ def test_the_summary_counts_the_folder_rather_than_reading_it_out(metadata_panel
     assert metadata_panel.summary.text() == (
         "20260728_CB_AM_bitmap: 2 projects, 0 fully described"
     )
-
 
 
 def test_clearing_a_field_across_a_folder_is_confirmed_first(metadata_panel, monkeypatch):

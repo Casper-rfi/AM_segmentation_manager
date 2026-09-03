@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import time
 from pathlib import Path
 
 import pytest
+
+from conftest import destroy, settle
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -104,15 +105,13 @@ def _window(qt_app, root: Path) -> CurationWindow:
         settings=QSettings(str(root / "preferences.ini"), QSettings.IniFormat),
     )
     window.scan(str(root))
-    _settle(qt_app)
+    settle(
+        qt_app,
+        lambda: bool(window.controller.frames)
+        and window.image_panel.variant_combo.count() > 0,
+        what="the scan to reach the imaging-condition control",
+    )
     return window
-
-
-def _settle(app, timeout: float = 2.0) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        app.processEvents()
-        time.sleep(0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +130,7 @@ def test_the_variant_control_is_greyed_without_a_choice(qt_app, plain_project: P
         assert window.image_panel.variant_label.isHidden() is False
         assert window.image_panel.variant_combo.isEnabled() is False
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project: Path):
@@ -142,7 +141,7 @@ def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project
         assert combo.count() == len(SEM_VARIANTS)
         assert [combo.itemData(i) for i in range(combo.count())] == ["8", "8_fi_1", "8_fi_4"]
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_a_described_condition_shows_its_description(qt_app, variant_project: Path):
@@ -154,7 +153,7 @@ def test_a_described_condition_shows_its_description(qt_app, variant_project: Pa
         assert "frame integration 1" in captions
         assert "8_fi_4" in captions  # undescribed, so shown raw
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_choosing_a_condition_changes_only_the_view(qt_app, variant_project: Path):
@@ -162,12 +161,13 @@ def test_choosing_a_condition_changes_only_the_view(qt_app, variant_project: Pat
     try:
         before = window.controller.reach()
         window.image_panel.variant_combo.setCurrentIndex(1)
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.current_variant("SEM") == "8_fi_1",
+               what="the view to move to the other imaging condition")
 
         assert window.controller.current_variant("SEM") == "8_fi_1"
         assert window.controller.reach() == before
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_control_greys_out_when_switching_to_a_single_condition_modality(
@@ -176,11 +176,12 @@ def test_the_control_greys_out_when_switching_to_a_single_condition_modality(
     window = _window(qt_app, variant_project)
     try:
         window._set_mode("fib", from_user=True)
-        _settle(qt_app)
+        settle(qt_app, lambda: window.image_panel.variant_combo.isEnabled() is False,
+               what="the control to grey out on a single-condition modality")
         assert window.image_panel.variant_combo.isHidden() is False
         assert window.image_panel.variant_combo.isEnabled() is False
     finally:
-        window.close()
+        destroy(window)
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +195,7 @@ def test_the_reach_line_is_shown_even_when_nothing_is_shared(qt_app, plain_proje
         assert window.state_panel.reach.text() == "Covers 1 image, no label yet, 1 lamella"
         assert window.state_panel.reach_shared.isHidden() is True
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_reach_line_reports_images_pulled_in_by_a_shared_label(
@@ -208,19 +209,20 @@ def test_the_reach_line_reports_images_pulled_in_by_a_shared_label(
         )
         assert window.state_panel.reach_shared.isHidden() is False
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_reach_line_follows_the_target(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
         window._set_target("FIB")
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.reach().images == 1,
+               what="the reach line to re-count for the ion beam")
 
         assert window.state_panel.reach.text() == "Covers 1 image, 1 label, 1 lamella"
         assert window.state_panel.reach_shared.isHidden() is True
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_reach_line_follows_the_selection(qt_app, variant_project: Path):
@@ -229,13 +231,14 @@ def test_the_reach_line_follows_the_selection(qt_app, variant_project: Path):
     try:
         frame_total = window.controller.reach().images
         window.project_panel.lamella_list.item(0).setCheckState(Qt.Checked)
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.lamella_checks() == [True],
+               what="the tick to be delivered and the reach line re-counted")
 
         assert window.controller.lamella_checks() == [True]
         assert window.controller.reach().images > frame_total
         assert str(window.controller.reach().images) in window.state_panel.reach.text()
     finally:
-        window.close()
+        destroy(window)
 
 
 # ---------------------------------------------------------------------------

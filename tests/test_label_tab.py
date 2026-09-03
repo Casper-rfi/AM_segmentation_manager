@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import time
 from pathlib import Path
 
 import pytest
 
-from conftest import build_dataset
+from conftest import build_dataset, destroy, settle
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -122,10 +121,10 @@ def unlabelled(qt_app, config, tmp_path: Path):
     )
     window.scan(str(root))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: drawn(window))
+    settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
-    window.close()
+    destroy(window)
 
 
 @pytest.fixture
@@ -138,10 +137,10 @@ def window(qt_app, project: Path, config, tmp_path: Path):
     )
     window.scan(str(project))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: drawn(window))
+    settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
-    window.close()
+    destroy(window)
 
 
 def drawn(window) -> bool:
@@ -166,18 +165,6 @@ def draws(window):
     seen: list[object] = []
     window.label_loader.worker.loaded.connect(lambda *_: seen.append(None))
     return lambda: len(seen)
-
-
-def _settle(app, condition=None, timeout: float = 10.0) -> None:
-    """Run the event loop until *condition* holds, or the timeout expires."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        app.processEvents()
-        if condition is not None and condition():
-            return
-        time.sleep(0.01)
-    if condition is not None and not condition():
-        pytest.fail("Timed out waiting for the Label tab to settle")
 
 
 # ---------------------------------------------------------------------------
@@ -375,10 +362,10 @@ def variants(qt_app, config, tmp_path: Path):
     )
     window.scan(str(root))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: drawn(window))
+    settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
-    window.close()
+    destroy(window)
 
 
 @pytest.fixture
@@ -405,10 +392,10 @@ def three_series_window(qt_app, config, tmp_path: Path):
     )
     window.scan(str(tmp_path))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: drawn(window))
+    settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
-    window.close()
+    destroy(window)
 
 
 def test_the_series_control_is_greyed_when_a_lamella_holds_one(window):
@@ -429,7 +416,7 @@ def test_the_tab_reviews_one_series_at_a_time(qt_app, three_series_window):
     assert window.label_controller.count == 2, "the stage's frames alone"
 
     panel.series_combo.setCurrentIndex(panel.series_combo.findData("reference"))
-    _settle(qt_app)
+    settle(qt_app, lambda: window.label_controller.series == "reference")
 
     assert window.label_controller.series == "reference"
     assert window.label_controller.count == 1
@@ -442,7 +429,7 @@ def test_choosing_the_alignment_series_shows_the_beam_it_was_imaged_with(
     panel = window.label_panel
 
     panel.series_combo.setCurrentIndex(panel.series_combo.findData("alignment"))
-    _settle(qt_app)
+    settle(qt_app, lambda: window.label_controller.modality == "FIB")
 
     assert window.label_controller.modality == "FIB"
     assert panel.modality_buttons["FIB"].isChecked() is True
@@ -469,7 +456,7 @@ def test_the_conditions_of_an_acquisition_are_offered(variants):
 def test_choosing_a_condition_draws_it(qt_app, variants):
     panel = variants.label_panel
     panel.variant_combo.setCurrentIndex(1)
-    _settle(qt_app, lambda: variants.label_controller.cached_image() is not None)
+    settle(qt_app, lambda: variants.label_controller.cached_image() is not None)
 
     assert variants.label_controller.variant == "8_fi_1"
     assert "8_fi_1" in str(variants.label_controller.record.image_path)
@@ -500,7 +487,7 @@ def test_the_hidden_image_survives_stepping_to_another_frame(qt_app, window):
     panel.image_check.setChecked(False)
 
     panel.step_frame(1)
-    _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
+    settle(qt_app, lambda: window.label_controller.cached_image() is not None)
     panel.draw_current()
 
     assert not panel.canvas._item.isVisible(), (
@@ -1039,7 +1026,7 @@ def test_switching_modality_redraws(qt_app, window):
     delivered = draws(window)
 
     window.label_panel.set_modality("FIB")
-    _settle(qt_app, delivered)
+    settle(qt_app, delivered)
 
     assert window.label_controller.modality == "FIB"
     assert not window.label_panel.canvas._item.pixmap().isNull()
@@ -1729,7 +1716,7 @@ def test_an_image_with_no_label_can_still_be_annotated(qt_app, config, tmp_path)
     try:
         window.scan(str(root))
         window.tabs.setCurrentWidget(window.label_panel)
-        _settle(qt_app, lambda: window.label_controller.cached_image() is not None)
+        settle(qt_app, lambda: window.label_controller.cached_image() is not None)
 
         working = window.label_controller.working_label()
 
@@ -1756,10 +1743,10 @@ def two_lamellae(qt_app, config, tmp_path):
     )
     window.scan(str(root))
     window.tabs.setCurrentWidget(window.label_panel)
-    _settle(qt_app, lambda: drawn(window))
+    settle(qt_app, lambda: drawn(window))
     yield window
     window.label_controller.discard_edits()
-    window.close()
+    destroy(window)
 
 
 def answer_warning(monkeypatch, answer):
@@ -1839,7 +1826,7 @@ def test_saving_writes_the_edited_label(qt_app, window):
     before = key.read_bytes()
 
     save_with(window, mark_corrected=False)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert key.read_bytes() != before
     assert (tifffile.imread(str(key)) == 2).any(), "the stroke did not reach the file"
@@ -1849,7 +1836,7 @@ def test_saving_clears_what_was_waiting(qt_app, window):
     paint_on(window)
 
     save_with(window, mark_corrected=False)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert window.label_panel.pending_label.text() == ""
     assert not window.label_panel.save_button.isEnabled()
@@ -1860,7 +1847,7 @@ def test_saving_alone_does_not_move_anything(qt_app, window):
     paint_on(window)
 
     save_with(window, mark_corrected=False)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert image.exists(), "save only must not move the image"
     assert "corrected" not in str(image)
@@ -1876,7 +1863,7 @@ def test_marking_corrected_declares_the_whole_group(qt_app, window):
     paint_on(window)
 
     save_with(window, mark_corrected=True)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert image.exists() and label.exists(), "declaring a state moves nothing"
     assert record.state == "corrected"
@@ -1886,12 +1873,12 @@ def test_marking_corrected_declares_the_whole_group(qt_app, window):
 
 def test_saving_leaves_the_reviewer_on_the_lamella_they_saved(qt_app, two_lamellae):
     two_lamellae._step_label_lamella(1)
-    _settle(qt_app, lambda: drawn(two_lamellae))
+    settle(qt_app, lambda: drawn(two_lamellae))
     lamella = two_lamellae.label_controller.lamella.path
     paint_on(two_lamellae)
 
     save_with(two_lamellae, mark_corrected=False)
-    _settle(qt_app, lambda: saved(two_lamellae))
+    settle(qt_app, lambda: saved(two_lamellae))
 
     assert two_lamellae.label_controller.lamella.path == lamella, (
         "a save re-reads the collection; it is not a request to start over"
@@ -1903,7 +1890,7 @@ def test_a_save_leaves_the_two_views_on_one_lamella(qt_app, window):
     paint_on(window)
 
     save_with(window, mark_corrected=False)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert window.label_controller.lamella is window.controller.lamella
     assert window.label_panel.frame_label.text() == "1 / 3"
@@ -1924,7 +1911,7 @@ def test_saving_does_not_read_the_collection_again(qt_app, window, monkeypatch):
     paint_on(window)
 
     save_with(window, mark_corrected=False)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert not scans, "a save must not re-read the collection"
 
@@ -1943,7 +1930,7 @@ def test_a_label_a_save_created_is_known_without_a_rescan(qt_app, unlabelled):
     paint_on(window)
 
     save_with(window, mark_corrected=False)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert key.exists(), "the label was not written"
     assert record.labels == [key], "the record does not know its own new label"
@@ -1959,7 +1946,7 @@ def test_marking_corrected_is_visible_without_a_rescan(qt_app, window, monkeypat
     paint_on(window)
 
     save_with(window, mark_corrected=True)
-    _settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: saved(window))
 
     assert not scans
     assert window.label_controller.record.state == "corrected"

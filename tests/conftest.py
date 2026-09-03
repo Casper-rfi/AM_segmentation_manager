@@ -1,4 +1,4 @@
-"""Shared pytest configuration and dataset builders.
+"""Shared pytest configuration, dataset builders and window helpers.
 
 Import path setup used to live here and in a copy at the top of most test
 files. It is now declared once as ``pythonpath = ["src"]`` in
@@ -18,6 +18,10 @@ to exactly the tests written to catch it. The paths below are transcribed from
 real datasets and are the independent statement of what the conventions must
 produce.
 
+:func:`settle` and :func:`destroy` are here for the same reason: every window
+test needs both, and a per-file copy of either is how the suite grew a wait
+that slept through its whole timeout and a window that was never freed.
+
 Migration is deliberately opportunistic. Roughly thirty test files still build
 their own trees; they are correct and passing, and rewriting them all at once
 would be a large diff with no behaviour change in the code that would tell us
@@ -29,6 +33,7 @@ from __future__ import annotations
 import importlib.util
 import locale
 import os
+import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -192,6 +197,48 @@ class Dataset:
     def label(self, modality: str = "SEM", index: int = 0, variant: str | None = None) -> Path:
         """Return the label file matching :meth:`image`."""
         return self.label_dir(modality, variant) / self.filenames[modality.upper()][index]
+
+
+def settle(app, condition, *, timeout: float = 10.0, what: str = "the window") -> None:
+    """Run the event loop until *condition* holds.
+
+    Args:
+        condition: What is being waited for. **Required**: a wait with nothing
+            to wait for cannot tell the work finishing from the time running
+            out, so it sleeps for the whole timeout and then asserts nothing.
+        what: Named in the failure, so a timeout says which wait gave up.
+
+    Raises:
+        Failed: when *condition* has not come true within *timeout* seconds.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        app.processEvents()
+        if condition():
+            return
+        if time.monotonic() >= deadline:
+            pytest.fail(f"Timed out waiting for {what}")
+        time.sleep(0.01)
+
+
+def destroy(widget) -> None:
+    """Close *widget* and delete the Qt object behind it.
+
+    ``close()`` only hides a window: its widgets stay alive for the rest of the
+    session, and ``QApplication.setStyleSheet`` and ``setPalette`` walk every
+    live widget at a cost that grows faster than linearly. A window left behind
+    therefore slows down the *later* files that apply the theme rather than the
+    file that leaked it, which is why the cost shows up only in a full run.
+
+    ``deleteLater()`` does not free one: the window is also held by the bound
+    methods in its own key bindings, and Qt owns the other half of that cycle,
+    so Python's collector cannot break it. Deleting through shiboken does.
+    """
+    import shiboken6
+
+    widget.close()
+    if shiboken6.isValid(widget):
+        shiboken6.delete(widget)
 
 
 def break_import(monkeypatch, module: str, error: Exception) -> None:

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import build_dataset
+from conftest import build_dataset, destroy
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -72,7 +72,7 @@ def window(qt_app, config, tmp_path: Path):
         settings=QSettings(str(tmp_path / "prefs.ini"), QSettings.IniFormat),
     )
     yield window
-    window.close()
+    destroy(window)
 
 
 # ---------------------------------------------------------------------------

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import time
 from pathlib import Path
 
 import pytest
+
+from conftest import destroy, settle
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -46,7 +47,6 @@ SEM_VARIANTS = ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4")
 def qt_app():
     app = QApplication.instance() or QApplication([])
     yield app
-
 
 
 @pytest.fixture
@@ -125,16 +125,13 @@ def _window(qt_app, root: Path) -> CurationWindow:
         settings=QSettings(str(root / "preferences.ini"), QSettings.IniFormat),
     )
     window.scan(str(root))
-    _settle(qt_app)
+    settle(
+        qt_app,
+        lambda: bool(window.controller.frames)
+        and window.image_panel.series_combo.count() > 0,
+        what="the scan to reach the series control",
+    )
     return window
-
-
-def _settle(app, timeout: float = 2.0) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        app.processEvents()
-        time.sleep(0.01)
-
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +153,7 @@ def test_the_series_control_is_greyed_without_a_choice(qt_app, plain_project: Pa
         assert combo.isEnabled() is False
         assert combo.currentText() == "Adaptive Polishing"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_series_control_opens_when_a_lamella_holds_more(qt_app, modern_project):
@@ -167,7 +164,7 @@ def test_the_series_control_opens_when_a_lamella_holds_more(qt_app, modern_proje
         offered = [combo.itemData(i) for i in range(combo.count())]
         assert offered == ["adaptive", "reference", "alignment"]
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_control_shows_the_series_by_name(qt_app, modern_project: Path):
@@ -177,7 +174,7 @@ def test_the_control_shows_the_series_by_name(qt_app, modern_project: Path):
         captions = [combo.itemText(i) for i in range(combo.count())]
         assert captions == ["Adaptive Polishing", "reference", "alignment"]
     finally:
-        window.close()
+        destroy(window)
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +190,8 @@ def test_a_lamella_without_the_chosen_series_shows_one_it_holds(
     window = _window(qt_app, mixed_project)
     try:
         window._step_lamella(1)
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "reference",
+               what="the lamella without Adaptive Polishing to fall back")
 
         combo = window.image_panel.series_combo
         assert window.controller.series == "reference"
@@ -201,7 +199,7 @@ def test_a_lamella_without_the_chosen_series_shows_one_it_holds(
         assert combo.currentText() == "reference"
         assert combo.isEnabled() is True, "alignment is still one click away"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_stepping_back_returns_to_the_chosen_series(qt_app, mixed_project: Path):
@@ -209,14 +207,16 @@ def test_stepping_back_returns_to_the_chosen_series(qt_app, mixed_project: Path)
     window = _window(qt_app, mixed_project)
     try:
         window._step_lamella(1)
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "reference",
+               what="the fallback to the series that lamella holds")
         window._step_lamella(-1)
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "adaptive",
+               what="the chosen series to come back")
 
         assert window.controller.series == "adaptive"
         assert window.image_panel.series_combo.currentText() == "Adaptive Polishing"
     finally:
-        window.close()
+        destroy(window)
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ def test_the_timeline_opens_on_adaptive_polishing(qt_app, modern_project: Path):
         assert window.controller.series == "adaptive"
         assert len(window.controller.frames) == 2
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_choosing_a_series_rebuilds_the_timeline(qt_app, modern_project: Path):
@@ -238,13 +238,14 @@ def test_choosing_a_series_rebuilds_the_timeline(qt_app, modern_project: Path):
     try:
         combo = window.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("reference"))
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "reference",
+               what="the timeline to be rebuilt")
 
         assert window.controller.series == "reference"
         assert len(window.controller.frames) == 1
         assert window.controller.frames[0].series == "reference"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_beam_buttons_follow_the_chosen_series(qt_app, modern_project: Path):
@@ -256,12 +257,13 @@ def test_the_beam_buttons_follow_the_chosen_series(qt_app, modern_project: Path)
 
         combo = window.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("alignment"))
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.target == "FIB",
+               what="the view to move to the ion beam")
 
         assert window.image_panel.mode_buttons["fib"].isChecked() is True
         assert window.controller.target == "FIB"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_model_box_follows_the_chosen_series(qt_app, modern_project: Path):
@@ -274,14 +276,16 @@ def test_the_model_box_follows_the_chosen_series(qt_app, modern_project: Path):
 
         combo = window.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("reference"))
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "reference",
+               what="the series the model was not trained on")
         assert window.operations_panel.model() == ""
 
         combo.setCurrentIndex(combo.findData("adaptive"))
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "adaptive",
+               what="the series the model was trained on")
         assert window.operations_panel.model() == "/models/adaptive_sem.pth"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_frame_readout_follows_the_chosen_series(qt_app, modern_project: Path):
@@ -291,8 +295,9 @@ def test_the_frame_readout_follows_the_chosen_series(qt_app, modern_project: Pat
 
         combo = window.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("alignment"))
-        _settle(qt_app)
+        settle(qt_app, lambda: window.controller.series == "alignment",
+               what="the timeline to be rebuilt")
 
         assert window.frame_label.text() == "1 / 1"
     finally:
-        window.close()
+        destroy(window)
