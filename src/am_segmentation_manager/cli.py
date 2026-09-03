@@ -14,6 +14,7 @@ import faulthandler
 import logging
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TextIO
 
@@ -990,6 +991,935 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# ---------------------------------------------------------------------------
+# The commands
+#
+# One function per subcommand, taking the parsed arguments and returning a
+# process exit status. Each is reachable only through COMMANDS below, so a name
+# that is registered on the parser and has no handler here is a command that
+# silently prints the help -- which `test_every_subcommand_has_a_handler` is
+# what stops.
+# ---------------------------------------------------------------------------
+
+
+def _cmd_list_projects(args: argparse.Namespace) -> int:
+    """Handle ``am-seg list-projects``."""
+    scanner = Scanner(Path(args.start_path))
+    index = scanner.build_index()
+    for project in index.all_projects():
+        print_project_summary(project)
+    return 0
+
+
+def _cmd_inspect_layout(args: argparse.Namespace) -> int:
+    """Handle ``am-seg inspect-layout``."""
+    survey = survey_collection(
+        Path(args.start_path),
+        max_depth=args.max_depth,
+        check_labels=not args.no_label_check,
+    )
+    print_survey(survey, detail=args.detail, min_severity=args.severity)
+    # A non-zero exit lets the command be used as a check in a script,
+    # without making warnings -- which are expected on legacy data -- fail.
+    return 1 if survey.finding_counts()["error"] else 0
+
+
+def _cmd_init_project(args: argparse.Namespace) -> int:
+    """Handle ``am-seg init-project``."""
+    from .discovery import describe_dataset_candidates, find_project_roots, project_markers
+    from .operations.init_project import (
+        init_projects,
+        project_placement_problem,
+        read_defaults,
+    )
+
+    start_path = Path(args.start_path)
+    if args.recursive:
+        existing = find_project_roots(start_path)
+        # Datasets predating Autolamella have no marker, so project
+        # discovery cannot see them -- which would leave the ones that most
+        # need a marker out of the command that writes one.
+        candidates = describe_dataset_candidates(start_path)
+        # A candidate holding datasets of several layout eras is a folder
+        # someone gathered them in, and marking it would make each of them
+        # a lamella of one project. Which level is right is not decidable
+        # here, so this reports it rather than guessing: name the datasets
+        # inside it, or pick them out in the window.
+        gathering = [item for item in candidates if item.holds_several_datasets]
+        for item in gathering:
+            logger.warning(
+                "%s holds %d dataset(s) laid out %d different ways; skipped, "
+                "because marking it would make each of them a lamella of one "
+                "project. Run init-project on each dataset inside it instead.",
+                make_path_relative(item.path, start_path),
+                len(item.lamellae), len(item.stage_depths),
+            )
+        proposed = [item for item in candidates if not item.holds_several_datasets]
+        for item in proposed:
+            logger.info(
+                "%s holds images but is not a project yet; a metadata file "
+                "makes it one", make_path_relative(item.path, start_path),
+            )
+        roots = [*existing, *(item.path for item in proposed)]
+        if not roots:
+            logger.error("No projects or unindexed datasets found under %s", start_path)
+            return 2
+    else:
+        problem = project_placement_problem(start_path)
+        if problem is not None:
+            logger.error(
+                "%s Use --recursive to write a file into every project that "
+                "can be identified unambiguously, or name each dataset inside "
+                "it in turn.",
+                problem,
+            )
+            return 2
+        roots = [start_path]
+        if not project_markers(start_path):
+            logger.info(
+                "%s has no project marker yet; writing one makes it a project",
+                start_path,
+            )
+
+    try:
+        defaults = read_defaults(Path(args.defaults)) if args.defaults else None
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        return 2
+
+    results = init_projects(roots, defaults=defaults, dry_run=args.dry_run)
+    for result in results:
+        location = make_path_relative(result.path, start_path)
+        if result.skipped_existing:
+            logger.info("Kept existing %s", location)
+        elif args.dry_run:
+            logger.info("Would write %s (%d field(s) to fill in)", location, len(result.todo))
+        else:
+            logger.info("Wrote %s (%d field(s) to fill in)", location, len(result.todo))
+
+    written = sum(1 for result in results if result.written)
+    skipped = sum(1 for result in results if result.skipped_existing)
+    remaining = sum(len(result.todo) for result in results if not result.skipped_existing)
+    logger.info(
+        "Total: %d project(s), %d %s, %d already had one, %d field(s) to fill in",
+        len(results), written or (len(results) - skipped if args.dry_run else 0),
+        "would be written" if args.dry_run else "written", skipped, remaining,
+    )
+    return 0
+
+
+def _cmd_export_projects_csv(args: argparse.Namespace) -> int:
+    """Handle ``am-seg export-projects-csv``."""
+    from .operations.metadata_csv import export_project_metadata_csv
+
+    start_path = Path(args.start_path)
+    projects = Scanner(start_path).build_index().all_projects()
+    if not projects:
+        logger.warning("No projects found under %s", start_path)
+    export_project_metadata_csv(projects, start_path, Path(args.output))
+    return 0
+
+
+def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
+    """Handle ``am-seg export-metadata-csv``."""
+    from .aggregate import project_lookup
+    from .image_metadata import read_records_metadata
+    from .operations.metadata_csv import export_image_metadata_csv
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.warning("No images matched")
+        return 0
+
+    selectors = _metadata_selectors(args)
+    if selectors and args.no_headers:
+        logger.error("Metadata filters need headers; drop --no-headers")
+        return 2
+    if selectors:
+        metadata = read_records_metadata(records)
+        records = filter_by_metadata(records, metadata, selectors)
+        if not records:
+            logger.warning("No images matched the metadata filters")
+            return 0
+
+    projects = project_lookup(Scanner(start_path).build_index().all_projects())
+    export_image_metadata_csv(
+        records, start_path, Path(args.output),
+        include_headers=not args.no_headers, projects=projects,
+        # The same rule the training export and the window apply.
+        paired=args.modality == "all",
+    )
+    if args.modality == "all":
+        logger.info(
+            "Both modalities selected: writing one row per acquisition, "
+            "with each beam's own values under a sem_ or fib_ prefix. Pass "
+            "--modality SEM or FIB for one row per image file."
+        )
+    return 0
+
+
+def _cmd_stats(args: argparse.Namespace) -> int:
+    """Handle ``am-seg stats``."""
+    import csv as csv_module
+
+    # NEEDS_METADATA and BREAKDOWNS are imported at module level; naming
+    # them here too would shadow them for the whole of main(), including
+    # the parser construction above.
+    from .aggregate import (
+        count_by,
+        cross_tabulate,
+        project_lookup,
+        resolve_breakdown,
+    )
+    from .reporting import format_counts, format_cross_tabulation
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.warning("No images matched")
+        return 0
+
+    chosen = args.by or ["modality"]
+    if len(chosen) > 2:
+        logger.error("--by takes at most two properties, got %d", len(chosen))
+        return 2
+
+    # The config decides which classes have an area breakdown, so it is
+    # resolved before the chosen names can be looked up at all. Loading it
+    # opens one small YAML and scans nothing.
+    from .aggregate import breakdowns_for
+    from .config import load_segmentation_config
+
+    config = load_segmentation_config(start_path=start_path)
+    breakdowns = breakdowns_for(config)
+
+    # Headers are only read when a chosen breakdown needs them, so a purely
+    # structural question stays a filesystem walk. Measuring needs them
+    # too, for the scale.
+    def kind_of(name: str) -> str:
+        entry = breakdowns.get(name)
+        return entry.kind if entry is not None else ""
+
+    measuring = any(kind_of(name) == "measurement" for name in chosen)
+    metadata: dict = {}
+    if measuring or any(kind_of(name) == "metadata" for name in chosen):
+        from .image_metadata import read_records_metadata
+
+        logger.info("Reading headers for %d image(s)", len(records))
+        metadata = read_records_metadata(records)
+
+    measurements: dict = {}
+    if measuring:
+        from .operations.label_measure import measure_records
+
+        logger.info("Measuring labels for %d image(s)", len(records))
+        measurements = measure_records(records, config, metadata)
+
+    label_states: dict = {}
+    if any(kind_of(name) == "label" for name in chosen):
+        from .operations.label_io import label_state
+
+        logger.info("Reading labels for %d image(s)", len(records))
+        label_states = {
+            record.image_path: label_state(record) for record in records
+        }
+
+    lookup = project_lookup(Scanner(start_path).build_index().all_projects())
+    try:
+        keys = [
+            resolve_breakdown(
+                name, metadata, lookup, measurements, label_states, breakdowns
+            )
+            for name in chosen
+        ]
+    except ValueError as exc:
+        logger.error("%s", exc)
+        return 2
+
+    if len(keys) == 1:
+        entry = breakdowns[chosen[0]]
+        counts = count_by(records, keys[0], entry.order, multi=entry.multi)
+        for line in format_counts(
+            counts,
+            f"Images per {chosen[0]}",
+            total=len(records),
+            multi=entry.multi,
+        ):
+            print(line)
+        rows = [(str(key), count) for key, count in counts.items()]
+        header = [chosen[0], "images"]
+    else:
+        table = cross_tabulate(
+            records, keys[0], keys[1],
+            row_multi=breakdowns[chosen[0]].multi,
+            column_multi=breakdowns[chosen[1]].multi,
+        )
+        for line in format_cross_tabulation(
+            table, chosen[0], chosen[1],
+            row_order=breakdowns[chosen[0]].order,
+            column_order=breakdowns[chosen[1]].order,
+            multi=breakdowns[chosen[0]].multi or breakdowns[chosen[1]].multi,
+        ):
+            print(line)
+        rows = [(str(a), str(b), count) for (a, b), count in table.items()]
+        header = [chosen[0], chosen[1], "images"]
+
+    if args.plot:
+        from .plots import plot_counts, plot_cross_tabulation
+
+        try:
+            if len(keys) == 1:
+                plot_counts(
+                    counts, f"Images per {chosen[0]}", Path(args.plot),
+                    xlabel=chosen[0],
+                )
+            else:
+                plot_cross_tabulation(table, chosen[0], chosen[1], Path(args.plot))
+        except RuntimeError as exc:
+            # The counts have already been printed, so a missing optional
+            # dependency should not lose them.
+            logger.error("%s", exc)
+            return 2
+
+    if args.output:
+        output = Path(args.output)
+        with output.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv_module.writer(handle)
+            writer.writerow(header)
+            writer.writerows(rows)
+        logger.info("Wrote %d row(s) to %s", len(rows), output)
+    return 0
+
+
+def _cmd_quantify_labels(args: argparse.Namespace) -> int:
+    """Handle ``am-seg quantify-labels``."""
+    from .aggregate import project_lookup, summarise_lamellae
+    from .config import load_segmentation_config
+    from .image_metadata import read_records_metadata
+    from .operations.label_measure import measure_records
+    from .operations.metadata_csv import (
+        export_label_measurements_csv,
+        export_lamella_quantification_csv,
+    )
+    from .reporting import format_label_quantification
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.warning("No images matched")
+        return 0
+
+    try:
+        config = load_segmentation_config(
+            explicit_path=Path(args.config) if args.config else None,
+            start_path=start_path,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        return 2
+
+    if config.crack_class is None:
+        logger.error(
+            "No crack class configured. Add MEASUREMENT.crack_class to %s, "
+            "or name a class 'crack/hole'",
+            config.source,
+        )
+        return 2
+
+    # Headers first: they carry the scale, and the metadata filters work on
+    # them. Only then is anything as expensive as a label opened.
+    metadata = read_records_metadata(records)
+    selectors = _metadata_selectors(args)
+    if selectors:
+        records = filter_by_metadata(records, metadata, selectors)
+        if not records:
+            logger.warning("No images matched the metadata filters")
+            return 0
+
+    logger.info("Measuring labels for %d image(s)", len(records))
+    measurements = measure_records(
+        records, config, metadata, min_crack_area_um2=args.min_crack_area
+    )
+    if not measurements:
+        logger.warning("None of the matched images has a label to measure")
+        return 0
+
+    lookup = project_lookup(Scanner(start_path).build_index().all_projects())
+    summaries = summarise_lamellae(records, measurements, lookup)
+    for line in format_label_quantification(
+        summaries, config, detail=not args.no_detail
+    ):
+        print(line)
+
+    if args.output:
+        export_label_measurements_csv(
+            records, measurements, config, start_path, Path(args.output), lookup
+        )
+    if args.lamella_output:
+        export_lamella_quantification_csv(
+            summaries, config, Path(args.lamella_output)
+        )
+    return 0
+
+
+def _cmd_find_specks(args: argparse.Namespace) -> int:
+    """Handle ``am-seg find-specks``."""
+    from .config import load_segmentation_config
+    from .operations.csv import find_matching_label
+    from .operations.label_measure import records_with_specks
+    from .reporting import format_speck_report
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.warning("No images matched")
+        return 0
+
+    if args.at_most < 1:
+        logger.error("--at-most must be at least 1, got %d", args.at_most)
+        return 2
+
+    try:
+        config = load_segmentation_config(
+            explicit_path=Path(args.config) if args.config else None,
+            start_path=start_path,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        return 2
+
+    logger.info("Reading labels for %d image(s)", len(records))
+    found = records_with_specks(records, at_most=args.at_most)
+    # Counted from the records, not from what was found: a sweep that says
+    # "nothing in 248 labels" is a different statement from "nothing".
+    labels_read = len({
+        label for label in (find_matching_label(record) for record in records)
+        if label is not None
+    })
+    for line in format_speck_report(
+        found, start_path, config, at_most=args.at_most, labels_read=labels_read
+    ):
+        print(line)
+    return 0
+
+
+def _cmd_metadata(args: argparse.Namespace) -> int:
+    """Handle ``am-seg edit-metadata``."""
+    from .filtering import matches_project
+    from .metadata import DESCRIPTIVE_FIELDS as FIELDS
+    from .operations.metadata_edit import (
+        MetadataValidationError,
+        update_project_metadata,
+    )
+
+    start_path = Path(args.start_path)
+    projects = Scanner(start_path).build_index().all_projects()
+    selectors = args.project
+    if selectors is not None:
+        projects = [p for p in projects if matches_project(p, selectors)]
+    if not projects:
+        logger.error("No projects matched under %s", start_path)
+        return 2
+
+    if args.command == "show-metadata":
+        for project in projects:
+            resolved = project.experiment_metadata
+            print(f"{project.display_name}")
+            if resolved is None:
+                print("    (no metadata)")
+                continue
+            for field in FIELDS:
+                value = getattr(resolved, field)
+                source = resolved.sources.get(field)
+                origin = f"  [{source.name}]" if source else ""
+                if value is None:
+                    state = "TODO" if field in resolved.todo_fields else "-"
+                    print(f"    {field:14} {state}")
+                else:
+                    print(f"    {field:14} {value}{origin}")
+        return 0
+
+    if args.project is None and not args.all:
+        logger.error("Choose projects with --project, or all of them with --all")
+        return 2
+
+    values: dict[str, str | None] = {}
+    for item in args.set:
+        if "=" not in item:
+            logger.error("--set expects FIELD=VALUE, got %r", item)
+            return 2
+        field, value = item.split("=", 1)
+        field, value = field.strip(), value.strip()
+        # Repeating --set for a field that holds several values adds to it
+        # rather than replacing what the earlier one asked for, so two
+        # organisations need no quoting or separator on the command line.
+        spec = field_named(field)
+        if spec is not None and spec.multi and values.get(field):
+            value = f"{values[field]}{VALUE_SEPARATOR}{value}"
+        values[field] = value
+    for field in args.clear:
+        values[field.strip()] = None
+    for field in args.todo:
+        values[field.strip()] = TODO_MARKER
+    if not values:
+        logger.error("Nothing to do: pass --set, --clear or --todo")
+        return 2
+
+    # Validate against every project before writing to any of them, so a
+    # bad field name cannot leave half the collection edited.
+    try:
+        planned = [
+            update_project_metadata(
+                project.path, values, dry_run=True, project_name=project.display_name
+            )
+            for project in projects
+        ]
+    except MetadataValidationError as exc:
+        for problem in exc.problems:
+            logger.error("%s", problem)
+        return 2
+
+    changed = [change for change in planned if not change.is_empty]
+    for change in planned:
+        for line in change.describe():
+            print(line)
+    if not changed:
+        logger.info("Nothing to change across %d project(s)", len(projects))
+        return 0
+    if args.dry_run:
+        logger.info(
+            "Dry run: %d of %d project(s) would change", len(changed), len(projects)
+        )
+        return 0
+
+    for project in projects:
+        update_project_metadata(
+            project.path, values, project_name=project.display_name
+        )
+    logger.info("Updated %d of %d project(s)", len(changed), len(projects))
+    return 0
+
+
+def _cmd_gui(args: argparse.Namespace) -> int:
+    """Handle ``am-seg gui``."""
+    # Imported here so a missing Qt binding cannot break the other
+    # commands, or `--help`.
+    from .gui.app import run
+
+    try:
+        return run(
+            start_path=Path(args.start_path) if args.start_path else None,
+            config_path=Path(args.config) if args.config else None,
+        )
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        return 2
+
+
+def _cmd_predict(args: argparse.Namespace) -> int:
+    """Handle ``am-seg predict``."""
+    from .operations.predict import (
+        PredictionSource,
+        plan_predictions,
+        run_predictions,
+    )
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.info("No matching images found to predict")
+        return 2
+
+    weights = Path(args.model)
+    # The description is read before the model, so a typo in it costs
+    # nothing and a mismatch is reported before anything heavy loads.
+    try:
+        from .ml.model import read_model_description, run_name_of
+
+        description = read_model_description(weights)
+    except ValueError as exc:
+        logger.error("%s", exc)
+        return 2
+    source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
+
+    plan = plan_predictions(records, source, overwrite=args.overwrite)
+    if plan.is_refused:
+        logger.error(
+            "This selection holds %s images. A model is trained on one "
+            "modality and nothing here can tell which, so predict one at a "
+            "time: pass --modality SEM or --modality FIB",
+            " and ".join(plan.modalities),
+        )
+        return 2
+
+    if plan.represented:
+        logger.info(
+            "%d image(s) share a label with one being predicted and are "
+            "covered by it", plan.represented,
+        )
+    if plan.up_to_date:
+        logger.info(
+            "%d prediction(s) were already made by this model and are kept; "
+            "pass --overwrite to make them again", len(plan.up_to_date),
+        )
+    if args.dry_run:
+        for item in plan.predictions:
+            logger.info(
+                "%s %s", item.describe(),
+                make_path_relative(item.destination, start_path),
+            )
+        logger.info(
+            "Would predict: %d %s image(s) (dry run, nothing written and no "
+            "model loaded)", len(plan.predictions), plan.modality,
+        )
+        return 0
+    if not plan.predictions:
+        logger.info("Nothing to predict")
+        return 0
+
+    try:
+        from .ml.environment import resolve_device
+        from .ml.model import load_model
+
+        device = resolve_device(args.device)
+        logger.info("Loading %s onto %s", weights.name, device)
+        loaded = load_model(weights, description, device=device)
+    except (RuntimeError, FileNotFoundError) as exc:
+        logger.error("%s", exc)
+        return 2
+
+    total = len(plan.predictions)
+    started = time.monotonic()
+
+    def report(index: int, item) -> None:
+        elapsed = time.monotonic() - started
+        logger.info(
+            "[%d/%d] %s (%.2fs each, %s remaining)",
+            index, total,
+            make_path_relative(item.destination, start_path),
+            elapsed / index,
+            _format_duration(elapsed / index * (total - index)),
+        )
+
+    try:
+        written = run_predictions(plan, loaded.predict, source, on_progress=report)
+    except KeyboardInterrupt:
+        # Each prediction is written and recorded before the next starts, so
+        # what finished is kept and the next run resumes from it.
+        logger.warning("Interrupted. Re-run to continue where this stopped")
+        return 130
+    logger.info("Total predicted: %d %s image(s) in %s", written, plan.modality,
+                _format_duration(time.monotonic() - started))
+    return 0
+
+
+def _cmd_convert_predictions(args: argparse.Namespace) -> int:
+    """Handle ``am-seg convert-predictions``."""
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.info("No matching images found to convert")
+        return 2
+    plan = plan_conversions(records, overwrite=args.overwrite)
+    if args.dry_run:
+        for item in plan.conversions:
+            logger.info("%s %s", item.describe(), item.destination)
+    for item in plan.refused:
+        logger.warning("Refused %s: a proofread label is already there", item.destination)
+    if plan.replaceable:
+        logger.warning(
+            "%d label(s) already exist and were kept; pass --overwrite to replace them",
+            len(plan.replaceable),
+        )
+    if args.dry_run:
+        logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
+        return 0
+    converted = len(convert_record_predictions(records, overwrite=args.overwrite))
+    logger.info("Total converted: %d", converted)
+    return 0
+
+
+def _cmd_state(args: argparse.Namespace) -> int:
+    """Handle ``am-seg correct``."""
+    from .operations.label_io import classify_labels
+    from .operations.selection import StaleState, apply_plan, plan_transition
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.info("No matching images found to %s", args.command)
+        return 2
+
+    state = {"deselect": "deselected", "select": "selected", "correct": "corrected"}[
+        args.command
+    ]
+    try:
+        plan = plan_transition(
+            records, state, allow_leaving_corrected=args.confirm_corrected
+        )
+    except (FileNotFoundError, PermissionError, ValueError) as exc:
+        logger.error("Could not %s matching images: %s", args.command, exc)
+        return 2
+
+    # A shared label makes a state change reach further than the selectors
+    # asked for, which the user must be able to see.
+    if plan.reaches_beyond_request:
+        logger.info(
+            "%d further image(s) share a label with your selection and "
+            "change with it:", len(plan.added),
+        )
+        for record in plan.added:
+            logger.info("  %s", make_path_relative(record.image_path, start_path))
+
+    # Corrected is the claim that somebody proofread these labels, and a
+    # training export trusts it. Reported rather than refused: the command
+    # line is where a deliberate exception is made, and the GUI is where
+    # the guard belongs. Read over the expanded set, since a shared label
+    # is marked corrected by any image of its scene.
+    if state == "corrected":
+        readiness = classify_labels(plan.records)
+        if readiness:
+            logger.warning(
+                "%s, which is not proofread work. Marking them corrected "
+                "means a training export skips them:", readiness.summary(),
+            )
+            for record in readiness.records:
+                logger.warning(
+                    "  %s", make_path_relative(record.image_path, start_path)
+                )
+
+    if args.dry_run:
+        for line in plan.describe():
+            logger.info("Would declare %s", line)
+        logger.info(
+            "Dry run: %d group(s) would change, affecting %d image(s)",
+            len(plan.changes), len(plan.records),
+        )
+        return 0
+
+    # The plan that was previewed is the one carried out, rather than one
+    # worked out again from the same arguments. Its freshness is checked
+    # against the files as it is applied.
+    try:
+        changed = apply_plan(plan)
+    except (StaleState, OSError, ValueError) as exc:
+        logger.error("Could not %s matching images: %s", args.command, exc)
+        return 2
+    logger.info("Total %s: %d", args.command, changed)
+    return 0
+
+
+def _cmd_create_training_csv(args: argparse.Namespace) -> int:
+    """Handle ``am-seg create-training-csv``."""
+    from .operations.csv import export_training_csv
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.info("No matching images found to export CSV")
+        return 2
+
+    # Metadata filters run after the structural ones, so headers are read
+    # only for images that already survived project/lamella/state selection.
+    selectors = _metadata_selectors(args)
+    if selectors:
+        from .image_metadata import read_records_metadata
+
+        records = filter_by_metadata(records, read_records_metadata(records), selectors)
+        if not records:
+            logger.info("No images matched the metadata filters")
+            return 2
+
+    output_dir = Path(args.output_dir)
+    train_csv, val_csv = export_training_csv(
+        records=records,
+        start_path=start_path,
+        output_dir=output_dir,
+        prefix=args.output_prefix,
+        train_ratio=args.split,
+        seed=args.seed,
+        include_empty_labels=args.include_empty_labels,
+        conditions=args.conditions,
+        # The same rule the window applies, so one selection exported
+        # either way gives the same two files.
+        paired=args.modality == "all",
+    )
+    if args.modality == "all":
+        logger.info(
+            "Both modalities selected: writing one row per acquisition, "
+            "with SEM and FIB side by side. Pass --modality SEM or FIB for "
+            "one row per image."
+        )
+    logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
+    if val_csv:
+        logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
+    return 0
+
+
+def _cmd_export_files(args: argparse.Namespace) -> int:
+    """Handle ``am-seg export-files``."""
+    from .operations.copy_export import (
+        DestinationInsideSource,
+        copy_export,
+        plan_copy,
+    )
+    from .reporting import format_bytes
+
+    records, start_path, projects = _resolve_scope(args)
+    if not records:
+        logger.info("No matching images found to copy")
+        return 2
+
+    try:
+        plan = plan_copy(records, Path(args.output), start_path, projects=projects)
+    except DestinationInsideSource as error:
+        logger.error("Could not copy: %s", error)
+        return 2
+
+    for item in plan.items:
+        logger.debug(
+            "%s: %s -> %s", item.outcome, item.source, item.destination
+        )
+    logger.info(
+        "%d file(s) to copy, %s; %d already there",
+        len(plan.to_copy), format_bytes(plan.bytes_to_copy),
+        len(plan.already_there),
+    )
+    if plan.conflicts:
+        logger.error(
+            "%d destination(s) already hold a different file, starting with "
+            "%s. Nothing was copied; choose an empty directory.",
+            len(plan.conflicts), plan.conflicts[0].destination,
+        )
+        return 2
+    if plan.short_by:
+        logger.error(
+            "Not enough room: %s needed, %s free. Nothing was copied.",
+            format_bytes(plan.bytes_to_copy), format_bytes(plan.free_space),
+        )
+        return 2
+    if args.dry_run:
+        logger.info("Dry run: nothing was copied")
+        return 0
+    if not plan.to_copy:
+        logger.info("Nothing to copy: %s already holds it all", plan.destination)
+        return 0
+
+    report = copy_export(plan)
+    logger.info(
+        "Copied %d file(s), %s, into %s",
+        len(report.copied), format_bytes(report.bytes_copied), plan.destination,
+    )
+    return 0
+
+
+def _cmd_check_training_csv(args: argparse.Namespace) -> int:
+    """Handle ``am-seg check-training-csv``."""
+    from .operations.csv_check import (
+        check_csv_paths,
+        summarize_results,
+        write_pruned_csv,
+    )
+
+    if args.in_place and args.output:
+        logger.error("--in-place and --output are mutually exclusive")
+        return 2
+    if not args.prune and (args.output or args.in_place):
+        logger.error("--output/--in-place require --prune")
+        return 2
+
+    start_path = Path(args.start_path)
+    csv_path = Path(args.csv_path)
+    results = check_csv_paths(csv_path, start_path)
+    lines, problem_count = summarize_results(results, start_path)
+    for line in lines:
+        logger.info(line)
+
+    if not args.prune:
+        return 0 if problem_count == 0 else 1
+
+    if args.in_place:
+        output_path = csv_path
+    elif args.output:
+        output_path = Path(args.output)
+    else:
+        output_path = csv_path.with_name(f"{csv_path.stem}_checked{csv_path.suffix}")
+
+    written_path, dropped = write_pruned_csv(results, output_path)
+    logger.info("Wrote %s, dropping %d row(s)", written_path, dropped)
+    return 0
+
+
+def _cmd_compress_labels(args: argparse.Namespace) -> int:
+    """Handle ``am-seg compress-labels``."""
+    from .operations.label_compression import compress_labels
+
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.info("No matching images found to compress labels for")
+        return 2
+
+    try:
+        results = compress_labels(
+            records,
+            allow_corrected=args.confirm_corrected,
+            dry_run=args.dry_run,
+        )
+    except (PermissionError, RuntimeError) as exc:
+        logger.error("Could not compress labels: %s", exc)
+        return 2
+
+    for result in results:
+        rel = make_path_relative(result.label_path, start_path)
+        if args.dry_run:
+            logger.info("Would compress %s: %d -> %d bytes", rel, result.original_size, result.new_size)
+        elif result.applied:
+            logger.info("Compressed %s: %d -> %d bytes", rel, result.original_size, result.new_size)
+        elif result.stale:
+            logger.warning(
+                "Left %s alone: it changed on disk while being recompressed", rel
+            )
+        else:
+            logger.info("No savings for %s (%d bytes), left unchanged", rel, result.original_size)
+
+    applied_count = sum(1 for r in results if r.applied or args.dry_run and r.new_size < r.original_size)
+    total_before = sum(r.original_size for r in results)
+    total_after = sum(r.new_size if (r.applied or args.dry_run) else r.original_size for r in results)
+    logger.info(
+        "Total: %d label(s) checked, %d %s, %d -> %d bytes",
+        len(results), applied_count, "would compress" if args.dry_run else "compressed",
+        total_before, total_after,
+    )
+    stale = [r for r in results if r.stale]
+    if stale:
+        logger.warning(
+            "%d label(s) changed on disk during the run and were left alone; "
+            "re-run to compress them", len(stale),
+        )
+    return 0
+
+
+#: Which function runs each subcommand. Aliases and the commands that
+#: share a handler point at the same one, so the parser and this cannot
+#: disagree about how many there are.
+COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "list-projects": _cmd_list_projects,
+    "scan": _cmd_list_projects,
+    "inspect-layout": _cmd_inspect_layout,
+    "init-project": _cmd_init_project,
+    "export-projects-csv": _cmd_export_projects_csv,
+    "export-metadata-csv": _cmd_export_metadata_csv,
+    "stats": _cmd_stats,
+    "quantify-labels": _cmd_quantify_labels,
+    "find-specks": _cmd_find_specks,
+    "edit-metadata": _cmd_metadata,
+    "show-metadata": _cmd_metadata,
+    "gui": _cmd_gui,
+    "predict": _cmd_predict,
+    "convert-predictions": _cmd_convert_predictions,
+    "correct": _cmd_state,
+    "deselect": _cmd_state,
+    "select": _cmd_state,
+    "create-training-csv": _cmd_create_training_csv,
+    "export-files": _cmd_export_files,
+    "check-training-csv": _cmd_check_training_csv,
+    "compress-labels": _cmd_compress_labels,
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and dispatch to the appropriate operation.
 
@@ -1034,864 +1964,11 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning("Could not open the log file: %s", log_failure)
 
     # -- dispatch -----------------------------------------------------------
-    if args.command in {"list-projects", "scan"}:
-        scanner = Scanner(Path(args.start_path))
-        index = scanner.build_index()
-        for project in index.all_projects():
-            print_project_summary(project)
-        return 0
-
-    if args.command == "inspect-layout":
-        survey = survey_collection(
-            Path(args.start_path),
-            max_depth=args.max_depth,
-            check_labels=not args.no_label_check,
-        )
-        print_survey(survey, detail=args.detail, min_severity=args.severity)
-        # A non-zero exit lets the command be used as a check in a script,
-        # without making warnings -- which are expected on legacy data -- fail.
-        return 1 if survey.finding_counts()["error"] else 0
-
-    if args.command == "init-project":
-        from .discovery import describe_dataset_candidates, find_project_roots, project_markers
-        from .operations.init_project import (
-            init_projects,
-            project_placement_problem,
-            read_defaults,
-        )
-
-        start_path = Path(args.start_path)
-        if args.recursive:
-            existing = find_project_roots(start_path)
-            # Datasets predating Autolamella have no marker, so project
-            # discovery cannot see them -- which would leave the ones that most
-            # need a marker out of the command that writes one.
-            candidates = describe_dataset_candidates(start_path)
-            # A candidate holding datasets of several layout eras is a folder
-            # someone gathered them in, and marking it would make each of them
-            # a lamella of one project. Which level is right is not decidable
-            # here, so this reports it rather than guessing: name the datasets
-            # inside it, or pick them out in the window.
-            gathering = [item for item in candidates if item.holds_several_datasets]
-            for item in gathering:
-                logger.warning(
-                    "%s holds %d dataset(s) laid out %d different ways; skipped, "
-                    "because marking it would make each of them a lamella of one "
-                    "project. Run init-project on each dataset inside it instead.",
-                    make_path_relative(item.path, start_path),
-                    len(item.lamellae), len(item.stage_depths),
-                )
-            proposed = [item for item in candidates if not item.holds_several_datasets]
-            for item in proposed:
-                logger.info(
-                    "%s holds images but is not a project yet; a metadata file "
-                    "makes it one", make_path_relative(item.path, start_path),
-                )
-            roots = [*existing, *(item.path for item in proposed)]
-            if not roots:
-                logger.error("No projects or unindexed datasets found under %s", start_path)
-                return 2
-        else:
-            problem = project_placement_problem(start_path)
-            if problem is not None:
-                logger.error(
-                    "%s Use --recursive to write a file into every project that "
-                    "can be identified unambiguously, or name each dataset inside "
-                    "it in turn.",
-                    problem,
-                )
-                return 2
-            roots = [start_path]
-            if not project_markers(start_path):
-                logger.info(
-                    "%s has no project marker yet; writing one makes it a project",
-                    start_path,
-                )
-
-        try:
-            defaults = read_defaults(Path(args.defaults)) if args.defaults else None
-        except (FileNotFoundError, ValueError) as exc:
-            logger.error("%s", exc)
-            return 2
-
-        results = init_projects(roots, defaults=defaults, dry_run=args.dry_run)
-        for result in results:
-            location = make_path_relative(result.path, start_path)
-            if result.skipped_existing:
-                logger.info("Kept existing %s", location)
-            elif args.dry_run:
-                logger.info("Would write %s (%d field(s) to fill in)", location, len(result.todo))
-            else:
-                logger.info("Wrote %s (%d field(s) to fill in)", location, len(result.todo))
-
-        written = sum(1 for result in results if result.written)
-        skipped = sum(1 for result in results if result.skipped_existing)
-        remaining = sum(len(result.todo) for result in results if not result.skipped_existing)
-        logger.info(
-            "Total: %d project(s), %d %s, %d already had one, %d field(s) to fill in",
-            len(results), written or (len(results) - skipped if args.dry_run else 0),
-            "would be written" if args.dry_run else "written", skipped, remaining,
-        )
-        return 0
-
-    if args.command == "export-projects-csv":
-        from .operations.metadata_csv import export_project_metadata_csv
-
-        start_path = Path(args.start_path)
-        projects = Scanner(start_path).build_index().all_projects()
-        if not projects:
-            logger.warning("No projects found under %s", start_path)
-        export_project_metadata_csv(projects, start_path, Path(args.output))
-        return 0
-
-    if args.command == "export-metadata-csv":
-        from .aggregate import project_lookup
-        from .image_metadata import read_records_metadata
-        from .operations.metadata_csv import export_image_metadata_csv
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.warning("No images matched")
-            return 0
-
-        selectors = _metadata_selectors(args)
-        if selectors and args.no_headers:
-            logger.error("Metadata filters need headers; drop --no-headers")
-            return 2
-        if selectors:
-            metadata = read_records_metadata(records)
-            records = filter_by_metadata(records, metadata, selectors)
-            if not records:
-                logger.warning("No images matched the metadata filters")
-                return 0
-
-        projects = project_lookup(Scanner(start_path).build_index().all_projects())
-        export_image_metadata_csv(
-            records, start_path, Path(args.output),
-            include_headers=not args.no_headers, projects=projects,
-            # The same rule the training export and the window apply.
-            paired=args.modality == "all",
-        )
-        if args.modality == "all":
-            logger.info(
-                "Both modalities selected: writing one row per acquisition, "
-                "with each beam's own values under a sem_ or fib_ prefix. Pass "
-                "--modality SEM or FIB for one row per image file."
-            )
-        return 0
-
-    if args.command == "stats":
-        import csv as csv_module
-
-        # NEEDS_METADATA and BREAKDOWNS are imported at module level; naming
-        # them here too would shadow them for the whole of main(), including
-        # the parser construction above.
-        from .aggregate import (
-            count_by,
-            cross_tabulate,
-            project_lookup,
-            resolve_breakdown,
-        )
-        from .reporting import format_counts, format_cross_tabulation
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.warning("No images matched")
-            return 0
-
-        chosen = args.by or ["modality"]
-        if len(chosen) > 2:
-            logger.error("--by takes at most two properties, got %d", len(chosen))
-            return 2
-
-        # The config decides which classes have an area breakdown, so it is
-        # resolved before the chosen names can be looked up at all. Loading it
-        # opens one small YAML and scans nothing.
-        from .aggregate import breakdowns_for
-        from .config import load_segmentation_config
-
-        config = load_segmentation_config(start_path=start_path)
-        breakdowns = breakdowns_for(config)
-
-        # Headers are only read when a chosen breakdown needs them, so a purely
-        # structural question stays a filesystem walk. Measuring needs them
-        # too, for the scale.
-        def kind_of(name: str) -> str:
-            entry = breakdowns.get(name)
-            return entry.kind if entry is not None else ""
-
-        measuring = any(kind_of(name) == "measurement" for name in chosen)
-        metadata: dict = {}
-        if measuring or any(kind_of(name) == "metadata" for name in chosen):
-            from .image_metadata import read_records_metadata
-
-            logger.info("Reading headers for %d image(s)", len(records))
-            metadata = read_records_metadata(records)
-
-        measurements: dict = {}
-        if measuring:
-            from .operations.label_measure import measure_records
-
-            logger.info("Measuring labels for %d image(s)", len(records))
-            measurements = measure_records(records, config, metadata)
-
-        label_states: dict = {}
-        if any(kind_of(name) == "label" for name in chosen):
-            from .operations.label_io import label_state
-
-            logger.info("Reading labels for %d image(s)", len(records))
-            label_states = {
-                record.image_path: label_state(record) for record in records
-            }
-
-        lookup = project_lookup(Scanner(start_path).build_index().all_projects())
-        try:
-            keys = [
-                resolve_breakdown(
-                    name, metadata, lookup, measurements, label_states, breakdowns
-                )
-                for name in chosen
-            ]
-        except ValueError as exc:
-            logger.error("%s", exc)
-            return 2
-
-        if len(keys) == 1:
-            entry = breakdowns[chosen[0]]
-            counts = count_by(records, keys[0], entry.order, multi=entry.multi)
-            for line in format_counts(
-                counts,
-                f"Images per {chosen[0]}",
-                total=len(records),
-                multi=entry.multi,
-            ):
-                print(line)
-            rows = [(str(key), count) for key, count in counts.items()]
-            header = [chosen[0], "images"]
-        else:
-            table = cross_tabulate(
-                records, keys[0], keys[1],
-                row_multi=breakdowns[chosen[0]].multi,
-                column_multi=breakdowns[chosen[1]].multi,
-            )
-            for line in format_cross_tabulation(
-                table, chosen[0], chosen[1],
-                row_order=breakdowns[chosen[0]].order,
-                column_order=breakdowns[chosen[1]].order,
-                multi=breakdowns[chosen[0]].multi or breakdowns[chosen[1]].multi,
-            ):
-                print(line)
-            rows = [(str(a), str(b), count) for (a, b), count in table.items()]
-            header = [chosen[0], chosen[1], "images"]
-
-        if args.plot:
-            from .plots import plot_counts, plot_cross_tabulation
-
-            try:
-                if len(keys) == 1:
-                    plot_counts(
-                        counts, f"Images per {chosen[0]}", Path(args.plot),
-                        xlabel=chosen[0],
-                    )
-                else:
-                    plot_cross_tabulation(table, chosen[0], chosen[1], Path(args.plot))
-            except RuntimeError as exc:
-                # The counts have already been printed, so a missing optional
-                # dependency should not lose them.
-                logger.error("%s", exc)
-                return 2
-
-        if args.output:
-            output = Path(args.output)
-            with output.open("w", newline="", encoding="utf-8") as handle:
-                writer = csv_module.writer(handle)
-                writer.writerow(header)
-                writer.writerows(rows)
-            logger.info("Wrote %d row(s) to %s", len(rows), output)
-        return 0
-
-    if args.command == "quantify-labels":
-        from .aggregate import project_lookup, summarise_lamellae
-        from .config import load_segmentation_config
-        from .image_metadata import read_records_metadata
-        from .operations.label_measure import measure_records
-        from .operations.metadata_csv import (
-            export_label_measurements_csv,
-            export_lamella_quantification_csv,
-        )
-        from .reporting import format_label_quantification
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.warning("No images matched")
-            return 0
-
-        try:
-            config = load_segmentation_config(
-                explicit_path=Path(args.config) if args.config else None,
-                start_path=start_path,
-            )
-        except (FileNotFoundError, ValueError) as exc:
-            logger.error("%s", exc)
-            return 2
-
-        if config.crack_class is None:
-            logger.error(
-                "No crack class configured. Add MEASUREMENT.crack_class to %s, "
-                "or name a class 'crack/hole'",
-                config.source,
-            )
-            return 2
-
-        # Headers first: they carry the scale, and the metadata filters work on
-        # them. Only then is anything as expensive as a label opened.
-        metadata = read_records_metadata(records)
-        selectors = _metadata_selectors(args)
-        if selectors:
-            records = filter_by_metadata(records, metadata, selectors)
-            if not records:
-                logger.warning("No images matched the metadata filters")
-                return 0
-
-        logger.info("Measuring labels for %d image(s)", len(records))
-        measurements = measure_records(
-            records, config, metadata, min_crack_area_um2=args.min_crack_area
-        )
-        if not measurements:
-            logger.warning("None of the matched images has a label to measure")
-            return 0
-
-        lookup = project_lookup(Scanner(start_path).build_index().all_projects())
-        summaries = summarise_lamellae(records, measurements, lookup)
-        for line in format_label_quantification(
-            summaries, config, detail=not args.no_detail
-        ):
-            print(line)
-
-        if args.output:
-            export_label_measurements_csv(
-                records, measurements, config, start_path, Path(args.output), lookup
-            )
-        if args.lamella_output:
-            export_lamella_quantification_csv(
-                summaries, config, Path(args.lamella_output)
-            )
-        return 0
-
-    if args.command == "find-specks":
-        from .config import load_segmentation_config
-        from .operations.csv import find_matching_label
-        from .operations.label_measure import records_with_specks
-        from .reporting import format_speck_report
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.warning("No images matched")
-            return 0
-
-        if args.at_most < 1:
-            logger.error("--at-most must be at least 1, got %d", args.at_most)
-            return 2
-
-        try:
-            config = load_segmentation_config(
-                explicit_path=Path(args.config) if args.config else None,
-                start_path=start_path,
-            )
-        except (FileNotFoundError, ValueError) as exc:
-            logger.error("%s", exc)
-            return 2
-
-        logger.info("Reading labels for %d image(s)", len(records))
-        found = records_with_specks(records, at_most=args.at_most)
-        # Counted from the records, not from what was found: a sweep that says
-        # "nothing in 248 labels" is a different statement from "nothing".
-        labels_read = len({
-            label for label in (find_matching_label(record) for record in records)
-            if label is not None
-        })
-        for line in format_speck_report(
-            found, start_path, config, at_most=args.at_most, labels_read=labels_read
-        ):
-            print(line)
-        return 0
-
-    if args.command in {"show-metadata", "edit-metadata"}:
-        from .filtering import matches_project
-        from .metadata import DESCRIPTIVE_FIELDS as FIELDS
-        from .operations.metadata_edit import (
-            MetadataValidationError,
-            update_project_metadata,
-        )
-
-        start_path = Path(args.start_path)
-        projects = Scanner(start_path).build_index().all_projects()
-        selectors = args.project
-        if selectors is not None:
-            projects = [p for p in projects if matches_project(p, selectors)]
-        if not projects:
-            logger.error("No projects matched under %s", start_path)
-            return 2
-
-        if args.command == "show-metadata":
-            for project in projects:
-                resolved = project.experiment_metadata
-                print(f"{project.display_name}")
-                if resolved is None:
-                    print("    (no metadata)")
-                    continue
-                for field in FIELDS:
-                    value = getattr(resolved, field)
-                    source = resolved.sources.get(field)
-                    origin = f"  [{source.name}]" if source else ""
-                    if value is None:
-                        state = "TODO" if field in resolved.todo_fields else "-"
-                        print(f"    {field:14} {state}")
-                    else:
-                        print(f"    {field:14} {value}{origin}")
-            return 0
-
-        if args.project is None and not args.all:
-            logger.error("Choose projects with --project, or all of them with --all")
-            return 2
-
-        values: dict[str, str | None] = {}
-        for item in args.set:
-            if "=" not in item:
-                logger.error("--set expects FIELD=VALUE, got %r", item)
-                return 2
-            field, value = item.split("=", 1)
-            field, value = field.strip(), value.strip()
-            # Repeating --set for a field that holds several values adds to it
-            # rather than replacing what the earlier one asked for, so two
-            # organisations need no quoting or separator on the command line.
-            spec = field_named(field)
-            if spec is not None and spec.multi and values.get(field):
-                value = f"{values[field]}{VALUE_SEPARATOR}{value}"
-            values[field] = value
-        for field in args.clear:
-            values[field.strip()] = None
-        for field in args.todo:
-            values[field.strip()] = TODO_MARKER
-        if not values:
-            logger.error("Nothing to do: pass --set, --clear or --todo")
-            return 2
-
-        # Validate against every project before writing to any of them, so a
-        # bad field name cannot leave half the collection edited.
-        try:
-            planned = [
-                update_project_metadata(
-                    project.path, values, dry_run=True, project_name=project.display_name
-                )
-                for project in projects
-            ]
-        except MetadataValidationError as exc:
-            for problem in exc.problems:
-                logger.error("%s", problem)
-            return 2
-
-        changed = [change for change in planned if not change.is_empty]
-        for change in planned:
-            for line in change.describe():
-                print(line)
-        if not changed:
-            logger.info("Nothing to change across %d project(s)", len(projects))
-            return 0
-        if args.dry_run:
-            logger.info(
-                "Dry run: %d of %d project(s) would change", len(changed), len(projects)
-            )
-            return 0
-
-        for project in projects:
-            update_project_metadata(
-                project.path, values, project_name=project.display_name
-            )
-        logger.info("Updated %d of %d project(s)", len(changed), len(projects))
-        return 0
-
-    if args.command == "gui":
-        # Imported here so a missing Qt binding cannot break the other
-        # commands, or `--help`.
-        from .gui.app import run
-
-        try:
-            return run(
-                start_path=Path(args.start_path) if args.start_path else None,
-                config_path=Path(args.config) if args.config else None,
-            )
-        except RuntimeError as exc:
-            logger.error("%s", exc)
-            return 2
-
-    if args.command == "predict":
-        from .operations.predict import (
-            PredictionSource,
-            plan_predictions,
-            run_predictions,
-        )
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.info("No matching images found to predict")
-            return 2
-
-        weights = Path(args.model)
-        # The description is read before the model, so a typo in it costs
-        # nothing and a mismatch is reported before anything heavy loads.
-        try:
-            from .ml.model import read_model_description, run_name_of
-
-            description = read_model_description(weights)
-        except ValueError as exc:
-            logger.error("%s", exc)
-            return 2
-        source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
-
-        plan = plan_predictions(records, source, overwrite=args.overwrite)
-        if plan.is_refused:
-            logger.error(
-                "This selection holds %s images. A model is trained on one "
-                "modality and nothing here can tell which, so predict one at a "
-                "time: pass --modality SEM or --modality FIB",
-                " and ".join(plan.modalities),
-            )
-            return 2
-
-        if plan.represented:
-            logger.info(
-                "%d image(s) share a label with one being predicted and are "
-                "covered by it", plan.represented,
-            )
-        if plan.up_to_date:
-            logger.info(
-                "%d prediction(s) were already made by this model and are kept; "
-                "pass --overwrite to make them again", len(plan.up_to_date),
-            )
-        if args.dry_run:
-            for item in plan.predictions:
-                logger.info(
-                    "%s %s", item.describe(),
-                    make_path_relative(item.destination, start_path),
-                )
-            logger.info(
-                "Would predict: %d %s image(s) (dry run, nothing written and no "
-                "model loaded)", len(plan.predictions), plan.modality,
-            )
-            return 0
-        if not plan.predictions:
-            logger.info("Nothing to predict")
-            return 0
-
-        try:
-            from .ml.environment import resolve_device
-            from .ml.model import load_model
-
-            device = resolve_device(args.device)
-            logger.info("Loading %s onto %s", weights.name, device)
-            loaded = load_model(weights, description, device=device)
-        except (RuntimeError, FileNotFoundError) as exc:
-            logger.error("%s", exc)
-            return 2
-
-        total = len(plan.predictions)
-        started = time.monotonic()
-
-        def report(index: int, item) -> None:
-            elapsed = time.monotonic() - started
-            logger.info(
-                "[%d/%d] %s (%.2fs each, %s remaining)",
-                index, total,
-                make_path_relative(item.destination, start_path),
-                elapsed / index,
-                _format_duration(elapsed / index * (total - index)),
-            )
-
-        try:
-            written = run_predictions(plan, loaded.predict, source, on_progress=report)
-        except KeyboardInterrupt:
-            # Each prediction is written and recorded before the next starts, so
-            # what finished is kept and the next run resumes from it.
-            logger.warning("Interrupted. Re-run to continue where this stopped")
-            return 130
-        logger.info("Total predicted: %d %s image(s) in %s", written, plan.modality,
-                    _format_duration(time.monotonic() - started))
-        return 0
-
-    if args.command == "convert-predictions":
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.info("No matching images found to convert")
-            return 2
-        plan = plan_conversions(records, overwrite=args.overwrite)
-        if args.dry_run:
-            for item in plan.conversions:
-                logger.info("%s %s", item.describe(), item.destination)
-        for item in plan.refused:
-            logger.warning("Refused %s: a proofread label is already there", item.destination)
-        if plan.replaceable:
-            logger.warning(
-                "%d label(s) already exist and were kept; pass --overwrite to replace them",
-                len(plan.replaceable),
-            )
-        if args.dry_run:
-            logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
-            return 0
-        converted = len(convert_record_predictions(records, overwrite=args.overwrite))
-        logger.info("Total converted: %d", converted)
-        return 0
-
-    if args.command in {"deselect", "select", "correct"}:
-        from .operations.label_io import classify_labels
-        from .operations.selection import StaleState, apply_plan, plan_transition
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.info("No matching images found to %s", args.command)
-            return 2
-
-        state = {"deselect": "deselected", "select": "selected", "correct": "corrected"}[
-            args.command
-        ]
-        try:
-            plan = plan_transition(
-                records, state, allow_leaving_corrected=args.confirm_corrected
-            )
-        except (FileNotFoundError, PermissionError, ValueError) as exc:
-            logger.error("Could not %s matching images: %s", args.command, exc)
-            return 2
-
-        # A shared label makes a state change reach further than the selectors
-        # asked for, which the user must be able to see.
-        if plan.reaches_beyond_request:
-            logger.info(
-                "%d further image(s) share a label with your selection and "
-                "change with it:", len(plan.added),
-            )
-            for record in plan.added:
-                logger.info("  %s", make_path_relative(record.image_path, start_path))
-
-        # Corrected is the claim that somebody proofread these labels, and a
-        # training export trusts it. Reported rather than refused: the command
-        # line is where a deliberate exception is made, and the GUI is where
-        # the guard belongs. Read over the expanded set, since a shared label
-        # is marked corrected by any image of its scene.
-        if state == "corrected":
-            readiness = classify_labels(plan.records)
-            if readiness:
-                logger.warning(
-                    "%s, which is not proofread work. Marking them corrected "
-                    "means a training export skips them:", readiness.summary(),
-                )
-                for record in readiness.records:
-                    logger.warning(
-                        "  %s", make_path_relative(record.image_path, start_path)
-                    )
-
-        if args.dry_run:
-            for line in plan.describe():
-                logger.info("Would declare %s", line)
-            logger.info(
-                "Dry run: %d group(s) would change, affecting %d image(s)",
-                len(plan.changes), len(plan.records),
-            )
-            return 0
-
-        # The plan that was previewed is the one carried out, rather than one
-        # worked out again from the same arguments. Its freshness is checked
-        # against the files as it is applied.
-        try:
-            changed = apply_plan(plan)
-        except (StaleState, OSError, ValueError) as exc:
-            logger.error("Could not %s matching images: %s", args.command, exc)
-            return 2
-        logger.info("Total %s: %d", args.command, changed)
-        return 0
-
-    if args.command == "create-training-csv":
-        from .operations.csv import export_training_csv
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.info("No matching images found to export CSV")
-            return 2
-
-        # Metadata filters run after the structural ones, so headers are read
-        # only for images that already survived project/lamella/state selection.
-        selectors = _metadata_selectors(args)
-        if selectors:
-            from .image_metadata import read_records_metadata
-
-            records = filter_by_metadata(records, read_records_metadata(records), selectors)
-            if not records:
-                logger.info("No images matched the metadata filters")
-                return 2
-
-        output_dir = Path(args.output_dir)
-        train_csv, val_csv = export_training_csv(
-            records=records,
-            start_path=start_path,
-            output_dir=output_dir,
-            prefix=args.output_prefix,
-            train_ratio=args.split,
-            seed=args.seed,
-            include_empty_labels=args.include_empty_labels,
-            conditions=args.conditions,
-            # The same rule the window applies, so one selection exported
-            # either way gives the same two files.
-            paired=args.modality == "all",
-        )
-        if args.modality == "all":
-            logger.info(
-                "Both modalities selected: writing one row per acquisition, "
-                "with SEM and FIB side by side. Pass --modality SEM or FIB for "
-                "one row per image."
-            )
-        logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
-        if val_csv:
-            logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
-        return 0
-
-    if args.command == "export-files":
-        from .operations.copy_export import (
-            DestinationInsideSource,
-            copy_export,
-            plan_copy,
-        )
-        from .reporting import format_bytes
-
-        records, start_path, projects = _resolve_scope(args)
-        if not records:
-            logger.info("No matching images found to copy")
-            return 2
-
-        try:
-            plan = plan_copy(records, Path(args.output), start_path, projects=projects)
-        except DestinationInsideSource as error:
-            logger.error("Could not copy: %s", error)
-            return 2
-
-        for item in plan.items:
-            logger.debug(
-                "%s: %s -> %s", item.outcome, item.source, item.destination
-            )
-        logger.info(
-            "%d file(s) to copy, %s; %d already there",
-            len(plan.to_copy), format_bytes(plan.bytes_to_copy),
-            len(plan.already_there),
-        )
-        if plan.conflicts:
-            logger.error(
-                "%d destination(s) already hold a different file, starting with "
-                "%s. Nothing was copied; choose an empty directory.",
-                len(plan.conflicts), plan.conflicts[0].destination,
-            )
-            return 2
-        if plan.short_by:
-            logger.error(
-                "Not enough room: %s needed, %s free. Nothing was copied.",
-                format_bytes(plan.bytes_to_copy), format_bytes(plan.free_space),
-            )
-            return 2
-        if args.dry_run:
-            logger.info("Dry run: nothing was copied")
-            return 0
-        if not plan.to_copy:
-            logger.info("Nothing to copy: %s already holds it all", plan.destination)
-            return 0
-
-        report = copy_export(plan)
-        logger.info(
-            "Copied %d file(s), %s, into %s",
-            len(report.copied), format_bytes(report.bytes_copied), plan.destination,
-        )
-        return 0
-
-    if args.command == "check-training-csv":
-        from .operations.csv_check import (
-            check_csv_paths,
-            summarize_results,
-            write_pruned_csv,
-        )
-
-        if args.in_place and args.output:
-            logger.error("--in-place and --output are mutually exclusive")
-            return 2
-        if not args.prune and (args.output or args.in_place):
-            logger.error("--output/--in-place require --prune")
-            return 2
-
-        start_path = Path(args.start_path)
-        csv_path = Path(args.csv_path)
-        results = check_csv_paths(csv_path, start_path)
-        lines, problem_count = summarize_results(results, start_path)
-        for line in lines:
-            logger.info(line)
-
-        if not args.prune:
-            return 0 if problem_count == 0 else 1
-
-        if args.in_place:
-            output_path = csv_path
-        elif args.output:
-            output_path = Path(args.output)
-        else:
-            output_path = csv_path.with_name(f"{csv_path.stem}_checked{csv_path.suffix}")
-
-        written_path, dropped = write_pruned_csv(results, output_path)
-        logger.info("Wrote %s, dropping %d row(s)", written_path, dropped)
-        return 0
-
-    if args.command == "compress-labels":
-        from .operations.label_compression import compress_labels
-
-        records, start_path = _resolve_records(args)
-        if not records:
-            logger.info("No matching images found to compress labels for")
-            return 2
-
-        try:
-            results = compress_labels(
-                records,
-                allow_corrected=args.confirm_corrected,
-                dry_run=args.dry_run,
-            )
-        except (PermissionError, RuntimeError) as exc:
-            logger.error("Could not compress labels: %s", exc)
-            return 2
-
-        for result in results:
-            rel = make_path_relative(result.label_path, start_path)
-            if args.dry_run:
-                logger.info("Would compress %s: %d -> %d bytes", rel, result.original_size, result.new_size)
-            elif result.applied:
-                logger.info("Compressed %s: %d -> %d bytes", rel, result.original_size, result.new_size)
-            elif result.stale:
-                logger.warning(
-                    "Left %s alone: it changed on disk while being recompressed", rel
-                )
-            else:
-                logger.info("No savings for %s (%d bytes), left unchanged", rel, result.original_size)
-
-        applied_count = sum(1 for r in results if r.applied or args.dry_run and r.new_size < r.original_size)
-        total_before = sum(r.original_size for r in results)
-        total_after = sum(r.new_size if (r.applied or args.dry_run) else r.original_size for r in results)
-        logger.info(
-            "Total: %d label(s) checked, %d %s, %d -> %d bytes",
-            len(results), applied_count, "would compress" if args.dry_run else "compressed",
-            total_before, total_after,
-        )
-        stale = [r for r in results if r.stale]
-        if stale:
-            logger.warning(
-                "%d label(s) changed on disk during the run and were left alone; "
-                "re-run to compress them", len(stale),
-            )
-        return 0
-
-    parser.print_help()
-    return 1
+    handler = COMMANDS.get(args.command)
+    if handler is None:
+        parser.print_help()
+        return 1
+    return handler(args)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI runner

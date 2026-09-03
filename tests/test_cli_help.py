@@ -105,6 +105,26 @@ def test_every_argument_has_help(name):
     assert not undocumented, f"{name} has arguments with no help=: {undocumented}"
 
 
+def test_every_subcommand_has_a_handler():
+    """A command the parser accepts and the dispatch table does not know falls
+    through to the help, which looks like the command doing nothing. Aliases
+    are included: they are separate names on the parser and each needs an
+    entry."""
+    from am_segmentation_manager.cli import COMMANDS
+
+    registered = set(_subcommands())
+
+    assert registered - set(COMMANDS) == set()
+
+
+def test_the_dispatch_table_offers_nothing_the_parser_will_not_accept():
+    """The other direction: an entry for a command nobody can type is either a
+    command that was removed or a name spelt two ways."""
+    from am_segmentation_manager.cli import COMMANDS
+
+    assert set(COMMANDS) - set(_subcommands()) == set()
+
+
 def test_subcommands_are_listed_in_workflow_order():
     """The command list is how the commands are found, so its order teaches the
     workflow. Aliases are excluded: they share their parser's position."""
