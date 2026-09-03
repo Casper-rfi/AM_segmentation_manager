@@ -555,10 +555,6 @@ class LabelPanel(QWidget):
         self.speck_slider.valueChanged.connect(self._speck_size_changed)
         controls.addWidget(self.speck_slider)
 
-        self.speck_count = QLabel("")
-        self.speck_count.setMinimumWidth(96)
-        self.speck_count.setToolTip(self.speck_check.toolTip())
-        controls.addWidget(self.speck_count)
         self._show_speck_controls(False)
 
         controls.addStretch()
@@ -844,9 +840,13 @@ class LabelPanel(QWidget):
         self.canvas.set_label_shown(shown)
 
     def _show_speck_controls(self, visible: bool) -> None:
-        """Show the size and the count only while anything is being looked for."""
+        """Show the size only while anything is being looked for.
+
+        There is no count beside it: the timeline carries one per frame, this
+        frame's included, and a second copy of one number would only be a place
+        for the two to disagree.
+        """
         self.speck_slider.setVisible(visible)
-        self.speck_count.setVisible(visible)
 
     def _finding_toggled(self, finding: bool) -> None:
         """Start or stop pointing out specks, and set the view for it.
@@ -895,19 +895,20 @@ class LabelPanel(QWidget):
         self._resweep_timer.start(SPECK_RECOUNT_MS)
 
     def _refresh_specks(self) -> None:
-        """Ring what is there now, and say how much of it there is."""
+        """Ring what is there now, and put the new count on the timeline.
+
+        The timeline as well as the canvas: painting out the last speck in a
+        frame changes what its mark should say, and a recount that reached the
+        controller without redrawing left the old number standing.
+        """
         if not self.controller.finding_specks:
             self.canvas.show_specks(())
-            self.speck_count.setText("")
             self._speck_position = 0
+            self._refresh_timeline()
             return
-        specks = self.controller.specks()
-        self.canvas.show_specks(specks)
-        size = self.controller.speck_size
-        self.speck_count.setText(
-            f"{len(specks)} at {size}px or less" if specks else f"none at {size}px or less"
-        )
+        self.canvas.show_specks(self.controller.specks())
         self._speck_position = 0
+        self._refresh_timeline()
 
     def step_speck(self, delta: int) -> None:
         """Bring the next speck into the middle of the pane, wrapping round."""

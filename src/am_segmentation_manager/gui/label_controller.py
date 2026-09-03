@@ -707,23 +707,37 @@ class LabelController:
             ]
         }
 
-    def uncounted_labels(self) -> list[tuple[Path, Path]]:
-        """Return ``(key, label path)`` for frames whose specks are not counted.
+    def uncounted_labels(self) -> list[tuple[Path, Path | bytes]]:
+        """Return ``(key, source)`` for frames whose specks are not counted.
 
-        What a background sweep is given. The frame on screen is left out
-        wherever it is already counted, which it is as soon as the canvas has
-        drawn its rings -- and its answer includes unsaved strokes, which no
-        reading of the file could reproduce.
+        What a background sweep is given. A source is normally the label file,
+        but **a frame holding unsaved strokes gives the session's own copy of
+        it instead**: its file no longer says what the reviewer is looking at,
+        and counting it reports specks that have already been painted out. That
+        is not a rare case -- a size change invalidates every count at once, so
+        the sweep that follows one re-reads every frame including the edited
+        ones.
+
+        The frame on screen is left out wherever it is already counted, which
+        it is as soon as the canvas has drawn its rings.
         """
         if not self.finding_specks:
             return []
-        wanted: list[tuple[Path, Path]] = []
+        edited = self.session.edited_keys()
+        wanted: list[tuple[Path, Path | bytes]] = []
         seen: set[Path] = set()
         for index in self._positions:
             key = self._key_at(index)
             if key is None or key in seen or key in self._speck_counts:
                 continue
             seen.add(key)
+            if key in edited:
+                stored = self.session.stored_label(key)
+                if stored is not None:
+                    wanted.append((key, stored))
+                # No stored copy means it is the label open on screen, which
+                # `specks` answers for directly.
+                continue
             record = self._frames[index].record(self._modality)
             label = None if record is None else find_matching_label(record)
             if label is not None:

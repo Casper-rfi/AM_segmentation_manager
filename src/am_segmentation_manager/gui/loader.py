@@ -102,20 +102,30 @@ class FrameLoadWorker(QObject):
         beside it, which is many times the cost of the answer and would evict
         the frames the reviewer is actually working on.
 
+        **A source is a path, or the bytes of a label being edited.** A frame
+        with unsaved strokes no longer matches its file, and counting the file
+        would report specks the reviewer has already painted out -- so the
+        session's own copy comes through instead, decoded here rather than on
+        the interface thread.
+
         A label that will not open is reported as holding none: it is already
         drawn as unreadable on the label line, and a count is not the place to
         raise it a second time.
         """
-        from ..operations.label_measure import count_specks_in
+        from ..operations.label_measure import count_specks_in, find_specks
+        from .label_session import decode_label
 
-        for key, path in labels:
+        for key, source in labels:
             if not self._is_current(token):
                 logger.debug("Abandoning superseded speck count %d", token)
                 return
             try:
-                found = count_specks_in(path, at_most=at_most)
+                if isinstance(source, bytes):
+                    found = len(find_specks(decode_label(source), at_most=at_most))
+                else:
+                    found = count_specks_in(source, at_most=at_most)
             except Exception:  # noqa: BLE001 - a bad label must not stop the sweep
-                logger.exception("Could not count specks in %s", path)
+                logger.exception("Could not count specks in %s", key)
                 found = 0
             self.counted.emit(token, key, found)
 

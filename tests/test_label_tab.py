@@ -846,15 +846,76 @@ def test_switching_the_filter_off_takes_the_rings_away(window):
     assert panel.canvas._speck_items == []
 
 
-def test_the_count_says_what_was_looked_for(window):
+def test_the_frame_on_screen_gets_its_count_onto_the_timeline(window):
+    """There is no count beside the slider any more: the timeline carries one
+    per frame, and this frame's is the one that replaced it."""
     panel = window.label_panel
     stray(panel, 7, 9)
 
     panel.speck_check.setChecked(True)
 
-    assert "1" in panel.speck_count.text()
-    said = panel.speck_count.text().replace(" ", "")
-    assert f"{panel.controller.speck_size}px" in said
+    counts = panel.controller.timeline_specks()[panel.controller.modality]
+    assert counts[panel.controller.position] == 1
+
+
+def test_painting_out_the_last_speck_takes_its_mark_away(window):
+    """The reported fault: the count reached the controller and the timeline
+    went on showing the old one, so a frame stayed marked after it was put
+    right."""
+    panel = window.label_panel
+    stray(panel, 7, 9)
+    panel.speck_check.setChecked(True)
+    position = panel.controller.position
+    modality = panel.controller.modality
+    assert panel.timeline._specks[modality][position] == 1
+
+    from am_segmentation_manager.operations.label_edit import paint
+
+    label = panel.controller.working_label()
+    panel.controller.record_edit(paint(label, [(7, 9)], 0, 0))
+    panel._refresh_specks()
+
+    # Asked of the widget, not the controller: the controller was right all
+    # along, and what was wrong was that nothing redrew the timeline with it.
+    assert panel.timeline._specks[modality][position] == 0
+
+
+def test_an_edited_frame_is_counted_from_memory_not_from_its_file(window):
+    """The reported fault. Widening the size clears every count, so the sweep
+    that follows re-reads frames the reviewer has already edited -- and their
+    files still hold the specks that were painted out, which came back onto the
+    timeline until the edits were saved."""
+    panel = window.label_panel
+    controller = panel.controller
+    stray(panel, 7, 9)                       # an unsaved stroke on this frame
+    panel.speck_check.setChecked(True)
+    key = controller.current_key
+    assert key in controller.session.edited_keys()
+
+    # Move away and draw the next frame, which is what puts the edit away in
+    # the session: the session releases the open label only when another is
+    # opened, and opening is what drawing does.
+    controller.step(1)
+    controller.working_label()
+    controller.set_speck_size(controller.speck_size + 1)
+
+    sources = dict(controller.uncounted_labels())
+    assert isinstance(sources.get(key), bytes), (
+        "an edited frame must be counted from the session's copy, not its file"
+    )
+
+
+def test_an_unedited_frame_is_counted_from_its_file(window):
+    """Which is the ordinary case, and the cheap one: no array is held for it
+    and none needs to be."""
+    panel = window.label_panel
+    controller = panel.controller
+    controller.finding_specks = True
+
+    sources = [source for _key, source in controller.uncounted_labels()]
+
+    assert sources, "nothing to count in the fixture"
+    assert all(isinstance(source, Path) for source in sources)
 
 
 def test_stepping_brings_a_speck_into_the_middle(window):

@@ -339,7 +339,10 @@ class FrameTimeline(QWidget):
             text = str(count)
             advance = metrics.horizontalAdvance(text)
             if advance <= room:
-                painter.drawText(int(left + (width - advance) / 2), baseline, text)
+                painter.drawText(
+                    int(left + (width - advance) / 2 + self._cursor_shift(index, width, advance)),
+                    baseline, text,
+                )
             else:
                 # Started at the cell's own left edge, never inset: an inset
                 # is wider than the cell once frames are a pixel or two apart,
@@ -349,6 +352,22 @@ class FrameTimeline(QWidget):
                     top + (ROW_HEIGHT - 1 - SPECK_BLOCK_HEIGHT) // 2,
                     max(1, int(width) - 1), SPECK_BLOCK_HEIGHT, SPECK_INK,
                 )
+
+    def _cursor_shift(self, index: int, width: float, advance: float) -> float:
+        """Return how far to move a count clear of the position cursor.
+
+        Zero for every frame but the one being looked at, whose cursor is drawn
+        down the middle of the cell and in the same white -- so a count centred
+        there has a line through it. Shifted to the right of the cursor where
+        the cell has room, and by as much of that as there is where it has not:
+        a partly cleared number reads better than one struck through, and a
+        cell too narrow to clear it is one where the count is a single digit.
+        """
+        if index != self._current:
+            return 0.0
+        clear = advance / 2 + CURSOR_WIDTH / 2 + SPECK_TEXT_MARGIN
+        room = (width - advance) / 2
+        return min(clear, max(0.0, room))
 
     def _frame_at(self, x: int) -> int:
         width = self._frame_width()

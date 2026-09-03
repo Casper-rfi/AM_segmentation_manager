@@ -434,3 +434,49 @@ def test_a_count_too_wide_for_its_frame_still_marks_it(qt_app):
     image = _render(widget)
 
     assert _ink_pixels(image, FrameTimeline._row_top(0), 30, 60) > 0
+
+
+def test_the_count_on_the_frame_you_are_on_clears_the_cursor(timeline):
+    """The cursor is drawn down the middle of the cell and in the same white,
+    so a count centred there has a line through it."""
+    from am_segmentation_manager.gui.widgets.frame_strip import CURSOR_WIDTH
+
+    timeline.set_states(
+        {"SEM": ["selected"] * 4}, current=1,
+        labels={"SEM": ["present"] * 4}, specks={"SEM": [0, 8, 0, 0]},
+    )
+    image = _render(timeline)
+
+    width = timeline.width() / 4
+    middle = int(1 * width + width / 2)
+    top = FrameTimeline._row_top(0)
+    struck = sum(
+        image.pixelColor(x, y).rgb() == SPECK_INK.rgb()
+        for y in range(top + 2, top + ROW_HEIGHT - 3)
+        for x in range(middle - CURSOR_WIDTH, middle + CURSOR_WIDTH + 1)
+    )
+    drawn = _ink_pixels(image, top, 1, 4)
+
+    assert drawn > 0, "the count should still be drawn"
+    # Only the cursor's own pixels, no glyph among them.
+    assert struck <= (ROW_HEIGHT - 5) * CURSOR_WIDTH
+
+
+def test_a_count_elsewhere_stays_centred(timeline):
+    """Only the frame being looked at is moved: shifting every count would
+    leave the row reading as though it were out of step with its frames."""
+    timeline.set_states(
+        {"SEM": ["selected"] * 4}, current=3,
+        labels={"SEM": ["present"] * 4}, specks={"SEM": [0, 8, 0, 0]},
+    )
+    image = _render(timeline)
+
+    width = timeline.width() / 4
+    top = FrameTimeline._row_top(0)
+    left_half = sum(
+        image.pixelColor(x, y).rgb() == SPECK_INK.rgb()
+        for y in range(top, top + ROW_HEIGHT - 1)
+        for x in range(int(width), int(width + width / 2))
+    )
+
+    assert left_half > 0, "a centred count straddles the middle of its cell"

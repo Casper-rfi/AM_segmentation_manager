@@ -248,6 +248,18 @@ class LabelSession:
         """Return the labels holding unsaved changes."""
         return {key for key, entry in self._pending.items() if entry.edited}
 
+    def stored_label(self, key: Path) -> bytes | None:
+        """Return the put-away array for *key*, encoded, or None.
+
+        Encoded rather than decoded: anything asking is going to work on it
+        somewhere else, and this is how the session holds it -- decoding here
+        would build a full array only to hand it over.
+
+        The label currently open is absent: it is the one on screen, whose
+        answers are asked of it directly.
+        """
+        return self._stored.get(key)
+
     def reviewed_keys(self) -> set[Path]:
         """Return the labels marked proofread, changed or not."""
         return {key for key, entry in self._pending.items() if entry.reviewed}
