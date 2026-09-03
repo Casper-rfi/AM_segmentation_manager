@@ -25,6 +25,7 @@ from ..frames import (
     resolve_series,
     series_present,
 )
+from ..history import Recorder
 from ..io.atomic import fingerprint_of
 from ..layout import MODALITIES, SERIES
 from ..models import Lamella
@@ -93,6 +94,9 @@ class LabelController:
             cache: Where prepared frames are kept. Defaults to a small
                 full-resolution cache; tests pass one with a stub loader.
         """
+        #: Where this view's changes are recorded. A project with no log is
+        #: left without one, so nothing is recorded until a collection opts in.
+        self.recorder = Recorder.for_run()
         self.config = config
         self.cache = cache if cache is not None else FrameCache(
             load_image=load_full_resolution, image_limit=DEFAULT_IMAGE_LIMIT
@@ -649,14 +653,17 @@ class LabelController:
             PermissionError: If a proofread label would be replaced without
                 *allow_corrected*.
         """
-        report = save_labels(self.pending_saves(), allow_corrected=allow_corrected)
+        batch = self.recorder.for_batch()
+        report = save_labels(
+            self.pending_saves(), allow_corrected=allow_corrected, recorder=batch
+        )
         self._attach_created_labels(report.created)
         headline = report.headline()
 
         if mark_corrected:
             records = self.approved_records()
             if records:
-                declared = transition_records(records, "corrected")
+                declared = transition_records(records, "corrected", recorder=batch)
                 headline += f", marked {declared} image(s) corrected"
 
         self.session.discard()

@@ -415,6 +415,30 @@ rather than appending to it.
   verifies it, so `by_source` records *how* the name was arrived at: an `os` account name is a
   guess about who was at the keyboard, the rest are statements. Resolving an author never fails —
   an entry attributed to an account name is worth more than a refused save.
+- **Recording is something a project opts into, and an operation is handed a recorder or nothing.**
+  A project with no log is left without one, so installing this changes nothing about a collection
+  that has not asked to be recorded — the property that lets each stage of the work ship. What
+  records is visible at the call site rather than ambient, and every existing caller keeps working
+  by passing nothing.
+- **An entry is written after the change it describes, and never fails it.** A change that happened
+  and went unrecorded is a gap in the record; a save refused because its entry would not write is
+  lost work. So `Recorder` swallows and reports its own failures, and a stage's state changes are
+  recorded as that stage lands rather than after the batch — a run stopped by a full disk has
+  recorded what reached the disk and nothing more.
+- **A batch is one action, not one session.** The command line makes one per invocation; the window
+  makes one per save, conversion or edit through `Recorder.for_batch`, which keeps the author and
+  the remembered project roots. A window open all day would otherwise gather a day's work into one
+  batch, which is the opposite of what grouping is for.
+- **A path is resolved before the project holding it is looked for.** A root found through a
+  symlinked parent is not a prefix of the resolved file, so `relative_to` fails and the entry is
+  dropped — silently, since nothing else goes wrong. `/tmp` is a symlink on macOS and `tmp_path` is
+  not, so only a test that makes its own symlink finds this
+  (`test_a_project_reached_through_a_symlink_is_still_recorded_into`).
+- **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
+  group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
+  `scripts/share_variant_labels.py` change the key of everything they move. A state file survives
+  this by being re-declarable by hand; a history does not, so both scripts write a `renamed` entry
+  per file through `Recorder.record_directory_rename`.
 - **What a relative key may look like is `io/path.checked_relative_key`**, shared by the state file
   and the log. Both read paths out of files that can be edited, and two copies of that rule would
   drift; only the exception type belongs to each caller.

@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from am_segmentation_manager.discovery import discover_stages, find_project_roots
+from am_segmentation_manager.history import Recorder
 from am_segmentation_manager.io.path import make_path_relative
 from am_segmentation_manager.layout import (
     LEGACY_LABEL_DIRECTORIES,
@@ -165,13 +166,19 @@ def apply_label_migration(renames: Iterable[LabelRename]) -> int:
     approved. Each rename is a directory rename, so nothing is copied and no
     file content is touched.
 
+    A group is keyed by its label's path, so each rename is recorded where the
+    project keeps a history -- otherwise everything recorded about these labels
+    before today would be orphaned, with no way to reattach it.
+
     Returns:
         The number of directories renamed.
     """
+    recorder = Recorder.for_run()
     count = 0
     for rename in renames:
         rename.source.rename(rename.destination)
         logger.info("Renamed %s -> %s", rename.source, rename.destination)
+        recorder.record_directory_rename(rename.source, rename.destination)
         count += 1
     return count
 

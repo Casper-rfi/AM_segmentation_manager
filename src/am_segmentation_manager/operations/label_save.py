@@ -18,10 +18,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..io.atomic import fingerprint_of, write_atomically
-from .label_io import save_label_image
+from .label_io import changed_fraction, label_fields, save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
+
+    from ..history import Recorder
 
 logger = logging.getLogger(__name__)
 
@@ -155,12 +157,18 @@ def plan_saves(items) -> SavePlan:
     return SavePlan(tuple(writes), tuple(corrected), tuple(stale))
 
 
-def save_labels(items, *, allow_corrected: bool = False) -> SaveReport:
+def save_labels(
+    items, *, allow_corrected: bool = False, recorder: Recorder | None = None
+) -> SaveReport:
     """Write every label in *items*, or none of them.
 
     Args:
         items: The :class:`LabelToSave` entries to write.
         allow_corrected: Confirm replacing labels that are already proofread.
+        recorder: Where to record what was written, or None to record nothing.
+            The version being replaced is read before it is overwritten, so
+            that an entry can name what this one grew out of -- work done only
+            when there is somewhere to record it.
 
     Returns:
         What was written.
@@ -189,6 +197,7 @@ def save_labels(items, *, allow_corrected: bool = False) -> SaveReport:
     written: list[Path] = []
     created: list[Path] = []
     for item in (*plan.writes, *plan.corrected):
+        previous = _previous_pixels(item) if recorder is not None else None
         write_atomically(
             item.destination,
             lambda temporary, item=item: save_label_image(
@@ -199,5 +208,42 @@ def save_labels(items, *, allow_corrected: bool = False) -> SaveReport:
         if item.created:
             created.append(item.destination)
         logger.info("Wrote label %s", item.destination)
+        if recorder is not None:
+            _record_save(recorder, item, previous)
 
     return SaveReport(tuple(written), tuple(created))
+
+
+def _previous_pixels(item: LabelToSave):
+    """Return the pixels *item* is about to replace, or None.
+
+    A label that will not open is not a reason to refuse the save: the entry
+    then says what was written without claiming what it grew out of.
+    """
+    if item.created or not item.destination.is_file():
+        return None
+    try:
+        from ..io.image import read_array
+
+        return read_array(item.destination)
+    except Exception as error:
+        logger.warning(
+            "Could not read %s before replacing it: %s", item.destination, error
+        )
+        return None
+
+
+def _record_save(recorder: Recorder, item: LabelToSave, previous) -> None:
+    """Record one written label, and what it replaced."""
+    try:
+        fields = label_fields(item.label)
+    except ValueError as error:
+        logger.warning("Not recording %s: %s", item.destination, error)
+        return
+    if previous is not None:
+        try:
+            fields["parent_digest"] = label_fields(previous)["digest"]
+            fields["changed_fraction"] = changed_fraction(previous, item.label)
+        except ValueError as error:
+            logger.warning("Could not describe what %s replaced: %s", item.destination, error)
+    recorder.record(item.destination, "label-saved", **fields)

@@ -45,12 +45,14 @@ __all__ = [
     "MISSING",
     "UNREADABLE",
     "LabelReadiness",
+    "changed_fraction",
     "classify_label",
     "classify_labels",
     "has_image_stack_support",
     "has_compression_support",
     "is_label_file_empty",
     "label_destination",
+    "label_fields",
     "label_state",
     "save_label_image",
 ]
@@ -139,6 +141,48 @@ def label_state(record: ImageRecord) -> str:
 
     label = find_matching_label(record)
     return classify_label(label, is_label_file_empty(label) if label else None)
+
+
+def label_fields(array) -> dict[str, object]:
+    """Return what a history entry records about a label's contents.
+
+    Gathered in one place so every entry describing a label describes it the
+    same way: what the pixels are, how they are stored, how big they are, and
+    whether there is anything in them at all.
+    """
+    from ..display import is_empty_label
+    from ..history import pixel_digest
+    from ..io.image import to_2d
+
+    plane = to_2d(array)
+    return {
+        "digest": pixel_digest(array),
+        "dtype": str(plane.dtype),
+        "shape": [int(size) for size in plane.shape],
+        "empty": bool(is_empty_label(plane)),
+    }
+
+
+def changed_fraction(before, after) -> float | None:
+    """Return the share of pixels differing between two versions of a label.
+
+    Computed while both are in memory, because it cannot be had cheaply
+    afterwards, and it is what makes a list of versions readable at a glance.
+
+    Returns:
+        The fraction, rounded, or None where the two do not have the same
+        shape -- which is every conversion, predictions being written at model
+        resolution. A percentage across a resize would be arithmetic on two
+        different pictures, so the resize is reported instead.
+    """
+    from ..io.image import to_2d
+
+    first, second = to_2d(before), to_2d(after)
+    if first.shape != second.shape:
+        return None
+    if not first.size:
+        return 0.0
+    return round(float((first != second).mean()), 6)
 
 
 def classify_label(label: Path | None, empty: bool | None) -> str:

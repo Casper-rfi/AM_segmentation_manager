@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..discovery import DatasetCandidate
+from ..history import Recorder
 from ..io.path import make_path_relative
 from ..models import ImageRecord
 from ..operations.csv import find_matching_label
@@ -163,6 +164,10 @@ class OperationsController:
 
     def __init__(self) -> None:
         self.start_path: Path | None = None
+        #: Where this view's changes are recorded. A project with no log is
+        #: left without one, so nothing is recorded until a collection opts in.
+        self.recorder = Recorder.for_run()
+
 
     def set_start_path(self, start_path: Path | None) -> None:
         """Record the directory reports are written relative to."""
@@ -272,7 +277,9 @@ class OperationsController:
                 lines + context,
                 len(plan.conversions),
             )
-        created = convert_record_predictions(records, overwrite=allow_overwrite)
+        created = convert_record_predictions(
+            records, overwrite=allow_overwrite, recorder=self.recorder.for_batch()
+        )
         return OperationReport(
             f"Wrote {len(created)} label(s) from predictions.",
             lines + context,
@@ -605,7 +612,8 @@ class OperationsController:
                 cancellation.check()
 
         results = compress_labels(
-            records, allow_corrected=allow_corrected, on_progress=report
+            records, allow_corrected=allow_corrected, on_progress=report,
+            recorder=self.recorder.for_batch(),
         )
         applied = [result for result in results if result.applied]
         saved = sum(result.original_size - result.new_size for result in applied)

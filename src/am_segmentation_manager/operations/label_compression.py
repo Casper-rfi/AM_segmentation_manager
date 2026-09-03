@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..history import Recorder
 from ..io.atomic import fingerprint_of, write_atomically
 from ..models import ImageRecord
 from ..progress import OperationCancelled
@@ -71,6 +72,7 @@ def compress_labels(
     allow_corrected: bool = False,
     dry_run: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
+    recorder: Recorder | None = None,
 ) -> list[LabelCompressionResult]:
     """Recompress every on-disk label referenced by *records*.
 
@@ -128,7 +130,10 @@ def compress_labels(
     results = []
     try:
         for done, label_path in enumerate(labels, start=1):
-            results.append(_recompress(label_path, dry_run=dry_run))
+            result = _recompress(label_path, dry_run=dry_run)
+            results.append(result)
+            if recorder is not None and result.applied:
+                _record_compression(recorder, result)
             if on_progress is not None:
                 on_progress(done, len(labels))
     except OperationCancelled:
@@ -138,6 +143,29 @@ def compress_labels(
         # against :func:`existing_labels`, which is why that is public.
         logger.info("Compression stopped after %d of %d label(s)", len(results), len(labels))
     return results
+
+
+def _record_compression(recorder: Recorder, result: LabelCompressionResult) -> None:
+    """Record a recompression, which changed the file but not the segmentation.
+
+    The digest before and after are the same by construction -- that is what
+    makes this a re-encoding rather than an edit -- and both are written so a
+    reader can check the claim rather than infer it from an absence.
+    """
+    from .label_io import label_fields
+
+    try:
+        from ..io.image import read_array
+
+        digest = label_fields(read_array(result.label_path))["digest"]
+    except Exception as error:
+        logger.warning("Not recording %s: %s", result.label_path, error)
+        return
+    recorder.record(
+        result.label_path, "label-compressed",
+        digest=digest, parent_digest=digest,
+        bytes_before=result.original_size, bytes_after=result.new_size,
+    )
 
 
 def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:

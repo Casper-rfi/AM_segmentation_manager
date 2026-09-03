@@ -40,6 +40,7 @@ __all__ = [
     "BySource",
     "Event",
     "EventKind",
+    "Recorder",
     "HistoryError",
     "HistoryLog",
     "UnusableLine",
@@ -454,8 +455,14 @@ def containing_project(path: Path) -> Path | None:
 
     Lets a command be pointed at a label and find the log that records it,
     without needing the scanner to say which project the label belongs to.
+
+    **Resolved before the walk**, so the answer can be subtracted from a
+    resolved path to give a target. A root found through a symlinked parent --
+    ``/tmp`` being one on macOS -- is not a prefix of the resolved file, and
+    every entry about it would be quietly dropped.
     """
-    start = path if path.is_dir() else path.parent
+    resolved = path.resolve()
+    start = resolved if resolved.is_dir() else resolved.parent
     for directory in (start, *start.parents):
         if history_file_path(directory).is_file():
             return directory
@@ -588,6 +595,134 @@ def _parse_line(line: str, project_directory: Path) -> tuple[Event | str, str]:
         ),
         "",
     )
+
+
+# ---------------------------------------------------------------------------
+# Recording, from an operation that changed something
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Recorder:
+    """Records the changes of one run into whichever logs already exist.
+
+    An operation is given one of these or nothing at all, so what records and
+    what does not is visible at the call site rather than ambient. **A project
+    with no log is left without one**: recording begins when somebody asks for
+    it, which is what lets this ship without changing a collection that has
+    not opted in.
+
+    **Recording never fails an operation.** A change that happened and went
+    unrecorded is a gap in the record; a save refused because its entry could
+    not be written is lost work.
+
+    Attributes:
+        by: The author every entry is attributed to.
+        by_source: How that name was arrived at.
+        batch: Groups this run's entries.
+    """
+
+    by: str
+    by_source: str
+    batch: str = field(default_factory=new_batch)
+    _roots: dict[Path, Path | None] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def for_run(cls, user: str | None = None) -> Recorder:
+        """Return a recorder for one run, resolving who is running it."""
+        by, by_source = resolve_author(user)
+        return cls(by=by, by_source=by_source)
+
+    def for_batch(self) -> Recorder:
+        """Return a recorder for one operation, under this same author.
+
+        A batch groups what a single action changed, so a window open all day
+        starts a new one per save rather than gathering a session into one.
+        The remembered project roots are shared, those being a property of the
+        collection rather than of the run.
+        """
+        return Recorder(
+            by=self.by, by_source=self.by_source, batch=new_batch(), _roots=self._roots
+        )
+
+    def record(self, path: Path, kind: str, **data: Any) -> Event | None:
+        """Record *kind* against the file *path*, if its project keeps a log.
+
+        Returns:
+            The entry recorded, or None where there was no log to record into
+            or the entry could not be written.
+        """
+        resolved = path.resolve()
+        root = self._project_of(resolved)
+        if root is None:
+            return None
+        try:
+            target = resolved.relative_to(root).as_posix()
+        except ValueError:
+            logger.warning("%s is not inside the project %s; not recording", path, root)
+            return None
+        return self._append(root, kind, target, **data)
+
+    def record_project(self, project_root: Path, kind: str, **data: Any) -> Event | None:
+        """Record *kind* against the project itself rather than one of its files."""
+        if not history_file_path(project_root).is_file():
+            return None
+        return self._append(project_root, kind, None, **data)
+
+    def record_directory_rename(self, source: Path, destination: Path) -> int:
+        """Record that every file now in *destination* used to be in *source*.
+
+        A group is keyed by its label's path, so renaming a label directory
+        changes the key of everything in it. Without this the history before
+        the rename is orphaned -- and unlike a state file, which can be
+        re-declared by hand, an orphaned history cannot be reattached.
+
+        Returns:
+            How many entries were recorded.
+        """
+        if not destination.is_dir():
+            return 0
+        recorded = 0
+        for path in sorted(destination.iterdir()):
+            if not path.is_file():
+                continue
+            resolved = path.resolve()
+            root = self._project_of(resolved)
+            if root is None:
+                continue
+            try:
+                was = (source.resolve() / path.name).relative_to(root).as_posix()
+                now = resolved.relative_to(root).as_posix()
+            except ValueError:
+                logger.warning("%s is not inside the project %s; not recording", path, root)
+                continue
+            if self._append(root, "renamed", now, renamed_from=was, scope="directory"):
+                recorded += 1
+        return recorded
+
+    def _append(
+        self, root: Path, kind: str, target: str | None, **data: Any
+    ) -> Event | None:
+        """Build and append an entry, reporting rather than raising on failure."""
+        try:
+            event = build_event(
+                kind, by=self.by, by_source=self.by_source,
+                target=target, batch=self.batch, **data,
+            )
+            return append_event(root, event)
+        except (HistoryError, OSError, ValueError) as error:
+            logger.warning("Could not record %s for %s: %s", kind, target or root, error)
+            return None
+
+    def _project_of(self, path: Path) -> Path | None:
+        """Return the project holding *path*, remembering the answer.
+
+        A batch touches a handful of directories over hundreds of files, so the
+        walk up the tree happens once per directory rather than once per file.
+        """
+        directory = path.parent
+        if directory not in self._roots:
+            self._roots[directory] = containing_project(path)
+        return self._roots[directory]
 
 
 # ---------------------------------------------------------------------------

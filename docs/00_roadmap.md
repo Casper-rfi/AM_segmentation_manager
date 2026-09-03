@@ -16,12 +16,14 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 
 ## What to pick up next
 
-**Label history and merge**, a staged piece of work of which the first stage is built: `history.py`
-records what changed, who changed it and when, into an append-only `AM_history.jsonl` per project,
-and `am-seg history` reads one back. Nothing writes entries yet — the operations are instrumented
-next, then a baseline command for the collection as it stands, then an archive of replaced labels,
-then merging a worked-on subset back. The invariant across all of it: a collection with no history
-behaves exactly as it does today.
+**Label history and merge**, a staged piece of work of which the first two stages are built.
+`history.py` records what changed, who changed it and when, into an append-only `AM_history.jsonl`
+per project; saving labels, changing state, editing metadata, converting predictions, recompressing
+and renaming a label directory all record into it; and `am-seg history` reads one back. **Recording
+begins only where a log already exists**, so nothing happens to a collection until it opts in —
+which is what the next stage is: a baseline command writing that log for the collection as it
+stands. Then an archive of replaced labels, then merging a worked-on subset back. The invariant
+across all of it: a collection with no history behaves exactly as it does today.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

@@ -39,6 +39,7 @@ from .history import (
     KINDS,
     USER_ENV_VAR,
     Event,
+    Recorder,
     containing_project,
     events_for,
     read_log,
@@ -1540,9 +1541,10 @@ def _cmd_metadata(args: argparse.Namespace) -> int:
         )
         return 0
 
+    recorder = _recorder(args)
     for project in projects:
         update_project_metadata(
-            project.path, values, project_name=project.display_name
+            project.path, values, project_name=project.display_name, recorder=recorder
         )
     logger.info("Updated %d of %d project(s)", len(changed), len(projects))
     return 0
@@ -1680,7 +1682,9 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     if args.dry_run:
         logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
         return 0
-    converted = len(convert_record_predictions(records, overwrite=args.overwrite))
+    converted = len(convert_record_predictions(
+        records, overwrite=args.overwrite, recorder=_recorder(args)
+    ))
     logger.info("Total converted: %d", converted)
     return 0
 
@@ -1746,7 +1750,7 @@ def _cmd_state(args: argparse.Namespace) -> int:
     # worked out again from the same arguments. Its freshness is checked
     # against the files as it is applied.
     try:
-        changed = apply_plan(plan)
+        changed = apply_plan(plan, recorder=_recorder(args))
     except (StaleState, OSError, ValueError) as exc:
         logger.error("Could not %s matching images: %s", args.command, exc)
         return 2
@@ -1908,6 +1912,7 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
             records,
             allow_corrected=args.confirm_corrected,
             dry_run=args.dry_run,
+            recorder=None if args.dry_run else _recorder(args),
         )
     except (PermissionError, RuntimeError) as exc:
         logger.error("Could not compress labels: %s", exc)
@@ -1946,6 +1951,17 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
 #: Which function runs each subcommand. Aliases and the commands that
 #: share a handler point at the same one, so the parser and this cannot
 #: disagree about how many there are.
+def _recorder(args: argparse.Namespace) -> Recorder:
+    """Return the recorder for this run.
+
+    One per command, so everything a single invocation changes shares a batch.
+    A project with no log is left without one, which is what lets recording be
+    something a collection opts into rather than something that starts
+    happening to it.
+    """
+    return Recorder.for_run(getattr(args, "user", None))
+
+
 def _cmd_history(args: argparse.Namespace) -> int:
     """Handle ``am-seg history``."""
     path = Path(args.path)

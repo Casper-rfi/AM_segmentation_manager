@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..history import Recorder
 from ..metadata import (
     DESCRIPTIVE_FIELDS,
     FIELD_COMMENTS,
@@ -136,6 +137,10 @@ class MetadataController:
         #: The folder whose projects are in scope, or None for a single one.
         self._scope_folder: str | None = None
         self.editing_enabled = False
+        #: Where this view's changes are recorded. A project with no log is
+        #: left without one, so nothing is recorded until a collection opts in.
+        self.recorder = Recorder.for_run()
+
 
     # -- selection ---------------------------------------------------------
 
@@ -431,9 +436,10 @@ class MetadataController:
             raise PermissionError("Editing is disabled")
         self.plan(edits)
 
+        batch = self.recorder.for_batch()
         changes = [
             update_project_metadata(
-                project.path, edits, project_name=project.display_name
+                project.path, edits, project_name=project.display_name, recorder=batch
             )
             for project in self._scope
         ]

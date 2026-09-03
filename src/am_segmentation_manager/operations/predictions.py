@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
+from ..history import Recorder
 from ..io.atomic import write_atomically
 from ..io.image import to_2d
 from ..layout import (
@@ -322,13 +323,21 @@ def plan_conversions(
 
 
 def convert_record_predictions(
-    records: Iterable[ImageRecord], *, overwrite: bool = False
+    records: Iterable[ImageRecord],
+    *,
+    overwrite: bool = False,
+    recorder: Recorder | None = None,
 ) -> tuple[Path, ...]:
     """Convert predictions for explicitly selected image records.
 
     Corrected labels are never overwritten, whatever *overwrite* is set to. A
     label is written to the directory its image set resolves to, which is also
     where an existing one is replaced.
+
+    Args:
+        records: The records to convert predictions for.
+        overwrite: Replace an existing label that is not proofread.
+        recorder: Where to record what was written, or None to record nothing.
 
     Returns:
         Where each label was written. The paths rather than a count, so a
@@ -342,9 +351,72 @@ def convert_record_predictions(
                 "Replacing %s label %s from %s",
                 conversion.existing, conversion.destination, conversion.prediction,
             )
+        previous = (
+            _pixels_of(conversion.destination)
+            if recorder is not None and conversion.existing != "none"
+            else None
+        )
         prediction_to_label(
             conversion.prediction,
             conversion.destination,
             target_image_path=conversion.record.image_path,
         )
+        if recorder is not None:
+            _record_conversion(recorder, conversion, previous)
     return tuple(conversion.destination for conversion in plan.conversions)
+
+
+def _pixels_of(path: Path):
+    """Return what a label holds, or None where it will not open."""
+    try:
+        from ..io.image import read_array
+
+        return read_array(path)
+    except Exception as error:
+        logger.warning("Could not read %s before replacing it: %s", path, error)
+        return None
+
+
+def _record_conversion(
+    recorder: Recorder, conversion: PlannedConversion, previous
+) -> None:
+    """Record one label made from a prediction, and which model made it.
+
+    The model is read from the predictions directory's own provenance file,
+    which is the only account of what filled it; a prediction the pipeline
+    wrote rather than this package has none, and says so.
+    """
+    from .label_io import changed_fraction, label_fields
+
+    written = _pixels_of(conversion.destination)
+    if written is None:
+        return
+    try:
+        fields = label_fields(written)
+    except ValueError as error:
+        logger.warning("Not recording %s: %s", conversion.destination, error)
+        return
+
+    fields["prediction_kind"] = conversion.prediction.parent.name
+    fields["model"] = _recorded_model(conversion.prediction)
+    if previous is not None:
+        try:
+            fields["parent_digest"] = label_fields(previous)["digest"]
+            fields["changed_fraction"] = changed_fraction(previous, written)
+        except ValueError as error:
+            logger.warning(
+                "Could not describe what %s replaced: %s", conversion.destination, error
+            )
+    recorder.record(conversion.destination, "label-converted", **fields)
+
+
+def _recorded_model(prediction: Path) -> str:
+    """Return the model named for *prediction*, or that nothing names one."""
+    from .predict import read_provenance
+
+    entry = read_provenance(prediction.parent).get(prediction.name)
+    if isinstance(entry, dict):
+        model = entry.get("model")
+        if isinstance(model, str) and model:
+            return model
+    return "unrecorded"

@@ -25,6 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..history import Recorder
 from ..io.atomic import fingerprint_of
 from ..layout import (
     classify_image_directory,
@@ -136,8 +137,6 @@ class TransitionPlan:
         added: The records that expansion added, so a caller can say how far
             the change actually reaches before performing it.
         changes: One entry per group whose state actually changes. A record
-    The one place the package asks this question, so how a record carries its
-    state stays a detail of :class:`~..models.ImageRecord`.
             already in the target state contributes none.
     """
 
@@ -297,6 +296,7 @@ def transition_records(
     *,
     allow_leaving_corrected: bool = False,
     dry_run: bool = False,
+    recorder: Recorder | None = None,
 ) -> int:
     """Declare *records* to be in ``state`` after validating the whole batch.
 
@@ -319,6 +319,7 @@ def transition_records(
         allow_leaving_corrected: Confirm taking data out of the corrected
             state.
         dry_run: Validate everything and report the count without writing.
+        recorder: Where to record the changes, or None to record nothing.
     """
     plan = plan_transition(
         records, state, allow_leaving_corrected=allow_leaving_corrected
@@ -327,10 +328,10 @@ def transition_records(
         for line in plan.describe():
             logger.info("Would declare %s", line)
         return len(plan.records)
-    return apply_plan(plan)
+    return apply_plan(plan, recorder=recorder)
 
 
-def apply_plan(plan: TransitionPlan) -> int:
+def apply_plan(plan: TransitionPlan, *, recorder: Recorder | None = None) -> int:
     """Carry out a validated plan, or none of it.
 
     Every stage file is compared against what the plan read before any of them
@@ -348,6 +349,9 @@ def apply_plan(plan: TransitionPlan) -> int:
 
     Args:
         plan: A plan from :func:`plan_transition`.
+        recorder: Where to record the changes, or None to record nothing. A
+            stage is recorded as it lands, so a run stopped by a full disk has
+            recorded what reached the disk and nothing more.
 
     Returns:
         How many records were declared, counting the whole expanded set.
@@ -357,10 +361,23 @@ def apply_plan(plan: TransitionPlan) -> int:
     """
     _refuse_if_stale(plan)
 
+    by_stage: dict[Path, list[StateChange]] = {}
+    if recorder is not None:
+        for change in plan.changes:
+            by_stage.setdefault(change.stage_directory, []).append(change)
+
     for write in plan.writes:
         write_state(write.previous, write.states)
         for record in write.records:
             record.state = plan.state
+        if recorder is not None:
+            for change in by_stage.get(write.previous.path.parent, ()):
+                recorder.record(
+                    change.stage_directory / change.key,
+                    "state-changed",
+                    old=change.old,
+                    new=change.new,
+                )
     # Records whose group was already in the target state belong to no write.
     for record in plan.records:
         record.state = plan.state

@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from am_segmentation_manager.history import Recorder
 from am_segmentation_manager.io.path import make_path_relative
 from am_segmentation_manager.layout import (
     classify_image_directory,
@@ -249,8 +250,12 @@ def apply_plan(plan: SharePlan) -> tuple[int, int]:
 
     Files first, then each label directory with its state file written straight
     after, so an interruption leaves a directory and its state agreeing rather
-    than a moved directory whose groups have lost their keys.
+    than a moved directory whose groups have lost their keys. A move changes
+    every group key in the directory, so it is recorded where the project keeps
+    a history -- an orphaned history cannot be reattached by hand the way a
+    state file can.
     """
+    recorder = Recorder.for_run()
     for rename in plan.renames:
         rename.source.rename(rename.destination)
     logger.debug("Renamed %d image file(s)", len(plan.renames))
@@ -258,6 +263,7 @@ def apply_plan(plan: SharePlan) -> tuple[int, int]:
     for share in plan.shares:
         previous = read_state(share.stage_directory)
         _rename_directory(share.source, share.destination)
+        recorder.record_directory_rename(share.source, share.destination)
         # A stage that declared nothing keeps no file: the move changed no
         # group's state, and writing an empty one would invent a declaration.
         if share.states or previous.fingerprint is not None:

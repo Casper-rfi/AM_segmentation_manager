@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..history import Recorder
 from ..io.yaml import read_yaml
 from ..metadata import (
     AM_METADATA_FILENAME,
@@ -318,6 +319,7 @@ def update_project_metadata(
     *,
     dry_run: bool = False,
     project_name: str | None = None,
+    recorder: Recorder | None = None,
 ) -> MetadataChange:
     """Update a project's ``AM_metadata.yaml``.
 
@@ -332,6 +334,9 @@ def update_project_metadata(
         values: As :func:`plan_metadata_update`.
         dry_run: Compute and return the change without writing.
         project_name: Identity to report.
+        recorder: Where to record the edits, or None to record nothing. One
+            entry per field, so two people editing different fields of one
+            project can later be told apart.
 
     Returns:
         What changed, with ``applied`` saying whether it was written.
@@ -363,6 +368,12 @@ def update_project_metadata(
     logger.info(
         "Updated %s: %s", destination, "; ".join(c.describe() for c in change.changes)
     )
+    if recorder is not None:
+        for edit in change.changes:
+            recorder.record(
+                destination, "metadata-changed",
+                field=edit.field, old=edit.old, new=edit.new,
+            )
     return MetadataChange(
         path=change.path,
         project=change.project,
