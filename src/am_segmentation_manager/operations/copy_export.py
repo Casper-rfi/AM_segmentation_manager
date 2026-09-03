@@ -22,7 +22,9 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..history import AM_HISTORY_FILENAME
 from ..io.atomic import fingerprint_of, write_atomically
+from ..layout import ARCHIVE_DIRECTORY
 from ..metadata import AM_METADATA_FILENAME, EXPERIMENT_FILENAME, PROTOCOL_FILENAME
 from ..models import ImageRecord, Project
 from ..progress import Cancellation
@@ -39,6 +41,7 @@ __all__ = [
     "DestinationInsideSource",
     "copy_export",
     "plan_copy",
+    "projects_of",
 ]
 
 #: The files describing a project that a copy takes along, tried in each
@@ -46,10 +49,17 @@ __all__ = [
 #: the copy indexable and carry its metadata; ``protocol.yaml`` records how the
 #: milling was set up. A project missing any of them is not a defect: the older
 #: datasets predate ``experiment.yaml``, and only this package writes the first.
+#:
+#: ``AM_history.jsonl`` always travels, and is the one that must: a merge back
+#: cannot establish a common ancestor without it, and at kilobytes there is
+#: nothing to weigh against that. The **archive** does not, unless asked for --
+#: see :func:`plan_copy` -- a subset export that dragged every kept version
+#: along would balloon, and a deposition would carry intermediates.
 PROJECT_FILES: tuple[str, ...] = (
     AM_METADATA_FILENAME,
     EXPERIMENT_FILENAME,
     PROTOCOL_FILENAME,
+    AM_HISTORY_FILENAME,
 )
 
 #: What a planned item would do at its destination.
@@ -165,6 +175,7 @@ def plan_copy(
     start_path: Path,
     *,
     projects: Sequence[Project] = (),
+    with_archive: bool = False,
 ) -> CopyPlan:
     """Return everything copying *records* into *destination* would write.
 
@@ -183,6 +194,11 @@ def plan_copy(
         start_path: The scan root the mirrored paths are relative to.
         projects: The scanned projects, used to find the files describing each.
             An empty sequence copies images and labels alone.
+        with_archive: Take each project's kept label versions too. Off by
+            default: the log is the record and travels always, while the
+            archive is a cache of recoverable pixels and may be partial. Turn
+            it on when the copy is for comparing against what a label used to
+            hold.
 
     Raises:
         DestinationInsideSource: If *destination* is inside *start_path*, or
@@ -207,8 +223,12 @@ def plan_copy(
 
     for directory in _unique(stage_directories):
         sources.append((directory / AM_STATE_FILENAME, "state"))
-    for directory in _projects_of(images, projects):
+    for directory in projects_of(images, projects):
         sources.extend((directory / name, "metadata") for name in PROJECT_FILES)
+        if with_archive:
+            sources.extend(
+                (path, "archive") for path in _archived_files(directory)
+            )
 
     items = [
         _plan_item(source, kind, destination, start_path)
@@ -276,6 +296,19 @@ def copy_export(
 # Internals
 # ---------------------------------------------------------------------------
 
+def _archived_files(project_directory: Path) -> list[Path]:
+    """Return every kept label version under *project_directory*.
+
+    Listed rather than resolved from the log, so a version the history does not
+    account for still travels: a copy that silently dropped it would make the
+    two trees disagree about what exists.
+    """
+    root = project_directory / ARCHIVE_DIRECTORY
+    if not root.is_dir():
+        return []
+    return sorted(path for path in root.rglob("*") if path.is_file())
+
+
 def _refuse_overlap(destination: Path, start_path: Path) -> None:
     """Refuse a destination that sits inside the source tree, or contains it."""
     if destination == start_path or _is_within(destination, start_path):
@@ -293,8 +326,13 @@ def _is_within(path: Path, directory: Path) -> bool:
     return directory == path or directory in path.parents
 
 
-def _projects_of(images: Sequence[Path], projects: Sequence[Project]) -> list[Path]:
+def projects_of(images: Sequence[Path], projects: Sequence[Project]) -> list[Path]:
     """Return the directories of the projects *images* were found in.
+
+    Public because a fork point has to cover exactly the projects a copy holds,
+    which is the same question this already answers for deciding whose
+    describing files travel. Two answers to it would be two answers about what
+    the copy contains.
 
     Matched by path rather than by name, for the reason identity is a path
     everywhere else here: two projects in one collection can be called the

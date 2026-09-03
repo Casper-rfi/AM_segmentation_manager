@@ -16,24 +16,19 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 
 ## What to pick up next
 
-**Label history and merge**, a staged piece of work of which the first three stages are built.
-`history.py` records what changed, who changed it and when, into an append-only `AM_history.jsonl`
-per project; saving labels, changing state, editing metadata, converting predictions, recompressing
-and renaming a label directory all record into it; `am-seg init-history` writes a collection's first
-logs and one baseline entry per annotated or non-selected group; and `am-seg history` reads one
-back. **Recording begins only where a log already exists**, so nothing happens to a collection until
-`init-history` runs on it. A baseline runs at about 300 bytes an entry, so the whole collection's
-comes to roughly a megabyte.
+**Label history and merge**, five stages of seven built. An append-only `AM_history.jsonl` per
+project records what changed, who changed it and when; `am-seg init-history` writes a collection's
+first logs and baselines what is already on disk, at about 300 bytes an entry; every operation that
+writes a label, a state or a metadata field records into it, and `am-seg history` reads one back.
+Replacing a label keeps the version under `AM_archive/` unless the pixels are provably untouched
+machine output, which `am-seg archive` reports and `am-seg prune-archive` thins. `export-files`
+carries the history and writes an `AM_export.yaml` naming the ancestor a merge back compares
+against. **Recording begins only where a log exists**, so nothing happens to a collection until
+`init-history` runs on it — and a collection with no history behaves exactly as it does today.
 
-Saving or converting over a label keeps the version it replaced under `AM_archive/`, as a whole
-file rather than a difference, where the pixels are not provably untouched machine output.
-`am-seg archive` reports what is kept and `am-seg prune-archive --keep-last` removes surplus
-versions, which is the only command here that deletes a label file. A restore goes back through the
-ordinary save, so every guard protecting a label protects it too.
-
-Next: merging a worked-on subset back — an export that records its fork point, then a three-way
-merge that refuses to guess. The invariant across all of it: a collection with no history behaves
-exactly as it does today.
+Next: the merge itself. Three-way per label, state entry and metadata field, re-hashing both sides
+rather than trusting the logs, refusing every conflict rather than guessing. Then the window: a
+version list, an A/B comparison, and restoring.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

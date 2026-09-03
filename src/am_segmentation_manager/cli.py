@@ -59,6 +59,7 @@ from .operations.archive import (
     plan_prune,
     total_size,
 )
+from .operations.export_record import build_export_record, write_export_record
 from .operations.init_history import apply_baseline, plan_baseline
 from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
 from .operations.predictions import convert_record_predictions, plan_conversions
@@ -915,6 +916,15 @@ def build_parser() -> argparse.ArgumentParser:
     export_files.add_argument(
         "--dry-run", action="store_true",
         help="Report what would be copied, and how much, without writing anything",
+    )
+    export_files.add_argument(
+        "--with-archive", action="store_true",
+        help=(
+            "Take each project's kept label versions along. Off by default: "
+            "the history always travels and is what a merge back needs, while "
+            "the archive is a cache of recoverable pixels and can be partial. "
+            "Turn it on to compare against what a label used to hold"
+        ),
     )
 
     # -- create-training-csv -----------------------------------------------
@@ -1891,7 +1901,10 @@ def _cmd_export_files(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        plan = plan_copy(records, Path(args.output), start_path, projects=projects)
+        plan = plan_copy(
+            records, Path(args.output), start_path,
+            projects=projects, with_archive=args.with_archive,
+        )
     except DestinationInsideSource as error:
         logger.error("Could not copy: %s", error)
         return 2
@@ -1930,7 +1943,80 @@ def _cmd_export_files(args: argparse.Namespace) -> int:
         "Copied %d file(s), %s, into %s",
         len(report.copied), format_bytes(report.bytes_copied), plan.destination,
     )
+    _write_fork_point(args, plan, records, projects, start_path, report.stopped)
     return 0
+
+
+def _write_fork_point(
+    args: argparse.Namespace,
+    plan,
+    records,
+    projects,
+    start_path: Path,
+    stopped: bool,
+) -> None:
+    """Record where the copy came from, so it can be merged back.
+
+    Written after the copy rather than before it: a fork point naming a tree
+    that was never finished would have a merge compare against an ancestor
+    half of it does not have. A stopped run therefore gets none, and says so.
+    """
+    if stopped:
+        logger.warning(
+            "The copy was stopped, so no fork point was written. Re-run the "
+            "export to finish it; a merge back needs one."
+        )
+        return
+
+    record = build_export_record(
+        _projects_copied(records, projects), start_path,
+        scope=_describe_scope(args),
+        with_archive=args.with_archive,
+        user=getattr(args, "user", None),
+    )
+    path = write_export_record(plan.destination, record)
+    logger.info("Wrote the fork point to %s", path)
+    missing = record.without_history
+    if missing:
+        logger.warning(
+            "%d project(s) keep no history, so a merge back has no common "
+            "ancestor for them: %s. Run init-history in the collection first.",
+            len(missing), ", ".join(missing[:3]),
+        )
+
+
+def _projects_copied(records, projects) -> list:
+    """Return the projects the copy actually holds.
+
+    A scan finds every project under the scan root; an export copies the ones
+    its selection reached. A fork point naming a project that is not in the
+    copy would have a merge look for an ancestor in a tree that does not exist.
+    """
+    from .operations.copy_export import projects_of
+
+    copied = set(projects_of([record.image_path for record in records], projects))
+    return [project for project in projects if project.path in copied]
+
+
+#: The selectors that narrow an export, in the order they are asked for. Used
+#: to write down what an export covered, so a merge can say what it is merging.
+_SCOPE_SELECTORS: tuple[str, ...] = (
+    "project", "lamella", "stage", "image", "variant", "series", "state", "modality",
+)
+
+
+def _describe_scope(args: argparse.Namespace) -> str:
+    """Return what the export was asked for, in the words the caller used."""
+    parts = []
+    for name in _SCOPE_SELECTORS:
+        value = getattr(args, name, None)
+        if not value:
+            continue
+        chosen = value if isinstance(value, list) else [value]
+        parts.extend(f"--{name} {item}" for item in chosen)
+    if getattr(args, "paths", None):
+        parts.extend(str(path) for path in args.paths)
+    return " ".join(parts)
 
 
 def _cmd_check_training_csv(args: argparse.Namespace) -> int:

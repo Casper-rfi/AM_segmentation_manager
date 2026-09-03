@@ -409,40 +409,34 @@ rather than appending to it.
   verifies it, so `by_source` records *how* the name was arrived at: an `os` account name is a
   guess about who was at the keyboard, the rest are statements. Resolving an author never fails —
   an entry attributed to an account name is worth more than a refused save.
-- **Recording is something a project opts into, and an operation is handed a recorder or nothing.**
-  A project with no log is left without one, so installing this changes nothing about a collection
-  that has not asked to be recorded — the property that lets each stage of the work ship. What
-  records is visible at the call site rather than ambient, and every existing caller keeps working
-  by passing nothing.
-- **An entry is written after the change it describes, and never fails it.** A change that happened
-  and went unrecorded is a gap in the record; a save refused because its entry would not write is
-  lost work. So `Recorder` swallows and reports its own failures, and a stage's state changes are
-  recorded as that stage lands rather than after the batch — a run stopped by a full disk has
+- **Recording is something a project opts into.** A project with no log is left without one, so
+  installing this changes nothing about a collection that has not asked to be recorded — the
+  property that let each stage of this work ship on its own. An operation is handed a recorder or
+  nothing, so what records is visible at the call site rather than ambient.
+- **An entry is written after the change it describes, and never fails it.** A gap in the record
+  beats a save refused because its entry would not write, so `Recorder` swallows and reports its own
+  failures; a stage's changes are recorded as that stage lands, so a run stopped by a full disk has
   recorded what reached the disk and nothing more.
-- **A batch is one action, not one session.** The command line makes one per invocation; the window
-  makes one per save, conversion or edit through `Recorder.for_batch`, which keeps the author and
-  the remembered project roots. A window open all day would otherwise gather a day's work into one
-  batch, which is the opposite of what grouping is for.
+- **A batch is one action, not one session**, or a window open all day gathers a day's work into
+  one. The command line makes one per invocation, the window one per save, conversion or edit.
 - **A path is resolved before the project holding it is looked for.** A root found through a
   symlinked parent is not a prefix of the resolved file, so `relative_to` fails and the entry is
   dropped — silently, since nothing else goes wrong. `/tmp` is a symlink on macOS and `tmp_path` is
   not, so only a test that makes its own symlink finds this
   (`test_a_project_reached_through_a_symlink_is_still_recorded_into`).
-- **`init-history` covers every series, unlike everything else that writes.** The rule elsewhere is
-  that a command which acts stays on Adaptive Polishing; this writes a *record* rather than data,
-  and one covering only that series would leave every reference and alignment label unrecorded
-  permanently. **It is re-runnable by checking what is already recorded**, not by relying on the
-  entry id, which hashes the time as well as the content and would otherwise duplicate everything.
+- **`init-history` covers every series, unlike everything else that writes**, a record covering
+  only Adaptive Polishing leaving every reference and alignment label unrecorded permanently, with
+  no second chance at a baseline. **It re-runs by checking what is already recorded**, not on the
+  entry id, which hashes the time as well as the content and would duplicate everything.
 - **A baseline's label fields are optional, because a group can be deselected without ever having
   had a label** — four of them in the first real project baselined — **and a label that will not
   open is worth recording as a group whose contents are unknown**. Leaving that one out makes it
   indistinguishable from a group nobody annotated, and those need opposite actions.
-- **`AM_archive` is reserved and every traversal skips it, at `subdirectories_by_name`.** One
-  exclusion covers discovery, the scanner and the survey, because all three go through that
-  function; the survey's own `rglob` excludes it by `directory_role` instead, so there is one
+- **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
+  traversal goes through; the survey's own `rglob` excludes it by `directory_role`, so there is one
   vocabulary rather than two lists. Missing this does not merely slow a scan — a superseded version
   is read as a current label and **reaches a training CSV**, which is why
-  `test_an_archive_never_reaches_a_training_export` compares the exported rows rather than the scan.
+  `test_an_archive_never_reaches_a_training_export` compares exported rows rather than the scan.
 - **What is archived asks the log, not the state.** `plan_conversions` calls a non-empty label
   `annotated` whether a machine wrote it a minute ago or somebody has proofread it for an hour, and
   both are `selected`; only the digest recorded when the machine wrote it separates them. Unknown
@@ -460,6 +454,17 @@ rather than appending to it.
   the one taken before a model wrote over it, the one taken before a merge, and any version the
   history does not account for. **Pruning leaves the log alone** — it costs the ability to restore
   those pixels, never the account of what happened, which is what makes it safe to offer at all.
+- **The log always travels with a copy; the archive only when asked.** `AM_history.jsonl` joins
+  `PROJECT_FILES` because a merge cannot establish a common ancestor without it, and at kilobytes
+  there is nothing to weigh against that — the *whole* log, not the part covering what was copied,
+  or the ancestry chain has holes in it. The archive is a cache of recoverable pixels and may be
+  partial, so `--with-archive` is opt-in: dragging every kept version into a subset export would
+  balloon it, and a deposition would carry intermediates.
+- **The fork point covers only the projects the copy holds, and is written after the copy.** Naming
+  one that is not there sends a merge looking for an ancestor in a tree that does not exist, so it
+  comes from `copy_export.projects_of` — the same question deciding whose describing files travel,
+  answered once. A stopped run gets none and says so. **It is refused rather than half-read**,
+  unlike a log: comparing against the wrong ancestor discards work while reporting success.
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
   group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives

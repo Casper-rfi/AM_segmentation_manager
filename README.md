@@ -176,7 +176,7 @@ is the place for anything scripted:
 | Count images by one or two properties, and chart them | `stats` |
 | Measure what the labels contain, in um^2 | `quantify-labels` |
 | Export metadata and training lists | `export-*-csv` / `create-training-csv` |
-| Export a selection of images and labels into a folder of its own | `export-files` |
+| Export a selection of images and labels into a folder of its own, ready to merge back | `export-files` |
 | Check an exported CSV still resolves | `check-training-csv` |
 | Start recording a collection's history | `init-history` |
 | Read what has been recorded about a project or a label | `history` |
