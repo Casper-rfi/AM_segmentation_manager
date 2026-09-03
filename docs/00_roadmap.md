@@ -25,9 +25,15 @@ back. **Recording begins only where a log already exists**, so nothing happens t
 `init-history` runs on it. A baseline runs at about 300 bytes an entry, so the whole collection's
 comes to roughly a megabyte.
 
-Next: an archive keeping the labels an operation replaces, which is what makes replacing a corrected
-label with a newer model's prediction safe; then merging a worked-on subset back. The invariant
-across all of it: a collection with no history behaves exactly as it does today.
+Saving or converting over a label keeps the version it replaced under `AM_archive/`, as a whole
+file rather than a difference, where the pixels are not provably untouched machine output.
+`am-seg archive` reports what is kept and `am-seg prune-archive --keep-last` removes surplus
+versions, which is the only command here that deletes a label file. A restore goes back through the
+ordinary save, so every guard protecting a label protects it too.
+
+Next: merging a worked-on subset back — an export that records its fork point, then a three-way
+merge that refuses to guess. The invariant across all of it: a collection with no history behaves
+exactly as it does today.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

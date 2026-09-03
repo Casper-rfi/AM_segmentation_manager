@@ -656,7 +656,7 @@ class Recorder:
             or the entry could not be written.
         """
         resolved = path.resolve()
-        root = self._project_of(resolved)
+        root = self.project_of(resolved)
         if root is None:
             return None
         try:
@@ -690,7 +690,7 @@ class Recorder:
             if not path.is_file():
                 continue
             resolved = path.resolve()
-            root = self._project_of(resolved)
+            root = self.project_of(resolved)
             if root is None:
                 continue
             try:
@@ -717,11 +717,14 @@ class Recorder:
             logger.warning("Could not record %s for %s: %s", kind, target or root, error)
             return None
 
-    def _project_of(self, path: Path) -> Path | None:
-        """Return the project holding *path*, remembering the answer.
+    def project_of(self, path: Path) -> Path | None:
+        """Return the project holding *path*, or None where none keeps a log.
 
-        A batch touches a handful of directories over hundreds of files, so the
-        walk up the tree happens once per directory rather than once per file.
+        Public because archiving asks the same question before it writes
+        anything: a project this would not record into is one it must not leave
+        an archive in either. A batch touches a handful of directories over
+        hundreds of files, so the walk up the tree happens once per directory
+        rather than once per file.
         """
         directory = path.parent
         if directory not in self._roots:

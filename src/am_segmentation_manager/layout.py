@@ -40,6 +40,12 @@ MODALITIES: Final[tuple[str, ...]] = ("SEM", "FIB")
 #: *missing* those images rather than as holding selected ones.
 STATE_FOLDER_NAMES: Final[frozenset[str]] = frozenset({"deselected", "corrected"})
 
+#: Where a project keeps the labels an operation replaced. **Reserved, and
+#: skipped by every traversal**: indexed, a superseded version would be read as
+#: a current label and reach a training CSV, which is a corrupted training set
+#: rather than merely a slow scan.
+ARCHIVE_DIRECTORY: Final[str] = "AM_archive"
+
 LABELS_SUFFIX: Final[str] = "_labels"
 PREDICTIONS_SUFFIX: Final[str] = "_predictions"
 PLOTS_DIRECTORY: Final[str] = "plots"
@@ -87,7 +93,9 @@ RESERVED_VARIANTS: Final[frozenset[str]] = frozenset(
 IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset({".tif", ".tiff"})
 
 #: What a directory inside a stage is for.
-DirectoryRole = Literal["image", "labels", "predictions", "plots", "state", "unknown"]
+DirectoryRole = Literal[
+    "image", "labels", "predictions", "plots", "state", "archive", "unknown"
+]
 
 #: What an image was taken for. Orthogonal to modality and to the
 #: imaging-condition variant: one directory holds several series, so a series is
@@ -361,6 +369,8 @@ def directory_role(name: str) -> DirectoryRole:
         return "plots"
     if name.lower() in STATE_FOLDER_NAMES:
         return "state"
+    if name == ARCHIVE_DIRECTORY:
+        return "archive"
     return "unknown"
 
 
@@ -1200,12 +1210,16 @@ def _kind(entry: os.DirEntry, question: str) -> bool:
 def subdirectories_by_name(directory: Path) -> dict[str, Path]:
     """Return *directory*'s subdirectories keyed by lowercased name.
 
-    Hidden directories are skipped.
+    Hidden directories are skipped, as is :data:`ARCHIVE_DIRECTORY`. This is
+    the one place every traversal goes through, so excluding the archive here
+    keeps it out of discovery, the scanner and the survey at once.
     """
     return {
         entry.path.name.lower(): entry.path
         for entry in _list_directory(directory)
-        if entry.is_dir and not entry.path.name.startswith(".")
+        if entry.is_dir
+        and not entry.path.name.startswith(".")
+        and entry.path.name != ARCHIVE_DIRECTORY
     }
 
 

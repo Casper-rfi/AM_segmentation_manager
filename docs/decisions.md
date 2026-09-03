@@ -384,29 +384,23 @@ rather than appending to it.
 
 ## History
 
-- **The record is append-only, one `AM_history.jsonl` per project, and it is never the authority
-  on what a file holds.** `history.py` states the format. A reader that disagrees with the
-  filesystem reports the difference; the label files and `AM_state.yaml` stay authoritative, which
-  is the same rule a stale state entry already follows. **JSONL rather than YAML** buys the three
+- **JSONL rather than YAML**, a break from the convention everywhere else here, buys the three
   things a record needs and a control file does not: an append is one `O_APPEND` write, so two
   processes recording at once interleave instead of one discarding the other; two logs combine by
   taking the union of lines; and a damaged line costs its own contents rather than the file's.
+  `history.py` states the rest of the format.
 - **A label is digested over its pixels, never its file bytes.** `compress-labels` re-encodes every
   label in the collection without changing the segmentation, and a digest that moved would report
-  each run as thousands of edits — filling a merge with conflicts that are not conflicts. Values
-  normalise to 16-bit for hashing so the same classes stored as `uint8` and `uint16` digest alike,
-  the stored dtype being recorded in the entry instead; anything negative, fractional or above
-  65535 is refused rather than silently wrapped, none of it being a label of class indices.
+  each run as thousands of edits — filling a merge with conflicts that are not conflicts, and the
+  archive with copies of nothing. `pixel_digest` states what that costs at the edges.
 - **An entry's id is a hash of its content, so recording the same operation twice records it
   once.** That is what makes a baseline idempotent and a union of two logs correct without either
   knowing the other exists. A random id would make every re-run add duplicates nothing could
   collapse, which is why there is no nonce and why `at` is part of the hashed body.
-- **A line this version does not understand is kept and reported, never refused.** `state.py`
-  refuses a file from a later am-seg, which is right for a control file that must be understood
-  completely before anything acts on it. A log is a record: refusing four thousand good entries
-  over one line destroys more than it protects, and because nothing is ever rewritten, an
-  unrecognised line is in no danger from being read. Forward compatibility here comes from
-  append-only plus tolerance; `FILE_VERSION` is reserved for a real format break.
+- **A log tolerates what `state.py` refuses.** A control file must be understood completely before
+  anything acts on it; a record must not lose four thousand good entries over one bad line. So a
+  damaged or newer line is kept aside rather than raising, and forward compatibility comes from
+  append-only plus that tolerance — `FILE_VERSION` is reserved for a real format break.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
   `metadata.FIELDS`: adding an entry kind is one row rather than an edit in every validator.
   **Strict on the way in, tolerant on the way out** — writing is this package's to control, so an
@@ -438,13 +432,34 @@ rather than appending to it.
   that a command which acts stays on Adaptive Polishing; this writes a *record* rather than data,
   and one covering only that series would leave every reference and alignment label unrecorded
   permanently. **It is re-runnable by checking what is already recorded**, not by relying on the
-  entry id: an id hashes the time as well as the content, so a second run would otherwise duplicate
-  everything. A group already baselined is left alone even when its label has since changed —
-  a second baseline would paper over a change that belongs in the record as a change.
+  entry id, which hashes the time as well as the content and would otherwise duplicate everything.
 - **A baseline's label fields are optional, because a group can be deselected without ever having
   had a label** — four of them in the first real project baselined — **and a label that will not
   open is worth recording as a group whose contents are unknown**. Leaving that one out makes it
   indistinguishable from a group nobody annotated, and those need opposite actions.
+- **`AM_archive` is reserved and every traversal skips it, at `subdirectories_by_name`.** One
+  exclusion covers discovery, the scanner and the survey, because all three go through that
+  function; the survey's own `rglob` excludes it by `directory_role` instead, so there is one
+  vocabulary rather than two lists. Missing this does not merely slow a scan — a superseded version
+  is read as a current label and **reaches a training CSV**, which is why
+  `test_an_archive_never_reaches_a_training_export` compares the exported rows rather than the scan.
+- **What is archived asks the log, not the state.** `plan_conversions` calls a non-empty label
+  `annotated` whether a machine wrote it a minute ago or somebody has proofread it for an hour, and
+  both are `selected`; only the digest recorded when the machine wrote it separates them. Unknown
+  provenance counts as human work — the safe direction, and the case covering every label in the
+  collection today, all of which carry only a baseline.
+- **Restoring is the ordinary save, not a second way to write a label.** `archive.restore` builds a
+  `LabelToSave` and hands it to `save_labels`, so batch validation, the stale-file refusal and the
+  protection of proofread work all apply, and the version being replaced is archived on the way
+  past. Only what is *recorded* differs, which is what `LabelToSave.restored_from` is for.
+- **Nothing coalesces versions at write time.** The plan called for collapsing consecutive saves by
+  one author, and that is deletion an operation performs on its own — against the rule that
+  deletion is prohibited by default, and against pruning having no default policy. It belongs to
+  `prune-archive`, which is the only command here that removes a label file and does so only for
+  versions somebody asked for by name. **Four are never offered up**: a label's oldest kept version,
+  the one taken before a model wrote over it, the one taken before a merge, and any version the
+  history does not account for. **Pruning leaves the log alone** — it costs the ability to restore
+  those pixels, never the account of what happened, which is what makes it safe to offer at all.
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
   group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives

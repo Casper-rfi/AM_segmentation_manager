@@ -60,6 +60,10 @@ class LabelToSave:
             file something else has changed since is not overwritten blind.
         corrected: Whether the group owning this label is declared corrected.
             Carried on the item because the destination path no longer says.
+        restored_from: The digest of the archived version this label was taken
+            from, when it is being put back rather than newly drawn. Restoring
+            goes through this same write, so every guard that protects a label
+            protects it too, and only what is *recorded* differs.
     """
 
     destination: Path
@@ -67,6 +71,7 @@ class LabelToSave:
     created: bool = False
     fingerprint: tuple[int, int] | None = None
     corrected: bool = False
+    restored_from: str | None = None
 
 
 @dataclass(frozen=True)
@@ -194,10 +199,17 @@ def save_labels(
             f"without explicit confirmation ({names})"
         )
 
+    archivist = None
+    if recorder is not None:
+        from .archive import Archivist
+
+        archivist = Archivist(recorder)
+
     written: list[Path] = []
     created: list[Path] = []
     for item in (*plan.writes, *plan.corrected):
         previous = _previous_pixels(item) if recorder is not None else None
+        archived = _archive_previous(archivist, item, previous)
         write_atomically(
             item.destination,
             lambda temporary, item=item: save_label_image(
@@ -209,7 +221,7 @@ def save_labels(
             created.append(item.destination)
         logger.info("Wrote label %s", item.destination)
         if recorder is not None:
-            _record_save(recorder, item, previous)
+            _record_save(recorder, item, previous, archived)
 
     return SaveReport(tuple(written), tuple(created))
 
@@ -233,8 +245,37 @@ def _previous_pixels(item: LabelToSave):
         return None
 
 
-def _record_save(recorder: Recorder, item: LabelToSave, previous) -> None:
-    """Record one written label, and what it replaced."""
+def _archive_previous(archivist, item: LabelToSave, previous) -> str | None:
+    """Keep the version *item* is about to replace, if it earns keeping.
+
+    Nothing to do where there was no previous version, or where it holds the
+    same pixels: a re-encoding is not a change, and a copy of it records only
+    that somebody pressed save.
+    """
+    if archivist is None or previous is None:
+        return None
+    try:
+        fields = label_fields(previous)
+    except ValueError as error:
+        logger.warning("Could not describe %s before replacing it: %s", item.destination, error)
+        return None
+    if fields["digest"] == _digest_of(item.label):
+        return None
+    return archivist.keep(item.destination, fields["digest"], bool(fields["empty"]))
+
+
+def _digest_of(array) -> str | None:
+    """Return an array's pixel digest, or None where it has none to give."""
+    try:
+        return label_fields(array)["digest"]
+    except ValueError:
+        return None
+
+
+def _record_save(
+    recorder: Recorder, item: LabelToSave, previous, archived: str | None
+) -> None:
+    """Record one written label, what it replaced, and where that went."""
     try:
         fields = label_fields(item.label)
     except ValueError as error:
@@ -246,4 +287,16 @@ def _record_save(recorder: Recorder, item: LabelToSave, previous) -> None:
             fields["changed_fraction"] = changed_fraction(previous, item.label)
         except ValueError as error:
             logger.warning("Could not describe what %s replaced: %s", item.destination, error)
-    recorder.record(item.destination, "label-saved", **fields)
+    if archived is not None:
+        fields["archived_as"] = archived
+
+    if item.restored_from is None:
+        recorder.record(item.destination, "label-saved", **fields)
+        return
+    # A restore is the same write; only the account of it differs, and it says
+    # which kept version was put back.
+    fields.setdefault("parent_digest", fields["digest"])
+    fields.setdefault("archived_as", archived or "")
+    recorder.record(
+        item.destination, "label-restored", restored_from=item.restored_from, **fields
+    )

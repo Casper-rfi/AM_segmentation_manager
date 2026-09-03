@@ -52,10 +52,17 @@ from .metadata import (
     VALUE_SEPARATOR,
     field_named,
 )
+from .operations.archive import (
+    apply_prune,
+    archive_root,
+    archived_versions,
+    plan_prune,
+    total_size,
+)
 from .operations.init_history import apply_baseline, plan_baseline
 from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
 from .operations.predictions import convert_record_predictions, plan_conversions
-from .reporting import print_project_summary, print_survey
+from .reporting import format_bytes, print_project_summary, print_survey
 from .scanner import Scanner
 from .survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
 from .survey import survey_collection
@@ -1030,6 +1037,47 @@ def build_parser() -> argparse.ArgumentParser:
     init_history_cmd.add_argument(
         "--apply", action="store_true",
         help="Write the entries, rather than reporting what would be written",
+    )
+
+    # -- archive ------------------------------------------------------------
+    archive_cmd = sub.add_parser(
+        "archive",
+        help="Report the label versions a project has kept, and what they cost",
+        description=(
+            "List what AM_archive holds. Point it at a project to see the "
+            "versions kept per label and the disk they take, or at a label to "
+            "see just that label's. Nothing is removed: this is what a pruning "
+            "decision is made from."
+        ),
+    )
+    archive_cmd.add_argument(
+        "path", nargs="?", default=".",
+        help="A project directory, or a label inside one (default: current directory)",
+    )
+
+    # -- prune-archive ------------------------------------------------------
+    prune_cmd = sub.add_parser(
+        "prune-archive",
+        help="Remove older kept versions, down to the last few per label",
+        description=(
+            "Remove archived label versions, keeping the most recent --keep-last "
+            "of each. Four are never removed whatever is asked: a label's oldest "
+            "kept version, the one taken before a model wrote over it, the one "
+            "taken before a merge, and any version the history does not account "
+            "for. Previews by default; pass --apply to remove. This is the only "
+            "command that deletes a label file."
+        ),
+    )
+    prune_cmd.add_argument(
+        "path", nargs="?", default=".", help="The project to prune",
+    )
+    prune_cmd.add_argument(
+        "--keep-last", type=int, required=True, metavar="N",
+        help="How many recent versions of each label to keep. Required: there is no default",
+    )
+    prune_cmd.add_argument(
+        "--apply", action="store_true",
+        help="Remove them, rather than reporting what would go",
     )
 
     # -- history ------------------------------------------------------------
@@ -2012,6 +2060,83 @@ def _cmd_init_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_archive(args: argparse.Namespace) -> int:
+    """Handle ``am-seg archive``."""
+    path = Path(args.path)
+    project = containing_project(path)
+    if project is None:
+        logger.error("No %s at or above %s", AM_HISTORY_FILENAME, path)
+        return 1
+
+    versions = archived_versions(project)
+    if path.is_file():
+        target = make_path_relative(path, project).replace(os.sep, "/")
+        versions = [version for version in versions if version.target == target]
+
+    print(f"{archive_root(project)}")
+    if not versions:
+        print("No versions kept.")
+        return 0
+
+    by_target: dict[str, list] = {}
+    for version in versions:
+        by_target.setdefault(version.target, []).append(version)
+    for target, kept in sorted(by_target.items()):
+        print(f"{target}  ({len(kept)} version(s), {format_bytes(total_size(kept))})")
+        for version in kept:
+            when = version.event.at if version.event else "not recorded"
+            who = version.event.by if version.event else "unknown"
+            print(f"    {version.path.name}  {when}  {who}")
+
+    print(
+        f"\n{len(versions)} version(s) of {len(by_target)} label(s), "
+        f"{format_bytes(total_size(versions))}"
+    )
+    unaccounted = [version for version in versions if version.event is None]
+    if unaccounted:
+        logger.warning(
+            "%d version(s) the history does not account for; they are never pruned",
+            len(unaccounted),
+        )
+    return 0
+
+
+def _cmd_prune_archive(args: argparse.Namespace) -> int:
+    """Handle ``am-seg prune-archive``."""
+    project = containing_project(Path(args.path))
+    if project is None:
+        logger.error("No %s at or above %s", AM_HISTORY_FILENAME, args.path)
+        return 1
+
+    try:
+        plan = plan_prune(project, keep_last=args.keep_last)
+    except ValueError as error:
+        logger.error("%s", error)
+        return 2
+
+    for version in plan.remove:
+        print(f"{version.target}: {version.path.name} ({format_bytes(version.size)})")
+    if not plan.remove:
+        logger.info("Nothing to remove; %d version(s) kept", plan.kept)
+        return 0
+
+    if not args.apply:
+        logger.info(
+            "Would remove %d version(s), freeing %s, keeping %d. "
+            "Re-run with --apply to remove them.",
+            len(plan.remove), format_bytes(plan.bytes_freed), plan.kept,
+        )
+        return 0
+
+    removed = apply_prune(plan)
+    logger.info(
+        "Removed %d version(s), freeing %s. The history is unchanged: what was "
+        "recorded still says what happened.",
+        removed, format_bytes(plan.bytes_freed),
+    )
+    return 0
+
+
 def _recorder(args: argparse.Namespace) -> Recorder:
     """Return the recorder for this run.
 
@@ -2113,6 +2238,8 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "compress-labels": _cmd_compress_labels,
     "init-history": _cmd_init_history,
     "history": _cmd_history,
+    "archive": _cmd_archive,
+    "prune-archive": _cmd_prune_archive,
 }
 
 

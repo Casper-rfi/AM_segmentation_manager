@@ -180,6 +180,8 @@ is the place for anything scripted:
 | Check an exported CSV still resolves | `check-training-csv` |
 | Start recording a collection's history | `init-history` |
 | Read what has been recorded about a project or a label | `history` |
+| See the label versions a project has kept | `archive` |
+| Remove surplus kept versions | `prune-archive` |
 
 Getting help
 ------------

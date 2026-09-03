@@ -464,7 +464,8 @@ def _unindexed_findings(project_root: Path, survey: ProjectSurvey) -> list[Findi
         and path not in claimed
         and not is_ignored_image_name(path.name)
         and not any(
-            directory_role(part) in {"labels", "predictions", "plots", "state"}
+            directory_role(part)
+            in {"labels", "predictions", "plots", "state", "archive"}
             for part in path.parts
         )
         and path.is_file()

@@ -345,6 +345,12 @@ def convert_record_predictions(
         of re-reading the collection to find them; ``len`` gives the count.
     """
     plan = plan_conversions(records, overwrite=overwrite)
+    archivist = None
+    if recorder is not None:
+        from .archive import Archivist
+
+        archivist = Archivist(recorder)
+
     for conversion in plan.conversions:
         if conversion.existing != "none":
             logger.info(
@@ -356,13 +362,14 @@ def convert_record_predictions(
             if recorder is not None and conversion.existing != "none"
             else None
         )
+        archived = _archive_previous(archivist, conversion.destination, previous)
         prediction_to_label(
             conversion.prediction,
             conversion.destination,
             target_image_path=conversion.record.image_path,
         )
         if recorder is not None:
-            _record_conversion(recorder, conversion, previous)
+            _record_conversion(recorder, conversion, previous, archived)
     return tuple(conversion.destination for conversion in plan.conversions)
 
 
@@ -377,8 +384,29 @@ def _pixels_of(path: Path):
         return None
 
 
+def _archive_previous(archivist, destination: Path, previous) -> str | None:
+    """Keep the label a conversion is about to replace, if it earns keeping.
+
+    A conversion is the case the archive exists for: a machine guess going over
+    something a person may have drawn.
+    """
+    if archivist is None or previous is None:
+        return None
+    from .label_io import label_fields
+
+    try:
+        fields = label_fields(previous)
+    except ValueError as error:
+        logger.warning("Could not describe %s before replacing it: %s", destination, error)
+        return None
+    return archivist.keep(destination, fields["digest"], bool(fields["empty"]))
+
+
 def _record_conversion(
-    recorder: Recorder, conversion: PlannedConversion, previous
+    recorder: Recorder,
+    conversion: PlannedConversion,
+    previous,
+    archived: str | None = None,
 ) -> None:
     """Record one label made from a prediction, and which model made it.
 
@@ -407,6 +435,8 @@ def _record_conversion(
             logger.warning(
                 "Could not describe what %s replaced: %s", conversion.destination, error
             )
+    if archived is not None:
+        fields["archived_as"] = archived
     recorder.record(conversion.destination, "label-converted", **fields)
 
 
