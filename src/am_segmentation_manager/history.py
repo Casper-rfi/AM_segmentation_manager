@@ -147,8 +147,12 @@ KINDS: Final[dict[str, KindSpec]] = {
     "log-created": KindSpec(
         required=("project_id", "am_seg_version"), needs_target=False
     ),
+    # The label fields are optional because a group can be deselected without
+    # ever having had a label, and a label that will not open is worth
+    # recording as a group whose contents are unknown rather than not at all.
     "baseline": KindSpec(
-        required=("digest", "dtype", "shape", "empty", "state", "basis"),
+        required=("state", "basis"),
+        optional=("digest", "dtype", "shape", "empty"),
     ),
     "label-saved": KindSpec(
         required=("digest", "dtype", "shape", "empty"),

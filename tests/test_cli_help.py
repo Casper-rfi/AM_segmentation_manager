@@ -60,6 +60,7 @@ WORKFLOW_ORDER = [
     "export-files",
     "create-training-csv",
     "check-training-csv",
+    "init-history",
     "history",
 ]
 

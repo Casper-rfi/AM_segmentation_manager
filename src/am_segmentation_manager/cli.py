@@ -52,6 +52,7 @@ from .metadata import (
     VALUE_SEPARATOR,
     field_named,
 )
+from .operations.init_history import apply_baseline, plan_baseline
 from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
 from .operations.predictions import convert_record_predictions, plan_conversions
 from .reporting import print_project_summary, print_survey
@@ -1008,6 +1009,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overwrite the original CSV instead of writing a new file; requires --prune",
     )
 
+    # -- init-history -------------------------------------------------------
+    init_history_cmd = sub.add_parser(
+        "init-history",
+        help="Start recording a collection's history, for the data already on disk",
+        description=(
+            "Write each project's first AM_history.jsonl and one baseline entry "
+            "per label group that has a label or a state other than selected. "
+            "Nothing records until this has run, so this is what a collection "
+            "opts in with. Re-runnable: a second run adds only what is new. "
+            "A baseline says what was *seen*, never when it was annotated -- "
+            "that is not recoverable, the collection having been copied. "
+            "Previews by default; pass --apply to write."
+        ),
+    )
+    init_history_cmd.add_argument(
+        "--start-path", default=".",
+        help="Directory to scan for projects (default: current directory)",
+    )
+    init_history_cmd.add_argument(
+        "--apply", action="store_true",
+        help="Write the entries, rather than reporting what would be written",
+    )
+
     # -- history ------------------------------------------------------------
     history_cmd = sub.add_parser(
         "history",
@@ -1951,6 +1975,43 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
 #: Which function runs each subcommand. Aliases and the commands that
 #: share a handler point at the same one, so the parser and this cannot
 #: disagree about how many there are.
+def _cmd_init_history(args: argparse.Namespace) -> int:
+    """Handle ``am-seg init-history``."""
+    start_path = Path(args.start_path)
+    index = Scanner(start_path).build_index()
+    projects = index.all_projects()
+    if not projects:
+        logger.error("No projects found under %s", start_path)
+        return 2
+
+    plan = plan_baseline(projects)
+    for line in plan.describe():
+        print(line)
+    if not plan.entry_count and not plan.log_count:
+        logger.info("Nothing to record across %d project(s)", len(projects))
+        return 0
+
+    if not args.apply:
+        logger.info(
+            "Would start %d log(s) and record %d group(s) across %d project(s). "
+            "Re-run with --apply to write.",
+            plan.log_count, plan.entry_count, len(projects),
+        )
+        return 0
+
+    report = apply_baseline(plan, recorder=_recorder(args))
+    logger.info(
+        "Started %d log(s) and recorded %d group(s)",
+        report.logs_started, report.entries_written,
+    )
+    for path in report.unreadable:
+        logger.warning(
+            "%s would not open; recorded as a group whose contents are unknown",
+            make_path_relative(path, start_path),
+        )
+    return 0
+
+
 def _recorder(args: argparse.Namespace) -> Recorder:
     """Return the recorder for this run.
 
@@ -2050,6 +2111,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "export-files": _cmd_export_files,
     "check-training-csv": _cmd_check_training_csv,
     "compress-labels": _cmd_compress_labels,
+    "init-history": _cmd_init_history,
     "history": _cmd_history,
 }
 

@@ -434,6 +434,17 @@ rather than appending to it.
   dropped — silently, since nothing else goes wrong. `/tmp` is a symlink on macOS and `tmp_path` is
   not, so only a test that makes its own symlink finds this
   (`test_a_project_reached_through_a_symlink_is_still_recorded_into`).
+- **`init-history` covers every series, unlike everything else that writes.** The rule elsewhere is
+  that a command which acts stays on Adaptive Polishing; this writes a *record* rather than data,
+  and one covering only that series would leave every reference and alignment label unrecorded
+  permanently. **It is re-runnable by checking what is already recorded**, not by relying on the
+  entry id: an id hashes the time as well as the content, so a second run would otherwise duplicate
+  everything. A group already baselined is left alone even when its label has since changed —
+  a second baseline would paper over a change that belongs in the record as a change.
+- **A baseline's label fields are optional, because a group can be deselected without ever having
+  had a label** — four of them in the first real project baselined — **and a label that will not
+  open is worth recording as a group whose contents are unknown**. Leaving that one out makes it
+  indistinguishable from a group nobody annotated, and those need opposite actions.
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
   group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives
