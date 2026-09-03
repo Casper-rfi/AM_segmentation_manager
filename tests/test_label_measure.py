@@ -363,8 +363,11 @@ def test_a_hole_inside_an_annotation_is_a_speck():
 
 
 def test_the_background_of_a_frame_is_not_a_speck():
-    label = np.zeros((20, 20), dtype=np.uint8)
-    label[5:10, 5:10] = LAMELLA_CLASS
+    """The annotation is drawn well past the threshold on purpose: what is
+    being asked is whether the *background* around it is reported, and a block
+    small enough to be a speck itself would answer a different question."""
+    label = np.zeros((60, 60), dtype=np.uint8)
+    label[10:40, 10:40] = LAMELLA_CLASS
 
     assert find_specks(label) == (), (
         "the background around an annotation is one enormous component"

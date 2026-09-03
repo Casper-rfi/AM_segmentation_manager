@@ -10,7 +10,7 @@ could only report that the two disagree.
 from __future__ import annotations
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QPainter, QPixmap
+from qtpy.QtGui import QColor, QFontMetrics, QPainter, QPixmap
 from qtpy.QtWidgets import QSizePolicy, QWidget
 
 #: Workflow state colours.
@@ -63,6 +63,50 @@ LABEL_COLOURS = {
     "missing": None,
     None: None,
 }
+
+#: How a frame holding specks is marked while the speck filter is on.
+#:
+#: **Drawn over the state row, reserving no space of its own**, and only where
+#: there is something: one stray pixel and thirty are different amounts of
+#: work, so the count is what is drawn, and a frame with none is left blank.
+#: That keeps the marks sparse enough to read as "here are the problems"
+#: rather than as another row to be scanned.
+#:
+#: **White, which is this widget's third mark made for the reviewer rather than
+#: by the data.** The cursor says where you are, the band says what you picked,
+#: and this says what the filter you switched on found -- none of the three is
+#: a standing property of a frame, and all three go away when the reviewer
+#: stops asking. So the rule holds rather than bends: state and label keep
+#: their own vocabularies and white stays what the reviewer put there.
+#:
+#: It is also the only ink that reads. Amber is the colour reserved for wanting
+#: attention, but against the selected blue it is 1.5:1 -- enough for a solid
+#: shape, not for a numeral. Near-black manages 3.5:1 and is legible, but its
+#: block reads as one more tick where the frames are narrow.
+SPECK_INK = CURSOR
+
+#: How tall that count is drawn, **in pixels rather than in points**. The row
+#: it sits in is a pixel measurement, and a point size is not: macOS reports 72
+#: logical DPI where the offscreen platform reports 96, so one point size is a
+#: third smaller on screen than in a rendered test -- which is how this was
+#: first set too small to read.
+#:
+#: As large as the row will take. The digits are drawn by their baseline rather
+#: than centred as a line box, so what has to fit is the ink and not the
+#: descender space a numeral never uses: at this size the ink is exactly the
+#: row's 10px, and anything larger is clipped.
+SPECK_PIXEL_SIZE = 12
+
+#: Clear space kept between a count and the frame next to it, so two of them
+#: cannot run together and read as a third number that is not there. Whether a
+#: count fits is asked of that count -- "3" fits where "27" does not, and a
+#: lamella dense enough to refuse both is past the point of picking out single
+#: frames anyway.
+SPECK_TEXT_MARGIN = 2
+
+#: The block that stands in at those widths, drawn in the same ink. It says
+#: "something here" and does not pretend to say how much.
+SPECK_BLOCK_HEIGHT = 3
 
 #: Label lines are thin, so they read as a rule under or over a row rather than
 #: as a fourth and fifth state bar.
@@ -119,6 +163,7 @@ class FrameTimeline(QWidget):
         super().__init__()
         self._rows: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._labels: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
+        self._specks: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._selected: set[int] = set()
         self._count = 0
         self._current = 0
@@ -144,6 +189,7 @@ class FrameTimeline(QWidget):
         current: int,
         labels: dict[str, list] | None = None,
         selected: set[int] | None = None,
+        specks: dict[str, list] | None = None,
     ) -> None:
         """Show per-modality states and the current position.
 
@@ -157,10 +203,18 @@ class FrameTimeline(QWidget):
                 annotation progress and workflow state are different questions
                 and reading one as the other would be misleading.
             selected: Frames picked out for a state change.
+            specks: How many specks each frame's label holds, keyed by
+                modality, or None to draw none -- which is what the filter
+                being off means. An entry of None is a frame nothing has
+                counted yet, drawn blank: a background pass fills them in, and
+                "not counted" must not read as "none".
         """
         self._rows = {modality: list(rows.get(modality, [])) for modality in ROW_MODALITIES}
         self._labels = {
             modality: list((labels or {}).get(modality, [])) for modality in ROW_MODALITIES
+        }
+        self._specks = {
+            modality: list((specks or {}).get(modality, [])) for modality in ROW_MODALITIES
         }
         self._selected = set(selected or ())
         self._count = max((len(states) for states in self._rows.values()), default=0)
@@ -240,6 +294,8 @@ class FrameTimeline(QWidget):
                         int(left), label_top, cell_width, LABEL_LINE_HEIGHT, label_colour
                     )
 
+            self._paint_specks(painter, self._specks[modality], top, width)
+
         for index in sorted(self._selected):
             if index >= self._count:
                 continue
@@ -252,6 +308,47 @@ class FrameTimeline(QWidget):
         # than two independent marks.
         cursor_left = int(self._current * width + width / 2) - CURSOR_WIDTH // 2
         painter.fillRect(cursor_left, 0, CURSOR_WIDTH, self.height(), CURSOR)
+
+    def _paint_specks(
+        self, painter: QPainter, counts: list, top: int, width: float
+    ) -> None:
+        """Draw one modality's speck counts over its state row.
+
+        Nothing is drawn for a frame with no specks, or for one nothing has
+        counted yet -- a blank means "no mark to make here", and telling those
+        two apart belongs to whatever is filling the counts in.
+        """
+        if not counts:
+            return
+        font = painter.font()
+        font.setPixelSize(SPECK_PIXEL_SIZE)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(SPECK_INK)
+        metrics = QFontMetrics(font)
+        room = width - SPECK_TEXT_MARGIN
+        # Centred on the ink rather than on the line box: the box carries room
+        # for a descender that no numeral uses, so centring it wastes the
+        # bottom of the row and clips the top.
+        baseline = top + (ROW_HEIGHT - 1 + metrics.tightBoundingRect("0").height()) // 2
+        for index in range(min(self._count, len(counts))):
+            count = counts[index]
+            if not count:
+                continue
+            left = index * width
+            text = str(count)
+            advance = metrics.horizontalAdvance(text)
+            if advance <= room:
+                painter.drawText(int(left + (width - advance) / 2), baseline, text)
+            else:
+                # Started at the cell's own left edge, never inset: an inset
+                # is wider than the cell once frames are a pixel or two apart,
+                # and the mark then lands on the frame next door.
+                painter.fillRect(
+                    int(left),
+                    top + (ROW_HEIGHT - 1 - SPECK_BLOCK_HEIGHT) // 2,
+                    max(1, int(width) - 1), SPECK_BLOCK_HEIGHT, SPECK_INK,
+                )
 
     def _frame_at(self, x: int) -> int:
         width = self._frame_width()

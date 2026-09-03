@@ -738,16 +738,100 @@ def test_a_ring_keeps_its_size_on_screen_at_any_zoom(window):
     )
 
 
-def test_the_filter_opens_wide_enough_to_sweep_a_label(window):
-    """The report over the collection asks a narrower question; see
-    PROOFREADING_SPECK_PIXELS."""
-    from am_segmentation_manager.operations.label_measure import (
-        PROOFREADING_SPECK_PIXELS,
+def test_the_series_shows_no_counts_until_the_filter_is_on(window):
+    """The marks exist because the reviewer asked for them: a series quietly
+    keeping them would answer a question nobody put."""
+    assert window.label_panel.controller.timeline_specks() == {}
+
+
+def test_switching_the_filter_on_asks_for_the_counts(window):
+    """The panel does not read the labels itself -- a sweep of a lamella is
+    seconds of file reading, and the panel draws."""
+    asked = []
+    window.label_panel.speck_counts_needed.connect(lambda: asked.append(1))
+
+    window.label_panel.speck_check.setChecked(True)
+
+    assert asked
+
+
+def test_a_frame_nothing_has_counted_reports_none_rather_than_zero(window):
+    """Which is what lets the timeline leave it blank while the sweep runs;
+    zero would be a wrong answer for as long as the reading took."""
+    controller = window.label_panel.controller
+    controller.finding_specks = True
+
+    counts = controller.timeline_specks()[controller.modality]
+
+    assert any(count is None for count in counts), (
+        "a frame the sweep has not reached must not read as having none"
     )
 
-    assert window.label_panel.controller.speck_size == PROOFREADING_SPECK_PIXELS == 64
-    assert window.label_panel.speck_slider.value() == PROOFREADING_SPECK_PIXELS
-    assert window.label_panel.speck_slider.maximum() >= PROOFREADING_SPECK_PIXELS, (
+
+def test_a_counted_frame_is_not_asked_for_again(window):
+    """The sweep is resumable, which is what makes abandoning one cheap."""
+    controller = window.label_panel.controller
+    controller.finding_specks = True
+    wanted = controller.uncounted_labels()
+    assert wanted, "nothing to count in the fixture"
+
+    key, _path = wanted[0]
+    controller.record_speck_count(key, 3)
+
+    assert key not in [asked for asked, _ in controller.uncounted_labels()]
+    assert controller.timeline_specks()[controller.modality].count(3) == 1
+
+
+def test_the_edited_frame_keeps_its_own_count_over_the_sweep(window):
+    """What is on screen carries strokes that are not saved, so the file the
+    sweep reads no longer says the same thing."""
+    controller = window.label_panel.controller
+    controller.finding_specks = True
+    key = controller.current_key
+    controller.specks()                     # counts the frame on screen
+    live = controller._speck_counts[key]
+
+    controller.record_speck_count(key, live + 99)
+
+    assert controller._speck_counts[key] == live
+
+
+def test_a_new_size_forgets_every_count(window):
+    """Every count in the series is wrong at a new size, not just this one's."""
+    controller = window.label_panel.controller
+    controller.finding_specks = True
+    controller.specks()
+    controller.record_speck_count(Path("elsewhere/label.tif"), 4)
+    assert controller._speck_counts
+
+    controller.set_speck_size(controller.speck_size + 1)
+
+    assert controller._speck_counts == {}
+
+
+def test_dragging_the_size_does_not_sweep_per_pixel(window):
+    """A sweep per value of the handle would read the series once a pixel."""
+    asked = []
+    window.label_panel.speck_counts_needed.connect(lambda: asked.append(1))
+    window.label_panel.speck_check.setChecked(True)
+    asked.clear()
+
+    for size in range(20, 30):
+        window.label_panel.speck_slider.setValue(size)
+
+    assert not asked, "the sweep must wait for the handle to stop"
+
+
+def test_the_filter_opens_wide_enough_to_sweep_a_label(window):
+    """One size answers both questions now: the report over the collection
+    starts where proofreading settled, false positives included."""
+    from am_segmentation_manager.operations.label_measure import (
+        DEFAULT_SPECK_PIXELS,
+    )
+
+    assert window.label_panel.controller.speck_size == DEFAULT_SPECK_PIXELS == 64
+    assert window.label_panel.speck_slider.value() == DEFAULT_SPECK_PIXELS
+    assert window.label_panel.speck_slider.maximum() >= DEFAULT_SPECK_PIXELS, (
         "the slider has to reach the size it starts at, and past it"
     )
 

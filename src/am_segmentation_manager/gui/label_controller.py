@@ -29,8 +29,9 @@ from ..io.atomic import fingerprint_of
 from ..layout import MODALITIES, SERIES
 from ..models import Lamella
 from ..operations import label_io
+from ..operations.csv import find_matching_label
 from ..operations.label_edit import EditPatch, new_label
-from ..operations.label_measure import PROOFREADING_SPECK_PIXELS, Speck, find_specks
+from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
     LabelToSave,
     SavePlan,
@@ -101,8 +102,14 @@ class LabelController:
         self.show_image = True
         #: Whether components of a few pixels are being pointed out.
         self.finding_specks = False
-        self._speck_size = PROOFREADING_SPECK_PIXELS
+        self._speck_size = DEFAULT_SPECK_PIXELS
         self._specks: dict[Path, tuple[Speck, ...]] = {}
+        #: How many specks each label holds, keyed as :attr:`_specks` is. The
+        #: timeline's marks come from here rather than from :attr:`_specks`,
+        #: which holds *where* they are and is only ever filled for the frame
+        #: on screen: counting a series means reading its label files, and
+        #: locating every speck in all of them would be work nobody asked for.
+        self._speck_counts: dict[Path, int] = {}
         self._lamella: Lamella | None = None
         self._frames: tuple[LamellaFrame, ...] = ()
         self._positions: tuple[int, ...] = ()
@@ -153,6 +160,7 @@ class LabelController:
             self._label_states.clear()
             self._keys.clear()
             self._specks.clear()
+            self._speck_counts.clear()
             self.session.discard()
         self._rebuild_frames(keep_frame=keep_frame)
         logger.debug(
@@ -480,6 +488,7 @@ class LabelController:
             return
         self._speck_size = pixels
         self._specks.clear()
+        self._speck_counts.clear()
 
     def specks(self) -> tuple[Speck, ...]:
         """Return the components of a few pixels in the label on screen.
@@ -498,6 +507,10 @@ class LabelController:
         label = self.working_label()
         found = () if label is None else find_specks(label, at_most=self._speck_size)
         self._specks[key] = found
+        # The count goes in beside it, so the frame being edited keeps its mark
+        # on the timeline after the reviewer moves on: what is on screen has
+        # unsaved strokes in it, and the file on disk no longer says the same.
+        self._speck_counts[key] = len(found)
         return found
 
     def mark_reviewed(self, reviewed: bool = True) -> None:
@@ -675,6 +688,60 @@ class LabelController:
                 for index in self._positions
             ]
         }
+
+    def timeline_specks(self) -> dict[str, list[int | None]]:
+        """Return each proofreadable frame's speck count, for the timeline.
+
+        Empty while the filter is off: the marks exist because the reviewer
+        asked for them, and a series that quietly kept them would be answering
+        a question nobody had put. An entry of None is a frame nothing has
+        counted yet, which the timeline leaves blank -- not counted must not
+        read as none.
+        """
+        if not self.finding_specks:
+            return {}
+        return {
+            self._modality: [
+                self._speck_counts.get(self._key_at(index))
+                for index in self._positions
+            ]
+        }
+
+    def uncounted_labels(self) -> list[tuple[Path, Path]]:
+        """Return ``(key, label path)`` for frames whose specks are not counted.
+
+        What a background sweep is given. The frame on screen is left out
+        wherever it is already counted, which it is as soon as the canvas has
+        drawn its rings -- and its answer includes unsaved strokes, which no
+        reading of the file could reproduce.
+        """
+        if not self.finding_specks:
+            return []
+        wanted: list[tuple[Path, Path]] = []
+        seen: set[Path] = set()
+        for index in self._positions:
+            key = self._key_at(index)
+            if key is None or key in seen or key in self._speck_counts:
+                continue
+            seen.add(key)
+            record = self._frames[index].record(self._modality)
+            label = None if record is None else find_matching_label(record)
+            if label is not None:
+                wanted.append((key, label))
+        return wanted
+
+    def record_speck_count(self, key: Path, count: int) -> None:
+        """Take one label's count from the sweep, unless it is already known.
+
+        The frame being edited is never overwritten from disk: its own count
+        carries strokes that have not been saved.
+        """
+        self._speck_counts.setdefault(key, count)
+
+    def _key_at(self, index: int) -> Path | None:
+        """Return the label key of the frame at *index* in the current view."""
+        record = self._frames[index].record(self._modality)
+        return None if record is None else self.key_for(record)
 
     def record_label_state(self, record) -> str:
         """Return what *record*'s label is, reading the file at most once.

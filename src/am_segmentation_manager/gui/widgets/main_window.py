@@ -510,6 +510,11 @@ class CurationWindow(QMainWindow):
     #: proofreading needs every pixel, and reviewing deliberately does not.
     request_label_load = Signal(list, int)
 
+    #: Emitted to that same thread with the labels whose specks are still
+    #: uncounted. Behind the frame preparation and sharing its token, so the
+    #: frame being looked at is read first and moving away abandons both.
+    request_speck_counts = Signal(list, int, int)
+
     #: Emitted to the operations thread with the callable to run; see
     #: :class:`~am_segmentation_manager.gui.worker.BackgroundOperation`.
     request_operation = Signal(object)
@@ -586,6 +591,8 @@ class CurationWindow(QMainWindow):
         self.label_loader = BackgroundLoader(self.label_controller.cache)
         self.request_label_load.connect(self.label_loader.worker.load_batch)
         self.label_loader.worker.loaded.connect(self._on_label_loaded)
+        self.request_speck_counts.connect(self.label_loader.worker.count_specks)
+        self.label_loader.worker.counted.connect(self._on_speck_counted)
 
         # Connected once and left alone. Disconnecting a slot from inside the
         # emission of the signal it is handling is a connection list mutated
@@ -763,6 +770,7 @@ class CurationWindow(QMainWindow):
 
     def _connect(self) -> None:
         self.label_panel.loads_needed.connect(self._schedule_label_loads)
+        self.label_panel.speck_counts_needed.connect(self._sweep_specks)
         self.label_panel.save_requested.connect(self.save_labels)
         self.project_panel.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
@@ -1718,7 +1726,7 @@ class CurationWindow(QMainWindow):
                 self.label_panel.toggle_all_locks, TAB_LABEL, GROUP_CLASSES,
             ),
             Binding(
-                "X", "Find specks: ring the small components",
+                "X", "Find specks: ring them here, count them along the series",
                 self.label_panel.toggle_specks, TAB_LABEL, GROUP_SPECKS,
             ),
             Binding(
@@ -2763,6 +2771,34 @@ class CurationWindow(QMainWindow):
         requests = self.label_controller.pending_loads()
         if requests:
             self.request_label_load.emit(requests, token)
+        self._sweep_specks(token)
+
+    def _sweep_specks(self, token: int | None = None) -> None:
+        """Count the specks of frames nothing has counted yet.
+
+        On the loader's thread and behind whatever frame preparation is queued
+        there, which is the order that matters: the frame on screen is what the
+        reviewer is waiting for and the marks are what they will look at next.
+
+        Sharing the loader's token means moving to another lamella abandons a
+        sweep in flight. That costs the label it was reading and nothing else,
+        the sweep asking each time only for what is still uncounted.
+        """
+        labels = self.label_controller.uncounted_labels()
+        if not labels:
+            return
+        if token is None:
+            token = self.label_loader.next_token()
+        self.request_speck_counts.emit(
+            labels, token, self.label_controller.speck_size
+        )
+
+    def _on_speck_counted(self, token: int, key, count: int) -> None:
+        """Take one label's count from the sweep and redraw the marks."""
+        if token != self.label_loader.token:
+            return
+        self.label_controller.record_speck_count(key, count)
+        self.label_panel.refresh_timeline()
 
     def _on_label_loaded(self, token: int, request) -> None:
         """Redraw the canvas when the frame on screen finishes preparing."""

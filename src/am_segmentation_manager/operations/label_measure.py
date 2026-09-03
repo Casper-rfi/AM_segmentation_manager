@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_SPECK_PIXELS",
-    "PROOFREADING_SPECK_PIXELS",
+    "count_specks_in",
+    "PREDICTION_PIXEL_BLOCK",
     "LabelMeasurement",
     "LabelPixels",
     "clear_cache",
@@ -58,25 +59,23 @@ __all__ = [
 _CACHE: dict[tuple[Path, int, int, int | None], LabelPixels] = {}
 
 
-#: Components at or below this many pixels are suspect by default.
+#: Components at or below this many pixels are suspect, wherever the question
+#: is asked -- the report and the proofreading view share it.
 #:
-#: One pixel of a prediction. The labels this package converts are predicted at
-#: half resolution and upscaled by nearest neighbour, so the smallest area such
-#: a label can hold is a 2x2 block -- which is why every small component in the
-#: reference collection covers a multiple of four pixels, and why anything
-#: below that was put there by hand.
-DEFAULT_SPECK_PIXELS = 4
+#: **Set from proofreading, not from reasoning about the data.** It began at
+#: :data:`PREDICTION_PIXEL_BLOCK`, which is what could only have been painted
+#: by hand; extended use of the speck filter found the components worth a
+#: second glance run a good deal larger, and that some false positives are
+#: worth the ones this catches.
+DEFAULT_SPECK_PIXELS = 64
 
-#: Where the proofreading view's speck filter starts, in pixels.
+#: The smallest area a label converted from a prediction can hold, in pixels.
 #:
-#: Wider than the report's default, the two asking different questions. A run
-#: of ``find-specks`` over the whole collection is looking for what could only
-#: have been put there by hand, and anything larger buries that in ordinary
-#: small structures; a reviewer sweeping one label is looking for whatever is
-#: small enough to be worth a second glance, and moves the slider from here.
-#: Set from proofreading the collection: the components worth a second glance
-#: run larger than this started out assuming.
-PROOFREADING_SPECK_PIXELS = 64
+#: Predictions are made at half resolution and upscaled by nearest neighbour,
+#: so every component of such a label covers a multiple of four pixels -- which
+#: is why anything below this was put there by hand. Not a threshold any more,
+#: but the fact that explains what the low end of the slider means.
+PREDICTION_PIXEL_BLOCK = 4
 
 
 @dataclass(frozen=True)
@@ -421,6 +420,24 @@ def find_specks(
         if pixels <= at_most
     ]
     return tuple(sorted(found, key=lambda speck: (speck.pixels, speck.y, speck.x)))
+
+
+def count_specks_in(path: Path, *, at_most: int = DEFAULT_SPECK_PIXELS) -> int:
+    """Return how many specks one label file holds, reading only that file.
+
+    For marking a whole series at once, where the question is "how many" per
+    frame rather than where each one is. A label that will not open counts
+    none: the label line already reports it as unreadable, and a count is not
+    the place to say so a second time.
+    """
+    from ..io.image import read_array, to_2d
+
+    try:
+        array = to_2d(read_array(path))
+    except Exception as exc:  # noqa: BLE001 - one bad label must not stop a sweep
+        logger.warning("Could not read label %s: %s", path, exc)
+        return 0
+    return len(find_specks(array, at_most=at_most))
 
 
 def records_with_specks(

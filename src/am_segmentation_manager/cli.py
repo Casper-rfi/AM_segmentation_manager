@@ -39,7 +39,7 @@ from .metadata import (
     VALUE_SEPARATOR,
     field_named,
 )
-from .operations.label_measure import DEFAULT_SPECK_PIXELS
+from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
 from .operations.predictions import convert_record_predictions, plan_conversions
 from .reporting import print_project_summary, print_survey
 from .scanner import Scanner
@@ -680,11 +680,12 @@ def build_parser() -> argparse.ArgumentParser:
     find_specks_cmd.add_argument(
         "--at-most", type=int, default=DEFAULT_SPECK_PIXELS, metavar="PIXELS",
         help=(
-            f"Largest component still reported (default: {DEFAULT_SPECK_PIXELS}). "
-            "The default is one pixel of a prediction: labels converted from "
-            "predictions are upscaled from half resolution, so the smallest "
-            "area one can hold is a 2x2 block. Raising it finds more, and "
-            "flags more small structures that are real"
+            f"Largest component still reported (default: {DEFAULT_SPECK_PIXELS}, "
+            "which proofreading settled on and which flags some small "
+            f"structures that are real). At {PREDICTION_PIXEL_BLOCK} it reports "
+            "only what was painted by hand: a label converted from a prediction "
+            "is upscaled from half resolution, so the smallest area one can "
+            "hold is a 2x2 block"
         ),
     )
     find_specks_cmd.add_argument(

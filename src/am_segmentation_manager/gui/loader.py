@@ -59,6 +59,11 @@ class FrameLoadWorker(QObject):
     #: Emitted when a batch runs to completion without being superseded.
     batch_finished = Signal(int)
 
+    #: Emitted after each label is counted, with the token, the label's key and
+    #: how many specks it holds. One signal per label rather than one per batch,
+    #: so the marks appear as the sweep goes rather than all at the end.
+    counted = Signal(int, object, int)
+
     def __init__(self, cache: FrameCache) -> None:
         super().__init__()
         self._cache = cache
@@ -87,6 +92,32 @@ class FrameLoadWorker(QObject):
                 logger.exception("Unexpected failure preparing %s", request)
             self.loaded.emit(token, request)
         self.batch_finished.emit(token)
+
+    @Slot(list, int, int)
+    def count_specks(self, labels: list, token: int, at_most: int) -> None:
+        """Count the specks in each ``(key, path)``, stopping early if superseded.
+
+        Reads the label files and nothing else. Going through the frame cache
+        would prepare each acquisition at full resolution to get at the label
+        beside it, which is many times the cost of the answer and would evict
+        the frames the reviewer is actually working on.
+
+        A label that will not open is reported as holding none: it is already
+        drawn as unreadable on the label line, and a count is not the place to
+        raise it a second time.
+        """
+        from ..operations.label_measure import count_specks_in
+
+        for key, path in labels:
+            if not self._is_current(token):
+                logger.debug("Abandoning superseded speck count %d", token)
+                return
+            try:
+                found = count_specks_in(path, at_most=at_most)
+            except Exception:  # noqa: BLE001 - a bad label must not stop the sweep
+                logger.exception("Could not count specks in %s", path)
+                found = 0
+            self.counted.emit(token, key, found)
 
 
 class BackgroundLoader:

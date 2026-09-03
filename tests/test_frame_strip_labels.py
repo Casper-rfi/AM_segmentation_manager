@@ -27,6 +27,7 @@ if HAS_QT:
         ROW_HEIGHT,
         ROW_MODALITIES,
         SELECTION_BAND,
+        SPECK_INK,
         STATE_COLOURS,
         FrameTimeline,
     )
@@ -335,3 +336,101 @@ def test_the_band_does_not_cover_a_state_row(loaded):
 
     row_y = FrameTimeline._row_top(0) + ROW_HEIGHT // 2
     assert image.pixelColor(_column(5, loaded), row_y) == STATE_COLOURS["corrected"]
+
+
+# ---------------------------------------------------------------------------
+# Speck counts, drawn over the state rows while the filter is on
+# ---------------------------------------------------------------------------
+
+def _ink_pixels(image, top: int, frame: int, frames: int) -> int:
+    """Count speck ink inside one frame's cell of one modality's state row.
+
+    Scoped to the cell rather than the whole row because the ink is the
+    cursor's colour -- deliberately, both being marks the reviewer put there --
+    so a count across the row would find the cursor as well. Every test below
+    therefore keeps the cursor on a frame it is not looking at.
+    """
+    from am_segmentation_manager.gui.widgets.frame_strip import ROW_HEIGHT
+
+    width = image.width() / frames
+    return sum(
+        image.pixelColor(x, y).rgb() == SPECK_INK.rgb()
+        for y in range(top, top + ROW_HEIGHT - 1)
+        for x in range(int(frame * width), int((frame + 1) * width))
+    )
+
+
+def test_no_marks_are_drawn_when_no_counts_are_given(timeline):
+    """Which is what the filter being off means: the marks exist because the
+    reviewer asked for them."""
+    timeline.set_states(
+        {"SEM": ["selected"] * 4}, current=3, labels={"SEM": ["present"] * 4}
+    )
+    image = _render(timeline)
+
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 1, 4) == 0
+
+
+def test_a_frame_with_no_specks_is_left_blank(timeline):
+    """Only frames with something get a mark, which is what keeps them sparse
+    enough to read as the problems rather than as a row to be scanned."""
+    timeline.set_states(
+        {"SEM": ["selected"] * 4}, current=3,
+        labels={"SEM": ["present"] * 4}, specks={"SEM": [0, 0, 0, 0]},
+    )
+    image = _render(timeline)
+
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 1, 4) == 0
+
+
+def test_a_frame_with_specks_is_marked(timeline):
+    timeline.set_states(
+        {"SEM": ["selected"] * 4}, current=3,
+        labels={"SEM": ["present"] * 4}, specks={"SEM": [0, 3, 0, 0]},
+    )
+    image = _render(timeline)
+
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 1, 4) > 0
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 2, 4) == 0
+
+
+def test_a_frame_nothing_has_counted_yet_is_left_blank(timeline):
+    """None is "not counted", and it must not read as "none": the sweep fills
+    them in one at a time, and a blank that meant zero would be a wrong answer
+    for as long as it took."""
+    timeline.set_states(
+        {"SEM": ["selected"] * 4}, current=3,
+        labels={"SEM": ["present"] * 4}, specks={"SEM": [None, None, None, None]},
+    )
+    image = _render(timeline)
+
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 1, 4) == 0
+
+
+def test_the_marks_go_on_the_modality_they_belong_to(timeline):
+    """A label belongs to one beam; the other beam's row must stay clean."""
+    timeline.set_states(
+        {"SEM": ["selected"] * 4, "FIB": ["selected"] * 4}, current=3,
+        labels={"SEM": ["present"] * 4, "FIB": ["present"] * 4},
+        specks={"SEM": [0, 3, 0, 0], "FIB": [0, 0, 0, 0]},
+    )
+    image = _render(timeline)
+
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 1, 4) > 0
+    assert _ink_pixels(image, FrameTimeline._row_top(1), 1, 4) == 0
+
+
+def test_a_count_too_wide_for_its_frame_still_marks_it(qt_app):
+    """The digits give way to a block rather than to nothing: a lamella dense
+    enough to refuse the number is still one where the frame has to be
+    findable."""
+    widget = FrameTimeline()
+    widget.resize(60, widget.height())          # 60 frames of one pixel each
+    widget.set_states(
+        {"SEM": ["selected"] * 60}, current=59,
+        labels={"SEM": ["present"] * 60},
+        specks={"SEM": [0] * 30 + [27] + [0] * 29},
+    )
+    image = _render(widget)
+
+    assert _ink_pixels(image, FrameTimeline._row_top(0), 30, 60) > 0

@@ -36,7 +36,7 @@ from ...display import (
 from ...layout import MODALITIES, SERIES_LABELS
 from ...operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
-    PROOFREADING_SPECK_PIXELS,
+    PREDICTION_PIXEL_BLOCK,
 )
 from ..label_controller import LabelController
 from .common import (
@@ -365,6 +365,11 @@ class LabelPanel(QWidget):
     #: the loader thread, so the panel asks rather than reads.
     loads_needed = Signal()
 
+    #: Emitted when frames in this series have specks nobody has counted, so
+    #: the window can put the reading on its worker thread. Not done here: a
+    #: sweep of a lamella is seconds of label reading, and the panel draws.
+    speck_counts_needed = Signal()
+
     #: Emitted when the reviewer asks to write this lamella's edits. The window
     #: owns everything that touches the filesystem.
     save_requested = Signal()
@@ -407,6 +412,12 @@ class LabelPanel(QWidget):
         self._speck_timer = QTimer(self)
         self._speck_timer.setSingleShot(True)
         self._speck_timer.timeout.connect(self._refresh_specks)
+        #: Held off separately from the ring recount above: that one answers
+        #: for the label on screen and is cheap, this one reads the whole
+        #: series and must not start while the handle is still moving.
+        self._resweep_timer = QTimer(self)
+        self._resweep_timer.setSingleShot(True)
+        self._resweep_timer.timeout.connect(self.speck_counts_needed.emit)
 
         # Every control here has a shortcut, and none of them needs the
         # keyboard: what does is the canvas, whose space-to-pan is read as a
@@ -523,9 +534,10 @@ class LabelPanel(QWidget):
         controls.addSpacing(20)
         self.speck_check = ToggleSwitch("Find specks")
         self.speck_check.setToolTip(
-            "Ring every component of a few pixels: a stray annotation, or a "
-            "hole that size inside one.\nSets the view that shows them, and "
-            "puts yours back after.\nShortcut: X; N steps to the next"
+            "Ring components of a few pixels -- a stray annotation, or a hole "
+            "inside one -- and count them on the timeline."
+            "\nSets the view that shows them, and puts it back after."
+            "\nShortcut: X; N steps to the next"
         )
         self.speck_check.toggled.connect(self._finding_toggled)
         controls.addWidget(self.speck_check)
@@ -537,7 +549,7 @@ class LabelPanel(QWidget):
         self.speck_slider.setFixedWidth(90)
         self.speck_slider.setToolTip(
             "Largest component still ringed.\n"
-            f"Starts at {PROOFREADING_SPECK_PIXELS}; {DEFAULT_SPECK_PIXELS} is "
+            f"Starts at {DEFAULT_SPECK_PIXELS}; {PREDICTION_PIXEL_BLOCK} is "
             "one pixel of a prediction, so anything smaller was painted by hand."
         )
         self.speck_slider.valueChanged.connect(self._speck_size_changed)
@@ -863,14 +875,24 @@ class LabelPanel(QWidget):
         self.controller.finding_specks = finding
         self._show_speck_controls(finding)
         self._refresh_specks()
+        self._refresh_timeline()
+        if finding:
+            self.speck_counts_needed.emit()
 
     def toggle_specks(self) -> None:
         """Start or stop looking for specks, from the keyboard."""
         self.speck_check.toggle()
 
     def _speck_size_changed(self, pixels: int) -> None:
+        """Take a new size, and put off the sweep until the slider stops.
+
+        Every count in the lamella is invalid at a new size, so recounting on
+        each value would read the series again per pixel the handle moves.
+        """
         self.controller.set_speck_size(pixels)
         self._refresh_specks()
+        self._refresh_timeline()
+        self._resweep_timer.start(SPECK_RECOUNT_MS)
 
     def _refresh_specks(self) -> None:
         """Ring what is there now, and say how much of it there is."""
@@ -1103,6 +1125,10 @@ class LabelPanel(QWidget):
         button.setChecked(True)
         button.blockSignals(False)
 
+    def refresh_timeline(self) -> None:
+        """Redraw the timeline. For the window, as speck counts arrive."""
+        self._refresh_timeline()
+
     def _refresh_timeline(self) -> None:
         """Redraw the timeline and the position counter."""
         self.timeline.set_states(
@@ -1110,6 +1136,7 @@ class LabelPanel(QWidget):
             self.controller.position,
             labels=self.controller.timeline_labels(),
             selected=self.controller.edited_positions(),
+            specks=self.controller.timeline_specks(),
         )
         count = self.controller.count
         position = self.controller.position + 1 if count else 0
