@@ -444,6 +444,7 @@ def records_with_specks(
     records: Iterable[ImageRecord],
     *,
     at_most: int = DEFAULT_SPECK_PIXELS,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[Path, tuple[Speck, ...]]:
     """Return the specks in every label the records point at, keyed by label.
 
@@ -454,23 +455,37 @@ def records_with_specks(
     Labels that do not exist, and labels that cannot be read, are absent: this
     reports what was found, and :func:`classify_labels` is what reports what is
     missing.
+
+    Args:
+        on_progress: Called as ``on_progress(done, total)`` after each label,
+            counted in labels rather than in records: the conditions of one
+            scene share a file and cost one read between them, so a counter
+            over records would sit still for several at a time.
     """
     from ..io.image import read_array, to_2d
     from .csv import find_matching_label
 
+    records = list(records)
+    labels = [
+        label for label in dict.fromkeys(
+            find_matching_label(record) for record in records
+        ) if label is not None
+    ]
     found: dict[Path, tuple[Speck, ...]] = {}
-    for record in records:
-        label = find_matching_label(record)
-        if label is None or label in found:
-            continue
+    for done, label in enumerate(labels, start=1):
         try:
             array = to_2d(read_array(label))
         except Exception as exc:  # noqa: BLE001 - an unreadable label must not stop the sweep
             logger.warning("Could not read label %s: %s", label, exc)
-            continue
-        specks = find_specks(array, at_most=at_most)
-        if specks:
-            found[label] = specks
+        else:
+            specks = find_specks(array, at_most=at_most)
+            if specks:
+                found[label] = specks
+        if on_progress is not None:
+            # Reported for a label that would not open as well as one that did:
+            # it was looked at, and a counter that skipped it would never reach
+            # its total.
+            on_progress(done, len(labels))
     return found
 
 

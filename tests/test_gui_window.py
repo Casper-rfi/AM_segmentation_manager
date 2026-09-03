@@ -1967,6 +1967,31 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     assert asked == ["Include them", "Apply"]
 
 
+def test_finding_specks_needs_no_editing_guard(window, inline_operations, monkeypatch):
+    """It reads and writes nothing, and asking someone to switch editing on to
+    look at their own data would be a lock on the wrong door."""
+    shown = []
+    monkeypatch.setattr(window, "_show_report", lambda title, report: shown.append(title))
+    _tick_lamella(window)
+    assert not window.state_panel.enable_check.isChecked()
+
+    window._find_specks()
+
+    assert shown == ["Find specks"]
+
+
+def test_finding_specks_needs_something_ticked(window, monkeypatch):
+    """Unticked it would sweep whatever happened to be on screen, which is not
+    what a report about datasets is for."""
+    monkeypatch.setattr(window.controller, "scoped_records", list)
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda *args, **kwargs: pytest.fail("should not have started"),
+    )
+
+    window._find_specks()
+
+
 def test_an_operation_will_not_run_with_editing_off(window, monkeypatch):
     """The same guard the state buttons have: writing files is writing files."""
     _tick_lamella(window)

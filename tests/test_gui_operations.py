@@ -44,6 +44,113 @@ def controller(tmp_path: Path) -> OperationsController:
 
 
 # ---------------------------------------------------------------------------
+# Finding specks across a selection
+# ---------------------------------------------------------------------------
+
+def _speck_label(path: Path, specks: int) -> Path:
+    """Write a label holding an annotation and *specks* single pixels."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    array = np.zeros((64, 96), dtype=np.uint8)
+    array[10:40, 10:80] = 2
+    for n in range(specks):
+        array[50, 2 + n * 3] = 1
+    tifffile.imwrite(str(path), array)
+    return path
+
+
+def _speck_record(tmp_path: Path, project: str, name: str, specks: int) -> ImageRecord:
+    label = _speck_label(tmp_path / project / "labels" / f"{name}.tif", specks)
+    return ImageRecord(
+        image_path=tmp_path / project / "sem" / f"{name}.tif",
+        modality="SEM", project=project, labels=[label],
+    )
+
+
+def test_the_report_counts_by_project_worst_first(controller, tmp_path: Path):
+    """Which is the question it is asked: not where each speck is, but which
+    datasets are worth going back to."""
+    records = [
+        _speck_record(tmp_path, "tidy", "a", 1),
+        _speck_record(tmp_path, "messy", "b", 9),
+        _speck_record(tmp_path, "messy", "c", 4),
+    ]
+
+    report = controller.find_specks(records, at_most=64)
+
+    assert report.lines == ("messy: 13 in 2 label(s)", "tidy: 1 in 1 label(s)")
+    assert "13" not in report.headline and "14" in report.headline
+
+
+def test_a_clean_sweep_says_what_it_covered(controller, tmp_path: Path):
+    """"Nothing in 248 labels" is a different statement from "nothing"."""
+    records = [_speck_record(tmp_path, "tidy", f"img_{n}", 0) for n in range(3)]
+
+    report = controller.find_specks(records, at_most=64)
+
+    assert report.lines == ()
+    assert "3 label(s)" in report.headline
+
+
+def test_a_shared_label_is_counted_once(controller, tmp_path: Path):
+    """The label is the file somebody has to open, and the conditions of one
+    scene share it."""
+    shared = _speck_label(tmp_path / "p" / "labels" / "img.tif", 5)
+    records = [
+        ImageRecord(image_path=tmp_path / "p" / directory / "img.tif",
+                    modality="SEM", project="p", labels=[shared])
+        for directory in ("sem", "sem_5kv")
+    ]
+
+    report = controller.find_specks(records, at_most=64)
+
+    assert report.lines == ("p: 5 in 1 label(s)",)
+    assert "of 1 label(s)" in report.headline
+
+
+def test_the_threshold_is_what_decides(controller, tmp_path: Path):
+    records = [_speck_record(tmp_path, "p", "img", 3)]
+
+    assert controller.find_specks(records, at_most=64).lines
+    assert controller.find_specks(records, at_most=0).lines == ()
+
+
+def test_nothing_selected_is_said_rather_than_swept(controller):
+    report = controller.find_specks([], at_most=64)
+
+    assert report.count == 0
+    assert "Nothing selected" in report.headline
+
+
+def test_the_sweep_can_be_stopped(controller, tmp_path: Path):
+    """Read-only, so stopping costs nothing: what it leaves is a smaller answer
+    rather than a half-finished anything."""
+    from am_segmentation_manager.progress import Cancellation
+
+    records = [_speck_record(tmp_path, "p", f"img_{n}", 2) for n in range(4)]
+    cancellation = Cancellation()
+    cancellation.request()
+
+    with pytest.raises(Exception):
+        controller.find_specks(records, at_most=64, cancellation=cancellation)
+
+
+def test_the_sweep_counts_in_labels_not_records(controller, tmp_path: Path):
+    """Conditions of one scene cost one read between them, so a counter over
+    records would sit still for several at a time."""
+    shared = _speck_label(tmp_path / "p" / "labels" / "img.tif", 1)
+    records = [
+        ImageRecord(image_path=tmp_path / "p" / directory / "img.tif",
+                    modality="SEM", project="p", labels=[shared])
+        for directory in ("sem", "sem_5kv", "sem_8")
+    ]
+    seen = []
+
+    controller.find_specks(records, at_most=64, on_progress=lambda d, t: seen.append((d, t)))
+
+    assert seen == [(1, 1)]
+
+
+# ---------------------------------------------------------------------------
 # Converting predictions
 # ---------------------------------------------------------------------------
 

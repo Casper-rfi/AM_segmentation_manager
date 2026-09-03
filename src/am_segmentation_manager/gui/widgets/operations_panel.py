@@ -7,8 +7,9 @@ selection again in filters, which is the part the window has already done. An
 operation with no reason to be narrowed does not belong here at all; compressing
 labels is on the Add data tab, over the whole collection.
 
-Each button previews first and applies only after the preview is accepted, so
-nothing here is a single click away from changing files.
+Each button that writes previews first and applies only after the preview is
+accepted, so nothing here is a single click away from changing files. The one
+that only reads has no preview: what it would find is what it costs to find.
 """
 from __future__ import annotations
 
@@ -26,7 +27,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .common import ALL_FILES_FILTER, caption_for, choose_open_file
+from .common import (
+    ALL_FILES_FILTER,
+    caption_for,
+    choose_open_file,
+    horizontal_rule,
+)
 from .theme import BADGE_STYLES
 
 #: Weights files, as PyTorch writes them.
@@ -54,6 +60,8 @@ class OperationsPanel(QWidget):
     devices_requested = Signal()
     #: Emitted when the user asks to convert the selection's predictions.
     convert_requested = Signal()
+    #: Emitted when the user asks which of the selection's labels hold specks.
+    specks_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -147,9 +155,25 @@ class OperationsPanel(QWidget):
         )
         column.addWidget(self.predictions)
 
+        # Below the two that write, and set apart from them: this one only
+        # reads. It is here rather than in Add data because what it answers is
+        # a curation question -- which datasets are worth going back to -- and
+        # because scoping it to a few ticked projects is what makes it take
+        # seconds instead of minutes.
+        column.addWidget(horizontal_rule())
+        self.specks_button = QPushButton("Find specks...")
+        self.specks_button.setToolTip(
+            "Report which of the selected projects hold labels with components "
+            "too small to be real.\nReads every label in the selection, which "
+            "is slow, and changes nothing."
+        )
+        self.specks_button.clicked.connect(self.specks_requested.emit)
+        column.addWidget(self.specks_button)
+
         layout.addWidget(box)
         self.buttons = (
             self.predict_button, self.browse_button, self.convert_button,
+            self.specks_button,
         )
 
     def show_selection(self, description: str) -> None:

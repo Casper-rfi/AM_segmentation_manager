@@ -13,14 +13,16 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..discovery import DatasetCandidate
 from ..io.path import make_path_relative
 from ..models import ImageRecord
+from ..operations.csv import find_matching_label
 from ..operations.label_compression import compress_labels, existing_labels
+from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, plan_predictions
 from ..operations.predict_process import ProcessOutcome, predict_out_of_process
 from ..operations.predictions import (
@@ -246,6 +248,89 @@ class OperationsController:
             len(created),
             applied=True,
             written=created,
+        )
+
+    def find_specks(
+        self,
+        records: Iterable[ImageRecord],
+        *,
+        at_most: int,
+        on_progress: Callable[[int, int], None] | None = None,
+        cancellation: Cancellation | None = None,
+    ) -> OperationReport:
+        """Report which projects hold labels with components too small to be real.
+
+        **Counted per project, not per label**, which is the question this is
+        asked to answer: the per-label list is what `find-specks` prints, and a
+        window listing three hundred files is one nobody reads to the end. What
+        a reader wants here is which datasets are worth going back to, so the
+        projects come back worst first and the proofreading view is where the
+        individual labels are then looked at.
+
+        No preview. A preview would have to read every label to say what it
+        would find, which is the whole cost -- so this runs once, reports
+        progress, and can be stopped. Stopping is free: nothing is written, and
+        what was read is simply a smaller sweep.
+        """
+        records = list(records)
+        if not records:
+            return OperationReport("Nothing selected to look through.")
+
+        def report(done: int, total: int) -> None:
+            if on_progress is not None:
+                on_progress(done, total)
+            if cancellation is not None:
+                cancellation.check()
+
+        found = records_with_specks(records, at_most=at_most, on_progress=report)
+        projects = self._specks_by_project(records, found)
+        # Counted from the records rather than from what was found: "nothing in
+        # 248 labels" is a different statement from "nothing".
+        read = len({
+            label for label in (find_matching_label(record) for record in records)
+            if label is not None
+        })
+        if not found:
+            return OperationReport(
+                f"No component of {at_most} pixel(s) or less in {read} label(s).",
+                applied=True,
+            )
+        total = sum(len(specks) for specks in found.values())
+        return OperationReport(
+            f"{total} component(s) of {at_most} pixel(s) or less, in "
+            f"{len(found)} of {read} label(s).",
+            tuple(
+                f"{name}: {count} in {labels} label(s)"
+                for name, count, labels in projects
+            ),
+            len(found),
+            applied=True,
+        )
+
+    @staticmethod
+    def _specks_by_project(
+        records: Sequence[ImageRecord], found: Mapping[Path, Sequence]
+    ) -> list[tuple[str, int, int]]:
+        """Return ``(project, specks, labels)`` worst first.
+
+        A label is counted once however many imaging conditions share it, the
+        file being what somebody has to open; the first record naming it says
+        which project it belongs to, and conditions of one scene cannot
+        disagree about that.
+        """
+        owners: dict[Path, str] = {}
+        for record in records:
+            label = find_matching_label(record)
+            if label is not None and label not in owners:
+                owners[label] = record.project or "(no project)"
+        counted: dict[str, list[int]] = {}
+        for label, specks in found.items():
+            entry = counted.setdefault(owners.get(label, "(no project)"), [0, 0])
+            entry[0] += len(specks)
+            entry[1] += 1
+        return sorted(
+            ((name, specks, labels) for name, (specks, labels) in counted.items()),
+            key=lambda item: (-item[1], -item[2], item[0]),
         )
 
     # -- predicting ---------------------------------------------------------

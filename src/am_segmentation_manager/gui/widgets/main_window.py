@@ -816,6 +816,7 @@ class CurationWindow(QMainWindow):
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.devices_requested.connect(self._offer_devices)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
+        self.operations_panel.specks_requested.connect(self._find_specks)
 
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
         self.metadata_panel.init_requested.connect(self._add_projects)
@@ -1308,6 +1309,36 @@ class CurationWindow(QMainWindow):
             lambda allow, dry: self.operations_controller.convert_predictions(
                 records, allow_overwrite=allow, dry_run=dry
             ),
+        )
+
+    def _find_specks(self) -> None:
+        """Report which of the ticked projects hold labels with specks.
+
+        No editing guard, unlike the two buttons above it: this reads and
+        writes nothing, and asking someone to switch editing on to look at
+        their data would be a lock on the wrong door.
+
+        Stoppable, and freely so -- what a stopped sweep leaves is a smaller
+        answer rather than a half-finished anything.
+        """
+        records = self.controller.scoped_records()
+        if not records:
+            self._flash("Tick a project, a lamella or a frame first")
+            return
+        cancellation = Cancellation()
+        progressed = self.operations.worker.progressed
+        # The size the Label tab is set to, not a fixed one: this asks across a
+        # selection the same question the reviewer is asking frame by frame,
+        # and two answers to it that disagreed would be worse than either.
+        size = self.label_controller.speck_size
+        self._run_operation(
+            f"Reading the labels of {len(records)} image(s)",
+            lambda: self.operations_controller.find_specks(
+                records, at_most=size,
+                on_progress=progressed.emit, cancellation=cancellation,
+            ),
+            lambda report: self._show_report("Find specks", report),
+            cancellation=cancellation,
         )
 
     def _compress_labels(self) -> None:
