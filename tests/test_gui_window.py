@@ -1975,7 +1975,7 @@ def test_finding_specks_needs_no_editing_guard(window, inline_operations, monkey
     _tick_lamella(window)
     assert not window.state_panel.enable_check.isChecked()
 
-    window._find_specks()
+    window._find_specks(64)
 
     assert shown == ["Find specks"]
 
@@ -1989,7 +1989,7 @@ def test_finding_specks_needs_something_ticked(window, monkeypatch):
         lambda *args, **kwargs: pytest.fail("should not have started"),
     )
 
-    window._find_specks()
+    window._find_specks(64)
 
 
 def test_an_operation_will_not_run_with_editing_off(window, monkeypatch):

@@ -1311,8 +1311,13 @@ class CurationWindow(QMainWindow):
             ),
         )
 
-    def _find_specks(self) -> None:
+    def _find_specks(self, size: int) -> None:
         """Report which of the ticked projects hold labels with specks.
+
+        The size comes from the box beside the button rather than from the
+        Label tab's slider, which is where it used to come from: a control on
+        another tab quietly deciding what this reports is one nobody can see
+        when they press it.
 
         No editing guard, unlike the two buttons above it: this reads and
         writes nothing, and asking someone to switch editing on to look at
@@ -1327,10 +1332,6 @@ class CurationWindow(QMainWindow):
             return
         cancellation = Cancellation()
         progressed = self.operations.worker.progressed
-        # The size the Label tab is set to, not a fixed one: this asks across a
-        # selection the same question the reviewer is asking frame by frame,
-        # and two answers to it that disagreed would be worse than either.
-        size = self.label_controller.speck_size
         self._run_operation(
             f"Reading the labels of {len(records)} image(s)",
             lambda: self.operations_controller.find_specks(

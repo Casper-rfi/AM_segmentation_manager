@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_SPECK_PIXELS",
+    "MAX_SPECK_PIXELS",
+    "MIN_SPECK_PIXELS",
     "count_specks_in",
     "PREDICTION_PIXEL_BLOCK",
     "LabelMeasurement",
@@ -76,6 +78,14 @@ DEFAULT_SPECK_PIXELS = 64
 #: is why anything below this was put there by hand. Not a threshold any more,
 #: but the fact that explains what the low end of the slider means.
 PREDICTION_PIXEL_BLOCK = 4
+
+#: The range the size may be set to, in pixels. One pixel is the smallest thing
+#: there is; the top is where "small component" stops meaning anything, which
+#: proofreading has put further out than it first appeared. Here rather than on
+#: a widget: two controls now offer this size, and a range owned by one of them
+#: would be a dependency between two panels with nothing else in common.
+MIN_SPECK_PIXELS = 1
+MAX_SPECK_PIXELS = 128
 
 
 @dataclass(frozen=True)

@@ -23,10 +23,17 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from ...operations.label_measure import (
+    DEFAULT_SPECK_PIXELS,
+    MAX_SPECK_PIXELS,
+    MIN_SPECK_PIXELS,
+    PREDICTION_PIXEL_BLOCK,
+)
 from .common import (
     ALL_FILES_FILTER,
     caption_for,
@@ -60,8 +67,9 @@ class OperationsPanel(QWidget):
     devices_requested = Signal()
     #: Emitted when the user asks to convert the selection's predictions.
     convert_requested = Signal()
-    #: Emitted when the user asks which of the selection's labels hold specks.
-    specks_requested = Signal()
+    #: Emitted with the largest component to report when the user asks which
+    #: of the selection's labels hold specks.
+    specks_requested = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -161,13 +169,38 @@ class OperationsPanel(QWidget):
         # because scoping it to a few ticked projects is what makes it take
         # seconds instead of minutes.
         column.addWidget(horizontal_rule())
+        speck_row = QHBoxLayout()
+        self.speck_size = QSpinBox()
+        self.speck_size.setRange(MIN_SPECK_PIXELS, MAX_SPECK_PIXELS)
+        self.speck_size.setValue(DEFAULT_SPECK_PIXELS)
+        self.speck_size.setToolTip(
+            "Largest component reported, in pixels.\n"
+            f"{PREDICTION_PIXEL_BLOCK} is one pixel of a prediction, so "
+            "anything smaller was painted by hand."
+        )
+        speck_row.addWidget(
+            caption_for(
+                "At most",
+                self.speck_size,
+                "The size this looks for, set here rather than taken from the "
+                "Label tab: a control in another tab quietly deciding what "
+                "this reports is one nobody can see when they press the "
+                "button.",
+            )
+        )
+        speck_row.addWidget(self.speck_size)
+        speck_row.addStretch(1)
+        column.addLayout(speck_row)
+
         self.specks_button = QPushButton("Find specks...")
         self.specks_button.setToolTip(
-            "Report which of the selected projects hold labels with components "
-            "too small to be real.\nReads every label in the selection, which "
-            "is slow, and changes nothing."
+            "Report which projects hold labels with components likely to be "
+            "too small to be real -- some are genuine, a small hole often "
+            "is.\nReads every label in the selection: slow, and changes nothing."
         )
-        self.specks_button.clicked.connect(self.specks_requested.emit)
+        self.specks_button.clicked.connect(
+            lambda: self.specks_requested.emit(self.speck_size.value())
+        )
         column.addWidget(self.specks_button)
 
         layout.addWidget(box)

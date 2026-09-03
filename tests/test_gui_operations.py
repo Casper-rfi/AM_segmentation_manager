@@ -66,19 +66,41 @@ def _speck_record(tmp_path: Path, project: str, name: str, specks: int) -> Image
     )
 
 
-def test_the_report_counts_by_project_worst_first(controller, tmp_path: Path):
-    """Which is the question it is asked: not where each speck is, but which
-    datasets are worth going back to."""
+def _rows(report) -> list[list[str]]:
+    """Return the report's table as rows of cells, heading and rule dropped."""
+    return [line.split() for line in report.lines[2:]]
+
+
+def test_the_report_is_a_table_under_a_heading(controller, tmp_path: Path):
+    """The dialog is monospace, so padding the columns lines them up -- which
+    is the point: three numbers a row read as a list otherwise."""
+    records = [_speck_record(tmp_path, "tidy", "a", 1)]
+
+    report = controller.find_specks(records, at_most=64)
+
+    heading, rule = report.lines[0], report.lines[1]
+    assert heading.split() == ["Project", "Specks", "Labels", "Per", "label"]
+    assert set(rule) == {"-"} and len(rule) == len(heading)
+    assert len(report.lines[2]) == len(heading)
+
+
+def test_the_projects_come_back_worst_first_by_specks_a_label(
+    controller, tmp_path: Path
+):
+    """Forty across forty labels is a stray pixel here and there; forty across
+    three is three labels somebody should open."""
     records = [
-        _speck_record(tmp_path, "tidy", "a", 1),
-        _speck_record(tmp_path, "messy", "b", 9),
-        _speck_record(tmp_path, "messy", "c", 4),
+        _speck_record(tmp_path, "thin", "a", 2),
+        _speck_record(tmp_path, "thin", "b", 2),
+        _speck_record(tmp_path, "thin", "c", 2),
+        _speck_record(tmp_path, "concentrated", "d", 5),
     ]
 
     report = controller.find_specks(records, at_most=64)
 
-    assert report.lines == ("messy: 13 in 2 label(s)", "tidy: 1 in 1 label(s)")
-    assert "13" not in report.headline and "14" in report.headline
+    assert [row[0] for row in _rows(report)] == ["concentrated", "thin"]
+    assert _rows(report)[0][1:] == ["5", "1", "5.0"]
+    assert _rows(report)[1][1:] == ["6", "3", "2.0"]
 
 
 def test_a_clean_sweep_says_what_it_covered(controller, tmp_path: Path):
@@ -103,7 +125,7 @@ def test_a_shared_label_is_counted_once(controller, tmp_path: Path):
 
     report = controller.find_specks(records, at_most=64)
 
-    assert report.lines == ("p: 5 in 1 label(s)",)
+    assert _rows(report) == [["p", "5", "1", "5.0"]]
     assert "of 1 label(s)" in report.headline
 
 

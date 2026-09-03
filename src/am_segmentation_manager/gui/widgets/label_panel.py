@@ -36,6 +36,8 @@ from ...display import (
 from ...layout import MODALITIES, SERIES_LABELS
 from ...operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
+    MAX_SPECK_PIXELS,
+    MIN_SPECK_PIXELS,
     PREDICTION_PIXEL_BLOCK,
 )
 from ..label_controller import LabelController
@@ -71,12 +73,6 @@ SWATCH = 12
 #: that a pause between strokes is not one, short enough that a speck painted
 #: out stops being ringed while the reviewer is still looking at it.
 SPECK_RECOUNT_MS = 400
-
-#: The sizes the speck slider offers, in pixels. One pixel is the smallest
-#: thing there is; the top is where "small component" stops meaning anything,
-#: which proofreading has put further out than it first appeared.
-MIN_SPECK_PIXELS = 1
-MAX_SPECK_PIXELS = 128
 
 #: The keys that choose a class to paint, one per button in the order the
 #: classes are shown.

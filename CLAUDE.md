@@ -44,7 +44,7 @@ Code quality, maintainability and extensibility therefore matter.
 	2. `predict` creates predictions with a trained model, in a process of its own. Needs the second environment; also a button in the GUI under Curate.
 	3. `convert-predictions` creates pseudo-labels from the predictions
 2. create labels & correct predictions manually in the GUI
-	1. `find-specks` reports labels holding components too small to be real. It reports rather than repairs: which are genuine is judged by opening them.
+	1. `find-specks` reports labels holding components too small to be real. It reports rather than repairs: which are genuine is judged by opening them. Implemented as a project scan and live in the label tab.
 3. Quantify metadata and labels & export:
 	1. `stats` quantifies the proportion of images with given project and image metadata
 	2. `quantify-labels` measures label surface areas

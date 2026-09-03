@@ -103,6 +103,37 @@ def _copy_context(plan) -> tuple[str, ...]:
     return tuple(context)
 
 
+#: The column headings of the speck report, and the least room each takes.
+#: The report dialog is monospace, so columns line up if they are padded to a
+#: width -- which is the whole reason to pad rather than to separate with
+#: commas, a list of three numbers per row being unreadable at a glance.
+SPECK_COLUMNS = (("Specks", 6), ("Labels", 6), ("Per label", 9))
+
+
+def _speck_table(rows: Sequence[tuple[str, int, int]]) -> tuple[str, ...]:
+    """Return the per-project speck counts as aligned columns under a heading.
+
+    The heading carries the units so the rows do not have to: "49 in 3
+    label(s)" repeated down a page is the same three words over and over, and
+    the numbers are what is being compared.
+    """
+    if not rows:
+        return ()
+    name_width = max(len("Project"), max(len(name) for name, _, _ in rows))
+    heading = f"{'Project':<{name_width}}  " + "  ".join(
+        f"{title:>{width}}" for title, width in SPECK_COLUMNS
+    )
+    lines = [heading, "-" * len(heading)]
+    for name, specks, labels in rows:
+        widths = [width for _title, width in SPECK_COLUMNS]
+        lines.append(
+            f"{name:<{name_width}}  "
+            f"{specks:>{widths[0]}}  {labels:>{widths[1]}}  "
+            f"{specks / labels:>{widths[2]}.1f}"
+        )
+    return tuple(lines)
+
+
 def _skip_summary(plan: ConversionPlan) -> tuple[str, ...]:
     """Return one line per reason records were passed over, largest first.
 
@@ -258,7 +289,10 @@ class OperationsController:
         on_progress: Callable[[int, int], None] | None = None,
         cancellation: Cancellation | None = None,
     ) -> OperationReport:
-        """Report which projects hold labels with components too small to be real.
+        """Report which projects hold labels with components likely to be too small.
+
+        **Likely**, not certainly: a small hole can be real, and this reports
+        rather than judges. What it finds is worth a second look, not a defect.
 
         **Counted per project, not per label**, which is the question this is
         asked to answer: the per-label list is what `find-specks` prints, and a
@@ -266,6 +300,11 @@ class OperationsController:
         a reader wants here is which datasets are worth going back to, so the
         projects come back worst first and the proofreading view is where the
         individual labels are then looked at.
+
+        **Ordered by specks per label rather than by their total**, that being
+        what says how bad the labels are: forty across forty labels is a
+        collection with a stray pixel here and there, and forty across three is
+        three labels somebody should open.
 
         No preview. A preview would have to read every label to say what it
         would find, which is the whole cost -- so this runs once, reports
@@ -299,10 +338,7 @@ class OperationsController:
         return OperationReport(
             f"{total} component(s) of {at_most} pixel(s) or less, in "
             f"{len(found)} of {read} label(s).",
-            tuple(
-                f"{name}: {count} in {labels} label(s)"
-                for name, count, labels in projects
-            ),
+            _speck_table(projects),
             len(found),
             applied=True,
         )
@@ -328,9 +364,11 @@ class OperationsController:
             entry = counted.setdefault(owners.get(label, "(no project)"), [0, 0])
             entry[0] += len(specks)
             entry[1] += 1
+        # Worst first by specks per label, then by how many there are, then by
+        # name so the order does not move between runs on the same data.
         return sorted(
             ((name, specks, labels) for name, (specks, labels) in counted.items()),
-            key=lambda item: (-item[1], -item[2], item[0]),
+            key=lambda item: (-item[1] / item[2], -item[1], item[0]),
         )
 
     # -- predicting ---------------------------------------------------------
