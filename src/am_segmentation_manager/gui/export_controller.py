@@ -332,7 +332,13 @@ class ExportController:
         # filter change, since "loaded but found nothing" and "not loaded yet"
         # look identical from the mapping alone.
         self._metadata_loaded = False
+        #: Whether each label holds anything, **keyed by the label** -- one
+        #: entry per file, conditions of a scene sharing it.
         self._label_empty: dict[Path, bool | None] = {}
+        #: What each image's label turned out to be, **keyed by the image**,
+        #: as the two below are: that is what lets :mod:`..aggregate` close
+        #: over them the way it closes over the header mapping. Two key spaces
+        #: for one subject, so anything dropping an entry has to say which.
         self._label_states: dict[Path, str] = {}
         self._measurements: dict[Path, LabelMeasurement] = {}
         self._measurements_loaded = False
@@ -372,21 +378,33 @@ class ExportController:
         it replaced. That used to be reset by the scan after converting, which
         handed the projects over again.
 
+        **The three are not keyed alike**, so *paths* cannot simply be popped
+        from each: ``_label_empty`` is keyed by the label, while
+        ``_label_states`` and ``_measurements`` are keyed by the *image*, which
+        is what lets :mod:`..aggregate` close over them exactly as it does the
+        header mapping. The images are found from what each record carries
+        rather than through ``find_matching_label``, which stats the disk once
+        per record: this is on the path that exists to avoid reading the
+        collection, and the file was just written, so whether it is there is
+        not in question.
+
         The header cache is untouched: a label is not an acquisition, and
         nothing here changes what an image's header says.
 
         Returns:
             How many of *paths* this view had actually read.
         """
-        forgotten = 0
-        for path in paths:
-            dropped = [
-                self._label_empty.pop(path, _ABSENT),
-                self._label_states.pop(path, _ABSENT),
-                self._measurements.pop(path, _ABSENT),
-            ]
-            if any(value is not _ABSENT for value in dropped):
-                forgotten += 1
+        wanted = {Path(path) for path in paths}
+        if not wanted:
+            return 0
+        forgotten = sum(
+            1 for path in wanted
+            if self._label_empty.pop(path, _ABSENT) is not _ABSENT
+        )
+        for record in self._records:
+            if any(label in wanted for label in record.labels):
+                self._label_states.pop(record.image_path, None)
+                self._measurements.pop(record.image_path, None)
         return forgotten
 
     @property

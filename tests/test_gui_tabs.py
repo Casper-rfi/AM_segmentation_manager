@@ -95,13 +95,42 @@ def test_a_replaced_label_is_read_again_rather_than_remembered(
     tab goes on reporting the state and the area of the label that is gone.
     The scan after converting used to reset it by handing the projects over
     again."""
-    label = next(iter(measured._measurements))
+    from am_segmentation_manager.operations.csv import find_matching_label
+
+    # A *label* path, which is what a conversion reports writing. The three
+    # caches are not keyed alike, so a test picking whichever key came to hand
+    # would pass while two of them kept their answer.
+    record = measured.selected_records()[0]
+    label = find_matching_label(record)
+    assert label in measured._label_empty
+    assert record.image_path in measured._measurements
 
     forgotten = measured.forget_labels([label])
 
     assert forgotten == 1
-    assert label not in measured._measurements
     assert label not in measured._label_empty
+    assert record.image_path not in measured._measurements
+    assert record.image_path not in measured._label_states
+
+
+def test_forgetting_one_label_forgets_every_image_that_shares_it(
+    measured: ExportController,
+):
+    """A conversion writes one label for a scene, and the measurement is held
+    per image -- so a condition left remembering it would keep reporting the
+    area of the label that was replaced."""
+    from am_segmentation_manager.operations.csv import find_matching_label
+
+    record = measured.selected_records()[0]
+    label = find_matching_label(record)
+    sharing = [r for r in measured.records if label in r.labels]
+    assert len(sharing) >= 1
+    for other in sharing:
+        assert other.image_path in measured._measurements
+
+    measured.forget_labels([label])
+
+    assert not any(r.image_path in measured._measurements for r in sharing)
 
 
 def test_forgetting_a_label_nothing_was_read_from_changes_nothing(

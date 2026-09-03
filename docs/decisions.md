@@ -207,16 +207,16 @@ rather than appending to it.
   collection finds nothing more. A shared label is named on **every** record of its group, a
   condition left without it drawing as unlabelled. **What was written, never what was planned**:
   a stopped run plans more than it reaches (`test_a_stopped_run_reports_only_what_it_reached`).
-- **Naming a written file is not enough: three caches stand between a record and the screen.** What
-  is drawn is not recomputed from the records. `record_label_state` opens a label once and keeps the
-  answer, the frame cache holds each frame as a composed image *and its label* keyed by position,
-  and the Export tab keys its label states and measurements by path — all three reset by the scan
-  that used to follow, so a record named without clearing them draws as it did before the file
-  existed (`test_a_written_label_changes_what_the_timeline_reports`,
-  `test_a_replaced_label_is_read_again_rather_than_remembered`). `attach_written` and
+- **Naming a written file is not enough: three caches stand between a record and the screen**, and
+  what is drawn is not recomputed from the records. `record_label_state` keeps the answer it read,
+  the frame cache holds each frame as a composed image *and its label* keyed by position, and the
+  Export tab holds label states and measurements — all three reset by the scan that used to follow,
+  so a record named without clearing them draws as it did before the file existed
+  (`test_a_written_label_changes_what_the_timeline_reports`). `attach_written` and
   `ExportController.forget_labels` drop them together; the frame cache goes whole, being keyed by
-  position rather than by what made it. A scan still finds what changed the files from outside,
-  which is what *Scan* is for.
+  position rather than by what made it, and the Export tab's three are **not keyed alike**
+  (`test_a_replaced_label_is_read_again_rather_than_remembered`). A scan still finds what changed
+  the files from outside, which is what *Scan* is for.
 
 ## Metadata
 
