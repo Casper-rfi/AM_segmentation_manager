@@ -193,7 +193,7 @@ you changed and correct what is no longer true — including status lines and
 anything that describes the old behaviour. Documentation goes stale because
 nobody re-reads it, not because anyone decides to leave it wrong.
 
-**Keep `docs/` short enough to read in one sitting — around 900 lines in total.**
+**Keep `docs/` short enough to read in one sitting — around 1000 lines in total.**
 Approaching that ceiling means something in there has finished and should be
 deleted, not that the limit needs raising.
 
