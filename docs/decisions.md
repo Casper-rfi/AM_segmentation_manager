@@ -382,14 +382,51 @@ rather than appending to it.
   `label`, or ending in `_image` or `_label`, holds a path, so one command checks either shape above
   and files written before both. A blank cell records nothing, so it cannot have gone missing.
 
+## History
+
+- **The record is append-only, one `AM_history.jsonl` per project, and it is never the authority
+  on what a file holds.** `history.py` states the format. A reader that disagrees with the
+  filesystem reports the difference; the label files and `AM_state.yaml` stay authoritative, which
+  is the same rule a stale state entry already follows. **JSONL rather than YAML** buys the three
+  things a record needs and a control file does not: an append is one `O_APPEND` write, so two
+  processes recording at once interleave instead of one discarding the other; two logs combine by
+  taking the union of lines; and a damaged line costs its own contents rather than the file's.
+- **A label is digested over its pixels, never its file bytes.** `compress-labels` re-encodes every
+  label in the collection without changing the segmentation, and a digest that moved would report
+  each run as thousands of edits — filling a merge with conflicts that are not conflicts. Values
+  normalise to 16-bit for hashing so the same classes stored as `uint8` and `uint16` digest alike,
+  the stored dtype being recorded in the entry instead; anything negative, fractional or above
+  65535 is refused rather than silently wrapped, none of it being a label of class indices.
+- **An entry's id is a hash of its content, so recording the same operation twice records it
+  once.** That is what makes a baseline idempotent and a union of two logs correct without either
+  knowing the other exists. A random id would make every re-run add duplicates nothing could
+  collapse, which is why there is no nonce and why `at` is part of the hashed body.
+- **A line this version does not understand is kept and reported, never refused.** `state.py`
+  refuses a file from a later am-seg, which is right for a control file that must be understood
+  completely before anything acts on it. A log is a record: refusing four thousand good entries
+  over one line destroys more than it protects, and because nothing is ever rewritten, an
+  unrecognised line is in no danger from being read. Forward compatibility here comes from
+  append-only plus tolerance; `FILE_VERSION` is reserved for a real format break.
+- **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
+  `metadata.FIELDS`: adding an entry kind is one row rather than an edit in every validator.
+  **Strict on the way in, tolerant on the way out** — writing is this package's to control, so an
+  undeclared field is refused there, while a known kind carrying an unknown field is read and kept.
+- **Attribution is a record, not an authentication.** `AM_SEG_USER` is self-declared and nothing
+  verifies it, so `by_source` records *how* the name was arrived at: an `os` account name is a
+  guess about who was at the keyboard, the rest are statements. Resolving an author never fails —
+  an entry attributed to an account name is worth more than a refused save.
+- **What a relative key may look like is `io/path.checked_relative_key`**, shared by the state file
+  and the log. Both read paths out of files that can be edited, and two copies of that rule would
+  drift; only the exception type belongs to each caller.
+
 ## Environment
 
 - **A save refuses a label whose file changed since it was opened.** Proofreading holds a
-  lamella's edits in memory until the reviewer saves, leaving minutes to hours in which something
-  else can rewrite a label file — not hypothetical, this collection living on OneDrive, which
-  writes files back under a running program. So the size and modification time are recorded on
-  open and compared before writing, and a mismatch stops the entire batch rather than the one
-  file: which version is wanted is not a question this package can answer.
+  lamella's edits in memory until the reviewer saves, leaving minutes to hours in which a second
+  window, the command line or another reviewer on a shared archive can rewrite a label file. So
+  the size and modification time are recorded on open and compared before writing, and a mismatch
+  stops the entire batch rather than the one file: which version is wanted is not a question this
+  package can answer.
 - **Run the suite from the repository root, in `am_segmentation_manager` or
   `am_segmentation_manager_ml`.** Two ways to get this wrong, only one of which announces itself.
   Run `pytest` from *outside* the repository and there is no `pyproject.toml` above the working

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import faulthandler
 import logging
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -31,6 +32,16 @@ from .filtering import (
     filter_by_metadata,
     filter_property,
     iter_matching_records,
+)
+from .history import (
+    AM_HISTORY_FILENAME,
+    CONFIG_DIRECTORY,
+    KINDS,
+    USER_ENV_VAR,
+    Event,
+    containing_project,
+    events_for,
+    read_log,
 )
 from .io.path import make_path_relative
 from .layout import SERIES
@@ -367,6 +378,14 @@ def build_parser() -> argparse.ArgumentParser:
             "there if the process crashes outright. Appends, so runs "
             f"accumulate. 'gui' already does this in {DEFAULT_GUI_LOG}; name a "
             "path here to send one session somewhere of its own"
+        ),
+    )
+    parser.add_argument(
+        "--user", default=None, metavar="NAME",
+        help=(
+            "Record changes under this name. Otherwise taken from "
+            f"{USER_ENV_VAR}, then from {CONFIG_DIRECTORY / 'user.yaml'}, then "
+            "from the account running the command"
         ),
     )
     parser.add_argument(
@@ -986,6 +1005,38 @@ def build_parser() -> argparse.ArgumentParser:
     check_training_csv.add_argument(
         "--in-place", action="store_true",
         help="Overwrite the original CSV instead of writing a new file; requires --prune",
+    )
+
+    # -- history ------------------------------------------------------------
+    history_cmd = sub.add_parser(
+        "history",
+        help="Print what has been recorded about a project or one of its labels",
+        description=(
+            "Read a project's AM_history.jsonl and print what it records. Point "
+            "it at a project directory, or at a label to see only that label's "
+            "history. A log is a record of what am-seg was told to do, not a "
+            "statement about what the files currently hold."
+        ),
+    )
+    history_cmd.add_argument(
+        "path", nargs="?", default=".",
+        help="A project directory, or a file inside one (default: current directory)",
+    )
+    history_cmd.add_argument(
+        "--target", default=None, metavar="PATH",
+        help="Only entries about this path, relative to the project directory",
+    )
+    history_cmd.add_argument(
+        "--kind", default=None, action="append", metavar="KIND",
+        help=f"Only entries of this kind. Repeatable. One of: {', '.join(KINDS)}",
+    )
+    history_cmd.add_argument(
+        "--author", default=None, metavar="NAME",
+        help="Only entries recorded by this author",
+    )
+    history_cmd.add_argument(
+        "--limit", type=int, default=None, metavar="N",
+        help="Print only the last N entries",
     )
 
     return parser
@@ -1895,6 +1946,72 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
 #: Which function runs each subcommand. Aliases and the commands that
 #: share a handler point at the same one, so the parser and this cannot
 #: disagree about how many there are.
+def _cmd_history(args: argparse.Namespace) -> int:
+    """Handle ``am-seg history``."""
+    path = Path(args.path)
+    if not path.exists():
+        logger.error("%s does not exist", path)
+        return 1
+
+    project = containing_project(path)
+    if project is None:
+        logger.error(
+            "No %s at or above %s. Nothing has been recorded here yet.",
+            AM_HISTORY_FILENAME, path,
+        )
+        return 1
+
+    target = args.target
+    if target is None and path.is_file():
+        target = make_path_relative(path, project).replace(os.sep, "/")
+
+    log = read_log(project)
+    entries = events_for(log, target) if target else list(log.events)
+    if args.kind:
+        wanted = set(args.kind)
+        entries = [event for event in entries if event.kind in wanted]
+    if args.author:
+        entries = [event for event in entries if event.by == args.author]
+    if args.limit is not None and args.limit >= 0:
+        entries = entries[-args.limit:] if args.limit else []
+
+    print(f"{log.path}")
+    if target:
+        print(f"target: {target}")
+    if not entries:
+        print("Nothing recorded.")
+    for event in entries:
+        _print_history_entry(event)
+
+    print(
+        f"\n{len(entries)} of {len(log.events)} entr(ies)"
+        + (f", {len(log.unrecognised)} written by a newer am-seg" if log.unrecognised else "")
+        + (f", {len(log.damaged)} unusable" if log.damaged else "")
+    )
+    for line in log.damaged:
+        logger.warning("line %s is unusable: %s", line.number, line.reason)
+    return 0
+
+
+#: History fields worth a column of their own when printing an entry. Anything
+#: else the entry carries is printed after them, so a kind added later shows up
+#: without this needing to be taught about it.
+_HISTORY_LEAD_FIELDS: tuple[str, ...] = ("old", "new", "field", "changed_fraction")
+
+
+def _print_history_entry(event: Event) -> None:
+    """Print one recorded entry over a line, with its fields after it."""
+    attribution = event.by if event.by_source != "os" else f"{event.by} (account)"
+    print(f"{event.at}  {event.kind:<18} {attribution}")
+    if event.target:
+        print(f"    {event.target}")
+    shown = [name for name in _HISTORY_LEAD_FIELDS if name in event.data]
+    shown += sorted(set(event.data) - set(_HISTORY_LEAD_FIELDS))
+    details = "  ".join(f"{name}={event.data[name]}" for name in shown)
+    if details:
+        print(f"    {details}")
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "list-projects": _cmd_list_projects,
     "scan": _cmd_list_projects,
@@ -1917,6 +2034,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "export-files": _cmd_export_files,
     "check-training-csv": _cmd_check_training_csv,
     "compress-labels": _cmd_compress_labels,
+    "history": _cmd_history,
 }
 
 

@@ -178,6 +178,7 @@ is the place for anything scripted:
 | Export metadata and training lists | `export-*-csv` / `create-training-csv` |
 | Export a selection of images and labels into a folder of its own | `export-files` |
 | Check an exported CSV still resolves | `check-training-csv` |
+| Read what has been recorded about a project or a label | `history` |
 
 Getting help
 ------------

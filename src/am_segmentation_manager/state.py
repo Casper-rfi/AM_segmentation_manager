@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Final, Literal, get_args
 
 from .io.atomic import fingerprint_of, write_atomically
+from .io.path import checked_relative_key
 
 logger = logging.getLogger(__name__)
 
@@ -266,19 +267,14 @@ def _checked_states(
 def _checked_key(key: str, stage_directory: Path) -> str:
     """Return *key* if it names a path inside the stage, else raise.
 
-    A state file is hand-editable, so a key is checked rather than joined:
-    ``../`` or an absolute path would otherwise name a file in another dataset.
+    The rule itself is :func:`~am_segmentation_manager.io.path.checked_relative_key`,
+    shared with the history log so the two cannot disagree about what a key is;
+    only the exception type is this module's.
     """
-    if not key or key != key.strip():
-        raise StateFileError(f"{key!r} is not a usable path")
-    if "\\" in key:
-        raise StateFileError(f"{key!r} must separate directories with '/'")
-    parts = key.split("/")
-    if any(part in ("", ".", "..") for part in parts):
-        raise StateFileError(f"{key!r} must be a relative path inside {stage_directory}")
-    if Path(key).is_absolute():
-        raise StateFileError(f"{key!r} must be relative to {stage_directory}")
-    return key
+    try:
+        return checked_relative_key(key, stage_directory)
+    except ValueError as error:
+        raise StateFileError(str(error)) from error
 
 
 # ---------------------------------------------------------------------------
