@@ -28,6 +28,7 @@ from ..models import Lamella, Project
 from ..operations import label_io
 from ..operations.label_groups import expand_to_groups
 from ..operations.label_io import LabelReadiness, classify_labels
+from ..operations.predict import prediction_destination
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
 from .cache import (
@@ -114,6 +115,29 @@ class LamellaEntry:
 
     project: Project
     lamella: Lamella
+
+
+def _add_written(record, wanted: set[Path]) -> bool:
+    """Name any of *wanted* that belongs to *record*, and say whether one did.
+
+    Asked of the record rather than derived from its image path: where a
+    record's label and predictions live depends on the shape of its image set,
+    which is why the scanner resolves both once and the record carries them.
+    A record that cannot say raises from `prediction_destination`, so it is
+    asked only where the record knows.
+    """
+    added = False
+    if record.predictions_directory is not None:
+        prediction = prediction_destination(record)
+        if prediction in wanted and prediction not in record.predictions:
+            record.predictions.append(prediction)
+            added = True
+    if record.labels_directory is not None:
+        label = label_io.label_destination(record)
+        if label in wanted and label not in record.labels:
+            record.labels.append(label)
+            added = True
+    return added
 
 
 def _index_of(items: Sequence, path: Path | None) -> int | None:
@@ -1146,6 +1170,39 @@ class CurationController:
             return frame.base_records
         record = frame.record(self.target)
         return [record] if record is not None else []
+
+    def attach_written(self, written: Iterable[Path]) -> int:
+        """Name newly written predictions and labels on the records they belong to.
+
+        What a scan after predicting or converting would have discovered, done
+        from what the run reported instead. Both writes change exactly two
+        fields of :class:`~...models.ImageRecord` -- ``predictions`` and
+        ``labels`` -- and everything drawn from them (the timeline's label line,
+        the status chips, what the Export tab counts) is computed from the
+        records themselves, which the other tabs hold by reference rather than
+        copying. So there is nothing left for a walk of the collection to find.
+
+        A path is matched against where each record says its own prediction and
+        label go, so a label shared by several imaging conditions is named on
+        all of them: the group is what a conversion writes for, and a condition
+        left without it would keep drawing as unlabelled.
+
+        Returns:
+            How many records gained a path. Zero is normal for a preview.
+        """
+        wanted = {Path(path) for path in written}
+        if not wanted:
+            return 0
+        touched = 0
+        for project in self.projects:
+            for record in project.image_records:
+                if _add_written(record, wanted):
+                    touched += 1
+        logger.info(
+            "Named %d written file(s) on %d record(s) without rescanning",
+            len(wanted), touched,
+        )
+        return touched
 
     def scoped_records(self) -> list:
         """Return every record a state change would apply to.

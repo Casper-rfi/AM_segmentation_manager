@@ -1637,7 +1637,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
             return 0
-        converted = convert_record_predictions(records, overwrite=args.overwrite)
+        converted = len(convert_record_predictions(records, overwrite=args.overwrite))
         logger.info("Total converted: %d", converted)
         return 0
 

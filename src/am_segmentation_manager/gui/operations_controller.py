@@ -49,6 +49,13 @@ class OperationReport:
         applied: False for a preview.
         blocked: Why the operation cannot run, or empty when it can. A blocked
             report carries no work; it is shown and dismissed.
+        written: The files the run actually created, for an operation whose
+            whole effect on the index is the paths it wrote. The window names
+            them on the records that share them instead of reading the
+            collection again; empty for a preview, and for a run whose effect
+            is not expressible this way. **Only what was written**, never what
+            was planned: a stopped run plans more than it creates, and a record
+            claiming a prediction that is not there offers to convert nothing.
     """
 
     headline: str
@@ -56,6 +63,7 @@ class OperationReport:
     count: int = 0
     applied: bool = False
     blocked: str = ""
+    written: tuple[Path, ...] = ()
 
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""
@@ -231,12 +239,13 @@ class OperationsController:
                 lines + context,
                 len(plan.conversions),
             )
-        written = convert_record_predictions(records, overwrite=allow_overwrite)
+        created = convert_record_predictions(records, overwrite=allow_overwrite)
         return OperationReport(
-            f"Wrote {written} label(s) from predictions.",
+            f"Wrote {len(created)} label(s) from predictions.",
             lines + context,
-            written,
+            len(created),
             applied=True,
+            written=created,
         )
 
     # -- predicting ---------------------------------------------------------
@@ -325,6 +334,10 @@ class OperationsController:
             f"{self._relative(Path(destination))}: write"
             for destination in outcome.destinations
         )
+        # Sliced by what the child reported writing, not by the length of the
+        # plan it was given: `destinations` is filled before the run, so a
+        # stopped one names files it never reached.
+        created = tuple(Path(d) for d in outcome.destinations[:outcome.written])
         if outcome.stopped:
             return OperationReport(
                 f"Stopped after {outcome.written} of {outcome.total} "
@@ -333,6 +346,7 @@ class OperationsController:
                 lines[:outcome.written] + context,
                 outcome.written,
                 applied=True,
+                written=created,
             )
         return OperationReport(
             f"Predicted {outcome.written} {outcome.modality} image(s) with "
@@ -340,6 +354,7 @@ class OperationsController:
             lines + context,
             outcome.written,
             applied=True,
+            written=created,
         )
 
     @staticmethod

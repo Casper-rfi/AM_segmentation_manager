@@ -117,7 +117,7 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
     destinations = [item.destination for item in planned]
 
     assert len(destinations) == len(set(destinations))
-    assert convert_record_predictions(records) == 1
+    assert len(convert_record_predictions(records)) == 1
     assert len(list((stage / "sem_labels").glob("*.tif"))) == 1
 
 

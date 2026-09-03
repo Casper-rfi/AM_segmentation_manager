@@ -94,6 +94,69 @@ def test_converting_writes_the_labels_the_preview_listed(controller, tmp_path: P
     assert (stage / "sem_labels" / "img.tif").exists()
 
 
+def test_converting_reports_where_it_put_each_label(controller, tmp_path: Path):
+    """The window names these on the records instead of rescanning to find
+    them, so a report that did not carry them would cost a walk of the
+    collection after every conversion."""
+    stage, image = _project_with_prediction(tmp_path)
+    record = ImageRecord(
+        image_path=image, modality="SEM",
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
+        labels_directory=stage / "sem_labels",
+    )
+
+    report = controller.convert_predictions([record])
+
+    assert report.written == (stage / "sem_labels" / "img.tif",)
+
+
+def test_a_conversion_preview_reports_nothing_written(controller, tmp_path: Path):
+    stage, image = _project_with_prediction(tmp_path)
+    record = ImageRecord(
+        image_path=image, modality="SEM",
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
+        labels_directory=stage / "sem_labels",
+    )
+
+    assert controller.convert_predictions([record], dry_run=True).written == ()
+
+
+def _outcome(**fields):
+    """Return a child-process outcome with the fields a report reads."""
+    from am_segmentation_manager.operations.predict_process import ProcessOutcome
+
+    return ProcessOutcome(**fields)
+
+
+def test_a_prediction_reports_where_each_one_went(controller, tmp_path: Path):
+    outcome = _outcome(
+        written=2, total=2, modality="SEM",
+        destinations=(str(tmp_path / "a.tif"), str(tmp_path / "b.tif")),
+    )
+
+    report = controller._report_outcome(outcome, tmp_path / "model.pth")
+
+    assert report.written == (tmp_path / "a.tif", tmp_path / "b.tif")
+
+
+def test_a_stopped_run_reports_only_what_it_reached(controller, tmp_path: Path):
+    """`destinations` is filled from the plan before the run, so a stopped one
+    names files it never wrote. A record claiming a prediction that is not
+    there offers to convert nothing, and says so only when pressed."""
+    outcome = _outcome(
+        written=1, total=3, modality="SEM", stopped=True,
+        destinations=(
+            str(tmp_path / "a.tif"),
+            str(tmp_path / "b.tif"),
+            str(tmp_path / "c.tif"),
+        ),
+    )
+
+    report = controller._report_outcome(outcome, tmp_path / "model.pth")
+
+    assert report.written == (tmp_path / "a.tif",)
+
+
 def _record(
     stage: Path,
     kind: str | None = "raw",

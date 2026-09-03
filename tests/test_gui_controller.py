@@ -83,6 +83,101 @@ def make_controller(projects: list[Project] | None = None) -> CurationController
 
 
 # ---------------------------------------------------------------------------
+# Naming what an operation wrote, instead of scanning to find it
+# ---------------------------------------------------------------------------
+
+def _written_project(labels_directory: Path, *names: str) -> Project:
+    """A stage of SEM records sharing one label directory."""
+    images = [
+        ImageRecord(
+            image_path=Path(f"stage/sem/{name}"),
+            modality="SEM",
+            labels_directory=labels_directory,
+            predictions_directory=Path("stage/predictions"),
+        )
+        for name in names
+    ]
+    stage = Stage(name="stage", path=Path("stage"), number="01", images=images)
+    lamella = Lamella(name="01-a", path=Path("01-a"), number="01", stages=[stage])
+    return Project(name="p", path=Path("p"), lamellae=[lamella], number="001")
+
+
+def test_a_written_label_is_named_on_its_record():
+    """What the scan after a conversion used to do, done from what it wrote."""
+    project = _written_project(Path("stage/sem_labels"), "img.tif")
+    controller = make_controller([project])
+    record = project.lamellae[0].stages[0].images[0]
+    assert record.labels == []
+
+    touched = controller.attach_written([Path("stage/sem_labels/img.tif")])
+
+    assert touched == 1
+    assert record.labels == [Path("stage/sem_labels/img.tif")]
+
+
+def test_a_written_prediction_is_named_on_its_record():
+    """And convert reads `record.predictions`, so without this a prediction
+    just made would not be offered for conversion."""
+    project = _written_project(Path("stage/sem_labels"), "img.tif")
+    controller = make_controller([project])
+    record = project.lamellae[0].stages[0].images[0]
+
+    controller.attach_written([Path("stage/predictions/am_seg/img.tif")])
+
+    assert record.predictions == [Path("stage/predictions/am_seg/img.tif")]
+
+
+def test_a_shared_label_is_named_on_every_record_that_shares_it():
+    """A conversion writes one label for the whole group. A condition left
+    without it keeps drawing as unlabelled, which is the state the scan this
+    replaces would have corrected."""
+    project = _written_project(Path("stage/sem_labels"), "img.tif")
+    stage = project.lamellae[0].stages[0]
+    stage.images.append(
+        ImageRecord(
+            image_path=Path("stage/sem_5kv/img.tif"),
+            modality="SEM",
+            labels_directory=Path("stage/sem_labels"),
+        )
+    )
+    controller = make_controller([project])
+
+    touched = controller.attach_written([Path("stage/sem_labels/img.tif")])
+
+    assert touched == 2
+    assert all(
+        record.labels == [Path("stage/sem_labels/img.tif")] for record in stage.images
+    )
+
+
+def test_naming_the_same_file_twice_does_not_list_it_twice():
+    """Converting again over an existing label writes the same path."""
+    project = _written_project(Path("stage/sem_labels"), "img.tif")
+    controller = make_controller([project])
+    record = project.lamellae[0].stages[0].images[0]
+
+    controller.attach_written([Path("stage/sem_labels/img.tif")])
+    controller.attach_written([Path("stage/sem_labels/img.tif")])
+
+    assert record.labels == [Path("stage/sem_labels/img.tif")]
+
+
+def test_a_path_belonging_to_no_record_touches_nothing():
+    project = _written_project(Path("stage/sem_labels"), "img.tif")
+    controller = make_controller([project])
+
+    assert controller.attach_written([Path("elsewhere/other.tif")]) == 0
+
+
+def test_nothing_written_is_not_an_error():
+    """Every preview reports this, and a report with no writes is the ordinary
+    outcome of an operation that had nothing to do."""
+    controller = make_controller([_written_project(Path("stage/sem_labels"), "img.tif")])
+
+    assert controller.attach_written([]) == 0
+
+
+# ---------------------------------------------------------------------------
 # Scanning and selection
 # ---------------------------------------------------------------------------
 

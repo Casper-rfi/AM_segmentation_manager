@@ -195,19 +195,24 @@ rather than appending to it.
   levels: that leaves ticks visible which decide nothing and, once a tick outlives the project it
   was made in, ticks *invisible* which decide everything. Everything reaches `transition_records`
   through `scoped_records()`, so group expansion and the corrected-data guard apply unchanged.
-- **A scan the user did not ask for keeps the selection; one they did asks again.** An operation
-  that writes files is followed by a rescan, and preparing labels is two of them against the same
-  set, so a rescan that emptied the selection would have *convert* ask for the choice *predict* was
-  just given; pressing *Scan* starts clean. What comes back is filtered against what the scan
-  found, and **frames come back by which acquisition they are, not by where they sat** —
-  `LamellaFrame.key` rather than an index. The *view* is still restored by index: landing on a
-  neighbouring frame is a nuisance, acting on one is a fault.
-- **Saving labels is the write that does not rescan**, being the one whose whole effect is already
-  in memory when it finishes: `_attach_created_labels` names a label that did not exist on the
-  records proofread through it, and declaring a group corrected writes a state file and brings those
-  records with it, moving nothing. It is also the action taken most often, and a scan there costs
-  the reviewer a walk of the collection *and* the prepared frames of the lamella they are working
-  on. So it recounts from the records, and `LabelController.save` settles the frames worth visiting.
+- **A scan the user did not ask for keeps the selection; one they did asks again.** A rescan that
+  emptied it would have an operation ask again for the choice the one before it was just given;
+  pressing *Scan* starts clean. What comes back is filtered against what the scan found, and
+  **frames come back by which acquisition they are, not by where they sat** — `LamellaFrame.key`
+  rather than an index. The *view* is still restored by index: landing on a neighbouring frame is a
+  nuisance, acting on one is a fault.
+- **A write that says what it created does not rescan.** Saving labels, predicting and converting
+  change the same two fields of `ImageRecord` — `labels` and `predictions` — and the timeline, the
+  chips and the Export counts are all computed from the records, which the other tabs hold by
+  reference rather than copying. So the paths written go straight onto the records
+  (`_attach_created_labels`, `CurationController.attach_written`) and a walk of the collection has
+  nothing left to find; declaring a group corrected likewise writes a state file and brings its
+  records with it. A shared label is named on **every** record of its group, a condition left
+  without it drawing as unlabelled. **Only what was written, never what was planned**: a stopped
+  prediction run plans more than it reaches, and a record claiming a prediction that is not there
+  offers to convert nothing (`test_a_stopped_run_reports_only_what_it_reached`). What a scan still
+  finds is what changed the files from outside, which is what *Scan* is for. `LabelController.save`
+  additionally settles the frames worth visiting, being the action taken most often.
 
 ## Metadata
 

@@ -323,12 +323,17 @@ def plan_conversions(
 
 def convert_record_predictions(
     records: Iterable[ImageRecord], *, overwrite: bool = False
-) -> int:
+) -> tuple[Path, ...]:
     """Convert predictions for explicitly selected image records.
 
     Corrected labels are never overwritten, whatever *overwrite* is set to. A
     label is written to the directory its image set resolves to, which is also
     where an existing one is replaced.
+
+    Returns:
+        Where each label was written. The paths rather than a count, so a
+        caller can name the new labels on the records that share them instead
+        of re-reading the collection to find them; ``len`` gives the count.
     """
     plan = plan_conversions(records, overwrite=overwrite)
     for conversion in plan.conversions:
@@ -342,4 +347,4 @@ def convert_record_predictions(
             conversion.destination,
             target_image_path=conversion.record.image_path,
         )
-    return len(plan.conversions)
+    return tuple(conversion.destination for conversion in plan.conversions)

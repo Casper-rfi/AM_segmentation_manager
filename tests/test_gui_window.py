@@ -1779,6 +1779,76 @@ def _accept_dialog(monkeypatch, chosen, *, accepted=True, opened=None):
     )
 
 
+def _unlabelled_record(window):
+    """Return a record the scan found no label for, as a conversion's target."""
+    return next(
+        record
+        for project in window.controller.projects
+        for record in project.image_records
+        if not record.labels
+    )
+
+
+def test_converting_does_not_walk_the_collection_again(
+    project: Path, window, inline_operations, monkeypatch
+):
+    """The scan that used to follow cost a full read of the archive, which on a
+    real collection is most of the time the operation takes. What it went
+    looking for is the label the run just wrote, and the run says where."""
+    from am_segmentation_manager.gui.operations_controller import OperationReport
+    from am_segmentation_manager.operations.label_io import label_destination
+
+    record = _unlabelled_record(window)
+    written = label_destination(record)
+    monkeypatch.setattr(
+        window.operations_controller, "convert_predictions",
+        lambda records, allow_overwrite=False, dry_run=False: OperationReport(
+            "Wrote 1 label(s) from predictions.", (), 1,
+            applied=not dry_run,
+            written=() if dry_run else (written,),
+        ),
+    )
+    monkeypatch.setattr(
+        window, "rescan", lambda: pytest.fail("converting should not rescan")
+    )
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+
+    window._convert_predictions()
+
+    assert record.labels == [written]
+
+
+def test_predicting_does_not_walk_the_collection_again(
+    project: Path, window, inline_operations, monkeypatch
+):
+    """Preparing labels is predict then convert against the same selection, so
+    the scan was paid twice for one decision. Convert reads the predictions off
+    the records, so this is also what makes the second step see the first."""
+    from am_segmentation_manager.gui.operations_controller import OperationReport
+    from am_segmentation_manager.operations.predict import prediction_destination
+
+    record = _unlabelled_record(window)
+    written = prediction_destination(record)
+    monkeypatch.setattr(
+        window.operations_controller, "predict",
+        lambda *args, **kwargs: OperationReport(
+            "Predicted 1 SEM image(s).", (), 1,
+            applied=not kwargs.get("dry_run"),
+            written=() if kwargs.get("dry_run") else (written,),
+        ),
+    )
+    monkeypatch.setattr(
+        window, "rescan", lambda: pytest.fail("predicting should not rescan")
+    )
+    window.state_panel.enable_check.setChecked(True)
+    _tick_lamella(window)
+
+    window._predict(str(project / "model.pth"))
+
+    assert record.predictions == [written]
+
+
 def test_creating_projects_rescans_so_the_new_projects_appear(
     project: Path, window, inline_operations, monkeypatch
 ):

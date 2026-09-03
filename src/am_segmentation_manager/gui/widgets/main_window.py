@@ -1119,8 +1119,7 @@ class CurationWindow(QMainWindow):
         return pending
 
     def _operate(
-        self, title: str, run, *, rescan: bool = False,
-        cancellation: Cancellation | None = None,
+        self, title: str, run, *, cancellation: Cancellation | None = None
     ) -> None:
         """Preview an operation, confirm it, then apply what was previewed.
 
@@ -1130,10 +1129,6 @@ class CurationWindow(QMainWindow):
                 :class:`OperationReport`. ``allow`` answers whatever the report
                 was blocked on. It runs on the worker thread, so it must touch
                 nothing belonging to the window.
-            rescan: Set where the operation creates files a scan would have
-                indexed -- a new label, a new project. A refresh recounts what
-                is already in memory, which cannot show a file that was not
-                there when the scan ran.
             cancellation: Makes the applying run stoppable. The previews are
                 not: they open no file and answer in milliseconds, so a Stop
                 button on one is a button with nothing to stop.
@@ -1160,7 +1155,7 @@ class CurationWindow(QMainWindow):
             self._run_operation(
                 title,
                 lambda: run(allowed, False),
-                lambda applied: self._operation_applied(title, applied, rescan),
+                lambda applied: self._operation_applied(title, applied),
                 cancellation=cancellation,
             )
 
@@ -1169,10 +1164,20 @@ class CurationWindow(QMainWindow):
     def _operation_applied(
         self, title: str, report: OperationReport, rescan: bool = False
     ) -> None:
-        """Record what an operation did and bring the window back in step."""
+        """Record what an operation did and bring the window back in step.
+
+        Args:
+            rescan: For an operation whose effect is not a list of files it
+                wrote -- a new *project*, which changes what the index holds
+                rather than what a record carries. Everything that only creates
+                labels or predictions names them through ``written`` instead.
+        """
         self.state_panel.show_last_change(f"{title}: {report.headline}")
         logger.info("%s: %s", title, report.headline)
         self._show_report(title, report)
+        # An operation that says what it wrote needs no scan to find it: the
+        # paths go on the records, and everything drawn from them follows.
+        self.controller.attach_written(report.written)
         # Marked on both sides, as the steps of a prediction run are: the last
         # thing an operation does is read the whole collection again, and a
         # window that disappears once the work is finished has to be placed
@@ -1243,8 +1248,10 @@ class CurationWindow(QMainWindow):
         cancellation = Cancellation()
         progressed = self.operations.worker.progressed
 
-        # Rescanned afterwards: a prediction that did not exist when the scan
-        # ran is not in the index, so nothing would offer to convert it.
+        # Not rescanned: a prediction that did not exist when the scan ran is
+        # not in the index and nothing would offer to convert it, but the run
+        # says where it put every one, which is the whole of what a scan would
+        # have found here.
         self._operate(
             "Predict labels",
             lambda allow, dry: self.operations_controller.predict(
@@ -1252,7 +1259,6 @@ class CurationWindow(QMainWindow):
                 cancellation=None if dry else cancellation,
                 on_progress=None if dry else progressed.emit,
             ),
-            rescan=True,
             cancellation=cancellation,
         )
 
@@ -1282,14 +1288,14 @@ class CurationWindow(QMainWindow):
         records = self._editable_records()
         if records is None:
             return
-        # Rescanned afterwards: the new labels do not exist in the scanned
-        # index, so the timeline would keep drawing these frames as unlabelled.
+        # Not rescanned, for the reason under Predict labels: the new labels
+        # would otherwise keep drawing as unlabelled, and naming them on their
+        # records says the same thing without walking the collection.
         self._operate(
             "Convert predictions",
             lambda allow, dry: self.operations_controller.convert_predictions(
                 records, allow_overwrite=allow, dry_run=dry
             ),
-            rescan=True,
         )
 
     def _compress_labels(self) -> None:
