@@ -173,19 +173,21 @@ class OperationsPanel(QWidget):
         self.speck_size = QSpinBox()
         self.speck_size.setRange(MIN_SPECK_PIXELS, MAX_SPECK_PIXELS)
         self.speck_size.setValue(DEFAULT_SPECK_PIXELS)
-        self.speck_size.setToolTip(
-            "Largest component reported, in pixels.\n"
-            f"{PREDICTION_PIXEL_BLOCK} is one pixel of a prediction, so "
-            "anything smaller was painted by hand."
-        )
+        # The unit in the box itself, not only in the tooltip: a bare number in
+        # a spin box is one you have to hover to understand, and this one is
+        # read every time before it is pressed.
+        self.speck_size.setSuffix(" px")
+        # One tooltip, set through `caption_for`, which puts it on the caption
+        # and the box alike -- so a second one set here would be overwritten
+        # and the unit would be nowhere.
         speck_row.addWidget(
             caption_for(
                 "At most",
                 self.speck_size,
-                "The size this looks for, set here rather than taken from the "
-                "Label tab: a control in another tab quietly deciding what "
-                "this reports is one nobody can see when they press the "
-                "button.",
+                "Largest component reported, in pixels. Set here rather than "
+                "on the Label tab, so it is visible where it is pressed. "
+                f"{PREDICTION_PIXEL_BLOCK} is one pixel of a prediction: "
+                "anything smaller was painted by hand.",
             )
         )
         speck_row.addWidget(self.speck_size)
