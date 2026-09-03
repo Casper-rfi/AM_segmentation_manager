@@ -880,6 +880,81 @@ def test_painting_out_the_last_speck_takes_its_mark_away(window):
     assert panel.timeline._specks[modality][position] == 0
 
 
+def test_leaving_a_frame_before_the_recount_still_fixes_its_mark(window):
+    """The reported fault. A stroke defers the recount by 400ms so it does not
+    run mid-drag; move on inside that window and the recount fires for the
+    frame you moved *to*, leaving the one you edited showing what it held
+    before -- and it is never asked again, a frame with a count being one the
+    sweep passes over."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    panel = window.label_panel
+    controller = panel.controller
+    panel.speck_check.setChecked(True)
+    key = controller.current_key
+    before = controller.timeline_specks()[controller.modality][controller.position]
+
+    # A stroke through the panel, as the canvas makes one, then away at once.
+    panel._stroke_finished(paint(controller.working_label(), [(7, 9)], 0, 1))
+    position = controller.position
+    controller.step(1)
+    controller.working_label()
+
+    sources = dict(controller.uncounted_labels())
+    for asked, source in sources.items():
+        controller.record_speck_count(asked, 99 if asked == key else 0)
+    after = controller.timeline_specks()[controller.modality][position]
+
+    assert after != before, (
+        "the frame kept the count it had before the stroke, and nothing asks again"
+    )
+
+
+def test_stepping_away_hands_the_edited_label_to_the_sweep(window):
+    """End to end, through the panel's own navigation: `refresh` draws the new
+    frame before it asks for loads, and drawing is what puts the edited label
+    away in the session -- so by the time the sweep runs there is a copy of it
+    to count, and the mark is right one frame later rather than two."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    panel = window.label_panel
+    controller = panel.controller
+    panel.speck_check.setChecked(True)
+    key = controller.current_key
+    position = controller.position
+
+    panel._stroke_finished(paint(controller.working_label(), [(7, 9)], 0, 1))
+    panel.step_frame(1)                      # the panel's own way of moving
+
+    sources = dict(controller.uncounted_labels())
+    assert isinstance(sources.get(key), bytes), (
+        "the edited frame should reach the sweep as the session's own copy"
+    )
+    controller.record_speck_count(key, sources and 1)
+
+    assert controller.timeline_specks()[controller.modality][position] == 1
+
+
+def test_undoing_a_stroke_puts_the_count_back(window):
+    """Undo changes the label as surely as the stroke did, and left the count
+    saying what the stroke had made it."""
+    panel = window.label_panel
+    controller = panel.controller
+    panel.speck_check.setChecked(True)
+    position = controller.position
+    modality = controller.modality
+    clean = controller.timeline_specks()[modality][position]
+
+    stray(panel, 7, 9)
+    panel._refresh_specks()
+    assert controller.timeline_specks()[modality][position] == clean + 1
+
+    panel.undo()
+    panel._refresh_specks()
+
+    assert controller.timeline_specks()[modality][position] == clean
+
+
 def test_an_edited_frame_is_counted_from_memory_not_from_its_file(window):
     """The reported fault. Widening the size clears every count, so the sweep
     that follows re-reads frames the reviewer has already edited -- and their

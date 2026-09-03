@@ -110,6 +110,13 @@ class LabelController:
         #: on screen: counting a series means reading its label files, and
         #: locating every speck in all of them would be work nobody asked for.
         self._speck_counts: dict[Path, int] = {}
+        #: Labels whose count is present but known to be wrong, the label
+        #: having changed since it was taken. **Distinct from having no count
+        #: at all**, which the timeline draws as blank: a frame the reviewer
+        #: has just drawn on should go on showing what it last held rather than
+        #: flickering empty until the recount lands, and a count that is merely
+        #: absent is one the sweep would pick up anyway.
+        self._stale_specks: set[Path] = set()
         self._lamella: Lamella | None = None
         self._frames: tuple[LamellaFrame, ...] = ()
         self._positions: tuple[int, ...] = ()
@@ -161,6 +168,7 @@ class LabelController:
             self._keys.clear()
             self._specks.clear()
             self._speck_counts.clear()
+            self._stale_specks.clear()
             self.session.discard()
         self._rebuild_frames(keep_frame=keep_frame)
         logger.debug(
@@ -471,10 +479,24 @@ class LabelController:
     def record_edit(self, patch: EditPatch | None) -> None:
         """Record a completed stroke against the label on screen."""
         self.session.record(patch)
-        # The specks were counted on the label as it was a stroke ago. Dropped
-        # rather than recounted: recounting belongs to whoever decides when the
-        # reviewer has stopped drawing.
-        self._specks.pop(self.current_key, None)
+        self.note_label_changed()
+
+    def note_label_changed(self) -> None:
+        """Say that the label on screen no longer matches what was counted.
+
+        Called for anything that changes it -- a stroke, an undo, a redo. The
+        ringed specks are dropped, recounting them belonging to whoever decides
+        that the reviewer has stopped drawing; the *count* is kept and marked
+        stale instead, so the frame goes on showing what it last held until a
+        better answer arrives, and so the sweep knows to ask again. Without the
+        mark it would not: a frame that already has a count is one the sweep
+        passes over, which is how a recount lost to moving on stayed lost.
+        """
+        key = self.current_key
+        if key is None:
+            return
+        self._specks.pop(key, None)
+        self._stale_specks.add(key)
 
     @property
     def speck_size(self) -> int:
@@ -489,6 +511,7 @@ class LabelController:
         self._speck_size = pixels
         self._specks.clear()
         self._speck_counts.clear()
+        self._stale_specks.clear()
 
     def specks(self) -> tuple[Speck, ...]:
         """Return the components of a few pixels in the label on screen.
@@ -510,7 +533,9 @@ class LabelController:
         # The count goes in beside it, so the frame being edited keeps its mark
         # on the timeline after the reviewer moves on: what is on screen has
         # unsaved strokes in it, and the file on disk no longer says the same.
+        # This is the freshest answer there is, so it settles any staleness.
         self._speck_counts[key] = len(found)
+        self._stale_specks.discard(key)
         return found
 
     def mark_reviewed(self, reviewed: bool = True) -> None:
@@ -728,7 +753,9 @@ class LabelController:
         seen: set[Path] = set()
         for index in self._positions:
             key = self._key_at(index)
-            if key is None or key in seen or key in self._speck_counts:
+            if key is None or key in seen:
+                continue
+            if key in self._speck_counts and key not in self._stale_specks:
                 continue
             seen.add(key)
             if key in edited:
@@ -745,11 +772,17 @@ class LabelController:
         return wanted
 
     def record_speck_count(self, key: Path, count: int) -> None:
-        """Take one label's count from the sweep, unless it is already known.
+        """Take one label's count from the sweep.
 
-        The frame being edited is never overwritten from disk: its own count
-        carries strokes that have not been saved.
+        A count already held is kept, the sweep being the slower of the two
+        answers and often the older -- except where the label has changed since
+        that count was taken, which is the one case the sweep was asked to
+        settle.
         """
+        if key in self._stale_specks:
+            self._speck_counts[key] = count
+            self._stale_specks.discard(key)
+            return
         self._speck_counts.setdefault(key, count)
 
     def _key_at(self, index: int) -> Path | None:

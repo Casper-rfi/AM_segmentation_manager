@@ -1003,26 +1003,36 @@ class LabelPanel(QWidget):
     def _stroke_finished(self, patch) -> None:
         """Record a stroke and show what it changed."""
         self.controller.record_edit(patch)
+        self._label_changed()
+
+    def undo(self) -> None:
+        """Reverse the last stroke on the label on screen."""
+        if self.controller.session.undo():
+            self.canvas.refresh_label()
+            self.controller.note_label_changed()
+            self._label_changed()
+
+    def redo(self) -> None:
+        """Reapply the last undone stroke."""
+        if self.controller.session.redo():
+            self.canvas.refresh_label()
+            self.controller.note_label_changed()
+            self._label_changed()
+
+    def _label_changed(self) -> None:
+        """Bring the window into step with a label that has just changed.
+
+        One path for every way of changing it. Undo and redo change the label
+        as surely as a stroke does, and having their own way of saying so is
+        how they came to say nothing: the count went on reporting what the
+        stroke had made it.
+        """
         self._refresh_timeline()
         self._refresh_edit_state()
         if self.controller.finding_specks:
             # Counting takes tens of milliseconds, which is nothing in a pause
             # and everything mid-drag, so it waits for the drawing to stop.
             self._speck_timer.start(SPECK_RECOUNT_MS)
-
-    def undo(self) -> None:
-        """Reverse the last stroke on the label on screen."""
-        if self.controller.session.undo():
-            self.canvas.refresh_label()
-            self._refresh_timeline()
-            self._refresh_edit_state()
-
-    def redo(self) -> None:
-        """Reapply the last undone stroke."""
-        if self.controller.session.redo():
-            self.canvas.refresh_label()
-            self._refresh_timeline()
-            self._refresh_edit_state()
 
     def focus_canvas(self) -> None:
         """Give the canvas the keyboard, so space pans without a click first."""
