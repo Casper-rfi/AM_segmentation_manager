@@ -62,13 +62,18 @@ class ArchivedVersion:
         target: The label it is a version of, relative to the project root.
         event: The entry that recorded putting it there, or None where the log
             names no such version -- reported, never repaired.
-        size: The file's size in bytes.
+        size: The file's size in bytes, or zero where the file is not here.
+        present: Whether the file itself is here. A copy exported without
+            ``--with-archive`` holds the record of a version without its
+            pixels, and a list that hid those rows would be worse than one
+            admitting the gap.
     """
 
     path: Path
     target: str
     event: Event | None
     size: int
+    present: bool = True
 
 
 def archive_root(project_root: Path) -> Path:
@@ -223,12 +228,44 @@ def archived_versions(project_root: Path) -> list[ArchivedVersion]:
 
 
 def versions_of(project_root: Path, target: str) -> list[ArchivedVersion]:
-    """Return the archived versions of one label, oldest first."""
+    """Return the archived versions of one label present on disk, oldest first."""
     return [
         version
         for version in archived_versions(project_root)
         if version.target == target
     ]
+
+
+def label_versions(project_root: Path, target: str) -> list[ArchivedVersion]:
+    """Return every version of one label the project knows of, oldest first.
+
+    The union of what is on disk and what the log says was kept, so a version
+    whose file did not travel with a copy is listed as absent rather than
+    silently missing. Ordered by when each was recorded, a version with no
+    entry falling back to its filename, which sorts the same way.
+    """
+    here = {version.path: version for version in versions_of(project_root, target)}
+    log = read_log(project_root)
+
+    known = list(here.values())
+    for event in events_for(log, target):
+        recorded = event.data.get("archived_as")
+        if not isinstance(recorded, str) or not recorded:
+            continue
+        path = project_root / recorded
+        if path in here:
+            continue
+        known.append(
+            ArchivedVersion(
+                path=path, target=target, event=event, size=0, present=False
+            )
+        )
+    return sorted(known, key=_version_order)
+
+
+def _version_order(version: ArchivedVersion) -> tuple[str, str]:
+    """Return what orders a version: when it was recorded, then its name."""
+    return ((version.event.at if version.event else ""), version.path.name)
 
 
 def _target_of(path: Path, root: Path) -> str:

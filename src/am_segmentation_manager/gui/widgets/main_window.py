@@ -97,6 +97,7 @@ MAX_LISTED_FILES = 12
 
 #: Names the save in every dialog and log line it produces.
 SAVE_TITLE = "Save labels"
+RESTORE_TITLE = "Restore an earlier version"
 
 #: The em dash between the product name and the folder in the window title.
 #: Two windows on two collections are told apart by the title and by nothing
@@ -774,6 +775,7 @@ class CurationWindow(QMainWindow):
         self.label_panel.loads_needed.connect(self._schedule_label_loads)
         self.label_panel.speck_counts_needed.connect(self._sweep_specks)
         self.label_panel.save_requested.connect(self.save_labels)
+        self.label_panel.restore_requested.connect(self.restore_label_version)
         self.project_panel.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
         self.project_panel.folder_selected.connect(self._select_folder)
@@ -2698,6 +2700,51 @@ class CurationWindow(QMainWindow):
             return False
         self.label_controller.discard_edits()
         return True
+
+    def restore_label_version(self) -> None:
+        """Put the chosen earlier version of this label back, having asked.
+
+        A write, so the window asks rather than the panel acting: what is on
+        disk now is kept first, which makes this reversible, and the reviewer
+        is told that before deciding rather than after.
+        """
+        versions = self.label_panel.versions_controller
+        chosen = versions.selected
+        if chosen is None:
+            self._flash("No earlier version is chosen")
+            return
+        if self.label_controller.pending_count():
+            QMessageBox.warning(
+                self,
+                RESTORE_TITLE,
+                "Save or discard the edits waiting first: restoring writes over "
+                "this label, and unsaved strokes would be lost with it.",
+            )
+            return
+
+        corrected = self.label_controller.is_reviewed()
+        if QMessageBox.question(
+            self,
+            RESTORE_TITLE,
+            f"Put back the version from {chosen.when or 'an unrecorded time'}"
+            f", saved by {chosen.who}?\n\n"
+            "What is on disk now is kept first, so this can itself be undone."
+            + (
+                "\n\nThis label is marked corrected. Restoring writes over "
+                "proofread work."
+                if corrected else ""
+            ),
+        ) != QMessageBox.Yes:
+            return
+
+        try:
+            versions.restore_selected(corrected=corrected, confirmed=True)
+        except (ValueError, PermissionError, RuntimeError) as error:
+            QMessageBox.critical(self, RESTORE_TITLE, str(error))
+            return
+        self.label_controller.discard_edits()
+        self.label_panel.refresh()
+        self._flash("Earlier version restored")
 
     def save_labels(self) -> None:
         """Write this lamella's edited labels, after asking what to do with them."""

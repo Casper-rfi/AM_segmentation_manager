@@ -323,6 +323,17 @@ def test_taking_a_label_records_where_it_came_from(forked, recorder):
     assert event.data["source_project_id"] == "9f2c4b11"
 
 
+def test_taking_a_label_records_how_much_it_changed(forked, recorder):
+    """A version list is only readable if every row carries this number."""
+    _edit(forked.label(forked.copy), 3, recorder)
+
+    apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+
+    (event,) = [e for e in read_log(forked.project).events if e.kind == "merged"]
+    assert isinstance(event.data.get("changed_fraction"), float)
+    assert event.data["changed_fraction"] > 0
+
+
 def test_the_copys_history_comes_across(forked, recorder):
     _edit(forked.label(forked.copy), 3, recorder)
     before = len(read_log(forked.project).events)

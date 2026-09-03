@@ -26,6 +26,7 @@ from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
 from ...display import DEFAULT_ALPHA
 from ...operations.label_edit import fill, paint, patch_between
 from .image_view import LABEL_MIN_FIT_FRACTION, ImageView, event_position
+from .versions_bar import COMPARE_KEY_CODE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -145,6 +146,11 @@ class LabelCanvas(ImageView):
     #: smaller brush. Reported rather than applied: which sizes are offered is
     #: the panel's, and the slider has to move with the wheel.
     brush_stepped = Signal(int)
+
+    #: Emitted while the compare key is held, so the panel can put an earlier
+    #: version on the canvas and take it off again. The canvas holds the
+    #: keyboard; what is worth showing is not its business.
+    compare_held = Signal(bool)
 
     def __init__(self, config: SegmentationConfig) -> None:
         """Create a canvas drawing classes from *config*."""
@@ -657,7 +663,11 @@ class LabelCanvas(ImageView):
         super().wheelEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Hold space to pan with the left button instead of painting."""
+        """Hold space to pan, or the compare key to look at an earlier version."""
+        if event.key() == COMPARE_KEY_CODE and not event.isAutoRepeat():
+            self.compare_held.emit(True)
+            event.accept()
+            return
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._space_held = True
             self._cancel_stroke()
@@ -668,7 +678,11 @@ class LabelCanvas(ImageView):
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Give the left button back to the brush."""
+        """Give the left button back to the brush, and stop comparing."""
+        if event.key() == COMPARE_KEY_CODE and not event.isAutoRepeat():
+            self.compare_held.emit(False)
+            event.accept()
+            return
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._release_space()
             event.accept()

@@ -6,25 +6,6 @@ re-argued.
 
 ---
 
-## 5. Summary plots for the eras whose filenames carry no acquisition number
-
-**What is wrong, measured:** Autolamella writes a PNG per acquisition into a stage's `plots/`, and
-the image panel has a Plots view to show the one belonging to the frame on screen.
-`_plots_by_image_number` keys them by `extract_image_number(plot.name)`, which reads the current
-era's `<lamella>_AP_img_000_plot.png` — **5,701 plots across the collection match, and every one of
-the 252 adaptive frames in `20250625_AM_further_testing` has its plot**. The 11,483 that do not are
-the older `Image_000_window_DL_000_00.png` shape, which carries no number this reads.
-
-**Answer first:** those older names are not one plot per acquisition — `_00`, `_01`, `_02` are
-several windows of one image, hundreds against a couple of dozen acquisitions in a lamella. Decide
-what a frame shows when its acquisition has fifteen, and whether the extras are per-acquisition
-detail or belong to the stage the way an alignment run's single figure does. Until that is
-answered there is nothing to implement.
-
-**Worth knowing:** those filenames name the *image* they describe, so matching on its stem is
-likely simpler than another number pattern, and `extract_image_number` is the wrong place either
-way — it answers what acquisition an *image* is, which three of its callers want.
-
 ## 6. An "other" series, so what is not indexed can be looked at
 
 **What is wrong:** every image the conventions do not reach is counted by `unindexed-images` and is

@@ -41,6 +41,7 @@ from ...operations.label_measure import (
     PREDICTION_PIXEL_BLOCK,
 )
 from ..label_controller import LabelController
+from ..version_controller import VersionController
 from .common import LABEL_BADGES, chip_icon, fill_choice_combo, intensity_badge
 from .controls import ElidingLabel, RangeSlider, SegmentedControl, ToggleSwitch
 from .frame_strip import FrameTimeline
@@ -51,6 +52,7 @@ from .label_canvas import (
     LabelCanvas,
 )
 from .theme import BADGE_STYLES, SWITCH_RUN_GAP, TEXT
+from .versions_bar import DIFFERENCE_CLASS, VersionsBar
 
 logger = logging.getLogger(__name__)
 
@@ -361,11 +363,27 @@ class LabelPanel(QWidget):
     #: Emitted when the reviewer asks to write this lamella's edits. The window
     #: owns everything that touches the filesystem.
     save_requested = Signal()
+    #: Asked when the reviewer wants the chosen earlier version put back. The
+    #: window handles it, restoring being a write and so its to confirm.
+    restore_requested = Signal()
 
-    def __init__(self, controller: LabelController) -> None:
-        """Build the tab against *controller*."""
+    def __init__(
+        self,
+        controller: LabelController,
+        versions: VersionController | None = None,
+    ) -> None:
+        """Build the tab against *controller*.
+
+        Args:
+            controller: What is being proofread.
+            versions: The kept versions of the label on screen. Injected so a
+                test can hand in one attributed to a known author.
+        """
         super().__init__()
         self.controller = controller
+        self.versions_controller = (
+            versions if versions is not None else VersionController()
+        )
         #: The intensities shown as black and as white while proofreading.
         #: A property of the *view*, kept across frames on purpose --
         #: comparing one frame with the next is what it is for -- and never
@@ -382,6 +400,10 @@ class LabelPanel(QWidget):
         self._view_before: tuple[bool, bool, int] | None = None
         #: Which speck the stepping key is on.
         self._speck_position = 0
+        #: Whether an earlier version is on the canvas in place of the label.
+        self._comparing = False
+        #: Whether the canvas is marking where the two disagree.
+        self._showing_differences = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -392,7 +414,15 @@ class LabelPanel(QWidget):
         self.canvas = LabelCanvas(controller.config)
         self.canvas.edited.connect(self._stroke_finished)
         self.canvas.brush_stepped.connect(self.step_brush)
+        self.canvas.compare_held.connect(self._compare_key_held)
         layout.addWidget(self.canvas, stretch=1)
+
+        self.versions = VersionsBar()
+        self.versions.selected.connect(self._version_chosen)
+        self.versions.comparing.connect(self._set_comparing)
+        self.versions.differences.connect(self._set_differences)
+        self.versions.restore_requested.connect(self.restore_requested.emit)
+        layout.addWidget(self.versions)
 
         layout.addLayout(self._build_tools())
         layout.addLayout(self._build_timeline())
@@ -1066,6 +1096,7 @@ class LabelPanel(QWidget):
 
     def refresh(self) -> None:
         """Redraw everything from the controller, and ask for what is missing."""
+        self.refresh_versions()
         self._refresh_series()
         self._refresh_modalities()
         self._refresh_variants()
@@ -1074,6 +1105,70 @@ class LabelPanel(QWidget):
         self._refresh_edit_state()
         self.draw_current()
         self.loads_needed.emit()
+
+    # -- earlier versions --------------------------------------------------
+
+    def _label_to_draw(self):
+        """Return what the canvas should show: the label, a version, or a mask.
+
+        Comparing replaces the label rather than sitting beside it, so the two
+        occupy the same pixels and flicking between them is a real comparison
+        rather than an eye moving across a gap.
+        """
+        working = self.controller.working_label()
+        if self._showing_differences:
+            mask = self.versions_controller.difference(working)
+            if mask is not None:
+                import numpy as np
+
+                return np.where(mask, DIFFERENCE_CLASS, 0).astype(np.uint8)
+        if self._comparing:
+            other = self.versions_controller.comparison_pixels()
+            if other is not None:
+                return other
+        return working
+
+    def _version_chosen(self, index: int) -> None:
+        """Note which version is being offered, and whether it can be shown."""
+        self.versions_controller.select(None if index < 0 else index)
+        chosen = self.versions_controller.selected
+        self.versions.set_available(bool(chosen and chosen.available))
+        self._comparing = False
+        self._showing_differences = False
+        self.draw_current()
+
+    def _set_comparing(self, comparing: bool) -> None:
+        """Put an earlier version on the canvas, or take it off again."""
+        self._comparing = comparing
+        self._refresh_edit_state()
+        self.draw_current()
+
+    def _compare_key_held(self, held: bool) -> None:
+        """Flick to the chosen version while the key is down.
+
+        Held rather than toggled: the comparison is made by going back and
+        forth, and a mode that stays on is one more thing to remember to leave.
+        """
+        chosen = self.versions_controller.selected
+        if chosen is None or not chosen.available:
+            return
+        self.versions.set_comparing(held)
+
+    def _set_differences(self, showing: bool) -> None:
+        """Mark where the chosen version and the label disagree."""
+        self._showing_differences = showing
+        self._refresh_edit_state()
+        self.draw_current()
+
+    def refresh_versions(self) -> None:
+        """Read the kept versions of the label on screen and list them."""
+        self.versions_controller.set_label(self.controller.current_key)
+        self.versions.set_rows(self.versions_controller.rows)
+
+    @property
+    def showing_a_version(self) -> bool:
+        """Return whether the canvas holds something other than the label."""
+        return self._comparing or self._showing_differences
 
     def _refresh_edit_state(self) -> None:
         """Reflect what can be undone, and what is waiting to be saved."""
@@ -1179,11 +1274,16 @@ class LabelPanel(QWidget):
         # rescaled, or a stroke would be recorded against something that is not
         # the file.
         image = apply_intensity_range(display.image, *self._intensity_range)
-        self.canvas.set_frame(image, self.controller.working_label())
+        self.canvas.set_frame(image, self._label_to_draw())
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_image_shown(self.controller.show_image)
         self._refresh_specks()
-        self.canvas.set_editable(self.controller.editable)
+        # Never while an earlier version is on the canvas: a stroke would be
+        # recorded against the label underneath, which is not what is being
+        # looked at.
+        self.canvas.set_editable(
+            self.controller.editable and not self.showing_a_version
+        )
         self._set_badges(
             intensity_badge(self._intensity_range) + self._label_badges(display)
         )

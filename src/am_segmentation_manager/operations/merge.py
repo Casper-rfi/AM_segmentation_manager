@@ -668,12 +668,15 @@ def _take_label(
     if item.ours is not None and item.our_path.is_file():
         kept = archivist.keep(item.our_path, item.ours, empty=False)
 
+    changed = _how_much_changed(item)
     item.our_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(item.their_path, item.our_path)
 
     fields = {"digest": item.theirs} if item.theirs else {}
     if item.ancestor:
         fields["parent_digest"] = item.ancestor
+    if changed is not None:
+        fields["changed_fraction"] = changed
     if kept:
         fields["archived_as"] = kept
     recorder.record(
@@ -684,6 +687,27 @@ def _take_label(
         **fields,
     )
     return kept
+
+
+def _how_much_changed(item: LabelMerge) -> float | None:
+    """Return the share of pixels a merge is about to change, or None.
+
+    Computed here rather than left out, because it is what makes a version list
+    readable: a row saying "unknown" against nine saying a percentage is a hole
+    in the one number that lets a reader choose without opening anything. Both
+    files have to be decoded for it, which a merge can afford -- it is rare, and
+    it has already read both to compare them.
+    """
+    if item.their_path is None or not item.our_path.is_file():
+        return None
+    from ..io.image import read_array
+    from .label_io import changed_fraction
+
+    try:
+        return changed_fraction(read_array(item.our_path), read_array(item.their_path))
+    except Exception as error:
+        logger.warning("Could not measure the change to %s: %s", item.our_path, error)
+        return None
 
 
 def _take_state(item: StateMerge, recorder: Recorder) -> None:

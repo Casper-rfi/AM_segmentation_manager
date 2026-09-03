@@ -30,17 +30,17 @@ against. **Recording begins only where a log exists**, so nothing happens to a c
 ancestor the fork point names, re-hashing both trees rather than believing either log, taking what
 only one side changed and refusing the whole merge while any conflict stands.
 
-Next, and last of this work: the window. A version list per label, an A/B comparison against a kept
-version, restoring, and deciding a merge conflict without the command line.
+The proofreading view lists a label's kept versions when it has any and hides the strip when it has
+none, shows one on the canvas while the compare key is held, marks where it and the label disagree,
+and puts one back through the ordinary save.
+
+What is left of this work: deciding a merge conflict in the window rather than on the command line.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.
 
 **An "other" series** making unindexed images visible instead of merely counted.
 [`04_future_work.md`](04_future_work.md) §6.
-
-**Summary plots for the older eras**, whose filenames carry no acquisition number; the current
-era's already pair. [`04_future_work.md`](04_future_work.md) §5.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
 editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built

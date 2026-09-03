@@ -54,7 +54,7 @@ def test_extract_image_number_leaves_the_other_naming_eras_alone():
     assert extract_image_number("lamella02_01.tif") is None
     # A timestamp must not be read as a beam and an acquisition number.
     assert extract_image_number("Image_2023_0811.tif") is None
-    # Plot naming stays unmatched; see docs/04_future_work.md.
+    # The older era's plot naming carries no acquisition number, and is not indexed.
     assert extract_image_number("GLM_Plot_0.png") is None
     assert extract_image_number("Image_000.tif_00.png") is None
 

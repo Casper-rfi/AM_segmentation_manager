@@ -462,6 +462,11 @@ rather than appending to it.
 - **A merge verifies before it compares**: a project is matched by relative path, checked against
   the id its log declares, and the fork point's tip looked for in this collection's own history —
   a copy of a copy carries a plausible file naming an ancestor that was never here.
+- **A version list is read, not opened.** Each row carries who, when, what produced it and
+  `changed_fraction`, so ten rows where nine say 0.1% and one says 34% say which one matters
+  without a file being opened. That number is computed when a version is kept, both arrays being in
+  hand, and cannot be had cheaply afterwards — which is why a merge decodes both files to record it
+  rather than leaving the row saying "unknown".
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
   group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives
