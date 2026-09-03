@@ -61,6 +61,7 @@ WORKFLOW_ORDER = [
     "create-training-csv",
     "check-training-csv",
     "init-history",
+    "merge",
     "archive",
     "prune-archive",
     "history",

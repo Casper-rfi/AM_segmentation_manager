@@ -26,9 +26,12 @@ carries the history and writes an `AM_export.yaml` naming the ancestor a merge b
 against. **Recording begins only where a log exists**, so nothing happens to a collection until
 `init-history` runs on it — and a collection with no history behaves exactly as it does today.
 
-Next: the merge itself. Three-way per label, state entry and metadata field, re-hashing both sides
-rather than trusting the logs, refusing every conflict rather than guessing. Then the window: a
-version list, an A/B comparison, and restoring.
+`am-seg merge` brings a copy back: three-way per label, state entry and metadata field against the
+ancestor the fork point names, re-hashing both trees rather than believing either log, taking what
+only one side changed and refusing the whole merge while any conflict stands.
+
+Next, and last of this work: the window. A version list per label, an A/B comparison against a kept
+version, restoring, and deciding a merge conflict without the command line.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.
@@ -36,8 +39,8 @@ in its canvas. Artwork rather than code, and Casper's to draw.
 **An "other" series** making unindexed images visible instead of merely counted.
 [`04_future_work.md`](04_future_work.md) §6.
 
-**Matching summary plots** to the frames they describe — no plot reaches a frame in any project
-today. [`04_future_work.md`](04_future_work.md) §5.
+**Summary plots for the older eras**, whose filenames carry no acquisition number; the current
+era's already pair. [`04_future_work.md`](04_future_work.md) §5.
 
 **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
 editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built

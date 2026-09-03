@@ -62,6 +62,14 @@ from .operations.archive import (
 from .operations.export_record import build_export_record, write_export_record
 from .operations.init_history import apply_baseline, plan_baseline
 from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
+from .operations.merge import (
+    CONVERGED,
+    KEEP_OURS,
+    TAKE_THEIRS,
+    MergeRefused,
+    apply_merge,
+    plan_merge,
+)
 from .operations.predictions import convert_record_predictions, plan_conversions
 from .reporting import format_bytes, print_project_summary, print_survey
 from .scanner import Scanner
@@ -1047,6 +1055,39 @@ def build_parser() -> argparse.ArgumentParser:
     init_history_cmd.add_argument(
         "--apply", action="store_true",
         help="Write the entries, rather than reporting what would be written",
+    )
+
+    # -- merge --------------------------------------------------------------
+    merge_cmd = sub.add_parser(
+        "merge",
+        help="Bring a worked-on copy back into the collection it came from",
+        description=(
+            "Merge a copy made by export-files back into its collection. Every "
+            "label is re-hashed on both sides and compared against the ancestor "
+            "the copy's AM_export.yaml names, so what changed is read from the "
+            "files rather than believed from a log. A target only one side "
+            "changed is taken; one both changed differently is a conflict, and "
+            "one conflict stops the whole merge until it is decided by name. "
+            "Nothing is ever deleted: a target the copy does not hold is not a "
+            "deletion, and no image is moved. Previews by default."
+        ),
+    )
+    merge_cmd.add_argument("source", help="The copy to merge back")
+    merge_cmd.add_argument(
+        "--into", required=True, metavar="DIRECTORY",
+        help="The collection it came from",
+    )
+    merge_cmd.add_argument(
+        "--resolve", action="append", default=[], metavar="TARGET=SIDE",
+        help=(
+            "Decide one conflict: '<project>/<label>=theirs' or "
+            "'<project>:<field>=ours'. Repeatable. Both versions stay in the "
+            "archive whichever way it goes"
+        ),
+    )
+    merge_cmd.add_argument(
+        "--apply", action="store_true",
+        help="Carry the merge out, rather than reporting what it would do",
     )
 
     # -- archive ------------------------------------------------------------
@@ -2146,6 +2187,72 @@ def _cmd_init_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_merge(args: argparse.Namespace) -> int:
+    """Handle ``am-seg merge``."""
+    try:
+        resolutions = _resolutions(args.resolve)
+    except ValueError as error:
+        logger.error("%s", error)
+        return 2
+
+    try:
+        plan = plan_merge(
+            Path(args.source), Path(args.into), resolutions=resolutions
+        )
+    except MergeRefused as error:
+        logger.error("Refused: %s", error)
+        return 2
+
+    for line in plan.describe():
+        print(line)
+
+    taken = plan.counted(TAKE_THEIRS)
+    logger.info(
+        "%d to take from the copy, %d already here, %d converged, %d conflict(s)",
+        taken, plan.counted(KEEP_OURS), plan.counted(CONVERGED), len(plan.conflicts),
+    )
+    if plan.is_refused:
+        logger.error(
+            "Nothing was merged. Decide each conflict with --resolve "
+            "'<target>=theirs' or '<target>=ours'; both versions stay in the "
+            "archive either way."
+        )
+        return 2
+    if not taken and not any(project.incoming for project in plan.projects):
+        logger.info("Nothing to merge: the collection already holds this work")
+        return 0
+    if not args.apply:
+        logger.info("Re-run with --apply to carry it out")
+        return 0
+
+    report = apply_merge(plan, recorder=_recorder(args))
+    logger.info(
+        "Merged %d label(s), %d state(s) and %d field(s); %d version(s) kept, "
+        "%d history entr(ies) added",
+        report.labels_taken, report.states_taken, report.fields_taken,
+        len(report.archived), report.entries_added,
+    )
+    return 0
+
+
+def _resolutions(chosen: list[str]) -> dict[str, str]:
+    """Return the conflicts decided on the command line.
+
+    Raises:
+        ValueError: If one is not ``<target>=theirs`` or ``<target>=ours``.
+    """
+    resolutions = {}
+    for item in chosen:
+        target, _, side = item.rpartition("=")
+        if not target or side not in ("theirs", "ours"):
+            raise ValueError(
+                f"{item!r} is not a decision: write '<target>=theirs' or "
+                "'<target>=ours'"
+            )
+        resolutions[target] = side
+    return resolutions
+
+
 def _cmd_archive(args: argparse.Namespace) -> int:
     """Handle ``am-seg archive``."""
     path = Path(args.path)
@@ -2323,6 +2430,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "check-training-csv": _cmd_check_training_csv,
     "compress-labels": _cmd_compress_labels,
     "init-history": _cmd_init_history,
+    "merge": _cmd_merge,
     "history": _cmd_history,
     "archive": _cmd_archive,
     "prune-archive": _cmd_prune_archive,
