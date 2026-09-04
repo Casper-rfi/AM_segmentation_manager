@@ -420,7 +420,7 @@ def test_the_listing_says_what_each_covers_and_reaches(collection, recorder, cap
 
     apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
 
-    assert main(["savepoints", "--start-path", str(collection)]) == 0
+    assert main(["list-savepoints", "--start-path", str(collection)]) == 0
 
     printed = capsys.readouterr().out
     assert "round 3" in printed and "2 project(s) here" in printed
@@ -542,3 +542,42 @@ def test_the_command_refuses_a_savepoint_nobody_took(collection):
         "--project", "all", "--lamella", "all", "--stage", "all", "--image", "all",
         "--to", "round 9",
     ]) == 2
+
+
+def test_a_project_that_records_nothing_is_named_rather_than_left_silent(
+    collection, recorder, tmp_path, capsys
+):
+    """Data arrives manually, and a project with no log joins no savepoint.
+
+    Recording only where a log exists is what lets a collection opt in, and the
+    same rule is what makes a project added afterwards silently absent.
+    """
+    from am_segmentation_manager.cli import main
+    from am_segmentation_manager.operations.savepoint import not_recording
+
+    build_dataset(collection, name="arrived_later", labels="annotated")
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+
+    assert [p.key for p in not_recording(_projects(collection))] == ["arrived_later"]
+
+    assert main(["list-savepoints", "--start-path", str(collection)]) == 0
+
+    printed = capsys.readouterr()
+    said = printed.out + printed.err
+    assert "arrived_later" in said
+    assert "init-history" in said
+
+
+def test_a_collection_where_everything_records_says_nothing_about_it(
+    collection, recorder, capsys
+):
+    from am_segmentation_manager.cli import main
+    from am_segmentation_manager.operations.savepoint import not_recording
+
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+
+    assert not_recording(_projects(collection)) == ()
+    main(["list-savepoints", "--start-path", str(collection)])
+
+    printed = capsys.readouterr()
+    assert "keep no history" not in printed.out + printed.err

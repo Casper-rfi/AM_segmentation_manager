@@ -1125,7 +1125,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # -- savepoints ---------------------------------------------------------
     savepoints_cmd = sub.add_parser(
-        "savepoints",
+        "list-savepoints",
         help="List the savepoints here, what each covers and what it can reach",
         description=(
             "One line per savepoint: how many projects carrying it are here, "
@@ -2447,12 +2447,36 @@ def _cmd_savepoints(args: argparse.Namespace) -> int:
         return 0
 
     savepoints = list_savepoints(projects)
-    if not savepoints:
+    if savepoints:
+        for point in savepoints:
+            print(point.describe())
+    else:
         logger.info("No savepoint has been taken here")
-        return 0
-    for point in savepoints:
-        print(point.describe())
+    _report_silent_projects(projects)
     return 0
+
+
+def _report_silent_projects(projects) -> None:
+    """Say which projects keep no log, and so are in no savepoint.
+
+    The one place that asks what the record covers is the place to learn that
+    part of the collection is outside it. A project added after the collection
+    opted in records nothing until `init-history` runs on it, and nothing else
+    would ever mention it.
+    """
+    from .operations.savepoint import not_recording
+
+    silent = not_recording(projects)
+    if not silent:
+        return
+    logger.warning(
+        "%d of %d project(s) here keep no history, so nothing about them is "
+        "recorded and no savepoint covers them: %s. Run init-history on each "
+        "to bring it into the record.",
+        len(silent), len(projects),
+        ", ".join(project.key for project in silent[:5])
+        + (f" and {len(silent) - 5} more" if len(silent) > 5 else ""),
+    )
 
 
 def _cmd_merge(args: argparse.Namespace) -> int:
@@ -2778,7 +2802,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "compress-labels": _cmd_compress_labels,
     "init-history": _cmd_init_history,
     "savepoint": _cmd_savepoint,
-    "savepoints": _cmd_savepoints,
+    "list-savepoints": _cmd_savepoints,
     "merge": _cmd_merge,
     "revert": _cmd_revert,
     "history": _cmd_history,

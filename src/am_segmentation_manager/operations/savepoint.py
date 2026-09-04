@@ -47,6 +47,7 @@ __all__ = [
     "close_gap",
     "find_savepoint",
     "list_savepoints",
+    "not_recording",
     "plan_savepoint",
     "reachability",
     "reached_versions",
@@ -565,3 +566,20 @@ def reached_versions(savepoints: Iterable[Savepoint]) -> dict[Path, set[str]]:
                 if state.archived_as:
                     wanted.add(state.archived_as)
     return needed
+
+
+def not_recording(projects: Iterable[Project]) -> tuple[Project, ...]:
+    """Return the projects here that keep no log.
+
+    A project added after a collection opted in has no history until somebody
+    runs ``init-history`` on it, and until then it records nothing, joins no
+    savepoint and carries no ancestor for a merge -- silently, since recording
+    where a log exists is the rule that lets this be opted into at all. The
+    silence is the point and also the danger, so the one command that asks what
+    the record covers says which projects it does not.
+    """
+    return tuple(
+        project
+        for project in projects
+        if not history_file_path(project.path).is_file()
+    )

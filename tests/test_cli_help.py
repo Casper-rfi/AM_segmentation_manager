@@ -62,7 +62,7 @@ WORKFLOW_ORDER = [
     "check-training-csv",
     "init-history",
     "savepoint",
-    "savepoints",
+    "list-savepoints",
     "merge",
     "revert",
     "archive",
