@@ -1483,6 +1483,49 @@ def test_copying_the_selection_writes_it_into_the_chosen_folder(
     )
 
 
+def test_a_copy_made_here_can_be_merged_back(
+    window, inline_operations, tmp_path: Path
+):
+    """The window's own export has to close the round trip it starts.
+
+    A copy carrying no fork point is refused by `merge` outright, so an export
+    that wrote one only from the command line meant the window could make
+    copies it could never take back.
+    """
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.operations.init_history import (
+        apply_baseline,
+        plan_baseline,
+    )
+    from am_segmentation_manager.operations.merge import plan_merge
+
+    root = Path(window.controller.start_path)
+    apply_baseline(
+        plan_baseline(window.export_controller.projects), recorder=Recorder.for_run()
+    )
+    destination = tmp_path / "laptop"
+
+    window._copy_files(str(destination))
+
+    assert plan_merge(destination, root) is not None
+
+
+def test_a_copy_records_what_it_was_narrowed_to(
+    window, inline_operations, tmp_path: Path
+):
+    """In the tab's own words: a copy made here was narrowed by these controls,
+    and writing it as command-line flags would describe a run nobody made."""
+    from am_segmentation_manager.operations.export_record import read_export_record
+
+    destination = tmp_path / "subset"
+
+    window._copy_files(str(destination))
+
+    record = read_export_record(destination)
+    assert record is not None
+    assert record.scope == window.export_controller.describe_filters()
+
+
 def test_copying_previews_before_it_writes(window, inline_operations, monkeypatch):
     """Refusing the preview must leave the folder untouched, gigabytes being
     the usual size of this one."""

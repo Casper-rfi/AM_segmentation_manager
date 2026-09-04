@@ -644,6 +644,34 @@ class ExportController:
             )
         return len(labels)
 
+    def describe_filters(self) -> str:
+        """Return what the filters narrow to, as one line of the tab's own words.
+
+        For the fork point an export writes, whose ``scope`` records what a
+        copy was asked for so that whoever merges it back months later can see
+        what it was meant to hold. **The tab's vocabulary, not the command
+        line's**: a copy made here was narrowed by these controls, and writing
+        it as flags would describe a run nobody made.
+
+        Everything left at its default is left out, so an unnarrowed export
+        says so rather than listing the whole vocabulary back.
+        """
+        parts = []
+        if self.filters.modality != "all":
+            parts.append(f"modality {self.filters.modality}")
+        if self.filters.state != "all":
+            parts.append(f"state {self.filters.state}")
+        if self.filters.series:
+            parts.append(f"series {', '.join(sorted(self.filters.series))}")
+        if self.filters.conditions != "all":
+            parts.append(f"conditions {self.filters.conditions}")
+        if self.filters.label != ANY_LABEL:
+            parts.append(f"label {self.filters.label}")
+        for name, values in sorted(self.filters.choices.items()):
+            if values:
+                parts.append(f"{name} {', '.join(sorted(values))}")
+        return "; ".join(parts) if parts else "everything in the scan"
+
     def selected_records(self, ignoring: str | None = None) -> list[ImageRecord]:
         """Return the records passing the current filters.
 

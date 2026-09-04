@@ -1561,6 +1561,7 @@ class CurationWindow(QMainWindow):
                 Path(directory),
                 projects=self.export_controller.projects,
                 start_path=self.export_controller.start_path,
+                scope=self.export_controller.describe_filters(),
                 dry_run=dry,
                 cancellation=None if dry else cancellation,
                 on_progress=None if dry else progressed.emit,

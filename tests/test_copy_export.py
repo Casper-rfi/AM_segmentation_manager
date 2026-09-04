@@ -281,3 +281,88 @@ def test_the_command_refuses_rather_than_overwriting(source: Path, tmp_path: Pat
 
     assert run_cli(str(source), *SCOPE, "-o", str(destination)) == 2
     assert intruder.read_bytes() == b"not what was copied"
+
+
+# ---------------------------------------------------------------------------
+# The fork point, which is what makes a copy mergeable
+# ---------------------------------------------------------------------------
+
+def recorded(source: Path) -> Path:
+    """Baseline every project under *source*, as `init-history` does.
+
+    A log with no entries has no tip, so a fork point taken from it names
+    nothing and a merge refuses -- which is why this baselines rather than
+    just touching the file.
+    """
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.operations.init_history import (
+        apply_baseline,
+        plan_baseline,
+    )
+
+    projects = Scanner(source).build_index().all_projects()
+    apply_baseline(plan_baseline(projects), recorder=Recorder.for_run())
+    return source
+
+
+def test_a_finished_copy_can_be_merged_back(source: Path, tmp_path: Path):
+    """The property the whole round trip rests on, asserted through merge itself.
+
+    Not "a file appears": what matters is that `plan_merge` accepts the copy,
+    which is the question a person actually asks of it weeks later.
+    """
+    from am_segmentation_manager.operations.copy_export import record_fork_point
+    from am_segmentation_manager.operations.merge import plan_merge
+
+    recorded(source)
+    destination = tmp_path / "out"
+    records, projects = scanned(source)
+    copy_export(plan_copy(records, destination, source, projects=projects))
+
+    record_fork_point(destination, records, projects, source)
+
+    assert plan_merge(destination, source) is not None
+
+
+def test_a_stopped_copy_gets_no_fork_point(source: Path, tmp_path: Path):
+    """Because it would name a tree the copy does not hold."""
+    from am_segmentation_manager.operations.copy_export import record_fork_point
+    from am_segmentation_manager.operations.export_record import export_record_path
+
+    destination = tmp_path / "out"
+    records, projects = scanned(source)
+
+    assert record_fork_point(
+        destination, records, projects, source, stopped=True
+    ) is None
+    assert not export_record_path(destination).exists()
+
+
+def test_the_fork_point_names_only_the_projects_the_copy_holds(
+    source: Path, tmp_path: Path
+):
+    """A project the selection never reached has no ancestor to look for."""
+    from am_segmentation_manager.operations.copy_export import record_fork_point
+
+    (source / "other_project").mkdir()
+    (source / "other_project" / "AM_metadata.yaml").write_text("{}\n")
+    records, projects = scanned(source)
+
+    record = record_fork_point(
+        tmp_path / "out", records, projects, source
+    )
+
+    assert "other_project" not in record.projects
+
+
+def test_a_project_keeping_no_log_is_named_rather_than_left_out(
+    source: Path, tmp_path: Path
+):
+    """A merge must tell "no ancestor here" from "the copy never held this"."""
+    from am_segmentation_manager.operations.copy_export import record_fork_point
+
+    records, projects = scanned(source)
+
+    record = record_fork_point(tmp_path / "out", records, projects, source)
+
+    assert record.without_history == tuple(sorted(record.projects))

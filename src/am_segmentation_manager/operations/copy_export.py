@@ -5,7 +5,9 @@ take the images a selection matches, the label of each, and the few files that
 describe the projects they came from, and write them into a new directory under
 the same relative paths they had. The copy is therefore a smaller collection of
 the same shape -- ``am-seg`` scans it, and the state files come with it, so
-proofreading can continue in the copy.
+proofreading can continue in the copy. A finished copy is also given the fork
+point that lets it be merged back, which is the export's last step and not a
+separate act somebody has to remember.
 
 **Nothing here overwrites anything.** The whole set of destinations is resolved
 and classified before a byte is written: a destination that already holds the
@@ -30,6 +32,7 @@ from ..models import ImageRecord, Project
 from ..progress import Cancellation
 from ..state import AM_STATE_FILENAME
 from .csv import find_matching_label
+from .export_record import ExportRecord, build_export_record, write_export_record
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ __all__ = [
     "copy_export",
     "plan_copy",
     "projects_of",
+    "record_fork_point",
 ]
 
 #: The files describing a project that a copy takes along, tried in each
@@ -290,6 +294,61 @@ def copy_export(
     return CopyReport(
         copied=tuple(copied), skipped=plan.already_there, stopped=stopped
     )
+
+
+def record_fork_point(
+    destination: Path,
+    records: Iterable[ImageRecord],
+    projects: Sequence[Project],
+    start_path: Path,
+    *,
+    stopped: bool = False,
+    scope: str = "",
+    with_archive: bool = False,
+    user: str | None = None,
+) -> ExportRecord | None:
+    """Record where a finished copy came from, so it can be merged back.
+
+    The last step of an export rather than a separate act: a copy without one
+    cannot be merged, and every caller that writes a copy owes it.
+
+    **Written after the copy, and only for a whole one.** A fork point names
+    the entry each project's log ended at, which describes the tree the copy
+    was meant to be; a stopped run has some of that tree and would be compared
+    against an ancestor half of it does not hold.
+
+    Args:
+        destination: The copy's root, where the record is written.
+        records: The images copied, which say which projects the copy holds.
+        projects: The scanned projects those images came from.
+        start_path: The scan root, recorded as context for a person.
+        stopped: Whether the copy was cut short. Answered here rather than by
+            each caller, so that every export applies the rule above.
+        scope: What the export was narrowed to, in the caller's own words.
+        with_archive: Whether kept label versions came too.
+        user: A name to attribute the export to, where somebody stated one.
+
+    Returns:
+        The record written, or None where the copy was stopped and none was.
+    """
+    if stopped:
+        logger.warning(
+            "The copy was stopped, so no fork point was written; a merge back "
+            "needs one. Running the export again finishes it."
+        )
+        return None
+
+    copied = set(projects_of([record.image_path for record in records], projects))
+    record = build_export_record(
+        [project for project in projects if project.path in copied],
+        start_path,
+        scope=scope,
+        with_archive=with_archive,
+        user=user,
+    )
+    path = write_export_record(destination, record)
+    logger.info("Wrote the fork point to %s", path)
+    return record
 
 
 # ---------------------------------------------------------------------------

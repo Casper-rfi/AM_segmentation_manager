@@ -61,7 +61,6 @@ from .operations.archive import (
     plan_prune,
     total_size,
 )
-from .operations.export_record import build_export_record, write_export_record
 from .operations.init_history import (
     apply_baseline,
     ensure_recording,
@@ -2088,6 +2087,7 @@ def _cmd_export_files(args: argparse.Namespace) -> int:
         DestinationInsideSource,
         copy_export,
         plan_copy,
+        record_fork_point,
     )
     from .reporting import format_bytes
 
@@ -2139,59 +2139,21 @@ def _cmd_export_files(args: argparse.Namespace) -> int:
         "Copied %d file(s), %s, into %s",
         len(report.copied), format_bytes(report.bytes_copied), plan.destination,
     )
-    _write_fork_point(args, plan, records, projects, start_path, report.stopped)
-    return 0
-
-
-def _write_fork_point(
-    args: argparse.Namespace,
-    plan,
-    records,
-    projects,
-    start_path: Path,
-    stopped: bool,
-) -> None:
-    """Record where the copy came from, so it can be merged back.
-
-    Written after the copy rather than before it: a fork point naming a tree
-    that was never finished would have a merge compare against an ancestor
-    half of it does not have. A stopped run therefore gets none, and says so.
-    """
-    if stopped:
-        logger.warning(
-            "The copy was stopped, so no fork point was written. Re-run the "
-            "export to finish it; a merge back needs one."
-        )
-        return
-
-    record = build_export_record(
-        _projects_copied(records, projects), start_path,
+    record = record_fork_point(
+        plan.destination, records, projects, start_path,
+        stopped=report.stopped,
         scope=_describe_scope(args),
         with_archive=args.with_archive,
         user=getattr(args, "user", None),
     )
-    path = write_export_record(plan.destination, record)
-    logger.info("Wrote the fork point to %s", path)
-    missing = record.without_history
+    missing = record.without_history if record else ()
     if missing:
         logger.warning(
             "%d project(s) keep no history, so a merge back has no common "
             "ancestor for them: %s. Run init-history in the collection first.",
             len(missing), ", ".join(missing[:3]),
         )
-
-
-def _projects_copied(records, projects) -> list:
-    """Return the projects the copy actually holds.
-
-    A scan finds every project under the scan root; an export copies the ones
-    its selection reached. A fork point naming a project that is not in the
-    copy would have a merge look for an ancestor in a tree that does not exist.
-    """
-    from .operations.copy_export import projects_of
-
-    copied = set(projects_of([record.image_path for record in records], projects))
-    return [project for project in projects if project.path in copied]
+    return 0
 
 
 #: The selectors that narrow an export, in the order they are asked for. Used

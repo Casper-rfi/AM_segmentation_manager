@@ -22,6 +22,7 @@ from ..history import Recorder
 from ..io.path import make_path_relative
 from ..models import ImageRecord
 from ..operations.csv import find_matching_label
+from ..operations.export_record import ExportRecord
 from ..operations.label_compression import compress_labels, existing_labels
 from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, plan_predictions
@@ -660,6 +661,7 @@ class OperationsController:
         *,
         projects: Sequence = (),
         start_path: Path | None = None,
+        scope: str = "",
         dry_run: bool = False,
         cancellation: Cancellation | None = None,
         on_progress: Callable[[int, int], None] | None = None,
@@ -676,21 +678,28 @@ class OperationsController:
         protects is the user's own data and the user may know better; here the
         answer is to choose another folder.
 
+        A completed copy is given the fork point that lets it be merged back,
+        by the same call the command line makes.
+
         Args:
             projects: The scanned projects, which say where each project's own
                 files are. Without them the copy is images and labels alone.
             start_path: The scan root the copied paths are relative to.
                 Defaults to the one reports are written against.
+            scope: What the export was narrowed to, recorded in the fork point
+                as context for whoever merges the copy back.
         """
         from ..operations.copy_export import (
             DestinationInsideSource,
             copy_export,
             plan_copy,
+            record_fork_point,
         )
 
         root = start_path or self.start_path
         if root is None:
             return OperationReport("Nothing has been scanned yet.")
+        records = list(records)
         try:
             plan = plan_copy(records, destination, root, projects=projects)
         except DestinationInsideSource as error:
@@ -732,12 +741,42 @@ class OperationsController:
             f"Copied {len(report.copied)} file(s), "
             f"{format_bytes(report.bytes_copied)}, into {destination}."
         )
+        fork = record_fork_point(
+            destination, records, projects, root,
+            stopped=report.stopped, scope=scope,
+        )
         if report.stopped:
             headline += (
                 " Stopped early; what was copied is kept, and running it again "
                 "carries on from there."
             )
-        return OperationReport(headline, applied=True, count=len(report.copied))
+        return OperationReport(
+            headline, self._fork_context(fork),
+            applied=True, count=len(report.copied),
+        )
+
+    @staticmethod
+    def _fork_context(fork: ExportRecord | None) -> tuple[str, ...]:
+        """Return what the report says about merging this copy back.
+
+        Said out loud rather than left to the file, because whether a copy can
+        come home is the one thing about it that cannot be seen by looking in
+        the folder.
+        """
+        if fork is None:
+            return (
+                "No fork point was written, because the copy was stopped: "
+                "this cannot be merged back until the export is run again.",
+            )
+        lines = ["Written with a fork point, so it can be merged back."]
+        missing = fork.without_history
+        if missing:
+            lines.append(
+                f"{len(missing)} project(s) keep no history yet, so a merge "
+                f"back has no common ancestor for them: "
+                f"{', '.join(missing[:3])}."
+            )
+        return tuple(lines)
 
     def survey(self, root: Path, *, detail: bool = False) -> OperationReport:
         """Report how a directory is interpreted, and what does not fit.
