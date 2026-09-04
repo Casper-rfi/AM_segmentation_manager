@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "AM_HISTORY_FILENAME",
     "CONFIG_DIRECTORY",
+    "CONFIG_DISPLAY",
+    "USER_FILENAME",
     "FILE_VERSION",
     "KINDS",
     "BySource",
@@ -66,6 +68,12 @@ AM_HISTORY_FILENAME: Final[str] = "AM_history.jsonl"
 #: Where this package keeps a person's own settings, as opposed to anything
 #: belonging to a collection. The window's log file lives here too.
 CONFIG_DIRECTORY: Final[Path] = Path.home() / ".am_segmentation_manager"
+
+#: The same directory as a person should read it. **Help text and documentation
+#: use this, never the resolved path**: that carries whoever's home directory
+#: the command happened to run under into every screenshot, bug report and
+#: copy of ``--help``, which is somebody's name in a document about software.
+CONFIG_DISPLAY: Final[str] = f"~/{CONFIG_DIRECTORY.name}"
 
 #: The file naming the author, when nothing more direct does.
 USER_FILENAME: Final[str] = "user.yaml"

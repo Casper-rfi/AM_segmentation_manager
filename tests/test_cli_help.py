@@ -173,3 +173,21 @@ def test_version_flag_reports_the_package_version():
 
     assert excinfo.value.code == 0
     assert __version__
+
+
+def test_no_help_text_carries_the_home_directory_it_was_built_on():
+    """Help is documentation: it goes into screenshots, bug reports and READMEs.
+
+    A resolved path puts whoever ran the command into all of them, and makes
+    the same flag read differently on two machines.
+    """
+    from pathlib import Path
+
+    home = str(Path.home())
+    parser = build_parser()
+    texts = [action.help or "" for action in parser._actions]
+    for _, sub in _canonical_subcommands():
+        texts.extend(action.help or "" for action in sub._actions)
+        texts.append(sub.description or "")
+
+    assert not [text for text in texts if home in text]

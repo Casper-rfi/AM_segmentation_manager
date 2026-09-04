@@ -36,8 +36,10 @@ from .filtering import (
 from .history import (
     AM_HISTORY_FILENAME,
     CONFIG_DIRECTORY,
+    CONFIG_DISPLAY,
     KINDS,
     USER_ENV_VAR,
+    USER_FILENAME,
     Event,
     Recorder,
     containing_project,
@@ -99,7 +101,9 @@ LOG_FILE_FORMAT = "%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(messag
 #: Where the window logs when nothing else was asked for. Under the user's home
 #: rather than beside the data: a log is this package's own record of a session,
 #: not part of any collection being reviewed.
-DEFAULT_GUI_LOG = Path.home() / ".am_segmentation_manager" / "gui.log"
+#: Where the window's own log goes. Under `CONFIG_DIRECTORY` rather than
+#: spelling that path a second time, so the two cannot drift apart.
+DEFAULT_GUI_LOG = CONFIG_DIRECTORY / "gui.log"
 
 #: How large a rolled log may grow before the previous run's file is moved
 #: aside. Only the window's own log is capped -- a path the user named is left
@@ -400,15 +404,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Also write the log to this file, and write a native stack trace "
             "there if the process crashes outright. Appends, so runs "
-            f"accumulate. 'gui' already does this in {DEFAULT_GUI_LOG}; name a "
-            "path here to send one session somewhere of its own"
+            f"accumulate. 'gui' already does this in {CONFIG_DISPLAY}/"
+            f"{DEFAULT_GUI_LOG.name}; name a path here to send one session "
+            "somewhere of its own"
         ),
     )
     parser.add_argument(
         "--user", default=None, metavar="NAME",
         help=(
             "Record changes under this name. Otherwise taken from "
-            f"{USER_ENV_VAR}, then from {CONFIG_DIRECTORY / 'user.yaml'}, then "
+            f"{USER_ENV_VAR}, then from {CONFIG_DISPLAY}/{USER_FILENAME}, then "
             "from the account running the command"
         ),
     )
