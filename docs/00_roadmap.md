@@ -32,11 +32,11 @@ kept when the label was replaced, and the predictions beside the image — shows
 the compare key is held, marks where it and the label disagree, and puts a kept one back through the
 ordinary save. Off by default, the count on the switch saying whether opening it would show anything.
 
-What is left, in order: the defects on the merge path, chief among them that a merge replaces a
-corrected label without asking; rehearsing the round trip on two machines; savepoints marking rounds
-of model improvement, with `revert --to` and pruning defined by them; `init-history --as`, so a
-dataset annotated elsewhere is not attributed to whoever ran the command; and then deciding whether
-any of this earns a surface in the window. None of the six commands is reachable from it today.
+A merge now goes through the ordinary save, so it is refused rather than replacing proofread work
+unasked; reads its log in the order things happened; and takes its ancestor from the history two
+logs share, so one copy can go back and forth repeatedly. What is left, in order: rehearsing that
+round trip on two machines; savepoints marking rounds of model improvement, with `revert --to` and
+pruning defined by them; `init-history --as`; then whether this earns a surface in the window.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.
