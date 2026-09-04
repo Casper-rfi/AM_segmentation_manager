@@ -276,3 +276,173 @@ def test_a_restore_is_recorded_as_one(label, recorder):
 
     kinds = [event.kind for event in read_log(label.parents[1]).events]
     assert "label-restored" in kinds
+
+
+# ---------------------------------------------------------------------------
+# Predictions as versions
+# ---------------------------------------------------------------------------
+
+def _prediction(directory: Path, name: str, value: int, model: str, run: str) -> Path:
+    """Write a prediction and the provenance naming the model that made it."""
+    import yaml
+
+    path = _write(directory / name, value)
+    record = directory / "am_seg_predictions.yaml"
+    existing = {}
+    if record.is_file():
+        existing = (yaml.safe_load(record.read_text()) or {}).get("predictions", {})
+    existing[name] = {
+        "model": model, "run": run,
+        "predicted_at": "2026-09-02T11:04:00+01:00",
+        "image": name,
+    }
+    record.write_text(yaml.safe_dump({"predictions": existing}))
+    return path
+
+
+def test_two_models_predictions_both_appear_named_by_model(label, recorder, tmp_path):
+    first = _prediction(tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6")
+    second = _prediction(tmp_path / "sem_predictions" / "raw", "img_000.tif", 3, "fpn_v4", "run-4")
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [first, second])
+
+    predicted = [row for row in controller.rows if row.source == "prediction"]
+    assert [row.who for row in predicted] == ["fpn_v6", "fpn_v4"]
+    assert [row.produced_by for row in predicted] == ["run run-6", "run run-4"]
+
+
+def test_a_prediction_the_pipeline_post_processed_is_not_offered(label, recorder, tmp_path):
+    clean = _write(tmp_path / "sem_predictions" / "clean" / "img_000.tif", 1)
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [clean])
+
+    assert not [row for row in controller.rows if row.source == "prediction"]
+
+
+def test_a_prediction_is_listed_beside_the_kept_versions(label, recorder, tmp_path):
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+
+    sources = [row.source for row in controller.rows]
+    assert sources == ["kept", "prediction"], "kept versions come first"
+    assert controller.count == 2
+
+
+def test_comparing_against_a_prediction_writes_nothing(label, recorder, tmp_path):
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+    before = {
+        path: fingerprint_of(path)
+        for path in sorted(tmp_path.rglob("*")) if path.is_file()
+    }
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+    controller.select([row.source for row in controller.rows].index("prediction"))
+    assert controller.comparison_pixels() is not None
+    assert controller.difference(_pixels(3)) is not None
+
+    after = {
+        path: fingerprint_of(path)
+        for path in sorted(tmp_path.rglob("*")) if path.is_file()
+    }
+    assert after == before, "comparing may not touch the tree"
+
+
+def test_a_prediction_is_converted_rather_than_restored(label, recorder, tmp_path):
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+    controller.select([row.source for row in controller.rows].index("prediction"))
+
+    assert controller.selected.restorable is False
+    with pytest.raises(ValueError, match="converting"):
+        controller.restore_selected()
+
+
+def test_a_prediction_that_will_not_open_is_listed_as_unavailable(label, recorder, tmp_path):
+    directory = tmp_path / "sem_predictions" / "am_seg"
+    prediction = _prediction(directory, "img_000.tif", 1, "fpn_v6", "run-6")
+    prediction.unlink()
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+
+    predicted = [row for row in controller.rows if row.source == "prediction"]
+    assert predicted and not predicted[0].available
+
+
+def test_a_prediction_with_no_provenance_says_so(label, recorder, tmp_path):
+    loose = _write(tmp_path / "sem_predictions" / "raw" / "img_000.tif", 1)
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [loose])
+
+    predicted = [row for row in controller.rows if row.source == "prediction"]
+    assert predicted[0].who == "unrecorded model"
+
+
+# ---------------------------------------------------------------------------
+# What the frame path may cost
+# ---------------------------------------------------------------------------
+
+def test_only_this_label_s_own_archive_directory_is_read(label, recorder, tmp_path, monkeypatch):
+    """Listing versions must not walk the archive: that is linear in the project."""
+    from am_segmentation_manager.operations import archive
+
+    other = tmp_path / "sem_labels" / "img_001.tif"
+    _write(other, 2)
+    _save(other, _pixels(4), recorder)
+
+    monkeypatch.setattr(
+        Path, "rglob", lambda self, pattern: pytest.fail("the archive was walked")
+    )
+    controller = VersionController(recorder)
+    controller.set_label(label)
+
+    assert len(controller.rows) == 1, "the other label's version is not this label's"
+    assert archive.version_directory(tmp_path, "sem_labels/img_000.tif").is_dir()
+
+
+def test_a_label_whose_stem_prefixes_another_gets_only_its_own(tmp_path, recorder):
+    history_file_path(tmp_path).touch()
+    short = _write(tmp_path / "sem_labels" / "img.tif", 2)
+    longer = _write(tmp_path / "sem_labels" / "img_000.tif", 2)
+    _save(short, _pixels(3), recorder)
+    _save(longer, _pixels(3), recorder)
+
+    controller = VersionController(recorder)
+    controller.set_label(short)
+
+    assert len(controller.rows) == 1
+    assert controller.rows[0].path.stem.startswith("img__")
+
+
+def test_the_log_is_read_again_only_when_it_has_changed(label, recorder, tmp_path):
+    from am_segmentation_manager.gui import version_controller as module
+
+    reads = []
+    original = module.read_log
+    module.read_log = lambda root: (reads.append(root), original(root))[1]
+    try:
+        controller = VersionController(recorder)
+        controller.set_label(label)
+        controller.set_label(tmp_path / "sem_labels" / "other.tif")
+        controller.set_label(label)
+        assert len(reads) == 1, "an unchanged log is not re-read"
+
+        _save(label, _pixels(5), recorder)
+        controller.refresh()
+        assert len(reads) == 2, "an appended log is read again"
+    finally:
+        module.read_log = original

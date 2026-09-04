@@ -1,16 +1,23 @@
-"""The versions kept of the label on screen, and comparing against one.
+"""The versions of the label on screen, and comparing against one.
 
 What the proofreading view needs to answer three questions about a label: what
 it used to hold, how far each version is from the one before it, and whether a
 new model's guess is better than what is there now. Holds no Qt, so the listing,
 the comparison and the restore are all testable without a display.
 
-**A row is legible without opening anything.** Each carries who, when, what
-produced it and the share of pixels that changed, which was computed when the
-version was kept and cannot be had cheaply afterwards -- ten rows where nine say
-0.1% and one says 34% tell a reader which one matters.
+**A version is anything that is a version of this segmentation.** A label kept
+when something replaced it is one; a prediction sitting beside the image is
+another, and comparing against one answers "is this model better" without
+writing anything at all. The two differ only in what may be done with them --
+a kept version can be put back, a prediction has to be converted.
 
-A label with no kept versions has nothing here, which is the ordinary case.
+**A row is legible without opening anything.** Each carries who, when and what
+produced it, and a kept version carries the share of pixels that changed, which
+was computed when it was kept and cannot be had cheaply afterwards.
+
+Everything here runs when the frame changes, so nothing here may be linear in
+the collection: the archive is read one label's directory at a time and the log
+is cached against its own fingerprint.
 """
 from __future__ import annotations
 
@@ -19,12 +26,20 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..history import Recorder, containing_project
+from ..history import HistoryLog, Recorder, containing_project, history_file_path, read_log
 from ..operations.archive import ArchivedVersion, label_versions, restore
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["VersionController", "VersionRow"]
+__all__ = ["KEPT", "PREDICTION", "VersionController", "VersionRow"]
+
+#: A version kept when something replaced the label. Can be put back.
+KEPT: str = "kept"
+
+#: A prediction beside the image. Compared against, never restored -- putting
+#: one in place is a conversion, which is a different act with its own
+#: confirmation.
+PREDICTION: str = "prediction"
 
 #: What a row says produced a version, by the entry kind that recorded it.
 _PRODUCED_BY: dict[str, str] = {
@@ -39,36 +54,51 @@ _PRODUCED_BY: dict[str, str] = {
 
 @dataclass(frozen=True)
 class VersionRow:
-    """One kept version, as a reader sees it.
+    """One version of the segmentation on screen, as a reader sees it.
 
     Attributes:
-        version: What it is and where it is.
-        when: When it was kept, or empty where nothing recorded it.
-        who: Who kept it, or "unknown".
-        produced_by: What operation replaced it.
+        path: Where the pixels are.
+        source: :data:`KEPT` or :data:`PREDICTION`.
+        when: When it was kept or predicted, or empty where nothing says.
+        who: Who kept it, "unknown", or the model that predicted it.
+        produced_by: What operation produced it.
         changed: The share of pixels that differed from the version before,
-            or None where that was never computed -- across a resize, and for
-            a version nothing recorded.
+            or None where that was never computed -- across a resize, for a
+            version nothing recorded, and for every prediction, which is not
+            measured against the label until it is looked at.
         available: Whether the pixels are here to be looked at.
+        version: The archived version, for a kept row. None for a prediction.
     """
 
-    version: ArchivedVersion
+    path: Path
+    source: str
     when: str
     who: str
     produced_by: str
     changed: float | None
     available: bool
+    version: ArchivedVersion | None = None
+
+    @property
+    def restorable(self) -> bool:
+        """Return whether this version can be put back where the label is."""
+        return self.source == KEPT and self.version is not None and self.available
 
     def describe(self) -> str:
         """Return the one line a list shows for this version."""
+        if self.source == PREDICTION:
+            line = f"predict  {self.who}  {self.produced_by}"
+            if self.when:
+                line += f"  {self.when}"
+            return line if self.available else f"{line}  (will not open)"
         share = "unknown" if self.changed is None else f"{self.changed * 100:.1f}%"
-        line = f"{self.when or '(not recorded)'}  {self.who}  {self.produced_by}"
+        line = f"kept  {self.when or '(not recorded)'}  {self.who}  {self.produced_by}"
         line += f"  {share} changed"
         return line if self.available else f"{line}  (pixels not here)"
 
 
 class VersionController:
-    """The kept versions of one label, and the one being compared against.
+    """The versions of one label, and the one being compared against.
 
     Attributes:
         recorder: Who a restore is attributed to.
@@ -83,49 +113,132 @@ class VersionController:
         self._rows: tuple[VersionRow, ...] = ()
         self._selected: int | None = None
         self._pixels: dict[Path, object] = {}
+        self._log: tuple[object, HistoryLog] | None = None
+        self._provenance: dict[Path, dict] = {}
 
     # -- what is being looked at -------------------------------------------
 
-    def set_label(self, key: Path | None) -> None:
-        """Point the controller at the label on screen.
+    def set_label(
+        self, key: Path | None, predictions: Sequence[Path] = ()
+    ) -> None:
+        """Point the controller at the label on screen and its predictions.
 
-        Reads the archive and the log. Selecting nothing, because moving to
-        another frame should not leave a version from the last one on display.
+        Reads the label's own archive directory and the project's log; the
+        predictions are paths the scan already found, so nothing is searched
+        for. Selecting nothing, because moving to another frame should not
+        leave a version from the last one on display.
+
+        Args:
+            key: Where the label is, or would be written.
+            predictions: The prediction files for the frame on screen.
         """
         self._selected = None
         self._pixels.clear()
-        if key is None or key == self._key:
-            if key is None:
-                self._key, self._project, self._target, self._rows = None, None, "", ()
+        if key is None:
+            self._key, self._project, self._target, self._rows = None, None, "", ()
             return
+
         self._key = key
         self._project = containing_project(key)
-        if self._project is None:
-            self._target, self._rows = "", ()
-            return
-        try:
-            self._target = key.resolve().relative_to(self._project).as_posix()
-        except ValueError:
-            self._target, self._rows = "", ()
-            return
-        self._rows = tuple(
-            _row(version) for version in label_versions(self._project, self._target)
-        )
+        self._target = ""
+        if self._project is not None:
+            try:
+                self._target = key.resolve().relative_to(self._project).as_posix()
+            except ValueError:
+                self._target = ""
 
-    def refresh(self) -> None:
+        self._rows = tuple([*self._kept_rows(), *self._prediction_rows(predictions)])
+
+    def refresh(self, predictions: Sequence[Path] = ()) -> None:
         """Read the versions again, after something changed the label."""
         key, self._key = self._key, None
-        self.set_label(key)
+        self.set_label(key, predictions)
+
+    def _kept_rows(self) -> list[VersionRow]:
+        """Return a row per kept version, oldest first.
+
+        Empty where the project keeps no log, which is a collection that has
+        never opted into recording -- the ordinary case today.
+        """
+        if self._project is None or not self._target:
+            return []
+        return [
+            _kept_row(version)
+            for version in label_versions(
+                self._project, self._target, self._project_log()
+            )
+        ]
+
+    def _prediction_rows(self, predictions: Sequence[Path]) -> list[VersionRow]:
+        """Return a row per prediction that could stand in for the label.
+
+        Ordered as a conversion would choose between them, so the row a
+        conversion would act on is the first of them. The post-processed kind
+        is left out: its values are no longer class indices, so drawing it over
+        the image would show something that is not a segmentation.
+        """
+        from ..layout import is_convertible_prediction, prediction_precedence
+
+        usable = [path for path in predictions if is_convertible_prediction(path)]
+        usable.sort(key=lambda path: (prediction_precedence(path), path.name))
+        return [self._prediction_row(path) for path in usable]
+
+    def _prediction_row(self, path: Path) -> VersionRow:
+        """Return how one prediction reads, from its directory's provenance."""
+        entry = self._provenance_for(path.parent).get(path.name)
+        entry = entry if isinstance(entry, dict) else {}
+        model = entry.get("model")
+        run = entry.get("run")
+        when = entry.get("predicted_at")
+        return VersionRow(
+            path=path,
+            source=PREDICTION,
+            when=str(when)[:16] if isinstance(when, str) else "",
+            who=str(model) if isinstance(model, str) and model else "unrecorded model",
+            produced_by=f"run {run}" if isinstance(run, str) and run else path.parent.name,
+            changed=None,
+            available=path.is_file(),
+        )
+
+    def _provenance_for(self, directory: Path) -> dict:
+        """Return what a predictions directory records, read once per frame set."""
+        if directory not in self._provenance:
+            from ..operations.predict import read_provenance
+
+            self._provenance[directory] = read_provenance(directory)
+        return self._provenance[directory]
+
+    def _project_log(self) -> HistoryLog:
+        """Return the project's log, re-read only when the file has changed.
+
+        The log is appended to and never rewritten, so its size and modification
+        time settle whether a held copy is still current. Without this every
+        arrow key re-reads every entry the project has.
+        """
+        from ..io.atomic import fingerprint_of
+
+        assert self._project is not None
+        stamp = fingerprint_of(history_file_path(self._project))
+        if self._log is None or self._log[0] != stamp:
+            self._log = (stamp, read_log(self._project))
+        return self._log[1]
 
     @property
     def rows(self) -> tuple[VersionRow, ...]:
-        """Return the kept versions, newest first."""
-        return tuple(reversed(self._rows))
+        """Return the versions, newest kept first, then the predictions."""
+        kept = [row for row in self._rows if row.source == KEPT]
+        predicted = [row for row in self._rows if row.source != KEPT]
+        return tuple([*reversed(kept), *predicted])
 
     @property
     def has_versions(self) -> bool:
-        """Return whether this label has any kept version at all."""
+        """Return whether there is anything to compare the label against."""
         return bool(self._rows)
+
+    @property
+    def count(self) -> int:
+        """Return how many versions there are, for a control that is closed."""
+        return len(self._rows)
 
     @property
     def target(self) -> str:
@@ -160,19 +273,18 @@ class VersionController:
         row = self.selected
         if row is None or not row.available:
             return None
-        path = row.version.path
-        if path not in self._pixels:
-            self._pixels[path] = _read(path)
-        return self._pixels[path]
+        if row.path not in self._pixels:
+            self._pixels[row.path] = _read(row.path)
+        return self._pixels[row.path]
 
     def difference(self, current) -> object | None:
         """Return where the label on screen and the selected version disagree.
 
         Returns:
             A boolean array, True where they differ, or None where there is
-            nothing to compare or the two are not the same size -- a
-            conversion writes at model resolution, and a mask across a resize
-            would mark every pixel.
+            nothing to compare or the two are not the same size -- a prediction
+            is made at model resolution, and a mask across a resize would mark
+            every pixel.
         """
         other = self.comparison_pixels()
         if other is None or current is None:
@@ -195,14 +307,22 @@ class VersionController:
         so a restore is itself reversible.
 
         Raises:
-            ValueError: If no version is selected, or its pixels are not here.
+            ValueError: If no version is selected, its pixels are not here, or
+                it is a prediction -- which is put in place by converting it,
+                not by restoring it.
             PermissionError: If the group is corrected and *confirmed* is not
                 set.
         """
         row = self.selected
         if row is None:
             raise ValueError("No version is selected")
-        if not row.available:
+        if row.source == PREDICTION:
+            raise ValueError(
+                "A prediction is put in place by converting it, which writes a "
+                "label from it and records which model made it. Restoring is "
+                "for versions this label already held."
+            )
+        if not row.available or row.version is None:
             raise ValueError(
                 "This collection holds the record of that version but not its "
                 "pixels. It was kept somewhere else -- a copy that was exported "
@@ -221,22 +341,24 @@ class VersionController:
         return restored
 
 
-def _row(version: ArchivedVersion) -> VersionRow:
+def _kept_row(version: ArchivedVersion) -> VersionRow:
     """Return how one kept version reads."""
     event = version.event
     changed = event.data.get("changed_fraction") if event else None
     return VersionRow(
-        version=version,
+        path=version.path,
+        source=KEPT,
         when=event.at if event else "",
         who=event.by if event else "unknown",
         produced_by=_PRODUCED_BY.get(event.kind, event.kind) if event else "unrecorded",
         changed=changed if isinstance(changed, (int, float)) else None,
         available=version.present and version.path.is_file(),
+        version=version,
     )
 
 
 def _read(path: Path):
-    """Return what an archived label holds, or None where it will not open."""
+    """Return what a label or prediction holds, or None where it will not open."""
     try:
         from ..io.image import read_array
 
@@ -247,8 +369,8 @@ def _read(path: Path):
 
 
 def rows_for(project_root: Path, target: str) -> Sequence[VersionRow]:
-    """Return the rows for one label without holding a controller.
+    """Return the kept-version rows for one label without holding a controller.
 
     For a report that lists versions and does not compare against one.
     """
-    return [_row(version) for version in label_versions(project_root, target)]
+    return [_kept_row(version) for version in label_versions(project_root, target)]

@@ -19,6 +19,7 @@ recording follows: a collection that has not opted in gains no files.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ __all__ = [
     "apply_prune",
     "restore",
     "plan_prune",
+    "version_directory",
     "versions_of",
 ]
 
@@ -227,40 +229,100 @@ def archived_versions(project_root: Path) -> list[ArchivedVersion]:
     return versions
 
 
-def versions_of(project_root: Path, target: str) -> list[ArchivedVersion]:
-    """Return the archived versions of one label present on disk, oldest first."""
-    return [
-        version
-        for version in archived_versions(project_root)
-        if version.target == target
-    ]
+def version_directory(project_root: Path, target: str) -> Path:
+    """Return the one directory holding *target*'s archived versions.
+
+    Every version of a label lands here, by :func:`archived_path`, so this is
+    the whole of what has to be listed to find them -- as against walking the
+    archive, which is linear in the collection on a path the proofreading view
+    takes at every arrow key.
+    """
+    return archive_root(project_root) / Path(target).parent
 
 
-def label_versions(project_root: Path, target: str) -> list[ArchivedVersion]:
+def versions_of(
+    project_root: Path, target: str, log: HistoryLog | None = None
+) -> list[ArchivedVersion]:
+    """Return the archived versions of one label present on disk, oldest first.
+
+    Lists the label's own archive directory rather than the whole tree. Names
+    there begin with the label's stem and a separator, which is what keeps two
+    labels whose stems share a prefix apart.
+
+    Args:
+        log: The project's log, where the caller already holds it. Read here
+            otherwise, this being the only thing that pairs a file with the
+            entry recording it.
+    """
+    directory = version_directory(project_root, target)
+    if not directory.is_dir():
+        return []
+
+    known = log if log is not None else read_log(project_root)
+    by_path = {
+        event.data["archived_as"]: event
+        for event in events_for(known, target)
+        if isinstance(event.data.get("archived_as"), str)
+    }
+
+    # Every label under one image directory archives into one directory, so
+    # this listing sees the neighbours too. Names are matched before anything
+    # is asked of the filesystem and the size comes from the directory entry
+    # already in hand -- a stat for each of a directory's thousands of files is
+    # what made stepping through frames slow.
+    prefix = f"{Path(target).stem}__"
+    found = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if not entry.name.startswith(prefix) or not entry.is_file():
+                continue
+            path = Path(entry.path)
+            found.append(
+                ArchivedVersion(
+                    path=path,
+                    target=target,
+                    event=by_path.get(path.relative_to(project_root).as_posix()),
+                    size=entry.stat().st_size,
+                )
+            )
+    return sorted(found, key=lambda version: version.path.name)
+
+
+def label_versions(
+    project_root: Path, target: str, log: HistoryLog | None = None
+) -> list[ArchivedVersion]:
     """Return every version of one label the project knows of, oldest first.
 
     The union of what is on disk and what the log says was kept, so a version
     whose file did not travel with a copy is listed as absent rather than
     silently missing. Ordered by when each was recorded, a version with no
     entry falling back to its filename, which sorts the same way.
-    """
-    here = {version.path: version for version in versions_of(project_root, target)}
-    log = read_log(project_root)
 
-    known = list(here.values())
-    for event in events_for(log, target):
+    Args:
+        log: The project's log, where the caller already holds it. Read once
+            here otherwise, and shared with :func:`versions_of` rather than
+            each reading it for itself.
+    """
+    known = log if log is not None else read_log(project_root)
+    here = {
+        version.path: version
+        for version in versions_of(project_root, target, known)
+    }
+
+    found = list(here.values())
+    for event in events_for(known, target):
         recorded = event.data.get("archived_as")
         if not isinstance(recorded, str) or not recorded:
             continue
         path = project_root / recorded
         if path in here:
             continue
-        known.append(
+        found.append(
             ArchivedVersion(
                 path=path, target=target, event=event, size=0, present=False
             )
         )
-    return sorted(known, key=_version_order)
+    return sorted(found, key=_version_order)
 
 
 def _version_order(version: ArchivedVersion) -> tuple[str, str]:

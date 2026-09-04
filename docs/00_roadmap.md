@@ -16,28 +16,27 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 
 ## What to pick up next
 
-**Label history and merge**, five stages of seven built. An append-only `AM_history.jsonl` per
-project records what changed, who changed it and when; `am-seg init-history` writes a collection's
-first logs and baselines what is already on disk, at about 300 bytes an entry; every operation that
-writes a label, a state or a metadata field records into it, and `am-seg history` reads one back.
-Replacing a label keeps the version under `AM_archive/` unless the pixels are provably untouched
-machine output, which `am-seg archive` reports and `am-seg prune-archive` thins. `export-files`
-carries the history and writes an `AM_export.yaml` naming the ancestor a merge back compares
-against. **Recording begins only where a log exists**, so nothing happens to a collection until
-`init-history` runs on it — and a collection with no history behaves exactly as it does today.
+**Label history and merge**, on branch `label-history` and deliberately unmerged. An append-only
+`AM_history.jsonl` per project records what changed, who changed it and when; `am-seg init-history`
+writes a collection's first logs and baselines what is on disk; every operation that writes a label,
+a state or a metadata field records into it, and `am-seg history` reads one back. Replacing a label
+keeps the version under `AM_archive/` unless the pixels are provably untouched machine output, which
+`am-seg archive` reports and `am-seg prune-archive` thins. `export-files` carries the history and
+writes an `AM_export.yaml` naming the ancestor `am-seg merge` compares against — three-way, re-hashing
+both trees rather than believing either log, refusing the whole merge while any conflict stands.
+`am-seg revert` undoes a conversion or a merge across a selection. **Recording begins only where a
+log exists**, so a collection with no history behaves exactly as it does today.
 
-`am-seg merge` brings a copy back: three-way per label, state entry and metadata field against the
-ancestor the fork point names, re-hashing both trees rather than believing either log, taking what
-only one side changed and refusing the whole merge while any conflict stands.
+In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
+kept when the label was replaced, and the predictions beside the image — shows one on the canvas while
+the compare key is held, marks where it and the label disagree, and puts a kept one back through the
+ordinary save. Off by default, the count on the switch saying whether opening it would show anything.
 
-The proofreading view lists a label's kept versions when it has any and hides the strip when it has
-none, shows one on the canvas while the compare key is held, marks where it and the label disagree,
-and puts one back through the ordinary save.
-
-`am-seg revert` undoes a conversion or a merge across a whole selection at once, which is what makes
-trying a newer model over a project's proofread labels a decision rather than a commitment.
-
-What is left of this work: deciding a merge conflict in the window rather than on the command line.
+What is left, in order: the defects on the merge path, chief among them that a merge replaces a
+corrected label without asking; rehearsing the round trip on two machines; savepoints marking rounds
+of model improvement, with `revert --to` and pruning defined by them; `init-history --as`, so a
+dataset annotated elsewhere is not attributed to whoever ran the command; and then deciding whether
+any of this earns a surface in the window. None of the six commands is reachable from it today.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

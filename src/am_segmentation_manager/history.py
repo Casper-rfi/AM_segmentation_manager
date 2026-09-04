@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
@@ -255,6 +256,20 @@ class HistoryLog:
     events: tuple[Event, ...] = ()
     damaged: tuple[UnusableLine, ...] = ()
     unrecognised: tuple[UnusableLine, ...] = ()
+
+    @cached_property
+    def by_target(self) -> dict[str, list[Event]]:
+        """Return the entries about each target, oldest first.
+
+        Derived from :attr:`events` and cached, never stored beside it: asking
+        one label's history is otherwise a scan of the project's whole log, and
+        the proofreading view asks it at every arrow key.
+        """
+        grouped: dict[str, list[Event]] = {}
+        for event in self.events:
+            if event.target is not None:
+                grouped.setdefault(event.target, []).append(event)
+        return grouped
 
 
 # ---------------------------------------------------------------------------
@@ -769,7 +784,7 @@ class Recorder:
 
 def events_for(log: HistoryLog, target: str) -> list[Event]:
     """Return the entries about *target*, oldest first."""
-    return [event for event in log.events if event.target == target]
+    return list(log.by_target.get(target, ()))
 
 
 def latest_for(log: HistoryLog, target: str) -> Event | None:

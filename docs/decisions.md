@@ -393,10 +393,10 @@ rather than appending to it.
   label in the collection without changing the segmentation, and a digest that moved would report
   each run as thousands of edits — filling a merge with conflicts that are not conflicts, and the
   archive with copies of nothing. `pixel_digest` states what that costs at the edges.
-- **An entry's id is a hash of its content, so recording the same operation twice records it
-  once.** That is what makes a baseline idempotent and a union of two logs correct without either
-  knowing the other exists. A random id would make every re-run add duplicates nothing could
-  collapse, which is why there is no nonce and why `at` is part of the hashed body.
+- **An entry's id hashes its whole body, `at` and `batch` included**, so it is an identity rather
+  than a fingerprint of the change: two runs of one operation get two ids. That is what a union
+  needs — entries travel by file copy, keep their id and combine exactly once, uncoordinated.
+  **Idempotence comes from elsewhere**: `plan_baseline` skips targets already recorded.
 - **A log tolerates what `state.py` refuses.** A control file must be understood completely before
   anything acts on it; a record must not lose four thousand good entries over one bad line. So a
   damaged or newer line is kept aside rather than raising, and forward compatibility comes from
@@ -418,9 +418,7 @@ rather than appending to it.
   only a test making its own symlink finds, `/tmp` being one on macOS and `tmp_path` not.
 - **`init-history` covers every series, unlike everything else that writes**: a record covering
   only Adaptive Polishing would leave every reference and alignment label unrecorded permanently,
-  with no second chance at a baseline. Its label fields are optional — a group can be deselected
-  having never had one, and a label that will not open is worth recording as contents unknown
-  rather than omitted, where it would look like a group nobody annotated.
+  with no second chance at a baseline. Why its label fields are optional is on `history.KINDS`.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it does not merely slow a scan — a superseded version is read as a
@@ -433,10 +431,9 @@ rather than appending to it.
   of proofread work all apply, and the version replaced is archived on the way past. Only what is
   recorded differs — `LabelToSave.restored_from`.
 - **Nothing coalesces versions at write time.** Collapsing consecutive saves is deletion an
-  operation performs on its own, against both the rule that deletion is prohibited by default and
-  pruning having no default policy. It belongs to `prune-archive`, the only command here that
-  removes a label file and only for versions named by a person; what that never offers up is its
-  own docstring. **Pruning leaves the log alone** — it costs the pixels, never the account.
+  operation performs on its own, against the rule that deletion is prohibited by default. It
+  belongs to `prune-archive`, the only command that removes a label file and only for versions a
+  person named. **Pruning leaves the log alone** — it costs the pixels, never the account.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
   establish an ancestor without the log, and one covering only what was copied leaves holes in the
   chain. The archive is a cache of recoverable pixels and may be partial, so `--with-archive` is
@@ -463,6 +460,10 @@ rather than appending to it.
   `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters without
   a file being opened. It is computed when a version is kept, both arrays being in hand, and cannot
   be had cheaply after — so a merge decodes both files rather than leave a row saying "unknown".
+- **Nothing on the frame path may be linear in the collection.** Listing a label's versions walked
+  the whole archive at every arrow key — half a second per keypress at a size this collection will
+  reach, degrading gradually enough to be blamed on the images. Hence the scandir by name prefix in
+  `versions_of` and the fingerprinted log in `VersionController`: 495 ms at 20,000 versions, now 12.
 - **Undoing a conversion is a batch operation.** Trying a newer model over a project's proofread
   labels is a decision rather than a commitment only if the whole project can go back in one
   command, so `revert` reads each label's history for the version the run replaced. It **leaves

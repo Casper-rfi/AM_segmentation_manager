@@ -575,6 +575,20 @@ class LabelPanel(QWidget):
 
         self._show_speck_controls(False)
 
+        controls.addSpacing(20)
+        # Off by default and per session. Comparing is wanted a few times a
+        # year against a view read every day, so the strip earns its space only
+        # while somebody is using it -- and the count says whether opening it
+        # would show anything before it is opened.
+        self.versions_check = ToggleSwitch("Compare versions")
+        self.versions_check.setToolTip(
+            "List the versions of this segmentation -- those kept when the "
+            "label was replaced, and the predictions beside the image -- and "
+            "show one in place of the label."
+        )
+        self.versions_check.toggled.connect(self._versions_toggled)
+        controls.addWidget(self.versions_check)
+
         controls.addStretch()
 
         # Where the reviewer is, at the end of the row that decides it: the
@@ -1141,7 +1155,10 @@ class LabelPanel(QWidget):
         """Note which version is being offered, and whether it can be shown."""
         self.versions_controller.select(None if index < 0 else index)
         chosen = self.versions_controller.selected
-        self.versions.set_available(bool(chosen and chosen.available))
+        self.versions.set_available(
+            bool(chosen and chosen.available),
+            restorable=bool(chosen and chosen.restorable),
+        )
         self._comparing = False
         self._showing_differences = False
         self.draw_current()
@@ -1170,9 +1187,33 @@ class LabelPanel(QWidget):
         self.draw_current()
 
     def refresh_versions(self) -> None:
-        """Read the kept versions of the label on screen and list them."""
-        self.versions_controller.set_label(self.controller.current_key)
+        """List the versions of the label on screen, kept and predicted."""
+        record = self.controller.record
+        self.versions_controller.set_label(
+            self.controller.current_key,
+            record.predictions if record is not None else (),
+        )
         self.versions.set_rows(self.versions_controller.rows)
+        self._refresh_versions_switch()
+
+    def _refresh_versions_switch(self) -> None:
+        """Say how many versions this label has, without the strip being open.
+
+        The number is what makes the switch worth reading while it is off: a
+        label with nothing to compare against says so, and is not opened.
+        """
+        count = self.versions_controller.count
+        self.versions_check.setText(
+            "Compare versions" if not count else f"Compare versions ({count})"
+        )
+
+    def _versions_toggled(self, showing: bool) -> None:
+        """Open or close the strip, and put the canvas back when it closes."""
+        self.versions.set_open(showing)
+        if not showing:
+            self._comparing = False
+            self._showing_differences = False
+            self.draw_current()
 
     @property
     def showing_a_version(self) -> bool:

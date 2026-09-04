@@ -1,9 +1,13 @@
-"""The strip listing the kept versions of the label being proofread.
+"""The strip listing the versions of the label being proofread.
 
-Sits under the proofreading canvas and costs nothing when a label has no kept
-versions, which is the ordinary case: the whole strip hides itself. When there
-are versions it offers the three things worth doing with one -- read the list,
-look at it, and put it back.
+Sits under the proofreading canvas and is **closed unless somebody opens it**.
+Comparing is wanted a few times a year against a view read every day, and a
+control that is usually irrelevant makes every frame harder to read. Whoever
+owns the strip decides whether it shows; it never decides for itself.
+
+It offers the three things worth doing with a version -- read the list, look at
+it, and put it back -- and a prediction is a version like any other, except
+that it is converted rather than restored.
 
 The comparison is drawn on the *same* canvas rather than beside it. Segmentation
 is compared by flicking between two pictures in one place, not across a gap that
@@ -70,8 +74,10 @@ class VersionsBar(QWidget):
         self.chooser = QComboBox()
         self.chooser.setMinimumWidth(320)
         self.chooser.setToolTip(
-            "Versions kept when this label was replaced, newest first. The "
-            "percentage is how much each one differs from the version before it."
+            "Versions of this segmentation: those kept when the label was "
+            "replaced, newest first, then the predictions beside the image.\n"
+            "The percentage is how much a kept version differs from the one "
+            "before it."
         )
         self.chooser.currentIndexChanged.connect(self._chosen)
         row.addWidget(self.chooser, stretch=1)
@@ -105,14 +111,10 @@ class VersionsBar(QWidget):
         for widget in self.findChildren(QWidget):
             widget.setFocusPolicy(Qt.NoFocus)
         self.set_rows(())
+        self.setVisible(False)
 
     def set_rows(self, rows) -> None:
-        """Show *rows*, or hide the strip where there are none.
-
-        A label nobody has replaced has no history to offer, and a control that
-        is always there and usually empty is one more thing to read past.
-        """
-        self.setVisible(bool(rows))
+        """List *rows*, leaving whether the strip shows to :meth:`set_open`."""
         blocked = self.chooser.blockSignals(True)
         self.chooser.clear()
         for row in rows:
@@ -121,8 +123,8 @@ class VersionsBar(QWidget):
                 index = self.chooser.count() - 1
                 self.chooser.setItemData(
                     index,
-                    "The history records this version, but its pixels are "
-                    "not here: they were kept in a copy that did not bring its "
+                    "The record names this version, but its pixels are not "
+                    "here: they were kept in a copy that did not bring its "
                     "archive along. It can be neither shown nor put back.",
                     Qt.ToolTipRole,
                 )
@@ -130,11 +132,36 @@ class VersionsBar(QWidget):
         self.chooser.blockSignals(blocked)
         self._chosen(self.chooser.currentIndex())
 
-    def set_available(self, available: bool) -> None:
-        """Say whether the chosen version can be looked at and put back."""
+    def set_open(self, open_: bool) -> None:
+        """Show or hide the strip, stopping any comparison on the way out.
+
+        Hiding while a version is on the canvas would leave the wrong picture
+        up with nothing left on screen to say so.
+        """
+        if not open_:
+            self.stop_comparing()
+            self.difference_check.setChecked(False)
+        self.setVisible(open_)
+
+    def set_available(self, available: bool, *, restorable: bool = True) -> None:
+        """Say whether the chosen version can be looked at, and put back.
+
+        Args:
+            available: Whether its pixels are here to be drawn.
+            restorable: Whether putting it back is the right way to use it. A
+                prediction is not: it becomes a label by being converted, which
+                records which model made it.
+        """
         self.compare_button.setEnabled(available)
         self.difference_check.setEnabled(available)
-        self.restore_button.setEnabled(available)
+        self.restore_button.setEnabled(available and restorable)
+        self.restore_button.setToolTip(
+            "Put the chosen version back. What is here now is kept first, so "
+            "this can itself be undone."
+            if restorable else
+            "A prediction is not put back but converted, which writes a label "
+            "from it and records the model. Convert from the Curate tab."
+        )
         if not available:
             self.stop_comparing()
             self.difference_check.setChecked(False)

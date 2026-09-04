@@ -2,8 +2,8 @@
 
 The controller is tested without a display in ``test_version_controller.py``;
 what is left here is what only Qt can answer. Mostly that the strip is not there
-when there is nothing to show, that looking at an old version cannot be painted
-on, and that choosing another one stops showing the last.
+until somebody opens it, that looking at an old version cannot be painted on,
+and that choosing another one stops showing the last.
 """
 from __future__ import annotations
 
@@ -103,13 +103,49 @@ def _rows(label: Path, recorder: Recorder):
 # The strip
 # ---------------------------------------------------------------------------
 
-def test_the_strip_is_not_there_when_a_label_has_no_earlier_version(qt_app):
-    """A control always present and usually empty is one more thing to read past."""
+def test_the_strip_is_not_there_until_it_is_opened(qt_app, label, recorder):
+    """A control used a few times a year does not sit in a view read every day."""
     bar = VersionsBar()
     try:
-        bar.set_rows(())
         assert not bar.isVisibleTo(bar)
-        assert bar.chosen == -1
+
+        bar.set_rows(_rows(label, recorder).rows)
+        assert not bar.isVisibleTo(bar), "listing versions does not open the strip"
+
+        bar.set_open(True)
+        assert bar.isVisibleTo(bar)
+    finally:
+        destroy(bar)
+
+
+def test_closing_the_strip_stops_showing_the_version(qt_app, label, recorder):
+    """Hiding the strip while a version is up would leave the wrong picture on."""
+    bar = VersionsBar()
+    shown = []
+    try:
+        bar.set_rows(_rows(label, recorder).rows)
+        bar.set_open(True)
+        bar.comparing.connect(shown.append)
+        bar.differences.connect(shown.append)
+        bar.set_comparing(True)
+
+        bar.set_open(False)
+
+        assert not bar.compare_button.isChecked()
+        assert shown[-1] is False
+    finally:
+        destroy(bar)
+
+
+def test_a_prediction_is_offered_to_compare_but_not_to_restore(qt_app):
+    bar = VersionsBar()
+    try:
+        bar.set_available(True, restorable=False)
+
+        assert bar.compare_button.isEnabled()
+        assert bar.difference_check.isEnabled()
+        assert not bar.restore_button.isEnabled()
+        assert "converted" in bar.restore_button.toolTip()
     finally:
         destroy(bar)
 
@@ -238,5 +274,53 @@ def test_the_panel_asks_the_window_to_restore(qt_app, config, recorder):
         panel.versions.restore_button.click()
 
         assert asked == [True]
+    finally:
+        destroy(panel)
+
+
+def test_the_switch_opens_the_strip_and_says_how_many_there_are(
+    qt_app, config, label, recorder
+):
+    """The count is what makes the switch worth reading while the strip is shut."""
+    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    try:
+        panel.versions_controller.set_label(label)
+        panel.versions.set_rows(panel.versions_controller.rows)
+        panel._refresh_versions_switch()
+
+        assert not panel.versions.isVisibleTo(panel)
+        assert panel.versions_check.text() == "Compare versions (1)"
+
+        panel.versions_check.setChecked(True)
+        assert panel.versions.isVisibleTo(panel)
+    finally:
+        destroy(panel)
+
+
+def test_closing_the_switch_puts_the_label_back_on_the_canvas(
+    qt_app, config, label, recorder, monkeypatch
+):
+    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    try:
+        panel.versions_controller.set_label(label)
+        panel.versions.set_rows(panel.versions_controller.rows)
+        panel.versions_controller.select(0)
+        panel.versions_check.setChecked(True)
+        monkeypatch.setattr(panel.controller, "working_label", lambda: _pixels(3))
+        panel._set_comparing(True)
+        assert np.array_equal(panel._label_to_draw(), _pixels(2))
+
+        panel.versions_check.setChecked(False)
+
+        assert np.array_equal(panel._label_to_draw(), _pixels(3))
+    finally:
+        destroy(panel)
+
+
+def test_a_label_with_nothing_to_compare_says_so_on_the_switch(qt_app, config, recorder):
+    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    try:
+        panel._refresh_versions_switch()
+        assert panel.versions_check.text() == "Compare versions"
     finally:
         destroy(panel)
