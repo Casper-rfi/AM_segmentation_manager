@@ -60,7 +60,8 @@ class VersionRow:
         path: Where the pixels are.
         source: :data:`KEPT` or :data:`PREDICTION`.
         when: When it was kept or predicted, or empty where nothing says.
-        who: Who kept it, "unknown", or the model that predicted it.
+        who: Who kept it, empty where nobody stated a name, or the model that
+            predicted it.
         produced_by: What operation produced it.
         changed: The share of pixels that differed from the version before,
             or None where that was never computed -- across a resize, for a
@@ -93,7 +94,14 @@ class VersionRow:
         """
         kind = "predict" if self.source == PREDICTION else "kept"
         when = _shown(self.when) or "(not recorded)"
-        line = f"{kind:<{KIND_WIDTH}}  {when:<{WHEN_WIDTH}}  {self.who}  {_short(self.produced_by)}"
+        # The first two columns are fixed width so the date can be read down
+        # the list; a row with nobody's name simply has one fewer column, most
+        # rows having no name at all.
+        columns = [f"{kind:<{KIND_WIDTH}}", f"{when:<{WHEN_WIDTH}}"]
+        if self.who:
+            columns.append(self.who)
+        columns.append(_short(self.produced_by))
+        line = "  ".join(columns)
         if self.source != PREDICTION:
             share = _share(self.changed)
             line += f"  {share}"
@@ -424,7 +432,7 @@ def _kept_row(version: ArchivedVersion) -> VersionRow:
         path=version.path,
         source=KEPT,
         when=event.at if event else "",
-        who=event.by if event else "unknown",
+        who=(event.by or "") if event else "",
         produced_by=_PRODUCED_BY.get(event.kind, event.kind) if event else "unrecorded",
         changed=changed if isinstance(changed, (int, float)) else None,
         available=version.present and version.path.is_file(),

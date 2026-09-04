@@ -395,14 +395,17 @@ rather than appending to it.
   compatibility is append-only plus that tolerance.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
   `metadata.FIELDS`, and for the reason stated there.
-- **Attribution is a record, not an authentication.** The name is self-declared, so `by_source`
-  records how it was arrived at; an `os` one is a guess, and `declared` is one person naming another.
-  Resolving never fails — an entry naming an account beats a refused save.
+- **No name is recorded unless somebody states one.** There is no fallback to the account running
+  the command: an account name is not a chosen identity, and **a log lives inside its project**, so
+  depositing a collection deposits its logs — a guess written there permanently is a name nobody
+  agreed to publish. An entry with no stated author carries neither field.
+- **Attribution is a record, not an authentication**: `by_source` says how a name was arrived at,
+  every value left being a deliberate statement. `declared` is the one nothing can verify, so
+  `history` never prints it silently.
 - **A dataset that arrives annotated is credited to whoever annotated it; the log, to whoever
-  started it.** A name reaches a deposition where a timestamp does not, so attributing a baseline to
-  whoever ran the command was the one untrue thing here — but crediting *everything* to the
-  annotator replaces one false record with another, since they never touched this machine. Hence the
-  split, and hence `declared`: nothing can verify a name given on somebody else's behalf.
+  started it** — crediting *everything* to the annotator would replace one false record with
+  another, since they never touched this machine. With no name recorded by default, `--as` is the
+  main way one ever appears, which is attribution given case by case rather than collected.
 - **Recording is something a project opts into, and never fails the change it describes**, both of
   which `history.Recorder` states. The consequence worth writing down: installing any of this
   changes nothing about a collection that has not run `init-history` — the property that let each
@@ -412,24 +415,22 @@ rather than appending to it.
   only a test making its own symlink finds. **And a log counts only where the directory is a
   project**: one at a collection root would swallow every project below it into a single log, under
   targets that match nothing else and travel with nothing.
-- **`init-history` covers every series, unlike everything else that writes**: one covering only
-  Adaptive Polishing would leave every other label unrecorded, with no second chance at a baseline.
+- **`init-history` covers every series**, unlike everything else that writes: one covering only
+  Adaptive Polishing would leave the rest unrecorded, with no second chance at a baseline.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
 - **What is archived asks the log, not the state**, for the reason `archive.py` opens with. Unknown
   provenance counts as human work, which is every label in the collection today.
 - **Restoring and merging are the ordinary save**, held to batch validation, the stale-file refusal
-  and the protection of proofread work. Only what is *recorded* differs, which is why
-  `WriteProvenance` names the entry kind — a merge that copied the file instead **wrote over
-  proofread work unasked**.
-- **A savepoint reports what it can reach rather than guaranteeing it.** Guaranteeing would mean an
+  and the protection of proofread work; only what is *recorded* differs, which is why
+  `WriteProvenance` names the entry kind. A merge that copied the file **wrote over proofread work
+  unasked**.
+- **A savepoint reports what it can reach rather than guaranteeing it.** Guaranteeing means an
   invariant held on the save path for years, unverifiable when the savepoint is taken. The gap is
-  narrow — ordinary archiving already keeps what a conversion replaces, so only *untouched machine
-  output* is at risk — and `--close-gap` keeps those once, where the cost is visible.
+  narrow — only *untouched machine output* is at risk — and `--close-gap` keeps those once.
 - **Reachability asks the label first, then the log, then the archive by name.** Asking the archive
-  first had a revert offer to put back what was already there; closing a gap copies a file and
-  records nothing, which is why the archive is read at all.
+  first had a revert offer to put back what was already there.
 - **Nothing coalesces versions at write time**: that is deletion an operation performs on its own,
   so it belongs to `prune-archive`, which **leaves the log alone**.
 - **The savepoints are the pruning policy, and the only one.** A count of recent versions to keep
@@ -445,8 +446,7 @@ rather than appending to it.
 - **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
   same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
   log: the wrong ancestor discards work while reporting success.
-- **A merge compares digests re-read from both trees, never the logs**, for the reason `merge.py`
-  opens with.
+- **A merge compares digests re-read from both trees, never the logs**, per `merge.py`.
 - **One resolution function serves labels, states and metadata fields**, so three kinds of change
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which

@@ -101,12 +101,11 @@ EventKind = Literal[
     "merged",
 ]
 
-#: How the author's name was arrived at. ``os`` is a guess about who was at the
-#: keyboard and ``declared`` is one person naming another -- crediting a dataset
-#: to whoever annotated it elsewhere, which nobody here can verify. The rest are
-#: the author speaking for themselves. Recorded so attribution is never read as
-#: more certain than it is, which matters most where it reaches a deposition.
-BySource = Literal["flag", "env", "config", "os", "declared"]
+#: How the author's name was arrived at. Every one of these is a **deliberate
+#: statement**: ``declared`` is one person naming another, the rest are somebody
+#: speaking for themselves. There is no value for a guess, because no guess is
+#: recorded -- see :func:`resolve_author`.
+BySource = Literal["flag", "env", "config", "declared"]
 
 BY_SOURCES: Final[tuple[BySource, ...]] = get_args(BySource)
 
@@ -213,8 +212,9 @@ class Event:
     Attributes:
         kind: What happened. One of :data:`KINDS`.
         at: When, as UTC to the millisecond.
-        by: The author's chosen name.
-        by_source: How that name was arrived at.
+        by: The name somebody stated, or None where nobody did -- which is the
+            ordinary case, and is written as the field being absent.
+        by_source: How that name was arrived at, or None with *by*.
         data: The fields this kind carries, validated against its row.
         target: The file it is about, relative to the project root, or None
             for an entry about the log itself.
@@ -226,8 +226,8 @@ class Event:
 
     kind: str
     at: str
-    by: str
-    by_source: str
+    by: str | None = None
+    by_source: str | None = None
     data: Mapping[str, Any] = field(default_factory=dict)
     target: str | None = None
     batch: str | None = None
@@ -238,8 +238,9 @@ class Event:
         """Return the entry as it is written, envelope first then its fields."""
         document: dict[str, Any] = {"v": FILE_VERSION, "id": self.id, "kind": self.kind}
         document["at"] = self.at
-        document["by"] = self.by
-        document["by_source"] = self.by_source
+        if self.by is not None:
+            document["by"] = self.by
+            document["by_source"] = self.by_source
         if self.batch is not None:
             document["batch"] = self.batch
         if self.target is not None:
@@ -363,15 +364,17 @@ def _event_id(document: Mapping[str, Any]) -> str:
 # Who the author is
 # ---------------------------------------------------------------------------
 
-def resolve_author(explicit: str | None = None) -> tuple[str, str]:
-    """Return the author's name and how it was arrived at.
+def resolve_author(explicit: str | None = None) -> tuple[str | None, str | None]:
+    """Return the name somebody stated, and how, or ``(None, None)``.
 
-    Tried in order: what the caller was told, ``AM_SEG_USER``, the name in
-    ``user.yaml``, then the account running the process. **Never fails**: an
-    entry attributed to an account name is worth more than a refused save.
+    Tried in order: what the caller was told, ``AM_SEG_USER``, then the name in
+    ``user.yaml``. **There is no fallback to the account running the process.**
 
-    Returns:
-        The name, and one of :data:`BY_SOURCES`.
+    An account name is not a chosen identity -- it is whatever the machine calls
+    somebody -- and a log lives inside its project, so depositing a collection
+    deposits its logs. Writing a guess permanently into data that may be
+    published is not a record; it is a name nobody agreed to. So an entry with
+    no stated author simply carries none, and says what happened and when.
     """
     for candidate, source in (
         (explicit, "flag"),
@@ -380,7 +383,7 @@ def resolve_author(explicit: str | None = None) -> tuple[str, str]:
     ):
         if candidate and candidate.strip():
             return _checked_author(candidate.strip()), source
-    return _checked_author(_account_name()), "os"
+    return None, None
 
 
 def set_author(name: str) -> Path:
@@ -429,22 +432,12 @@ def _author_from_config() -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _account_name() -> str:
-    """Return the account running this process, or a placeholder."""
-    import getpass
-
-    try:
-        return getpass.getuser()
-    except Exception:  # pragma: no cover - no account name anywhere
-        return "unknown"
-
-
-def _checked_author(name: str) -> str:
+def _checked_author(name: str | None) -> str | None:
     """Return *name* trimmed to something that can be written on one line."""
+    if name is None:
+        return None
     flattened = " ".join(name.split())
-    if not flattened:
-        return "unknown"
-    return flattened[:MAX_AUTHOR_LENGTH]
+    return flattened[:MAX_AUTHOR_LENGTH] if flattened else None
 
 
 def new_batch() -> str:
@@ -465,8 +458,8 @@ def _now() -> str:
 def build_event(
     kind: str,
     *,
-    by: str,
-    by_source: str,
+    by: str | None = None,
+    by_source: str | None = None,
     target: str | None = None,
     batch: str | None = None,
     note: str | None = None,
@@ -486,7 +479,10 @@ def build_event(
     spec = KINDS.get(kind)
     if spec is None:
         raise HistoryError(f"{kind!r} is not an entry this version writes")
-    if by_source not in BY_SOURCES:
+    named = _checked_author(by)
+    if named is None:
+        by_source = None
+    elif by_source not in BY_SOURCES:
         raise HistoryError(f"{by_source!r} is not one of {', '.join(BY_SOURCES)}")
 
     if spec.needs_target and target is None:
@@ -508,7 +504,7 @@ def build_event(
     event = Event(
         kind=kind,
         at=at or _now(),
-        by=_checked_author(by),
+        by=named,
         by_source=by_source,
         data=dict(data),
         target=target,
@@ -658,9 +654,14 @@ def _parse_line(line: str, project_directory: Path) -> tuple[Event | str, str]:
     if spec is None:
         return "unrecognised", f"{kind!r} is not an entry this version knows"
 
-    for name in ("id", "at", "by", "by_source"):
+    for name in ("id", "at"):
         if not isinstance(document.get(name), str) or not document[name]:
             return "damaged", f"no {name}"
+    # An entry with no stated author carries neither field. That is the
+    # ordinary shape, not a damaged line.
+    by = document.get("by")
+    if by is not None and (not isinstance(by, str) or not by):
+        return "damaged", "no by"
 
     target = document.get("target")
     if spec.needs_target:
@@ -686,8 +687,12 @@ def _parse_line(line: str, project_directory: Path) -> tuple[Event | str, str]:
         Event(
             kind=kind,
             at=document["at"],
-            by=document["by"],
-            by_source=document["by_source"],
+            by=by if isinstance(by, str) and by else None,
+            by_source=(
+                document.get("by_source")
+                if isinstance(document.get("by_source"), str) and by
+                else None
+            ),
             data=data,
             target=target if spec.needs_target else None,
             batch=batch if isinstance(batch, str) else None,
@@ -717,13 +722,14 @@ class Recorder:
     not be written is lost work.
 
     Attributes:
-        by: The author every entry is attributed to.
-        by_source: How that name was arrived at.
+        by: The name every entry is attributed to, or None where nobody stated
+            one -- the ordinary case, and then entries carry no name at all.
+        by_source: How that name was arrived at, or None with *by*.
         batch: Groups this run's entries.
     """
 
-    by: str
-    by_source: str
+    by: str | None = None
+    by_source: str | None = None
     batch: str = field(default_factory=new_batch)
     _roots: dict[Path, Path | None] = field(default_factory=dict, repr=False)
 

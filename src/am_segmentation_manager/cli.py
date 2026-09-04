@@ -2792,8 +2792,11 @@ _HISTORY_LEAD_FIELDS: tuple[str, ...] = ("old", "new", "field", "changed_fractio
 
 def _print_history_entry(event: Event) -> None:
     """Print one recorded entry over a line, with its fields after it."""
-    attribution = event.by if event.by_source != "os" else f"{event.by} (account)"
-    print(f"{event.at}  {event.kind:<18} {attribution}")
+    # No name is the ordinary case, and the line simply does not carry one.
+    attribution = f" {event.by}" if event.by else ""
+    if event.by and event.by_source == "declared":
+        attribution += " (on somebody's say-so)"
+    print(f"{event.at}  {event.kind:<18}{attribution}")
     if event.target:
         print(f"    {event.target}")
     shown = [name for name in _HISTORY_LEAD_FIELDS if name in event.data]

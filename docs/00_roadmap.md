@@ -19,8 +19,8 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 **Label history and merge**, on branch `label-history` and deliberately unmerged. An append-only
 `AM_history.jsonl` per project records what changed, who changed it and when; `am-seg init-history`
 writes a collection's first logs and baselines what is on disk; every operation that writes a label,
-a state or a metadata field records into it, and `am-seg history` reads one back; `--as` credits a
-dataset that arrived annotated to whoever annotated it. A replaced version
+a state or a metadata field records into it, and `am-seg history` reads one back. **No name is
+recorded unless somebody states one**; `--as` credits a dataset that arrived annotated. A replaced version
 is kept under `AM_archive/`, which `am-seg archive` reports and `am-seg prune-archive` thins. `export-files` carries the history and writes an `AM_export.yaml`; `am-seg merge` brings a
 copy back three-way against the history the two logs share, re-hashing both trees rather than
 believing either log, refusing the whole merge while any conflict stands, and going through the

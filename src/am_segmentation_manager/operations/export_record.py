@@ -90,7 +90,7 @@ class ExportRecord:
 
     Attributes:
         exported_at: When the copy was taken, UTC.
-        exported_by: Who took it, and how that name was arrived at.
+        exported_by: Who took it, or empty where nobody stated a name.
         source: The scan root copied from, as it was spelt then. Context for a
             person; never an identity, a collection being movable.
         scope: What the export was asked for, in the words the caller used.
@@ -151,7 +151,7 @@ def build_export_record(
         )
     return ExportRecord(
         exported_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        exported_by=by,
+        exported_by=by or "",
         source=str(source),
         scope=scope,
         with_archive=with_archive,

@@ -339,18 +339,45 @@ def test_the_name_in_the_config_file_is_used_next(monkeypatch, tmp_path: Path):
     assert resolve_author() == ("casper", "config")
 
 
-def test_the_account_name_is_the_last_resort_and_says_so(monkeypatch, tmp_path: Path):
+def test_no_name_is_resolved_when_nobody_stated_one(monkeypatch, tmp_path: Path):
+    """An account name is not a chosen identity, and a log leaves with the data.
+
+    Depositing a collection deposits its logs, so a guess written into one is a
+    name nobody agreed to publish.
+    """
     monkeypatch.delenv(USER_ENV_VAR, raising=False)
     monkeypatch.setattr("am_segmentation_manager.history.CONFIG_DIRECTORY", tmp_path)
-    monkeypatch.setattr("am_segmentation_manager.history._account_name", lambda: "root")
-    assert resolve_author() == ("root", "os")
+
+    assert resolve_author() == (None, None)
 
 
-def test_resolving_an_author_never_fails(monkeypatch, tmp_path: Path):
+def test_a_blank_statement_is_not_a_statement(monkeypatch, tmp_path: Path):
     monkeypatch.setenv(USER_ENV_VAR, "   ")
     monkeypatch.setattr("am_segmentation_manager.history.CONFIG_DIRECTORY", tmp_path)
-    name, source = resolve_author()
-    assert name and source in BY_SOURCES
+
+    assert resolve_author() == (None, None)
+
+
+def test_every_source_left_is_a_deliberate_statement(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("am_segmentation_manager.history.CONFIG_DIRECTORY", tmp_path)
+    monkeypatch.delenv(USER_ENV_VAR, raising=False)
+
+    assert resolve_author("Anna") == ("Anna", "flag")
+    monkeypatch.setenv(USER_ENV_VAR, "Bo")
+    assert resolve_author() == ("Bo", "env")
+    assert "os" not in BY_SOURCES, "there is no value for a guess"
+
+
+def test_an_entry_with_no_stated_author_carries_neither_field(tmp_path: Path):
+    """It says what happened and when. That is the whole of it."""
+    event = build_event("state-changed", target="a.tif", old="selected", new="corrected")
+
+    assert "by" not in event.document()
+    assert "by_source" not in event.document()
+
+    append_event(tmp_path, event)
+    (read_back,) = read_log(tmp_path).events
+    assert read_back.by is None and read_back.by_source is None
 
 
 def test_a_name_is_flattened_onto_one_line_so_it_cannot_break_the_file(tmp_path: Path):
@@ -426,17 +453,33 @@ def test_the_command_says_so_where_nothing_has_been_recorded(tmp_path: Path, cap
     assert AM_HISTORY_FILENAME in capsys.readouterr().out
 
 
-def test_an_account_name_is_shown_as_one_rather_than_as_a_claim(tmp_path: Path, capsys):
+def test_a_name_given_on_somebody_else_s_behalf_is_shown_as_one(tmp_path: Path, capsys):
+    """`declared` is the one source nobody can verify, so it is never silent."""
     from am_segmentation_manager.cli import main
 
     start_history(tmp_path)
 
     append_event(tmp_path, build_event(
-        "state-changed", target="a.tif", by="root", by_source="os",
+        "state-changed", target="a.tif", by="Anna", by_source="declared",
         old="selected", new="corrected",
     ))
     main(["history", str(tmp_path)])
-    assert "root (account)" in capsys.readouterr().out
+
+    assert "Anna (on somebody's say-so)" in capsys.readouterr().out
+
+
+def test_an_entry_with_no_author_prints_without_one(tmp_path: Path, capsys):
+    from am_segmentation_manager.cli import main
+
+    start_history(tmp_path)
+    append_event(tmp_path, build_event(
+        "state-changed", target="a.tif", old="selected", new="corrected",
+    ))
+
+    main(["history", str(tmp_path)])
+
+    printed = capsys.readouterr().out
+    assert "state-changed" in printed and "None" not in printed
 
 
 def test_entries_a_merge_appended_are_read_in_the_order_things_happened(tmp_path: Path):
