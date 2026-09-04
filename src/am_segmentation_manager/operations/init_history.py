@@ -49,6 +49,7 @@ __all__ = [
     "BaselineReport",
     "ProjectBaseline",
     "apply_baseline",
+    "ensure_recording",
     "plan_baseline",
 ]
 
@@ -153,10 +154,15 @@ def plan_baseline(projects: Iterable[Project]) -> BaselinePlan:
     planned = []
     for project in projects:
         log = read_log(project.path)
+        # Any entry naming what a target held is enough. Baselining a group a
+        # save already recorded would observe it *after* the change, which
+        # reads as an observation of something that had already happened -- and
+        # matters once baselining runs in the background beside somebody
+        # working, where the two can race.
         recorded = {
             event.target
             for event in log.events
-            if event.kind == "baseline" and event.target
+            if event.target and (event.kind == "baseline" or "digest" in event.data)
         }
         started = any(event.kind == "log-created" for event in log.events)
 
@@ -319,3 +325,53 @@ def _contents_of(label_path: Path | None) -> tuple[dict[str, object], Path | Non
     except Exception as error:
         logger.warning("Could not read %s: %s", label_path, error)
         return {}, label_path
+
+
+# ---------------------------------------------------------------------------
+# Recording without anybody asking for it
+# ---------------------------------------------------------------------------
+
+def ensure_recording(
+    projects: Iterable[Project],
+    *,
+    recorder: Recorder,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> BaselineReport:
+    """Give every project a history, in a collection that already keeps one.
+
+    What makes recording always on without anybody performing a history act.
+    Data arrives manually and an Autolamella project is indexable the moment it
+    lands, so nothing would otherwise stop somebody labelling a project that
+    records nothing -- silently, since recording only where a log exists is the
+    rule that lets a collection opt in at all.
+
+    **It does not opt a collection in.** Where no project in scope keeps a log,
+    nothing here writes: opting in is one considered act on real data and stays
+    one, taken once by `init-history`. What this does is stop a project added
+    *afterwards* falling outside a record the rest of the collection is in.
+    That is also what keeps it safe to point the window at a collection nobody
+    has opted in -- looking is still only looking.
+
+    Called by the things that **write**, never by the scanner: every read-only
+    command goes through a scan, and one that wrote would mean that listing a
+    collection modified it.
+
+    Cheap where there is nothing to do, which is every call after the first:
+    planning reads the logs and no labels at all. Where there *is* something to
+    do it costs a decode per label, about 36 ms, so a project of a hundred and
+    fifty takes some seconds -- once, ever.
+    """
+    projects = list(projects)
+    if not any(history_file_path(project.path).is_file() for project in projects):
+        logger.debug("Nothing here records yet; not opting the collection in")
+        return BaselineReport()
+
+    plan = plan_baseline(projects)
+    if not plan.entry_count and not plan.log_count:
+        return BaselineReport()
+    logger.info(
+        "Starting %s log(s) and recording %s group(s); nothing has been "
+        "recorded about them until now",
+        plan.log_count, plan.entry_count,
+    )
+    return apply_baseline(plan, recorder=recorder, on_progress=on_progress)

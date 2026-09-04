@@ -397,8 +397,8 @@ rather than appending to it.
   `metadata.FIELDS`, and for the reason stated there.
 - **No name is recorded unless somebody states one.** There is no fallback to the account running
   the command: an account name is not a chosen identity, and **a log lives inside its project**, so
-  depositing a collection deposits its logs — a guess written there permanently is a name nobody
-  agreed to publish. An entry with no stated author carries neither field.
+  depositing a collection deposits its logs — a guess written there is a name nobody agreed to
+  publish. An entry with no stated author carries neither field.
 - **Attribution is a record, not an authentication**: `by_source` says how a name was arrived at,
   every value left being a deliberate statement. `declared` is the one nothing can verify, so
   `history` never prints it silently.
@@ -406,17 +406,17 @@ rather than appending to it.
   started it** — crediting *everything* to the annotator would replace one false record with
   another, since they never touched this machine. With no name recorded by default, `--as` is the
   main way one ever appears, which is attribution given case by case rather than collected.
-- **Recording is something a project opts into, and never fails the change it describes**, both of
-  which `history.Recorder` states. The consequence worth writing down: installing any of this
-  changes nothing about a collection that has not run `init-history` — the property that let each
-  stage ship one at a time.
+- **A collection opts in once; a project added afterwards is brought in without anybody asking.**
+  `ensure_recording` is called by what **writes**, never by the scanner — every read-only command
+  goes through a scan, and one that wrote would mean listing a collection modified it. It refuses to
+  opt a collection *in*, which keeps opening one nobody opted in a matter of only looking.
 - **A path is resolved before the project holding it is looked for**, or a root reached through a
   symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
   only a test making its own symlink finds. **And a log counts only where the directory is a
   project**: one at a collection root would swallow every project below it into a single log, under
   targets that match nothing else and travel with nothing.
-- **`init-history` covers every series**, unlike everything else that writes: one covering only
-  Adaptive Polishing would leave the rest unrecorded, with no second chance at a baseline.
+- **`init-history` covers every series**: one covering only Adaptive Polishing would leave the rest
+  unrecorded, with no second chance at a baseline.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
@@ -451,7 +451,6 @@ rather than appending to it.
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which
   tree wins. A conflict is decided by name or not at all, and **one stops the whole merge**.
-- **Metadata needs no baseline**: the ancestor is what the first edit says it replaced.
 - **The fork point proves where a copy came from; the ancestor is the history the two logs share**,
   for the reason `merge.py` opens with. A merge verifies before it compares — path, declared id, and
   the tip looked for here — since a copy of a copy carries a plausible file naming an ancestor that

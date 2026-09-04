@@ -62,7 +62,11 @@ from .operations.archive import (
     total_size,
 )
 from .operations.export_record import build_export_record, write_export_record
-from .operations.init_history import apply_baseline, plan_baseline
+from .operations.init_history import (
+    apply_baseline,
+    ensure_recording,
+    plan_baseline,
+)
 from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
 from .operations.merge import (
     CONVERGED,
@@ -1968,7 +1972,7 @@ def _cmd_state(args: argparse.Namespace) -> int:
     from .operations.label_io import classify_labels
     from .operations.selection import StaleState, apply_plan, plan_transition
 
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.info("No matching images found to %s", args.command)
         return 2
@@ -2024,7 +2028,7 @@ def _cmd_state(args: argparse.Namespace) -> int:
     # worked out again from the same arguments. Its freshness is checked
     # against the files as it is applied.
     try:
-        changed = apply_plan(plan, recorder=_recorder(args))
+        changed = apply_plan(plan, recorder=_writing_recorder(args, projects))
     except (StaleState, OSError, ValueError) as exc:
         logger.error("Could not %s matching images: %s", args.command, exc)
         return 2
@@ -2252,7 +2256,7 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
     """Handle ``am-seg compress-labels``."""
     from .operations.label_compression import compress_labels
 
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.info("No matching images found to compress labels for")
         return 2
@@ -2262,7 +2266,7 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
             records,
             allow_corrected=args.confirm_corrected,
             dry_run=args.dry_run,
-            recorder=None if args.dry_run else _recorder(args),
+            recorder=None if args.dry_run else _writing_recorder(args, projects),
         )
     except (PermissionError, RuntimeError) as exc:
         logger.error("Could not compress labels: %s", exc)
@@ -2730,11 +2734,24 @@ def _recorder(args: argparse.Namespace) -> Recorder:
     """Return the recorder for this run.
 
     One per command, so everything a single invocation changes shares a batch.
-    A project with no log is left without one, which is what lets recording be
-    something a collection opts into rather than something that starts
-    happening to it.
     """
     return Recorder.for_run(getattr(args, "user", None))
+
+
+def _writing_recorder(args: argparse.Namespace, projects) -> Recorder:
+    """Return the recorder, having given every project in scope a history.
+
+    Called by commands that write, and by nothing that only reads: a scan is
+    what every read-only command goes through, and one that wrote would mean
+    that listing a collection modified it.
+
+    Costs a decode per label the first time a project is seen and nothing at
+    all afterwards, so an ordinary run pays for reading the logs and no more.
+    """
+    recorder = _recorder(args)
+    if projects:
+        ensure_recording(projects, recorder=recorder)
+    return recorder
 
 
 def _cmd_history(args: argparse.Namespace) -> int:

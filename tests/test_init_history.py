@@ -405,3 +405,87 @@ def test_the_command_credits_the_annotator(tmp_path: Path):
     by_kind = {event.kind: event.by for event in events}
     assert by_kind["baseline"] == "Anna Example"
     assert by_kind["log-created"] == "Casper"
+
+
+# ---------------------------------------------------------------------------
+# Bringing a project into a record the rest of the collection is already in
+# ---------------------------------------------------------------------------
+
+def test_a_project_that_arrives_later_is_brought_into_the_record(
+    tmp_path: Path, recorder
+):
+    """Data arrives manually, and an Autolamella project is indexable at once."""
+    from am_segmentation_manager.operations.init_history import ensure_recording
+
+    first = build_dataset(tmp_path, name="already_here", labels="annotated")
+    start_history(first.project)
+    apply_baseline(plan_baseline(projects_under(tmp_path)), recorder=recorder)
+    later = build_dataset(tmp_path, name="arrived_later", labels="annotated")
+
+    report = ensure_recording(projects_under(tmp_path), recorder=recorder)
+
+    assert report.logs_started == 1
+    assert report.entries_written
+    assert any(
+        event.kind == "baseline" for event in read_log(later.project).events
+    )
+
+
+def test_it_does_not_opt_a_collection_in(tmp_path: Path, recorder):
+    """Opting in is one considered act on real data, and stays one.
+
+    This is what keeps it safe to open a collection nobody has opted in --
+    including one this package is only ever allowed to read.
+    """
+    from am_segmentation_manager.history import history_file_path
+    from am_segmentation_manager.operations.init_history import ensure_recording
+
+    dataset = build_dataset(tmp_path, labels="annotated")
+
+    report = ensure_recording(projects_under(tmp_path), recorder=recorder)
+
+    assert report.entries_written == 0 and report.logs_started == 0
+    assert not history_file_path(dataset.project).is_file(), "nothing was written"
+
+
+def test_bringing_a_project_in_twice_records_it_once(tmp_path: Path, recorder):
+    from am_segmentation_manager.operations.init_history import ensure_recording
+
+    first = build_dataset(tmp_path, name="already_here", labels="annotated")
+    start_history(first.project)
+    build_dataset(tmp_path, name="arrived_later", labels="annotated")
+
+    ensure_recording(projects_under(tmp_path), recorder=recorder)
+    before = sum(len(read_log(p.path).events) for p in projects_under(tmp_path))
+    ensure_recording(projects_under(tmp_path), recorder=recorder)
+
+    assert sum(len(read_log(p.path).events) for p in projects_under(tmp_path)) == before
+
+
+def test_a_group_a_save_already_recorded_is_not_baselined_after_it(
+    tmp_path: Path, recorder
+):
+    """A baseline observes what is on disk, so one written after a change would
+    claim to have seen something that had already happened."""
+    import tifffile
+
+    from am_segmentation_manager.io.atomic import fingerprint_of
+    from am_segmentation_manager.operations.init_history import ensure_recording
+    from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
+
+    dataset = build_dataset(tmp_path, labels="annotated")
+    start_history(dataset.project)
+    label = sorted(tmp_path.rglob("*labels/*.tif"))[0]
+    pixels = tifffile.imread(label)
+    pixels[4:8, 4:8] = 3
+    save_labels(
+        [LabelToSave(destination=label, label=pixels, fingerprint=fingerprint_of(label))],
+        recorder=recorder,
+    )
+
+    ensure_recording(projects_under(tmp_path), recorder=recorder)
+
+    events = read_log(dataset.project).events
+    target = next(e.target for e in events if e.kind == "label-saved")
+    kinds = [e.kind for e in events if e.target == target]
+    assert "baseline" not in kinds, "the save already says what it held"
