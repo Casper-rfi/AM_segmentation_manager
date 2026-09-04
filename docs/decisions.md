@@ -407,9 +407,8 @@ rather than appending to it.
   another, since they never touched this machine. With no name recorded by default, `--as` is the
   main way one ever appears, which is attribution given case by case rather than collected.
 - **A collection opts in once; a project added afterwards is brought in without anybody asking.**
-  `ensure_recording` is called by what **writes**, never by the scanner — every read-only command
-  goes through a scan, and one that wrote would mean listing a collection modified it. It refuses to
-  opt a collection *in*, which keeps opening one nobody opted in a matter of only looking.
+  `ensure_recording` is called by what **writes**, never by the scanner — a scan that wrote would
+  mean listing a collection modified it — and it refuses to opt a collection *in*.
 - **A path is resolved before the project holding it is looked for**, or a root reached through a
   symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
   only a test making its own symlink finds. **And a log counts only where the directory is a
@@ -426,20 +425,21 @@ rather than appending to it.
   and the protection of proofread work; only what is *recorded* differs, which is why
   `WriteProvenance` names the entry kind. A merge that copied the file **wrote over proofread work
   unasked**.
+- **A project may only join a savepoint its record reaches back to.** A history beginning after one
+  was taken means the project was not in that state, so joining would claim a moment the record
+  knows nothing of, softening a savepoint into a label attachable to anything.
 - **A savepoint reports what it can reach rather than guaranteeing it.** Guaranteeing means an
-  invariant held on the save path for years, unverifiable when the savepoint is taken. The gap is
-  narrow — only *untouched machine output* is at risk — and `--close-gap` keeps those once.
-- **Reachability asks the label first, then the log, then the archive by name.** Asking the archive
-  first had a revert offer to put back what was already there.
+  invariant on the save path held for years and unverifiable when the savepoint is taken. Only
+  *untouched machine output* is at risk, and `--close-gap` keeps those once. Reachability asks the
+  label first and the archive last: asking the archive first had a revert offer to put back what was
+  already there.
 - **Nothing coalesces versions at write time**: that is deletion an operation performs on its own,
-  so it belongs to `prune-archive`, which **leaves the log alone**.
-- **The savepoints are the pruning policy, and the only one.** A count of recent versions to keep
-  cannot know which states somebody named, so it could leave a savepoint pointing at pixels that are
-  gone; defining pruning *by* the savepoints makes that impossible rather than unlikely, and gives
-  the archive a shape a person can hold — round boundaries, plus everything since the last one.
+  so it belongs to `prune-archive`, which **leaves the log alone**. **The savepoints are its only
+  policy**: a count of recent versions cannot know which states somebody named, so it could leave
+  one pointing at pixels that are gone.
 - **A round still open is never collapsed**, so nothing is removed until a savepoint has been
-  taken: what is kept since the most recent one is the work in hand. Cut **by position, not by
-  time** — a savepoint written in the same millisecond as a save cannot be ordered against it.
+  taken. Cut **by position, not by time** — one written in the same millisecond as a save cannot be
+  ordered against it.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
   establish an ancestor without the log. The archive is a cache, so `--with-archive` is opt-in —
   and **a merged log names versions this collection does not hold**, which the version list says.

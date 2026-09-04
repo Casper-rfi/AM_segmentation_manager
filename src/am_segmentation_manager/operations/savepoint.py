@@ -183,6 +183,8 @@ class SavepointPlan:
         projects: The projects that would gain a checkpoint.
         joining: Whether this adds to a savepoint that already exists.
         states: What each project's labels hold now, keyed by project key.
+        too_late: Projects left out of a join because the savepoint predates
+            everything their record knows.
     """
 
     id: str
@@ -191,6 +193,7 @@ class SavepointPlan:
     projects: tuple[Project, ...] = ()
     joining: bool = False
     states: dict[str, tuple[TargetState, ...]] = field(default_factory=dict)
+    too_late: tuple[Project, ...] = ()
 
     @property
     def at_risk(self) -> tuple[tuple[Project, TargetState], ...]:
@@ -204,7 +207,11 @@ class SavepointPlan:
 
     def describe(self) -> list[str]:
         """Return one line per project, and what it would pin."""
-        lines = []
+        lines = [
+            f"{project.key}: left out, its history begins after this savepoint "
+            f"was taken"
+            for project in self.too_late
+        ]
         for project in self.projects:
             states = self.states.get(project.key, ())
             risky = sum(1 for state in states if state.where == AT_RISK)
@@ -477,6 +484,10 @@ def plan_savepoint(
     already = {carried.project.key for carried in (joining.projects if joining else ())}
     wanted = [project for project in recording if project.key not in already]
 
+    too_late: list[Project] = []
+    if joining is not None:
+        wanted, too_late = _knew_the_moment(wanted, joining.at)
+
     states = {}
     for project in wanted:
         log = read_log(project.path)
@@ -489,7 +500,36 @@ def plan_savepoint(
         projects=tuple(wanted),
         joining=joining is not None,
         states=states,
+        too_late=tuple(too_late),
     )
+
+
+def _knew_the_moment(
+    projects: Sequence[Project], at: str
+) -> tuple[list[Project], list[Project]]:
+    """Split *projects* by whether their record reaches back to *at*.
+
+    A project whose history begins after a savepoint was taken **was not in
+    that state**, either because it arrived later or because it was recording
+    nothing at the time. Letting it join would record a claim about a moment
+    the record knows nothing of, which is the one thing a savepoint must not
+    do -- and it is what would make joining soften a savepoint into a label
+    somebody can attach to anything.
+
+    The honest case is the other one: a machine holding three of twelve
+    projects when the round was taken, the other nine recording all along and
+    merely out of scope. Those reach back, and may join.
+
+    Compared by time rather than by position, two logs having no shared
+    positions. Clocks are the only thing that orders them, and a project that
+    was really there predates a savepoint by a long way rather than a
+    millisecond.
+    """
+    joins, refused = [], []
+    for project in projects:
+        events = read_log(project.path).events
+        (joins if events and events[0].at <= at else refused).append(project)
+    return joins, refused
 
 
 def apply_savepoint(

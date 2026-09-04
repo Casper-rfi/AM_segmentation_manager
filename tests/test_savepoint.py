@@ -581,3 +581,85 @@ def test_a_collection_where_everything_records_says_nothing_about_it(
 
     printed = capsys.readouterr()
     assert "keep no history" not in printed.out + printed.err
+
+
+# ---------------------------------------------------------------------------
+# Joining, and what makes it honest
+# ---------------------------------------------------------------------------
+
+def test_a_project_that_arrived_after_a_savepoint_cannot_join_it(
+    collection, recorder
+):
+    """It was never in that state, so joining would claim a moment it missed."""
+    apply_savepoint(
+        plan_savepoint(_projects(collection), "round 3"), recorder=recorder
+    )
+    later = build_dataset(collection, name="arrived_later", labels="annotated")
+    start_history(later.project)
+    _baseline(collection, recorder)
+
+    plan = plan_savepoint(
+        _projects(collection), "",
+        joining=find_savepoint(_projects(collection), "round 3"),
+    )
+
+    assert [p.key for p in plan.too_late] == ["arrived_later"]
+    assert not plan.projects, "and it is not written anyway"
+    assert "begins after this savepoint" in " ".join(plan.describe())
+
+
+def test_a_project_that_was_merely_out_of_scope_may_join(collection, recorder):
+    """The honest case: three of twelve projects on a laptop, the rest recording."""
+    out_of_scope = _projects(collection)[1:]
+    apply_savepoint(
+        plan_savepoint(_projects(collection)[:1], "round 3"), recorder=recorder
+    )
+
+    plan = plan_savepoint(
+        _projects(collection), "",
+        joining=find_savepoint(_projects(collection), "round 3"),
+    )
+
+    assert [p.key for p in plan.projects] == [p.key for p in out_of_scope]
+    assert not plan.too_late
+
+    apply_savepoint(plan, recorder=recorder)
+    assert find_savepoint(_projects(collection), "round 3").found == 2
+
+
+def test_a_project_recording_nothing_at_the_time_cannot_join_either(
+    collection, recorder
+):
+    """It was there, but the record knows nothing of what it held."""
+    silent = build_dataset(collection, name="silent_then", labels="annotated")
+    apply_savepoint(
+        plan_savepoint(_projects(collection), "round 3"), recorder=recorder
+    )
+    start_history(silent.project)          # brought into the record afterwards
+    _baseline(collection, recorder)
+
+    plan = plan_savepoint(
+        _projects(collection), "",
+        joining=find_savepoint(_projects(collection), "round 3"),
+    )
+
+    assert [p.key for p in plan.too_late] == ["silent_then"]
+
+
+def test_the_command_says_which_projects_cannot_join(collection, recorder, capsys):
+    from am_segmentation_manager.cli import main
+
+    apply_savepoint(
+        plan_savepoint(_projects(collection), "round 3"), recorder=recorder
+    )
+    build_dataset(collection, name="arrived_later", labels="annotated")
+    _baseline(collection, recorder)
+
+    assert main([
+        "savepoint", "--start-path", str(collection), "--join", "round 3",
+    ]) == 0
+
+    said = capsys.readouterr()
+    said = said.out + said.err
+    assert "arrived_later" in said
+    assert "cannot join" in said and "begins after this savepoint" in said

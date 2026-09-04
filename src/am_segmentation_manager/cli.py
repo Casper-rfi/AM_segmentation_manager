@@ -2385,8 +2385,19 @@ def _cmd_savepoint(args: argparse.Namespace) -> int:
 
     for line in plan.describe():
         print(line)
+    if plan.too_late:
+        logger.warning(
+            "%d project(s) cannot join: their history begins after this "
+            "savepoint was taken, so the record knows nothing of what they "
+            "held then (%s). Take a new savepoint to name a state they are in.",
+            len(plan.too_late),
+            ", ".join(project.key for project in plan.too_late[:5]),
+        )
     if not plan.projects:
-        logger.info("Every project here already carries that savepoint")
+        logger.info(
+            "Nothing to write: every project here already carries that savepoint"
+            if not plan.too_late else "No project here can join that savepoint"
+        )
         return 0
 
     risky = plan.at_risk
