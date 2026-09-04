@@ -20,23 +20,25 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 `AM_history.jsonl` per project records what changed, who changed it and when; `am-seg init-history`
 writes a collection's first logs and baselines what is on disk; every operation that writes a label,
 a state or a metadata field records into it, and `am-seg history` reads one back. Replacing a label
-keeps the version under `AM_archive/` unless the pixels are provably untouched machine output, which
-`am-seg archive` reports and `am-seg prune-archive` thins. `export-files` carries the history and
-writes an `AM_export.yaml` naming the ancestor `am-seg merge` compares against — three-way, re-hashing
-both trees rather than believing either log, refusing the whole merge while any conflict stands.
-`am-seg revert` undoes a conversion or a merge across a selection. **Recording begins only where a
-log exists**, so a collection with no history behaves exactly as it does today.
+keeps the version under `AM_archive/`, which `am-seg archive` reports and `am-seg prune-archive`
+thins. `export-files` carries the history and writes an `AM_export.yaml`; `am-seg merge` brings a
+copy back three-way against the history the two logs share, re-hashing both trees rather than
+believing either log, refusing the whole merge while any conflict stands, and going through the
+ordinary save so it cannot replace proofread work unasked. `am-seg revert` undoes a conversion or a
+merge across a selection. `am-seg savepoint` names a state — one `checkpoint` entry per project
+sharing an id, marking a round of model improvement — and `am-seg savepoints` says what each covers
+and how much of it is still reachable. **Recording begins only where a log exists**, so a collection
+with no history behaves exactly as it does today.
 
 In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
 kept when the label was replaced, and the predictions beside the image — shows one on the canvas while
 the compare key is held, marks where it and the label disagree, and puts a kept one back through the
 ordinary save. Off by default, the count on the switch saying whether opening it would show anything.
 
-A merge now goes through the ordinary save, so it is refused rather than replacing proofread work
-unasked; reads its log in the order things happened; and takes its ancestor from the history two
-logs share, so one copy can go back and forth repeatedly. What is left, in order: rehearsing that
-round trip on two machines; savepoints marking rounds of model improvement, with `revert --to` and
-pruning defined by them; `init-history --as`; then whether this earns a surface in the window.
+The two-machine round trip has been rehearsed on real copied projects: two rounds of proofreading
+merged back, a refusal over proofread work, a genuine conflict, and a revert. What is left, in
+order: `revert --to <savepoint>` and pruning defined by savepoints; `init-history --as`; then
+whether any of this earns a surface in the window.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

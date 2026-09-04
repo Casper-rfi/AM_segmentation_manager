@@ -384,11 +384,9 @@ rather than appending to it.
 
 ## History
 
-- **JSONL rather than YAML**, a break from the convention everywhere else here, buys the three
-  things a record needs and a control file does not: an append is one `O_APPEND` write, so two
-  processes recording at once interleave instead of one discarding the other; two logs combine by
-  taking the union of lines; and a damaged line costs its own contents rather than the file's.
-  `history.py` states the rest of the format.
+- **JSONL rather than YAML**, a break from the convention everywhere else here, buys three things a
+  record needs and a control file does not — a one-write append, a union of two logs, and a damaged
+  line costing only itself. `history.py` states the format.
 - **A label is digested over its pixels, never its file bytes.** `compress-labels` re-encodes every
   label in the collection without changing the segmentation, and a digest that moved would report
   each run as thousands of edits — filling a merge with conflicts that are not conflicts, and the
@@ -397,16 +395,14 @@ rather than appending to it.
   than a fingerprint of the change: two runs of one operation get two ids. That is what a union
   needs — entries travel by file copy, keep their id and combine exactly once, uncoordinated.
   **Idempotence comes from elsewhere**: `plan_baseline` skips targets already recorded.
-- **A log tolerates what `state.py` refuses.** A control file must be understood completely before
-  anything acts on it; a record must not lose four thousand good entries over one bad line. So a
-  damaged or newer line is kept aside, and forward compatibility comes from append-only plus that
-  tolerance — `FILE_VERSION` is reserved for a real format break.
+- **A log tolerates what `state.py` refuses**: a control file must be understood completely before
+  anything acts on it, a record must not lose four thousand entries over one bad line. Forward
+  compatibility is append-only plus that tolerance; `FILE_VERSION` is for a real format break.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
-  `metadata.FIELDS`. **Strict on the way in, tolerant on the way out**: writing is ours to control,
-  reading is not.
+  `metadata.FIELDS`, and for the reason stated there.
 - **Attribution is a record, not an authentication.** The name is self-declared, so `by_source`
-  records how it was arrived at — an `os` account name is a guess about who was at the keyboard.
-  Resolving one never fails: an entry naming an account beats a refused save.
+  records how it was arrived at; an `os` one is a guess. Resolving never fails — an entry naming an
+  account beats a refused save.
 - **Recording is something a project opts into, and never fails the change it describes**, both of
   which `history.Recorder` states. The consequence worth writing down: installing any of this
   changes nothing about a collection that has not run `init-history` — the property that let each
@@ -422,33 +418,37 @@ rather than appending to it.
   with no second chance at a baseline. Why its label fields are optional is on `history.KINDS`.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
-  rather than two lists. Missing it does not merely slow a scan — a superseded version is read as a
-  current label and **reaches a training CSV**.
-- **What is archived asks the log, not the state.** A non-empty label is `annotated` whether a
-  machine wrote it a minute ago or somebody proofread it for an hour, and both are `selected`; only
-  the recorded digest separates them. Unknown provenance counts as human work, which is every label
-  in the collection today.
+  rather than two lists. Missing it means a superseded version **reaches a training CSV**.
+- **What is archived asks the log, not the state**, for the reason `archive.py` opens with. Unknown
+  provenance counts as human work, which is every label in the collection today.
 - **Restoring and merging are the ordinary save**, so both are held to batch validation, the
   stale-file refusal and the protection of proofread work. Only what is *recorded* differs, which is
   why `WriteProvenance` names the entry kind rather than it being inferred from whichever optional
   field was set — a merge that copied the file instead **wrote over proofread work unasked**.
+- **A savepoint reports what it can reach rather than guaranteeing it**, which `savepoint.py` opens
+  with. Guaranteeing would mean an invariant held on the save path for years, checked at every write
+  and unverifiable at the moment the savepoint is taken. The gap it leaves is narrow: ordinary
+  archiving already keeps what a conversion replaces, so the only versions at risk are labels
+  holding *untouched machine output*, which the archive skips as regenerable. `--close-gap` copies
+  those in once, where the cost is visible and the result can be checked.
+- **Reachability asks the log, then the archive by name**, because closing a gap copies a file and
+  records nothing; `_archived_file` says why it reads from the target towards the filename.
 - **Nothing coalesces versions at write time**: collapsing consecutive saves is deletion an
   operation performs on its own. It belongs to `prune-archive`, which **leaves the log alone** —
   pruning costs the pixels, never the account.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
-  establish an ancestor without the log, and one covering only what was copied leaves holes in the
-  chain. The archive is a cache of recoverable pixels, so `--with-archive` is opt-in — and **a
-  merged log therefore names versions this collection does not hold**, which the version list says.
+  establish an ancestor without the log, and one covering only what was copied leaves holes. The
+  archive is a cache, so `--with-archive` is opt-in — and **a merged log therefore names versions
+  this collection does not hold**, which the version list says rather than hides.
 - **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
   same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
   log: the wrong ancestor discards work while reporting success.
 - **A merge compares digests re-read from both trees, never the logs**, for the reason `merge.py`
   opens with.
 - **One resolution function serves labels, states and metadata fields**, so three kinds of change
-  cannot answer one shape of change differently. **Timestamps decide nothing** — clocks differ
-  between machines and a later one is routinely a recompression on real work — nor does any rule
-  about which tree wins, that being a quiet way to discard proofreading. A conflict is decided by
-  name or not at all, and **one stops the whole merge**.
+  cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
+  machines and a later one is routinely a recompression on real work — nor does any rule about which
+  tree wins. A conflict is decided by name or not at all, and **one stops the whole merge**.
 - **Metadata needs no baseline**: the ancestor is what the first edit either side made says it
   replaced, and a field neither touched needs none.
 - **The fork point proves where a copy came from; the ancestor is the history the two logs share.**
@@ -459,17 +459,15 @@ rather than appending to it.
   **twice** shares more history than its fork point names, and comparing against the tip would call
   every label taken the first time a conflict.
 - **A version list is read, not opened.** Each row carries who, when, what produced it and
-  `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters without
-  a file being opened; it is computed when a version is kept, both arrays being in hand, and cannot
-  be had cheaply after. **And listing them may not be linear in the collection**, running as it does
-  at every arrow key — degrading gradually enough to be blamed on the images. Hence `versions_of`'s
-  scandir by name prefix and `VersionController`'s fingerprinted log.
+  `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters; it is
+  computed when a version is kept and cannot be had cheaply after. **And listing them may not be
+  linear in the collection**, running at every arrow key — degrading gradually enough to be blamed
+  on the images. Hence `versions_of`'s scandir by prefix and `VersionController`'s cached log.
 - **Undoing a conversion is a batch operation**, so trying a newer model over proofread labels is a
   decision rather than a commitment: `revert` reads each label's history for the version the run
-  replaced. It **leaves
-  alone** a label edited since, and refuses the whole batch where a group is corrected and nobody
-  said so. It does not keep the model's untouched guess — machine output the model can make again,
-  and what made it is recorded, so seeing it again is a re-run rather than a reconstruction.
+  replaced, **leaves alone** a label edited since, and refuses the whole batch where a group is
+  corrected and nobody said so. It does not keep the model's untouched guess, which is regenerable
+  and whose maker is recorded — seeing it again is a re-run, not a reconstruction.
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
   group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives

@@ -82,6 +82,7 @@ FILE_VERSION: Final[int] = 1
 EventKind = Literal[
     "log-created",
     "baseline",
+    "checkpoint",
     "label-saved",
     "label-converted",
     "label-compressed",
@@ -175,6 +176,16 @@ KINDS: Final[dict[str, KindSpec]] = {
     "state-changed": KindSpec(required=("old", "new")),
     "metadata-changed": KindSpec(required=("field", "old", "new")),
     "renamed": KindSpec(required=("renamed_from", "scope")),
+    # A savepoint marks a round of model improvement. Per project, sharing one
+    # ``savepoint`` id across the projects in scope: there is no such thing as
+    # "the collection", so a collection-wide savepoint is a set of these.
+    # **It carries no list of what it covers** -- that is derived by looking,
+    # and a stored list is wrong the moment a project joins.
+    "checkpoint": KindSpec(
+        required=("savepoint", "title"),
+        optional=("description", "covered_at_creation"),
+        needs_target=False,
+    ),
     "merged": KindSpec(
         required=("resolution", "source_project_id", "source_event", "digest"),
         optional=(

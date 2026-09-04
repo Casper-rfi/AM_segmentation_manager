@@ -38,6 +38,7 @@ __all__ = [
     "PrunePlan",
     "archive_root",
     "archived_versions",
+    "keep_version",
     "apply_prune",
     "restore",
     "plan_prune",
@@ -76,6 +77,34 @@ class ArchivedVersion:
     event: Event | None
     size: int
     present: bool = True
+
+
+def keep_version(
+    project_root: Path, target: str, source: Path, digest: str
+) -> str | None:
+    """Copy the version now at *source* into *project_root*'s archive.
+
+    The copying, with the deciding left to the caller. :class:`Archivist` asks
+    whether a version being replaced has earned keeping; a savepoint asks
+    nothing, because naming a state is itself the reason to keep what it names.
+
+    Returns:
+        The archived file's path relative to the project root, ready to go into
+        an entry, or None where nothing could be copied.
+    """
+    destination = archived_path(project_root, target, digest, datetime.now(UTC))
+    if destination.exists():
+        # The same pixels already kept from the same second. Nothing is gained
+        # by a second copy, and overwriting one is never right.
+        return destination.relative_to(project_root).as_posix()
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    except OSError as error:
+        logger.warning("Could not archive %s: %s", source, error)
+        return None
+    logger.info("Archived %s as %s", target, destination.name)
+    return destination.relative_to(project_root).as_posix()
 
 
 def archive_root(project_root: Path) -> Path:
@@ -134,20 +163,7 @@ class Archivist:
         if not keep:
             logger.debug("Not archiving %s: %s", target, reason)
             return None
-
-        destination = archived_path(root, target, previous_digest, datetime.now(UTC))
-        if destination.exists():
-            # The same pixels already kept from the same second. Nothing is
-            # gained by a second copy, and overwriting one is never right.
-            return destination.relative_to(root).as_posix()
-        try:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(label_path, destination)
-        except OSError as error:
-            logger.warning("Could not archive %s: %s", label_path, error)
-            return None
-        logger.info("Archived %s as %s", target, destination.name)
-        return destination.relative_to(root).as_posix()
+        return keep_version(root, target, label_path, previous_digest)
 
     def decision(
         self, root: Path, target: str, previous_digest: str, empty: bool

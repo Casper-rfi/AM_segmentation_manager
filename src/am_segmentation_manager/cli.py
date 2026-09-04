@@ -1058,6 +1058,72 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the entries, rather than reporting what would be written",
     )
 
+    # -- savepoint ----------------------------------------------------------
+    savepoint_cmd = sub.add_parser(
+        "savepoint",
+        help="Name the state of the data, so a round of work can be undone",
+        description=(
+            "Write one checkpoint entry per project, sharing one id: there is "
+            "no such thing as 'the collection', so a collection-wide savepoint "
+            "is a set of these. Marks a round of model improvement -- proofread "
+            "and curate, train, predict, convert, proofread again -- which is "
+            "the boundary worth naming. It promises nothing about pixels and "
+            "reports what it can reach; --close-gap keeps the versions that "
+            "only the next conversion would destroy. Previews by default."
+        ),
+    )
+    savepoint_cmd.add_argument(
+        "--start-path", default=".",
+        help="Directory to scan for projects (default: current directory)",
+    )
+    savepoint_cmd.add_argument(
+        "--title", default="",
+        help="What to call it, and what you will name it by later",
+    )
+    savepoint_cmd.add_argument(
+        "--description", default="", help="Why this state is worth naming",
+    )
+    savepoint_cmd.add_argument(
+        "--join", metavar="SAVEPOINT",
+        help=(
+            "Add the projects in scope to a savepoint that already exists, by "
+            "id or title, rather than starting a new one"
+        ),
+    )
+    savepoint_cmd.add_argument(
+        "--close-gap", action="store_true",
+        help=(
+            "Keep the versions this names that are untouched machine output. "
+            "The archive skips those, so the next conversion would make this "
+            "state unreachable"
+        ),
+    )
+    savepoint_cmd.add_argument(
+        "--apply", action="store_true",
+        help="Write the entries, rather than reporting what would be written",
+    )
+
+    # -- savepoints ---------------------------------------------------------
+    savepoints_cmd = sub.add_parser(
+        "savepoints",
+        help="List the savepoints here, what each covers and what it can reach",
+        description=(
+            "One line per savepoint: how many projects carrying it are here, "
+            "how many it was written across, and how many of the labels it "
+            "names can still be got back. A count lower than the one at "
+            "creation is the honest answer for a machine holding a subset, "
+            "not a fault."
+        ),
+    )
+    savepoints_cmd.add_argument(
+        "--start-path", default=".",
+        help="Directory to scan for projects (default: current directory)",
+    )
+    savepoints_cmd.add_argument(
+        "--savepoint", metavar="SAVEPOINT",
+        help="Show one in full, by id or title, project by project",
+    )
+
     # -- merge --------------------------------------------------------------
     merge_cmd = sub.add_parser(
         "merge",
@@ -2234,6 +2300,119 @@ def _cmd_init_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_savepoint(args: argparse.Namespace) -> int:
+    """Handle ``am-seg savepoint``."""
+    from .operations.export_record import read_export_record
+    from .operations.savepoint import (
+        SavepointRefused,
+        apply_savepoint,
+        find_savepoint,
+        plan_savepoint,
+    )
+
+    start_path = Path(args.start_path)
+    if read_export_record(start_path) is not None:
+        logger.error(
+            "%s is a copy, which may hold part of a project. A savepoint taken "
+            "here would claim a state for labels the copy never had. Take it "
+            "in the collection this came from.",
+            start_path,
+        )
+        return 2
+
+    projects = Scanner(start_path).build_index().all_projects()
+    if not projects:
+        logger.error("No projects found under %s", start_path)
+        return 2
+
+    try:
+        joining = find_savepoint(projects, args.join) if args.join else None
+        plan = plan_savepoint(
+            projects, args.title, description=args.description, joining=joining
+        )
+    except SavepointRefused as error:
+        logger.error("Refused: %s", error)
+        return 2
+
+    for line in plan.describe():
+        print(line)
+    if not plan.projects:
+        logger.info("Every project here already carries that savepoint")
+        return 0
+
+    risky = plan.at_risk
+    if risky and not args.close_gap:
+        logger.warning(
+            "%d label(s) this would name are untouched machine output, which "
+            "the archive does not keep: the next conversion would make them "
+            "unreachable. Pass --close-gap to keep them now.",
+            len(risky),
+        )
+    if not args.apply:
+        logger.info(
+            "Would write %d checkpoint entr(ies) %s %r. Re-run with --apply.",
+            len(plan.projects), "joining" if plan.joining else "for", plan.title,
+        )
+        return 0
+
+    report = apply_savepoint(
+        plan, recorder=_recorder(args), close_the_gap=args.close_gap
+    )
+    logger.info(
+        "Savepoint %s (%r): %d entr(ies) written, %d version(s) kept",
+        report.id, plan.title, report.entries_written, len(report.versions_kept),
+    )
+    return 0
+
+
+def _cmd_savepoints(args: argparse.Namespace) -> int:
+    """Handle ``am-seg savepoints``."""
+    from .operations.savepoint import (
+        LOST,
+        SavepointRefused,
+        find_savepoint,
+        list_savepoints,
+    )
+
+    start_path = Path(args.start_path)
+    projects = Scanner(start_path).build_index().all_projects()
+    if not projects:
+        logger.error("No projects found under %s", start_path)
+        return 2
+
+    if args.savepoint:
+        try:
+            point = find_savepoint(projects, args.savepoint)
+        except SavepointRefused as error:
+            logger.error("%s", error)
+            return 2
+        print(point.describe())
+        if point.description:
+            print(f"  {point.description}")
+        for carried in point.projects:
+            unreachable = [
+                state for state in carried.targets if state.where == LOST
+            ]
+            line = (
+                f"  {carried.project.key}: {carried.reachable}/"
+                f"{len(carried.targets)} reachable"
+            )
+            if carried.at_risk:
+                line += f", {len(carried.at_risk)} only until the next conversion"
+            print(line)
+            for state in unreachable[:3]:
+                print(f"      cannot get back: {state.target}")
+        return 0
+
+    savepoints = list_savepoints(projects)
+    if not savepoints:
+        logger.info("No savepoint has been taken here")
+        return 0
+    for point in savepoints:
+        print(point.describe())
+    return 0
+
+
 def _cmd_merge(args: argparse.Namespace) -> int:
     """Handle ``am-seg merge``."""
     try:
@@ -2537,6 +2716,8 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "check-training-csv": _cmd_check_training_csv,
     "compress-labels": _cmd_compress_labels,
     "init-history": _cmd_init_history,
+    "savepoint": _cmd_savepoint,
+    "savepoints": _cmd_savepoints,
     "merge": _cmd_merge,
     "revert": _cmd_revert,
     "history": _cmd_history,
