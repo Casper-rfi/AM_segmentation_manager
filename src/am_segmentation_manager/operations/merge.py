@@ -20,7 +20,6 @@ tree wins. Both versions survive in the archive whichever way it goes.
 from __future__ import annotations
 
 import logging
-import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -92,6 +91,10 @@ class LabelMerge:
         reason: Why, where the outcome is not obvious from the digests.
         source_event: The copy's last entry about this label, so what was taken
             can be traced back to the run that made it.
+        corrected: Whether the group this would write over is proofread work.
+        our_fingerprint: What our file was when the plan was made, so a merge
+            carried out against a tree that has moved on since is refused
+            rather than written blind.
     """
 
     target: str
@@ -103,6 +106,8 @@ class LabelMerge:
     outcome: str
     reason: str = ""
     source_event: str = ""
+    corrected: bool = False
+    our_fingerprint: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -179,6 +184,29 @@ class MergePlan:
     def conflicts(self) -> tuple[object, ...]:
         """Return every unresolved conflict, across every project."""
         return tuple(item for project in self.projects for item in project.conflicts)
+
+    @property
+    def corrected(self) -> tuple[object, ...]:
+        """Return everything here that would write over, or unmark, proofread work.
+
+        A label taken from the copy replaces work somebody did by hand, and a
+        state taken from it can drop a corrected claim. Neither happens without
+        being asked for by name -- the same rule ``revert`` follows, and the
+        one thing a merge did not used to check.
+        """
+        labels = tuple(
+            item
+            for project in self.projects
+            for item in project.labels
+            if item.outcome in _APPLIED and item.corrected
+        )
+        states = tuple(
+            item
+            for project in self.projects
+            for item in project.states
+            if item.outcome in _APPLIED and item.ours == "corrected"
+        )
+        return labels + states
 
     @property
     def is_refused(self) -> bool:
@@ -386,6 +414,8 @@ def _plan_label(
     source_event: str,
 ) -> LabelMerge:
     """Return what becomes of one label, on the digests read from disk now."""
+    from ..io.atomic import fingerprint_of
+
     our_digest = ours.digest if ours else None
     their_digest = theirs.digest
     our_path = ours.label_path if ours and ours.label_path else our_root / target
@@ -395,6 +425,8 @@ def _plan_label(
         target=target, ancestor=ancestor, ours=our_digest, theirs=their_digest,
         our_path=our_path, their_path=theirs.label_path,
         outcome=outcome, reason=reason, source_event=source_event,
+        corrected=bool(ours and ours.state == "corrected"),
+        our_fingerprint=fingerprint_of(our_path),
     )
 
 
@@ -607,42 +639,66 @@ def _declared_id(events: Sequence[Event]) -> str | None:
 # Applying
 # ---------------------------------------------------------------------------
 
-def apply_merge(plan: MergePlan, *, recorder: Recorder) -> MergeReport:
+def apply_merge(
+    plan: MergePlan, *, recorder: Recorder, allow_corrected: bool = False
+) -> MergeReport:
     """Carry out *plan*, or none of it.
 
     Refuses while any conflict stands: applying the rest would make what
     happened depend on what somebody had not got round to deciding.
 
-    A label taken from the copy replaces this collection's through the archive,
-    so the version being replaced is kept and the merge is reversible. The
-    copy's history entries are added whole, an id being a hash of its content,
-    so adding them twice adds them once.
+    **Every label goes through the ordinary save, in one batch**, so a merge is
+    validated whole before it writes anything and is held to every guard a
+    proofreading save is held to -- the staleness refusal, the protection of
+    proofread work, and the archiving of what it replaces. The copy's history
+    entries are added whole, an id being a hash of its content, so adding them
+    twice adds them once.
+
+    Args:
+        allow_corrected: Confirm replacing labels, and dropping corrected
+            claims, that are somebody's proofreading.
 
     Raises:
         MergeRefused: If any conflict is unresolved.
+        PermissionError: If it would touch proofread work and *allow_corrected*
+            was not set. Checked over the whole merge before the first write.
+        StaleLabels: If a label here changed between the plan and now.
     """
     if plan.is_refused:
         raise MergeRefused(
             f"{len(plan.conflicts)} conflict(s) are undecided; nothing was merged."
         )
+    if plan.corrected and not allow_corrected:
+        names = ", ".join(item.target for item in plan.corrected[:3])
+        raise PermissionError(
+            f"Refusing to merge over {len(plan.corrected)} piece(s) of proofread "
+            f"work without explicit confirmation ({names}). The version here is "
+            f"kept either way, so this can be undone -- but not unasked."
+        )
 
-    from .archive import Archivist
+    from .label_save import save_labels
 
-    archivist = Archivist(recorder)
-    labels = states = fields = entries = 0
-    archived: list[str] = []
+    taking = [
+        (project, item)
+        for project in plan.projects
+        for item in project.labels
+        if item.outcome in _APPLIED and item.their_path is not None
+    ]
+    to_save = []
+    for project, item in taking:
+        prepared = _label_to_save(item, project)
+        if prepared is not None:
+            to_save.append(prepared)
 
+    report = save_labels(
+        to_save, allow_corrected=allow_corrected, recorder=recorder
+    )
+
+    states = fields = entries = 0
     for project in plan.projects:
-        for item in project.labels:
-            if item.outcome not in _APPLIED or item.their_path is None:
-                continue
-            kept = _take_label(item, project, archivist, recorder)
-            if kept:
-                archived.append(kept)
-            labels += 1
         for item in project.states:
             if item.outcome in _APPLIED and item.record is not None:
-                _take_state(item, recorder)
+                _take_state(item, recorder, allow_corrected=allow_corrected)
                 states += 1
         for item in project.metadata:
             if item.outcome in _APPLIED:
@@ -652,72 +708,63 @@ def apply_merge(plan: MergePlan, *, recorder: Recorder) -> MergeReport:
 
     logger.info(
         "Merged %s label(s), %s state(s) and %s field(s); added %s history entr(ies)",
-        labels, states, fields, entries,
+        report.count, states, fields, entries,
     )
     return MergeReport(
-        labels_taken=labels, states_taken=states, fields_taken=fields,
-        entries_added=entries, archived=tuple(archived),
+        labels_taken=report.count, states_taken=states, fields_taken=fields,
+        entries_added=entries, archived=report.archived,
     )
 
 
-def _take_label(
-    item: LabelMerge, project: ProjectMerge, archivist, recorder: Recorder
-) -> str | None:
-    """Put the copy's label in place of ours, keeping ours first."""
-    kept = None
-    if item.ours is not None and item.our_path.is_file():
-        kept = archivist.keep(item.our_path, item.ours, empty=False)
+def _label_to_save(item: LabelMerge, project: ProjectMerge):
+    """Return the copy's label as something the ordinary save can write.
 
-    changed = _how_much_changed(item)
-    item.our_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(item.their_path, item.our_path)
-
-    fields = {"digest": item.theirs} if item.theirs else {}
-    if item.ancestor:
-        fields["parent_digest"] = item.ancestor
-    if changed is not None:
-        fields["changed_fraction"] = changed
-    if kept:
-        fields["archived_as"] = kept
-    recorder.record(
-        item.our_path, "merged",
-        resolution=item.outcome,
-        source_project_id=project.source_project_id,
-        source_event=item.source_event,
-        **fields,
-    )
-    return kept
-
-
-def _how_much_changed(item: LabelMerge) -> float | None:
-    """Return the share of pixels a merge is about to change, or None.
-
-    Computed here rather than left out, because it is what makes a version list
-    readable: a row saying "unknown" against nine saying a percentage is a hole
-    in the one number that lets a reader choose without opening anything. Both
-    files have to be decoded for it, which a merge can afford -- it is rare, and
-    it has already read both to compare them.
+    The pixels are read rather than the file copied, so what lands here is
+    written the way every other label is -- and so that a label that will not
+    open stops this one item rather than the whole merge partway through.
     """
-    if item.their_path is None or not item.our_path.is_file():
-        return None
     from ..io.image import read_array
-    from .label_io import changed_fraction
+    from .label_save import LabelToSave, WriteProvenance
 
     try:
-        return changed_fraction(read_array(item.our_path), read_array(item.their_path))
+        pixels = read_array(item.their_path)
     except Exception as error:
-        logger.warning("Could not measure the change to %s: %s", item.our_path, error)
+        logger.warning("Not taking %s: %s", item.target, error)
         return None
 
+    fields: dict[str, object] = {
+        "resolution": item.outcome,
+        "source_project_id": project.source_project_id,
+        "source_event": item.source_event,
+    }
+    if item.ancestor:
+        fields["parent_digest"] = item.ancestor
+    item.our_path.parent.mkdir(parents=True, exist_ok=True)
+    return LabelToSave(
+        destination=item.our_path,
+        label=pixels,
+        created=not item.our_path.is_file(),
+        fingerprint=item.our_fingerprint,
+        corrected=item.corrected,
+        provenance=WriteProvenance("merged", fields),
+    )
 
-def _take_state(item: StateMerge, recorder: Recorder) -> None:
-    """Declare the copy's state here, through the one operation that may."""
+
+def _take_state(
+    item: StateMerge, recorder: Recorder, *, allow_corrected: bool = False
+) -> None:
+    """Declare the copy's state here, through the one operation that may.
+
+    Leaving corrected is permitted only where the caller said so. Granting it
+    whenever it happened to be needed made the guard describe the situation
+    rather than protect against it.
+    """
     from .selection import transition_records
 
     transition_records(
         [item.record],
         item.theirs,
-        allow_leaving_corrected=item.ours == "corrected",
+        allow_leaving_corrected=allow_corrected,
         recorder=recorder,
     )
 

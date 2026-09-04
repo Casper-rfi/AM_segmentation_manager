@@ -452,7 +452,7 @@ def restore(
     from ..io.atomic import fingerprint_of
     from ..io.image import read_array
     from .label_io import label_fields
-    from .label_save import LabelToSave, save_labels
+    from .label_save import LabelToSave, WriteProvenance, save_labels
 
     pixels = read_array(version.path)
     digest = label_fields(pixels)["digest"]
@@ -464,7 +464,9 @@ def restore(
                 created=not destination.exists(),
                 fingerprint=fingerprint_of(destination),
                 corrected=corrected,
-                restored_from=str(digest),
+                provenance=WriteProvenance(
+                    "label-restored", {"restored_from": str(digest)}
+                ),
             )
         ],
         allow_corrected=allow_corrected,

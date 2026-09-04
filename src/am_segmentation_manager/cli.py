@@ -1090,6 +1090,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--apply", action="store_true",
         help="Carry the merge out, rather than reporting what it would do",
     )
+    merge_cmd.add_argument(
+        "--allow-corrected", action="store_true",
+        help=(
+            "Take the copy's work over labels this collection has proofread, "
+            "and let it drop a corrected claim. The version here is kept "
+            "either way, so this can be undone -- but not unasked"
+        ),
+    )
 
     # -- revert -------------------------------------------------------------
     revert_cmd = sub.add_parser(
@@ -2250,6 +2258,11 @@ def _cmd_merge(args: argparse.Namespace) -> int:
         "%d to take from the copy, %d already here, %d converged, %d conflict(s)",
         taken, plan.counted(KEEP_OURS), plan.counted(CONVERGED), len(plan.conflicts),
     )
+    if plan.corrected:
+        logger.warning(
+            "%d piece(s) of proofread work would be written over or unmarked",
+            len(plan.corrected),
+        )
     if plan.is_refused:
         logger.error(
             "Nothing was merged. Decide each conflict with --resolve "
@@ -2264,7 +2277,19 @@ def _cmd_merge(args: argparse.Namespace) -> int:
         logger.info("Re-run with --apply to carry it out")
         return 0
 
-    report = apply_merge(plan, recorder=_recorder(args))
+    if plan.corrected and not args.allow_corrected:
+        logger.error(
+            "%d piece(s) of proofread work would be written over or unmarked: "
+            "%s. Nothing was merged. Re-run with --allow-corrected to take it "
+            "anyway; the version here is kept either way.",
+            len(plan.corrected),
+            ", ".join(item.target for item in plan.corrected[:5]),
+        )
+        return 2
+
+    report = apply_merge(
+        plan, recorder=_recorder(args), allow_corrected=args.allow_corrected
+    )
     logger.info(
         "Merged %d label(s), %d state(s) and %d field(s); %d version(s) kept, "
         "%d history entr(ies) added",

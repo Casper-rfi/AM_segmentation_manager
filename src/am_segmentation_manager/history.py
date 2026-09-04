@@ -176,7 +176,10 @@ KINDS: Final[dict[str, KindSpec]] = {
     "renamed": KindSpec(required=("renamed_from", "scope")),
     "merged": KindSpec(
         required=("resolution", "source_project_id", "source_event", "digest"),
-        optional=("parent_digest", "archived_as", "changed_fraction"),
+        optional=(
+            "parent_digest", "archived_as", "changed_fraction",
+            "dtype", "shape", "empty",
+        ),
     ),
 }
 

@@ -422,14 +422,16 @@ rather than appending to it.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it does not merely slow a scan — a superseded version is read as a
-  current label and **reaches a training CSV**, which is why the test compares exported rows.
+  current label and **reaches a training CSV**.
 - **What is archived asks the log, not the state.** `plan_conversions` calls a non-empty label
   `annotated` whether a machine wrote it a minute ago or somebody proofread it for an hour, and both
   are `selected`; only the recorded digest separates them. Unknown provenance counts as human work,
   which is every label in the collection today.
-- **Restoring is the ordinary save**, so batch validation, the stale-file refusal and the protection
-  of proofread work all apply, and the version replaced is archived on the way past. Only what is
-  recorded differs — `LabelToSave.restored_from`.
+- **Restoring and merging are the ordinary save**: batch validation, the stale-file refusal and the
+  protection of proofread work apply to both, and the version replaced is archived on the way past.
+  Only what is *recorded* differs, which is why `WriteProvenance` names the entry kind instead of it
+  being inferred from whichever optional field was set. A merge that copied the file reached none of
+  those guards and **wrote over proofread work unasked**.
 - **Nothing coalesces versions at write time.** Collapsing consecutive saves is deletion an
   operation performs on its own, against the rule that deletion is prohibited by default. It
   belongs to `prune-archive`, the only command that removes a label file and only for versions a
@@ -442,31 +444,29 @@ rather than appending to it.
 - **The fork point covers only the projects the copy holds**, or a merge looks for an ancestor in a
   tree that is not there; it comes from `copy_export.projects_of`, the same question deciding whose
   describing files travel. **Refused rather than half-read**, unlike a log: the wrong ancestor
-  discards work while reporting success. A stopped copy gets none, and says so.
-- **A merge compares digests re-read from both trees, never the logs.** Anything can edit a label
+  discards work while reporting success.
+- **A merge compares digests re-read from both trees, never the logs**: anything can edit a label
   without recording it, and a merge believing the log would keep the wrong version while reporting
-  success (`test_a_label_changed_with_nothing_recording_it_is_still_seen`).
+  success.
 - **One resolution function serves labels, states and metadata fields**, so three kinds of change
   cannot answer one shape of change differently. **Timestamps decide nothing** — clocks differ
-  between machines and a later one is routinely a recompression on top of real work — nor does any
-  rule about which tree is authoritative, that being a quiet way to discard proofreading. A conflict
-  is decided by name or not at all, and **one stops the whole merge**.
+  between machines and a later one is routinely a recompression on real work — nor does any rule
+  about which tree wins, that being a quiet way to discard proofreading. A conflict is decided by
+  name or not at all, and **one stops the whole merge**.
 - **Metadata needs no baseline**: the ancestor is what the first edit either side made says it
   replaced, and a field neither touched needs none.
 - **A merge verifies before it compares**: a project matched by relative path, checked against the
-  id its log declares, and the fork point's tip looked for in this collection's history — a copy of
-  a copy carries a plausible file naming an ancestor that was never here.
+  id its log declares, and the fork point's tip looked for here — a copy of a copy carries a
+  plausible file naming an ancestor that was never here.
 - **A version list is read, not opened.** Each row carries who, when, what produced it and
   `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters without
-  a file being opened. It is computed when a version is kept, both arrays being in hand, and cannot
-  be had cheaply after — so a merge decodes both files rather than leave a row saying "unknown".
-- **Nothing on the frame path may be linear in the collection.** Listing a label's versions walked
-  the whole archive at every arrow key — half a second per keypress at a size this collection will
-  reach, degrading gradually enough to be blamed on the images. Hence the scandir by name prefix in
-  `versions_of` and the fingerprinted log in `VersionController`: 495 ms at 20,000 versions, now 12.
-- **Undoing a conversion is a batch operation.** Trying a newer model over a project's proofread
-  labels is a decision rather than a commitment only if the whole project can go back in one
-  command, so `revert` reads each label's history for the version the run replaced. It **leaves
+  a file being opened; it is computed when a version is kept, both arrays being in hand, and cannot
+  be had cheaply after. **And listing them may not be linear in the collection**, running as it does
+  at every arrow key — degrading gradually enough to be blamed on the images. Hence `versions_of`'s
+  scandir by name prefix and `VersionController`'s fingerprinted log.
+- **Undoing a conversion is a batch operation**, so trying a newer model over proofread labels is a
+  decision rather than a commitment: `revert` reads each label's history for the version the run
+  replaced. It **leaves
   alone** a label edited since, and refuses the whole batch where a group is corrected and nobody
   said so. It does not keep the model's untouched guess — machine output the model can make again,
   and what made it is recorded, so seeing it again is a re-run rather than a reconstruction.

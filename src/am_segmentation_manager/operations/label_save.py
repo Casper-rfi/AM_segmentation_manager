@@ -13,9 +13,10 @@ reviewer saying so.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import fingerprint_of, write_atomically
 from .label_io import changed_fraction, label_fields, save_label_image
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "LabelToSave",
+    "WriteProvenance",
     "SavePlan",
     "SaveReport",
     "StaleLabels",
@@ -47,6 +49,25 @@ class StaleLabels(RuntimeError):
 
 
 @dataclass(frozen=True)
+class WriteProvenance:
+    """How a write is to be recorded, where it is not an ordinary save.
+
+    Restoring a version and taking one from a merge are the *same write* as
+    proofreading one -- same validation, same staleness refusal, same
+    protection of proofread work, same archiving of what is replaced. Only the
+    account of them differs, so that difference is carried here rather than
+    inferred from which optional field happens to be set.
+
+    Attributes:
+        kind: The entry kind to record. One of :data:`~..history.KINDS`.
+        fields: What that kind carries beyond what the written pixels say.
+    """
+
+    kind: str
+    fields: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class LabelToSave:
     """One edited label, and what was true of its file when it was opened.
 
@@ -60,10 +81,7 @@ class LabelToSave:
             file something else has changed since is not overwritten blind.
         corrected: Whether the group owning this label is declared corrected.
             Carried on the item because the destination path no longer says.
-        restored_from: The digest of the archived version this label was taken
-            from, when it is being put back rather than newly drawn. Restoring
-            goes through this same write, so every guard that protects a label
-            protects it too, and only what is *recorded* differs.
+        provenance: How to record this write, or None for an ordinary save.
     """
 
     destination: Path
@@ -71,7 +89,7 @@ class LabelToSave:
     created: bool = False
     fingerprint: tuple[int, int] | None = None
     corrected: bool = False
-    restored_from: str | None = None
+    provenance: WriteProvenance | None = None
 
 
 @dataclass(frozen=True)
@@ -120,10 +138,12 @@ class SaveReport:
     Attributes:
         written: Every destination written.
         created: Those that did not exist before.
+        archived: The versions kept on the way past, relative to their project.
     """
 
     written: tuple[Path, ...] = ()
     created: tuple[Path, ...] = ()
+    archived: tuple[str, ...] = ()
 
     @property
     def count(self) -> int:
@@ -207,9 +227,12 @@ def save_labels(
 
     written: list[Path] = []
     created: list[Path] = []
+    kept: list[str] = []
     for item in (*plan.writes, *plan.corrected):
         previous = _previous_pixels(item) if recorder is not None else None
         archived = _archive_previous(archivist, item, previous)
+        if archived is not None:
+            kept.append(archived)
         write_atomically(
             item.destination,
             lambda temporary, item=item: save_label_image(
@@ -223,7 +246,7 @@ def save_labels(
         if recorder is not None:
             _record_save(recorder, item, previous, archived)
 
-    return SaveReport(tuple(written), tuple(created))
+    return SaveReport(tuple(written), tuple(created), tuple(kept))
 
 
 def _previous_pixels(item: LabelToSave):
@@ -290,13 +313,14 @@ def _record_save(
     if archived is not None:
         fields["archived_as"] = archived
 
-    if item.restored_from is None:
+    if item.provenance is None:
         recorder.record(item.destination, "label-saved", **fields)
         return
-    # A restore is the same write; only the account of it differs, and it says
-    # which kept version was put back.
-    fields.setdefault("parent_digest", fields["digest"])
-    fields.setdefault("archived_as", archived or "")
-    recorder.record(
-        item.destination, "label-restored", restored_from=item.restored_from, **fields
-    )
+
+    fields.update(item.provenance.fields)
+    if item.provenance.kind == "label-restored":
+        # Its kind requires both, and neither is the caller's to supply: what
+        # was replaced is read here, on the way past.
+        fields.setdefault("parent_digest", fields["digest"])
+        fields.setdefault("archived_as", archived or "")
+    recorder.record(item.destination, item.provenance.kind, **fields)

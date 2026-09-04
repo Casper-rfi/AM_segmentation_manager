@@ -554,3 +554,147 @@ def _digest(path: Path) -> str:
     from am_segmentation_manager.operations.label_io import label_fields
 
     return str(label_fields(tifffile.imread(path))["digest"])
+
+
+# ---------------------------------------------------------------------------
+# Proofread work on the receiving side
+# ---------------------------------------------------------------------------
+
+def _mark_corrected(root: Path, recorder: Recorder) -> None:
+    """Declare the first group of *root* proofread work."""
+    from am_segmentation_manager.operations.selection import transition_records
+
+    transition_records(_records(root)[:1], "corrected", recorder=recorder)
+
+
+def test_a_merge_over_proofread_work_is_refused_without_confirmation(forked, recorder):
+    """CLAUDE.md: no automated operation may replace a corrected label unasked."""
+    _edit(forked.label(forked.copy), 3, recorder)
+    _mark_corrected(forked.main, recorder)
+    ours = _digest(forked.label(forked.main))
+
+    plan = plan_merge(forked.copy, forked.main)
+    assert plan.corrected, "the plan has to say so before it is carried out"
+
+    with pytest.raises(PermissionError, match="proofread work"):
+        apply_merge(plan, recorder=recorder)
+
+    assert _digest(forked.label(forked.main)) == ours, "nothing was written"
+
+
+def test_proofread_work_is_taken_when_it_is_asked_for(forked, recorder):
+    _edit(forked.label(forked.copy), 3, recorder)
+    _mark_corrected(forked.main, recorder)
+    theirs = _digest(forked.label(forked.copy))
+
+    plan = plan_merge(forked.copy, forked.main)
+    report = apply_merge(plan, recorder=recorder, allow_corrected=True)
+
+    assert _digest(forked.label(forked.main)) == theirs
+    assert report.archived, "and what was here is kept, so it can be undone"
+
+
+def test_one_proofread_label_stops_the_whole_merge(forked, recorder, tmp_path):
+    """Half a merge would make what happened depend on the order of a loop."""
+    _edit(forked.label(forked.copy), 3, recorder)
+    _mark_corrected(forked.main, recorder)
+    before = {
+        path: fingerprint_of(path)
+        for path in sorted(forked.main.rglob("*.tif"))
+    }
+
+    with pytest.raises(PermissionError):
+        apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+
+    after = {
+        path: fingerprint_of(path)
+        for path in sorted(forked.main.rglob("*.tif"))
+    }
+    assert after == before
+
+
+def test_a_merge_will_not_silently_drop_a_corrected_claim(tmp_path: Path, recorder):
+    """Permission used to be granted exactly when it was needed, which is no guard.
+
+    The claim has to predate the copy, or the two sides moved it differently and
+    it is a conflict rather than something taken.
+    """
+    from am_segmentation_manager.operations.selection import (
+        current_state,
+        transition_records,
+    )
+
+    main = tmp_path / "collection"
+    main.mkdir()
+    dataset = build_dataset(main, lamellae=1, acquisitions=2, labels="annotated")
+    history_file_path(dataset.project).touch()
+    _baseline(main, recorder)
+    transition_records(_records(main)[:1], "corrected", recorder=recorder)
+
+    copy = tmp_path / "copy"
+    _export(main, copy)
+    # Deliberate on the copy, which is why it reaches the merge at all.
+    transition_records(
+        _records(copy)[:1], "deselected",
+        allow_leaving_corrected=True, recorder=recorder,
+    )
+
+    plan = plan_merge(copy, main)
+    assert [item.outcome for item in plan.projects[0].states] == [TAKE_THEIRS]
+    assert plan.corrected, "dropping a corrected claim is proofread work being lost"
+
+    with pytest.raises(PermissionError):
+        apply_merge(plan, recorder=recorder)
+    assert current_state(_records(main)[0]) == "corrected"
+
+    apply_merge(plan_merge(copy, main), recorder=recorder, allow_corrected=True)
+    assert current_state(_records(main)[0]) == "deselected"
+
+
+def test_a_label_that_changed_since_the_plan_stops_the_merge(forked, recorder):
+    """A merge carried out against a tree that moved on would write blind."""
+    from am_segmentation_manager.operations.label_save import StaleLabels
+
+    _edit(forked.label(forked.copy), 3, recorder)
+    plan = plan_merge(forked.copy, forked.main)
+    _edit(forked.label(forked.main), 1, recorder)   # somebody else, in between
+
+    with pytest.raises(StaleLabels):
+        apply_merge(plan, recorder=recorder)
+
+
+def test_taking_a_label_records_a_merge_and_what_it_grew_out_of(forked, recorder):
+    _edit(forked.label(forked.copy), 3, recorder)
+
+    apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+
+    merged = [
+        event for event in read_log(forked.project).events
+        if event.kind == "merged" and event.target == forked.target
+    ]
+    assert len(merged) == 1
+    assert merged[0].data["source_project_id"] == "9f2c4b11"
+    assert merged[0].data["archived_as"]
+    assert merged[0].data["changed_fraction"] > 0
+
+
+def test_an_empty_label_here_is_not_archived_when_it_is_replaced(tmp_path: Path, recorder):
+    """The archive rule's first row: an empty placeholder holds nothing to keep.
+
+    It has to be empty before the copy is taken, or emptying it is a change and
+    the two sides conflict instead.
+    """
+    main = tmp_path / "collection"
+    main.mkdir()
+    dataset = build_dataset(main, lamellae=1, acquisitions=2, labels="empty")
+    history_file_path(dataset.project).touch()
+    _baseline(main, recorder)
+
+    copy = tmp_path / "copy"
+    _export(main, copy)
+    _edit(sorted(copy.rglob("*labels/*.tif"))[0], 3, recorder)
+
+    report = apply_merge(plan_merge(copy, main), recorder=recorder)
+
+    assert report.labels_taken == 1
+    assert not report.archived, "an empty placeholder is not worth keeping"
