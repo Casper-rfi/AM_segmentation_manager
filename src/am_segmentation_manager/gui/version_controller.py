@@ -85,16 +85,21 @@ class VersionRow:
         return self.source == KEPT and self.version is not None and self.available
 
     def describe(self) -> str:
-        """Return the one line a list shows for this version."""
-        if self.source == PREDICTION:
-            line = f"predict  {self.who}  {self.produced_by}"
-            if self.when:
-                line += f"  {self.when}"
-            return line if self.available else f"{line}  (will not open)"
-        share = "unknown" if self.changed is None else f"{self.changed * 100:.1f}%"
-        line = f"kept  {self.when or '(not recorded)'}  {self.who}  {self.produced_by}"
-        line += f"  {share} changed"
-        return line if self.available else f"{line}  (pixels not here)"
+        """Return the one line a list shows for this version.
+
+        **Every row carries its date in the same place**, whatever produced it,
+        so the list can be read down its second column. A row that says what it
+        is before saying when defeats the ordering it is listed in.
+        """
+        kind = "predict" if self.source == PREDICTION else "kept"
+        when = _shown(self.when) or "(not recorded)"
+        line = f"{kind:<{KIND_WIDTH}}  {when:<{WHEN_WIDTH}}  {self.who}  {_short(self.produced_by)}"
+        if self.source != PREDICTION:
+            share = _share(self.changed)
+            line += f"  {share}"
+        if self.available:
+            return line
+        return f"{line}  ({'will not open' if self.source == PREDICTION else 'pixels not here'})"
 
 
 class VersionController:
@@ -193,7 +198,10 @@ class VersionController:
         return VersionRow(
             path=path,
             source=PREDICTION,
-            when=str(when)[:16] if isinstance(when, str) else "",
+            # Kept whole, offset included: a prediction's provenance writes
+            # local time and the log writes UTC, and truncating the offset away
+            # would place it against a kept version by the wrong clock.
+            when=when if isinstance(when, str) else "",
             who=str(model) if isinstance(model, str) and model else "unrecorded model",
             produced_by=f"run {run}" if isinstance(run, str) and run else path.parent.name,
             changed=None,
@@ -225,10 +233,20 @@ class VersionController:
 
     @property
     def rows(self) -> tuple[VersionRow, ...]:
-        """Return the versions, newest kept first, then the predictions."""
-        kept = [row for row in self._rows if row.source == KEPT]
-        predicted = [row for row in self._rows if row.source != KEPT]
-        return tuple([*reversed(kept), *predicted])
+        """Return every version, newest first, whatever produced it.
+
+        One order rather than two groups: a prediction made this morning
+        belongs above a version kept last week, and what each row *is* the
+        first word of the row already says. A row whose time nothing recorded
+        sorts last, having nothing to place it by.
+        """
+        return tuple(
+            sorted(
+                self._rows,
+                key=lambda row: (_moment(row.when) is not None, _moment(row.when)),
+                reverse=True,
+            )
+        )
 
     @property
     def has_versions(self) -> bool:
@@ -339,6 +357,63 @@ class VersionController:
         )
         self.refresh()
         return restored
+
+
+def _moment(stamp: str):
+    """Return *stamp* as an instant, or None where it is not one.
+
+    The log writes UTC and a prediction's provenance writes local time with its
+    offset, so the two are only comparable once parsed. Sorting on the strings
+    would put an offset stamp in the wrong place against a ``Z`` one.
+    """
+    from datetime import UTC, datetime
+
+    if not stamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _shown(stamp: str) -> str:
+    """Return *stamp* as the minute it names, in UTC as the log records it."""
+    moment = _moment(stamp)
+    return moment.strftime("%Y-%m-%d %H:%M") if moment else ""
+
+
+def _share(changed: float | None) -> str:
+    """Return how much of the label differed, said so it cannot mislead.
+
+    A correction made in passing is a few hundred pixels of a few million, and
+    rounding that to ``0.0%`` reads as *nothing changed* -- which is the one
+    thing it does not mean. Below what one decimal can show, the row says so.
+    """
+    if changed is None:
+        return "change unrecorded"
+    if 0 < changed < 0.0005:
+        return "<0.1% changed"
+    return f"{changed * 100:.1f}% changed"
+
+
+#: The columns a row is laid out in, so the date sits at the same offset on
+#: every one of them and the list can be read down it.
+KIND_WIDTH: int = 7
+WHEN_WIDTH: int = 16
+
+#: How much of a name a row shows before eliding its middle. A training run is
+#: named by what it was trained on and which epoch it stopped at, and the
+#: middle of that is the part two runs share.
+MAX_NAME: int = 34
+
+
+def _short(name: str) -> str:
+    """Return *name* short enough to read, keeping both ends."""
+    if len(name) <= MAX_NAME:
+        return name
+    head = (MAX_NAME - 1) // 2
+    return f"{name[:head]}…{name[-(MAX_NAME - head - 1):]}"
 
 
 def _kept_row(version: ArchivedVersion) -> VersionRow:

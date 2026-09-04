@@ -447,3 +447,98 @@ def test_the_log_is_read_again_only_when_it_has_changed(label, recorder, tmp_pat
         assert len(reads) == 2, "an appended log is read again"
     finally:
         module.read_log = original
+
+
+# ---------------------------------------------------------------------------
+# The list reads down its own column
+# ---------------------------------------------------------------------------
+
+def test_a_prediction_takes_its_place_in_time_among_the_kept_versions(
+    label, recorder, tmp_path
+):
+    """A prediction made this morning belongs above a version kept last week."""
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+    import yaml
+
+    record = prediction.parent / "am_seg_predictions.yaml"
+    entry = yaml.safe_load(record.read_text())
+    entry["predictions"]["img_000.tif"]["predicted_at"] = "2035-01-01T09:00:00+00:00"
+    record.write_text(yaml.safe_dump(entry))
+
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+
+    assert controller.rows[0].source == "prediction", "the newest thing is first"
+
+
+def test_every_row_carries_its_date_in_the_same_place(label, recorder, tmp_path):
+    """The date is what the list is ordered by, so it must be findable."""
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+
+    from am_segmentation_manager.gui.version_controller import KIND_WIDTH, WHEN_WIDTH
+
+    start = KIND_WIDTH + 2
+    columns = [row.describe()[start:start + WHEN_WIDTH] for row in controller.rows]
+
+    assert len(columns) == 2
+    assert all(column.strip().count("-") == 2 for column in columns), columns
+
+
+def test_the_list_is_ordered_newest_first_across_both_clocks(label, recorder, tmp_path):
+    """The log writes UTC and a prediction writes local time with its offset."""
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+
+    from am_segmentation_manager.gui.version_controller import KIND_WIDTH, WHEN_WIDTH
+
+    start = KIND_WIDTH + 2
+    shown = [row.describe()[start:start + WHEN_WIDTH] for row in controller.rows]
+
+    assert shown == sorted(shown, reverse=True)
+
+
+def test_a_long_training_run_name_is_shortened_at_both_ends(label, recorder, tmp_path):
+    run = "Franklin_eBIC_Rosalind_training_absolute_validation_absolute_epoch086"
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", run
+    )
+    controller = VersionController(recorder)
+    controller.set_label(label, [prediction])
+
+    (row,) = [row for row in controller.rows if row.source == "prediction"]
+    line = row.describe()
+
+    assert run not in line, "the whole name would push the rest off the row"
+    assert "Franklin" in line and "epoch086" in line, "both ends still identify it"
+
+
+def test_a_version_whose_change_was_never_measured_says_so(label, recorder):
+    """'unknown changed' read as a quantity; it is the absence of one."""
+    controller = VersionController(recorder)
+    controller.set_label(label)
+    row = controller.rows[0]
+
+    from dataclasses import replace
+
+    assert "change unrecorded" in replace(row, changed=None).describe()
+
+
+def test_a_correction_made_in_passing_does_not_read_as_no_change(label, recorder):
+    """A few hundred pixels of a few million rounds to 0.0%, which is a lie."""
+    from dataclasses import replace
+
+    controller = VersionController(recorder)
+    controller.set_label(label)
+    row = controller.rows[0]
+
+    assert "<0.1% changed" in replace(row, changed=0.00002).describe()
+    assert "0.0% changed" in replace(row, changed=0.0).describe(), "nothing is nothing"
