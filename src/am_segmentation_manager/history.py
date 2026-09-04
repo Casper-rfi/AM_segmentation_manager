@@ -94,9 +94,11 @@ EventKind = Literal[
 ]
 
 #: How the author's name was arrived at. ``os`` is a guess about who was at the
-#: keyboard; the rest are statements. Recorded so attribution is never read as
-#: more certain than it is.
-BySource = Literal["flag", "env", "config", "os"]
+#: keyboard and ``declared`` is one person naming another -- crediting a dataset
+#: to whoever annotated it elsewhere, which nobody here can verify. The rest are
+#: the author speaking for themselves. Recorded so attribution is never read as
+#: more certain than it is, which matters most where it reaches a deposition.
+BySource = Literal["flag", "env", "config", "os", "declared"]
 
 BY_SOURCES: Final[tuple[BySource, ...]] = get_args(BySource)
 
@@ -722,6 +724,19 @@ class Recorder:
         """Return a recorder for one run, resolving who is running it."""
         by, by_source = resolve_author(user)
         return cls(by=by, by_source=by_source)
+
+    def attributed_to(self, name: str, by_source: str = "declared") -> Recorder:
+        """Return a recorder for this same run, under somebody else's name.
+
+        For crediting work done elsewhere: a dataset annotated at another
+        institute is baselined by whoever adds it here, but the annotation is
+        not theirs. The batch is shared, so what one run did stays one run, and
+        ``by_source`` says the name was stated on that person's behalf rather
+        than by them.
+        """
+        return Recorder(
+            by=name, by_source=by_source, batch=self.batch, _roots=self._roots
+        )
 
     def for_batch(self) -> Recorder:
         """Return a recorder for one operation, under this same author.

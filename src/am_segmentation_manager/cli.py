@@ -1059,6 +1059,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory to scan for projects (default: current directory)",
     )
     init_history_cmd.add_argument(
+        "--as", dest="annotator", default=None, metavar="NAME",
+        help=(
+            "Credit the labels to whoever annotated them, for a dataset that "
+            "arrived already annotated. Recorded as a name stated on their "
+            "behalf, which nothing here can verify; starting the log stays "
+            "attributed to you. Point --start-path at that dataset, or you "
+            "will credit them with everything under it"
+        ),
+    )
+    init_history_cmd.add_argument(
         "--apply", action="store_true",
         help="Write the entries, rather than reporting what would be written",
     )
@@ -2307,7 +2317,14 @@ def _cmd_init_history(args: argparse.Namespace) -> int:
         )
         return 0
 
-    report = apply_baseline(plan, recorder=_recorder(args))
+    recorder = _recorder(args)
+    annotator = recorder.attributed_to(args.annotator) if args.annotator else None
+    if annotator is not None:
+        logger.info(
+            "Crediting %d group(s) across %d project(s) to %r, on your say-so",
+            plan.entry_count, len(projects), annotator.by,
+        )
+    report = apply_baseline(plan, recorder=recorder, annotator=annotator)
     logger.info(
         "Started %d log(s) and recorded %d group(s)",
         report.logs_started, report.entries_written,

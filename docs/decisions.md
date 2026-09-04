@@ -384,10 +384,8 @@ rather than appending to it.
 
 - **JSONL rather than YAML** buys three things a record needs and a control file does not — a
   one-write append, a union of two logs, and a damaged line costing only itself.
-- **A label is digested over its pixels, never its file bytes.** `compress-labels` re-encodes every
-  label in the collection without changing the segmentation, and a digest that moved would report
-  each run as thousands of edits — filling a merge with conflicts that are not conflicts, and the
-  archive with copies of nothing. `pixel_digest` states what that costs at the edges.
+- **A label is digested over its pixels, never its file bytes**, or `compress-labels` would report
+  each run as thousands of edits; `pixel_digest` states what that costs at the edges.
 - **An entry's id hashes its whole body, `at` and `batch` included**, so it is an identity rather
   than a fingerprint of the change: two runs of one operation get two ids. That is what a union
   needs — entries travel by file copy, keep their id and combine exactly once, uncoordinated.
@@ -398,8 +396,13 @@ rather than appending to it.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
   `metadata.FIELDS`, and for the reason stated there.
 - **Attribution is a record, not an authentication.** The name is self-declared, so `by_source`
-  records how it was arrived at; an `os` one is a guess. Resolving never fails — an entry naming an
-  account beats a refused save.
+  records how it was arrived at; an `os` one is a guess, and `declared` is one person naming another.
+  Resolving never fails — an entry naming an account beats a refused save.
+- **A dataset that arrives annotated is credited to whoever annotated it; the log, to whoever
+  started it.** A name reaches a deposition where a timestamp does not, so attributing a baseline to
+  whoever ran the command was the one untrue thing here — but crediting *everything* to the
+  annotator replaces one false record with another, since they never touched this machine. Hence the
+  split, and hence `declared`: nothing can verify a name given on somebody else's behalf.
 - **Recording is something a project opts into, and never fails the change it describes**, both of
   which `history.Recorder` states. The consequence worth writing down: installing any of this
   changes nothing about a collection that has not run `init-history` — the property that let each
@@ -410,9 +413,8 @@ rather than appending to it.
   log counts only where the directory is a project**, by `discovery`'s marker rule: one at a
   collection root would swallow every project below it into a single log, under targets that match
   nothing else and travel with nothing.
-- **`init-history` covers every series, unlike everything else that writes**: a record covering only
-  Adaptive Polishing would leave every reference and alignment label unrecorded permanently, with no
-  second chance at a baseline.
+- **`init-history` covers every series, unlike everything else that writes**: one covering only
+  Adaptive Polishing would leave every other label unrecorded, with no second chance at a baseline.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
@@ -449,15 +451,11 @@ rather than appending to it.
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which
   tree wins. A conflict is decided by name or not at all, and **one stops the whole merge**.
-- **Metadata needs no baseline**: the ancestor is what the first edit either side made says it
-  replaced, and a field neither touched needs none.
-- **The fork point proves where a copy came from; the ancestor is the history the two logs share.**
-  A merge verifies first — project matched by relative path, checked against the id its log
-  declares, tip looked for here, since a copy of a copy carries a plausible file naming an ancestor
-  that was never here. Then it compares against the entries both hold, read as a set and not a
-  prefix: a merge adds the copy's entries to this collection, so a copy worked on and brought back
-  **twice** shares more history than its fork point names, and comparing against the tip would call
-  every label taken the first time a conflict.
+- **Metadata needs no baseline**: the ancestor is what the first edit says it replaced.
+- **The fork point proves where a copy came from; the ancestor is the history the two logs share**,
+  for the reason `merge.py` opens with. A merge verifies before it compares — path, declared id, and
+  the tip looked for here — since a copy of a copy carries a plausible file naming an ancestor that
+  was never here.
 - **A version list is read, not opened.** Each row carries who, when, what produced it and
   `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters; it is
   computed when a version is kept and cannot be had cheaply after. **And listing them may not be

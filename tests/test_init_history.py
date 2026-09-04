@@ -319,3 +319,89 @@ def _write_tif(path: Path, value: int = 0) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tifffile.imwrite(path, array)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Crediting work done elsewhere
+# ---------------------------------------------------------------------------
+
+def test_a_dataset_annotated_elsewhere_is_credited_to_whoever_annotated_it(
+    tmp_path: Path, recorder
+):
+    """The one place this design would otherwise record something untrue."""
+    dataset = build_dataset(tmp_path, labels="annotated")
+
+    apply_baseline(
+        plan_baseline(projects_under(tmp_path)),
+        recorder=recorder,
+        annotator=recorder.attributed_to("Anna Example"),
+    )
+
+    events = read_log(dataset.project).events
+    baselines = [event for event in events if event.kind == "baseline"]
+    assert baselines
+    assert {event.by for event in baselines} == {"Anna Example"}
+    assert {event.by_source for event in baselines} == {"declared"}
+
+
+def test_starting_the_log_stays_with_whoever_started_it(tmp_path: Path, recorder):
+    """Crediting the annotator must not replace one false record with another.
+
+    Anna never touched this machine; the log was created here, by the person
+    adding her dataset to the collection.
+    """
+    dataset = build_dataset(tmp_path, labels="annotated")
+
+    apply_baseline(
+        plan_baseline(projects_under(tmp_path)),
+        recorder=recorder,
+        annotator=recorder.attributed_to("Anna Example"),
+    )
+
+    (created,) = [
+        event for event in read_log(dataset.project).events
+        if event.kind == "log-created"
+    ]
+    assert created.by == recorder.by
+    assert created.by_source == recorder.by_source
+
+
+def test_a_declared_name_is_not_read_as_the_person_speaking_for_themselves(
+    tmp_path: Path, recorder
+):
+    """`by_source` is what keeps attribution from being read as more than it is."""
+    build_dataset(tmp_path, labels="annotated")
+
+    credited = recorder.attributed_to("Anna Example")
+
+    assert credited.by_source == "declared"
+    assert credited.by_source != recorder.by_source
+    assert credited.batch == recorder.batch, "one run stays one run"
+
+
+def test_without_a_name_the_baseline_is_attributed_to_whoever_ran_it(
+    tmp_path: Path, recorder
+):
+    dataset = build_dataset(tmp_path, labels="annotated")
+
+    apply_baseline(plan_baseline(projects_under(tmp_path)), recorder=recorder)
+
+    assert {
+        event.by for event in read_log(dataset.project).events
+    } == {recorder.by}
+
+
+def test_the_command_credits_the_annotator(tmp_path: Path):
+    from am_segmentation_manager.cli import main
+
+    dataset = build_dataset(tmp_path, labels="annotated")
+
+    assert main([
+        "--user", "Casper", "init-history", "--start-path", str(tmp_path),
+        "--as", "Anna Example", "--apply",
+    ]) == 0
+
+    events = read_log(dataset.project).events
+    by_kind = {event.kind: event.by for event in events}
+    assert by_kind["baseline"] == "Anna Example"
+    assert by_kind["log-created"] == "Casper"

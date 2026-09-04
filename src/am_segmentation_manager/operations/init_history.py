@@ -9,6 +9,13 @@ recoverable -- the collection has been copied, so no timestamp on disk means
 anything -- so an entry records when it was *seen*, marked ``baseline-scan``,
 and nothing here should be read as saying when the work was done.
 
+**Who** is a different matter, because a name reaches a deposition where a
+timestamp does not. By default a baseline is attributed to whoever runs it,
+which is right for a collection they annotated themselves and wrong for one
+that arrived annotated. So the annotator can be named, and is then recorded as
+``declared`` -- somebody stating a name on another person's behalf, which this
+package cannot verify. Starting the log stays attributed to whoever did it.
+
 Re-running adds only what is missing, so a project gains baselines for labels
 that arrived since the last run. A group already baselined is left alone even
 if its label has changed since: a second baseline would quietly paper over a
@@ -174,6 +181,7 @@ def apply_baseline(
     plan: BaselinePlan,
     *,
     recorder: Recorder,
+    annotator: Recorder | None = None,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> BaselineReport:
     """Write *plan*, reading each label to record what it holds.
@@ -181,7 +189,17 @@ def apply_baseline(
     Each project's log is started before its groups are recorded, so a run
     stopped partway leaves projects whose history begins properly rather than
     entries belonging to no declared project.
+
+    Args:
+        recorder: Who is running this. Starting a log is their act, whoever
+            made the labels.
+        annotator: Who to credit the labels to, where that is somebody else --
+            a dataset annotated at another institute. Defaults to *recorder*.
+            **The two are kept apart deliberately**: attributing the log's
+            creation to a person who never touched this machine would replace
+            one false record with another.
     """
+    crediting = annotator if annotator is not None else recorder
     logs, written, unreadable = 0, 0, []
     total = plan.entry_count
     done = 0
@@ -194,7 +212,7 @@ def apply_baseline(
             fields, failed = _contents_of(entry.label_path)
             if failed is not None:
                 unreadable.append(failed)
-            recorded = recorder.record(
+            recorded = crediting.record(
                 project.project.path / entry.target,
                 "baseline",
                 state=entry.state,
