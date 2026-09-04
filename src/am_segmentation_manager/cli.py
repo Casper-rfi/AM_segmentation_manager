@@ -1235,22 +1235,29 @@ def build_parser() -> argparse.ArgumentParser:
     # -- prune-archive ------------------------------------------------------
     prune_cmd = sub.add_parser(
         "prune-archive",
-        help="Remove older kept versions, down to the last few per label",
+        help="Remove the kept versions no savepoint needs",
         description=(
-            "Remove archived label versions, keeping the most recent --keep-last "
-            "of each. Four are never removed whatever is asked: a label's oldest "
-            "kept version, the one taken before a model wrote over it, the one "
-            "taken before a merge, and any version the history does not account "
-            "for. Previews by default; pass --apply to remove. This is the only "
-            "command that deletes a label file."
+            "Collapse what lies between savepoints. Every version a savepoint "
+            "names is kept, so a state you named stays reachable; what goes is "
+            "the ordinary proofreading saves between them. Four more are never "
+            "removed: a label's oldest kept version, the one taken before a "
+            "model wrote over it, the one taken before a merge, and any version "
+            "the history does not account for. Previews by default; pass "
+            "--apply to remove. This is the only command that deletes a label "
+            "file, and it leaves the history alone -- it costs the pixels, "
+            "never the account of what happened."
         ),
     )
     prune_cmd.add_argument(
         "path", nargs="?", default=".", help="The project to prune",
     )
     prune_cmd.add_argument(
-        "--keep-last", type=int, required=True, metavar="N",
-        help="How many recent versions of each label to keep. Required: there is no default",
+        "--start-path", default=None,
+        help=(
+            "Where to look for the savepoints whose versions must be kept "
+            "(default: the project itself). Give the collection root when a "
+            "savepoint spans more projects than the one being pruned"
+        ),
     )
     prune_cmd.add_argument(
         "--apply", action="store_true",
@@ -2614,11 +2621,16 @@ def _cmd_prune_archive(args: argparse.Namespace) -> int:
         logger.error("No %s at or above %s", AM_HISTORY_FILENAME, args.path)
         return 1
 
-    try:
-        plan = plan_prune(project, keep_last=args.keep_last)
-    except ValueError as error:
-        logger.error("%s", error)
-        return 2
+    from .operations.savepoint import list_savepoints, reached_versions
+
+    root = Path(args.start_path) if args.start_path else project
+    savepoints = list_savepoints(Scanner(root).build_index().all_projects())
+    needed = reached_versions(savepoints)
+    plan = plan_prune(project, reached=needed.get(project.resolve(), set()))
+    if savepoints:
+        logger.info(
+            "%d savepoint(s) here; what they name is kept", len(savepoints)
+        )
 
     for version in plan.remove:
         print(f"{version.target}: {version.path.name} ({format_bytes(version.size)})")

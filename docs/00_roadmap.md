@@ -26,7 +26,8 @@ believing either log, refusing the whole merge while any conflict stands, and go
 ordinary save so it cannot replace proofread work unasked. `am-seg revert` undoes a conversion or a
 merge across a selection. `am-seg savepoint` names a state — one `checkpoint` entry per project
 sharing an id, marking a round of model improvement — and `am-seg savepoints` says what each covers
-and how much of it is still reachable, and `am-seg revert --to` puts a whole round back by name.
+and how much of it is still reachable; `am-seg revert --to` puts a whole round back by name, and
+`am-seg prune-archive` collapses what lies between savepoints, never what one names.
 **Recording begins only where a log exists**, so a collection
 with no history behaves exactly as it does today.
 
@@ -36,9 +37,8 @@ the compare key is held, marks where it and the label disagree, and puts a kept 
 ordinary save. Off by default, the count on the switch saying whether opening it would show anything.
 
 The two-machine round trip has been rehearsed on real copied projects: two rounds of proofreading
-merged back, a refusal over proofread work, a genuine conflict, and a revert. What is left: pruning
-defined by savepoints, retiring `--keep-last`; `init-history --as`; then whether any of this earns a
-surface in the window.
+merged back, a refusal over proofread work, a genuine conflict, and a revert. What is left:
+`init-history --as`; then whether any of this earns a surface in the window.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

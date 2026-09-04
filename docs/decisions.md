@@ -138,12 +138,11 @@ rather than appending to it.
   a change reaches all or none — and it is resolved rather than located, so it survives annotation
   beginning. The cost of "no entry means selected" is that "reviewed and kept" cannot be told from
   "not yet looked at".
-- **The three states are mutually exclusive, and both representations enforce it.** A mapping of
-  key to state cannot express two states for one group, where a file grouping keys under
-  `corrected:` / `deselected:` headings could. `ImageRecord` carries one `state` field rather than
-  a `selected` and a `corrected` flag for the same reason: two booleans have a fourth combination
-  that means nothing, and every reader must then be trusted to spell out `selected and not
-  corrected`.
+- **The three states are mutually exclusive, and both representations enforce it.** A mapping of key
+  to state cannot express two states for one group, where a file grouping keys under `corrected:` /
+  `deselected:` headings could. `ImageRecord` carries one `state` field rather than a `selected` and
+  a `corrected` flag for the same reason: two booleans have a fourth combination that means nothing,
+  and every reader must then be trusted to spell out `selected and not corrected`.
 - **Whether a group is corrected is asked of the record, never of a path.** Every guard protecting
   proofread work — conversion, compression, label saving — reads the declared state the scanner put
   on the record; a guard that quietly stops firing is worse than none.
@@ -362,12 +361,11 @@ rather than appending to it.
   decided against can reach a training set, so the summary line counts those
   (`test_a_deselected_image_that_would_be_exported_is_counted`).
 - **Both modalities means side by side, not mixed together**
-  (`test_both_modalities_put_the_two_beams_on_one_row`): a selection holding both writes
-  `sem_image, sem_label, fib_image, fib_label`, one row per acquisition, where one naming a single
-  beam writes `image, label`. A cell is blank where that beam has no image or no label worth pairing
-  with one, and a row survives only if at least one beam has a label — the empty-label rule drops a
-  one-beam row and empties a cell where there are two
-  (`test_an_empty_label_is_not_paired_with_its_image`).
+  (`test_both_modalities_put_the_two_beams_on_one_row`): a selection holding both writes `sem_image,
+  sem_label, fib_image, fib_label`, one row per acquisition, where one naming a single beam writes
+  `image, label`. A cell is blank where that beam has no image or no label worth pairing with one,
+  and a row survives only if at least one beam has a label — the empty-label rule drops a one-beam
+  row and empties a cell where there are two (`test_an_empty_label_is_not_paired_with_its_image`).
 - **What makes an SEM and a FIB image the same acquisition is stated once**, in
   `frames.group_by_acquisition`, which says why a stem will not do it. **What pairs them depends on
   the era of the filename**: Adaptive Polishing images match on an acquisition number within one
@@ -384,9 +382,8 @@ rather than appending to it.
 
 ## History
 
-- **JSONL rather than YAML**, a break from the convention everywhere else here, buys three things a
-  record needs and a control file does not — a one-write append, a union of two logs, and a damaged
-  line costing only itself. `history.py` states the format.
+- **JSONL rather than YAML** buys three things a record needs and a control file does not — a
+  one-write append, a union of two logs, and a damaged line costing only itself.
 - **A label is digested over its pixels, never its file bytes.** `compress-labels` re-encodes every
   label in the collection without changing the segmentation, and a digest that moved would report
   each run as thousands of edits — filling a merge with conflicts that are not conflicts, and the
@@ -397,7 +394,7 @@ rather than appending to it.
   **Idempotence comes from elsewhere**: `plan_baseline` skips targets already recorded.
 - **A log tolerates what `state.py` refuses**: a control file must be understood completely before
   anything acts on it, a record must not lose four thousand entries over one bad line. Forward
-  compatibility is append-only plus that tolerance; `FILE_VERSION` is for a real format break.
+  compatibility is append-only plus that tolerance.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
   `metadata.FIELDS`, and for the reason stated there.
 - **Attribution is a record, not an authentication.** The name is self-declared, so `by_source`
@@ -413,9 +410,9 @@ rather than appending to it.
   log counts only where the directory is a project**, by `discovery`'s marker rule: one at a
   collection root would swallow every project below it into a single log, under targets that match
   nothing else and travel with nothing.
-- **`init-history` covers every series, unlike everything else that writes**: a record covering
-  only Adaptive Polishing would leave every reference and alignment label unrecorded permanently,
-  with no second chance at a baseline. Why its label fields are optional is on `history.KINDS`.
+- **`init-history` covers every series, unlike everything else that writes**: a record covering only
+  Adaptive Polishing would leave every reference and alignment label unrecorded permanently, with no
+  second chance at a baseline.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
@@ -434,8 +431,11 @@ rather than appending to it.
 - **Reachability asks the log, then the archive by name**, because closing a gap copies a file and
   records nothing; `_archived_file` says why it reads from the target towards the filename.
 - **Nothing coalesces versions at write time**: collapsing consecutive saves is deletion an
-  operation performs on its own. It belongs to `prune-archive`, which **leaves the log alone** —
-  pruning costs the pixels, never the account.
+  operation performs on its own, so it belongs to `prune-archive`, which **leaves the log alone**.
+- **The savepoints are the pruning policy, and the only one.** A count of recent versions to keep
+  cannot know which states somebody named, so it could leave a savepoint pointing at pixels that are
+  gone; defining pruning *by* the savepoints makes that impossible rather than unlikely, and gives
+  the archive a shape a person can hold — round boundaries, plus everything since the last one.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
   establish an ancestor without the log, and one covering only what was copied leaves holes. The
   archive is a cache, so `--with-archive` is opt-in — and **a merged log therefore names versions

@@ -338,7 +338,10 @@ def test_restoring_over_proofread_work_needs_saying_so(tmp_path: Path, recorder)
 # Pruning
 # ---------------------------------------------------------------------------
 
-def test_pruning_keeps_the_last_few_and_the_oldest(tmp_path: Path, recorder):
+def test_pruning_collapses_the_saves_between_and_keeps_the_oldest(
+    tmp_path: Path, recorder
+):
+    """The gradient goes; the furthest back anybody can go stays."""
     logged(tmp_path)
     destination = tmp_path / "sem_labels" / "i.tif"
     write_label(destination, label(1))
@@ -346,10 +349,35 @@ def test_pruning_keeps_the_last_few_and_the_oldest(tmp_path: Path, recorder):
         save(destination, label(value), recorder)
     assert len(versions_of(tmp_path, "sem_labels/i.tif")) == 4
 
-    plan = plan_prune(tmp_path, keep_last=2)
+    plan = plan_prune(tmp_path)
 
-    assert len(plan.remove) == 1  # four kept, two by the rule, one being oldest
-    assert plan.kept == 3
+    assert len(plan.remove) == 3
+    assert plan.kept == 1
+
+
+def test_pruning_never_removes_a_version_a_savepoint_names(tmp_path: Path, recorder):
+    """The savepoints are the policy: a state you named stays reachable."""
+    logged(tmp_path)
+    destination = tmp_path / "sem_labels" / "i.tif"
+    write_label(destination, label(1))
+    for value in (2, 3, 4, 5):
+        save(destination, label(value), recorder)
+    kept = versions_of(tmp_path, "sem_labels/i.tif")
+    named = kept[2].path.relative_to(tmp_path).as_posix()
+
+    plan = plan_prune(tmp_path, reached=[named])
+
+    assert named not in {
+        version.path.relative_to(tmp_path).as_posix() for version in plan.remove
+    }
+    assert any("savepoint" in _why(plan, version) for version in plan.protected)
+
+
+def _why(plan, version) -> str:
+    """Return why a protected version was protected, by re-asking the rule."""
+    from am_segmentation_manager.operations.archive import _protection, _relative
+
+    return _protection(version, is_oldest=False, needed={_relative(version)}) or ""
 
 
 def test_pruning_never_removes_the_version_before_a_model_wrote(
@@ -372,7 +400,7 @@ def test_pruning_never_removes_the_version_before_a_model_wrote(
         **label_fields(label(9)),
     )
 
-    plan = plan_prune(tmp_path, keep_last=0)
+    plan = plan_prune(tmp_path)
 
     protected_kinds = {v.event.kind for v in plan.protected if v.event}
     assert "label-converted" in protected_kinds
@@ -386,7 +414,7 @@ def test_a_version_the_history_does_not_account_for_is_never_removed(
     stray = archive_root(tmp_path) / "sem_labels" / "i__20260101T000000Z__abcdef.tif"
     write_label(stray, label())
 
-    plan = plan_prune(tmp_path, keep_last=0)
+    plan = plan_prune(tmp_path)
 
     assert not plan.remove
     assert len(plan.protected) == 0 or all(v.event is None for v in plan.protected)
@@ -400,7 +428,7 @@ def test_pruning_removes_the_files_and_leaves_the_record(tmp_path: Path, recorde
         save(destination, label(value), recorder)
     entries_before = len(read_log(tmp_path).events)
 
-    plan = plan_prune(tmp_path, keep_last=2)
+    plan = plan_prune(tmp_path)
     removed = apply_prune(plan)
 
     assert removed == len(plan.remove)
@@ -415,14 +443,9 @@ def test_planning_a_prune_removes_nothing(tmp_path: Path, recorder):
     for value in (2, 3, 4):
         save(destination, label(value), recorder)
 
-    plan = plan_prune(tmp_path, keep_last=1)
+    plan = plan_prune(tmp_path)
 
     assert all(version.path.exists() for version in plan.remove)
-
-
-def test_a_negative_keep_last_is_refused(tmp_path: Path):
-    with pytest.raises(ValueError):
-        plan_prune(tmp_path, keep_last=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -453,17 +476,53 @@ def test_the_prune_command_previews_by_default(tmp_path: Path, recorder, capsys)
         save(destination, label(value), recorder)
     before = len(archived_versions(tmp_path))
 
-    assert main(["prune-archive", str(tmp_path), "--keep-last", "2"]) == 0
+    assert main(["prune-archive", str(tmp_path)]) == 0
 
     assert "Re-run with --apply" in capsys.readouterr().out
     assert len(archived_versions(tmp_path)) == before
 
 
-def test_the_prune_command_requires_a_rule(tmp_path: Path):
-    from am_segmentation_manager.cli import build_parser
+def test_the_prune_command_keeps_what_a_savepoint_names(tmp_path: Path, recorder):
+    """The savepoints are the policy, so the command needs no rule of its own."""
+    from am_segmentation_manager.cli import main
+    from am_segmentation_manager.operations.savepoint import (
+        apply_savepoint,
+        plan_savepoint,
+    )
+    from am_segmentation_manager.scanner import Scanner
+    from conftest import write_marker
 
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["prune-archive", str(tmp_path)])
+    write_marker(tmp_path)
+    logged(tmp_path)
+    destination = tmp_path / "sem_labels" / "i.tif"
+    write_label(destination, label(1))
+    save(destination, label(2), recorder)
+    projects = Scanner(tmp_path).build_index().all_projects()
+    apply_savepoint(plan_savepoint(projects, "round 3"), recorder=recorder)
+    for value in (3, 4, 5):
+        save(destination, label(value), recorder)
+    named = {
+        version.path
+        for version in versions_of(tmp_path, "sem_labels/i.tif")
+        if _digest_of(version.path) == _digest_of_label(label(2))
+    }
+
+    assert main(["prune-archive", str(tmp_path), "--apply"]) == 0
+
+    assert all(path.exists() for path in named), "a named state stays reachable"
+
+
+def _digest_of(path: Path) -> str:
+    from am_segmentation_manager.io.image import read_array
+    from am_segmentation_manager.operations.label_io import label_fields
+
+    return str(label_fields(read_array(path))["digest"])
+
+
+def _digest_of_label(array) -> str:
+    from am_segmentation_manager.operations.label_io import label_fields
+
+    return str(label_fields(array)["digest"])
 
 
 # ---------------------------------------------------------------------------

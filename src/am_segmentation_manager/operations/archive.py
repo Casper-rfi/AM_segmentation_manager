@@ -382,18 +382,28 @@ class PrunePlan:
         return sum(version.size for version in self.remove)
 
 
-def plan_prune(project_root: Path, *, keep_last: int) -> PrunePlan:
-    """Return which versions *keep_last* would leave behind.
+def plan_prune(project_root: Path, *, reached: Iterable[str] = ()) -> PrunePlan:
+    """Return which versions could go, and which are protected from going.
 
-    Three are never offered up, whatever the rule asks for: a label's oldest
-    kept version, which is the furthest back anybody can go; the version taken
-    before a machine wrote over the label, which is the only answer to what was
-    there before the model; and one taken before a merge took somebody else's
-    work. A version the log does not account for is protected too -- what it is
-    cannot be established, so it is not this command's to remove.
+    **The savepoints are the policy.** What a savepoint names is kept, and the
+    ordinary proofreading saves between savepoints -- the gradient nobody can
+    act on -- are what is left to remove. A count of recent versions to keep was
+    the alternative and meant nothing: an arbitrary number cannot know which
+    states somebody named, so it could leave a savepoint pointing at pixels that
+    are gone.
+
+    Four more are never offered up: a label's oldest kept version, which is the
+    furthest back anybody can go; the version taken before a machine wrote over
+    the label, which is the only answer to what was there before the model; one
+    taken before a merge took somebody else's work; and any version the log does
+    not account for, since what it is cannot be established.
+
+    Args:
+        reached: Archived paths, relative to the project, that a savepoint
+            needs. Computed by the caller from whatever savepoints are in
+            scope, so nothing here has to know what a savepoint is.
     """
-    if keep_last < 0:
-        raise ValueError("keep_last cannot be negative")
+    needed = set(reached)
 
     by_target: dict[str, list[ArchivedVersion]] = {}
     for version in archived_versions(project_root):
@@ -401,10 +411,8 @@ def plan_prune(project_root: Path, *, keep_last: int) -> PrunePlan:
 
     remove, protected, kept = [], [], 0
     for versions in by_target.values():
-        surplus = versions[: max(0, len(versions) - keep_last)]
-        kept += len(versions) - len(surplus)
-        for index, version in enumerate(surplus):
-            reason = _protection(version, is_oldest=index == 0)
+        for index, version in enumerate(versions):
+            reason = _protection(version, is_oldest=index == 0, needed=needed)
             if reason is None:
                 remove.append(version)
             else:
@@ -413,8 +421,12 @@ def plan_prune(project_root: Path, *, keep_last: int) -> PrunePlan:
     return PrunePlan(tuple(remove), kept, tuple(protected))
 
 
-def _protection(version: ArchivedVersion, *, is_oldest: bool) -> str | None:
+def _protection(
+    version: ArchivedVersion, *, is_oldest: bool, needed: set[str]
+) -> str | None:
     """Return why *version* may not be pruned, or None if it may."""
+    if version.path.name in needed or _relative(version) in needed:
+        return "a savepoint names it"
     if is_oldest:
         return "the oldest version kept for this label"
     if version.event is None:
@@ -422,6 +434,14 @@ def _protection(version: ArchivedVersion, *, is_oldest: bool) -> str | None:
     if version.event.kind in PROTECTED_PREDECESSORS:
         return f"taken before a {version.event.kind}"
     return None
+
+
+def _relative(version: ArchivedVersion) -> str:
+    """Return an archived version's path as a savepoint would name it."""
+    parts = version.path.parts
+    if ARCHIVE_DIRECTORY not in parts:
+        return version.path.as_posix()
+    return "/".join(parts[parts.index(ARCHIVE_DIRECTORY):])
 
 
 def apply_prune(plan: PrunePlan) -> int:

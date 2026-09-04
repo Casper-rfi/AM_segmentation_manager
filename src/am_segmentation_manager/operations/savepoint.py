@@ -49,6 +49,7 @@ __all__ = [
     "list_savepoints",
     "plan_savepoint",
     "reachability",
+    "reached_versions",
 ]
 
 #: A kept version holds these pixels. Recoverable now.
@@ -546,3 +547,21 @@ def close_gap(plan: SavepointPlan) -> list[str]:
         if archived is not None:
             kept.append(f"{project.key}/{archived}")
     return kept
+
+
+def reached_versions(savepoints: Iterable[Savepoint]) -> dict[Path, set[str]]:
+    """Return the archived versions each project's savepoints depend on.
+
+    What pruning must not remove, keyed by project root. Computed here and
+    handed to :func:`~.archive.plan_prune` rather than looked up there, so the
+    archive stays a thing that keeps and removes files and does not have to know
+    what a savepoint is.
+    """
+    needed: dict[Path, set[str]] = {}
+    for point in savepoints:
+        for carried in point.projects:
+            wanted = needed.setdefault(carried.project.path.resolve(), set())
+            for state in carried.targets:
+                if state.archived_as:
+                    wanted.add(state.archived_as)
+    return needed
