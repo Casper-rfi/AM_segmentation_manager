@@ -71,6 +71,7 @@ from .operations.merge import (
     plan_merge,
 )
 from .operations.predictions import convert_record_predictions, plan_conversions
+from .operations.revert import UNDOABLE, apply_revert, plan_revert
 from .reporting import format_bytes, print_project_summary, print_survey
 from .scanner import Scanner
 from .survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
@@ -1088,6 +1089,44 @@ def build_parser() -> argparse.ArgumentParser:
     merge_cmd.add_argument(
         "--apply", action="store_true",
         help="Carry the merge out, rather than reporting what it would do",
+    )
+
+    # -- revert -------------------------------------------------------------
+    revert_cmd = sub.add_parser(
+        "revert",
+        help="Put a selection of labels back to what they held before an operation",
+        description=(
+            "Undo a conversion or a merge across a whole selection, putting "
+            "each label back to the version that operation replaced. For "
+            "trying a newer model over labels you have already proofread: "
+            "convert, look at a few, and put the lot back in one command if it "
+            "is not good enough. A label whose earlier version was not kept, "
+            "or that has been edited since, is reported and left alone. "
+            "Previews by default."
+        ),
+    )
+    _add_scope_arguments(revert_cmd)
+    revert_cmd.add_argument(
+        "--undo", choices=sorted(UNDOABLE), default="conversion",
+        help="Which operation to undo (default: conversion)",
+    )
+    revert_cmd.add_argument(
+        "--apply", action="store_true",
+        help="Put them back, rather than reporting what would be put back",
+    )
+    revert_cmd.add_argument(
+        "--confirm-corrected", action="store_true",
+        help=(
+            "Put back labels whose group is declared corrected. Required for "
+            "those, proofread work being what this is most likely to be undoing"
+        ),
+    )
+    revert_cmd.add_argument(
+        "--allow-superseded", action="store_true",
+        help=(
+            "Put a label back even where it has been edited since the operation "
+            "being undone, which discards that editing"
+        ),
     )
 
     # -- archive ------------------------------------------------------------
@@ -2253,6 +2292,49 @@ def _resolutions(chosen: list[str]) -> dict[str, str]:
     return resolutions
 
 
+def _cmd_revert(args: argparse.Namespace) -> int:
+    """Handle ``am-seg revert``."""
+    records, start_path = _resolve_records(args)
+    if not records:
+        logger.info("No matching images found")
+        return 2
+
+    try:
+        plan = plan_revert(
+            records, args.undo, allow_superseded=args.allow_superseded
+        )
+    except ValueError as error:
+        logger.error("%s", error)
+        return 2
+
+    for line in plan.describe():
+        print(line)
+    logger.info(
+        "%d label(s) can go back, %d left alone",
+        len(plan.revertible), len(plan.blocked),
+    )
+    if not plan.revertible:
+        return 0
+    if plan.corrected and not args.confirm_corrected:
+        logger.error(
+            "%d of them are proofread work. Re-run with --confirm-corrected to "
+            "put those back; what is there now is kept either way.",
+            len(plan.corrected),
+        )
+        return 2
+    if not args.apply:
+        logger.info("Re-run with --apply to put them back")
+        return 0
+
+    report = apply_revert(
+        plan, recorder=_recorder(args), allow_corrected=args.confirm_corrected
+    )
+    logger.info("Put %d label(s) back", len(report.restored))
+    for path, why in report.failed:
+        logger.warning("%s: %s", make_path_relative(path, start_path), why)
+    return 1 if report.failed else 0
+
+
 def _cmd_archive(args: argparse.Namespace) -> int:
     """Handle ``am-seg archive``."""
     path = Path(args.path)
@@ -2431,6 +2513,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "compress-labels": _cmd_compress_labels,
     "init-history": _cmd_init_history,
     "merge": _cmd_merge,
+    "revert": _cmd_revert,
     "history": _cmd_history,
     "archive": _cmd_archive,
     "prune-archive": _cmd_prune_archive,

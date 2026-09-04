@@ -22,6 +22,7 @@ from qtpy.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -36,6 +37,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...history import Recorder, resolve_author, set_author
 from ...layout import MODALITIES
 from ...operations.selection import (
     RecordState,
@@ -97,6 +99,7 @@ MAX_LISTED_FILES = 12
 
 #: Names the save in every dialog and log line it produces.
 SAVE_TITLE = "Save labels"
+AUTHOR_TITLE = "Record changes as"
 RESTORE_TITLE = "Restore an earlier version"
 
 #: The em dash between the product name and the folder in the window title.
@@ -725,6 +728,8 @@ class CurationWindow(QMainWindow):
         self._add_action(
             file_menu, "Rescan", self.rescan, QKeySequence.Refresh,
         )
+        file_menu.addSeparator()
+        self._add_action(file_menu, "Record changes as...", self.set_author_name)
         file_menu.addSeparator()
         self._add_action(file_menu, "Quit", self.close, QKeySequence.Quit)
 
@@ -1736,6 +1741,13 @@ class CurationWindow(QMainWindow):
                 "V", "Show / hide the label", self.label_panel.toggle_label,
                 TAB_LABEL, GROUP_VIEW,
             ),
+            # Held rather than pressed, so the canvas turns it off again on
+            # release; this entry is what puts it in the F1 list, the binding
+            # machinery having no notion of a key you hold.
+            Binding(
+                "B", "Hold to show the earlier version chosen below",
+                self.label_panel.hold_compare, TAB_LABEL, GROUP_VIEW,
+            ),
             Binding(
                 "G", "Fit the image to the pane", self.label_panel.canvas_fit,
                 TAB_LABEL, GROUP_VIEW,
@@ -2700,6 +2712,48 @@ class CurationWindow(QMainWindow):
             return False
         self.label_controller.discard_edits()
         return True
+
+    def set_author_name(self) -> None:
+        """Ask who changes should be attributed to, and remember it.
+
+        Until this is answered the account running the window stands in, which
+        is a guess about who is at the keyboard rather than a statement; the
+        history records which of the two an entry carries. Kept under the
+        user's home directory, not in any collection: who is here is a property
+        of the machine.
+        """
+        current, source = resolve_author()
+        name, chosen = QInputDialog.getText(
+            self,
+            AUTHOR_TITLE,
+            "Changes to labels, workflow state and metadata are recorded under "
+            "this name.\n"
+            + (
+                f"Nothing has been set, so the account name {current!r} is "
+                "standing in."
+                if source == "os" else f"Currently {current!r}."
+            ),
+            text="" if source == "os" else current,
+        )
+        if not chosen or not name.strip():
+            return
+        try:
+            path = set_author(name)
+        except (OSError, ValueError) as error:
+            QMessageBox.critical(self, AUTHOR_TITLE, str(error))
+            return
+        self._adopt_author()
+        self._flash(f"Recording changes as {name.strip()}")
+        logger.info("Author written to %s", path)
+
+    def _adopt_author(self) -> None:
+        """Have every controller that records pick the new name up at once."""
+        recorder = Recorder.for_run()
+        for controller in (
+            self.label_controller, self.metadata_controller,
+            self.operations_controller, self.label_panel.versions_controller,
+        ):
+            controller.recorder = recorder
 
     def restore_label_version(self) -> None:
         """Put the chosen earlier version of this label back, having asked.

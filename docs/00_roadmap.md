@@ -34,6 +34,9 @@ The proofreading view lists a label's kept versions when it has any and hides th
 none, shows one on the canvas while the compare key is held, marks where it and the label disagree,
 and puts one back through the ordinary save.
 
+`am-seg revert` undoes a conversion or a merge across a whole selection at once, which is what makes
+trying a newer model over a project's proofread labels a decision rather than a commitment.
+
 What is left of this work: deciding a merge conflict in the window rather than on the command line.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset

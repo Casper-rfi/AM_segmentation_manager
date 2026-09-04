@@ -124,7 +124,7 @@ def test_a_version_whose_pixels_did_not_travel_is_shown_as_absent(label, recorde
 
     (row,) = controller.rows
     assert not row.available
-    assert "not in this copy" in row.describe()
+    assert "pixels not here" in row.describe()
 
 
 def test_a_label_in_a_project_with_no_history_shows_nothing(tmp_path: Path, recorder):
@@ -253,7 +253,7 @@ def test_restoring_a_version_that_is_not_here_is_refused(label, recorder):
     controller.refresh()
     controller.select(0)
 
-    with pytest.raises(ValueError, match="not in this copy"):
+    with pytest.raises(ValueError, match="but not its pixels"):
         controller.restore_selected()
 
 

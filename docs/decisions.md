@@ -404,47 +404,44 @@ rather than appending to it.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
   `metadata.FIELDS`. **Strict on the way in, tolerant on the way out**: writing is ours to control,
   reading is not.
-- **Attribution is a record, not an authentication.** `AM_SEG_USER` is self-declared, so
-  `by_source` records how the name was arrived at — an `os` account name is a guess about who was
-  at the keyboard. Resolving one never fails: an entry naming an account beats a refused save.
+- **Attribution is a record, not an authentication.** The name is self-declared, so `by_source`
+  records how it was arrived at — an `os` account name is a guess about who was at the keyboard,
+  which is what the window's *Record changes as* exists to replace. Resolving one never fails: an
+  entry naming an account beats a refused save.
 - **Recording is something a project opts into, and never fails the change it describes.**
   `history.Recorder` states both. The consequence worth writing down here is that installing any of
   this changes nothing about a collection that has not run `init-history` — the property that let
   six stages of it ship one at a time, and that `test_a_project_with_no_log_is_left_without_one`
   exists to keep true.
 - **A path is resolved before the project holding it is looked for**, or a root reached through a
-  symlinked parent is no prefix of the resolved file and every entry is dropped in silence. `/tmp`
-  is a symlink on macOS and `tmp_path` is not, so only a test making its own finds it
-  (`test_a_project_reached_through_a_symlink_is_still_recorded_into`).
+  symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
+  only a test making its own symlink finds, `/tmp` being one on macOS and `tmp_path` not.
 - **`init-history` covers every series, unlike everything else that writes**: a record covering
   only Adaptive Polishing would leave every reference and alignment label unrecorded permanently,
-  and there is no second chance at a baseline. Its fields are optional because a group can be
-  deselected having never had a label — four such in the first real project — and because a label
-  that will not open is worth recording as one whose contents are unknown rather than omitted,
-  where it would look like a group nobody annotated.
+  with no second chance at a baseline. Its label fields are optional — a group can be deselected
+  having never had one, and a label that will not open is worth recording as contents unknown
+  rather than omitted, where it would look like a group nobody annotated.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
-  traversal goes through; the survey's `rglob` excludes it by `directory_role`, so there is one
-  vocabulary rather than two lists. Missing it does not merely slow a scan — a superseded version is
-  read as a current label and **reaches a training CSV**, which is why
-  `test_an_archive_never_reaches_a_training_export` compares exported rows rather than the scan.
+  traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
+  rather than two lists. Missing it does not merely slow a scan — a superseded version is read as a
+  current label and **reaches a training CSV**, which is why the test compares exported rows.
 - **What is archived asks the log, not the state.** `plan_conversions` calls a non-empty label
   `annotated` whether a machine wrote it a minute ago or somebody proofread it for an hour, and both
   are `selected`; only the recorded digest separates them. Unknown provenance counts as human work,
   which is every label in the collection today.
-- **Restoring is the ordinary save, not a second way to write a label**, so batch validation, the
-  stale-file refusal and the protection of proofread work all apply and the version replaced is
-  archived on the way past. Only what is recorded differs — `LabelToSave.restored_from`.
+- **Restoring is the ordinary save**, so batch validation, the stale-file refusal and the protection
+  of proofread work all apply, and the version replaced is archived on the way past. Only what is
+  recorded differs — `LabelToSave.restored_from`.
 - **Nothing coalesces versions at write time.** Collapsing consecutive saves is deletion an
   operation performs on its own, against both the rule that deletion is prohibited by default and
   pruning having no default policy. It belongs to `prune-archive`, the only command here that
-  removes a label file, and only for versions named by a person. **Four are never offered up**: a
-  label's oldest kept version, the one before a model wrote over it, the one before a merge, and any
-  the history does not account for. **Pruning leaves the log alone** — it costs the ability to
-  restore those pixels, never the account of what happened.
+  removes a label file and only for versions named by a person; what that never offers up is its
+  own docstring. **Pruning leaves the log alone** — it costs the pixels, never the account.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
-  establish an ancestor without the log, and a log covering only what was copied leaves holes in the
-  ancestry chain. The archive is a cache of recoverable pixels and may be partial, so
-  `--with-archive` is opt-in: it would balloon a subset export and put intermediates in a deposition.
+  establish an ancestor without the log, and one covering only what was copied leaves holes in the
+  chain. The archive is a cache of recoverable pixels and may be partial, so `--with-archive` is
+  opt-in. **A merged log therefore names versions this collection does not hold**, which the version
+  list says plainly rather than hiding.
 - **The fork point covers only the projects the copy holds**, or a merge looks for an ancestor in a
   tree that is not there; it comes from `copy_export.projects_of`, the same question deciding whose
   describing files travel. **Refused rather than half-read**, unlike a log: the wrong ancestor
@@ -457,16 +454,21 @@ rather than appending to it.
   between machines and a later one is routinely a recompression on top of real work — nor does any
   rule about which tree is authoritative, that being a quiet way to discard proofreading. A conflict
   is decided by name or not at all, and **one stops the whole merge**.
-- **Metadata needs no baseline**: the ancestor is the value the first edit either side made says it
-  replaced, and a field neither touched needs none at all.
-- **A merge verifies before it compares**: a project is matched by relative path, checked against
-  the id its log declares, and the fork point's tip looked for in this collection's own history —
-  a copy of a copy carries a plausible file naming an ancestor that was never here.
+- **Metadata needs no baseline**: the ancestor is what the first edit either side made says it
+  replaced, and a field neither touched needs none.
+- **A merge verifies before it compares**: a project matched by relative path, checked against the
+  id its log declares, and the fork point's tip looked for in this collection's history — a copy of
+  a copy carries a plausible file naming an ancestor that was never here.
 - **A version list is read, not opened.** Each row carries who, when, what produced it and
-  `changed_fraction`, so ten rows where nine say 0.1% and one says 34% say which one matters
-  without a file being opened. That number is computed when a version is kept, both arrays being in
-  hand, and cannot be had cheaply afterwards — which is why a merge decodes both files to record it
-  rather than leaving the row saying "unknown".
+  `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters without
+  a file being opened. It is computed when a version is kept, both arrays being in hand, and cannot
+  be had cheaply after — so a merge decodes both files rather than leave a row saying "unknown".
+- **Undoing a conversion is a batch operation.** Trying a newer model over a project's proofread
+  labels is a decision rather than a commitment only if the whole project can go back in one
+  command, so `revert` reads each label's history for the version the run replaced. It **leaves
+  alone** a label edited since, and refuses the whole batch where a group is corrected and nobody
+  said so. It does not keep the model's untouched guess — machine output the model can make again,
+  and what made it is recorded, so seeing it again is a re-run rather than a reconstruction.
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
   group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives

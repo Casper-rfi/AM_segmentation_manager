@@ -208,14 +208,14 @@ reasoning now lives in a test and the entry can point at it instead.
 
 ## Images and plots
 
-- **An earlier version of a label replaces it on the canvas rather than sitting beside it.**
+- **An earlier version replaces the label on the canvas rather than sitting beside it.**
   Segmentation is compared by flicking between two pictures in one place; side by side halves the
-  resolution of both and moves the eye across a gap. So the comparison is held on a key rather than
-  toggled, and **nothing may be painted while it shows**, or a stroke would land on the label
-  underneath, unseen. The difference mask draws with a class value no configuration defines, so it
-  appears in the colour reserved for an unconfigured class and is plainly not a segmentation.
-- **The versions strip hides itself when a label has none**, which is the ordinary case. A control
-  always present and usually empty is one more thing to read past on a panel that is already busy.
+  resolution of both. Held on a key (**B**, V already showing and hiding the label) rather than
+  toggled, **badged while it shows** — the two look alike, and a reviewer who cannot tell which is
+  on screen is comparing without knowing what — and **not paintable**, or a stroke would land on the
+  label underneath, unseen. The difference mask draws with a class value no configuration defines,
+  so it appears in the colour reserved for an unconfigured class rather than as a segmentation.
+- **The versions strip hides itself when a label has none**, which is the ordinary case.
 
 - **The brush outline is redrawn from state, never from mouse movement alone**, being drawn in
   *scene* coordinates: anything moving the scene under a stationary pointer leaves a ring around a

@@ -53,6 +53,7 @@ __all__ = [
     "new_batch",
     "pixel_digest",
     "resolve_author",
+    "set_author",
     "read_log",
     "union",
 ]
@@ -338,6 +339,36 @@ def resolve_author(explicit: str | None = None) -> tuple[str, str]:
         if candidate and candidate.strip():
             return _checked_author(candidate.strip()), source
     return _checked_author(_account_name()), "os"
+
+
+def set_author(name: str) -> Path:
+    """Write *name* into ``user.yaml``, so later runs are attributed to it.
+
+    The one place a person's own name is stored, kept under their home
+    directory rather than in any collection: who is at this keyboard is a
+    property of the machine, not of the data.
+
+    Returns:
+        Where it was written.
+
+    Raises:
+        ValueError: If *name* is empty once trimmed.
+        OSError: If the file cannot be written.
+    """
+    import yaml
+
+    flattened = _checked_author(name)
+    if not name.strip():
+        raise ValueError("A name cannot be blank")
+    CONFIG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    path = CONFIG_DIRECTORY / USER_FILENAME
+    path.write_text(
+        "# Who am-seg records changes under, on this machine.\n"
+        + yaml.safe_dump({"user": flattened}, allow_unicode=True),
+        encoding="utf-8",
+    )
+    logger.info("Recording changes as %s", flattened)
+    return path
 
 
 def _author_from_config() -> str | None:

@@ -181,6 +181,7 @@ is the place for anything scripted:
 | Start recording a collection's history | `init-history` |
 | Read what has been recorded about a project or a label | `history` |
 | Merge a worked-on copy back into the collection | `merge` |
+| Put labels back to what they held before a conversion or a merge | `revert` |
 | See the label versions a project has kept | `archive` |
 | Remove surplus kept versions | `prune-archive` |
 

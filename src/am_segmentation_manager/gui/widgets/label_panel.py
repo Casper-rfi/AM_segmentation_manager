@@ -1072,6 +1072,15 @@ class LabelPanel(QWidget):
         """Scale the image to the pane."""
         self.canvas.fit()
 
+    def hold_compare(self) -> None:
+        """Show the chosen earlier version, from the keyboard.
+
+        The press half of holding the key. The canvas turns it off again on
+        release; this exists so the key has a binding to appear in the F1 list
+        under, the binding machinery knowing nothing about a key you hold.
+        """
+        self._compare_key_held(True)
+
     def toggle_label(self) -> None:
         """Show or hide the label, from the keyboard."""
         self.overlay_check.setChecked(not self.overlay_check.isChecked())
@@ -1291,6 +1300,14 @@ class LabelPanel(QWidget):
     def _label_badges(self, display) -> list[tuple[str, str]]:
         """Return the badges describing what is on screen."""
         badges: list[tuple[str, str]] = []
+        # Said first and loudly: an earlier version looks exactly like the
+        # label, and a reviewer who cannot tell which is on screen is
+        # comparing two pictures without knowing which is which.
+        chosen = self.versions_controller.selected
+        if self._showing_differences:
+            badges.append(("showing what changed, not a label", "warning"))
+        elif self._comparing and chosen is not None:
+            badges.append((f"showing the version from {chosen.when[:16]}", "warning"))
         text, level = LABEL_BADGES[display.label_status]
         if text:
             badges.append((text, level))

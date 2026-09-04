@@ -64,7 +64,7 @@ class VersionRow:
         share = "unknown" if self.changed is None else f"{self.changed * 100:.1f}%"
         line = f"{self.when or '(not recorded)'}  {self.who}  {self.produced_by}"
         line += f"  {share} changed"
-        return line if self.available else f"{line}  (not in this copy)"
+        return line if self.available else f"{line}  (pixels not here)"
 
 
 class VersionController:
@@ -204,8 +204,9 @@ class VersionController:
             raise ValueError("No version is selected")
         if not row.available:
             raise ValueError(
-                "That version's pixels are not in this copy. Export again with "
-                "--with-archive to bring them."
+                "This collection holds the record of that version but not its "
+                "pixels. It was kept somewhere else -- a copy that was exported "
+                "without --with-archive, whose history came back on a merge."
             )
         if self._key is None:
             raise ValueError("No label is on screen")

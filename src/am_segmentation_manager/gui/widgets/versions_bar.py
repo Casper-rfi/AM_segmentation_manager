@@ -33,10 +33,11 @@ __all__ = ["COMPARE_KEY", "COMPARE_KEY_CODE", "DIFFERENCE_CLASS", "VersionsBar"]
 #: defines: what is on screen then is plainly not a segmentation class.
 DIFFERENCE_CLASS: int = 255
 
-#: What the compare control says, and the key that does it. One letter, on the
-#: left of the keyboard, so it falls under the hand not holding the stylus.
-COMPARE_KEY: str = "V"
-COMPARE_KEY_CODE = Qt.Key_V
+#: What the compare control says, and the key that does it. **Not V**, which
+#: already shows and hides the label in this tab and in Curate. B for "before",
+#: under the hand not holding the stylus.
+COMPARE_KEY: str = "B"
+COMPARE_KEY_CODE = Qt.Key_B
 
 
 class VersionsBar(QWidget):
@@ -120,8 +121,9 @@ class VersionsBar(QWidget):
                 index = self.chooser.count() - 1
                 self.chooser.setItemData(
                     index,
-                    "This version's pixels are not in this copy. Export again "
-                    "with --with-archive to bring them.",
+                    "The history records this version, but its pixels are "
+                    "not here: they were kept in a copy that did not bring its "
+                    "archive along. It can be neither shown nor put back.",
                     Qt.ToolTipRole,
                 )
         self.chooser.setCurrentIndex(0 if rows else -1)

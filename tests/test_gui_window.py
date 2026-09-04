@@ -2129,7 +2129,7 @@ def test_the_window_has_the_menus_a_desktop_application_has(window):
     looks for the things a window is expected to have and this one had nowhere
     to put."""
     assert set(_menu_items(window, "File")) == {
-        "Open folder...", "Rescan", "Quit",
+        "Open folder...", "Rescan", "Record changes as...", "Quit",
     }
     assert set(_menu_items(window, "Help")) == {
         "Keyboard shortcuts", f"About {PRODUCT_NAME}",

@@ -62,6 +62,7 @@ WORKFLOW_ORDER = [
     "check-training-csv",
     "init-history",
     "merge",
+    "revert",
     "archive",
     "prune-archive",
     "history",
