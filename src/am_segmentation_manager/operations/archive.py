@@ -382,7 +382,12 @@ class PrunePlan:
         return sum(version.size for version in self.remove)
 
 
-def plan_prune(project_root: Path, *, reached: Iterable[str] = ()) -> PrunePlan:
+def plan_prune(
+    project_root: Path,
+    *,
+    reached: Iterable[str] = (),
+    open_round: Iterable[str] | None = None,
+) -> PrunePlan:
     """Return which versions could go, and which are protected from going.
 
     **The savepoints are the policy.** What a savepoint names is kept, and the
@@ -398,12 +403,29 @@ def plan_prune(project_root: Path, *, reached: Iterable[str] = ()) -> PrunePlan:
     taken before a merge took somebody else's work; and any version the log does
     not account for, since what it is cannot be established.
 
+    **A round still open is never collapsed.** Everything kept since the most
+    recent savepoint is the work in hand, which is when stepping back through
+    recent edits is most likely to be wanted; a round is collapsed once its end
+    has been named. Where no savepoint has been taken the whole archive is one
+    open round and nothing is removed -- the honest consequence of the
+    savepoints being the policy, and it says plainly that naming a state is
+    what makes pruning possible.
+
+    Which versions those are is decided **by position in the log, not by time**:
+    a savepoint taken in the same millisecond as a save cannot be ordered
+    against it by timestamp, which is the same reason the state a savepoint
+    names is cut by position.
+
     Args:
         reached: Archived paths, relative to the project, that a savepoint
             needs. Computed by the caller from whatever savepoints are in
             scope, so nothing here has to know what a savepoint is.
+        open_round: Archived paths kept since the most recent savepoint. None
+            -- the default -- means nothing said, and every version is treated
+            as open, so nothing is removed.
     """
     needed = set(reached)
+    still_open = None if open_round is None else set(open_round)
 
     by_target: dict[str, list[ArchivedVersion]] = {}
     for version in archived_versions(project_root):
@@ -412,7 +434,9 @@ def plan_prune(project_root: Path, *, reached: Iterable[str] = ()) -> PrunePlan:
     remove, protected, kept = [], [], 0
     for versions in by_target.values():
         for index, version in enumerate(versions):
-            reason = _protection(version, is_oldest=index == 0, needed=needed)
+            reason = _protection(
+                version, is_oldest=index == 0, needed=needed, open_round=still_open
+            )
             if reason is None:
                 remove.append(version)
             else:
@@ -422,11 +446,17 @@ def plan_prune(project_root: Path, *, reached: Iterable[str] = ()) -> PrunePlan:
 
 
 def _protection(
-    version: ArchivedVersion, *, is_oldest: bool, needed: set[str]
+    version: ArchivedVersion,
+    *,
+    is_oldest: bool,
+    needed: set[str],
+    open_round: set[str] | None = None,
 ) -> str | None:
     """Return why *version* may not be pruned, or None if it may."""
     if version.path.name in needed or _relative(version) in needed:
         return "a savepoint names it"
+    if open_round is None or _relative(version) in open_round:
+        return "kept since the last savepoint, in the round still open"
     if is_oldest:
         return "the oldest version kept for this label"
     if version.event is None:

@@ -409,10 +409,9 @@ rather than appending to it.
   stage ship one at a time.
 - **A path is resolved before the project holding it is looked for**, or a root reached through a
   symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
-  only a test making its own symlink finds, `/tmp` being one on macOS and `tmp_path` not. **And a
-  log counts only where the directory is a project**, by `discovery`'s marker rule: one at a
-  collection root would swallow every project below it into a single log, under targets that match
-  nothing else and travel with nothing.
+  only a test making its own symlink finds. **And a log counts only where the directory is a
+  project**: one at a collection root would swallow every project below it into a single log, under
+  targets that match nothing else and travel with nothing.
 - **`init-history` covers every series, unlike everything else that writes**: one covering only
   Adaptive Polishing would leave every other label unrecorded, with no second chance at a baseline.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
@@ -420,28 +419,29 @@ rather than appending to it.
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
 - **What is archived asks the log, not the state**, for the reason `archive.py` opens with. Unknown
   provenance counts as human work, which is every label in the collection today.
-- **Restoring and merging are the ordinary save**, so both are held to batch validation, the
-  stale-file refusal and the protection of proofread work. Only what is *recorded* differs, which is
-  why `WriteProvenance` names the entry kind rather than it being inferred from whichever optional
-  field was set — a merge that copied the file instead **wrote over proofread work unasked**.
-- **A savepoint reports what it can reach rather than guaranteeing it**, which `savepoint.py` opens
-  with. Guaranteeing would mean an invariant held on the save path for years, checked at every write
-  and unverifiable at the moment the savepoint is taken. The gap it leaves is narrow: ordinary
-  archiving already keeps what a conversion replaces, so the only versions at risk are labels
-  holding *untouched machine output*, which the archive skips as regenerable. `--close-gap` copies
-  those in once, where the cost is visible and the result can be checked.
-- **Reachability asks the log, then the archive by name**, because closing a gap copies a file and
-  records nothing; `_archived_file` says why it reads from the target towards the filename.
-- **Nothing coalesces versions at write time**: collapsing consecutive saves is deletion an
-  operation performs on its own, so it belongs to `prune-archive`, which **leaves the log alone**.
+- **Restoring and merging are the ordinary save**, held to batch validation, the stale-file refusal
+  and the protection of proofread work. Only what is *recorded* differs, which is why
+  `WriteProvenance` names the entry kind — a merge that copied the file instead **wrote over
+  proofread work unasked**.
+- **A savepoint reports what it can reach rather than guaranteeing it.** Guaranteeing would mean an
+  invariant held on the save path for years, unverifiable when the savepoint is taken. The gap is
+  narrow — ordinary archiving already keeps what a conversion replaces, so only *untouched machine
+  output* is at risk — and `--close-gap` keeps those once, where the cost is visible.
+- **Reachability asks the label first, then the log, then the archive by name.** Asking the archive
+  first had a revert offer to put back what was already there; closing a gap copies a file and
+  records nothing, which is why the archive is read at all.
+- **Nothing coalesces versions at write time**: that is deletion an operation performs on its own,
+  so it belongs to `prune-archive`, which **leaves the log alone**.
 - **The savepoints are the pruning policy, and the only one.** A count of recent versions to keep
   cannot know which states somebody named, so it could leave a savepoint pointing at pixels that are
   gone; defining pruning *by* the savepoints makes that impossible rather than unlikely, and gives
   the archive a shape a person can hold — round boundaries, plus everything since the last one.
+- **A round still open is never collapsed**, so nothing is removed until a savepoint has been
+  taken: what is kept since the most recent one is the work in hand. Cut **by position, not by
+  time** — a savepoint written in the same millisecond as a save cannot be ordered against it.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
-  establish an ancestor without the log, and one covering only what was copied leaves holes. The
-  archive is a cache, so `--with-archive` is opt-in — and **a merged log therefore names versions
-  this collection does not hold**, which the version list says rather than hides.
+  establish an ancestor without the log. The archive is a cache, so `--with-archive` is opt-in —
+  and **a merged log names versions this collection does not hold**, which the version list says.
 - **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
   same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
   log: the wrong ancestor discards work while reporting success.

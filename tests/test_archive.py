@@ -338,9 +338,12 @@ def test_restoring_over_proofread_work_needs_saying_so(tmp_path: Path, recorder)
 # Pruning
 # ---------------------------------------------------------------------------
 
-def test_pruning_collapses_the_saves_between_and_keeps_the_oldest(
-    tmp_path: Path, recorder
-):
+#: Nothing is left open, so the round a test wrote is closed and collapsible.
+#: Pruning only ever collapses a closed round.
+NOTHING_OPEN: set[str] = set()
+
+
+def test_pruning_collapses_the_saves_of_a_closed_round(tmp_path: Path, recorder):
     """The gradient goes; the furthest back anybody can go stays."""
     logged(tmp_path)
     destination = tmp_path / "sem_labels" / "i.tif"
@@ -349,10 +352,56 @@ def test_pruning_collapses_the_saves_between_and_keeps_the_oldest(
         save(destination, label(value), recorder)
     assert len(versions_of(tmp_path, "sem_labels/i.tif")) == 4
 
-    plan = plan_prune(tmp_path)
+    plan = plan_prune(tmp_path, open_round=NOTHING_OPEN)
 
     assert len(plan.remove) == 3
     assert plan.kept == 1
+
+
+def test_nothing_is_removed_until_a_savepoint_closes_a_round(tmp_path: Path, recorder):
+    """Everything kept is the work in hand until somebody names its end.
+
+    The honest consequence of the savepoints being the policy: with none taken,
+    the whole archive is one open round.
+    """
+    logged(tmp_path)
+    destination = tmp_path / "sem_labels" / "i.tif"
+    write_label(destination, label(1))
+    for value in (2, 3, 4, 5):
+        save(destination, label(value), recorder)
+
+    plan = plan_prune(tmp_path)
+
+    assert not plan.remove
+    assert plan.kept == 4
+
+
+def test_work_done_since_the_last_savepoint_is_never_collapsed(tmp_path: Path, recorder):
+    """Stepping back through recent edits is when it is most likely to be wanted."""
+    from am_segmentation_manager.history import append_event, build_event
+
+    logged(tmp_path)
+    destination = tmp_path / "sem_labels" / "i.tif"
+    write_label(destination, label(1))
+    save(destination, label(2), recorder)
+    save(destination, label(3), recorder)
+
+    append_event(tmp_path, build_event(
+        "checkpoint", by="casper", by_source="flag",
+        savepoint="9f2c4b11", title="round 3",
+    ))
+    save(destination, label(4), recorder)
+    save(destination, label(5), recorder)
+
+    from am_segmentation_manager.operations.savepoint import open_round
+
+    still_open = open_round(tmp_path)
+    plan = plan_prune(tmp_path, open_round=still_open)
+
+    assert len(still_open) == 2, "both saves after the savepoint kept a version"
+    kept = {v.path.relative_to(tmp_path).as_posix() for v in plan.protected}
+    assert still_open <= kept, "and neither is offered up"
+    assert not {v.path.relative_to(tmp_path).as_posix() for v in plan.remove} & still_open
 
 
 def test_pruning_never_removes_a_version_a_savepoint_names(tmp_path: Path, recorder):
@@ -365,7 +414,7 @@ def test_pruning_never_removes_a_version_a_savepoint_names(tmp_path: Path, recor
     kept = versions_of(tmp_path, "sem_labels/i.tif")
     named = kept[2].path.relative_to(tmp_path).as_posix()
 
-    plan = plan_prune(tmp_path, reached=[named])
+    plan = plan_prune(tmp_path, reached=[named], open_round=NOTHING_OPEN)
 
     assert named not in {
         version.path.relative_to(tmp_path).as_posix() for version in plan.remove
@@ -400,7 +449,7 @@ def test_pruning_never_removes_the_version_before_a_model_wrote(
         **label_fields(label(9)),
     )
 
-    plan = plan_prune(tmp_path)
+    plan = plan_prune(tmp_path, open_round=NOTHING_OPEN)
 
     protected_kinds = {v.event.kind for v in plan.protected if v.event}
     assert "label-converted" in protected_kinds
@@ -414,7 +463,7 @@ def test_a_version_the_history_does_not_account_for_is_never_removed(
     stray = archive_root(tmp_path) / "sem_labels" / "i__20260101T000000Z__abcdef.tif"
     write_label(stray, label())
 
-    plan = plan_prune(tmp_path)
+    plan = plan_prune(tmp_path, open_round=NOTHING_OPEN)
 
     assert not plan.remove
     assert len(plan.protected) == 0 or all(v.event is None for v in plan.protected)
@@ -428,7 +477,7 @@ def test_pruning_removes_the_files_and_leaves_the_record(tmp_path: Path, recorde
         save(destination, label(value), recorder)
     entries_before = len(read_log(tmp_path).events)
 
-    plan = plan_prune(tmp_path)
+    plan = plan_prune(tmp_path, open_round=NOTHING_OPEN)
     removed = apply_prune(plan)
 
     assert removed == len(plan.remove)
@@ -443,7 +492,7 @@ def test_planning_a_prune_removes_nothing(tmp_path: Path, recorder):
     for value in (2, 3, 4):
         save(destination, label(value), recorder)
 
-    plan = plan_prune(tmp_path)
+    plan = plan_prune(tmp_path, open_round=NOTHING_OPEN)
 
     assert all(version.path.exists() for version in plan.remove)
 
@@ -478,7 +527,8 @@ def test_the_prune_command_previews_by_default(tmp_path: Path, recorder, capsys)
 
     assert main(["prune-archive", str(tmp_path)]) == 0
 
-    assert "Re-run with --apply" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "no savepoint" in printed.lower(), "and it says why nothing would go"
     assert len(archived_versions(tmp_path)) == before
 
 

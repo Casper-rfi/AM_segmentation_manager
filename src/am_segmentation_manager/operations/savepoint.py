@@ -48,6 +48,7 @@ __all__ = [
     "find_savepoint",
     "list_savepoints",
     "not_recording",
+    "open_round",
     "plan_savepoint",
     "reachability",
     "reached_versions",
@@ -583,3 +584,26 @@ def not_recording(projects: Iterable[Project]) -> tuple[Project, ...]:
         for project in projects
         if not history_file_path(project.path).is_file()
     )
+
+
+def open_round(project_root: Path, log: HistoryLog | None = None) -> set[str]:
+    """Return the versions kept since the most recent savepoint of *project_root*.
+
+    The round in hand, which pruning must not collapse. Cut **by position**: a
+    savepoint written in the same millisecond as a save cannot be ordered
+    against it by timestamp, and `read_log` orders the file once and stably so
+    that a position means something.
+
+    A project no savepoint covers has every version in one open round, which is
+    what the whole set being returned says.
+    """
+    entries = list((log if log is not None else read_log(project_root)).events)
+    after = 0
+    for index, event in enumerate(entries):
+        if event.kind == "checkpoint":
+            after = index + 1
+    return {
+        event.data["archived_as"]
+        for event in entries[after:]
+        if isinstance(event.data.get("archived_as"), str) and event.data["archived_as"]
+    }

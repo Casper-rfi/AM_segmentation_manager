@@ -1253,8 +1253,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Remove the kept versions no savepoint needs",
         description=(
             "Collapse what lies between savepoints. Every version a savepoint "
-            "names is kept, so a state you named stays reachable; what goes is "
-            "the ordinary proofreading saves between them. Four more are never "
+            "names is kept, so a state you named stays reachable, and so is "
+            "everything kept since the most recent one -- the round still open "
+            "is the work in hand. What goes is the ordinary proofreading saves "
+            "of rounds already closed, so nothing is removed at all until a "
+            "savepoint has been taken. Four more are never "
             "removed: a label's oldest kept version, the one taken before a "
             "model wrote over it, the one taken before a merge, and any version "
             "the history does not account for. Previews by default; pass "
@@ -2667,15 +2670,37 @@ def _cmd_prune_archive(args: argparse.Namespace) -> int:
         logger.error("No %s at or above %s", AM_HISTORY_FILENAME, args.path)
         return 1
 
-    from .operations.savepoint import list_savepoints, reached_versions
+    from .operations.savepoint import (
+        list_savepoints,
+        open_round,
+        reached_versions,
+    )
 
     root = Path(args.start_path) if args.start_path else project
     savepoints = list_savepoints(Scanner(root).build_index().all_projects())
     needed = reached_versions(savepoints)
-    plan = plan_prune(project, reached=needed.get(project.resolve(), set()))
-    if savepoints:
+    still_open = open_round(project)
+    plan = plan_prune(
+        project,
+        reached=needed.get(project.resolve(), set()),
+        open_round=still_open,
+    )
+    covers = [point for point in savepoints if any(
+        carried.project.path.resolve() == project.resolve()
+        for carried in point.projects
+    )]
+    if not covers:
+        logger.warning(
+            "No savepoint covers %s, so every kept version belongs to the round "
+            "still open and none will be removed. Naming a state with "
+            "'am-seg savepoint' is what closes a round and makes it collapsible.",
+            project.name,
+        )
+    else:
         logger.info(
-            "%d savepoint(s) here; what they name is kept", len(savepoints)
+            "%d savepoint(s) cover this project; what they name is kept, as are "
+            "the %d version(s) kept since the most recent",
+            len(covers), len(still_open),
         )
 
     for version in plan.remove:
