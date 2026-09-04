@@ -427,24 +427,20 @@ rather than appending to it.
   `annotated` whether a machine wrote it a minute ago or somebody proofread it for an hour, and both
   are `selected`; only the recorded digest separates them. Unknown provenance counts as human work,
   which is every label in the collection today.
-- **Restoring and merging are the ordinary save**: batch validation, the stale-file refusal and the
-  protection of proofread work apply to both, and the version replaced is archived on the way past.
-  Only what is *recorded* differs, which is why `WriteProvenance` names the entry kind instead of it
-  being inferred from whichever optional field was set. A merge that copied the file reached none of
-  those guards and **wrote over proofread work unasked**.
-- **Nothing coalesces versions at write time.** Collapsing consecutive saves is deletion an
-  operation performs on its own, against the rule that deletion is prohibited by default. It
-  belongs to `prune-archive`, the only command that removes a label file and only for versions a
-  person named. **Pruning leaves the log alone** — it costs the pixels, never the account.
+- **Restoring and merging are the ordinary save**, so both are held to batch validation, the
+  stale-file refusal and the protection of proofread work. Only what is *recorded* differs, which is
+  why `WriteProvenance` names the entry kind rather than it being inferred from whichever optional
+  field was set — a merge that copied the file instead **wrote over proofread work unasked**.
+- **Nothing coalesces versions at write time**: collapsing consecutive saves is deletion an
+  operation performs on its own. It belongs to `prune-archive`, which **leaves the log alone** —
+  pruning costs the pixels, never the account.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
   establish an ancestor without the log, and one covering only what was copied leaves holes in the
-  chain. The archive is a cache of recoverable pixels and may be partial, so `--with-archive` is
-  opt-in. **A merged log therefore names versions this collection does not hold**, which the version
-  list says plainly rather than hiding.
-- **The fork point covers only the projects the copy holds**, or a merge looks for an ancestor in a
-  tree that is not there; it comes from `copy_export.projects_of`, the same question deciding whose
-  describing files travel. **Refused rather than half-read**, unlike a log: the wrong ancestor
-  discards work while reporting success.
+  chain. The archive is a cache of recoverable pixels, so `--with-archive` is opt-in — and **a
+  merged log therefore names versions this collection does not hold**, which the version list says.
+- **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
+  same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
+  log: the wrong ancestor discards work while reporting success.
 - **A merge compares digests re-read from both trees, never the logs**: anything can edit a label
   without recording it, and a merge believing the log would keep the wrong version while reporting
   success.
@@ -455,9 +451,13 @@ rather than appending to it.
   name or not at all, and **one stops the whole merge**.
 - **Metadata needs no baseline**: the ancestor is what the first edit either side made says it
   replaced, and a field neither touched needs none.
-- **A merge verifies before it compares**: a project matched by relative path, checked against the
-  id its log declares, and the fork point's tip looked for here — a copy of a copy carries a
-  plausible file naming an ancestor that was never here.
+- **The fork point proves where a copy came from; the ancestor is the history the two logs share.**
+  A merge verifies first — project matched by relative path, checked against the id its log
+  declares, tip looked for here, since a copy of a copy carries a plausible file naming an ancestor
+  that was never here. Then it compares against the entries both hold, read as a set and not a
+  prefix: a merge adds the copy's entries to this collection, so a copy worked on and brought back
+  **twice** shares more history than its fork point names, and comparing against the tip would call
+  every label taken the first time a conflict.
 - **A version list is read, not opened.** Each row carries who, when, what produced it and
   `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters without
   a file being opened; it is computed when a version is kept, both arrays being in hand, and cannot

@@ -698,3 +698,54 @@ def test_an_empty_label_here_is_not_archived_when_it_is_replaced(tmp_path: Path,
 
     assert report.labels_taken == 1
     assert not report.archived, "an empty placeholder is not worth keeping"
+
+
+# ---------------------------------------------------------------------------
+# A copy that is worked on and brought back more than once
+# ---------------------------------------------------------------------------
+
+def test_a_copy_worked_on_again_fast_forwards_rather_than_conflicting(forked, recorder):
+    """Use case 1, iterated: the laptop keeps its copy and merges back twice.
+
+    Its fork point still names the entry the first export ended at, so an
+    ancestor read from that would call every label taken the first time a
+    conflict -- ours changed (we took theirs) and theirs changed again.
+    """
+    _edit(forked.label(forked.copy), 3, recorder)
+    apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+    assert _digest(forked.label(forked.main)) == _digest(forked.label(forked.copy))
+
+    _edit(forked.label(forked.copy), 4, recorder)     # more work, same copy
+
+    plan = plan_merge(forked.copy, forked.main)
+
+    assert not plan.conflicts, "a second round is a fast-forward, not a conflict"
+    assert [item.outcome for item in plan.projects[0].labels] == [TAKE_THEIRS]
+
+    apply_merge(plan, recorder=recorder)
+    assert _digest(forked.label(forked.main)) == _digest(forked.label(forked.copy))
+
+
+def test_the_second_merge_still_sees_a_real_conflict(forked, recorder):
+    """Fast-forwarding must not come from having stopped comparing."""
+    _edit(forked.label(forked.copy), 3, recorder)
+    apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+
+    _edit(forked.label(forked.copy), 4, recorder)
+    _edit(forked.label(forked.main), 5, recorder)     # both sides, differently
+
+    plan = plan_merge(forked.copy, forked.main)
+
+    assert plan.conflicts
+    assert plan.is_refused
+
+
+def test_merging_the_same_copy_twice_changes_nothing_the_second_time(forked, recorder):
+    _edit(forked.label(forked.copy), 3, recorder)
+    apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+    after = fingerprint_of(forked.label(forked.main))
+
+    report = apply_merge(plan_merge(forked.copy, forked.main), recorder=recorder)
+
+    assert report.labels_taken == 0 and report.entries_added == 0
+    assert fingerprint_of(forked.label(forked.main)) == after

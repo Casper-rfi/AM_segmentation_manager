@@ -1,9 +1,16 @@
 """Bringing a worked-on copy back into the collection it came from.
 
 A copy carries its projects' histories and an ``AM_export.yaml`` naming the
-entry each log ended at. That entry is the common ancestor, and everything here
-is a three-way comparison against it: what this collection has done since, what
+entry each log ended at. **That entry proves where the copy came from; the
+common ancestor is the history the two logs share.** Everything here is a
+three-way comparison against that: what this collection has done since, what
 the copy has done since, and whether those can both be true.
+
+Taking the recorded tip as the ancestor instead would be right exactly once. A
+merge adds the copy's entries to this collection, so a copy that is worked on
+and brought back a second time shares more history than its fork point names --
+and comparing against the fork point would call every label taken the first time
+a conflict, each side having "changed" it since.
 
 **Nothing is trusted about current content.** Every label in scope is re-hashed
 on both sides rather than read out of a log, because anything can have edited a
@@ -365,8 +372,7 @@ def _plan_project(
     """Return what one project's merge would do."""
     our_log = read_log(our_project.path)
     their_log = read_log(their_project.path)
-    shared, ours_since = _split_at(our_log, fork.tip)
-    _, theirs_since = _split_at(their_log, fork.tip)
+    shared, ours_since, theirs_since = _common_history(our_log, their_log)
 
     our_groups = _groups_of(our_project)
     their_groups = _groups_of(their_project)
@@ -573,13 +579,24 @@ def _projects_by_key(projects: Sequence[Project]) -> dict[str, Project]:
     return {project.key: project for project in projects}
 
 
-def _split_at(log: HistoryLog, tip: str | None) -> tuple[list[Event], list[Event]]:
-    """Return the entries up to and including *tip*, and those after it."""
-    events = list(log.events)
-    for index, event in enumerate(events):
-        if event.id == tip:
-            return events[: index + 1], events[index + 1:]
-    return events, []
+def _common_history(
+    ours: HistoryLog, theirs: HistoryLog
+) -> tuple[list[Event], list[Event], list[Event]]:
+    """Return the entries both logs hold, and what each has that the other has not.
+
+    The common ancestor, and the two divergences from it. Read as a set rather
+    than as a prefix, because a log is not a line: a previous merge added the
+    copy's entries to this collection, and a later export from either side puts
+    entries below them. An id is a hash of an entry's whole body, so an entry
+    the two share is one that physically travelled between them.
+    """
+    our_ids = {event.id for event in ours.events}
+    their_ids = {event.id for event in theirs.events}
+    return (
+        [event for event in ours.events if event.id in their_ids],
+        [event for event in ours.events if event.id not in their_ids],
+        [event for event in theirs.events if event.id not in our_ids],
+    )
 
 
 def _digests_at(events: Sequence[Event]) -> dict[str, str | None]:
