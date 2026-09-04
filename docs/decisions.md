@@ -399,23 +399,24 @@ rather than appending to it.
   **Idempotence comes from elsewhere**: `plan_baseline` skips targets already recorded.
 - **A log tolerates what `state.py` refuses.** A control file must be understood completely before
   anything acts on it; a record must not lose four thousand good entries over one bad line. So a
-  damaged or newer line is kept aside rather than raising, and forward compatibility comes from
-  append-only plus that tolerance — `FILE_VERSION` is reserved for a real format break.
+  damaged or newer line is kept aside, and forward compatibility comes from append-only plus that
+  tolerance — `FILE_VERSION` is reserved for a real format break.
 - **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
   `metadata.FIELDS`. **Strict on the way in, tolerant on the way out**: writing is ours to control,
   reading is not.
 - **Attribution is a record, not an authentication.** The name is self-declared, so `by_source`
-  records how it was arrived at — an `os` account name is a guess about who was at the keyboard,
-  which is what the window's *Record changes as* exists to replace. Resolving one never fails: an
-  entry naming an account beats a refused save.
-- **Recording is something a project opts into, and never fails the change it describes.**
-  `history.Recorder` states both. The consequence worth writing down here is that installing any of
-  this changes nothing about a collection that has not run `init-history` — the property that let
-  six stages of it ship one at a time, and that `test_a_project_with_no_log_is_left_without_one`
-  exists to keep true.
+  records how it was arrived at — an `os` account name is a guess about who was at the keyboard.
+  Resolving one never fails: an entry naming an account beats a refused save.
+- **Recording is something a project opts into, and never fails the change it describes**, both of
+  which `history.Recorder` states. The consequence worth writing down: installing any of this
+  changes nothing about a collection that has not run `init-history` — the property that let each
+  stage ship one at a time.
 - **A path is resolved before the project holding it is looked for**, or a root reached through a
   symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
-  only a test making its own symlink finds, `/tmp` being one on macOS and `tmp_path` not.
+  only a test making its own symlink finds, `/tmp` being one on macOS and `tmp_path` not. **And a
+  log counts only where the directory is a project**, by `discovery`'s marker rule: one at a
+  collection root would swallow every project below it into a single log, under targets that match
+  nothing else and travel with nothing.
 - **`init-history` covers every series, unlike everything else that writes**: a record covering
   only Adaptive Polishing would leave every reference and alignment label unrecorded permanently,
   with no second chance at a baseline. Why its label fields are optional is on `history.KINDS`.
@@ -423,10 +424,10 @@ rather than appending to it.
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it does not merely slow a scan — a superseded version is read as a
   current label and **reaches a training CSV**.
-- **What is archived asks the log, not the state.** `plan_conversions` calls a non-empty label
-  `annotated` whether a machine wrote it a minute ago or somebody proofread it for an hour, and both
-  are `selected`; only the recorded digest separates them. Unknown provenance counts as human work,
-  which is every label in the collection today.
+- **What is archived asks the log, not the state.** A non-empty label is `annotated` whether a
+  machine wrote it a minute ago or somebody proofread it for an hour, and both are `selected`; only
+  the recorded digest separates them. Unknown provenance counts as human work, which is every label
+  in the collection today.
 - **Restoring and merging are the ordinary save**, so both are held to batch validation, the
   stale-file refusal and the protection of proofread work. Only what is *recorded* differs, which is
   why `WriteProvenance` names the entry kind rather than it being inferred from whichever optional
@@ -441,9 +442,8 @@ rather than appending to it.
 - **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
   same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
   log: the wrong ancestor discards work while reporting success.
-- **A merge compares digests re-read from both trees, never the logs**: anything can edit a label
-  without recording it, and a merge believing the log would keep the wrong version while reporting
-  success.
+- **A merge compares digests re-read from both trees, never the logs**, for the reason `merge.py`
+  opens with.
 - **One resolution function serves labels, states and metadata fields**, so three kinds of change
   cannot answer one shape of change differently. **Timestamps decide nothing** — clocks differ
   between machines and a later one is routinely a recompression on real work — nor does any rule

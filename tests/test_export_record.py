@@ -17,7 +17,6 @@ from am_segmentation_manager.history import (
     Recorder,
     append_event,
     build_event,
-    history_file_path,
     read_log,
 )
 from am_segmentation_manager.layout import ARCHIVE_DIRECTORY
@@ -35,7 +34,7 @@ from am_segmentation_manager.operations.export_record import (
     write_export_record,
 )
 from am_segmentation_manager.scanner import Scanner
-from conftest import build_dataset
+from conftest import build_dataset, start_history
 
 #: Every indexed operation asks which projects, lamellae, stages and images it
 #: covers; an export of everything says so rather than defaulting.
@@ -52,7 +51,7 @@ def source(tmp_path: Path) -> Path:
     root = tmp_path / "collection"
     root.mkdir()
     dataset = build_dataset(root, lamellae=1, acquisitions=2, labels="annotated")
-    history_file_path(dataset.project).touch()
+    start_history(dataset.project)
 
     recorder = Recorder(by="casper", by_source="flag")
     append_event(

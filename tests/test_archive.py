@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.history import Recorder, history_file_path, read_log
+from am_segmentation_manager.history import Recorder, read_log
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.layout import ARCHIVE_DIRECTORY
 from am_segmentation_manager.operations.archive import (
@@ -27,7 +27,7 @@ from am_segmentation_manager.operations.archive import (
     versions_of,
 )
 from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
-from conftest import build_dataset
+from conftest import build_dataset, start_history
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("tifffile")
@@ -41,7 +41,7 @@ def recorder() -> Recorder:
 
 def logged(project: Path) -> Path:
     """Start a log in *project*, so operations there record and archive."""
-    history_file_path(project).touch()
+    start_history(project)
     return project
 
 

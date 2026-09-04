@@ -19,7 +19,6 @@ from am_segmentation_manager.history import (
     Recorder,
     append_event,
     build_event,
-    history_file_path,
     read_log,
 )
 from am_segmentation_manager.io.atomic import fingerprint_of
@@ -41,7 +40,7 @@ from am_segmentation_manager.operations.merge import (
     plan_merge,
 )
 from am_segmentation_manager.scanner import Scanner
-from conftest import build_dataset
+from conftest import build_dataset, start_history
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("tifffile")
@@ -64,7 +63,7 @@ def forked(tmp_path: Path, recorder):
     main = tmp_path / "collection"
     main.mkdir()
     dataset = build_dataset(main, lamellae=1, acquisitions=2, labels="annotated")
-    history_file_path(dataset.project).touch()
+    start_history(dataset.project)
     append_event(
         dataset.project,
         build_event(
@@ -627,7 +626,7 @@ def test_a_merge_will_not_silently_drop_a_corrected_claim(tmp_path: Path, record
     main = tmp_path / "collection"
     main.mkdir()
     dataset = build_dataset(main, lamellae=1, acquisitions=2, labels="annotated")
-    history_file_path(dataset.project).touch()
+    start_history(dataset.project)
     _baseline(main, recorder)
     transition_records(_records(main)[:1], "corrected", recorder=recorder)
 
@@ -687,7 +686,7 @@ def test_an_empty_label_here_is_not_archived_when_it_is_replaced(tmp_path: Path,
     main = tmp_path / "collection"
     main.mkdir()
     dataset = build_dataset(main, lamellae=1, acquisitions=2, labels="empty")
-    history_file_path(dataset.project).touch()
+    start_history(dataset.project)
     _baseline(main, recorder)
 
     copy = tmp_path / "copy"

@@ -13,9 +13,10 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.gui.version_controller import VersionController
-from am_segmentation_manager.history import Recorder, history_file_path
+from am_segmentation_manager.history import Recorder
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
+from conftest import start_history
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("tifffile")
@@ -30,7 +31,7 @@ def recorder() -> Recorder:
 @pytest.fixture
 def label(tmp_path: Path, recorder) -> Path:
     """A label in a project that keeps a history, with one kept version."""
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     path = tmp_path / "sem_labels" / "img_000.tif"
     _write(path, 2)
     _save(path, _pixels(3), recorder)
@@ -69,7 +70,7 @@ def _save(path: Path, array, recorder: Recorder, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 
 def test_a_label_with_no_kept_versions_has_nothing_to_show(tmp_path: Path, recorder):
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     fresh = _write(tmp_path / "sem_labels" / "new.tif", 1)
 
     controller = VersionController(recorder)
@@ -174,7 +175,7 @@ def test_a_version_of_another_size_has_no_difference_to_show(
 ):
     """A conversion writes at model resolution; a mask across a resize would
     mark every pixel, which says nothing."""
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     path = tmp_path / "sem_labels" / "img.tif"
     _write(path, 2)
     _save(path, _pixels(3, shape=(32, 32)), recorder)
@@ -415,7 +416,7 @@ def test_only_this_label_s_own_archive_directory_is_read(label, recorder, tmp_pa
 
 
 def test_a_label_whose_stem_prefixes_another_gets_only_its_own(tmp_path, recorder):
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     short = _write(tmp_path / "sem_labels" / "img.tif", 2)
     longer = _write(tmp_path / "sem_labels" / "img_000.tif", 2)
     _save(short, _pixels(3), recorder)

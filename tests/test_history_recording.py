@@ -20,6 +20,7 @@ from am_segmentation_manager.history import (
 )
 from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
 from am_segmentation_manager.state import read_state, write_state
+from conftest import start_history
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("tifffile")
@@ -33,7 +34,7 @@ def recorder() -> Recorder:
 
 def logged(project: Path) -> Path:
     """Start a log in *project*, so operations there record into it."""
-    history_file_path(project).touch()
+    start_history(project)
     return project
 
 

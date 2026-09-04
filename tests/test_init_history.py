@@ -25,7 +25,7 @@ from am_segmentation_manager.operations.init_history import (
     plan_baseline,
 )
 from am_segmentation_manager.scanner import Scanner
-from conftest import build_dataset
+from conftest import build_dataset, start_history
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("tifffile")
@@ -231,7 +231,7 @@ def test_a_log_started_by_hand_gains_the_entry_that_names_its_project(
 ):
     """Stage 2 opts a project in by creating the file; this completes it."""
     dataset = build_dataset(tmp_path, labels="annotated")
-    history_file_path(dataset.project).touch()
+    start_history(dataset.project)
 
     report = baseline(tmp_path, recorder)
 

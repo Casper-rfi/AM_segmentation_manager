@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.history import Recorder, history_file_path, read_log
+from am_segmentation_manager.history import Recorder, read_log
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_io import label_fields
@@ -25,6 +25,7 @@ from am_segmentation_manager.operations.revert import (
     apply_revert,
     plan_revert,
 )
+from conftest import start_history
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("tifffile")
@@ -43,7 +44,7 @@ def converted(tmp_path: Path, recorder):
     The state the workflow this undoes leaves behind: what is on disk is the
     conversion, and the proofread version is in the archive.
     """
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     label = tmp_path / "sem_labels" / "img_000.tif"
     _write(label, 2)
     _convert_over(label, _pixels(3), recorder)
@@ -158,7 +159,7 @@ def test_putting_it_back_does_not_keep_the_model_s_untouched_guess(
 
 
 def test_a_whole_selection_goes_back_at_once(tmp_path: Path, recorder):
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     labels = []
     for index in range(4):
         label = tmp_path / "sem_labels" / f"img_{index}.tif"
@@ -185,7 +186,7 @@ def test_a_revert_is_recorded_and_so_can_itself_be_undone(converted, recorder):
 # ---------------------------------------------------------------------------
 
 def test_a_label_no_conversion_touched_is_left_alone(tmp_path: Path, recorder):
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     untouched = _write(tmp_path / "sem_labels" / "img.tif", 2)
 
     plan = plan_revert([_record(untouched)], "conversion")
@@ -196,7 +197,7 @@ def test_a_label_no_conversion_touched_is_left_alone(tmp_path: Path, recorder):
 
 def test_a_conversion_that_kept_nothing_is_left_alone(tmp_path: Path, recorder):
     """Over an empty placeholder nothing is archived, so there is nothing back."""
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     label = tmp_path / "sem_labels" / "img.tif"
     _write(label, 0)
     _convert_over(label, _pixels(3), recorder)
@@ -243,7 +244,7 @@ def test_one_proofread_label_stops_the_whole_batch(tmp_path: Path, recorder):
     """Checked before the first write, so the answer is "nothing happened"."""
     from am_segmentation_manager.operations.selection import transition_records
 
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     records = []
     for index in range(3):
         label = tmp_path / "sem_labels" / f"img_{index}.tif"

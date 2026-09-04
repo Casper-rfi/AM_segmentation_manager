@@ -26,6 +26,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
+from .discovery import PROJECT_MARKERS
 from .io.path import checked_relative_key
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -506,21 +507,36 @@ def history_file_path(project_directory: Path) -> Path:
 
 
 def containing_project(path: Path) -> Path | None:
-    """Return the nearest directory at or above *path* that holds a log.
+    """Return the nearest project at or above *path* that keeps a log.
 
     Lets a command be pointed at a label and find the log that records it,
     without needing the scanner to say which project the label belongs to.
+
+    **A log only counts where the directory is a project**, by the same marker
+    rule :mod:`.discovery` uses. A file dropped at a collection root would
+    otherwise swallow every project beneath it into one log, under targets that
+    no longer match the per-project ones used everywhere else -- the same
+    failure `find_project_roots` refuses by continuing past a marker.
 
     **Resolved before the walk**, so the answer can be subtracted from a
     resolved path to give a target. A root found through a symlinked parent --
     ``/tmp`` being one on macOS -- is not a prefix of the resolved file, and
     every entry about it would be quietly dropped.
     """
+    from .discovery import project_markers
+
     resolved = path.resolve()
     start = resolved if resolved.is_dir() else resolved.parent
     for directory in (start, *start.parents):
-        if history_file_path(directory).is_file():
+        if not history_file_path(directory).is_file():
+            continue
+        if project_markers(directory):
             return directory
+        logger.warning(
+            "%s holds a log but is not a project, so nothing below it is "
+            "recorded there. A log belongs at a project root, beside %s.",
+            directory, " or ".join(PROJECT_MARKERS),
+        )
     return None
 
 

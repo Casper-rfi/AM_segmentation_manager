@@ -283,6 +283,27 @@ def write_marker(project: Path, kind: str = "experiment", *, name: str = "projec
         raise ValueError(f"Unknown marker kind: {kind}")
 
 
+def start_history(project: Path, *, kind: str = "experiment") -> Path:
+    """Opt *project* into recording, making it a project first if it is not one.
+
+    A log only counts where the directory is a project, so a test that touches
+    ``AM_history.jsonl`` into a bare directory is testing a shape the package
+    refuses. One helper, so that stays true everywhere at once.
+
+    Returns:
+        The log file.
+    """
+    from am_segmentation_manager.discovery import project_markers
+    from am_segmentation_manager.history import history_file_path
+
+    project.mkdir(parents=True, exist_ok=True)
+    if not project_markers(project):
+        write_marker(project, kind)
+    path = history_file_path(project)
+    path.touch()
+    return path
+
+
 def write_label(path: Path, content: str) -> Path:
     """Write a label file.
 

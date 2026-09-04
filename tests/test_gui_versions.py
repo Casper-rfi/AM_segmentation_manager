@@ -37,10 +37,10 @@ if HAS_QT and HAS_IMAGES:
         DIFFERENCE_CLASS,
         VersionsBar,
     )
-    from am_segmentation_manager.history import Recorder, history_file_path
+    from am_segmentation_manager.history import Recorder
     from am_segmentation_manager.io.atomic import fingerprint_of
     from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
-    from conftest import destroy
+    from conftest import destroy, start_history
 
 
 @pytest.fixture(scope="session")
@@ -65,7 +65,7 @@ def recorder() -> Recorder:
 @pytest.fixture
 def label(tmp_path: Path, recorder) -> Path:
     """A label with one kept version, in a project that keeps a history."""
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
     path = tmp_path / "sem_labels" / "img_000.tif"
     _write(path, 2)
     save_labels(

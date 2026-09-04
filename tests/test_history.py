@@ -35,6 +35,7 @@ from am_segmentation_manager.history import (
     resolve_author,
     union,
 )
+from conftest import start_history, write_marker
 
 np = pytest.importorskip("numpy")
 
@@ -367,7 +368,7 @@ def test_a_label_finds_the_log_of_the_project_holding_it(tmp_path: Path):
     label_path = tmp_path / "lamella_01" / "sem_labels" / "i.tif"
     label_path.parent.mkdir(parents=True)
     label_path.touch()
-    history_file_path(tmp_path).touch()
+    start_history(tmp_path)
 
     assert containing_project(label_path) == tmp_path
 
@@ -379,8 +380,8 @@ def test_a_path_with_no_log_above_it_finds_none(tmp_path: Path):
 def test_the_nearest_log_wins_where_one_project_sits_inside_another(tmp_path: Path):
     inner = tmp_path / "inner"
     inner.mkdir()
-    history_file_path(tmp_path).touch()
-    history_file_path(inner).touch()
+    start_history(tmp_path)
+    start_history(inner)
 
     assert containing_project(inner) == inner
 
@@ -392,6 +393,8 @@ def test_the_nearest_log_wins_where_one_project_sits_inside_another(tmp_path: Pa
 def test_the_command_prints_a_projects_entries(tmp_path: Path, capsys):
     from am_segmentation_manager.cli import main
 
+    start_history(tmp_path)
+
     append_event(tmp_path, saved("sem_labels/a.tif"))
     assert main(["history", str(tmp_path)]) == 0
 
@@ -401,6 +404,8 @@ def test_the_command_prints_a_projects_entries(tmp_path: Path, capsys):
 
 def test_the_command_pointed_at_a_label_shows_only_that_label(tmp_path: Path, capsys):
     from am_segmentation_manager.cli import main
+
+    start_history(tmp_path)
 
     append_event(tmp_path, saved("sem_labels/a.tif"))
     append_event(tmp_path, saved("sem_labels/b.tif"))
@@ -423,6 +428,8 @@ def test_the_command_says_so_where_nothing_has_been_recorded(tmp_path: Path, cap
 
 def test_an_account_name_is_shown_as_one_rather_than_as_a_claim(tmp_path: Path, capsys):
     from am_segmentation_manager.cli import main
+
+    start_history(tmp_path)
 
     append_event(tmp_path, build_event(
         "state-changed", target="a.tif", by="root", by_source="os",
@@ -459,3 +466,40 @@ def test_entries_sharing_a_millisecond_keep_the_order_they_were_written(tmp_path
     targets = [event.target for event in read_log(tmp_path).events]
 
     assert targets == [f"sem_labels/{index}.tif" for index in range(6)]
+
+
+def test_a_log_at_a_directory_that_is_not_a_project_records_nothing(tmp_path: Path):
+    """One dropped at a collection root would swallow every project below it.
+
+    Its targets would be ``project_a/lam/sem_labels/img.tif`` where every other
+    reader uses the per-project key, and it would travel with nothing.
+    """
+    from am_segmentation_manager.history import history_file_path
+
+    history_file_path(tmp_path).touch()          # a collection root, not a project
+    project = tmp_path / "project_a"
+    write_marker(project)
+    label = project / "lam" / "sem_labels" / "img.tif"
+    label.parent.mkdir(parents=True)
+    label.touch()
+
+    assert containing_project(label) is None
+
+
+def test_a_log_beside_a_marker_is_the_project_it_belongs_to(tmp_path: Path):
+    project = tmp_path / "project_a"
+    start_history(project)
+    label = project / "lam" / "sem_labels" / "img.tif"
+    label.parent.mkdir(parents=True)
+    label.touch()
+
+    assert containing_project(label) == project.resolve()
+
+
+def test_the_nearest_project_wins_over_one_further_up(tmp_path: Path):
+    outer = tmp_path / "outer"
+    inner = outer / "inner"
+    start_history(outer)
+    start_history(inner, kind="am_metadata")
+
+    assert containing_project(inner / "sem_labels" / "img.tif") == inner.resolve()
