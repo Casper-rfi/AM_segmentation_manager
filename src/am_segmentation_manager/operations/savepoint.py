@@ -269,22 +269,31 @@ def reachability(
 
     states = []
     for target, digest in sorted(wanted.items()):
-        archived = kept.get((target, digest))
-        if archived is not None and (project_root / archived).is_file():
+        recorded = kept.get((target, digest))
+        archived = (
+            recorded
+            if recorded is not None and (project_root / recorded).is_file()
+            else _archived_file(project_root, target, digest, listing)
+        )
+
+        # **Asked of the label first.** A version can be both on the label and
+        # in the archive, and answering "archived" then would have a revert put
+        # back what is already there -- a write that keeps a copy of nothing.
+        latest = last.get(target)
+        if latest is not None and latest.data.get("digest") == digest:
+            # Whether replacing it would keep it is the archive's own rule:
+            # untouched machine output is regenerable and is skipped, so a
+            # further conversion would take this state with it.
+            at_risk = latest.kind == "label-converted" and archived is None
+            states.append(
+                TargetState(target, digest, AT_RISK if at_risk else CURRENT, archived)
+            )
+            continue
+
+        if archived is not None:
             states.append(TargetState(target, digest, ARCHIVED, archived))
             continue
-        on_disk = _archived_file(project_root, target, digest, listing)
-        if on_disk is not None:
-            states.append(TargetState(target, digest, ARCHIVED, on_disk))
-            continue
-        latest = last.get(target)
-        if latest is None or latest.data.get("digest") != digest:
-            states.append(TargetState(target, digest, LOST))
-            continue
-        # Still on disk. Whether replacing it would keep it is the archive's
-        # own rule: untouched machine output is regenerable and is skipped.
-        where = AT_RISK if latest.kind == "label-converted" else CURRENT
-        states.append(TargetState(target, digest, where))
+        states.append(TargetState(target, digest, LOST))
     return tuple(states)
 
 

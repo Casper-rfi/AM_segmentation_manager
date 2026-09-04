@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "UNDOABLE",
+    "plan_revert_to",
     "RevertItem",
     "RevertPlan",
     "RevertReport",
@@ -48,6 +49,9 @@ UNDOABLE: Final[dict[str, str]] = {
 
 #: Why a label cannot be put back.
 NO_ENTRY: Final[str] = "no such operation is recorded for it"
+NOT_NAMED: Final[str] = "the savepoint says nothing about it"
+UNREACHABLE: Final[str] = "no version holds what it had then"
+ALREADY_THERE: Final[str] = "it already holds what it had then"
 NOT_ARCHIVED: Final[str] = "the operation kept no earlier version"
 NOT_HERE: Final[str] = "the earlier version's pixels are not in this collection"
 SUPERSEDED: Final[str] = "it has been edited since, so there is newer work to lose"
@@ -249,3 +253,84 @@ def apply_revert(
 
     logger.info("Put %s label(s) back", len(restored))
     return RevertReport(restored=tuple(restored), failed=tuple(failed))
+
+
+# ---------------------------------------------------------------------------
+# Back to a named state
+# ---------------------------------------------------------------------------
+
+def plan_revert_to(records: Iterable[ImageRecord], savepoint) -> RevertPlan:
+    """Return what putting *records* back to *savepoint* would do.
+
+    The counterpart of undoing one operation: a round of work is undone by name
+    rather than by finding the run that started it. Which version each label
+    needs is read from the savepoint's own reachability, so this asks nothing
+    the listing has not already answered -- including of the labels it cannot
+    reach, which are reported here rather than discovered partway through.
+
+    A label already holding what it held then is left alone, not rewritten:
+    there is nothing to put back, and a write would archive a copy of nothing.
+
+    Args:
+        savepoint: A :class:`~.savepoint.Savepoint`.
+    """
+    from .archive import label_versions
+    from .label_groups import build_groups
+    from .savepoint import ARCHIVED, LOST
+    from .selection import current_state
+
+    named: dict[Path, dict[str, object]] = {}
+    for carried in savepoint.projects:
+        named[carried.project.path.resolve()] = {
+            state.target: state for state in carried.targets
+        }
+
+    items: list[RevertItem] = []
+    for group in build_groups(list(records)):
+        label_path = group.label_path
+        if label_path is None:
+            continue
+        project = containing_project(label_path)
+        if project is None or project not in named:
+            continue
+        try:
+            target = label_path.resolve().relative_to(project).as_posix()
+        except ValueError:
+            continue
+
+        corrected = current_state(group.records[0]) == "corrected"
+        state = named[project].get(target)
+        if state is None:
+            items.append(RevertItem(label_path, target, None, corrected, NOT_NAMED))
+            continue
+        if state.where == LOST:
+            items.append(RevertItem(label_path, target, None, corrected, UNREACHABLE))
+            continue
+        if state.where != ARCHIVED:
+            items.append(RevertItem(label_path, target, None, corrected, ALREADY_THERE))
+            continue
+
+        wanted = project / str(state.archived_as)
+        version = next(
+            (
+                candidate
+                for candidate in label_versions(project, target)
+                if candidate.path == wanted and candidate.present
+            ),
+            None,
+        )
+        items.append(
+            RevertItem(
+                label_path=label_path, target=target, version=version,
+                corrected=corrected,
+                blocked="" if version is not None else NOT_HERE,
+            )
+        )
+
+    items.sort(key=lambda item: item.target)
+    logger.debug(
+        "Revert to %s: %s of %s label(s) can go back",
+        savepoint.id, sum(1 for item in items if item.can_revert), len(items),
+    )
+    return RevertPlan(undoing=f"savepoint {savepoint.title or savepoint.id}",
+                      items=tuple(items))

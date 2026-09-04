@@ -425,3 +425,120 @@ def test_the_listing_says_what_each_covers_and_reaches(collection, recorder, cap
     printed = capsys.readouterr().out
     assert "round 3" in printed and "2 project(s) here" in printed
     assert "labels reachable" in printed
+
+
+# ---------------------------------------------------------------------------
+# Undoing a round by name
+# ---------------------------------------------------------------------------
+
+def _records(root: Path):
+    return [record for project in _projects(root) for record in project.image_records]
+
+
+def test_a_round_of_work_goes_back_by_name(collection, recorder):
+    import tifffile
+
+    from am_segmentation_manager.operations.label_io import label_fields
+    from am_segmentation_manager.operations.revert import apply_revert, plan_revert_to
+
+    label = _labels(collection)[0]
+    at_savepoint = label_fields(tifffile.imread(label))["digest"]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    _convert_over(label, 3, recorder)
+
+    point = find_savepoint(_projects(collection), "round 3")
+    plan = plan_revert_to(_records(collection), point)
+    apply_revert(plan, recorder=recorder, allow_corrected=True)
+
+    assert label_fields(tifffile.imread(label))["digest"] == at_savepoint
+
+
+def test_a_label_already_holding_what_it_held_then_is_left_alone(collection, recorder):
+    """Putting back what is already there would keep a copy of nothing."""
+    from am_segmentation_manager.operations.revert import ALREADY_THERE, plan_revert_to
+
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    assert not plan.revertible
+    assert {item.blocked for item in plan.items} == {ALREADY_THERE}
+
+
+def test_only_what_changed_since_is_offered(collection, recorder):
+    from am_segmentation_manager.operations.revert import plan_revert_to
+
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    _convert_over(_labels(collection)[0], 3, recorder)
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    assert len(plan.revertible) == 1
+    assert plan.revertible[0].label_path == _labels(collection)[0]
+
+
+def test_a_state_that_cannot_be_reached_is_reported_rather_than_attempted(
+    collection, recorder
+):
+    from am_segmentation_manager.operations.revert import UNREACHABLE, plan_revert_to
+
+    label = _labels(collection)[0]
+    _convert_over(label, 3, recorder)
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    _convert_over(label, 5, recorder)   # the gap was never closed
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    blocked = [item for item in plan.items if item.blocked == UNREACHABLE]
+    assert len(blocked) == 1 and not plan.revertible
+
+
+def test_reverting_a_round_refuses_proofread_work_without_confirmation(
+    collection, recorder
+):
+    from am_segmentation_manager.operations.revert import apply_revert, plan_revert_to
+    from am_segmentation_manager.operations.selection import transition_records
+
+    label = _labels(collection)[0]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    _convert_over(label, 3, recorder)
+    group = [r for r in _records(collection) if label in r.labels]
+    transition_records(group, "corrected", recorder=recorder)
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    assert plan.corrected
+    with pytest.raises(PermissionError):
+        apply_revert(plan, recorder=recorder)
+
+
+def test_the_command_undoes_a_round_by_name(collection, recorder):
+    from am_segmentation_manager.cli import main
+
+    label = _labels(collection)[0]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    _convert_over(label, 3, recorder)
+
+    assert main([
+        "revert", str(collection), "--modality", "all", "--state", "all",
+        "--project", "all", "--lamella", "all", "--stage", "all", "--image", "all",
+        "--to", "round 3", "--apply", "--confirm-corrected",
+    ]) == 0
+
+
+def test_the_command_refuses_a_savepoint_nobody_took(collection):
+    from am_segmentation_manager.cli import main
+
+    assert main([
+        "revert", str(collection), "--modality", "all", "--state", "all",
+        "--project", "all", "--lamella", "all", "--stage", "all", "--image", "all",
+        "--to", "round 9",
+    ]) == 2

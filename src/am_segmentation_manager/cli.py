@@ -71,7 +71,12 @@ from .operations.merge import (
     plan_merge,
 )
 from .operations.predictions import convert_record_predictions, plan_conversions
-from .operations.revert import UNDOABLE, apply_revert, plan_revert
+from .operations.revert import (
+    UNDOABLE,
+    apply_revert,
+    plan_revert,
+    plan_revert_to,
+)
 from .reporting import format_bytes, print_project_summary, print_survey
 from .scanner import Scanner
 from .survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
@@ -1180,6 +1185,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_scope_arguments(revert_cmd)
+    revert_cmd.add_argument(
+        "--to", metavar="SAVEPOINT",
+        help=(
+            "Put every label back to what it held at a savepoint, by id or "
+            "title -- a whole round of work undone by name. Labels the "
+            "savepoint cannot reach are reported and left alone"
+        ),
+    )
     revert_cmd.add_argument(
         "--undo", choices=sorted(UNDOABLE), default="conversion",
         help="Which operation to undo (default: conversion)",
@@ -2503,10 +2516,24 @@ def _cmd_revert(args: argparse.Namespace) -> int:
         logger.info("No matching images found")
         return 2
 
+    from .operations.savepoint import SavepointRefused, find_savepoint
+
     try:
-        plan = plan_revert(
-            records, args.undo, allow_superseded=args.allow_superseded
-        )
+        if args.to:
+            projects = Scanner(start_path).build_index().all_projects()
+            point = find_savepoint(projects, args.to)
+            plan = plan_revert_to(records, point)
+            logger.info(
+                "%s: %d project(s) here, %d of %d label(s) reachable",
+                point.title or point.id, point.found, point.reachable, point.targets,
+            )
+        else:
+            plan = plan_revert(
+                records, args.undo, allow_superseded=args.allow_superseded
+            )
+    except SavepointRefused as error:
+        logger.error("Refused: %s", error)
+        return 2
     except ValueError as error:
         logger.error("%s", error)
         return 2
