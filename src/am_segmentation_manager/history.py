@@ -249,7 +249,9 @@ class HistoryLog:
 
     Attributes:
         path: The file, whether or not it exists.
-        events: The entries understood, in the order written.
+        events: The entries understood, **oldest first by when they happened**,
+            which is not the order they sit in the file: a merge appends the
+            copy's entries whole, and they are older than what is above them.
         damaged: Lines that are not usable entries at all.
         unrecognised: Lines written by a version that knows more than this one.
             Kept apart from *damaged* because they are somebody's real record.
@@ -574,6 +576,15 @@ def read_log(project_directory: Path) -> HistoryLog:
             else:
                 damaged.append(UnusableLine(number, detail, line))
 
+    # Ordered here, once, rather than by each reader. A merge appends the copy's
+    # entries at the end of the file, so file order stops being time order the
+    # first time one happens -- and everything asking what happened last to a
+    # label reads it: the archive's provenance check, and the version `revert`
+    # puts back. **Sorted on the time alone**, the sort being stable, so entries
+    # sharing a millisecond keep the order they were written in rather than
+    # being scrambled by a hash.
+    events.sort(key=lambda event: event.at)
+
     if damaged:
         logger.warning("%s unusable line(s) in %s", len(damaged), path)
     if unrecognised:
@@ -786,7 +797,7 @@ class Recorder:
 # ---------------------------------------------------------------------------
 
 def events_for(log: HistoryLog, target: str) -> list[Event]:
-    """Return the entries about *target*, oldest first."""
+    """Return the entries about *target*, oldest first by when they happened."""
     return list(log.by_target.get(target, ()))
 
 

@@ -430,3 +430,32 @@ def test_an_account_name_is_shown_as_one_rather_than_as_a_claim(tmp_path: Path, 
     ))
     main(["history", str(tmp_path)])
     assert "root (account)" in capsys.readouterr().out
+
+
+def test_entries_a_merge_appended_are_read_in_the_order_things_happened(tmp_path: Path):
+    """A merge appends the copy's entries whole, and they are older than ours.
+
+    Everything asking what happened *last* to a label reads this order: what the
+    archive treats as machine output, and the version a revert puts back.
+    """
+    append_event(tmp_path, saved("sem_labels/a.tif", at="2026-09-04T10:00:00.000Z"))
+    append_event(tmp_path, saved("sem_labels/a.tif", at="2026-08-01T09:00:00.000Z"))
+
+    log = read_log(tmp_path)
+
+    assert [event.at for event in log.events] == [
+        "2026-08-01T09:00:00.000Z", "2026-09-04T10:00:00.000Z"
+    ]
+    assert latest_for(log, "sem_labels/a.tif").at == "2026-09-04T10:00:00.000Z"
+
+
+def test_entries_sharing_a_millisecond_keep_the_order_they_were_written(tmp_path: Path):
+    """A batch writes many entries in one millisecond; a hash must not reorder them."""
+    for index in range(6):
+        append_event(
+            tmp_path, saved(f"sem_labels/{index}.tif", at="2026-09-04T10:00:00.000Z")
+        )
+
+    targets = [event.target for event in read_log(tmp_path).events]
+
+    assert targets == [f"sem_labels/{index}.tif" for index in range(6)]

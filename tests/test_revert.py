@@ -282,3 +282,41 @@ def test_the_command_previews_by_default(converted, recorder, capsys):
     ) in (0, 2)
 
     assert _digest(converted) == before
+
+
+def test_a_merge_appending_older_entries_does_not_confuse_which_run_to_undo(
+    converted, recorder
+):
+    """File order stops being time order the first time a merge happens.
+
+    ``revert`` looks for the last conversion, and for anything that changed the
+    label after it. Read by position in the file, an older entry a merge
+    appended counts as the most recent thing that happened to the label.
+    """
+    from am_segmentation_manager.history import (
+        append_event,
+        build_event,
+        containing_project,
+    )
+
+    project = containing_project(converted)
+    target = converted.resolve().relative_to(project).as_posix()
+    expected = plan_revert([_record(converted)], "conversion").revertible[0]
+
+    # What a merge does: append the copy's entries whole, older than ours, and
+    # this one kept nothing -- so taking it as the last conversion says there is
+    # nothing to put back.
+    append_event(
+        project,
+        build_event(
+            "label-converted", by="anna", by_source="flag", target=target,
+            at="2020-01-01T00:00:00.000Z",
+            digest="0" * 16, dtype="uint8", shape=[16, 16], empty=False,
+            model="ancient", prediction_kind="am_seg",
+        ),
+    )
+
+    plan = plan_revert([_record(converted)], "conversion")
+
+    assert plan.revertible, "the older entry is not the conversion to undo"
+    assert plan.revertible[0].version.path == expected.version.path
