@@ -34,11 +34,11 @@ reachable, and which projects record nothing at all.
 
 In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
 kept when the label was replaced, and the predictions beside the image — and puts a kept one back. The
-two-machine round trip has been rehearsed on real copied projects. What is left is the
-window — merge in Export beside the copy it undoes, revert in Curate's operations, savepoints and
-pruning in Add data's *Whole collection* group where a collection-wide operation already lives.
-`archive` and `history` get no surface, the version strip answering both. The two repairs that had to
-come first are done: the copy the window writes carries its fork point, and recording starts itself.
+two-machine round trip has been rehearsed on real copied projects. **Savepoints and reclaiming
+archive space are in the window**, in Add data's *Whole collection* group with the other acts that
+cover a whole collection, and what the archive costs sits on a line beside them, measured when that
+tab is opened rather than during a scan. What is left is merge, in Export beside the copy it undoes,
+and revert in Curate's operations; `archive` and `history` get no surface, the strip answering both.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

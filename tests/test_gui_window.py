@@ -1577,6 +1577,115 @@ def test_copying_into_the_collection_is_refused(window, inline_operations):
     assert not inside.exists()
 
 
+# ---------------------------------------------------------------------------
+# Savepoints, which are collection-wide and so live beside the other two
+# ---------------------------------------------------------------------------
+
+def take_savepoint(window, title="round 1", note="", gap=False):
+    """Answer the savepoint dialog without opening it."""
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    class _Answered:
+        def __init__(self, *_args):
+            self.title, self.description, self.closing_gap = title, note, gap
+
+        def exec_(self):
+            from qtpy.QtWidgets import QDialog
+            return QDialog.Accepted
+
+    original = module.SavepointDialog
+    module.SavepointDialog = _Answered
+    try:
+        window._take_savepoint()
+    finally:
+        module.SavepointDialog = original
+
+
+def test_a_savepoint_names_every_project_in_the_scan(window, inline_operations):
+    """A round is over the dataset a model was trained on, so there is nothing
+    for a savepoint to narrow to and no selection is consulted."""
+    from am_segmentation_manager.operations.savepoint import list_savepoints
+
+    window.metadata_panel.enable.setChecked(True)
+    take_savepoint(window, title="round 1", note="as proofread in August")
+
+    assert inline_operations == [("Savepoint", "Apply")]
+    points = list_savepoints(window.controller.projects)
+    assert [point.title for point in points] == ["round 1"]
+    assert points[0].found == len(window.controller.projects)
+
+
+def test_a_savepoint_starts_the_record_it_writes_into(window, inline_operations):
+    """It is a write like any other, so it comes through the same door."""
+    from am_segmentation_manager.history import history_file_path
+
+    window.metadata_panel.enable.setChecked(True)
+    take_savepoint(window)
+
+    assert all(
+        history_file_path(project.path).is_file()
+        for project in window.controller.projects
+    )
+
+
+def test_a_savepoint_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
+    """It writes, so it is behind the same guard recompressing is."""
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+
+    take_savepoint(window)
+
+    assert shown == ["Editing is off"]
+    assert inline_operations == [], "nothing was previewed, let alone applied"
+
+
+def test_reclaiming_keeps_everything_while_no_round_is_closed(
+    window, inline_operations
+):
+    """The savepoints are the whole policy, so with none taken the archive is
+    one open round and nothing goes. Saying why beats reporting zero."""
+    window.metadata_panel.enable.setChecked(True)
+    reports: list = []
+    window._show_report = lambda title, report: reports.append(report)
+
+    window._reclaim_archive()
+
+    assert inline_operations == [], "nothing was offered to apply"
+    assert reports and "savepoint" in reports[0].headline
+
+
+def test_reclaiming_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+
+    window._reclaim_archive()
+
+    assert shown == ["Editing is off"]
+
+
+def test_the_archive_is_not_measured_while_nothing_keeps_versions(
+    window, monkeypatch
+):
+    """One stat per project rather than a walk of each: the ordinary case is a
+    collection that has never replaced a label, and it must cost nothing."""
+    walked: list = []
+    monkeypatch.setattr(
+        window.operations_controller, "measure_archive",
+        lambda projects: walked.append(projects),
+    )
+
+    window.tabs.setCurrentWidget(window.metadata_panel)
+
+    assert walked == [], "opening the tab walked the archive"
+    assert window.metadata_panel.archive.text() == ""
+
+
 def test_compressing_acts_on_the_whole_collection(window, inline_operations):
     """Recompression preserves the pixels exactly, so there is no label it
     should be withheld from and nothing to select."""

@@ -45,7 +45,13 @@ from .controls import ChipEditor, GripSplitter, ToggleSwitch
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .lists import ProjectTree, add_fold_buttons
 from .paths import add_path_menu
-from .theme import BADGE_STYLES, SWATCH_HEIGHT, SWATCH_OUTLINE, SWATCH_WIDTH
+from .theme import (
+    BADGE_STYLES,
+    MUTED,
+    SWATCH_HEIGHT,
+    SWATCH_OUTLINE,
+    SWATCH_WIDTH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +177,10 @@ class MetadataPanel(QWidget):
     init_requested = Signal()
     #: Emitted when the user asks to recompress every label in the collection.
     compress_requested = Signal()
+    #: Emitted when the user asks to name the state of the whole collection.
+    savepoint_requested = Signal()
+    #: Emitted when the user asks to remove the kept versions nothing needs.
+    reclaim_requested = Signal()
 
     def __init__(self, controller: MetadataController) -> None:
         super().__init__()
@@ -224,8 +234,9 @@ class MetadataPanel(QWidget):
         The first two come before this list has rows in it, which is why they
         sit under the list rather than beside the fields: a collection with no
         metadata files has nothing to select, and naming its projects is what
-        puts the first row there. Compressing joins them because it has no
-        reason to be narrower -- see its tooltip.
+        puts the first row there. Compressing and taking a savepoint join them
+        because neither has anything to narrow to: both act on the whole
+        collection, which is the rule that keeps them off Curate.
 
         Two to a row rather than three across. A button clips its caption
         rather than eliding it, and clipping takes the ends off both sides at
@@ -262,16 +273,50 @@ class MetadataPanel(QWidget):
         self.compress_button.clicked.connect(self.compress_requested.emit)
         grid.addWidget(self.compress_button, 1, 0)
 
+        # Beside the other two collection-wide acts rather than in Curate,
+        # whose operations all narrow to what is ticked: a savepoint covers the
+        # whole dataset a model was trained on and has nothing to narrow to.
+        self.savepoint_button = QPushButton("Savepoint...")
+        self.savepoint_button.setToolTip(
+            "Name the state of every project under this folder, so a round of "
+            "work can be compared against it or put back by name.\n"
+            "Taken a few times a year, at the end of a round of proofreading."
+        )
+        self.savepoint_button.clicked.connect(self.savepoint_requested.emit)
+        grid.addWidget(self.savepoint_button, 1, 1)
+
+        self.reclaim_button = QPushButton("Reclaim space...")
+        self.reclaim_button.setToolTip(
+            "Remove the kept label versions no savepoint needs.\n"
+            "Everything since the most recent savepoint stays, and the history "
+            "is unchanged: what was recorded still says what happened."
+        )
+        self.reclaim_button.clicked.connect(self.reclaim_requested.emit)
+        grid.addWidget(self.reclaim_button, 2, 0)
+
+        # Beside the button that acts on it, in the same slot as the unindexed
+        # line below: both are collection-level facts the project list has no
+        # column for. Measured when this tab is opened rather than during a
+        # scan -- see OperationsController.measure_archive.
+        self.archive = QLabel("")
+        self.archive.setWordWrap(True)
+        self.archive.setStyleSheet(f"color: {MUTED};")
+        grid.addWidget(self.archive, 3, 0, 1, 2)
+
         # The list above shows what is indexed, which says nothing about what
         # is sitting in the folder unindexed -- the state a collection is in
         # before any of this has been done, and the one the list cannot show.
         self.unindexed = QLabel("")
         self.unindexed.setWordWrap(True)
         self.unindexed.setStyleSheet(f"color: {MISMATCH.name()};")
-        grid.addWidget(self.unindexed, 2, 0, 1, 2)
+        grid.addWidget(self.unindexed, 4, 0, 1, 2)
 
         self._update_collection_buttons()
         return box
+
+    def set_archive(self, summary: str) -> None:
+        """Say what the kept label versions cost, once something has measured."""
+        self.archive.setText(summary)
 
     def set_unindexed(self, count: int, images: int) -> None:
         """Say how many directories under the folder are not projects yet."""
@@ -300,7 +345,8 @@ class MetadataPanel(QWidget):
         """Offer the collection actions once they have a folder to act on.
 
         Inspecting the layout and naming projects are offered as soon as a
-        folder is loaded; recompressing waits on the editing guard as well.
+        folder is loaded; recompressing and taking a savepoint wait on the
+        editing guard as well, both of them writing.
         Naming projects still writes nothing until the guard is answered --
         the window says so when the button is pressed. It is offered here
         because a *disabled* button cannot say what it is waiting for, and
@@ -311,6 +357,8 @@ class MetadataPanel(QWidget):
         self.survey_button.setEnabled(has_root)
         self.init_button.setEnabled(has_root)
         self.compress_button.setEnabled(has_root and self.controller.editing_enabled)
+        self.savepoint_button.setEnabled(has_root and self.controller.editing_enabled)
+        self.reclaim_button.setEnabled(has_root and self.controller.editing_enabled)
 
     def _build_fields(self) -> QWidget:
         box = QGroupBox("Metadata")

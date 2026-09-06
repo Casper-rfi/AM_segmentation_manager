@@ -72,6 +72,7 @@ from .operations_panel import OperationsPanel
 from .project_dialog import AddProjectsDialog
 from .project_panel import ProjectPanel, status_legend
 from .report_dialog import ReportDialog
+from .savepoint_dialog import SavepointDialog
 from .scan_banner import ScanBanner
 from .state_panel import StatePanel
 from .theme import BORDER_LIGHT, COMPACT_BUTTON, HEADING, MUTED
@@ -614,6 +615,10 @@ class CurationWindow(QMainWindow):
         #: The devices a child process reported, asked for once per session.
         #: None until asked; an empty tuple is a machine that could not say.
         self._devices: tuple[str, ...] | None = None
+        #: Whether the archive has been measured for the folder now open. One
+        #: measurement per scan: the number cannot change without something
+        #: writing, and everything that writes rescans.
+        self._archive_measured = False
 
         remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
         if remembered:
@@ -830,6 +835,8 @@ class CurationWindow(QMainWindow):
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
         self.metadata_panel.init_requested.connect(self._add_projects)
         self.metadata_panel.compress_requested.connect(self._compress_labels)
+        self.metadata_panel.savepoint_requested.connect(self._take_savepoint)
+        self.metadata_panel.reclaim_requested.connect(self._reclaim_archive)
         self.export_panel.csv_check_requested.connect(self._check_csv)
         self.export_panel.measure_requested.connect(self._measure_labels)
 
@@ -1010,6 +1017,7 @@ class CurationWindow(QMainWindow):
             self.label_panel.focus_canvas()
         elif widget is self.metadata_panel:
             self.metadata_panel.refresh()
+            self._measure_archive()
             # The arrow keys here are scoped to the project list, so they only
             # work once something in it has focus. Giving it focus on arrival
             # is what makes them work without a click first.
@@ -1068,6 +1076,9 @@ class CurationWindow(QMainWindow):
         # Re-pointed rather than left holding records from the previous scan,
         # whose paths may no longer be where the files are.
         self.label_controller.set_lamella(self.controller.lamella)
+        # The archive can only have changed if something wrote, and everything
+        # that writes lands here; so this is where a stale number is dropped.
+        self._archive_measured = False
 
     # -- operations that change files --------------------------------------
 
@@ -1350,6 +1361,88 @@ class CurationWindow(QMainWindow):
             ),
             lambda report: self._show_report("Find specks", report),
             cancellation=cancellation,
+        )
+
+    def _measure_archive(self) -> None:
+        """Say what the kept label versions cost, once per scan.
+
+        Here rather than in the scan: measuring walks every project's archive
+        and reads every log, which is a cost worth paying on the tab that can
+        act on the number and not worth paying to open a collection. Somebody
+        who never opens this tab never pays it.
+
+        Off the interface thread, because on a collection of a hundred
+        projects it is seconds; the line stays as it was until the answer
+        arrives, rather than flickering through a placeholder.
+        """
+        if self._archive_measured or not self.controller.projects:
+            return
+        self._archive_measured = True
+        projects = self.controller.projects
+        if not self.operations_controller.archive_exists(projects):
+            # One stat per project rather than a walk of each: a collection
+            # that has never replaced a label has nothing to measure, and a
+            # dialog flashing up to say so is worse than saying nothing.
+            self.metadata_panel.set_archive("")
+            return
+        self._run_operation(
+            "Archive",
+            lambda: self.operations_controller.measure_archive(projects),
+            lambda size: self.metadata_panel.set_archive(size.describe()),
+        )
+
+    def _reclaim_archive(self) -> None:
+        """Remove the kept label versions no savepoint needs.
+
+        The whole collection, the command line being per project: what pruning
+        keeps is decided by savepoints, which are collection-wide, so asking
+        one project at a time asks one question repeatedly.
+        """
+        if not self.metadata_controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' before reclaiming archive space.",
+            )
+            return
+        projects = self.controller.projects
+        if not projects:
+            self._flash("Scan a folder first")
+            return
+        self._operate(
+            "Reclaim space",
+            lambda allow, dry: self.operations_controller.reclaim_archive(
+                projects, dry_run=dry
+            ),
+        )
+
+    def _take_savepoint(self) -> None:
+        """Name the state of the whole collection.
+
+        The scan rather than the selection, for the reason
+        :meth:`OperationsController.take_savepoint` gives. Behind the same
+        editing guard as recompressing: both write, and both act on everything
+        under the folder.
+        """
+        if not self.metadata_controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' before taking a savepoint.",
+            )
+            return
+        projects = self.controller.projects
+        if not projects:
+            self._flash("Scan a folder first")
+            return
+
+        dialog = SavepointDialog(self, len(projects))
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        title, note, gap = dialog.title, dialog.description, dialog.closing_gap
+        self._operate(
+            "Savepoint",
+            lambda allow, dry: self.operations_controller.take_savepoint(
+                projects, title, description=note, close_the_gap=gap, dry_run=dry
+            ),
         )
 
     def _compress_labels(self) -> None:

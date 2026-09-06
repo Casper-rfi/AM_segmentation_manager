@@ -23,6 +23,7 @@ from ..io.path import make_path_relative
 from ..models import ImageRecord
 from ..operations.csv import find_matching_label
 from ..operations.export_record import ExportRecord
+from ..operations.init_history import writing_recorder
 from ..operations.label_compression import compress_labels, existing_labels
 from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, plan_predictions
@@ -72,6 +73,51 @@ class OperationReport:
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""
         return [self.headline, *self.lines]
+
+
+@dataclass(frozen=True)
+class ArchiveSize:
+    """What the kept label versions cost, across a whole collection.
+
+    Attributes:
+        bytes_held: What the archive occupies now.
+        bytes_reclaimable: What pruning would return. Zero while no savepoint
+            has closed a round, which is the policy rather than a shortfall.
+        versions: How many kept versions there are.
+        unaccounted: Versions no log entry explains, which pruning can never
+            remove because what they are cannot be established.
+        savepoints: How many savepoints are here, which is what decides
+            whether anything is reclaimable at all.
+    """
+
+    bytes_held: int = 0
+    bytes_reclaimable: int = 0
+    versions: int = 0
+    unaccounted: int = 0
+    savepoints: int = 0
+
+    def describe(self) -> str:
+        """Return the one line the Add data tab shows."""
+        if not self.versions:
+            return "Archive: nothing kept yet."
+        held = (
+            f"Archive: {format_bytes(self.bytes_held)} across "
+            f"{self.versions} kept version(s)"
+        )
+        if self.bytes_reclaimable:
+            line = f"{held}; {format_bytes(self.bytes_reclaimable)} could be reclaimed."
+        elif not self.savepoints:
+            line = f"{held}; nothing can be reclaimed until a savepoint closes a round."
+        else:
+            line = f"{held}; nothing to reclaim."
+        if self.unaccounted:
+            # A finding rather than a total: what these are cannot be
+            # established, so nothing ever removes them.
+            line += (
+                f" {self.unaccounted} of them are not accounted for by any log "
+                f"entry and are never removed."
+            )
+        return line
 
 
 #: How many filenames a report lists before leaving the rest to the count. A
@@ -777,6 +823,245 @@ class OperationsController:
                 f"{', '.join(missing[:3])}."
             )
         return tuple(lines)
+
+    def take_savepoint(
+        self,
+        projects: Sequence,
+        title: str,
+        *,
+        description: str = "",
+        close_the_gap: bool = False,
+        dry_run: bool = False,
+    ) -> OperationReport:
+        """Name the state of the whole collection, previewing before it writes.
+
+        A savepoint marks a round of model improvement, which is over the whole
+        dataset a model was trained on -- so this takes the scan rather than
+        what is ticked in Curate, and there is nothing to narrow it to.
+
+        **It is a write, so it comes through the same door as every other**: a
+        project keeping no history joins the record here and is then named,
+        rather than being silently left outside the savepoint it looks like it
+        is part of.
+
+        The preview carries the two things only a person can decide about, and
+        that the command line prints as warnings: the projects whose record
+        does not reach back far enough to join, and the labels only the next
+        conversion would make unreachable.
+
+        Args:
+            projects: Every project in the scan.
+            title: What the savepoint is called. Required.
+            description: Why it was taken.
+            close_the_gap: Keep now the versions that only the next conversion
+                would destroy.
+            dry_run: Report what it would write without writing it.
+        """
+        from ..operations.init_history import plan_baseline
+        from ..operations.savepoint import (
+            SavepointRefused,
+            apply_savepoint,
+            plan_savepoint,
+        )
+
+        projects = list(projects)
+        if not projects:
+            return OperationReport("Nothing has been scanned yet.")
+
+        if dry_run:
+            # Reading the logs and no labels, so a preview stays a preview.
+            joining = plan_baseline(projects)
+            context = []
+            if joining.log_count:
+                context.append(
+                    f"{joining.log_count} project(s) keep no history yet. They "
+                    f"join the record first, recording what "
+                    f"{joining.entry_count} label(s) hold now."
+                )
+            return OperationReport(
+                f"Would name the state of {len(projects)} project(s) as "
+                f"{title!r}.",
+                tuple([*context, *self._savepoint_preview(projects, title)]),
+                len(projects),
+            )
+
+        batch = writing_recorder(projects, self.recorder)
+        try:
+            plan = plan_savepoint(projects, title, description=description)
+        except SavepointRefused as error:
+            return OperationReport(str(error), blocked="refused")
+
+        report = apply_savepoint(plan, recorder=batch, close_the_gap=close_the_gap)
+        labels = sum(len(states) for states in plan.states.values())
+        headline = (
+            f"Named {report.entries_written} project(s) as {title!r}, covering "
+            f"{labels} label(s)."
+        )
+        if report.versions_kept:
+            headline += (
+                f" Kept {len(report.versions_kept)} version(s) the next "
+                f"conversion would have destroyed."
+            )
+        return OperationReport(
+            headline,
+            tuple(self._savepoint_notes(plan)),
+            applied=True,
+            count=report.entries_written,
+        )
+
+    @staticmethod
+    def _savepoint_preview(projects: Sequence, title: str) -> tuple[str, ...]:
+        """Return what a savepoint would cover, where enough is recorded to say.
+
+        A collection that records nothing yet cannot be planned against, and
+        saying so beats a count of zero that reads as "this would do nothing".
+        """
+        from ..operations.savepoint import SavepointRefused, plan_savepoint
+
+        try:
+            plan = plan_savepoint(projects, title)
+        except SavepointRefused:
+            return ("What each project holds is counted once it is in the record.",)
+        return tuple([*OperationsController._savepoint_notes(plan), *plan.describe()])
+
+    @staticmethod
+    def _savepoint_notes(plan) -> list[str]:
+        """Return the decisions a savepoint plan raises, as lines."""
+        notes = []
+        if plan.too_late:
+            notes.append(
+                f"{len(plan.too_late)} project(s) cannot join: their record "
+                f"begins after this savepoint was taken."
+            )
+        if plan.at_risk:
+            notes.append(
+                f"{len(plan.at_risk)} label(s) hold untouched model output, "
+                f"which the archive does not keep. Tick 'Keep what a conversion "
+                f"would destroy' to copy them in now."
+            )
+        return notes
+
+    @staticmethod
+    def archive_exists(projects: Sequence) -> bool:
+        """Return whether anything here keeps replaced label versions.
+
+        One stat per project, so the window can decide whether measuring is
+        worth a worker and a dialog. A collection that has never replaced a
+        label has nothing to walk, and that is the ordinary case.
+        """
+        from ..operations.archive import archive_root
+
+        return any(archive_root(project.path).is_dir() for project in projects)
+
+    def measure_archive(self, projects: Sequence) -> ArchiveSize:
+        """Return what the archive holds and what pruning would return.
+
+        **Never called from a scan.** It walks every project's archive
+        directory and reads every log, which on a collection of a hundred
+        projects is the sort of cost that makes opening one feel slow -- for a
+        number wanted a few times a year. The window asks for it once the tab
+        that can act on it is open.
+
+        Both numbers, because they answer different questions: what this costs,
+        and what could be had back. The second is zero until a savepoint closes
+        a round, which is the rule rather than a disappointment.
+        """
+        from ..operations.archive import archived_versions, plan_prune, total_size
+        from ..operations.savepoint import list_savepoints, open_round, reached_versions
+
+        projects = list(projects)
+        savepoints = list_savepoints(projects)
+        needed = reached_versions(savepoints)
+
+        held = freed = versions = unaccounted = 0
+        for project in projects:
+            kept = archived_versions(project.path)
+            if not kept:
+                continue
+            versions += len(kept)
+            held += total_size(kept)
+            unaccounted += sum(1 for version in kept if version.event is None)
+            plan = plan_prune(
+                project.path,
+                reached=needed.get(project.path.resolve(), set()),
+                open_round=open_round(project.path),
+            )
+            freed += plan.bytes_freed
+        return ArchiveSize(
+            bytes_held=held,
+            bytes_reclaimable=freed,
+            versions=versions,
+            unaccounted=unaccounted,
+            savepoints=len(savepoints),
+        )
+
+    def reclaim_archive(
+        self, projects: Sequence, *, dry_run: bool = False
+    ) -> OperationReport:
+        """Remove the kept label versions no savepoint needs.
+
+        Over the whole collection, the command line being per project: the
+        savepoints that decide what is kept are collection-wide, so asking one
+        project at a time asks the same question repeatedly.
+
+        **The history is left alone.** What was recorded still says what
+        happened; only the pixels behind it go.
+        """
+        from ..operations.archive import apply_prune, plan_prune
+        from ..operations.savepoint import list_savepoints, open_round, reached_versions
+
+        projects = list(projects)
+        if not projects:
+            return OperationReport("Nothing has been scanned yet.")
+
+        savepoints = list_savepoints(projects)
+        needed = reached_versions(savepoints)
+        plans = [
+            (
+                project,
+                plan_prune(
+                    project.path,
+                    reached=needed.get(project.path.resolve(), set()),
+                    open_round=open_round(project.path),
+                ),
+            )
+            for project in projects
+        ]
+        removable = [(project, plan) for project, plan in plans if plan.remove]
+        freed = sum(plan.bytes_freed for _, plan in plans)
+        kept = sum(plan.kept for _, plan in plans)
+
+        if not removable:
+            return OperationReport(
+                f"Nothing to reclaim: all {kept} kept version(s) are needed."
+                if savepoints else
+                f"Nothing to reclaim yet. With no savepoint taken, the whole "
+                f"archive is one round still open and all {kept} kept "
+                f"version(s) stay. Naming a state is what closes a round."
+            )
+
+        lines = tuple(
+            f"{project.key}/{version.target}: {version.path.name} "
+            f"({format_bytes(version.size)})"
+            for project, plan in removable
+            for version in plan.remove
+        )[:MAX_REPORTED_FILES]
+        count = sum(len(plan.remove) for _, plan in removable)
+        if dry_run:
+            return OperationReport(
+                f"Would remove {count} kept version(s), freeing "
+                f"{format_bytes(freed)} and keeping {kept}. The history is "
+                f"unchanged: what was recorded still says what happened.",
+                lines,
+                count,
+            )
+
+        removed = sum(apply_prune(plan) for _, plan in removable)
+        return OperationReport(
+            f"Removed {removed} kept version(s), freeing {format_bytes(freed)}.",
+            applied=True,
+            count=removed,
+        )
 
     def survey(self, root: Path, *, detail: bool = False) -> OperationReport:
         """Report how a directory is interpreted, and what does not fit.
