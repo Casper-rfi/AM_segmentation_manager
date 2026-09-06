@@ -28,7 +28,7 @@ from ..history import AM_HISTORY_FILENAME
 from ..io.atomic import fingerprint_of, write_atomically
 from ..layout import ARCHIVE_DIRECTORY
 from ..metadata import AM_METADATA_FILENAME, EXPERIMENT_FILENAME, PROTOCOL_FILENAME
-from ..models import ImageRecord, Project
+from ..models import ImageRecord, Project, projects_holding
 from ..progress import Cancellation
 from ..state import AM_STATE_FILENAME
 from .csv import find_matching_label
@@ -388,28 +388,10 @@ def _is_within(path: Path, directory: Path) -> bool:
 def projects_of(images: Sequence[Path], projects: Sequence[Project]) -> list[Path]:
     """Return the directories of the projects *images* were found in.
 
-    Public because a fork point has to cover exactly the projects a copy holds,
-    which is the same question this already answers for deciding whose
-    describing files travel. Two answers to it would be two answers about what
-    the copy contains.
-
-    Matched by path rather than by name, for the reason identity is a path
-    everywhere else here: two projects in one collection can be called the
-    same thing. Asked of the images alone -- a label and a state file sit
-    inside the same project as the image that named them.
+    Asked of the images alone -- a label and a state file sit inside the same
+    project as the image that named them.
     """
-    roots = {project.path.resolve(): project.path for project in projects}
-    if not roots:
-        return []
-    found: list[Path] = []
-    for image in _unique(images):
-        resolved = image.resolve()
-        for root, directory in roots.items():
-            if _is_within(resolved, root):
-                if directory not in found:
-                    found.append(directory)
-                break
-    return found
+    return [project.path for project in projects_holding(images, projects)]
 
 
 def _unique(paths: Iterable[Path]) -> list[Path]:

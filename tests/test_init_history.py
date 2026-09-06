@@ -431,11 +431,11 @@ def test_a_project_that_arrives_later_is_brought_into_the_record(
     )
 
 
-def test_it_does_not_opt_a_collection_in(tmp_path: Path, recorder):
-    """Opting in is one considered act on real data, and stays one.
+def test_it_opts_a_collection_in(tmp_path: Path, recorder):
+    """Recording is always on: the first write starts the log it records into.
 
-    This is what keeps it safe to open a collection nobody has opted in --
-    including one this package is only ever allowed to read.
+    Nothing asks and nothing has to be found. What keeps looking at a
+    collection from modifying it is that only a *write* calls this.
     """
     from am_segmentation_manager.history import history_file_path
     from am_segmentation_manager.operations.init_history import ensure_recording
@@ -444,8 +444,27 @@ def test_it_does_not_opt_a_collection_in(tmp_path: Path, recorder):
 
     report = ensure_recording(projects_under(tmp_path), recorder=recorder)
 
-    assert report.entries_written == 0 and report.logs_started == 0
-    assert not history_file_path(dataset.project).is_file(), "nothing was written"
+    assert report.logs_started == 1
+    assert report.entries_written
+    assert history_file_path(dataset.project).is_file()
+
+
+def test_it_records_the_whole_project_not_only_what_is_changing(
+    tmp_path: Path, recorder
+):
+    """Or a savepoint would cover whatever happened to have been edited."""
+    from am_segmentation_manager.operations.init_history import ensure_recording
+
+    dataset = build_dataset(tmp_path, lamellae=2, acquisitions=2, labels="annotated")
+
+    ensure_recording(projects_under(tmp_path), recorder=recorder)
+
+    baselined = {
+        event.target
+        for event in read_log(dataset.project).events
+        if event.kind == "baseline"
+    }
+    assert len(baselined) > 1, "every group is recorded, not just one"
 
 
 def test_bringing_a_project_in_twice_records_it_once(tmp_path: Path, recorder):

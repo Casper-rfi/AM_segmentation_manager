@@ -63,8 +63,8 @@ from .operations.archive import (
 )
 from .operations.init_history import (
     apply_baseline,
-    ensure_recording,
     plan_baseline,
+    writing_recorder,
 )
 from .operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
 from .operations.merge import (
@@ -2712,19 +2712,9 @@ def _recorder(args: argparse.Namespace) -> Recorder:
 
 
 def _writing_recorder(args: argparse.Namespace, projects) -> Recorder:
-    """Return the recorder, having given every project in scope a history.
-
-    Called by commands that write, and by nothing that only reads: a scan is
-    what every read-only command goes through, and one that wrote would mean
-    that listing a collection modified it.
-
-    Costs a decode per label the first time a project is seen and nothing at
-    all afterwards, so an ordinary run pays for reading the logs and no more.
-    """
+    """Return the recorder for a command that writes, per :func:`writing_recorder`."""
     recorder = _recorder(args)
-    if projects:
-        ensure_recording(projects, recorder=recorder)
-    return recorder
+    return writing_recorder(projects, recorder) if projects else recorder
 
 
 def _cmd_history(args: argparse.Namespace) -> int:

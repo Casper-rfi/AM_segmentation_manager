@@ -50,6 +50,7 @@ __all__ = [
     "ProjectBaseline",
     "apply_baseline",
     "ensure_recording",
+    "writing_recorder",
     "plan_baseline",
 ]
 
@@ -337,24 +338,21 @@ def ensure_recording(
     recorder: Recorder,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> BaselineReport:
-    """Give every project a history, in a collection that already keeps one.
+    """Give every project a history, before something writes to it.
 
-    What makes recording always on without anybody performing a history act.
-    Data arrives manually and an Autolamella project is indexable the moment it
-    lands, so nothing would otherwise stop somebody labelling a project that
-    records nothing -- silently, since recording only where a log exists is the
-    rule that lets a collection opt in at all.
+    What makes recording always on without anybody performing a history act:
+    the first change made to a project starts its log and records what the
+    project held at that moment, so a person can go a whole career without
+    touching any of this and still end up with a record that reaches back.
 
-    **It does not opt a collection in.** Where no project in scope keeps a log,
-    nothing here writes: opting in is one considered act on real data and stays
-    one, taken once by `init-history`. What this does is stop a project added
-    *afterwards* falling outside a record the rest of the collection is in.
-    That is also what keeps it safe to point the window at a collection nobody
-    has opted in -- looking is still only looking.
+    **Called by the things that write, never by the scanner or by anything that
+    only reads.** That is the whole of what keeps looking at a collection from
+    modifying it, and it is a rule about call sites rather than one this
+    function can enforce.
 
-    Called by the things that **write**, never by the scanner: every read-only
-    command goes through a scan, and one that wrote would mean that listing a
-    collection modified it.
+    **The whole project is recorded, not only what is being changed.** A
+    baseline covering whatever happened to be edited would make a savepoint
+    cover a set that depends on the order somebody worked in.
 
     Cheap where there is nothing to do, which is every call after the first:
     planning reads the logs and no labels at all. Where there *is* something to
@@ -362,10 +360,6 @@ def ensure_recording(
     fifty takes some seconds -- once, ever.
     """
     projects = list(projects)
-    if not any(history_file_path(project.path).is_file() for project in projects):
-        logger.debug("Nothing here records yet; not opting the collection in")
-        return BaselineReport()
-
     plan = plan_baseline(projects)
     if not plan.entry_count and not plan.log_count:
         return BaselineReport()
@@ -375,3 +369,34 @@ def ensure_recording(
         plan.log_count, plan.entry_count,
     )
     return apply_baseline(plan, recorder=recorder, on_progress=on_progress)
+
+
+def writing_recorder(
+    projects: Iterable[Project],
+    recorder: Recorder,
+    *,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> Recorder:
+    """Return a recorder for one write, having brought *projects* into the record.
+
+    The one call a thing that writes makes: it is what puts
+    :func:`ensure_recording` in front of every change and nowhere else, so that
+    the rule about call sites is kept in one place rather than by each caller
+    remembering it.
+
+    **A record is never worth a lost change.** A baseline that fails is logged
+    and the write goes ahead unrecorded, which leaves a gap in the record; a
+    change refused because its baseline failed would lose the work itself.
+
+    Args:
+        projects: The projects about to be written to.
+        recorder: The run's recorder, whose author and remembered roots the
+            returned batch shares.
+        on_progress: Reported through while baselining, which is the only part
+            of this long enough to be worth watching.
+    """
+    try:
+        ensure_recording(projects, recorder=recorder, on_progress=on_progress)
+    except Exception:  # noqa: BLE001 - a record is never worth a lost change
+        logger.exception("Could not bring these projects into the record")
+    return recorder.for_batch()

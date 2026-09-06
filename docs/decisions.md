@@ -406,9 +406,12 @@ rather than appending to it.
   started it** — crediting *everything* to the annotator would replace one false record with
   another, since they never touched this machine. With no name recorded by default, `--as` is the
   main way one ever appears, which is attribution given case by case rather than collected.
-- **A collection opts in once; a project added afterwards is brought in without anybody asking.**
-  `ensure_recording` is called by what **writes**, never by the scanner — a scan that wrote would
-  mean listing a collection modified it — and it refuses to opt a collection *in*.
+- **Recording is always on, and the first write starts it.** `writing_recorder` puts
+  `ensure_recording` in front of every change and nowhere else, so **looking never modifies** — a
+  rule about call sites, not one the function can enforce. A baseline that fails is logged and the
+  change goes ahead: a gap in the record costs less than the work. **The whole project is
+  baselined**, or a savepoint would cover whatever happened to have been edited; `init-history` is
+  then the catch-up that makes a record start complete, not a switch.
 - **A path is resolved before the project holding it is looked for**, or a root reached through a
   symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
   only a test making its own symlink finds. **And a log counts only where the directory is a

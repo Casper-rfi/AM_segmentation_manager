@@ -17,11 +17,12 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 ## What to pick up next
 
 **Label history and merge**, on branch `label-history` and deliberately unmerged. An append-only
-`AM_history.jsonl` per project records what changed, who changed it and when; every operation that
-writes a label, a state or a metadata field records into it, `am-seg init-history` baselines what is
-already on disk, and `am-seg history` reads one back. **No name is recorded unless somebody states
-one**; `--as` credits a dataset that arrived annotated. A collection opts in once, and a project
-added later joins without anybody asking. A replaced version is kept under `AM_archive/`, which
+`AM_history.jsonl` per project records what changed, who changed it and when, and `am-seg history`
+reads one back. **Recording is always on**: the first change made to a project starts its log and
+records what the whole project held, while looking at a collection writes nothing; `am-seg
+init-history` is the catch-up that baselines a whole collection at once. **No name is recorded unless
+somebody states one**; `--as` credits a dataset that arrived annotated. A replaced version is kept
+under `AM_archive/`, which
 `am-seg archive` reports and `am-seg prune-archive` thins, collapsing what lies between savepoints
 and never what one names. An export carries the history and writes an `AM_export.yaml` naming the
 fork point; `am-seg merge` brings a copy back three-way against the history the two logs share,
@@ -32,16 +33,12 @@ of model improvement — and `am-seg list-savepoints` says what each covers, how
 reachable, and which projects record nothing at all.
 
 In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
-kept when the label was replaced, and the predictions beside the image — and puts a kept one back.
-
-The two-machine round trip has been rehearsed on real copied projects: two rounds of proofreading
-merged back, a refusal over proofread work, a genuine conflict, and a revert. What is left is the
+kept when the label was replaced, and the predictions beside the image — and puts a kept one back. The
+two-machine round trip has been rehearsed on real copied projects. What is left is the
 window — merge in Export beside the copy it undoes, revert in Curate's operations, savepoints and
 pruning in Add data's *Whole collection* group where a collection-wide operation already lives.
-`archive` and `history` get no surface, the version strip answering both. Two repairs come first, and
-**the copy the window writes now carries its fork point**, so it can be merged back at all. The
-second: recording still begins only where a log exists, where the first write into a project should
-start one and baseline it, leaving `init-history` the catch-up rather than the switch.
+`archive` and `history` get no surface, the version strip answering both. The two repairs that had to
+come first are done: the copy the window writes carries its fork point, and recording starts itself.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

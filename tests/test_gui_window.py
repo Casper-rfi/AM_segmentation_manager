@@ -1483,6 +1483,35 @@ def test_copying_the_selection_writes_it_into_the_chosen_folder(
     )
 
 
+def test_looking_at_a_collection_does_not_record_anything(window):
+    """The rule the whole opt-in property now rests on: only a write starts a
+    log, so opening and reading a collection leaves it exactly as it was."""
+    from am_segmentation_manager.history import history_file_path
+
+    root = Path(window.controller.start_path)
+    window.rescan()
+
+    assert not any(
+        history_file_path(project.path).is_file()
+        for project in window.controller.projects
+    ), f"a scan of {root} wrote a log"
+
+
+def test_changing_a_state_starts_the_record_and_writes_into_it(window):
+    """A state change is one of the three doors a change comes through, and it
+    recorded nothing at all before -- not even where a log already existed."""
+    from am_segmentation_manager.history import read_log
+
+    window.state_panel.enable_check.setChecked(True)
+    window.apply_state("deselected")
+
+    project = window.controller.projects[0]
+    kinds = [event.kind for event in read_log(project.path).events]
+    assert "log-created" in kinds, "the write started the log"
+    assert "baseline" in kinds, "and recorded what the project held first"
+    assert "state-changed" in kinds, "and then recorded the change itself"
+
+
 def test_a_copy_made_here_can_be_merged_back(
     window, inline_operations, tmp_path: Path
 ):
@@ -2983,6 +3012,23 @@ def test_a_long_row_is_elided_rather_than_scrolled(metadata_panel):
     # The folder is a row of its own now, so the tooltip carries the whole
     # relative path where the row carries only the name under it.
     assert item.text(0) in item.toolTip(0)
+
+
+def test_saving_metadata_starts_the_record_it_writes_into(metadata_panel):
+    """The third door a change comes through, and the one that never reaches
+    the window: the panel calls its controller directly."""
+    from am_segmentation_manager.history import history_file_path, read_log
+
+    project = metadata_panel.controller.scope[0]
+    assert not history_file_path(project.path).is_file(), "nothing recorded yet"
+    metadata_panel.enable.setChecked(True)
+    set_editor_text(metadata_panel.editors["description"], "A lamella series")
+
+    metadata_panel._save()
+
+    kinds = [event.kind for event in read_log(project.path).events]
+    assert "log-created" in kinds, "the write started the log"
+    assert "metadata-changed" in kinds, kinds
 
 
 def test_saving_updates_the_mark_in_the_list(metadata_panel):

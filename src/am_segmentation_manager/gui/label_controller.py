@@ -14,7 +14,7 @@ decided against, and stepping through it wastes the reviewer's attention.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from ..config import SegmentationConfig
@@ -28,9 +28,10 @@ from ..frames import (
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
 from ..layout import MODALITIES, SERIES
-from ..models import Lamella
+from ..models import Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.csv import find_matching_label
+from ..operations.init_history import writing_recorder
 from ..operations.label_edit import EditPatch, new_label
 from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
@@ -94,9 +95,12 @@ class LabelController:
             cache: Where prepared frames are kept. Defaults to a small
                 full-resolution cache; tests pass one with a stub loader.
         """
-        #: Where this view's changes are recorded. A project with no log is
-        #: left without one, so nothing is recorded until a collection opts in.
+        #: Where this view's changes are recorded.
         self.recorder = Recorder.for_run()
+        #: The scanned projects, so a save can bring the one it writes into
+        #: into the record first. Empty until the window shares a scan, which
+        #: is also every state in which there is nothing to save.
+        self.projects: Sequence[Project] = ()
         self.config = config
         self.cache = cache if cache is not None else FrameCache(
             load_image=load_full_resolution, image_limit=DEFAULT_IMAGE_LIMIT
@@ -145,6 +149,10 @@ class LabelController:
         self._keys: dict[Path, Path] = {}
 
     # -- what is being reviewed --------------------------------------------
+
+    def set_projects(self, projects: Sequence[Project]) -> None:
+        """Note the scanned projects, so a save knows whose history to start."""
+        self.projects = tuple(projects)
 
     def set_lamella(self, lamella: Lamella | None) -> None:
         """Point the view at *lamella*, keeping the position if it is the same one.
@@ -653,9 +661,15 @@ class LabelController:
             PermissionError: If a proofread label would be replaced without
                 *allow_corrected*.
         """
-        batch = self.recorder.for_batch()
+        pending = self.pending_saves()
+        batch = writing_recorder(
+            projects_holding(
+                (item.destination for item in pending), self.projects
+            ),
+            self.recorder,
+        )
         report = save_labels(
-            self.pending_saves(), allow_corrected=allow_corrected, recorder=batch
+            pending, allow_corrected=allow_corrected, recorder=batch
         )
         self._attach_created_labels(report.created)
         headline = report.headline()

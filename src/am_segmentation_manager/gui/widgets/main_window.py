@@ -1057,6 +1057,7 @@ class CurationWindow(QMainWindow):
         projects = self.controller.projects
         self.export_controller.set_projects(projects, self.controller.start_path)
         self.metadata_controller.set_projects(projects)
+        self.label_controller.set_projects(projects)
         self.operations_controller.set_start_path(self.controller.start_path)
         self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
         self.metadata_panel.set_root(self.controller.start_path)

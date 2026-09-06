@@ -23,9 +23,11 @@ from ..frames import (
     resolve_series,
     series_present,
 )
+from ..history import Recorder
 from ..layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
-from ..models import Lamella, Project
+from ..models import Lamella, Project, projects_holding
 from ..operations import label_io
+from ..operations.init_history import writing_recorder
 from ..operations.label_groups import expand_to_groups
 from ..operations.label_io import LabelReadiness, classify_labels
 from ..operations.predict import prediction_destination
@@ -453,6 +455,8 @@ class CurationController:
         self.follow_mode = True
         #: What a state change applies to; see :mod:`.selection`.
         self.selection = Selection()
+        #: Where this view's changes are recorded.
+        self.recorder = Recorder.for_run()
 
     # -- scanning ----------------------------------------------------------
 
@@ -476,38 +480,8 @@ class CurationController:
         self.index = self._scan(self.start_path, on_progress)
         self._projects = self.index.all_projects()
         logger.info("Found %d project(s) under %s", len(self._projects), self.start_path)
-        self._bring_new_projects_into_the_record()
         self.select_project(0)
         return self._projects
-
-    def _bring_new_projects_into_the_record(self) -> None:
-        """Baseline any project that arrived since the collection opted in.
-
-        Here rather than in the scanner, which every read-only command goes
-        through. Runs on whichever thread the scan did -- the window's is a
-        worker with a progress line -- and does nothing at all where nothing
-        records yet, so opening a collection nobody opted in still only looks
-        at it.
-
-        **Never fails a scan.** A collection that could not be brought up to
-        date is still a collection somebody can work in, and the alternative is
-        a window that will not open because of a record nobody asked for.
-        """
-        from ..history import Recorder
-        from ..operations.init_history import ensure_recording
-
-        try:
-            report = ensure_recording(
-                self._projects, recorder=Recorder.for_run()
-            )
-        except Exception:  # noqa: BLE001 - a record is never worth a dead window
-            logger.exception("Could not bring new projects into the record")
-            return
-        if report.entries_written:
-            logger.info(
-                "Recorded %d group(s) across %d newly seen project(s)",
-                report.entries_written, report.logs_started,
-            )
 
     def rescan(self, on_progress: ScanProgress | None = None) -> list[Project]:
         """Read the same root again, keeping the view and what is ticked.
@@ -1448,8 +1422,12 @@ class CurationController:
             )
             return 0
 
+        batch = writing_recorder(
+            projects_holding((record.image_path for record in records), self._projects),
+            self.recorder,
+        )
         changed = transition_records(
-            records, state, allow_leaving_corrected=confirm_corrected
+            records, state, allow_leaving_corrected=confirm_corrected, recorder=batch
         )
         logger.info(
             "Declared %d record(s) %s across %s",

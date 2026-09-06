@@ -1832,6 +1832,27 @@ def test_saving_writes_the_edited_label(qt_app, window):
     assert (tifffile.imread(str(key)) == 2).any(), "the stroke did not reach the file"
 
 
+def test_saving_starts_the_record_it_writes_into(qt_app, window):
+    """The Label tab has no editing guard, so the save is the door itself.
+
+    Recording is always on: nobody switches it on and nothing asks. The first
+    change made to a project starts its log and records what the whole project
+    held first, so the change has something to be a change *from*.
+    """
+    from am_segmentation_manager.history import history_file_path, read_log
+
+    project = window.controller.projects[0]
+    assert not history_file_path(project.path).is_file(), "nothing recorded yet"
+    paint_on(window, value=2)
+
+    save_with(window, mark_corrected=False)
+    settle(qt_app, lambda: saved(window))
+
+    kinds = [event.kind for event in read_log(project.path).events]
+    assert "log-created" in kinds and "baseline" in kinds
+    assert "label-saved" in kinds, kinds
+
+
 def test_saving_clears_what_was_waiting(qt_app, window):
     paint_on(window)
 

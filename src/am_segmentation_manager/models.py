@@ -11,6 +11,7 @@ and reason about. Filesystem scanning is separated from these models.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePath
@@ -251,3 +252,28 @@ class Project:
         """
         name = PurePath(self.relative_path or self.name).name
         return f"{self.number}: {name}" if self.number else name
+
+
+def projects_holding(paths: Iterable[Path], projects: Sequence[Project]) -> list[Project]:
+    """Return the projects of *projects* that *paths* live inside.
+
+    One answer to "whose project is this file in", so that an export deciding
+    whose describing files travel and a write deciding whose history to start
+    cannot come to different answers about the same file.
+
+    Matched by resolved path rather than by name, identity being a path
+    everywhere here: two projects in one collection can be called the same
+    thing. Returned in the order *projects* gives, so a caller's report is
+    stable.
+    """
+    roots = {project.path.resolve(): project for project in projects}
+    if not roots:
+        return []
+    found: dict[Path, Project] = {}
+    for path in paths:
+        resolved = Path(path).resolve()
+        for root, project in roots.items():
+            if root == resolved or root in resolved.parents:
+                found.setdefault(root, project)
+                break
+    return [project for project in projects if project.path.resolve() in found]

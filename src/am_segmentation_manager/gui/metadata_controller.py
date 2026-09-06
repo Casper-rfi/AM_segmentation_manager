@@ -29,6 +29,7 @@ from ..metadata import (
     format_field_value,
 )
 from ..models import Project
+from ..operations.init_history import writing_recorder
 from ..operations.metadata_edit import (
     MetadataChange,
     MetadataValidationError,
@@ -436,7 +437,7 @@ class MetadataController:
             raise PermissionError("Editing is disabled")
         self.plan(edits)
 
-        batch = self.recorder.for_batch()
+        batch = writing_recorder(self._scope, self.recorder)
         changes = [
             update_project_metadata(
                 project.path, edits, project_name=project.display_name, recorder=batch
