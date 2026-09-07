@@ -942,12 +942,11 @@ def test_the_series_control_is_not_also_offered_as_a_filter_row(panel: ExportPan
     assert "series" not in offered
 
 
-def test_the_file_export_is_named_for_what_it_does_and_kept_off_the_csv_run(
-    panel: ExportPanel,
-):
-    """It writes images, not a list of paths. Sat among the CSV buttons it read
-    as a fifth one of those, which is how a copy of gigabytes gets started by
-    accident -- so it is named alike and placed last, under a rule."""
+def test_the_buttons_that_move_files_are_kept_off_the_csv_run(panel: ExportPanel):
+    """They move images and labels, not a list of paths. Sat among the CSV
+    buttons either read as a fifth one of those, which is how a copy of
+    gigabytes gets started by accident -- so both sit after a rule, and
+    everything before it writes or reads a list of paths."""
     column = panel._export_box.layout()
     ordered = [
         column.itemAt(index).widget()
@@ -960,8 +959,10 @@ def test_the_file_export_is_named_for_what_it_does_and_kept_off_the_csv_run(
     ]
 
     assert panel.files_button.text() == "Export images and labels..."
-    assert labelled[-1] == panel.files_button.text()
-    assert all(text.endswith("CSV...") for text in labelled[:-1])
+    assert panel.merge_button.text() == "Merge a copy back..."
+    moving = [panel.files_button.text(), panel.merge_button.text()]
+    assert labelled[-2:] == moving, "the two that move files come last, in order"
+    assert all(text.endswith("CSV...") for text in labelled[:-2])
     # Under a rule, so the eye does not run the two groups together.
     assert isinstance(ordered[ordered.index(panel.files_button) - 1], QFrame)
 

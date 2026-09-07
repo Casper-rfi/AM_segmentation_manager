@@ -879,7 +879,6 @@ class OperationsController:
                 f"while carrying that project's whole log. A savepoint here "
                 f"would claim a state for labels this copy never had. Take it "
                 f"in the collection it came from.",
-                blocked="refused",
             )
 
         if dry_run:
@@ -903,7 +902,7 @@ class OperationsController:
         try:
             plan = plan_savepoint(projects, title, description=description)
         except SavepointRefused as error:
-            return OperationReport(str(error), blocked="refused")
+            return OperationReport(str(error))
 
         report = apply_savepoint(plan, recorder=batch, close_the_gap=close_the_gap)
         labels = sum(len(states) for states in plan.states.values())
@@ -955,6 +954,113 @@ class OperationsController:
             )
         return notes
 
+    def merge_copy(
+        self,
+        source: Path,
+        projects: Sequence = (),
+        *,
+        allow_corrected: bool = False,
+        dry_run: bool = False,
+    ) -> OperationReport:
+        """Bring a worked-on copy back into the collection it came from.
+
+        The other half of the round trip *Export images and labels* starts, and
+        the reason the two sit together: a copy goes out, work happens in it,
+        and this brings that work home three-way against the history the two
+        logs share.
+
+        **A conflict stops the whole merge**, so this reports how many stand
+        and writes nothing. Deciding them is by name, which the command line
+        does with ``--resolve``; applying part of a merge would make what
+        happened depend on what somebody had not got round to yet.
+
+        Every refusal here carries no count and cannot be confirmed past, as
+        an export's does: what they refuse is not the user's to overrule.
+
+        Both trees are read on every run, and the preview and the apply are two
+        runs -- which is what makes the apply describe the collection as it is
+        now rather than as it was when the dialog opened.
+
+        Args:
+            source: The copy, holding the ``AM_export.yaml`` an export wrote.
+            projects: The scan, so the destination joins the record before
+                anything is written into it.
+            allow_corrected: Confirm taking work over labels already proofread.
+            dry_run: Report what it would do without doing it.
+        """
+        from ..operations.label_save import StaleLabels
+        from ..operations.merge import (
+            CONVERGED,
+            KEEP_OURS,
+            TAKE_THEIRS,
+            MergeRefused,
+            apply_merge,
+            plan_merge,
+        )
+
+        destination = self.start_path
+        if destination is None:
+            return OperationReport("Nothing has been scanned yet.")
+        try:
+            plan = plan_merge(Path(source), destination)
+        except MergeRefused as error:
+            return OperationReport(str(error))
+
+        taking = plan.counted(TAKE_THEIRS)
+        incoming = sum(len(project.incoming) for project in plan.projects)
+        context = [
+            f"{taking} to take from the copy, {plan.counted(KEEP_OURS)} already "
+            f"here, {plan.counted(CONVERGED)} arrived at the same thing.",
+        ]
+        if plan.conflicts:
+            return OperationReport(
+                f"{len(plan.conflicts)} conflict(s) stand, so nothing can be "
+                f"merged. Both sides changed these since the copy was taken, "
+                f"and which to keep is decided by name with "
+                f"'am-seg merge --resolve'. Both versions stay in the archive "
+                f"either way.",
+                tuple(plan.describe())[:MAX_REPORTED_FILES],
+            )
+        if not taking and not incoming:
+            return OperationReport(
+                f"Nothing to merge: {Path(source).name} holds no work this "
+                f"collection does not already have."
+            )
+        if plan.corrected and not allow_corrected:
+            return OperationReport(
+                f"{len(plan.corrected)} piece(s) of proofread work here would "
+                f"be written over or unmarked. The version here is kept either "
+                f"way, so this can be undone -- but not unasked.",
+                tuple(
+                    getattr(item, "target", getattr(item, "field", ""))
+                    for item in plan.corrected
+                )[:MAX_REPORTED_FILES],
+                taking,
+                blocked="corrected",
+            )
+        if dry_run:
+            return OperationReport(
+                f"Would merge {taking} change(s) from {Path(source).name}, and "
+                f"add {incoming} history entr(ies).",
+                tuple([*context, *plan.describe()])[:MAX_REPORTED_FILES],
+                taking,
+            )
+
+        batch = writing_recorder(projects, self.recorder)
+        try:
+            report = apply_merge(plan, recorder=batch, allow_corrected=allow_corrected)
+        except (MergeRefused, PermissionError, StaleLabels) as error:
+            return OperationReport(f"Nothing was merged: {error}")
+
+        return OperationReport(
+            f"Merged {report.labels_taken} label(s), {report.states_taken} "
+            f"state(s) and {report.fields_taken} metadata field(s); kept "
+            f"{len(report.archived)} replaced version(s) and added "
+            f"{report.entries_added} history entr(ies).",
+            applied=True,
+            count=report.labels_taken + report.states_taken + report.fields_taken,
+        )
+
     def revert_labels(
         self,
         records: Iterable[ImageRecord],
@@ -1004,7 +1110,7 @@ class OperationsController:
                 plan = plan_revert(records, undoing)
                 naming = f"before the last {undoing}"
         except (SavepointRefused, ValueError) as error:
-            return OperationReport(str(error), blocked="refused")
+            return OperationReport(str(error))
 
         if not plan.revertible:
             return OperationReport(

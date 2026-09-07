@@ -1555,6 +1555,40 @@ def test_a_copy_records_what_it_was_narrowed_to(
     assert record.scope == window.export_controller.describe_filters()
 
 
+def test_merging_waits_on_the_curate_editing_guard(
+    window, inline_operations, monkeypatch, tmp_path: Path
+):
+    """A merge writes labels into this collection, which is what that guard
+    protects -- not Add data's, which governs metadata."""
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+
+    window._merge_copy(str(tmp_path / "copy"))
+
+    assert shown == ["Editing is off"]
+    assert inline_operations == []
+
+
+def test_merging_a_folder_that_is_not_a_copy_is_refused(
+    window, inline_operations, tmp_path: Path
+):
+    """Refused rather than half-read: the wrong ancestor discards work while
+    reporting success."""
+    window.state_panel.enable_check.setChecked(True)
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+    reports: list = []
+    window._show_report = lambda title, report: reports.append(report)
+
+    window._merge_copy(str(stranger))
+
+    assert inline_operations == [], "nothing was offered to apply"
+    assert reports and "fork point" in reports[0].headline
+
+
 def test_copying_previews_before_it_writes(window, inline_operations, monkeypatch):
     """Refusing the preview must leave the folder untouched, gigabytes being
     the usual size of this one."""

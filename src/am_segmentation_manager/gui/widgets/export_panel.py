@@ -330,6 +330,8 @@ class ExportPanel(QWidget):
     project_metadata_export_requested = Signal(str)
     #: Emitted with the directory to copy the matching files into.
     files_export_requested = Signal(str)
+    #: Emitted with the copy to bring back when the user asks to merge.
+    merge_requested = Signal(str)
 
     #: Emitted with a CSV to check the recorded paths of.
     csv_check_requested = Signal(str)
@@ -780,8 +782,8 @@ class ExportPanel(QWidget):
         column.addWidget(self.check_button)
 
         # Under a rule and apart from the four above, which all write or read a
-        # list of paths. This one moves the images and labels themselves, and
-        # reading it as a fifth kind of CSV is how a copy of gigabytes gets
+        # list of paths. These two move the images and labels themselves, and
+        # reading either as a fifth kind of CSV is how a copy of gigabytes gets
         # started by accident.
         column.addSpacing(10)
         column.addWidget(horizontal_rule())
@@ -798,6 +800,18 @@ class ExportPanel(QWidget):
             )
         )
         column.addWidget(self.files_button)
+
+        # Directly under the export it undoes: a copy goes out here and comes
+        # back here, and putting the two together is what makes the round trip
+        # read as one thing rather than two unrelated buttons.
+        self.merge_button = QPushButton("Merge a copy back...")
+        self.merge_button.setToolTip(
+            "Bring the work done in a copy back into this collection.\n"
+            "Nothing is merged while a conflict stands, and proofread work "
+            "here is never written over unasked."
+        )
+        self.merge_button.clicked.connect(self._choose_copy)
+        column.addWidget(self.merge_button)
 
         column.addStretch(1)
         return box
@@ -876,6 +890,15 @@ class ExportPanel(QWidget):
             self.csv_check_requested.emit(str(path))
 
     # -- behaviour ---------------------------------------------------------
+
+    def _choose_copy(self) -> None:
+        """Ask which copy to bring back. It is read, not written to."""
+        path = choose_directory(
+            self, "Choose the copy to merge back", self._last_directory
+        )
+        if path is not None:
+            self._remember(path)
+            self.merge_requested.emit(str(path))
 
     def _choose(self, signal, title: str, directory: bool) -> None:
         """Ask where to write, then emit. The window does the writing."""

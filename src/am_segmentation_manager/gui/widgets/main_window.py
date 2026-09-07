@@ -843,6 +843,7 @@ class CurationWindow(QMainWindow):
         self.export_panel.measure_requested.connect(self._measure_labels)
 
         self.export_panel.files_export_requested.connect(self._copy_files)
+        self.export_panel.merge_requested.connect(self._merge_copy)
         self.export_panel.training_export_requested.connect(self._export_training)
         self.export_panel.image_metadata_export_requested.connect(self._export_image_metadata)
         self.export_panel.project_metadata_export_requested.connect(self._export_project_metadata)
@@ -1151,7 +1152,12 @@ class CurationWindow(QMainWindow):
         return pending
 
     def _operate(
-        self, title: str, run, *, cancellation: Cancellation | None = None
+        self,
+        title: str,
+        run,
+        *,
+        cancellation: Cancellation | None = None,
+        rescan: bool = False,
     ) -> None:
         """Preview an operation, confirm it, then apply what was previewed.
 
@@ -1164,6 +1170,9 @@ class CurationWindow(QMainWindow):
             cancellation: Makes the applying run stoppable. The previews are
                 not: they open no file and answer in milliseconds, so a Stop
                 button on one is a button with nothing to stop.
+            rescan: Read the collection again afterwards, for an operation
+                whose effect is not the list of files it wrote. See
+                :meth:`_operation_applied`.
 
         Preview and apply are two runs of the same function rather than one run
         whose result is replayed: a preview held across a dialog describes a
@@ -1187,7 +1196,7 @@ class CurationWindow(QMainWindow):
             self._run_operation(
                 title,
                 lambda: run(allowed, False),
-                lambda applied: self._operation_applied(title, applied),
+                lambda applied: self._operation_applied(title, applied, rescan),
                 cancellation=cancellation,
             )
 
@@ -1695,6 +1704,33 @@ class CurationWindow(QMainWindow):
                 on_progress=None if dry else progressed.emit,
             ),
             cancellation=cancellation,
+        )
+
+    def _merge_copy(self, directory: str) -> None:
+        """Bring the work done in a copy back into this collection.
+
+        The other half of the round trip the button above it starts. Behind the
+        curation tab's editing guard rather than Add data's: what this writes
+        is labels and their state, which is what that guard protects.
+
+        A rescan follows, this being the one operation here that changes the
+        collection the window is showing rather than writing somewhere else.
+        """
+        if not self.controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' on the Curate tab before merging a copy "
+                "back: a merge writes labels into this collection.",
+            )
+            return
+        source = Path(directory)
+        projects = self.controller.projects
+        self._operate(
+            "Merge a copy back",
+            lambda allow, dry: self.operations_controller.merge_copy(
+                source, projects, allow_corrected=allow, dry_run=dry
+            ),
+            rescan=True,
         )
 
     def _export_image_metadata(self, path: str) -> None:

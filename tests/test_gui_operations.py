@@ -894,7 +894,7 @@ def test_a_savepoint_that_is_not_here_is_reported_rather_than_raised(tmp_path: P
         savepoint="round 9", projects=projects, dry_run=True,
     )
 
-    assert report.blocked == "refused"
+    assert not report.count and not report.blocked
     assert not report.applied
 
 
@@ -915,6 +915,104 @@ def test_a_savepoint_is_refused_inside_a_copy(tmp_path: Path):
 
     report = controller.take_savepoint(projects, "round 1", dry_run=True)
 
-    assert report.blocked == "refused"
+    # A refusal carries no count and cannot be confirmed past: what it
+    # refuses is not the user's to overrule.
+    assert not report.count and not report.blocked
     assert "copy" in report.headline
     assert not report.applied
+
+
+# ---------------------------------------------------------------------------
+# Merging a copy back, which is the other half of the export beside it
+# ---------------------------------------------------------------------------
+
+def _exported_copy(tmp_path: Path, root: Path, projects):
+    """Copy *root* out the way the window's export does, fork point and all."""
+    from am_segmentation_manager.operations.copy_export import (
+        copy_export,
+        plan_copy,
+        record_fork_point,
+    )
+
+    destination = tmp_path / "copy"
+    records = [record for project in projects for record in project.image_records]
+    copy_export(plan_copy(records, destination, root, projects=projects))
+    record_fork_point(destination, records, projects, root)
+    return destination
+
+
+def test_a_copy_worked_on_elsewhere_comes_home(tmp_path: Path):
+    """The round trip the Export tab's two buttons are: out, worked on, back."""
+    from am_segmentation_manager.scanner import Scanner
+
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy = _exported_copy(tmp_path, root, projects)
+
+    theirs = Scanner(copy).build_index().all_projects()
+    label = next(
+        label
+        for project in theirs
+        for record in project.image_records
+        for label in record.labels
+    )
+    _edit_through_the_package(label)
+    changed = tifffile.imread(str(label))
+
+    report = controller.merge_copy(copy, projects, dry_run=True)
+    assert report.count, report.headline
+    assert not report.applied
+
+    applied = controller.merge_copy(copy, projects)
+    assert applied.applied, applied.headline
+
+    ours = root / label.relative_to(copy)
+    assert np.array_equal(tifffile.imread(str(ours)), changed), (
+        "the work done in the copy did not arrive"
+    )
+
+
+def test_a_folder_that_is_not_a_copy_is_refused_by_name(tmp_path: Path):
+    """Only a copy an export made carries the fork point a merge needs."""
+    controller = OperationsController()
+    root, _projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+
+    report = controller.merge_copy(stranger)
+
+    assert not report.count and not report.blocked
+    assert "fork point" in report.headline
+    assert not report.applied
+
+
+def test_merging_over_proofread_work_is_refused_until_it_is_named(tmp_path: Path):
+    """CLAUDE.md's rule, and the one thing a merge was once found not doing."""
+    from am_segmentation_manager.operations.selection import transition_records
+    from am_segmentation_manager.scanner import Scanner
+
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy = _exported_copy(tmp_path, root, projects)
+
+    theirs = Scanner(copy).build_index().all_projects()
+    label = next(
+        label
+        for project in theirs
+        for record in project.image_records
+        for label in record.labels
+    )
+    _edit_through_the_package(label)
+    transition_records(
+        [record for project in projects for record in project.image_records],
+        "corrected",
+    )
+
+    report = controller.merge_copy(copy, projects, dry_run=True)
+
+    assert report.blocked == "corrected"
+    assert not report.applied
+    assert "proofread work" in report.headline
