@@ -786,3 +786,135 @@ def _spin(app, condition, timeout: float = 10.0) -> None:
             return
         time.sleep(0.01)
     pytest.fail("Timed out waiting for the worker")
+
+
+# ---------------------------------------------------------------------------
+# Reverting: three ways of naming what to go back to, one operation behind them
+# ---------------------------------------------------------------------------
+
+def _edit_through_the_package(label: Path) -> None:
+    """Replace *label* the way the window does, so the old version is archived.
+
+    A direct write leaves nothing to go back to, which is the whole reason
+    saving goes through one path: what it replaces is kept on the way past.
+    """
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.io.atomic import fingerprint_of
+    from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
+
+    save_labels(
+        [
+            LabelToSave(
+                destination=label,
+                label=_sparse_label() + 1,
+                fingerprint=fingerprint_of(label),
+            )
+        ],
+        recorder=Recorder.for_run(),
+    )
+
+
+def _recorded_collection(tmp_path: Path):
+    """A scanned collection whose project records, with a savepoint taken."""
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.operations.init_history import (
+        apply_baseline,
+        plan_baseline,
+    )
+    from am_segmentation_manager.scanner import Scanner
+    from conftest import build_dataset
+
+    root = tmp_path / "collection"
+    root.mkdir()
+    build_dataset(root, lamellae=1, acquisitions=2, labels="annotated")
+    projects = Scanner(root).build_index().all_projects()
+    apply_baseline(plan_baseline(projects), recorder=Recorder.for_run())
+    return root, projects
+
+
+def test_a_savepoint_can_be_returned_to_by_name(tmp_path: Path):
+    """The round trip the whole feature exists for, at controller level:
+    name a state, change a label, put the round back."""
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    controller.take_savepoint(projects, "round 1")
+
+    records = [record for project in projects for record in project.image_records]
+    label = next(label for record in records for label in record.labels)
+    before = tifffile.imread(str(label))
+    _edit_through_the_package(label)
+    assert not np.array_equal(tifffile.imread(str(label)), before)
+
+    report = controller.revert_labels(
+        records, savepoint="round 1", projects=projects,
+        allow_corrected=True, dry_run=True,
+    )
+    assert report.count, report.headline
+    assert not report.applied
+
+    controller.revert_labels(
+        records, savepoint="round 1", projects=projects, allow_corrected=True,
+    )
+    # Pixels, never bytes: a restore goes through the ordinary save and
+    # re-encodes, which is why a digest here is over the array.
+    assert np.array_equal(tifffile.imread(str(label)), before), "it did not go back"
+
+
+def test_reverting_refuses_proofread_work_until_it_is_named(tmp_path: Path):
+    """The rule CLAUDE.md states, checked before anything is written."""
+    from am_segmentation_manager.operations.selection import transition_records
+
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    controller.take_savepoint(projects, "round 1")
+
+    records = [record for project in projects for record in project.image_records]
+    transition_records(records, "corrected")
+    label = next(label for record in records for label in record.labels)
+    _edit_through_the_package(label)
+
+    report = controller.revert_labels(
+        records, savepoint="round 1", projects=projects, dry_run=True
+    )
+
+    assert report.blocked == "corrected"
+    assert not report.applied
+    assert "proofread work" in report.headline
+
+
+def test_a_savepoint_that_is_not_here_is_reported_rather_than_raised(tmp_path: Path):
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+
+    report = controller.revert_labels(
+        [record for project in projects for record in project.image_records],
+        savepoint="round 9", projects=projects, dry_run=True,
+    )
+
+    assert report.blocked == "refused"
+    assert not report.applied
+
+
+def test_a_savepoint_is_refused_inside_a_copy(tmp_path: Path):
+    """A copy holds part of a project while carrying that project's log whole,
+    so a savepoint written there names labels the copy never had."""
+    from am_segmentation_manager.operations.export_record import (
+        ExportRecord,
+        write_export_record,
+    )
+
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    write_export_record(
+        root, ExportRecord(exported_at="2026-09-07T00:00:00Z", exported_by="", source="x")
+    )
+
+    report = controller.take_savepoint(projects, "round 1", dry_run=True)
+
+    assert report.blocked == "refused"
+    assert "copy" in report.headline
+    assert not report.applied

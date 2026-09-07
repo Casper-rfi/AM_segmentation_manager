@@ -844,6 +844,10 @@ class OperationsController:
         rather than being silently left outside the savepoint it looks like it
         is part of.
 
+        **Refused inside a copy.** An export holds part of a project while
+        carrying that project's log whole, so a savepoint written there would
+        name a state for labels the copy never had.
+
         The preview carries the two things only a person can decide about, and
         that the command line prints as warnings: the projects whose record
         does not reach back far enough to join, and the labels only the next
@@ -857,6 +861,7 @@ class OperationsController:
                 would destroy.
             dry_run: Report what it would write without writing it.
         """
+        from ..operations.export_record import read_export_record
         from ..operations.init_history import plan_baseline
         from ..operations.savepoint import (
             SavepointRefused,
@@ -867,6 +872,15 @@ class OperationsController:
         projects = list(projects)
         if not projects:
             return OperationReport("Nothing has been scanned yet.")
+        root = self.start_path
+        if root is not None and read_export_record(root) is not None:
+            return OperationReport(
+                f"{root.name} is a copy, and a copy can hold part of a project "
+                f"while carrying that project's whole log. A savepoint here "
+                f"would claim a state for labels this copy never had. Take it "
+                f"in the collection it came from.",
+                blocked="refused",
+            )
 
         if dry_run:
             # Reading the logs and no labels, so a preview stays a preview.
@@ -940,6 +954,112 @@ class OperationsController:
                 f"would destroy' to copy them in now."
             )
         return notes
+
+    def revert_labels(
+        self,
+        records: Iterable[ImageRecord],
+        *,
+        undoing: str = "conversion",
+        savepoint: str = "",
+        projects: Sequence = (),
+        allow_corrected: bool = False,
+        dry_run: bool = False,
+    ) -> OperationReport:
+        """Put the selection's labels back to what they held before something.
+
+        Three ways of naming what to go back to, and one operation behind all
+        of them: undo a conversion, undo a merge, or return to a savepoint.
+        They differ only in which recorded version each label is put back to,
+        so splitting them across separate controls would make the window harder
+        to learn than the command it replaces.
+
+        **A label edited since is left alone and reported.** Putting one back
+        anyway discards that editing, which is not a thing to offer beside a
+        checkbox; the command line keeps `--allow-superseded` for it.
+
+        Args:
+            records: What the selection reaches.
+            undoing: A key of :data:`~..operations.revert.UNDOABLE`, used when
+                *savepoint* is empty.
+            savepoint: A savepoint's id or title to return to instead.
+            projects: The scan, needed only to find *savepoint* by name.
+            allow_corrected: Confirm putting proofread work back.
+            dry_run: Report what it would do without doing it.
+        """
+        from ..operations.revert import apply_revert, plan_revert, plan_revert_to
+        from ..operations.savepoint import (
+            SavepointRefused,
+            find_savepoint,
+        )
+
+        records = list(records)
+        if not records:
+            return OperationReport("Nothing selected.")
+        try:
+            if savepoint:
+                point = find_savepoint(list(projects), savepoint)
+                plan = plan_revert_to(records, point)
+                naming = f"the state named {point.title or point.id!r}"
+            else:
+                plan = plan_revert(records, undoing)
+                naming = f"before the last {undoing}"
+        except (SavepointRefused, ValueError) as error:
+            return OperationReport(str(error), blocked="refused")
+
+        if not plan.revertible:
+            return OperationReport(
+                f"Nothing to put back: none of these {len(plan.items)} label(s) "
+                f"can reach {naming}.",
+                tuple(f"{item.target}: {item.blocked}" for item in plan.blocked)[
+                    :MAX_REPORTED_FILES
+                ],
+            )
+
+        left = (
+            f", leaving {len(plan.blocked)} alone" if plan.blocked else ""
+        )
+        if plan.corrected and not allow_corrected:
+            # The refusal itself lives in apply_revert and still fires; asking
+            # here is what lets the window say how much is at stake first.
+            return OperationReport(
+                f"{len(plan.corrected)} of the {len(plan.revertible)} label(s) "
+                f"this would put back to {naming} are proofread work.",
+                tuple(item.target for item in plan.corrected)[:MAX_REPORTED_FILES],
+                len(plan.revertible),
+                blocked="corrected",
+            )
+        if dry_run:
+            return OperationReport(
+                f"Would put {len(plan.revertible)} label(s) back to {naming}"
+                f"{left}. What is there now is kept, so this can be undone.",
+                tuple(plan.describe())[:MAX_REPORTED_FILES],
+                len(plan.revertible),
+            )
+
+        report = apply_revert(
+            plan, recorder=self.recorder.for_batch(), allow_corrected=allow_corrected
+        )
+        lines = tuple(
+            f"{self._relative(path)}: {why}" for path, why in report.failed
+        )[:MAX_REPORTED_FILES]
+        headline = f"Put {len(report.restored)} label(s) back to {naming}{left}."
+        if report.failed:
+            headline += f" {len(report.failed)} could not be written."
+        return OperationReport(
+            headline, lines, applied=True, count=len(report.restored)
+        )
+
+    @staticmethod
+    def savepoints_here(projects: Sequence) -> Sequence:
+        """Return the savepoints over *projects*, newest first.
+
+        Newest first because that is the order somebody reaches for a round in;
+        the listing command orders them oldest first, which reads better as a
+        history and worse as a chooser.
+        """
+        from ..operations.savepoint import list_savepoints
+
+        return list(reversed(list_savepoints(list(projects))))
 
     @staticmethod
     def archive_exists(projects: Sequence) -> bool:

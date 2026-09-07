@@ -66,6 +66,8 @@ class OperationsPanel(QWidget):
     #: Emitted with the largest component to report when the user asks which
     #: of the selection's labels hold specks.
     specks_requested = Signal(int)
+    #: Emitted when the user asks to put the selection's labels back.
+    revert_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -145,6 +147,19 @@ class OperationsPanel(QWidget):
         self.convert_button.clicked.connect(self.convert_requested.emit)
         column.addWidget(self.convert_button)
 
+        # Directly under Convert, which is what it usually undoes: trying a
+        # newer model over proofread labels is a decision rather than a
+        # commitment, and the two belong within a glance of each other.
+        self.revert_button = QPushButton("Revert...")
+        self.revert_button.setToolTip(
+            "Put the selection's labels back to what they held before the "
+            "last conversion or merge, or to a savepoint.\n"
+            "A label with no kept version, or edited since, is reported and "
+            "left alone."
+        )
+        self.revert_button.clicked.connect(self.revert_requested.emit)
+        column.addWidget(self.revert_button)
+
         # Above the button's own report rather than inside it: whether there is
         # anything here to convert is a question about the data, and a dialog
         # you have to open to find out the answer was "nothing" is the version
@@ -204,7 +219,7 @@ class OperationsPanel(QWidget):
         layout.addWidget(box)
         self.buttons = (
             self.predict_button, self.browse_button, self.convert_button,
-            self.specks_button,
+            self.specks_button, self.revert_button,
         )
 
     def show_selection(self, description: str) -> None:

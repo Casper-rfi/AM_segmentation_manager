@@ -1578,6 +1578,84 @@ def test_copying_into_the_collection_is_refused(window, inline_operations):
 
 
 # ---------------------------------------------------------------------------
+# Reverting, which acts on the selection like everything else in that panel
+# ---------------------------------------------------------------------------
+
+def revert_with(window, undoing="conversion", savepoint=""):
+    """Answer the revert dialog without opening it."""
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    class _Answered:
+        def __init__(self, *_args):
+            self.undoing, self.savepoint = undoing, savepoint
+
+        def exec_(self):
+            return QDialog.Accepted
+
+    original = module.RevertDialog
+    module.RevertDialog = _Answered
+    try:
+        window._revert()
+    finally:
+        module.RevertDialog = original
+
+
+def test_reverting_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
+    """It writes labels, so it is behind the guard every write in that panel is."""
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+
+    revert_with(window)
+
+    assert shown == ["Editing is off"]
+    assert inline_operations == []
+
+
+def test_reverting_reports_what_it_cannot_reach(window, inline_operations):
+    """Nothing here has been converted, so nothing has a version to go back to
+    -- and saying which and why beats a count of zero."""
+    window.state_panel.enable_check.setChecked(True)
+    reports: list = []
+    window._show_report = lambda title, report: reports.append(report)
+
+    revert_with(window)
+
+    assert inline_operations == [], "nothing was offered to apply"
+    assert reports and "Nothing to put back" in reports[0].headline
+
+
+def test_reverting_proofread_work_is_refused_until_it_is_named(
+    window, inline_operations, monkeypatch
+):
+    """CLAUDE.md's rule: no automated operation replaces a corrected label
+    without explicit confirmation, and the window must not make that a
+    checkbox somebody clicks past."""
+    from am_segmentation_manager.gui.operations_controller import OperationReport
+
+    window.state_panel.enable_check.setChecked(True)
+    asked: list = []
+    monkeypatch.setattr(
+        window.operations_controller, "revert_labels",
+        lambda records, **kwargs: (
+            asked.append(kwargs.get("allow_corrected"))
+            or OperationReport(
+                "2 label(s) are proofread work.", ("a", "b"), 2, blocked="corrected"
+            )
+        ),
+    )
+    monkeypatch.setattr(window, "_confirm_report", lambda *args: False)
+
+    revert_with(window)
+
+    assert asked == [False], "the first run asked without permission, and stopped"
+
+
+# ---------------------------------------------------------------------------
 # Savepoints, which are collection-wide and so live beside the other two
 # ---------------------------------------------------------------------------
 

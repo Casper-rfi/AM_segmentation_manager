@@ -72,6 +72,7 @@ from .operations_panel import OperationsPanel
 from .project_dialog import AddProjectsDialog
 from .project_panel import ProjectPanel, status_legend
 from .report_dialog import ReportDialog
+from .revert_dialog import RevertDialog
 from .savepoint_dialog import SavepointDialog
 from .scan_banner import ScanBanner
 from .state_panel import StatePanel
@@ -830,6 +831,7 @@ class CurationWindow(QMainWindow):
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.devices_requested.connect(self._offer_devices)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
+        self.operations_panel.revert_requested.connect(self._revert)
         self.operations_panel.specks_requested.connect(self._find_specks)
 
         self.metadata_panel.survey_requested.connect(self._inspect_layout)
@@ -1361,6 +1363,38 @@ class CurationWindow(QMainWindow):
             ),
             lambda report: self._show_report("Find specks", report),
             cancellation=cancellation,
+        )
+
+    def _revert(self) -> None:
+        """Put the selection's labels back to what they held before something.
+
+        The same guard and the same selection every other operation in this
+        panel uses: what a revert acts on is what is ticked, which is also what
+        was converted. The three ways of naming what to go back to are one
+        dialog, for the reason :class:`RevertDialog` gives.
+        """
+        records = self._editable_records()
+        if records is None:
+            return
+        projects = self.controller.projects
+        dialog = RevertDialog(
+            self,
+            f"{len(records)} image(s) in {self.controller.selection.describe()}",
+            self.operations_controller.savepoints_here(projects),
+        )
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        undoing, savepoint = dialog.undoing, dialog.savepoint
+        self._operate(
+            "Revert labels",
+            lambda allow, dry: self.operations_controller.revert_labels(
+                records,
+                undoing=undoing or "conversion",
+                savepoint=savepoint,
+                projects=projects,
+                allow_corrected=allow,
+                dry_run=dry,
+            ),
         )
 
     def _measure_archive(self) -> None:
