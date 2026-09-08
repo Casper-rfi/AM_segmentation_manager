@@ -13,33 +13,21 @@ one; prose has to be rewritten whole every time either happens.
 ## What the software does today
 
 Every main function `CLAUDE.md` names is built, across the three series of images Autolamella writes
-and every layout era the collection holds. Curate, Label, Quantify and Export are four tabs, each
+and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing.
 Predictions need the second environment `scripts/setup_ml.sh` builds.
 
-**Label history** — on branch `label-history`, not merged. It adds:
-
-- An append-only `AM_history.jsonl` per project: what changed, who changed it, and when.
-- **Recording is always on.** The first change to a project starts its log and records what the
-  whole project held; looking writes nothing.
-- **No name is recorded unless somebody states one.** Set on F2, shown beside the mark.
-- `AM_archive/` keeps every replaced label, and `prune-archive` thins it by collapsing what lies
-  between savepoints.
-- `savepoint` names the state of every label as a round of model improvement; `revert` puts labels
-  back to a savepoint, a conversion or a merge.
-- An export carries the history and an `AM_export.yaml` naming the fork point; `merge` brings a copy
-  back three-way against the history the two logs share, refusing the whole merge while a conflict
-  stands.
-- All of it is in the window, placed by the rule in [`display.md`](display.md) § Controls, with
-  merge in Export beside the copy it brings home and *Compare versions* in the proofreading view.
+**Label history** records what changed, who changed it and when, keeps every replaced label under
+`AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way.
+[`decisions.md`](decisions.md) § History says how each of those decides.
 
 ## What to pick up next
 
-- **Finish the history work**, in order. Run `init-history` once on the real collection, so a
-  savepoint taken there covers everything rather than only what has been touched since — around
-  950 KB across 3,236 labels, two minutes, adding two files per project and modifying nothing, and
-  the one act never yet performed on it. Then close **one whole round** with a real training run in
-  the middle: the parts have each been rehearsed, the loop never once end to end. Then merge.
+- **Close one round on the real collection.** Run `init-history` there, so a savepoint covers
+  everything rather than only what has been touched since — around 950 KB across 3,236 labels, two
+  minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
+  real training run in the middle: the parts have each been rehearsed, the loop never once end to
+  end.
 - **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle
   inset in its canvas. Artwork rather than code, and Casper's to draw.
 - **An "other" series** making unindexed images visible instead of merely counted.
