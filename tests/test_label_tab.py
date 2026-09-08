@@ -1832,6 +1832,26 @@ def test_saving_writes_the_edited_label(qt_app, window):
     assert (tifffile.imread(str(key)) == 2).any(), "the stroke did not reach the file"
 
 
+def test_the_canvas_shows_what_was_saved_rather_than_what_it_replaced(
+    qt_app, window
+):
+    """A prepared frame holds the pixels its label had when it was read, and a
+    save replaces the file underneath it. Without dropping that frame the
+    canvas goes on drawing the label the save overwrote -- which reads as the
+    save having silently failed."""
+    key = window.label_controller.current_key
+    paint_on(window, value=2)
+
+    save_with(window, mark_corrected=False)
+    settle(qt_app, lambda: saved(window))
+
+    on_disk = tifffile.imread(str(key))
+    on_canvas = window.label_controller.working_label()
+    assert np.array_equal(np.asarray(on_canvas), on_disk), (
+        "the canvas is still drawing the label the save replaced"
+    )
+
+
 def test_saving_starts_the_record_it_writes_into(qt_app, window):
     """The Label tab has no editing guard, so the save is the door itself.
 

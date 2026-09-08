@@ -194,8 +194,11 @@ def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
     """Apply edits to the ``metadata:`` block, leaving everything else alone.
 
     Fields already present are replaced where they sit, so comments above them
-    keep applying to the right line. Fields not present are appended to the end
-    of the block. Removals delete the line.
+    keep applying to the right line. Removals delete the line, leaving the
+    guidance comment that described it -- so a field set again goes back under
+    that comment rather than to the end of the block, where the comment would
+    describe nothing and the field would be described by nothing. One with no
+    comment to return to is appended.
     """
     lines = text.splitlines()
     start = next(
@@ -245,17 +248,41 @@ def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
             continue  # removal: drop the line and anything under it
         edited.append(f"{indent}{field}: {yaml_field_value(field, value)}")
 
-    # Anything not already in the block is appended to it.
-    additions = [
-        f"  {field}: {yaml_field_value(field, value)}"
-        for field, value in remaining.items()
-        if value is not None
-    ]
+    trailing: list[str] = []
     while edited and not edited[-1].strip():
-        additions.append(edited.pop())
+        trailing.insert(0, edited.pop())
 
-    result = lines[: start + 1] + edited + additions + lines[end:]
+    for field, value in remaining.items():
+        if value is None:
+            continue
+        written = f"  {field}: {yaml_field_value(field, value)}"
+        under = _under_guidance(edited, field)
+        if under is None:
+            edited.append(written)
+        else:
+            edited.insert(under, written)
+
+    result = lines[: start + 1] + edited + trailing + lines[end:]
     return "\n".join(result) + "\n"
+
+
+def _under_guidance(block: list[str], field: str) -> int | None:
+    """Return where *field* belongs under its own guidance comment, or None.
+
+    Matched on the comment :func:`~.init_project.render_template` writes for
+    that field, which is the only thing in the file saying where it used to
+    sit -- ``comment`` rather than ``guidance``, the template writing the one
+    and not the other.
+    """
+    spec = field_named(field)
+    if spec is None or not spec.comment:
+        return None
+    wanted = spec.comment.strip().casefold()
+    for index, line in enumerate(block):
+        text = line.strip()
+        if text.startswith("#") and text.lstrip("#").strip().casefold() == wanted:
+            return index + 1
+    return None
 
 
 def plan_metadata_update(

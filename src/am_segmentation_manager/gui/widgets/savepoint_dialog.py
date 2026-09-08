@@ -43,8 +43,8 @@ class SavepointDialog(QDialog):
         layout = QVBoxLayout(self)
 
         intro = QLabel(
-            f"Name the state of all {projects} project(s) in this folder, so a "
-            f"round of work can be compared against it or put back by name."
+            f"Record what every label in all {projects} project(s) under this "
+            f"folder holds now, under a name. Revert can put them back to it."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -64,11 +64,12 @@ class SavepointDialog(QDialog):
         form.addRow("Note", self.description_edit)
         layout.addLayout(form)
 
-        self.close_gap = ToggleSwitch("Keep what a conversion would destroy")
+        self.close_gap = ToggleSwitch("Also keep labels the model made")
         self.close_gap.setToolTip(
-            "Copy into the archive the labels holding untouched model output.\n"
-            "The archive skips those as regenerable, so without this the next\n"
-            "conversion makes them unreachable from this savepoint."
+            "Keep a copy of the labels a model wrote that nobody has edited.\n"
+            "Without this they are left out, because a model can make them\n"
+            "again -- but then the next conversion overwrites them and this\n"
+            "savepoint can no longer reach what they held."
         )
         layout.addWidget(self.close_gap)
 

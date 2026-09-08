@@ -470,3 +470,35 @@ def test_repeating_set_still_replaces_a_field_that_holds_one(tmp_path: Path):
     ]) == 0
 
     assert block(root / "proj")["metadata"]["grid_id"] == "G2"
+
+
+def test_a_field_set_again_goes_back_under_its_own_comment(tmp_path: Path):
+    """Removing a field leaves the comment describing it. Appending the field
+    to the end afterwards leaves the comment describing nothing and the field
+    described by nothing, in a file whose whole point is being readable."""
+    from am_segmentation_manager.operations.metadata_edit import (
+        update_project_metadata,
+    )
+
+    project = tmp_path / "project"
+    project.mkdir()
+    update_project_metadata(project, {"sample_medium": "TEST"})
+    template = (project / "AM_metadata.yaml").read_text()
+
+    update_project_metadata(project, {"sample_medium": None})
+    update_project_metadata(project, {"sample_medium": "TEST"})
+
+    assert (project / "AM_metadata.yaml").read_text() == template, (
+        "a removal and a re-add did not leave the file as it was"
+    )
+
+
+def test_a_field_with_no_comment_to_return_to_is_appended(tmp_path: Path):
+    """The fallback stays: a file somebody wrote by hand has no guidance."""
+    from am_segmentation_manager.operations.metadata_edit import _edit_lines
+
+    text = "metadata:\n  description: a\n"
+
+    result = _edit_lines(text, {"sample_medium": "TEST"})
+
+    assert result.splitlines()[-1] == "  sample_medium: TEST"

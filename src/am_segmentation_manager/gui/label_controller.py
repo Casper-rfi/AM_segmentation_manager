@@ -680,6 +680,11 @@ class LabelController:
                 declared = transition_records(records, "corrected", recorder=batch)
                 headline += f", marked {declared} image(s) corrected"
 
+        # Before the session is discarded, and before anything redraws: a
+        # prepared frame holds the pixels its label had when it was read, so
+        # one just written would go on drawing what it replaced. The session's
+        # own copy is what hid this until now.
+        self.cache.relabel({item.destination: item.label for item in pending})
         self.session.discard()
         self._label_states.clear()
         # The frames worth visiting are recomputed here rather than by the

@@ -13,8 +13,8 @@ from __future__ import annotations
 import logging
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
@@ -176,6 +176,15 @@ class BoundedCache(Generic[K, V]):
         with self._lock:
             self._entries.clear()
 
+    def drop(self, keys: Iterable[K]) -> int:
+        """Discard the entries at *keys*, and return how many went."""
+        with self._lock:
+            gone = 0
+            for key in list(keys):
+                if self._entries.pop(key, None) is not None:
+                    gone += 1
+            return gone
+
     def keys(self) -> list[K]:
         """Return the cached keys, least recently used first."""
         with self._lock:
@@ -308,6 +317,46 @@ class FrameCache:
         self._images.clear()
         self._plots.clear()
         self._details.clear()
+
+    def relabel(self, written: Mapping[Path, np.ndarray]) -> int:
+        """Put the labels in *written* into the frames already prepared.
+
+        A prepared frame holds the pixels its label had when it was read, so
+        one written since would go on being drawn as what it replaced. The
+        array is put in rather than the frame dropped, because dropping it
+        leaves nothing to draw until a background read catches up -- a blank
+        canvas where a save had just been made.
+
+        Several imaging conditions of one scene share a label, so one written
+        label can reach more than one prepared frame. A frame whose label had
+        to be resampled to be displayed is left alone: its array is not the
+        one on disk, which is also why such a frame cannot be edited.
+
+        Returns:
+            How many prepared frames were brought up to date.
+        """
+        wanted = {Path(path).resolve(): array for path, array in written.items()}
+        if not wanted:
+            return 0
+        changed = 0
+        for key in self._images.keys():
+            prepared = self._images.get(key)
+            record = self._record(*key)
+            if prepared is None or record is None or prepared.display is None:
+                continue
+            if prepared.display.label_resized:
+                continue
+            for label in record.labels:
+                array = wanted.get(label.resolve())
+                if array is None:
+                    continue
+                self._images.put(
+                    key,
+                    replace(prepared, display=replace(prepared.display, label=array)),
+                )
+                changed += 1
+                break
+        return changed
 
     def image(
         self, frame_index: int, modality: str, variant: str | None = None

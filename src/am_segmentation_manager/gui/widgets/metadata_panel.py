@@ -278,9 +278,10 @@ class MetadataPanel(QWidget):
         # whole dataset a model was trained on and has nothing to narrow to.
         self.savepoint_button = QPushButton("Savepoint...")
         self.savepoint_button.setToolTip(
-            "Name the state of every project under this folder, so a round of "
-            "work can be compared against it or put back by name.\n"
-            "Taken a few times a year, at the end of a round of proofreading."
+            "Record what every label under this folder holds now, under a name "
+            "you give it.\n"
+            "Revert on the Curate tab can put labels back to it later. Image "
+            "states and project metadata are not covered."
         )
         self.savepoint_button.clicked.connect(self.savepoint_requested.emit)
         grid.addWidget(self.savepoint_button, 1, 1)

@@ -35,7 +35,12 @@ from typing import Final
 from ..history import Event, HistoryLog, Recorder, append_event, read_log
 from ..models import ImageRecord, Project
 from ..state import DEFAULT_STATE, RecordState
-from .export_record import ExportRecord, ProjectFork, read_export_record
+from .export_record import (
+    AM_EXPORT_FILENAME,
+    ExportRecord,
+    ProjectFork,
+    read_export_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,7 +308,9 @@ def plan_merge(
     if export is None:
         raise MergeRefused(
             f"{source} holds no fork point, so there is nothing to say what it "
-            "grew out of. Only a copy made by export-files can be merged back."
+            f"grew out of. Only a copy an export made can be merged back, and "
+            f"the fork point is the {AM_EXPORT_FILENAME} at the copy's own "
+            f"root -- choose that folder rather than one inside it."
         )
 
     ours = _projects_by_key(Scanner(destination).build_index().all_projects())
