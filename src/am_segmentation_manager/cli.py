@@ -2150,7 +2150,8 @@ def _cmd_export_files(args: argparse.Namespace) -> int:
     if missing:
         logger.warning(
             "%d project(s) keep no history, so a merge back has no common "
-            "ancestor for them: %s. Run init-history in the collection first.",
+            "ancestor for them: %s. Baseline them with init-history before "
+            "exporting, a first change alone recording no state to fork from.",
             len(missing), ", ".join(missing[:3]),
         )
     return 0
@@ -2440,9 +2441,8 @@ def _report_silent_projects(projects) -> None:
     """Say which projects keep no log, and so are in no savepoint.
 
     The one place that asks what the record covers is the place to learn that
-    part of the collection is outside it. A project added after the collection
-    opted in records nothing until `init-history` runs on it, and nothing else
-    would ever mention it.
+    part of the collection is outside it: a project nothing has changed yet
+    records nothing, and nothing else would ever mention it.
     """
     from .operations.savepoint import not_recording
 
@@ -2450,9 +2450,9 @@ def _report_silent_projects(projects) -> None:
     if not silent:
         return
     logger.warning(
-        "%d of %d project(s) here keep no history, so nothing about them is "
-        "recorded and no savepoint covers them: %s. Run init-history on each "
-        "to bring it into the record.",
+        "%d of %d project(s) here keep no history yet, so no savepoint covers "
+        "them: %s. Each joins the record the first time something changes it; "
+        "init-history brings them all in now.",
         len(silent), len(projects),
         ", ".join(project.key for project in silent[:5])
         + (f" and {len(silent) - 5} more" if len(silent) > 5 else ""),

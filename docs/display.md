@@ -206,16 +206,52 @@ reasoning now lives in a test and the entry can point at it instead.
   PySide6** as the array dies under the buffer; and `fit_to_screen` sizes from the label's own hint,
   `adjustSize` being useless when a scroll area reports a small default instead of its contents.
 
+- **A collection-wide act goes on Add data; anything narrowed goes on Curate.** `operations_panel`
+  promises that everything in it follows the ticks, so a savepoint — which is over the whole dataset
+  a model was trained on — would break that promise there. Taking one, restoring one over everything
+  and reclaiming archive space sit in *Whole collection* with `compress-labels`, and reverting a
+  selection stays in Curate. **What the archive costs is measured when that tab is opened**, never
+  during a scan: it walks every project's archive and reads every log, and one stat per project
+  decides whether that is worth a worker at all.
+- **A refusal carries no count and cannot be confirmed past.** `_operate` offers to override anything
+  a report is `blocked` on, which is right for proofread work and wrong for a missing fork point:
+  there is nothing to include, and the button that says so cannot help. A refusal returns a headline
+  and no count, which `_show_report` shows and dismisses.
+- **Neither side of a conflict is offered as the answer.** A default is a rule about which tree wins,
+  and a conflict exists precisely because there is not one — so nothing is chosen in advance and
+  *Merge* stays disabled until every row is answered. **Qt makes the first accepting button in a
+  `QDialogButtonBox` the default and draws it in the accent**, which recommends a side in the one
+  place nothing may: both are cleared and Cancel takes it, as before every other write.
+- **Who changes are recorded under is a standing line beside the mark, not a warning per action.**
+  Ten actions across all four tabs put a name into a log, and one more writes it into an export's
+  fork point: there is no single tab to say it on and far too many places to warn at. It is muted,
+  being a fact rather than a message, and F2 changes it.
+
 ## Images and plots
 
-- **An earlier version replaces the label on the canvas rather than sitting beside it.**
-  Segmentation is compared by flicking between two pictures in one place; side by side halves the
-  resolution of both. Held on a key (**B**, V already showing and hiding the label) rather than
-  toggled, **badged while it shows** — the two look alike, and a reviewer who cannot tell which is
-  on screen is comparing without knowing what — and **not paintable**, or a stroke would land on the
-  label underneath, unseen. The difference mask draws with a class value no configuration defines,
-  so it appears in the colour reserved for an unconfigured class rather than as a segmentation.
+- **An earlier version replaces the label on the canvas rather than sitting beside it**, and so does
+  the other side of a merge conflict. Segmentation is compared by flicking between two pictures in
+  one place; side by side halves the resolution of both. Held on a key (**B**, V already showing and
+  hiding the label) rather than toggled, **badged while it shows** — the two look alike, and a
+  reviewer who cannot tell which is on screen is comparing without knowing what — and **not
+  paintable**, or a stroke would land on the label underneath, unseen. The difference mask draws
+  with a class value no configuration defines, so it appears in the colour reserved for an
+  unconfigured class rather than as a segmentation; **flat, one colour**, since with several classes
+  on both sides colouring by what each holds has no readable scheme and the mask becomes the thing
+  being deciphered. Two labels of different sizes are still both shown — that one is the wrong size
+  is the finding — and only the mask goes, there being no pixel to pair.
 - **The versions strip hides itself when a label has none**, which is the ordinary case.
+- **Two labels are compared by looking, never by a number.** Every metric over a pair — pixel share,
+  IoU, Dice — presupposes that one of them is ground truth, and where a proofread label meets a good
+  model's prediction neither is; worse, pixel share ranks lowest exactly the failure that matters
+  most, a crack being a fraction of a percent of the frame. So a batch table ranking labels by how
+  far something moved them is refused, and so is a percentage beside a conflict; the answer is one
+  frame at a time on a subset.
+- **A save puts what it wrote into the prepared frame.** A prepared frame holds the pixels its label
+  had when it was read, and the editing session's own copy hides that until the save discards it —
+  after which the canvas draws the label the save replaced, and only leaving the tab and coming back
+  reads the file again. Put in rather than dropped: dropping leaves nothing to draw until a
+  background read catches up, which is a blank canvas exactly where a save was just made.
 
 - **The brush outline is redrawn from state, never from mouse movement alone**, being drawn in
   *scene* coordinates: anything moving the scene under a stationary pointer leaves a ring around a

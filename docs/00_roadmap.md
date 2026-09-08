@@ -14,31 +14,30 @@ writes and every layout era the collection holds. Curating, proofreading, quanti
 are four tabs, each with a controller holding no Qt, and the command line does the same work for
 scripting and testing. Predictions need the second environment `scripts/setup_ml.sh` builds.
 
+**Label history**, on branch `label-history` and not merged. An append-only `AM_history.jsonl` per
+project records what changed, who changed it and when. **Recording is always on**: the first change
+to a project starts its log and records what the whole project held, while looking writes nothing.
+**No name is recorded unless somebody states one**; who changes are recorded under is set on F2 and
+shown beside the mark. A replaced label is kept under `AM_archive/`, which `prune-archive` thins by
+collapsing what lies between savepoints. `savepoint` names the state of every label as a round of
+model improvement, and `revert` puts labels back to a savepoint, a conversion or a merge. An export
+carries the history and writes an `AM_export.yaml` naming the fork point; `merge` brings a copy back
+three-way against the history the two logs share, refusing the whole merge while a conflict stands.
+
+All of it is reachable from the window. Taking a savepoint, restoring one over the whole collection,
+and reclaiming archive space are in Add data's *Whole collection* group, with what the archive costs
+on a line beside them; reverting a selection is in Curate's operations; merging is in Export beside
+the copy it brings home, with a conflict decided one row per group and both versions drawn over the
+acquisition. In the proofreading view, *Compare versions* lists the versions of the label on screen
+and puts a kept one back.
+
 ## What to pick up next
 
-**Label history and merge**, on branch `label-history` and deliberately unmerged. An append-only
-`AM_history.jsonl` per project records what changed, who changed it and when, and `am-seg history`
-reads one back. **Recording is always on**: the first change to a project starts its log and records
-what the whole project held, while looking writes nothing; `am-seg init-history` baselines a whole
-collection at once. **No name is recorded unless somebody states one**; `--as` credits a dataset that
-arrived annotated. A replaced version is kept under `AM_archive/`, which `am-seg archive` reports and
-`am-seg prune-archive` thins, collapsing what lies between savepoints and never what one names. An
-export carries the history and writes an `AM_export.yaml` naming the fork point; `am-seg merge`
-brings a copy back three-way against the history the two logs share, refusing it whole while a
-conflict stands. `am-seg revert` undoes a conversion or a merge, or a whole round by name with
-`--to`. `am-seg savepoint` names a state — one `checkpoint` entry per project sharing an id, marking
-a round of model improvement — and `am-seg list-savepoints` says what each still reaches.
-
-In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
-kept when the label was replaced and the predictions beside it — and puts a kept one back.
-**Taking a savepoint, putting one back over the whole collection, and reclaiming archive space are in
-Add data's *Whole collection* group** with the other acts covering a whole collection, and what the
-archive costs sits on a line beside them, measured when that tab is opened rather than during a scan.
-**Revert is in Curate's operations** for a selection, going back to a conversion, a merge or a
-savepoint, and **merge is in Export** beside the copy it brings home, a conflict being decided one
-row per group with nothing chosen in advance and both versions drawn over the acquisition, swapped
-with **B**. Who changes are recorded under is set on **F2** and shown beside the mark. Everything
-here is now reachable from the window.
+**Finish the history work.** Three things, in order. Run `init-history` once on the real collection,
+so a savepoint taken there covers everything rather than only what has been touched since — around
+950 KB across 3,236 labels, two minutes, adding two files per project and modifying nothing, and the
+one act never yet performed on it. Then close **one whole round** with a real training run in the
+middle: the parts have each been rehearsed, the loop never once end to end. Then merge the branch.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

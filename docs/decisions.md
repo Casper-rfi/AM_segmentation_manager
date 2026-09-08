@@ -428,6 +428,9 @@ rather than appending to it.
   and the protection of proofread work; only what is *recorded* differs, which is why
   `WriteProvenance` names the entry kind. A merge that copied the file **wrote over proofread work
   unasked**.
+- **A savepoint is taken explicitly and only explicitly.** Not offered before a conversion, and not
+  written by a training export: an automatic one recreates the gradient of small saves under a name
+  that sounds deliberate, which is the whole of what a savepoint is not.
 - **A project may only join a savepoint its record reaches back to.** A history beginning after one
   was taken means the project was not in that state, so joining would claim a moment the record
   knows nothing of, softening a savepoint into a label attachable to anything.
@@ -450,6 +453,11 @@ rather than appending to it.
   same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
   log: the wrong ancestor discards work while reporting success.
 - **A merge compares digests re-read from both trees, never the logs**, per `merge.py`.
+- **A label and its workflow state are one decision.** Both resolve under the key
+  `<project>/<target>`, so taking the copy's pixels takes its state with them. Deliberate: holding
+  their label under a `corrected` claim made here would assert that somebody proofread pixels nobody
+  here has seen. The conflict list is one row per group because of this, and splitting the key would
+  have to come first.
 - **One resolution function serves labels, states and metadata fields**, so three kinds of change
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which
@@ -473,6 +481,10 @@ rather than appending to it.
   `scripts/share_variant_labels.py` change the key of everything they move. A state file survives
   this by being re-declarable by hand; a history does not, so both scripts write a `renamed` entry
   per file through `Recorder.record_directory_rename`.
+- **Two ways a group's identity is lost quietly, neither of them guarded.** Splitting a shared label
+  directory into per-condition ones changes every key exactly as a rename does, and unlike a rename
+  no script records it. And a case-only difference is one file on this filesystem and two targets in
+  a log. Both orphan the history of everything they touch.
 - **What a relative key may look like is `io/path.checked_relative_key`**, shared by the state file
   and the log. Both read paths out of files that can be edited, and two copies of that rule would
   drift; only the exception type belongs to each caller.

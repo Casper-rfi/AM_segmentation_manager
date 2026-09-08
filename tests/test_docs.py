@@ -26,8 +26,10 @@ TESTS = REPOSITORY / "tests"
 
 #: How long the documents may get. `CLAUDE.md` sets this: short enough to read
 #: in one sitting, and approaching it means something in there has finished
-#: rather than that the limit needs raising.
-MAX_DOC_LINES = 1000
+#: rather than that the limit needs raising. Raised once, from 1000, by the
+#: scientist, for the history work -- which is a decision somebody took and not
+#: a thing to do again when the next feature lands.
+MAX_DOC_LINES = 1050
 
 
 def _documents() -> list[Path]:
