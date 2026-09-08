@@ -22,7 +22,6 @@ from qtpy.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -37,7 +36,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...history import Recorder, resolve_author, set_author
+from ...history import Recorder, clear_author, set_author
 from ...layout import MODALITIES
 from ...operations.selection import (
     RecordState,
@@ -75,6 +74,7 @@ from .report_dialog import ReportDialog
 from .revert_dialog import RevertDialog
 from .savepoint_dialog import SavepointDialog
 from .scan_banner import ScanBanner
+from .settings_dialog import SettingsDialog, author_summary
 from .state_panel import StatePanel
 from .theme import BORDER_LIGHT, COMPACT_BUTTON, HEADING, MUTED
 
@@ -101,7 +101,7 @@ MAX_LISTED_FILES = 12
 
 #: Names the save in every dialog and log line it produces.
 SAVE_TITLE = "Save labels"
-AUTHOR_TITLE = "Record changes as"
+AUTHOR_TITLE = "Settings"
 RESTORE_TITLE = "Restore an earlier version"
 
 #: The em dash between the product name and the folder in the window title.
@@ -247,6 +247,16 @@ def _brand_mark(on_help) -> QWidget:
     name.setStyleSheet(f"color: {MUTED};")
     layout.addWidget(name)
 
+    # Beside the mark rather than in any one tab, and always rather than at
+    # the moment of a write: a name reaches every entry written from anywhere
+    # in the window, so there is no one tab to put it on and far too many
+    # actions to warn at. Muted, because it is a standing fact and not a
+    # message.
+    author = QLabel()
+    author.setObjectName("recordingAs")
+    author.setStyleSheet(f"color: {MUTED};")
+    layout.addWidget(author)
+
     # A one-character caption, which the stylesheet's button padding would
     # otherwise clip blank; see `theme.COMPACT_BUTTON`.
     help_button = QToolButton()
@@ -255,6 +265,7 @@ def _brand_mark(on_help) -> QWidget:
     help_button.setToolTip("Show the keyboard shortcuts for this tab (F1)")
     help_button.clicked.connect(on_help)
     layout.addWidget(help_button)
+    row.author = author
     return row
 
 
@@ -591,6 +602,9 @@ class CurationWindow(QMainWindow):
         self._help: ShortcutHelp | None = None
         self._add_shortcuts()
         self._restore_layout()
+        # Says which name is in effect from the moment the window opens, not
+        # from the first time somebody changes it.
+        self._adopt_author()
 
         self.loader = BackgroundLoader(controller.cache)
         self.request_load.connect(self.loader.worker.load_batch)
@@ -694,9 +708,8 @@ class CurationWindow(QMainWindow):
         # window has spare that a reader already looks at. Only here and on the
         # banner -- the orange and green in it are segmentation class colours
         # everywhere else, so a third use would be read as data.
-        self.tabs.setCornerWidget(
-            _brand_mark(self.show_shortcuts), Qt.TopRightCorner
-        )
+        self._corner = _brand_mark(self.show_shortcuts)
+        self.tabs.setCornerWidget(self._corner, Qt.TopRightCorner)
         self.setCentralWidget(self.tabs)
         self._build_menus()
 
@@ -735,7 +748,9 @@ class CurationWindow(QMainWindow):
             file_menu, "Rescan", self.rescan, QKeySequence.Refresh,
         )
         file_menu.addSeparator()
-        self._add_action(file_menu, "Record changes as...", self.set_author_name)
+        self._add_action(
+            file_menu, "Settings...", self.show_settings, QKeySequence("F2")
+        )
         file_menu.addSeparator()
         self._add_action(file_menu, "Quit", self.close, QKeySequence.Quit)
 
@@ -1070,6 +1085,7 @@ class CurationWindow(QMainWindow):
         self.metadata_controller.set_projects(projects)
         self.label_controller.set_projects(projects)
         self.operations_controller.set_start_path(self.controller.start_path)
+        self.operations_controller.set_projects(projects)
         self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
         self.metadata_panel.set_root(self.controller.start_path)
         if self.controller.start_path is not None:
@@ -2878,47 +2894,44 @@ class CurationWindow(QMainWindow):
         self.label_controller.discard_edits()
         return True
 
-    def set_author_name(self) -> None:
-        """Ask who changes should be attributed to, and remember it.
+    def show_settings(self) -> None:
+        """Open the settings that belong to this machine rather than the data.
 
-        Until this is answered the account running the window stands in, which
-        is a guess about who is at the keyboard rather than a statement; the
-        history records which of the two an entry carries. Kept under the
-        user's home directory, not in any collection: who is here is a property
-        of the machine.
+        Kept under the user's home directory: who is at this keyboard is a
+        property of the machine, and a name written into a collection travels
+        with it.
         """
-        current, source = resolve_author()
-        name, chosen = QInputDialog.getText(
-            self,
-            AUTHOR_TITLE,
-            "Changes to labels, workflow state and metadata are recorded under "
-            "this name.\n"
-            + (
-                f"Nothing has been set, so the account name {current!r} is "
-                "standing in."
-                if source == "os" else f"Currently {current!r}."
-            ),
-            text="" if source == "os" else current,
-        )
-        if not chosen or not name.strip():
+        dialog = SettingsDialog(self)
+        if dialog.exec_() != QDialog.Accepted:
             return
+        wanted = dialog.author
         try:
-            path = set_author(name)
+            if wanted:
+                set_author(wanted)
+            else:
+                clear_author()
         except (OSError, ValueError) as error:
             QMessageBox.critical(self, AUTHOR_TITLE, str(error))
             return
         self._adopt_author()
-        self._flash(f"Recording changes as {name.strip()}")
-        logger.info("Author written to %s", path)
+        self._flash(author_summary(wanted or None))
 
     def _adopt_author(self) -> None:
-        """Have every controller that records pick the new name up at once."""
+        """Have everything that records pick the new name up at once.
+
+        Every controller holding a recorder, and the line beside the mark that
+        says which name they carry.
+        """
         recorder = Recorder.for_run()
         for controller in (
-            self.label_controller, self.metadata_controller,
+            self.controller, self.label_controller, self.metadata_controller,
             self.operations_controller, self.label_panel.versions_controller,
         ):
             controller.recorder = recorder
+        self._corner.author.setText(author_summary(recorder.by))
+        self._corner.author.setToolTip(
+            author_summary(recorder.by, asked=True) + " Press F2 to change it."
+        )
 
     def restore_label_version(self) -> None:
         """Put the chosen earlier version of this label back, having asked.

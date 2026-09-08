@@ -35,6 +35,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "clear_author",
     "AM_HISTORY_FILENAME",
     "CONFIG_DIRECTORY",
     "CONFIG_DISPLAY",
@@ -413,6 +414,24 @@ def set_author(name: str) -> Path:
         encoding="utf-8",
     )
     logger.info("Recording changes as %s", flattened)
+    return path
+
+
+def clear_author() -> Path | None:
+    """Forget the name on this machine, so later runs record none.
+
+    The counterpart to :func:`set_author`, and the only way back to the
+    default: a name stated once is otherwise stated for ever, and somebody who
+    set the wrong one needs an undo that is not "type something else".
+
+    Returns:
+        The file removed, or None where there was nothing to remove.
+    """
+    path = CONFIG_DIRECTORY / USER_FILENAME
+    if not path.is_file():
+        return None
+    path.unlink()
+    logger.info("Recording changes under no name")
     return path
 
 

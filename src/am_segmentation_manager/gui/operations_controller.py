@@ -214,7 +214,17 @@ class OperationsController:
         #: Where this view's changes are recorded. A project with no log is
         #: left without one, so nothing is recorded until a collection opts in.
         self.recorder = Recorder.for_run()
+        #: The scanned projects, so a write can start a record where none is.
+        self.projects: Sequence = ()
 
+    def set_projects(self, projects: Sequence) -> None:
+        """Note the scanned projects, so a write knows whose history to start.
+
+        Held rather than passed to each call: every operation here that writes
+        needs them for the same reason, and one that forgot would write into a
+        collection without recording that it had.
+        """
+        self.projects = tuple(projects)
 
     def set_start_path(self, start_path: Path | None) -> None:
         """Record the directory reports are written relative to."""
@@ -325,7 +335,8 @@ class OperationsController:
                 len(plan.conversions),
             )
         created = convert_record_predictions(
-            records, overwrite=allow_overwrite, recorder=self.recorder.for_batch()
+            records, overwrite=allow_overwrite,
+            recorder=writing_recorder(self.projects, self.recorder),
         )
         return OperationReport(
             f"Wrote {len(created)} label(s) from predictions.",
@@ -660,7 +671,7 @@ class OperationsController:
 
         results = compress_labels(
             records, allow_corrected=allow_corrected, on_progress=report,
-            recorder=self.recorder.for_batch(),
+            recorder=writing_recorder(self.projects, self.recorder),
         )
         applied = [result for result in results if result.applied]
         saved = sum(result.original_size - result.new_size for result in applied)
@@ -1143,7 +1154,9 @@ class OperationsController:
             )
 
         report = apply_revert(
-            plan, recorder=self.recorder.for_batch(), allow_corrected=allow_corrected
+            plan,
+            recorder=writing_recorder(projects, self.recorder),
+            allow_corrected=allow_corrected,
         )
         lines = tuple(
             f"{self._relative(path)}: {why}" for path, why in report.failed

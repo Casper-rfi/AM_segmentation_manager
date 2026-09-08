@@ -1695,6 +1695,8 @@ def test_reverting_proofread_work_is_refused_until_it_is_named(
 
 def take_savepoint(window, title="round 1", note="", gap=False):
     """Answer the savepoint dialog without opening it."""
+    from qtpy.QtWidgets import QDialog
+
     from am_segmentation_manager.gui.widgets import main_window as module
 
     class _Answered:
@@ -1702,7 +1704,6 @@ def take_savepoint(window, title="round 1", note="", gap=False):
             self.title, self.description, self.closing_gap = title, note, gap
 
         def exec_(self):
-            from qtpy.QtWidgets import QDialog
             return QDialog.Accepted
 
     original = module.SavepointDialog
@@ -2417,12 +2418,103 @@ def _menu_items(window, title: str) -> dict[str, str]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Who changes are recorded under
+# ---------------------------------------------------------------------------
+
+def test_the_window_says_which_name_it_is_recording_under(window, monkeypatch):
+    """Beside the mark, on every tab. A name reaches every entry written from
+    anywhere in the window, so no one tab is the place to say it and there are
+    far too many actions to warn at."""
+    from am_segmentation_manager.history import resolve_author
+
+    assert window._corner.author.text() in {
+        "Recording without a name",
+        f"Recording as {resolve_author()[0]}",
+    }
+
+
+def test_setting_a_name_reaches_everything_that_records(window, monkeypatch):
+    """Including the curation controller, which records state changes -- the
+    one the first version of this forgot.
+
+    Asserted as "they all carry the same name as the line says", not as a
+    literal: whether this machine has a name set is not this test's business.
+    """
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui.widgets import main_window as module
+    from am_segmentation_manager.gui.widgets.settings_dialog import author_summary
+
+    class _Answered:
+        def __init__(self, *_args):
+            self.author = "Ada"
+
+        def exec_(self):
+            return QDialog.Accepted
+
+    written: list[str] = []
+    monkeypatch.setattr(module, "SettingsDialog", _Answered)
+    monkeypatch.setattr(module, "set_author", written.append)
+
+    window.show_settings()
+
+    assert written == ["Ada"], "the name was not written"
+    # Identity, not equality: two recorders built from the same file agree by
+    # accident, and would go on agreeing while one of them was never updated.
+    carried = {
+        id(controller.recorder)
+        for controller in (
+            window.controller, window.label_controller,
+            window.metadata_controller, window.operations_controller,
+            window.label_panel.versions_controller,
+        )
+    }
+    assert len(carried) == 1, "something that records did not pick the name up"
+    assert window._corner.author.text() == author_summary(
+        window.controller.recorder.by
+    )
+
+
+def test_a_name_can_be_taken_off_again(window, monkeypatch):
+    """A name stated once would otherwise be stated for ever, and somebody who
+    set the wrong one needs an undo that is not typing something else."""
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    class _Answered:
+        def __init__(self, *_args):
+            self.author = ""
+
+        def exec_(self):
+            return QDialog.Accepted
+
+    cleared: list[bool] = []
+    monkeypatch.setattr(module, "SettingsDialog", _Answered)
+    monkeypatch.setattr(module, "clear_author", lambda: cleared.append(True))
+    monkeypatch.setattr(module, "set_author", lambda name: pytest.fail("wrote a name"))
+
+    window.show_settings()
+
+    assert cleared == [True]
+
+
+def test_the_line_says_plainly_when_nothing_is_recorded(window):
+    """The case somebody is most likely to be in without knowing it."""
+    from am_segmentation_manager.gui.widgets.settings_dialog import author_summary
+
+    assert author_summary(None) == "Recording without a name"
+    assert author_summary("Ada") == "Recording as Ada"
+    assert "carry nobody" in author_summary(None, asked=True)
+
+
 def test_the_window_has_the_menus_a_desktop_application_has(window):
     """Nothing here is a second way to drive the window: it is where someone
     looks for the things a window is expected to have and this one had nowhere
     to put."""
     assert set(_menu_items(window, "File")) == {
-        "Open folder...", "Rescan", "Record changes as...", "Quit",
+        "Open folder...", "Rescan", "Settings...", "Quit",
     }
     assert set(_menu_items(window, "Help")) == {
         "Keyboard shortcuts", f"About {PRODUCT_NAME}",
