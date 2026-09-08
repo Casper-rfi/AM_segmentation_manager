@@ -1,13 +1,13 @@
-"""Data models for am_segmentation_manager.
+"""The dataclasses the layers pass between them.
 
-This module defines the core dataclasses used across the package:
-- Project
-- Lamella
-- Stage
-- ImageRecord
+One record per image, gathered into stages, lamellae and projects. Nothing here
+reads the filesystem: :mod:`~am_segmentation_manager.scanner` fills these in, and
+everything above works on them rather than walking the tree again.
 
-The dataclasses are intentionally small and typed so they are easy to test
-and reason about. Filesystem scanning is separated from these models.
+**A record carries what its path cannot answer** -- how far a stage sits above an
+image depends on the shape of its image set, and a loose image's directory names
+no modality -- so ``stage_path`` and the two artefact directories are carried
+rather than re-derived. Workflow state is one field, never a pair of flags.
 """
 from __future__ import annotations
 

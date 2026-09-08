@@ -1,10 +1,14 @@
-"""Record filtering and scope-matching utilities.
+"""Choosing a subset of an index, by where a record is and by what it is.
 
-This module provides functions to match projects, lamellae, stages and
-images against user-supplied selectors (names, numbers, ranges).  The
-utilities are used by the CLI and can be reused by any future feature
-that needs to select a subset of indexed records (e.g. filtered CSV
-export, metadata display).
+The selectors a caller supplies -- names, numbers, ranges like ``2-5`` --
+answered against projects, lamellae, stages and images, then against what an
+image header records.
+
+**Two stages, and in that order.** The structural selectors are string
+comparisons; the metadata ones need a header that somebody had to open. Running
+them second means headers are read only for what survives, so the cost of a
+query stays proportional to what it asks about rather than to the size of the
+archive. Nothing here opens one itself: a caller passes in what it read.
 """
 from __future__ import annotations
 
@@ -304,12 +308,7 @@ def iter_matching_records(
 
 
 # ---------------------------------------------------------------------------
-# Metadata filters
-#
-# Applied *after* the structural selectors above, deliberately. Filtering by
-# project and lamella first means headers are read only for what survives, so
-# the cost of a metadata query stays proportional to what it asks about rather
-# than to the size of the archive.
+# Metadata filters -- applied after the structural selectors above, deliberately
 # ---------------------------------------------------------------------------
 
 #: Metadata filters, mapped to the ImageMetadata attribute they test. Keeping

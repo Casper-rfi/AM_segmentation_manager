@@ -168,6 +168,7 @@ is the place for anything scripted:
 | See how a folder is interpreted | `inspect-layout` |
 | Make a pre-Autolamella dataset indexable | `init-project` |
 | Read or edit project metadata | `show-metadata` / `edit-metadata` |
+| Scan a directory and list the projects found | `list-projects` |
 | Predict labels with a trained model | `predict` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `deselect` / `select` / `correct` |
@@ -179,6 +180,8 @@ is the place for anything scripted:
 | Export a selection of images and labels into a folder of its own, ready to merge back | `export-files` |
 | Check an exported CSV still resolves | `check-training-csv` |
 | Start recording a collection's history | `init-history` |
+| Name the state of the data, so a round of work can be undone | `savepoint` |
+| See the savepoints here, what each covers and what it still reaches | `list-savepoints` |
 | Read what has been recorded about a project or a label | `history` |
 | Merge a worked-on copy back into the collection | `merge` |
 | Put labels back to what they held before a conversion or a merge | `revert` |

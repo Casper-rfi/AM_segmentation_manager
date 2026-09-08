@@ -2,13 +2,17 @@
 
 `docs/` keeps a rule where the suite keeps its guard: an entry states what must
 stay true and names the test that stops it drifting, rather than restating the
-argument the test's own docstring already makes. That only works while the
-names still resolve -- a renamed test would leave the document pointing at
-nothing, and nothing else would notice.
+argument that test's own docstring already makes.
+
+Two kinds of check. The first asks whether a pointer still resolves, for tests
+and for code alike -- a renamed one would leave the document pointing at
+nothing, and nothing else would notice. The second asks whether an entry has a
+pointer at all, and of which kind: a test says the behaviour still holds, where
+a symbol says only that a name was not renamed. Both are ratchets.
 
 Names come from the *documents*, so writing one down is what makes it checked.
-The same goes for the code a document points at: an entry that says the argument
-lives in `some_module.some_function` is worth no more than that name.
+:data:`MAX_DOC_LINES` holds how long the four may get, and what may be taken out
+of one.
 """
 from __future__ import annotations
 
@@ -24,27 +28,50 @@ REPOSITORY = Path(__file__).resolve().parent.parent
 DOCS = REPOSITORY / "docs"
 TESTS = REPOSITORY / "tests"
 
-#: How long the documents may get. `CLAUDE.md` sets this: short enough to read
-#: in one sitting, and approaching it means something in there has finished
-#: rather than that the limit needs raising. Raised once, from 1000, by the
-#: scientist, for the history work -- which is a decision somebody took and not
-#: a thing to do again when the next feature lands.
+#: How long the documents may get, in total. `CLAUDE.md` sets this: short
+#: enough to read in one sitting.
+#:
+#: The number bounds the documents. It does **not** decide what goes. An entry
+#: is removed because the code it describes no longer exists, because the fact
+#: now sits in a docstring beside that code, because it was a plan and the work
+#: has landed, or because the scientist said so -- never to make room for
+#: something being added. Over the ceiling with none of those available is a
+#: question for the scientist rather than a deletion to be chosen.
 MAX_DOC_LINES = 1050
+
+#: The documents holding invariants rather than status. An entry in the roadmap
+#: or the future-work sketches describes what is unbuilt or unfinished and so
+#: has nothing to point at; only these two are held to naming their evidence.
+REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
+
+#: Entries in :data:`REFERENCE_DOCUMENTS` naming nothing a reader can check,
+#: and entries naming a test the suite defines. Both are ratchets, and both
+#: move only by a deliberate edit: an unbacked entry may be added only by
+#: fixing another, and a test pointer may not be traded for a weaker one.
+#: Neither ever forces a deletion -- a backed entry is free at any length.
+MAX_UNBACKED_ENTRIES = 43
+MIN_TEST_BACKED_ENTRIES = 40
 
 
 def _documents() -> list[Path]:
     return sorted(DOCS.glob("*.md"))
 
 
-def _test_names() -> set[str]:
-    """Return every test function the suite defines."""
+@functools.lru_cache(maxsize=1)
+def _test_names() -> frozenset[str]:
+    """Return every test function the suite defines.
+
+    Held after the first call, and frozen so a caller cannot edit what every
+    other caller then sees: resolving one name at a time would re-parse the
+    whole suite for each entry of each document.
+    """
     names: set[str] = set()
     for path in sorted(TESTS.glob("test_*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
                 names.add(node.name)
-    return names
+    return frozenset(names)
 
 
 def _named_in(document: Path) -> set[str]:
@@ -94,9 +121,9 @@ def test_a_document_has_no_broken_local_link(document: Path):
 def test_the_documents_stay_short_enough_to_read():
     """`CLAUDE.md` sets the ceiling, and nothing else counts the lines.
 
-    Failing here is not a licence to raise :data:`MAX_DOC_LINES`: it means
-    something in `docs/` has finished and should go, or that an argument now
-    lives in a test docstring and the entry can point at it instead.
+    Failing here is not a licence to raise :data:`MAX_DOC_LINES`, and not a
+    licence to delete whatever is nearest: what may go, and why, is on that
+    constant.
     """
     counted = {
         document.name: len(document.read_text(encoding="utf-8").splitlines())
@@ -241,3 +268,143 @@ def test_the_documents_point_at_some_code():
     cited = [name for document in _documents() for name in _cited_code(document)]
 
     assert len(cited) >= 20
+
+
+# ---------------------------------------------------------------------------
+# What an entry offers as evidence
+#
+# The checks above ask whether a pointer still resolves. These ask whether
+# there is one at all, and of which kind: a *test* named beside a claim is
+# evidence the behaviour still holds, where a symbol only shows the name has
+# not been renamed. `_plots_by_image_number` outlived an entry describing it
+# wrongly, which is the failure a symbol pointer cannot catch.
+# ---------------------------------------------------------------------------
+
+
+def _entries(document: Path) -> list[str]:
+    """Return the document's top-level bullets, one string each.
+
+    A bullet runs until the next one, a blank line or an unindented line, so
+    the entry carries the whole of its own argument and none of its
+    neighbour's. Prose outside a bullet is a preamble rather than a claim and
+    is not returned.
+    """
+    entries: list[str] = []
+    current: list[str] = []
+    for line in document.read_text(encoding="utf-8").splitlines():
+        if line.startswith("- "):
+            if current:
+                entries.append("\n".join(current))
+            current = [line]
+        elif current and line.startswith("  ") and line.strip():
+            current.append(line)
+        elif current:
+            entries.append("\n".join(current))
+            current = []
+    if current:
+        entries.append("\n".join(current))
+    return entries
+
+
+@functools.lru_cache(maxsize=1)
+def _defined_names() -> frozenset[str]:
+    """Return every bare identifier the package defines, anywhere."""
+    _modules, top, members, _classes = _package_symbols()
+    found: set[str] = set()
+    for names in top.values():
+        found |= names
+    for names in members.values():
+        found |= names
+    return frozenset(found)
+
+
+def _points_at_code(token: str) -> bool:
+    """Return whether *token* names something in the package, however written.
+
+    More permissive than :func:`_resolves`, which answers only for dotted
+    names: an entry earns its evidence by naming `FilterRow` or `merge.py` as
+    much as by naming `controls.SegmentedControl`. **A bare word counts only
+    where it is shaped like code** -- underscored or CamelCase -- so that
+    `selected` and `corrected` are read as the English they are rather than as
+    whatever happens to share their spelling.
+    """
+    token = token.rstrip("()").split("/")[-1]
+    modules, _top, members, _classes = _package_symbols()
+    if token.endswith(".py"):
+        return token[:-3] in modules
+    if "." in token:
+        head = token.split(".", 1)[0]
+        return (head in modules or head in members) and _resolves(token)
+    if token in modules:
+        return True
+    shaped = "_" in token or (token[:1].isupper() and any(c.isupper() for c in token[1:]))
+    return shaped and token in _defined_names()
+
+
+def _backing(entry: str) -> str:
+    """Return what an entry offers: ``test``, ``code`` or ``nothing``."""
+    tokens = re.findall(r"`([^`]+)`", entry)
+    defined = _test_names()
+    if any(re.fullmatch(r"test_[A-Za-z0-9_]+", t) and t in defined for t in tokens):
+        return "test"
+    if any(not t.startswith("test_") and _points_at_code(t) for t in tokens):
+        return "code"
+    return "nothing"
+
+
+def _reference_entries() -> list[tuple[str, str]]:
+    """Return every entry of the two reference documents, with its document."""
+    return [
+        (document.name, entry)
+        for document in _documents()
+        if document.name in REFERENCE_DOCUMENTS
+        for entry in _entries(document)
+    ]
+
+
+def test_an_entry_that_names_nothing_is_added_only_by_fixing_another():
+    """An unbacked entry states a rule with nothing to check it against.
+
+    A ratchet rather than a bar: the count may fall and may not rise, so a new
+    entry is free where it names its evidence and costs an old one where it
+    does not. Failing here is not a reason to delete anything -- name the test
+    or symbol that already guards the claim, or move the fact to a docstring
+    beside the code, which is where a fact about behaviour belongs.
+
+    Some entries legitimately point at nothing: the environment to run the
+    suite in, the reference collection, a quirk of the microscope's own header.
+    Those are facts about the world, which no test of ours can hold.
+    """
+    unbacked = [
+        f"{name}: {' '.join(entry.split())[:70]}"
+        for name, entry in _reference_entries()
+        if _backing(entry) == "nothing"
+    ]
+
+    assert len(unbacked) <= MAX_UNBACKED_ENTRIES, (
+        f"{len(unbacked)} entries name nothing checkable, "
+        f"was {MAX_UNBACKED_ENTRIES}: {sorted(unbacked)}"
+    )
+
+
+def test_the_evidence_for_an_entry_is_not_traded_for_a_weaker_one():
+    """A test pointer says the behaviour still holds; a symbol says less.
+
+    The other ratchet, and the one that matters for staleness: swapping a named
+    test for a named function passes every other check in this file while
+    quietly removing the only thing that would notice the entry going out of
+    date.
+    """
+    backed = sum(1 for _name, entry in _reference_entries() if _backing(entry) == "test")
+
+    assert backed >= MIN_TEST_BACKED_ENTRIES, (
+        f"{backed} entries name a live test, was {MIN_TEST_BACKED_ENTRIES}"
+    )
+
+
+def test_the_backing_check_can_tell_the_three_apart():
+    """Or both ratchets hold at whatever the classifier happens to return."""
+    assert _backing("- **A rule.** Guarded by `test_every_argument_has_help`.") == "test"
+    assert _backing("- **A rule.** Stated in `layout.acquisition_stem`.") == "code"
+    assert _backing("- **A rule.** Stated in `merge.py`.") == "code"
+    assert _backing("- **A rule.** Nothing but `--dry-run` and `AM_state.yaml`.") == "nothing"

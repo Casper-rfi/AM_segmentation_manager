@@ -1,7 +1,13 @@
-"""CSV helpers for exporting training and metadata files.
+"""Writing the image and label lists a training run reads.
 
-This module provides functions to export paired image and label file paths into
-CSV format for machine learning model training and validation.
+One row per acquisition rather than per file: both beams of one scene go side by
+side (``sem_image, sem_label, fib_image, fib_label``), a single-beam selection
+writes ``image, label``, and a cell is blank where that beam has no image or no
+label worth pairing with one.
+
+Two rules nothing may get past: an empty label is never written as a training
+pair, and a split never cuts a group -- the label in a single-beam export, the
+acquisition in a paired one. ``docs/decisions.md`` § Counting and export says why.
 """
 from __future__ import annotations
 

@@ -1,11 +1,14 @@
-"""Command line interface for common operations.
+"""The command-line surface: parse, dispatch, print, return an exit code.
 
-The CLI is intentionally lightweight and uses argparse so users can run
-``python -m am_segmentation_manager.cli --help`` to see available commands and
-``python -m am_segmentation_manager.cli <command> --help`` to get command-specific
-usage information.
+The work every command does lives in ``operations/`` and above; what is here is
+the argument vocabulary and the reporting. Subparsers are registered in workflow
+order, argparse listing them in that order and ``am-seg --help`` being where
+somebody finds out what the package does.
 
-After installing the package, the ``am-seg`` entry point is also available.
+The parser and :data:`COMMANDS` are built separately and must agree about what
+exists -- a name in one and not the other is either unreachable or undispatched.
+**A command that acts stays on Adaptive Polishing while one that reports covers
+every series**, for the reason :data:`DEFAULT_SERIES` gives.
 """
 from __future__ import annotations
 

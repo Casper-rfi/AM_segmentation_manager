@@ -1,8 +1,12 @@
-"""The curation window: layout, wiring and keyboard shortcuts.
+"""The window: four tabs, the controllers behind them, and the keys.
 
-This module connects the three panels and the frame timeline to the controller.
-It makes no decisions of its own -- it asks the controller what to show, and
-tells the controller what the user did.
+*Add data*, *Curate*, *Label* and *Export*. Each has a controller holding no Qt,
+and this module holds none of its own decisions -- it asks a controller what to
+show, and tells it what the user did. The controllers are built and owned here,
+which is also where a signal from one tab reaches the work another does.
+
+Why the window looks and behaves as it does, and every Qt trap in it, is
+``docs/display.md``.
 """
 from __future__ import annotations
 

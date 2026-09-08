@@ -33,6 +33,7 @@ from __future__ import annotations
 import importlib.util
 import locale
 import os
+import sys
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -63,6 +64,34 @@ LOCALE_ENV_VAR = "AM_SEG_TEST_LOCALE"
 #: unrelated GUI regressions rather than as one wrong interpreter.
 REQUIRED_QT_BINDING = "PySide6"
 
+#: The environments this suite is meant to run in, the lighter one first.
+#: `CLAUDE.md` names them too; they are here so the refusal below can turn them
+#: into a command, which a sentence in a document cannot do.
+SUPPORTED_ENVIRONMENTS = ("am_segmentation_manager", "am_segmentation_manager_ml")
+
+
+def supported_interpreters() -> list[Path]:
+    """Return the interpreters of the supported environments found beside this one.
+
+    Located from ``sys.prefix`` rather than by asking conda: the refusal below
+    is most often read in a shell where ``conda activate`` is not a function,
+    which is the one shell where advice to activate something cannot be
+    followed. Returns nothing on a machine laid out some other way, and the
+    caller says what it can without them.
+    """
+    prefix = Path(sys.prefix)
+    environments = prefix.parent if prefix.parent.name == "envs" else prefix / "envs"
+    found = []
+    for name in SUPPORTED_ENVIRONMENTS:
+        for interpreter in (
+            environments / name / "bin" / "python",
+            environments / name / "python.exe",
+        ):
+            if interpreter.exists():
+                found.append(interpreter)
+                break
+    return found
+
 
 def installed_qt_binding() -> str | None:
     """Return the binding qtpy would use here, or None when qtpy is absent.
@@ -91,14 +120,19 @@ def pytest_configure(config) -> None:
     """
     binding = installed_qt_binding()
     if binding is not None and binding != REQUIRED_QT_BINDING:
+        interpreters = supported_interpreters()
+        remedy = (
+            "Run instead:\n"
+            + "\n".join(f"    {one} -m pytest" for one in interpreters)
+            if interpreters
+            else f"Run the suite in {' or '.join(SUPPORTED_ENVIRONMENTS)}."
+        )
         raise pytest.UsageError(
             f"qtpy resolves to {binding} here, and the window is written for "
             f"{REQUIRED_QT_BINDING}. Running anyway fails about a dozen GUI "
             f"tests on differences between the bindings rather than on "
-            f"anything wrong with the package. Activate the "
-            f"am_segmentation_manager or am_segmentation_manager_ml "
-            f"environment and run again -- conda's `base` is the usual cause. "
-            f"See docs/decisions.md § Environment."
+            f"anything wrong with the package -- conda's `base` is the usual "
+            f"cause. See docs/decisions.md § Environment.\n\n{remedy}"
         )
 
     requested = os.environ.get(LOCALE_ENV_VAR)

@@ -1,8 +1,10 @@
-"""Path manipulation and resolution utilities.
+"""Writing a path relative to a base, and checking one that came out of a file.
 
-Centralises path resolution and relative path formatting across scanning,
-CSV operations, and CLI output, and the rule for what a relative key read out
-of a hand-editable file may look like.
+Two rules the package has to apply the same way everywhere: how a path is
+written relative to a base, for CSVs and command-line output, and what a
+relative key read out of a hand-editable file may look like. Both live here
+rather than beside their first caller, because more than one caller has to
+agree about them.
 """
 from __future__ import annotations
 

@@ -503,8 +503,10 @@ rather than appending to it.
   directory, so rootdir becomes that directory, `testpaths` never applies, and pytest recurses into
   everything below it — from `$HOME` that means importing every `.py` under the data archives,
   which looks exactly like a hang. Run it in conda's `base` and the imports resolve to a different
-  stack; that one is now caught before any test runs, the Qt binding being the part of the wrong
-  stack the suite can name — [`display.md`](display.md) § The binding.
+  stack; that one is caught before any test runs, and the refusal names an interpreter to run
+  rather than an environment to activate (`test_the_refusal_names_a_command_that_can_be_run`),
+  `conda activate` being a shell function absent from the shells it is read in. The Qt binding is
+  the part of the wrong stack the suite can name — [`display.md`](display.md) § The binding.
 - **The reference collection is the live archive, and there is no disposable copy of it.**
   `<collection>/` — a couple of hundred gigabytes covering
   every layout era from pre-Autolamella to 2026-05, and still being added to, so any count of it

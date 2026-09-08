@@ -1,17 +1,30 @@
-"""Every command and option must explain itself.
+"""Every command and option must explain itself, and be findable.
 
 The GUI already asserts that every keyboard shortcut carries a description
 (``test_gui_window.test_every_shortcut_is_documented``). The CLI is the larger
 surface and had no equivalent, which is how ``convert-predictions`` went without
 a description paragraph unnoticed.
+
+Findable is the second half: ``--help`` reaches only somebody already running
+the program, so the README is the catalogue, and a command missing from it is
+one nobody finds. That is checked both ways -- ``savepoint`` and
+``list-savepoints`` were in the CLI and in no document at all.
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
+import re
+from pathlib import Path
 
 import pytest
 
 from am_segmentation_manager.cli import build_parser
+
+#: The catalogue a reader works from. `--help` lists the commands only to
+#: somebody already running the program, so a command absent from here is one
+#: nobody finds.
+README = Path(__file__).resolve().parent.parent / "README.md"
 
 
 def _subparser_action(parser: argparse.ArgumentParser) -> argparse._SubParsersAction:
@@ -191,3 +204,60 @@ def test_no_help_text_carries_the_home_directory_it_was_built_on():
         texts.append(sub.description or "")
 
     assert not [text for text in texts if home in text]
+
+
+
+def _names_in_the_readme() -> set[str]:
+    """Return every name the README carries in backticks, and each word of one.
+
+    A command named inside an invocation -- ``am-seg --log-file <path> gui
+    <folder>`` -- is catalogued as much as one alone in a table cell, so the
+    words of a multi-word token count too.
+    """
+    found: set[str] = set()
+    for token in re.findall(r"`([^`]+)`", README.read_text(encoding="utf-8")):
+        found.add(token.removeprefix("am-seg ").strip())
+        found |= set(token.split())
+    return found
+
+
+@pytest.mark.parametrize("name", [name for name, _parser in _canonical_subcommands()])
+def test_every_command_is_named_in_the_readme(name):
+    """A command the catalogue does not carry is one nobody finds.
+
+    This caught `savepoint` and `list-savepoints`, added over a branch and
+    never catalogued, and `list-projects`, which had never been. Aliases are
+    exempt -- `scan` is a second spelling, not a second command -- and a
+    wildcard entry such as `export-*-csv` covers the family it names.
+    """
+    named = _names_in_the_readme()
+
+    assert any(
+        entry == name or ("*" in entry and fnmatch.fnmatch(name, entry))
+        for entry in named
+    ), f"{name} is in the CLI and not in README.md"
+
+
+def test_the_readme_names_no_command_the_parser_will_not_accept():
+    """The other direction: a renamed command leaves the catalogue pointing at
+    nothing, and the table is where a reader looks first."""
+    accepted = set(_subcommands())
+    rows = [
+        line for line in README.read_text(encoding="utf-8").splitlines()
+        if line.startswith("|") and len(line.strip("|").split("|")) == 2
+    ]
+    listed = {
+        entry
+        for row in rows
+        for entry in re.findall(r"`([^`]+)`", row.strip("|").split("|")[1])
+    }
+    unknown = sorted(
+        entry
+        for entry in listed
+        if not any(
+            entry == name or ("*" in entry and fnmatch.fnmatch(name, entry))
+            for name in accepted
+        )
+    )
+
+    assert not unknown, unknown

@@ -1,9 +1,14 @@
-"""Filesystem scanner and project index.
+"""Turning a directory tree into the index the rest of the package reads.
 
-The scanner is responsible for discovering Autolamella projects by locating
-experiment.yaml files and building an in-memory ProjectIndex. The remainder of
-the package should operate on the ProjectIndex rather than re-traversing the
-filesystem.
+The one traversal: :mod:`~am_segmentation_manager.discovery` says where things
+are and :mod:`~am_segmentation_manager.layout` what they are called, and this
+decides what they mean -- which images form a set, which label and predictions a
+record resolves to, and what workflow state it is declared in.
+
+**Only a scan opens an image**, and only a loose one, whose filename may say
+neither which beam took it nor when. That is the only part of a scan that is not
+a filesystem walk, so it is memoised and counted; everything above works on the
+:class:`ProjectIndex` rather than walking the tree again.
 """
 from __future__ import annotations
 
@@ -146,12 +151,12 @@ def _without_names(image_set: ImageSet, names: set[str]) -> ImageSet | None:
 
 
 class Scanner:
-    """Scan a starting directory for Autolamella projects.
+    """Build a :class:`ProjectIndex` from a starting directory.
 
-    The scanner looks for experiment.yaml files. When found, it loads
-    experiment metadata (via read_yaml) and optional AM_metadata.yaml that can
-    override experiment values. It then constructs a lightweight Project model
-    and adds it to a ProjectIndex.
+    A project is a directory holding ``experiment.yaml``, or the
+    ``AM_metadata.yaml`` this package writes to make a pre-Autolamella dataset
+    indexable; where both are present the second overrides the first. Headers
+    read along the way are cached on the instance, so one scanner is one scan.
     """
 
     EXPERIMENT_FILENAME = EXPERIMENT_FILENAME

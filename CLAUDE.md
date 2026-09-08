@@ -28,32 +28,12 @@ files. Its main functions are to:
 The package will initially be used by me, and will be made open source in the future.
 Code quality, maintainability and extensibility therefore matter.
 
----
-
-# Workflow
-
-0. New data gets added to the collection manually:
-	1. `inspect-layout` reports how a directory is interpreted and what does not fit. Read-only; the place to start on unfamiliar data.
-	2. `init-project` writes AM_metadata.yaml, which both makes a pre-Autolamella dataset indexable and holds its metadata.
-	3. `edit-metadata` is used to add any missing metadata or make corrections
-	4. `scripts/migrate_state.py` declares in an AM_state.yaml the workflow state a dataset kept in `deselected/` and `corrected/` folders (script). Legacy: the collection holds no such dataset and nothing can create one, but the package still detects the shape and refuses to curate it.
-	5. import legacy projects (script)
-	6. `compress-labels` reduces the disk space labels occupy (in the GUI under Add data, since it acts on the whole collection rather than on a selection)
-1. View & curate data and create predictions:
-	1. The `gui` is used to set the state of FIB and SEM images to `deselect` (don't create and proofread labels), `select` (create pseudolabels and proofread) or `correct` (has proofread pseudolabels)
-	2. `predict` creates predictions with a trained model, in a process of its own. Needs the second environment; also a button in the GUI under Curate.
-	3. `convert-predictions` creates pseudo-labels from the predictions
-2. create labels & correct predictions manually in the GUI
-	1. `find-specks` reports labels holding components too small to be real. It reports rather than repairs: which are genuine is judged by opening them. Implemented as a project scan and live in the label tab.
-3. Quantify metadata and labels & export:
-	1. `stats` quantifies the proportion of images with given project and image metadata
-	2. `quantify-labels` measures label surface areas
-	3. The GUI provides basic visualisation
-	4. Both label quantification and metadata filter the data for export
-	5. Export .csv files for ML model training, and for metadata and label quantifications
-
-`am-seg gui` is the primary interface. The command line is a backup, for rarely
-needed commands and for testing.
+The work runs in four phases: add data to the collection, curate it and predict,
+proofread in the window, then quantify and export. `README.md` catalogues the commands.
+`am-seg gui` is the primary interface; the command line is a backup, for rarely needed
+commands and for testing. `scripts/` holds standalone tools — environment setup, and
+one-off jobs on legacy data — each explaining itself in its own docstring; none of them
+is part of the workflow.
 
 ---
 
@@ -73,13 +53,7 @@ For every new feature:
 Current development state: `docs/00_roadmap.md` says what is built and what to pick
 up next. It is the one place that answers this.
 
----
-
 # Package Philosophy
-
-Filesystem structure and naming conventions are centralised rather than duplicated.
-Scanning, path resolution and filesystem operations use shared abstractions rather
-than hardcoding paths independently.
 
 **The filesystem is the authoritative source of truth for the state of the data.**
 Derive the index and state from files on disk rather than from a separate database or
@@ -93,15 +67,13 @@ future extensibility.
 
 The core is four layers — `layout.py` (what things are called), `discovery.py` (where
 they are), `scanner.py` (what they mean), `operations/` (what you can do to them).
-Higher layers depend on lower ones, never the reverse; `io/` sits below all four.
-Around that spine: `models.py`, `state.py` and `metadata.py` are the data the layers
-pass between them; `survey.py`, `aggregate.py`, `filtering.py` and `reporting.py` read
-an index without writing to it; `gui/` and `ml/` sit above everything, and nothing
-below them may import either. A new module states which of those it is.
-Outside `scanner.py` and `survey.py`, operate on the ProjectIndex and the dataclasses
-rather than re-traversing the filesystem. Keep data models, filesystem scanning,
-metadata handling, file operations, CSV generation, prediction handling and the CLI
-separated.
+Higher layers depend on lower ones, never the reverse; `io/` sits below all four, and
+`gui/` and `ml/` sit above everything with nothing below them importing either.
+Everything else supports that spine, and **its module docstring says how** — whether it
+carries data between the layers, reads an index without writing to it, or is a surface
+onto one. Resolve names through `layout.py` rather than embedding a path of your own,
+and outside `scanner.py` and `survey.py` work on the ProjectIndex and the dataclasses
+rather than re-traversing the filesystem.
 
 ---
 
@@ -117,14 +89,10 @@ without building a directory tree.
 Prefer simple, readable code over clever code. Avoid "quick solutions" that will
 become difficult to maintain.
 
----
-
 # Dependencies
 
 Keep dependencies minimal and prefer the standard library. Do not introduce an
 additional dependency without explaining why it is beneficial and asking permission.
-
----
 
 # Testing
 
@@ -139,40 +107,29 @@ Run the suite from the repository root in one of those two. `docs/decisions.md`
 § Environment says what running it anywhere else looks like, which is worth reading
 before believing a failure.
 
----
-
 # Documentation
 
 CLAUDE.md is ONLY for the scientist to edit. Suggestions can be made though.
 
 Add user guidance for every command using a `--help` flag.
 
-**Docstrings state what the code does now and what must stay true.** Every public
-class and function gets one: a summary line, `Args:`/`Returns:`/`Raises:` only where
-the signature does not already say it, and at most one sentence of constraint or
-invariant.
-
-A module docstring orients a reader in up to a few sentences: what the module is for, and 
-any invariant holding across it. Keep it under ten lines. Detail about one function belongs 
-on that function; reasoning about why the design is this way belongs in docs/decisions.md.
+**Docstrings state what the code does now and what must stay true.** Every public class
+and function gets one: a summary line, `Args:`/`Returns:`/`Raises:` only where the
+signature does not already say it, and at most one sentence of constraint or invariant.
+A module docstring orients a reader in a few sentences — what the module is for, and any
+invariant holding across it — and stays under ten lines.
 
 **Do not put in a docstring or a comment:** rejected alternatives, what an earlier
-version did, benchmark results, plan or phase references, or anything a reader could
-get from `git log`. Those belong in the commit message, where they are indexed by the
-change that motivated them. A measured number stays only when it is a live design
-parameter — a cache limit, a memory budget — not as a record that measuring happened.
-If a comment restates the code, delete it.
+version did, benchmark results, plan or phase references, or anything a reader could get
+from `git log`. Those belong in the commit message, where they are indexed by the change
+that motivated them. A measured number stays only when it is a live design parameter — a
+cache limit, a memory budget. If a comment restates the code, delete it.
 
-**`docs/` describes the current state of the software and the work planned next.** It
-is not a development history. When work completes, update the document to describe
-what the software now does and delete the plan that led there; do not leave a
-finished plan behind annotated as done. Correct a document rather than appending a
-correction to it.
+**`docs/` describes the software now, not how it got here.** Correct a document rather
+than appending a correction to it, and delete a plan when the work it led to lands.
 
-A fact belongs in exactly one place. Before writing something down, check whether a
-module docstring, the README or `docs/` already says it, and update that instead.
-
-**`docs/` holds four files. Adding a fifth is a decision, not a default.**
+**A fact belongs in exactly one place**, and `docs/` holds four files. Adding a fifth is
+a decision, not a default.
 
 | File | Holds |
 |---|---|
@@ -181,21 +138,22 @@ module docstring, the README or `docs/` already says it, and update that instead
 | `display.md` | Why the window is the way it is, and the Qt traps behind it |
 | `04_future_work.md` | What is not built, and the questions to answer before designing it |
 
-Place a fact before writing it: how one module behaves goes in that module's
-docstring; why the design is this way goes in `decisions.md` or `display.md` for 
-anything under `gui`; work not yet built goes in `04_future_work.md`; how to install or 
-use the package goes in `README.md`. If nothing fits, say so and ask, rather than 
-starting a new document.
+Place a fact before writing it: how one module behaves goes in that module's docstring;
+why the design is this way goes in `decisions.md`, or `display.md` for anything under
+`gui/`; work not yet built goes in `04_future_work.md`; how to install or use the package
+goes in `README.md`. If nothing fits, say so and ask rather than starting a document.
 
-**Checking the documentation is part of finishing a feature, not a step after
-it.** Before reporting work done, re-read whatever documents mention the thing
-you changed and correct what is no longer true — including status lines and
-anything that describes the old behaviour. Documentation goes stale because
-nobody re-reads it, not because anyone decides to leave it wrong.
+**Read a document by section, not whole.** `grep -n "^## " docs/decisions.md` lists its
+sections with line numbers; `sed -n` then reads the one you need.
 
-**Keep `docs/` short enough to read in one sitting — around 1000 lines in total.**
-Approaching that ceiling means something in there has finished and should be
-deleted, not that the limit needs raising.
+**What `docs/` may say, and what may be taken out of it, is held by
+`tests/test_docs.py`** — every entry names a test or a symbol, an entry is removed only
+for one of the reasons on `MAX_DOC_LINES`, and never to make room for something new. A
+document over that ceiling with none of those reasons available is a question for me.
+
+**Checking the documentation is part of finishing a feature, not a step after it.**
+Before reporting work done, re-read whatever documents mention what you changed and
+correct what is no longer true, status lines included.
 
 ---
 

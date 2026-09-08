@@ -6,10 +6,9 @@ test suite — a segfault under PySide6 is looked for in one file, not two.
 [`decisions.md`](decisions.md) holds the same for everything below the interface, and the
 environment the package is *installed* into.
 
-**An entry states a rule and names the test that guards it** rather than rehearsing an argument that
-test's own docstring already makes — `test_docs.py` fails if a name stops resolving, or if all four
-files together pass 1000 lines. Reaching that ceiling means an entry has finished, or that its
-reasoning now lives in a test and the entry can point at it instead.
+**An entry states a rule and names the test that guards it** rather than rehearsing an argument
+that test's own docstring already makes; what that requires of an entry, and what may be taken out
+of one of these files, is held by `test_docs.py`.
 
 ---
 
