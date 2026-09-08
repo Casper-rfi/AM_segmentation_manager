@@ -32,6 +32,14 @@ Makefile
 .agents/
 .gemini/
 
+# Claude Code writes both shared and local files under .claude/. Everything is
+# ignored by default and re-included by name, so an artifact nobody has thought
+# about yet -- settings.local.json, a worktree checkout, a cache -- stays out of
+# a commit until somebody decides it belongs in one.
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+
 # --- Python Build & Distribution Artifacts ---
 build/
 dist/
