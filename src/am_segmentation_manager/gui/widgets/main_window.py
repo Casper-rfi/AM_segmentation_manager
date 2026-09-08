@@ -60,6 +60,7 @@ from ..worker import BackgroundOperation
 from .branding import PRODUCT_NAME, logo_pixmap
 from .busy_dialog import BusyDialog
 from .common import mark_image
+from .conflict_dialog import ConflictDialog
 from .controls import GripSplitter
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline, timeline_legend
@@ -136,6 +137,7 @@ ANY_TAB = "any"
 BLOCKED_ACTIONS: dict[str, str] = {
     "corrected": "Include them",
     "existing": "Replace them",
+    "conflicts": "Decide each...",
 }
 
 #: The headings the F1 list groups its rows under.
@@ -1175,6 +1177,7 @@ class CurationWindow(QMainWindow):
         *,
         cancellation: Cancellation | None = None,
         rescan: bool = False,
+        confirm: Callable[[str, OperationReport, str], bool] | None = None,
     ) -> None:
         """Preview an operation, confirm it, then apply what was previewed.
 
@@ -1190,16 +1193,22 @@ class CurationWindow(QMainWindow):
             rescan: Read the collection again afterwards, for an operation
                 whose effect is not the list of files it wrote. See
                 :meth:`_operation_applied`.
+            confirm: Asks about a blocked report, in place of the ordinary
+                one. For an operation whose answer is more than yes -- a merge
+                collects a decision per conflict -- and it runs here, on the
+                thread that may open a dialog, rather than inside *run*.
 
         Preview and apply are two runs of the same function rather than one run
         whose result is replayed: a preview held across a dialog describes a
         filesystem the user has had time to change.
         """
 
+        ask = confirm if confirm is not None else self._confirm_report
+
         def previewed(report: OperationReport, allowed: bool = False) -> None:
             if report.blocked and not allowed:
                 action = BLOCKED_ACTIONS.get(report.blocked, "Include them")
-                if not self._confirm_report(title, report, action):
+                if not ask(title, report, action):
                     return
                 self._run_operation(
                     title, lambda: run(True, True), lambda r: previewed(r, True)
@@ -1792,12 +1801,31 @@ class CurationWindow(QMainWindow):
             return
         source = Path(directory)
         projects = self.controller.projects
+        #: What has been decided so far, filled in by the chooser below and
+        #: read by every later run. A decision changes what the whole
+        #: comparison comes to, so it goes into the plan rather than onto one
+        #: already made.
+        decided: dict[str, str] = {}
+
+        def ask(title: str, report: OperationReport, action: str) -> bool:
+            if report.blocked != "conflicts":
+                return self._confirm_report(title, report, action)
+            if not self._confirm_report(title, report, action):
+                return False
+            dialog = ConflictDialog(self, report.conflicts)
+            if dialog.exec_() != QDialog.Accepted:
+                return False
+            decided.update(dialog.resolutions)
+            return True
+
         self._operate(
             "Merge a copy back",
             lambda allow, dry: self.operations_controller.merge_copy(
-                source, projects, allow_corrected=allow, dry_run=dry
+                source, projects, resolutions=dict(decided),
+                allow_corrected=allow, dry_run=dry,
             ),
             rescan=True,
+            confirm=ask,
         )
 
     def _export_image_metadata(self, path: str) -> None:

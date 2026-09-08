@@ -18,17 +18,16 @@ scripting and testing. Predictions need the second environment `scripts/setup_ml
 
 **Label history and merge**, on branch `label-history` and deliberately unmerged. An append-only
 `AM_history.jsonl` per project records what changed, who changed it and when, and `am-seg history`
-reads one back. **Recording is always on**: the first change made to a project starts its log and
-records what the whole project held, while looking writes nothing; `am-seg init-history` is the
-catch-up that baselines a collection at once. **No name is recorded unless somebody states one**;
-`--as` credits a dataset that arrived annotated. A replaced version is kept under `AM_archive/`,
-which `am-seg archive` reports and `am-seg prune-archive` thins, collapsing what lies between
-savepoints and never what one names. An export carries the history and writes an `AM_export.yaml`
-naming the fork point; `am-seg merge` brings a copy back three-way against the history the two logs
-share, refusing it whole while a conflict stands. `am-seg revert` undoes a conversion or a merge, or
-a whole round by name with `--to`.
-`am-seg savepoint` names a state — one `checkpoint` entry per project sharing an id, marking a round
-of model improvement — and `am-seg list-savepoints` says what each covers and how much is reachable.
+reads one back. **Recording is always on**: the first change to a project starts its log and records
+what the whole project held, while looking writes nothing; `am-seg init-history` baselines a whole
+collection at once. **No name is recorded unless somebody states one**; `--as` credits a dataset that
+arrived annotated. A replaced version is kept under `AM_archive/`, which `am-seg archive` reports and
+`am-seg prune-archive` thins, collapsing what lies between savepoints and never what one names. An
+export carries the history and writes an `AM_export.yaml` naming the fork point; `am-seg merge`
+brings a copy back three-way against the history the two logs share, refusing it whole while a
+conflict stands. `am-seg revert` undoes a conversion or a merge, or a whole round by name with
+`--to`. `am-seg savepoint` names a state — one `checkpoint` entry per project sharing an id, marking
+a round of model improvement — and `am-seg list-savepoints` says what each still reaches.
 
 In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
 kept when the label was replaced and the predictions beside it — and puts a kept one back.
@@ -36,9 +35,10 @@ kept when the label was replaced and the predictions beside it — and puts a ke
 Add data's *Whole collection* group** with the other acts covering a whole collection, and what the
 archive costs sits on a line beside them, measured when that tab is opened rather than during a scan.
 **Revert is in Curate's operations** for a selection, going back to a conversion, a merge or a
-savepoint, and **merge is in Export** beside the copy it brings home. Who changes are recorded
-under is set on **F2** and shown beside the mark. What is left is **deciding a conflict**: the window
-reports how many stand and merges nothing, and which to keep is named with `merge --resolve`.
+savepoint, and **merge is in Export** beside the copy it brings home, a conflict being decided one
+row per group with nothing chosen in advance. Who changes are recorded under is set on **F2** and
+shown beside the mark. What is left is **looking at the two versions** before deciding: a row says
+what changed on each side, not what either holds.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

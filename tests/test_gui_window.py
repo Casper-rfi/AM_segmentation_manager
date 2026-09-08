@@ -4170,3 +4170,56 @@ def test_every_bound_key_has_somewhere_to_be_drawn(window):
 
     assert _keys_of(window._bindings) <= drawable
 
+
+
+# ---------------------------------------------------------------------------
+# The conflict chooser
+# ---------------------------------------------------------------------------
+
+def test_the_chooser_offers_nothing_until_every_row_is_answered(qt_app, window):
+    """A default would be a rule about which tree wins, which is the thing a
+    conflict exists because there is not."""
+    from qtpy.QtWidgets import QDialogButtonBox
+
+    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.widgets.conflict_dialog import ConflictDialog
+
+    rows = (
+        ConflictRow(key="p/a.tif", title="p/a.tif", details=("the label",)),
+        ConflictRow(key="p/b.tif", title="p/b.tif", details=("the label",)),
+    )
+    dialog = ConflictDialog(window, rows)
+    try:
+        merge = dialog.buttons.button(QDialogButtonBox.Ok)
+        assert merge.isEnabled() is False
+        assert dialog.resolutions == {}
+
+        dialog._controls["p/a.tif"].buttons["ours"].setChecked(True)
+        assert merge.isEnabled() is False, "one of two is not all of them"
+
+        dialog._controls["p/b.tif"].buttons["theirs"].setChecked(True)
+        assert merge.isEnabled() is True
+        assert dialog.resolutions == {"p/a.tif": "ours", "p/b.tif": "theirs"}
+    finally:
+        destroy(dialog)
+
+
+def test_the_chooser_says_which_rows_are_proofread_work(qt_app, window):
+    """On the row, not counted at the top: which of these is proofread work
+    decides how the choice is made, and a count does not say which row."""
+    from qtpy.QtWidgets import QLabel
+
+    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.widgets.conflict_dialog import ConflictDialog
+
+    rows = (ConflictRow(key="p/a.tif", title="p/a.tif", corrected=True),)
+    dialog = ConflictDialog(window, rows)
+    try:
+        said = [
+            child.text()
+            for child in dialog.findChildren(QLabel)
+            if "Proofread" in child.text()
+        ]
+        assert said, "nothing on the row says it is proofread work"
+    finally:
+        destroy(dialog)

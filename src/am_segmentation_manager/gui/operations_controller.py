@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..discovery import DatasetCandidate
@@ -54,6 +54,8 @@ class OperationReport:
         applied: False for a preview.
         blocked: Why the operation cannot run, or empty when it can. A blocked
             report carries no work; it is shown and dismissed.
+        conflicts: What a merge cannot decide, for the dialog that asks. Empty
+            for everything else, and for a merge with nothing outstanding.
         written: The files the run actually created, for an operation whose
             whole effect on the index is the paths it wrote. The window names
             them on the records that share them instead of reading the
@@ -69,10 +71,37 @@ class OperationReport:
     applied: bool = False
     blocked: str = ""
     written: tuple[Path, ...] = ()
+    conflicts: tuple[ConflictRow, ...] = ()
 
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""
         return [self.headline, *self.lines]
+
+
+@dataclass(frozen=True)
+class ConflictRow:
+    """One thing a merge cannot decide, as a person has to see it.
+
+    **One row per group, not one per kind.** A label's pixels and its workflow
+    state are resolved under a single key, so they are one decision; showing
+    two controls over one key would be a window lying about what a click did.
+
+    Attributes:
+        key: What names this decision to :func:`~..operations.merge.plan_merge`.
+        title: The group or field, as the reader knows it.
+        details: One line per kind in conflict -- the pixels, the state -- each
+            saying what the two sides hold.
+        corrected: Whether what is here is proofread work.
+        ours: The label here, where this is a label. For looking at.
+        theirs: The copy's label, where this is a label.
+    """
+
+    key: str
+    title: str
+    details: tuple[str, ...] = ()
+    corrected: bool = False
+    ours: Path | None = None
+    theirs: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +147,52 @@ class ArchiveSize:
                 f"entry and are never removed."
             )
         return line
+
+
+def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
+    """Return one row per undecided thing in *plan*, grouped as it is keyed.
+
+    A label and the workflow state of the same group resolve under one key, so
+    they become one row with a line each. Metadata is keyed per field and is a
+    row of its own.
+    """
+    from ..operations.merge import CONFLICT
+
+    rows: dict[str, ConflictRow] = {}
+    for project in plan.projects:
+        for item in project.labels:
+            if item.outcome != CONFLICT:
+                continue
+            key = f"{project.key}/{item.target}"
+            rows[key] = ConflictRow(
+                key=key,
+                title=key,
+                details=("the label: both sides painted it differently",),
+                corrected=item.corrected,
+                ours=item.our_path,
+                theirs=item.their_path,
+            )
+        for item in project.states:
+            if item.outcome != CONFLICT:
+                continue
+            key = f"{project.key}/{item.target}"
+            line = f"the state: {item.ours} here, {item.theirs} in the copy"
+            existing = rows.get(key)
+            rows[key] = (
+                replace(existing, details=(*existing.details, line))
+                if existing is not None
+                else ConflictRow(key=key, title=key, details=(line,))
+            )
+        for item in project.metadata:
+            if item.outcome != CONFLICT:
+                continue
+            key = f"{project.key}:{item.field}"
+            rows[key] = ConflictRow(
+                key=key,
+                title=f"{project.key} — {item.field}",
+                details=(f"{item.ours!r} here, {item.theirs!r} in the copy",),
+            )
+    return tuple(rows[key] for key in sorted(rows))
 
 
 #: How many filenames a report lists before leaving the rest to the count. A
@@ -970,6 +1045,7 @@ class OperationsController:
         source: Path,
         projects: Sequence = (),
         *,
+        resolutions: Mapping[str, str] | None = None,
         allow_corrected: bool = False,
         dry_run: bool = False,
     ) -> OperationReport:
@@ -996,6 +1072,11 @@ class OperationsController:
             source: The copy, holding the ``AM_export.yaml`` an export wrote.
             projects: The scan, so the destination joins the record before
                 anything is written into it.
+            resolutions: Conflicts already decided, keyed as
+                :func:`~..operations.merge.plan_merge` keys them. Handed to the
+                plan rather than applied to one already made: a decision
+                changes what the whole comparison comes to, and re-planning is
+                also what makes the merge describe the collection as it is now.
             allow_corrected: Confirm taking work over labels already proofread.
             dry_run: Report what it would do without doing it.
         """
@@ -1013,7 +1094,7 @@ class OperationsController:
         if destination is None:
             return OperationReport("Nothing has been scanned yet.")
         try:
-            plan = plan_merge(Path(source), destination)
+            plan = plan_merge(Path(source), destination, resolutions=resolutions)
         except MergeRefused as error:
             return OperationReport(str(error))
 
@@ -1024,13 +1105,16 @@ class OperationsController:
             f"here, {plan.counted(CONVERGED)} arrived at the same thing.",
         ]
         if plan.conflicts:
+            rows = _conflict_rows(plan)
             return OperationReport(
-                f"{len(plan.conflicts)} conflict(s) stand, so nothing can be "
-                f"merged. Both sides changed these since the copy was taken, "
-                f"and which to keep is decided by name with "
-                f"'am-seg merge --resolve'. Both versions stay in the archive "
-                f"either way.",
-                tuple(plan.describe())[:MAX_REPORTED_FILES],
+                f"{len(rows)} thing(s) were changed on both sides since the "
+                f"copy was taken, so nothing can be merged until each is "
+                f"decided. Both versions stay in the archive either way.",
+                tuple(
+                    f"{row.title}: {'; '.join(row.details)}" for row in rows
+                )[:MAX_REPORTED_FILES],
+                blocked="conflicts",
+                conflicts=rows,
             )
         if not taking and not incoming:
             return OperationReport(

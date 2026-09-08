@@ -1016,3 +1016,106 @@ def test_merging_over_proofread_work_is_refused_until_it_is_named(tmp_path: Path
     assert report.blocked == "corrected"
     assert not report.applied
     assert "proofread work" in report.headline
+
+
+# ---------------------------------------------------------------------------
+# Deciding a conflict
+# ---------------------------------------------------------------------------
+
+def _conflicting_copy(tmp_path: Path, root: Path, projects):
+    """Return a copy where one label was changed differently on both sides."""
+    from am_segmentation_manager.scanner import Scanner
+
+    copy = _exported_copy(tmp_path, root, projects)
+    theirs = Scanner(copy).build_index().all_projects()
+    their_label = next(
+        label
+        for project in theirs
+        for record in project.image_records
+        for label in record.labels
+    )
+    our_label = root / their_label.relative_to(copy)
+    _edit_through_the_package(their_label)
+    save_two(our_label)
+    return copy, our_label, their_label
+
+
+def save_two(label: Path) -> None:
+    """Write a different edit here, so both sides have moved."""
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.io.atomic import fingerprint_of
+    from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
+
+    save_labels(
+        [
+            LabelToSave(
+                destination=label,
+                label=_sparse_label() + 2,
+                fingerprint=fingerprint_of(label),
+            )
+        ],
+        allow_corrected=True,
+        recorder=Recorder.for_run(),
+    )
+
+
+def test_a_conflict_is_reported_as_something_to_decide(tmp_path: Path):
+    """Not as a refusal: a person can answer this, and the report carries what
+    they need to answer it with."""
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy, ours, theirs = _conflicting_copy(tmp_path, root, projects)
+
+    report = controller.merge_copy(copy, projects, dry_run=True)
+
+    assert report.blocked == "conflicts"
+    assert len(report.conflicts) == 1
+    row = report.conflicts[0]
+    assert row.ours == ours and row.theirs == theirs
+    assert any("label" in line for line in row.details)
+
+
+def test_a_label_and_its_state_are_one_decision(tmp_path: Path):
+    """They resolve under one key, so two controls over one key would be a
+    window lying about what a click did."""
+    from am_segmentation_manager.operations.selection import transition_records
+    from am_segmentation_manager.scanner import Scanner
+
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy, ours, _theirs = _conflicting_copy(tmp_path, root, projects)
+
+    # Move the state differently on each side as well, on the same group.
+    theirs_projects = Scanner(copy).build_index().all_projects()
+    transition_records(
+        [r for p in theirs_projects for r in p.image_records], "deselected"
+    )
+    transition_records(
+        [r for p in projects for r in p.image_records], "corrected"
+    )
+
+    report = controller.merge_copy(copy, projects, dry_run=True)
+
+    keyed = [row for row in report.conflicts if row.key.endswith(ours.name)]
+    assert len(keyed) == 1, "the label and its state came out as two rows"
+
+
+def test_deciding_lets_the_merge_go_ahead(tmp_path: Path):
+    """The decision goes into the plan rather than onto one already made."""
+    controller = OperationsController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy, ours, theirs = _conflicting_copy(tmp_path, root, projects)
+    wanted = tifffile.imread(str(theirs))
+
+    blocked = controller.merge_copy(copy, projects, dry_run=True)
+    decided = {row.key: "theirs" for row in blocked.conflicts}
+
+    applied = controller.merge_copy(
+        copy, projects, resolutions=decided, allow_corrected=True
+    )
+
+    assert applied.applied, applied.headline
+    assert np.array_equal(tifffile.imread(str(ours)), wanted)
