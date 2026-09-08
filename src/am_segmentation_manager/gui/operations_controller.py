@@ -94,6 +94,7 @@ class ConflictRow:
         corrected: Whether what is here is proofread work.
         ours: The label here, where this is a label. For looking at.
         theirs: The copy's label, where this is a label.
+        image: The acquisition both labels describe, for looking at them over.
     """
 
     key: str
@@ -102,6 +103,16 @@ class ConflictRow:
     corrected: bool = False
     ours: Path | None = None
     theirs: Path | None = None
+    image: Path | None = None
+
+    @property
+    def is_label(self) -> bool:
+        """Return whether there is something here to look at.
+
+        A state or a metadata row is two words against two words, both already
+        on the row; there is no picture of it to show.
+        """
+        return self.ours is not None and self.theirs is not None
 
 
 @dataclass(frozen=True)
@@ -171,6 +182,7 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
                 corrected=item.corrected,
                 ours=item.our_path,
                 theirs=item.their_path,
+                image=item.our_image,
             )
         for item in project.states:
             if item.outcome != CONFLICT:

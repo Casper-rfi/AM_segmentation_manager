@@ -36,9 +36,9 @@ Add data's *Whole collection* group** with the other acts covering a whole colle
 archive costs sits on a line beside them, measured when that tab is opened rather than during a scan.
 **Revert is in Curate's operations** for a selection, going back to a conversion, a merge or a
 savepoint, and **merge is in Export** beside the copy it brings home, a conflict being decided one
-row per group with nothing chosen in advance. Who changes are recorded under is set on **F2** and
-shown beside the mark. What is left is **looking at the two versions** before deciding: a row says
-what changed on each side, not what either holds.
+row per group with nothing chosen in advance and both versions drawn over the acquisition, swapped
+with **B**. Who changes are recorded under is set on **F2** and shown beside the mark. Everything
+here is now reachable from the window.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

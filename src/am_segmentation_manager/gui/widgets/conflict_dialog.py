@@ -23,7 +23,9 @@ from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
+    QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -50,14 +52,18 @@ CHOICES: tuple[tuple[str, str, str], ...] = (
 class ConflictDialog(QDialog):
     """Asks which version to keep, for everything a merge cannot decide."""
 
-    def __init__(self, parent, rows: Sequence) -> None:
+    def __init__(self, parent, rows: Sequence, config=None) -> None:
         """Build one row per conflict.
 
         Args:
             parent: The window it belongs to.
             rows: :class:`~..operations_controller.ConflictRow` values.
+            config: Supplies the class colours the viewer draws with. Without
+                one the rows carry no *Look at them* button, which is what a
+                test that only checks the choosing wants.
         """
         super().__init__(parent)
+        self._config = config
         self.setWindowTitle("Decide what to keep")
         self.resize(760, 520)
         layout = QVBoxLayout(self)
@@ -128,11 +134,40 @@ class ConflictDialog(QDialog):
         # not one.
         control = SegmentedControl(CHOICES)
         control.chosen.connect(self._retest)
-        stack.addWidget(control)
-
         self._controls[row.key] = control
+
+        if row.is_label and self._config is not None:
+            # Beside the choice rather than above it: looking is how the
+            # choice is made, and the two belong within one glance.
+            chooser = QHBoxLayout()
+            chooser.addWidget(control)
+            look = QPushButton("Look at them...")
+            look.setToolTip(
+                "Draw both over the acquisition, one at a time in the same "
+                "place, and mark where they differ."
+            )
+            look.clicked.connect(lambda _checked=False, r=row: self._look(r))
+            chooser.addWidget(look)
+            chooser.addStretch(1)
+            stack.addLayout(chooser)
+        else:
+            stack.addWidget(control)
         stack.addWidget(_rule())
         return block
+
+    def _look(self, row) -> None:
+        """Show both versions, and take the answer if one is given there.
+
+        A decision made while looking is not one to carry back and find the
+        row for.
+        """
+        from .conflict_viewer import ConflictViewer
+
+        viewer = ConflictViewer(self, row, self._config)
+        viewer.exec_()
+        if viewer.decision is not None:
+            self._controls[row.key].set_current(viewer.decision)
+            self._retest()
 
     def _retest(self) -> None:
         """Offer the merge only once every row has been answered."""

@@ -1812,7 +1812,9 @@ class CurationWindow(QMainWindow):
                 return self._confirm_report(title, report, action)
             if not self._confirm_report(title, report, action):
                 return False
-            dialog = ConflictDialog(self, report.conflicts)
+            dialog = ConflictDialog(
+                self, report.conflicts, self.controller.config
+            )
             if dialog.exec_() != QDialog.Accepted:
                 return False
             decided.update(dialog.resolutions)

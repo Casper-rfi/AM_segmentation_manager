@@ -107,6 +107,10 @@ class LabelMerge:
         our_fingerprint: What our file was when the plan was made, so a merge
             carried out against a tree that has moved on since is refused
             rather than written blind.
+        our_image: The acquisition the label belongs to, in this collection.
+            Carried so a conflict can be looked at: both trees hold the same
+            image, a merge never moving one, and this side is the one less
+            likely to have been changed since the copy was taken.
     """
 
     target: str
@@ -120,6 +124,7 @@ class LabelMerge:
     source_event: str = ""
     corrected: bool = False
     our_fingerprint: tuple[int, int] | None = None
+    our_image: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -440,6 +445,7 @@ def _plan_label(
         outcome=outcome, reason=reason, source_event=source_event,
         corrected=bool(ours and ours.state == "corrected"),
         our_fingerprint=fingerprint_of(our_path),
+        our_image=ours.record.image_path if ours else None,
     )
 
 

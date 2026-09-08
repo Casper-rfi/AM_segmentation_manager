@@ -4223,3 +4223,107 @@ def test_the_chooser_says_which_rows_are_proofread_work(qt_app, window):
         assert said, "nothing on the row says it is proofread work"
     finally:
         destroy(dialog)
+
+
+def test_the_viewer_draws_both_labels_over_the_same_acquisition(
+    qt_app, window, tmp_path: Path
+):
+    """Flicked between in one place, not laid side by side: side by side halves
+    the resolution of each, and a crack is a fraction of a percent of a frame."""
+    import numpy as np
+    import tifffile
+    from qtpy.QtCore import Qt
+    from qtpy.QtGui import QKeyEvent
+
+    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictViewer
+
+    image = tmp_path / "img.tif"
+    ours = tmp_path / "ours.tif"
+    theirs = tmp_path / "theirs.tif"
+    tifffile.imwrite(str(image), np.zeros((32, 32), dtype=np.uint8))
+    tifffile.imwrite(str(ours), np.zeros((32, 32), dtype=np.uint8))
+    mine = np.zeros((32, 32), dtype=np.uint8)
+    mine[4:8, 4:8] = 2
+    tifffile.imwrite(str(theirs), mine)
+
+    row = ConflictRow(
+        key="k", title="p/a.tif", ours=ours, theirs=theirs, image=image
+    )
+    viewer = ConflictViewer(window, row, window.controller.config)
+    try:
+        assert viewer._showing_theirs is False
+        held = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_B, Qt.NoModifier)
+        viewer.keyPressEvent(held)
+        assert viewer._showing_theirs is True, "B did not swap to the copy's"
+        assert "copy" in viewer.badge.text(), "nothing said which is on screen"
+
+        released = QKeyEvent(QKeyEvent.KeyRelease, Qt.Key_B, Qt.NoModifier)
+        viewer.keyReleaseEvent(released)
+        assert viewer._showing_theirs is False
+        assert viewer.badge.text() == ""
+    finally:
+        destroy(viewer)
+
+
+def test_neither_version_is_the_one_the_viewer_prefers(qt_app, window, tmp_path: Path):
+    """Qt makes the first accepting button the default and draws it in the
+    accent. A default here is a rule about which tree wins, which is the thing
+    a conflict exists because there is not."""
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictViewer
+
+    ours = tmp_path / "ours.tif"
+    theirs = tmp_path / "theirs.tif"
+    for path in (ours, theirs):
+        tifffile.imwrite(str(path), np.zeros((8, 8), dtype=np.uint8))
+
+    row = ConflictRow(key="k", title="t", ours=ours, theirs=theirs)
+    viewer = ConflictViewer(window, row, window.controller.config)
+    try:
+        assert viewer.keep.isDefault() is False
+        assert viewer.take.isDefault() is False
+        assert viewer.decision is None, "nothing is chosen before anyone chooses"
+    finally:
+        destroy(viewer)
+
+
+def test_labels_of_different_sizes_are_still_shown(qt_app, window, tmp_path: Path):
+    """Seeing that one is the wrong size is the finding. Only the pixel to
+    pixel mask has to go, because there is no such pairing to draw."""
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictViewer
+
+    ours = tmp_path / "ours.tif"
+    theirs = tmp_path / "theirs.tif"
+    tifffile.imwrite(str(ours), np.zeros((32, 32), dtype=np.uint8))
+    tifffile.imwrite(str(theirs), np.zeros((16, 16), dtype=np.uint8))
+
+    row = ConflictRow(key="k", title="p/a.tif", ours=ours, theirs=theirs)
+    viewer = ConflictViewer(window, row, window.controller.config)
+    try:
+        assert viewer._comparable() is False
+        assert viewer.differences.isEnabled() is False
+        assert "different sizes" in viewer.differences.toolTip()
+        # Both are still drawable: the viewer swaps without complaint.
+        viewer._showing_theirs = True
+        viewer._draw()
+    finally:
+        destroy(viewer)
+
+
+def test_a_state_row_offers_nothing_to_look_at(qt_app, window):
+    """Two words against two words, both already on the row."""
+    from am_segmentation_manager.gui.operations_controller import ConflictRow
+
+    label = ConflictRow(key="k", title="t", ours=Path("a"), theirs=Path("b"))
+    state = ConflictRow(key="k", title="t", details=("the state: a, b",))
+
+    assert label.is_label is True
+    assert state.is_label is False
