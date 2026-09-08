@@ -39,47 +39,67 @@ UNDO_LABELS: tuple[tuple[str, str], ...] = (
 class RevertDialog(QDialog):
     """Asks what to put the selection back to."""
 
-    def __init__(self, parent, scope: str, savepoints: Sequence = ()) -> None:
+    def __init__(
+        self,
+        parent,
+        scope: str,
+        savepoints: Sequence = (),
+        *,
+        operations: bool = True,
+    ) -> None:
         """Build the dialog.
 
         Args:
             parent: The window it belongs to.
-            scope: What the selection reaches, in the words the window uses
-                elsewhere, so this says what it would act on rather than
-                leaving the reviewer to remember.
+            scope: What this would act on, in the words the window uses
+                elsewhere, so it says so rather than leaving the reviewer to
+                remember.
             savepoints: The savepoints here, newest first. Empty hides that
                 option rather than offering one with nothing behind it.
+            operations: Offer undoing the last conversion or merge as well.
+                False leaves only the savepoints, which is the whole of what
+                restoring one over a collection means -- there is no "the last
+                conversion" across a hundred projects.
         """
         super().__init__(parent)
-        self.setWindowTitle("Revert labels")
+        self.setWindowTitle("Revert labels" if operations else "Restore savepoint")
         layout = QVBoxLayout(self)
 
-        heading = QLabel("Put these labels back to:")
+        heading = QLabel(
+            "Put these labels back to:" if operations
+            else "Put every label back to the state named:"
+        )
+        heading.setWordWrap(True)
         layout.addWidget(heading)
 
         self.choices = QButtonGroup(self)
         self._keys: list[str] = []
-        for key, caption in UNDO_LABELS:
-            button = QRadioButton(caption)
-            self.choices.addButton(button, len(self._keys))
-            self._keys.append(key)
-            layout.addWidget(button)
+        if operations:
+            for key, caption in UNDO_LABELS:
+                button = QRadioButton(caption)
+                self.choices.addButton(button, len(self._keys))
+                self._keys.append(key)
+                layout.addWidget(button)
 
         self.savepoint_box = QComboBox()
         self.savepoint_button = QRadioButton("the state named")
-        if savepoints:
+        for point in savepoints:
+            self.savepoint_box.addItem(_describe(point), point.id)
+        if savepoints and operations:
             self.choices.addButton(self.savepoint_button, len(self._keys))
             self._keys.append("")
-            for point in savepoints:
-                self.savepoint_box.addItem(_describe(point), point.id)
             row = QHBoxLayout()
             row.addWidget(self.savepoint_button)
             row.addWidget(self.savepoint_box, stretch=1)
             layout.addLayout(row)
             self.savepoint_button.toggled.connect(self.savepoint_box.setEnabled)
             self.savepoint_box.setEnabled(False)
+        elif savepoints:
+            self._keys.append("")
+            layout.addWidget(self.savepoint_box)
 
-        self.choices.button(0).setChecked(True)
+        if self.choices.buttons():
+            self.choices.button(0).setChecked(True)
 
         reach = QLabel(scope)
         reach.setWordWrap(True)
@@ -97,7 +117,8 @@ class RevertDialog(QDialog):
     @property
     def undoing(self) -> str:
         """Return the operation to undo, or empty where a savepoint is chosen."""
-        return self._keys[self.choices.checkedId()]
+        chosen = self.choices.checkedId()
+        return self._keys[chosen] if chosen >= 0 else ""
 
     @property
     def savepoint(self) -> str:

@@ -854,6 +854,7 @@ class CurationWindow(QMainWindow):
         self.metadata_panel.compress_requested.connect(self._compress_labels)
         self.metadata_panel.savepoint_requested.connect(self._take_savepoint)
         self.metadata_panel.reclaim_requested.connect(self._reclaim_archive)
+        self.metadata_panel.restore_requested.connect(self._restore_savepoint)
         self.export_panel.csv_check_requested.connect(self._check_csv)
         self.export_panel.measure_requested.connect(self._measure_labels)
 
@@ -1448,6 +1449,56 @@ class CurationWindow(QMainWindow):
             "Archive",
             lambda: self.operations_controller.measure_archive(projects),
             lambda size: self.metadata_panel.set_archive(size.describe()),
+        )
+
+    def _restore_savepoint(self) -> None:
+        """Put every label under the folder back to a savepoint.
+
+        A savepoint is taken over the whole collection from this tab, so this
+        is where putting the whole collection back belongs -- reaching Curate
+        and ticking everything first was the asymmetry this closes. Curate's
+        Revert keeps the same choice for a selection.
+        """
+        if not self.metadata_controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Tick 'Enable editing' before restoring a savepoint.",
+            )
+            return
+        projects = self.controller.projects
+        if not projects:
+            self._flash("Scan a folder first")
+            return
+        savepoints = self.operations_controller.savepoints_here(projects)
+        if not savepoints:
+            QMessageBox.information(
+                self, "Restore savepoint",
+                "No savepoint has been taken here yet. Savepoint... names the "
+                "state of every label, which is what this puts back.",
+            )
+            return
+
+        records = [
+            record for project in projects for record in project.image_records
+        ]
+        dialog = RevertDialog(
+            self,
+            f"{len(records)} image(s) in all {len(projects)} project(s)",
+            savepoints,
+            operations=False,
+        )
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        savepoint = dialog.savepoint
+        self._operate(
+            "Restore savepoint",
+            lambda allow, dry: self.operations_controller.revert_labels(
+                records,
+                savepoint=savepoint,
+                projects=projects,
+                allow_corrected=allow,
+                dry_run=dry,
+            ),
         )
 
     def _reclaim_archive(self) -> None:

@@ -1755,6 +1755,102 @@ def test_a_savepoint_waits_on_the_editing_guard(window, inline_operations, monke
     assert inline_operations == [], "nothing was previewed, let alone applied"
 
 
+def restore_savepoint(window, savepoint="round 1"):
+    """Answer the restore chooser without opening it."""
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    class _Answered:
+        def __init__(self, *_args, **_kwargs):
+            self.undoing, self.savepoint = "", savepoint
+
+        def exec_(self):
+            return QDialog.Accepted
+
+    original = module.RevertDialog
+    module.RevertDialog = _Answered
+    try:
+        window._restore_savepoint()
+    finally:
+        module.RevertDialog = original
+
+
+def test_a_savepoint_can_be_put_back_over_the_whole_collection(
+    window, inline_operations
+):
+    """It is taken over the whole collection from this tab, so putting the
+    whole collection back belongs here too -- going to Curate and ticking
+    everything first was the asymmetry this closes."""
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.io.atomic import fingerprint_of
+    from am_segmentation_manager.operations.label_save import (
+        LabelToSave,
+        save_labels,
+    )
+
+    window.metadata_panel.enable.setChecked(True)
+    take_savepoint(window, title="round 1")
+    inline_operations.clear()
+
+    # Through the ordinary save, so what it replaces is archived -- a label
+    # changed any other way has nothing kept to go back to.
+    label = next(
+        label
+        for project in window.controller.projects
+        for record in project.image_records
+        for label in record.labels
+    )
+    before = tifffile.imread(str(label))
+    save_labels(
+        [
+            LabelToSave(
+                destination=label,
+                label=np.zeros_like(before),
+                fingerprint=fingerprint_of(label),
+            )
+        ],
+        allow_corrected=True,
+        recorder=Recorder.for_run(),
+    )
+
+    restore_savepoint(window, "round 1")
+
+    assert inline_operations, "the restore was never previewed"
+    assert inline_operations[-1][0] == "Restore savepoint"
+    assert np.array_equal(tifffile.imread(str(label)), before), "it did not go back"
+
+
+def test_restoring_says_so_when_no_savepoint_has_been_taken(window, monkeypatch):
+    """Rather than opening a chooser with nothing in it."""
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+    window.metadata_panel.enable.setChecked(True)
+
+    restore_savepoint(window)
+
+    assert shown == ["Restore savepoint"]
+
+
+def test_restoring_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+
+    restore_savepoint(window)
+
+    assert shown == ["Editing is off"]
+    assert inline_operations == []
+
+
 def test_reclaiming_keeps_everything_while_no_round_is_closed(
     window, inline_operations
 ):

@@ -25,20 +25,20 @@ catch-up that baselines a collection at once. **No name is recorded unless someb
 which `am-seg archive` reports and `am-seg prune-archive` thins, collapsing what lies between
 savepoints and never what one names. An export carries the history and writes an `AM_export.yaml`
 naming the fork point; `am-seg merge` brings a copy back three-way against the history the two logs
-share, refusing the whole merge while a conflict stands. `am-seg revert` undoes a conversion or a
-merge across a selection, or a whole round by name with `--to`.
+share, refusing it whole while a conflict stands. `am-seg revert` undoes a conversion or a merge, or
+a whole round by name with `--to`.
 `am-seg savepoint` names a state — one `checkpoint` entry per project sharing an id, marking a round
-of model improvement — and `am-seg list-savepoints` says what each covers, how much is still
-reachable, and which projects record nothing at all.
+of model improvement — and `am-seg list-savepoints` says what each covers and how much is reachable.
 
 In the proofreading view, *Compare versions* lists the versions of the segmentation on screen — those
-kept when the label was replaced and the predictions beside it — and puts a kept one back. **Savepoints and reclaiming
-archive space are in Add data's *Whole collection* group** with the other acts covering a whole
-collection, and what the archive costs sits on a line beside them, measured when that tab is opened
-rather than during a scan. **Revert is in Curate's operations**, going back to a conversion, a merge
-or a savepoint, and **merge is in Export** beside the copy it brings home; `archive` and `history`
-get no surface, the strip answering both. What is left is **deciding a conflict**: the window reports
-how many stand and merges nothing, and which version to keep is named with `merge --resolve`.
+kept when the label was replaced and the predictions beside it — and puts a kept one back.
+**Taking a savepoint, putting one back over the whole collection, and reclaiming archive space are in
+Add data's *Whole collection* group** with the other acts covering a whole collection, and what the
+archive costs sits on a line beside them, measured when that tab is opened rather than during a scan.
+**Revert is in Curate's operations** for a selection, going back to a conversion, a merge or a
+savepoint, and **merge is in Export** beside the copy it brings home. Who changes are recorded
+under is set on **F2** and shown beside the mark. What is left is **deciding a conflict**: the window
+reports how many stand and merges nothing, and which to keep is named with `merge --resolve`.
 
 **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle inset
 in its canvas. Artwork rather than code, and Casper's to draw.

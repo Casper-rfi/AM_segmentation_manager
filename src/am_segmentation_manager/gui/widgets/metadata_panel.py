@@ -181,6 +181,8 @@ class MetadataPanel(QWidget):
     savepoint_requested = Signal()
     #: Emitted when the user asks to remove the kept versions nothing needs.
     reclaim_requested = Signal()
+    #: Emitted when the user asks to put the whole collection back to a savepoint.
+    restore_requested = Signal()
 
     def __init__(self, controller: MetadataController) -> None:
         super().__init__()
@@ -295,6 +297,19 @@ class MetadataPanel(QWidget):
         self.reclaim_button.clicked.connect(self.reclaim_requested.emit)
         grid.addWidget(self.reclaim_button, 2, 0)
 
+        # Beside the button that takes one: a savepoint is taken over the whole
+        # collection here, so this is where putting the whole collection back
+        # belongs. Curate's Revert keeps the same choice for a selection.
+        self.restore_button = QPushButton("Restore savepoint...")
+        self.restore_button.setToolTip(
+            "Put every label under this folder back to what it held at a "
+            "savepoint.\n"
+            "A label with no kept version is reported and left alone, and "
+            "proofread work is never replaced without being named."
+        )
+        self.restore_button.clicked.connect(self.restore_requested.emit)
+        grid.addWidget(self.restore_button, 2, 1)
+
         # Beside the button that acts on it, in the same slot as the unindexed
         # line below: both are collection-level facts the project list has no
         # column for. Measured when this tab is opened rather than during a
@@ -360,6 +375,7 @@ class MetadataPanel(QWidget):
         self.compress_button.setEnabled(has_root and self.controller.editing_enabled)
         self.savepoint_button.setEnabled(has_root and self.controller.editing_enabled)
         self.reclaim_button.setEnabled(has_root and self.controller.editing_enabled)
+        self.restore_button.setEnabled(has_root and self.controller.editing_enabled)
 
     def _build_fields(self) -> QWidget:
         box = QGroupBox("Metadata")
