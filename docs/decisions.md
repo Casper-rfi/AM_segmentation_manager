@@ -98,12 +98,11 @@ rather than appending to it.
   directory whose role stops the search.
 - **Three checks cover three ways data hides, and no image is in two of them.** `unindexed-dataset`
   reports a directory that *looks like* a dataset but has no marker; `stray-images` reports image
-  files under the scan root that are inside no project at all, which is neither that nor anything a
-  project-scoped check can see — 215 in the reference collection when it was written, 204 of them
-  under one `log/` directory, with no command that would have said so
+  files inside no project at all, which is neither that nor anything a project-scoped check can see
+  — 215 when it was written, 204 under one `log/` directory, with no command that would have said so
   (`test_an_image_below_a_directory_beside_a_project_is_reported`). Its walk stops at every project
-  root, at a directory a role already claims, and at one already reported as a candidate, so it
-  costs a few listings rather than a second pass and cannot report a file twice
+  root, at a directory a role claims, and at one already reported, so it costs a few listings rather
+  than a second pass and cannot report a file twice
   (`test_a_directory_already_reported_as_a_dataset_is_not_reported_twice`).
 - **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing in
   a loose filename orders it: many carry no timestamp, and the epochs that do appear are when the
@@ -343,6 +342,16 @@ rather than appending to it.
   (`test_a_command_that_acts_will_not_take_other_at_all`), and **`all` therefore means "every series
   this command covers"**, expanded per command rather than passed on
   (`test_all_means_every_series_this_command_covers_not_every_series`).
+- **The reprojection is fibsemOS's, reimplemented rather than imported.** Its software wrote both
+  the overview and the coordinates, so `calculate_reprojected_stage_position` is the definition of
+  where a lamella falls; `overview.py` restates it in ~30 lines. Importing it costs 1.9s and 1,255
+  modules, adds a second provider of `cv2` — the hazard § Environment warns about most — and would
+  read a header `image_metadata.py` already parses every field of. **The copy is held honest by
+  fibsemOS's own answers** rather than by review: `tests/data/fibsem_reprojection*.json` carry 265
+  real positions plus the scan-rotation and compustage branches no real overview reaches, and the
+  suite compares against them with no fibsem installed (`test_overview_matches_fibsem`).
+  `_transform_position` is deliberately not copied and a position needing it refused, it carrying a
+  calibration measured on one microscope. `THIRD_PARTY_NOTICES.md` carries the MIT notice.
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`
   already answering "which directory". The directory is tried before the filename and is the only
   thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the

@@ -32,17 +32,19 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **Put a project's lamella positions on its grid overview**, now that the overviews are indexed at
-  the project root. Reprojected from `experiment.yaml` stage coordinates onto the overview's own
-  header, which places all 259 lamellae of the 30 projects holding one. Needs `fibsem` as an
-  optional extra, paired with `opencv-python-headless` and never beside `all` or `gui`.
+- **Show a project's grid overview in the window.** `overview.py` places the lamellae — 265 of 265
+  land inside their overview across the collection — and nothing draws one yet. A fourth view
+  beside `sem`/`fib`/`plot` in Curate, unavailable where a project has no overview as `plot`
+  already is for a stage with no figure, marking every lamella and naming the one being looked at.
+  The marker must read as approximate: the projection is flat.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
 - **Before publishing**, several packaging gaps are open by decision rather than oversight and all
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
-  `"Private :: Do Not Upload"` classifier), no CI, no `CHANGELOG.md`, no `[project.urls]`, and the
-  version pinned at `0.0.0`. `mypy` is not configured and `ruff` does not check types, so the
+  `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
+  obligation this package carries whatever licence it takes), no CI, no `CHANGELOG.md`, no
+  `[project.urls]`, and the version pinned at `0.0.0`. `mypy` is not configured and `ruff` does not check types, so the
   annotations are unverified. The suite has not been run under a non-English locale — do that
   before any release, for the reasons in [`display.md`](display.md) § Testing the window. And
   [`decisions.md`](decisions.md) § Environment names the collection twice by absolute path, which

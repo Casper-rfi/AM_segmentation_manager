@@ -390,20 +390,17 @@ of one of these files, is held by `test_docs.py`.
   lamella showing an empty timeline has, the control being hidden for holding one entry, no way
   back. **The beam follows the same rule** in `_settle_mode`, asked of the whole stack rather than
   the frame on screen; both settle in `_rebuild_frames`.
-- **A series with no labels is shown and not acted on.** `other` holds every image no naming rule
-  reached, so the timeline shows them — being able to open one and decide whether the rule or the
-  data is wrong is why they are indexed at all — while the state buttons and every button in the
-  operations panel are withheld, each of them reading or writing a label the series has none of
-  (`test_the_controls_that_change_data_are_withheld_for_the_residue`). Asked of the series *shown*
-  rather than the one chosen: `resolve_series` lands there by itself for a lamella that holds
-  nothing else. **It is a second reason, not the editing toggle**, held apart in both panels so
-  switching editing back on cannot unlock it
-  (`test_switching_editing_back_on_does_not_unlock_the_residue`), and both say why on hover.
-  `controller.scoped_records` drops those records too, which is the backstop behind the controls:
-  it is the one method every operation reads, so no operation needs a guard of its own. **The beam
-  control is untouched** — it already offers what a frame holds, which for this series is usually
-  one beam and sometimes both. An image whose beam nothing states reaches no frame and so no
-  timeline; `inspect-layout` is what reports those.
+- **A series with no labels is shown and not acted on.** The timeline shows `other` — being able to
+  open one and decide whether the rule or the data is wrong is why they are indexed — while the
+  state buttons and every button in the operations panel are withheld, each reading or writing a
+  label the series has none of (`test_the_controls_that_change_data_are_withheld_for_the_residue`),
+  and both say why on hover. Asked of the series *shown*, not the one chosen: `resolve_series` lands
+  there by itself for a lamella holding nothing else. **A second reason, not the editing toggle**,
+  held apart in both panels so switching editing on cannot unlock it
+  (`test_switching_editing_back_on_does_not_unlock_the_residue`). Behind them
+  `controller.scoped_records` drops those records, the one method every operation reads, so none
+  needs a guard of its own. **The beam control is untouched**, already offering what a frame holds;
+  an image whose beam nothing states reaches no frame at all, and `inspect-layout` reports those.
 - **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
   Polishing stage writes one plot per milling cycle into `plots/`, matched to a frame by its
   acquisition number. An alignment run writes one `figure.png` for the several images it took to
