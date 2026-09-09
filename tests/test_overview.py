@@ -24,6 +24,7 @@ from am_segmentation_manager.overview import (
     is_overview_name,
     overview_from_metadata,
     overview_records,
+    place_lamellae,
     read_positions,
     reproject,
 )
@@ -356,3 +357,38 @@ def test_an_overview_inside_a_lamella_is_not_the_projects():
     project = make_project(root / "01-ruling-ibex" / "CB016A1_SEM_overview.tif")
 
     assert overview_records(project) == []
+
+
+# ---------------------------------------------------------------------------
+# Placing a project's lamellae
+# ---------------------------------------------------------------------------
+
+def test_markers_are_fractions_of_the_picture():
+    """So whoever draws it may reduce the picture without recomputing them."""
+    markers = place_lamellae(upright(), [at(x=10e-6, name="01-ruling-ibex")])
+
+    assert [(one.name, one.x, one.y) for one in markers] == [
+        ("01-ruling-ibex", pytest.approx(0.51), pytest.approx(0.5))
+    ]
+
+
+def test_a_lamella_off_the_overview_is_marked_as_outside():
+    markers = place_lamellae(upright(), [at(x=5e-3, name="01-ruling-ibex")])
+
+    assert [one.inside for one in markers] == [False]
+
+
+def test_a_position_that_cannot_be_placed_is_left_out_rather_than_guessed():
+    """The whole value of the picture is that a mark on it is where the
+    lamella is."""
+    markers = place_lamellae(
+        upright(),
+        [at(name="01-ruling-ibex"), at(rotation=math.pi, name="02-ruling-oryx")],
+    )
+
+    assert [one.name for one in markers] == ["01-ruling-ibex"]
+
+
+def test_a_position_with_no_name_is_left_out():
+    """Nothing could say which lamella such a mark belonged to."""
+    assert place_lamellae(upright(), [at(x=10e-6)]) == []

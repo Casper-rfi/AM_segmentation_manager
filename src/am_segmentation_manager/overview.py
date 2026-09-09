@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -193,6 +193,59 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
         offset_y = -offset_y
 
     return (overview.width / 2 + offset_x, overview.height / 2 + offset_y)
+
+
+@dataclass(frozen=True)
+class LamellaMarker:
+    """Where one lamella falls on an overview, as a fraction of it.
+
+    Fractions rather than pixels so that whoever draws it may reduce the
+    picture to whatever size it is shown at without the marks having to be
+    recomputed, and so that nothing has to agree with anything else about the
+    resolution it was drawn at.
+
+    Attributes:
+        name: The lamella directory the position was recorded for.
+        x: Distance from the left edge, 1.0 being the right edge.
+        y: Distance from the top edge, 1.0 being the bottom edge.
+        inside: Whether it falls within the picture at all. A lamella milled
+            after the grid was moved does not, which is a real answer rather
+            than an error.
+    """
+
+    name: str
+    x: float
+    y: float
+    inside: bool
+
+
+def place_lamellae(
+    overview: Overview, positions: Iterable[StagePosition]
+) -> list[LamellaMarker]:
+    """Return where each of *positions* falls on *overview*.
+
+    A position :func:`reproject` refuses is left out rather than placed
+    wrongly, with the reason logged: the whole value of the picture is that a
+    mark on it is where the lamella is.
+    """
+    markers: list[LamellaMarker] = []
+    for position in positions:
+        if position.name is None:
+            continue
+        try:
+            x, y = reproject(overview, position)
+        except ValueError as exc:
+            logger.info("Not placing %s on %s: %s", position.name, overview.path.name, exc)
+            continue
+        markers.append(
+            LamellaMarker(
+                name=position.name,
+                x=x / overview.width,
+                y=y / overview.height,
+                inside=is_inside(overview, (x, y)),
+            )
+        )
+    return markers
 
 
 def is_inside(overview: Overview, point: tuple[float, float]) -> bool:

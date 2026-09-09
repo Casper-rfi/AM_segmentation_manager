@@ -30,6 +30,7 @@ from ...display import (
     compose_overlay,
 )
 from ...layout import SERIES_LABELS
+from ...overview import LamellaMarker
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
 from .common import (
@@ -46,6 +47,7 @@ from .controls import (
     ToggleSwitch,
     keep_paired,
 )
+from .grid_view import GridView
 from .image_view import ImageView, LinkedImageViews
 from .theme import BADGE_STYLES, GROUP_GAP
 
@@ -121,6 +123,7 @@ class ImagePanel(QWidget):
             (mode, caption, f"Show the {caption} view\nShortcut: {key}")
             for mode, caption, key in (
                 ("sem", "SEM", "1"), ("fib", "FIB", "2"), ("plot", "Plots", "3"),
+                ("grid", "Grid", "4"),
             )
         ])
         self.mode_control.chosen.connect(self.mode_changed.emit)
@@ -250,9 +253,11 @@ class ImagePanel(QWidget):
         self._plot_copies: tuple = (None, None)
         self._swapping = False
         self.plot_view.zoomed.connect(self._plot_zoomed)
+        self.grid_view = GridView()
         self.stack = QStackedWidget()
         self.stack.addWidget(self.pair)
         self.stack.addWidget(self.plot_view)
+        self.stack.addWidget(self.grid_view)
         layout.addWidget(self.stack, stretch=1)
 
         # -- badges and legend ---------------------------------------------
@@ -304,10 +309,14 @@ class ImagePanel(QWidget):
         """Show the whole range again."""
         self.intensity_slider.reset()
 
+    #: Which page of the stack each view is drawn on. The two acquisition
+    #: views share the linked pair, so they are one page.
+    _PAGES: dict[str, int] = {"sem": 0, "fib": 0, "plot": 1, "grid": 2}
+
     def set_mode(self, mode: DisplayMode) -> None:
         """Reflect the current view without re-emitting a change."""
         self.mode_control.set_current(mode)
-        self.stack.setCurrentIndex(1 if mode == "plot" else 0)
+        self.stack.setCurrentIndex(self._PAGES.get(mode, 0))
 
     def set_available_modes(self, modes: list[str]) -> None:
         """Disable the views this frame has nothing to show for."""
@@ -557,6 +566,51 @@ class ImagePanel(QWidget):
         drawn = item.width() * self.plot_view.transform().m11()
         return drawn / (stepping.shape[1] / self._plot_pixel_ratio(stepping))
 
+    def show_grid(
+        self,
+        image,
+        markers: tuple[LamellaMarker, ...] = (),
+        current: str | None = None,
+        error: str | None = None,
+        unplaced: bool = False,
+    ) -> None:
+        """Draw the project's grid overview with its lamellae marked.
+
+        Args:
+            image: The prepared overview, or None where there is none to draw.
+            markers: Where each lamella falls, as fractions of the picture.
+            current: The lamella on screen, drawn heavier and named.
+            error: Why the overview could not be read, where that is the reason
+                there is nothing to draw.
+            unplaced: The lamella on screen is a real one that this overview
+                does not mark, so the reviewer is told rather than left looking
+                for a ring that is not there.
+
+        **The badge says the marks are approximate**, every time rather than
+        once: the projection is flat, so a mark is where a lamella is to within
+        the error that grows from the centre, and a reader arriving at this
+        view for the first time has no other way to know that.
+        """
+        if image is None:
+            self.grid_view.clear_markers()
+            self.grid_view.clear()
+            self._set_badges(
+                [(f"overview could not be read: {error}", "error")] if error
+                else [("no grid overview for this project", "info")]
+            )
+            return
+        self.grid_view.set_array(image)
+        height, width = image.shape[:2]
+        self.grid_view.set_markers(markers, current, (width, height))
+
+        badges = [("positions are approximate", "warning")]
+        if unplaced:
+            badges.append(("this lamella has no recorded position", "warning"))
+        off = sum(1 for marker in markers if not marker.inside)
+        if off:
+            badges.append((f"{off} lamella(e) fall outside this overview", "info"))
+        self._set_badges(badges)
+
     def show_loading(self) -> None:
         """Say that the frame is still being prepared."""
         self._set_badges([("loading...", "info")])
@@ -565,6 +619,8 @@ class ImagePanel(QWidget):
         """Clear the panel when there is no frame at all."""
         self.pair.clear()
         self.plot_view.clear()
+        self.grid_view.clear_markers()
+        self.grid_view.clear()
         self._set_badges([])
         self.status.setText("")
 

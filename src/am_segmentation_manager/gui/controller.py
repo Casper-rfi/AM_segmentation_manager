@@ -41,6 +41,7 @@ from .cache import (
     FramePlot,
     LoadRequest,
 )
+from .grid_controller import GridController
 from .selection import (
     LEVEL_CURRENT_FRAME,
     LEVEL_LAMELLAE,
@@ -53,8 +54,9 @@ from .selection import (
 
 logger = logging.getLogger(__name__)
 
-#: Which view of a frame is on screen.
-DisplayMode = Literal["sem", "fib", "plot"]
+#: Which view is on screen. The first three are views of the *frame*; ``grid``
+#: is the project's own overview, which every frame of it shows alike.
+DisplayMode = Literal["sem", "fib", "plot", "grid"]
 
 #: What a state change applies to.
 EditTarget = Literal["SEM", "FIB", "both"]
@@ -397,6 +399,10 @@ class CurationController:
                 resolves the author itself.
         """
         self.cache = cache if cache is not None else FrameCache()
+        #: The project's grid overview and where its lamellae fall on it, held
+        #: while that project is on screen. Kept up to date by
+        #: :meth:`_settle_grid`, which every path that changes project reaches.
+        self.grid = GridController()
         self.config = config if config is not None else load_segmentation_config()
         self._scan: ProjectScanner = scan or (
             lambda path, on_progress=None: Scanner(path).build_index(on_progress)
@@ -727,6 +733,9 @@ class CurationController:
         one holds no image of.
         """
         lamella = self.lamella
+        # Before the mode settles, which asks whether the grid view has
+        # anything to show. Cheap where the project has not changed.
+        self.grid.set_project(self.project)
         self.series = resolve_series(self.wanted_series, self.available_series())
         self._frames = (
             build_lamella_frames(lamella, series=self.series)
@@ -763,15 +772,16 @@ class CurationController:
     # -- display -----------------------------------------------------------
 
     def set_mode(self, mode: DisplayMode) -> None:
-        """Switch between the SEM, FIB and plot views.
+        """Switch between the SEM, FIB, plot and grid views.
 
         Unless :attr:`follow_mode` is off, switching to a single-modality view
         also points the edit target at that modality. Changing the state of the
         image you are *not* looking at is far more likely to be a mistake than
-        an intention, so the target follows the eye. The plot view leaves the
-        target alone, since it shows both modalities' context at once.
+        an intention, so the target follows the eye. The plot and grid views
+        leave the target alone: one shows both modalities' context at once and
+        the other is a picture of the whole grid.
         """
-        if mode not in ("sem", "fib", "plot"):
+        if mode not in ("sem", "fib", "plot", "grid"):
             raise ValueError(f"Unknown display mode: {mode}")
         self.wanted_mode = mode
         self._show_mode(mode)
@@ -806,10 +816,11 @@ class CurationController:
         frame of it, and the reviewer had to notice and switch. The choice
         itself is untouched, so a timeline that does hold it opens on it again.
 
-        The plot view is left alone: it says what is available for itself, and
-        a figure is not an image of either beam.
+        The plot and grid views are left alone: each says what is available for
+        itself, and neither a figure nor the grid overview is an image of
+        either beam.
         """
-        if self.wanted_mode == "plot":
+        if self.wanted_mode in ("plot", "grid"):
             return
         present = self._modalities_present()
         if not present:
@@ -821,21 +832,26 @@ class CurationController:
             self._show_mode(mode)
 
     def available_modes(self, frame: LamellaFrame | None = None) -> list[DisplayMode]:
-        """Return the views that have something to show for a frame.
+        """Return the views that have something to show.
 
         A frame may have only one modality, or no plot, and the window marks
-        those views unavailable rather than showing an empty panel.
+        those views unavailable rather than showing an empty panel. ``grid`` is
+        asked of the *project* rather than the frame -- an overview covers the
+        whole grid, and every lamella on it shows the same picture -- so it
+        stays available while stepping through a timeline, and is absent for
+        the projects that have no overview at all.
         """
         frame = frame if frame is not None else self.frame
-        if frame is None:
-            return []
         modes: list[DisplayMode] = []
-        if frame.sem:
-            modes.append("sem")
-        if frame.fib:
-            modes.append("fib")
-        if frame.displayed_plot is not None:
-            modes.append("plot")
+        if frame is not None:
+            if frame.sem:
+                modes.append("sem")
+            if frame.fib:
+                modes.append("fib")
+            if frame.displayed_plot is not None:
+                modes.append("plot")
+        if self.grid.placement is not None:
+            modes.append("grid")
         return modes
 
     def available_series(self) -> list[str]:
@@ -1237,6 +1253,24 @@ class CurationController:
             len(wanted), touched,
         )
         return touched
+
+    @property
+    def lamella_holds_curated_images(self) -> bool:
+        """Return whether the lamella on screen holds a series anyone curates.
+
+        False for a directory holding nothing but ``other`` -- a folder of
+        overview tiles is indexed as a lamella because it sits below the
+        project and holds images, and 37 of the reference collection's 824
+        lamella directories are one. Nothing about such a directory is a
+        lamella Autolamella milled, so nothing may be claimed about the stage
+        position it was never going to have.
+        """
+        lamella = self.lamella
+        if lamella is None:
+            return False
+        return any(
+            record.series in LABELLED_SERIES for record in lamella.image_records
+        )
 
     @property
     def series_is_editable(self) -> bool:

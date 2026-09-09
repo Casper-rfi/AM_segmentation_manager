@@ -1551,6 +1551,17 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.controller.available_series(), self.controller.series
         )
 
+        # Before the frame, and before the empty check: the overview belongs to
+        # the project rather than to any frame, so it is there to look at even
+        # where the lamella on screen holds nothing of the series being shown.
+        if self.controller.mode == "grid":
+            self.image_panel.set_available_modes(self.controller.available_modes())
+            self.image_panel.set_mode("grid")
+            self.image_panel.set_variants([])
+            self.image_panel.set_status(self._status_text())
+            self._render_grid()
+            return
+
         frame = self.controller.frame
         if frame is None:
             # Emptied rather than left as it was: the conditions on offer
@@ -1618,6 +1629,42 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         if self.controller.cache.set_plot_max_size(size):
             # The prepared plots were the wrong size and have been discarded.
             self._schedule_loads()
+
+    def _render_grid(self) -> None:
+        """Draw the project's overview with a mark on each of its lamellae.
+
+        The picture is read on the interface thread, once per project: it is
+        one file of a few megabytes, where the frame loader exists for a
+        timeline being stepped through several times a second.
+        """
+        placement = self.controller.grid.placement
+        if placement is None:
+            self.image_panel.show_grid(None)
+            return
+        prepared = self.controller.grid.image()
+        if prepared is None or prepared.failed:
+            self.image_panel.show_grid(
+                None, error=prepared.error if prepared is not None else None
+            )
+            return
+        lamella = self.controller.lamella
+        # A synthetic lamella is the project root standing in for one, which is
+        # where the overviews themselves are indexed: it is not a lamella and
+        # is not missing a position, so nothing is claimed about it. Nor is a
+        # directory of overview tiles -- see `lamella_holds_curated_images`.
+        expects_a_position = (
+            lamella is not None
+            and not lamella.synthetic
+            and self.controller.lamella_holds_curated_images
+        )
+        name = lamella.name if lamella is not None else None
+        self.image_panel.show_grid(
+            prepared.image,
+            placement.markers,
+            name,
+            unplaced=expects_a_position
+            and self.controller.grid.marker_named(name) is None,
+        )
 
     def _render_plot(self) -> None:
         """Hand the panel both copies of the current figure, where it has both.

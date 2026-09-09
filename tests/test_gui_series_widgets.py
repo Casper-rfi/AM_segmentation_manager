@@ -8,6 +8,7 @@ the lamella holds one series, and choosing one replaces the timeline.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 
@@ -32,6 +33,7 @@ pytestmark = pytest.mark.skipif(
 if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
+    import yaml
     from qtpy.QtCore import QSettings
     from qtpy.QtWidgets import QApplication
 
@@ -91,6 +93,53 @@ def mixed_project(tmp_path: Path) -> Path:
     _write(unpolished / "ref_alignment_ib.tif", image)
 
     (project / "experiment.yaml").write_text("name: mixed\n", encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def grid_project(tmp_path: Path) -> Path:
+    """A project with a grid overview at its root and two lamellae.
+
+    The overview is written with the header Autolamella gives one, so the
+    geometry is read the same way it is off real data; the two positions are
+    a little either side of the centre. `02-ruling-oryx` is deliberately left
+    out of `positions`, which is the real case of a lamella directory the
+    experiment never recorded a position for.
+    """
+    root = tmp_path / "scan"
+    project = root / "AutoLamella-2026-07-28-10-31"
+    image = np.full((64, 96), 100, dtype=np.uint8)
+
+    for name in ("01-ruling-ibex", "02-ruling-oryx"):
+        stage = project / name / "adaptive_polish_2026-07-28-11-34-24AM"
+        _write(stage / "sem" / "img_000_SEM.tif", image)
+
+    described = json.dumps({
+        "image": {"beam_type": "ELECTRON", "resolution": [256, 256]},
+        "pixel_size": {"x": 1e-6, "y": 1e-6},
+        "microscope_state": {
+            "stage_position": {"x": 0.0, "y": 0.0, "z": 0.0, "r": 0.0, "t": 0.0},
+            "electron_beam": {"scan_rotation": 0.0},
+        },
+    })
+    overview = project / "overview-image-2026-07-28_10-31-00.tif"
+    overview.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(
+        str(overview), np.full((256, 256), 40, dtype=np.uint8), description=described
+    )
+
+    (project / "experiment.yaml").write_text(
+        yaml.safe_dump({
+            "name": "grid",
+            "positions": [{
+                "petname": "01-ruling-ibex",
+                "state": {"microscope_state": {"stage_position": {
+                    "x": 20e-6, "y": 0.0, "z": 0.0, "r": 0.0, "t": 0.0,
+                }}},
+            }],
+        }),
+        encoding="utf-8",
+    )
     return root
 
 
@@ -418,5 +467,111 @@ def test_leaving_the_residue_offers_the_controls_again(qt_app, residue_project: 
         assert window.state_panel.state_box.isEnabled()
         assert window.operations_panel.specks_button.isEnabled()
         assert window.operations_panel.box.toolTip() == ""
+    finally:
+        destroy(window)
+
+
+# ---------------------------------------------------------------------------
+# The grid overview
+# ---------------------------------------------------------------------------
+
+def test_the_grid_view_is_offered_where_the_project_has_an_overview(
+    qt_app, grid_project: Path
+):
+    window = _window(qt_app, grid_project)
+    try:
+        assert "grid" in window.controller.available_modes()
+        assert window.image_panel.mode_buttons["grid"].isEnabled()
+    finally:
+        destroy(window)
+
+
+def test_the_grid_view_is_withheld_where_the_project_has_none(
+    qt_app, modern_project: Path
+):
+    """Unavailable as the plot view already is for a stage with no figure."""
+    window = _window(qt_app, modern_project)
+    try:
+        assert "grid" not in window.controller.available_modes()
+        assert not window.image_panel.mode_buttons["grid"].isEnabled()
+
+        window._set_mode("grid", from_user=True)
+
+        assert window.controller.mode != "grid"
+    finally:
+        destroy(window)
+
+
+def test_the_grid_view_marks_every_lamella_it_can_place(qt_app, grid_project: Path):
+    window = _window(qt_app, grid_project)
+    try:
+        window._set_mode("grid", from_user=True)
+
+        placement = window.controller.grid.placement
+        assert [marker.name for marker in placement.markers] == ["01-ruling-ibex"]
+        assert window.image_panel.stack.currentIndex() == 2
+        assert window.image_panel.grid_view._marks
+    finally:
+        destroy(window)
+
+
+def test_the_grid_view_always_says_the_positions_are_approximate(
+    qt_app, grid_project: Path
+):
+    """The projection is flat, and a reader arriving here has no other way to
+    know that."""
+    window = _window(qt_app, grid_project)
+    try:
+        window._set_mode("grid", from_user=True)
+
+        assert "approximate" in window.image_panel.badges.text()
+    finally:
+        destroy(window)
+
+
+def test_a_lamella_the_experiment_never_positioned_is_told_so(
+    qt_app, grid_project: Path
+):
+    """Otherwise the reviewer looks for a ring that is not there."""
+    window = _window(qt_app, grid_project)
+    try:
+        window._set_mode("grid", from_user=True)
+        for position, lamella in enumerate(window.controller.lamellae):
+            if lamella.name != "02-ruling-oryx":
+                continue
+            window.controller.select_lamella(position)
+            window.refresh()
+
+        assert "no recorded position" in window.image_panel.badges.text()
+    finally:
+        destroy(window)
+
+
+def test_a_lamella_the_experiment_did_position_is_not_told_that(
+    qt_app, grid_project: Path
+):
+    window = _window(qt_app, grid_project)
+    try:
+        window._set_mode("grid", from_user=True)
+        for position, lamella in enumerate(window.controller.lamellae):
+            if lamella.name != "01-ruling-ibex":
+                continue
+            window.controller.select_lamella(position)
+            window.refresh()
+
+        assert "no recorded position" not in window.image_panel.badges.text()
+    finally:
+        destroy(window)
+
+
+def test_the_grid_view_survives_stepping_between_lamellae(qt_app, grid_project: Path):
+    """It shows the project, so moving within it does not take it away."""
+    window = _window(qt_app, grid_project)
+    try:
+        window._set_mode("grid", from_user=True)
+        for position in range(len(window.controller.lamellae)):
+            window.controller.select_lamella(position)
+            window.refresh()
+            assert window.controller.mode == "grid", window.controller.lamella.name
     finally:
         destroy(window)

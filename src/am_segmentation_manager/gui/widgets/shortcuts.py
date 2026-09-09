@@ -340,6 +340,10 @@ def bindings_for(window) -> list[Binding]:
             curate, GROUP_VIEW,
         ),
         Binding(
+            "4", "Grid view", lambda: window._set_mode("grid", from_user=True),
+            curate, GROUP_VIEW,
+        ),
+        Binding(
             "V", "Show / hide the label overlay", window._toggle_overlay,
             curate, GROUP_VIEW,
         ),

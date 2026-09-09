@@ -32,11 +32,9 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **Show a project's grid overview in the window.** `overview.py` places the lamellae — 265 of 265
-  land inside their overview across the collection — and nothing draws one yet. A fourth view
-  beside `sem`/`fib`/`plot` in Curate, unavailable where a project has no overview as `plot`
-  already is for a stage with no figure, marking every lamella and naming the one being looked at.
-  The marker must read as approximate: the projection is flat.
+- **A directory of overview tiles is indexed as a lamella**, 37 of the collection's 824, since
+  every directory holding a `.tif` became a stage. Correct as indexing, but it reads oddly in the
+  Curate lamella list: decide whether that list should say what a directory holds.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
