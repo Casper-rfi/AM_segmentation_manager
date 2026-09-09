@@ -312,7 +312,7 @@ rather than appending to it.
   The loose series more than doubled what a scan holds, and none of that may change what an
   existing command prints or writes. So `inspect-layout` and `stats` cover everything and say which
   is which, while everything that writes, exports or measures defaults to `--series adaptive`
-  (`cli.DEFAULT_SERIES` and `REPORTING_SERIES`). `by_series` returns the slug rather than the
+  (`scope.DEFAULT_SERIES` and `REPORTING_SERIES`). `by_series` returns the slug rather than the
   display label, a value counted having to be one `--series` accepts; and unlike a variant a series
   is a closed vocabulary, so `--series refrence` raises — a typo, not a request for nothing.
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`

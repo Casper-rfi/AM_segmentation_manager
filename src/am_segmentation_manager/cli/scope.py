@@ -1,0 +1,283 @@
+"""The argument vocabulary every command group shares.
+
+Where to look, which series and beam, which projects and lamellae, and the
+metadata filters -- declared once so two commands cannot offer the same flag
+under different names or defaults, and resolved once so they cannot read it
+differently either.
+"""
+from __future__ import annotations
+
+import argparse
+import logging
+from pathlib import Path
+
+from ..filtering import (
+    METADATA_FILTERS,
+    NO_TASK,
+    filter_property,
+    iter_matching_records,
+)
+from ..history import Recorder
+from ..layout import SERIES
+from ..operations.init_history import writing_recorder
+from ..scanner import Scanner
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Argument helpers
+# ---------------------------------------------------------------------------
+
+#: What ``--series`` defaults to for a command that acts, exports or measures.
+#:
+#: Autolamella writes reference and alignment images alongside the Adaptive
+#: Polishing ones, and indexing them must not change what an existing command
+#: prints or writes. So a command that *reports* on the collection covers every
+#: series -- ``inspect-layout`` and ``stats`` -- and every other command stays
+#: on Adaptive Polishing until told otherwise. Widening is one flag.
+DEFAULT_SERIES: str = "adaptive"
+
+#: What ``--series`` defaults to for a command whose job is to report what is
+#: there. Narrowing these silently is the bug this work exists to fix.
+REPORTING_SERIES: str = "all"
+
+
+def _add_scope_arguments(
+    parser: argparse.ArgumentParser,
+    default_modality: str | None = None,
+    include_state: bool = True,
+    default_series: str = DEFAULT_SERIES,
+) -> None:
+    """Add the common scope-selection arguments to *parser*.
+
+    Set *include_state* to False when the caller registers its own
+    ``--state`` argument (for example to make it required). Set
+    *default_series* to :data:`REPORTING_SERIES` for a command that reports on
+    the collection rather than acting on part of it.
+    """
+    parser.add_argument("paths", nargs="*", help="Explicit image paths or scan directory")
+    parser.add_argument("--start-path", default=".", help="Directory to start scanning from")
+    parser.add_argument(
+        "--project", action="append", default=[],
+        help="Project name or number (for example 001); use 'all' explicitly",
+    )
+    parser.add_argument(
+        "--lamella", action="append", default=[],
+        help="Lamella name/number; use 'all' explicitly",
+    )
+    parser.add_argument(
+        "--stage", action="append", default=[],
+        help="Stage name/number; use 'all' explicitly",
+    )
+    parser.add_argument(
+        "--image", action="append", default=[],
+        help="Image name/number; use 'all' explicitly",
+    )
+    parser.add_argument(
+        "--variant", action="append", default=[],
+        help=(
+            "Imaging-condition variant, from the image directory name "
+            "(sem_5kv -> 5kv); 'base' means the unsuffixed directory and 'all' "
+            "every condition. Defaults to every variant"
+        ),
+    )
+    parser.add_argument(
+        "--series", action="append", default=[],
+        metavar="SERIES",
+        help=(
+            "What the images were taken for: "
+            + ", ".join(SERIES)
+            + ", or 'all'. Repeat or comma-separate to include several "
+            f"(default: {default_series})"
+        ),
+    )
+    parser.set_defaults(default_series=default_series)
+    parser.add_argument(
+        "--task", action="append", default=[], metavar="TASK",
+        help=(
+            "Milling task the images belong to, as the project's "
+            "experiment.yaml names it (Polishing, Rough Milling, MillRough); "
+            "separators and case are ignored. Stages roll up into their task, "
+            f"so 'Rough 1' and 'Rough 2' are both Rough Milling. '{NO_TASK}' "
+            "selects the images naming no task, 'all' every image. Repeat or "
+            "comma-separate to include several (default: every task)"
+        ),
+    )
+    if include_state:
+        parser.add_argument(
+            "--state",
+            choices=["corrected", "selected", "deselected", "all"],
+            default="all",
+            help="Restrict to images currently in this workflow state (default: 'all')",
+        )
+    if default_modality is not None:
+        parser.add_argument(
+            "--modality", choices=["SEM", "FIB", "all"], default=default_modality,
+            help=f"Image modality to operate on (default: {default_modality})",
+        )
+    else:
+        parser.add_argument(
+            "--modality", choices=["SEM", "FIB", "all"], required=True,
+            help="Image modality to operate on; specify 'all' for both SEM and FIB",
+        )
+
+
+
+def _format_duration(seconds: float) -> str:
+    """Return a rough human-readable duration.
+
+    Rough on purpose: this reports how long a run of thousands of images has
+    left, where minutes are the unit anyone acts on.
+    """
+    if seconds < 90:
+        return f"{seconds:.0f}s"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds / 3600:.1f}h"
+
+
+def _add_metadata_filters(parser: argparse.ArgumentParser) -> None:
+    """Add the per-image metadata filters to *parser*.
+
+    These read image headers, so they are applied after the structural
+    selectors: only what those keep is ever opened.
+    """
+    for name in sorted(METADATA_FILTERS):
+        parser.add_argument(
+            f"--{name}", action="append", default=None, metavar="VALUE",
+            help=(
+                f"Keep only images whose {filter_property(name)} matches; "
+                f"repeatable for alternatives"
+            ),
+        )
+
+
+def _metadata_selectors(args: argparse.Namespace) -> dict[str, list[str]]:
+    """Return the metadata filters the user asked for, if any."""
+    return {
+        name: values
+        for name in METADATA_FILTERS
+        if (values := getattr(args, name.replace("-", "_"), None))
+    }
+
+
+def _resolve_records(args: argparse.Namespace) -> tuple[list, Path]:
+    """Resolve target records and scan start_path from CLI arguments.
+
+    Returns a tuple of `(records, start_path)`.
+    """
+    records, start_path, _projects = _resolve_scope(args)
+    return records, start_path
+
+
+def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
+    """Resolve the records, the scan root, and the projects they came from.
+
+    The projects are what a command needs when it acts on a *dataset* rather
+    than on images -- copying one out takes the files describing it along.
+    Empty where explicit image paths were given, there being no scan to take
+    them from.
+
+    Returns a tuple of `(records, start_path, projects)`.
+    """
+    from ..operations.selection import record_from_image_path
+
+    state = getattr(args, "state", "all")
+    start_path = Path(args.start_path)
+    file_paths: list[Path] = []
+
+    for item in args.paths:
+        p = Path(item)
+        if p.is_dir():
+            if args.start_path == ".":
+                start_path = p
+        else:
+            file_paths.append(p)
+
+    if file_paths and not any([args.project, args.lamella, args.stage, args.image]):
+        records = [record_from_image_path(p) for p in file_paths]
+        matching = [r for r in records if args.modality == "all" or r.modality == args.modality]
+        return matching, start_path, []
+
+    missing_scopes = [
+        flag
+        for flag, values in (
+            ("--project", args.project),
+            ("--lamella", args.lamella),
+            ("--stage", args.stage),
+            ("--image", args.image),
+        )
+        if not values
+    ]
+    if missing_scopes:
+        logger.error(
+            "Indexed operations require explicit selectors for every scope. "
+            "Use 'all' where appropriate (missing: %s).",
+            ", ".join(missing_scopes),
+        )
+        return [], start_path, []
+
+    index = Scanner(start_path).build_index()
+    records = list(
+        iter_matching_records(
+            index,
+            project_selectors=args.project,
+            lamella_selectors=args.lamella,
+            stage_selectors=args.stage,
+            image_selectors=args.image,
+            modality=args.modality,
+            state=state,
+            variant_selectors=getattr(args, "variant", None) or None,
+            series_selectors=_series_selectors(args),
+            task_selectors=getattr(args, "task", None) or None,
+        )
+    )
+    return records, start_path, index.all_projects()
+
+
+def _series_selectors(args: argparse.Namespace) -> list[str]:
+    """Return the series to match, falling back to the command's default.
+
+    A command declares its own default through :func:`_add_scope_arguments`,
+    so which series a command covers when nobody says is decided where the
+    command is registered rather than here.
+    """
+    return getattr(args, "series", None) or [
+        getattr(args, "default_series", DEFAULT_SERIES)
+    ]
+
+
+
+#: The selectors that narrow an export, in the order they are asked for. Used
+#: to write down what an export covered, so a merge can say what it is merging.
+_SCOPE_SELECTORS: tuple[str, ...] = (
+    "project", "lamella", "stage", "image", "variant", "series", "state", "modality",
+)
+
+
+def _describe_scope(args: argparse.Namespace) -> str:
+    """Return what the export was asked for, in the words the caller used."""
+    parts = []
+    for name in _SCOPE_SELECTORS:
+        value = getattr(args, name, None)
+        if not value:
+            continue
+        chosen = value if isinstance(value, list) else [value]
+        parts.extend(f"--{name} {item}" for item in chosen)
+    if getattr(args, "paths", None):
+        parts.extend(str(path) for path in args.paths)
+    return " ".join(parts)
+
+
+def _recorder(args: argparse.Namespace) -> Recorder:
+    """Return the recorder for this run.
+
+    One per command, so everything a single invocation changes shares a batch.
+    """
+    return Recorder.for_run(getattr(args, "user", None))
+
+
+def _writing_recorder(args: argparse.Namespace, projects) -> Recorder:
+    """Return the recorder for a command that writes, per :func:`writing_recorder`."""
+    recorder = _recorder(args)
+    return writing_recorder(projects, recorder) if projects else recorder

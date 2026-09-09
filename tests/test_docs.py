@@ -408,3 +408,48 @@ def test_the_backing_check_can_tell_the_three_apart():
     assert _backing("- **A rule.** Stated in `layout.acquisition_stem`.") == "code"
     assert _backing("- **A rule.** Stated in `merge.py`.") == "code"
     assert _backing("- **A rule.** Nothing but `--dry-run` and `AM_state.yaml`.") == "nothing"
+
+
+#: File names this package uses twice, and may. `_package_symbols` keys on the
+#: stem, so a pair here has its symbol tables merged and a pointer at either
+#: resolves against both -- harmless only while no document cites one by that
+#: name, which is checked below. Both of these are called what they should be
+#: called; renaming a module to suit the checker would be the wrong way round.
+SHARED_MODULE_NAMES = {"selection"}
+
+
+def test_no_new_module_name_is_used_twice():
+    """Two `history.py` merge in `_package_symbols` without announcing it.
+
+    The union is more permissive than either module, so the checker keeps
+    passing and quietly checks less. It is why the CLI groups are named for the
+    step of the workflow rather than for the command they carry: `cli/history.py`
+    and `cli/archive.py` would each have collided with a core module.
+    """
+    stems: dict[str, list[str]] = collections.defaultdict(list)
+    for root in (REPOSITORY / "src", REPOSITORY / "scripts"):
+        for path in sorted(root.rglob("*.py")):
+            if path.stem != "__init__":
+                stems[path.stem].append(str(path.relative_to(REPOSITORY)))
+
+    shared = {
+        stem: paths
+        for stem, paths in stems.items()
+        if len(paths) > 1 and stem not in SHARED_MODULE_NAMES
+    }
+    assert not shared, f"two modules share a name: {shared}"
+
+
+@pytest.mark.parametrize("document", _documents(), ids=lambda path: path.name)
+def test_no_document_points_through_a_shared_module_name(document: Path):
+    """What :data:`SHARED_MODULE_NAMES` costs, held to costing nothing.
+
+    A pointer at a merged stem is checked against the union of two modules, so
+    it would resolve even naming something the module a reader would open does
+    not define. Cite the function alone, or name the module a reader can find.
+    """
+    cited = [
+        token for token in _cited_code(document)
+        if token.split(".", 1)[0] in SHARED_MODULE_NAMES
+    ]
+    assert not cited, f"points through a merged module name: {cited}"

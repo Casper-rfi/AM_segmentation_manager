@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.aggregate import BREAKDOWNS, by_series, count_by
-from am_segmentation_manager.cli import DEFAULT_SERIES, REPORTING_SERIES, build_parser
+from am_segmentation_manager.cli import build_parser
+from am_segmentation_manager.cli.scope import DEFAULT_SERIES, REPORTING_SERIES
 from am_segmentation_manager.filtering import matches_series
 from am_segmentation_manager.models import ImageRecord
 
