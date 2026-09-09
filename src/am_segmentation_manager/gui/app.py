@@ -140,12 +140,24 @@ def _apply_icon(application) -> None:
 
     # The widgets create a Qt application on import, which this module
     # deliberately does not do -- see the docstring above.
-    from .widgets.branding import ICON_PATH
+    from .widgets.branding import ICON_PATH, app_icon_path
 
-    if not ICON_PATH.exists():
-        logger.debug("No window icon at %s", ICON_PATH)
+    path = app_icon_path()
+    if not path.exists():
+        logger.debug("No window icon at %s", path)
         return
-    application.setWindowIcon(QIcon(str(ICON_PATH)))
+
+    icon = QIcon(str(path))
+    if icon.isNull() and path != ICON_PATH:
+        # A Qt built without the ICNS plugin reads no icon and reports no
+        # error. The mark is a PNG, which every build can read.
+        logger.debug("Could not read %s; falling back to %s", path, ICON_PATH)
+        icon = QIcon(str(ICON_PATH))
+    if icon.isNull():  # pragma: no cover - a corrupt asset, not a missing one
+        logger.warning("Could not read the application icon at %s", path)
+        return
+
+    application.setWindowIcon(icon)
 
 
 def _missing_qt_message(error: Exception) -> str:

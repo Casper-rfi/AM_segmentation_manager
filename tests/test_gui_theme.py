@@ -418,3 +418,67 @@ def test_a_group_title_is_heavier_than_the_captions_inside_it(qt_app):
 
     assert title > bare_title, "the group title did not get its weight"
     assert caption == bare_caption, "the weight reached the controls inside"
+
+
+# ---------------------------------------------------------------------------
+# The macOS application icon
+# ---------------------------------------------------------------------------
+
+def test_the_mac_icon_ships_inside_the_package(qt_app):
+    """The Dock's icon is a second asset, and Qt must be able to decode it.
+
+    Loaded rather than merely located, for the reason the mark's own test
+    gives: an ICNS Qt cannot read is a null icon and no error.
+    """
+    from qtpy.QtGui import QIcon
+
+    from am_segmentation_manager.gui.widgets.branding import MAC_ICON_PATH
+
+    assert MAC_ICON_PATH.exists()
+    assert not QIcon(str(MAC_ICON_PATH)).isNull()
+
+
+def test_the_mac_icon_is_the_shape_macos_draws_its_own_icons_in(qt_app):
+    """The container is 824/1024 of the canvas, centred, with clear corners.
+
+    The one property that makes this icon look native rather than foreign, and
+    the one a re-export could silently lose: an icon filling its canvas sits
+    visibly larger in the Dock than every icon beside it.
+    """
+    from qtpy.QtGui import QIcon
+
+    from am_segmentation_manager.gui.widgets.branding import MAC_ICON_PATH
+
+    image = QIcon(str(MAC_ICON_PATH)).pixmap(512, 512).toImage()
+    opaque = [x for x in range(512) if image.pixelColor(x, 256).alpha() > 127]
+
+    assert image.pixelColor(0, 0).alpha() == 0, "the corners carry the shadow's margin"
+    assert image.pixelColor(256, 256).alpha() == 255
+
+    width = opaque[-1] - opaque[0] + 1
+    assert abs(width - round(512 * 824 / 1024)) <= 2
+    # Centred: the margin either side of the container is the same.
+    assert abs(opaque[0] - (512 - width - opaque[0])) <= 2
+
+
+def test_the_dock_gets_the_container_and_every_other_desktop_the_mark(qt_app, monkeypatch):
+    """Only macOS draws no container of its own, so only macOS needs one."""
+    from am_segmentation_manager.gui.widgets import branding
+
+    monkeypatch.setattr(branding.sys, "platform", "darwin")
+    assert branding.app_icon_path() == branding.MAC_ICON_PATH
+
+    monkeypatch.setattr(branding.sys, "platform", "win32")
+    assert branding.app_icon_path() == branding.ICON_PATH
+
+
+def test_a_checkout_without_the_container_falls_back_to_the_mark(qt_app, monkeypatch):
+    """A missing asset is never an error; the mark is readable everywhere."""
+    from am_segmentation_manager.gui import app
+    from am_segmentation_manager.gui.widgets import branding
+
+    monkeypatch.setattr(branding.sys, "platform", "darwin")
+    monkeypatch.setattr(branding, "MAC_ICON_PATH", Path("/nowhere/absent.icns"))
+
+    assert branding.app_icon_path() == branding.ICON_PATH
+    app._apply_icon(qt_app)

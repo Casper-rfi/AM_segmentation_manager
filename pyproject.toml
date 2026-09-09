@@ -118,9 +118,11 @@ include = ["am_segmentation_manager*"]
 # The default segmentation class definitions, used when no project-specific
 # segmentation_config_AM.yaml is found, and the window's icon. Both ship inside
 # the package rather than at the repository root, so they survive installation.
-# The .ico is not loaded by the GUI -- Qt uses the PNG on every platform -- and
-# is kept for building a Windows shortcut.
-am_segmentation_manager = ["data/*.yaml", "data/*.png", "data/*.ico"]
+# The .icns is the mark in the macOS icon container, and is the application
+# icon on that platform only; the PNG is the mark itself, used everywhere else
+# and wherever the window draws it against its own background. The .ico is not
+# loaded by the GUI and is kept for building a Windows shortcut.
+am_segmentation_manager = ["data/*.yaml", "data/*.png", "data/*.ico", "data/*.icns"]
 
 [tool.pytest.ini_options]
 # Put src/ on the import path, so the tests run against the source tree without

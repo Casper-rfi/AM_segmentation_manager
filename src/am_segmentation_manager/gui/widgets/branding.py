@@ -5,6 +5,11 @@ disagree about which file the mark is or how it is scaled. A missing asset is
 never an error: a source checkout without it must still open the window, so
 every caller here gets an empty pixmap and draws nothing.
 
+The mark exists twice, and which one a caller wants follows from where it is
+drawn. Against the window's own background it is the free-form mark; as the
+application icon on macOS it is the same mark set in the system's container,
+because the Dock draws no container of its own.
+
 The mark is the *only* place this package uses its orange and green. Both are
 already spoken for as segmentation class colours, and the timeline draws its
 states beside that legend, so a second meaning for either would be read as
@@ -13,6 +18,7 @@ data; see `docs/display.md`.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 from qtpy.QtCore import Qt
@@ -20,15 +26,36 @@ from qtpy.QtGui import QPixmap
 
 logger = logging.getLogger(__name__)
 
+_DATA = Path(__file__).parent.parent.parent / "data"
+
 #: The mark, as a PNG rather than the ``.ico`` beside it: Qt reads PNG through
 #: a built-in plugin on every platform, where ICO buys nothing outside Windows.
 #: Located the way :mod:`...config` locates the packaged segmentation config,
 #: for the reason given there.
-ICON_PATH = Path(__file__).parent.parent.parent / "data" / "AM_icon.png"
+ICON_PATH = _DATA / "AM_icon.png"
+
+#: The same mark set in the macOS icon container, for the Dock. A separate
+#: file rather than a scaled :data:`ICON_PATH`, because the container is part
+#: of the artwork there and would be a white box anywhere the mark is drawn
+#: against the window's own background; `scripts/build_mac_icon.py` builds it.
+MAC_ICON_PATH = _DATA / "AM_icon.icns"
 
 #: The name shown beside the mark. Spelled here so the window, the banner and
 #: anything later cannot drift apart on capitalisation.
 PRODUCT_NAME = "AM segmentation manager"
+
+
+def app_icon_path() -> Path:
+    """Return the file the application icon should be read from.
+
+    The macOS container on Darwin and the free-form mark everywhere else:
+    a Dock icon draws its own container and reads as foreign without one,
+    where Windows and the Linux desktops frame what they are given. A checkout
+    without the container falls back to the mark rather than to nothing.
+    """
+    if sys.platform == "darwin" and MAC_ICON_PATH.exists():
+        return MAC_ICON_PATH
+    return ICON_PATH
 
 
 def logo_pixmap(size: int) -> QPixmap:

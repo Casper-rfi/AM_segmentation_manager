@@ -31,8 +31,6 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **A macOS `.icns` icon**, the current one being a full-bleed PNG where macOS wants a squircle
-  inset in its canvas. Artwork rather than code, and Casper's to draw.
 - **An "other" series** making unindexed images visible instead of merely counted.
   [`04_future_work.md`](04_future_work.md) §6.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when

@@ -40,8 +40,10 @@ of one of these files, is held by `test_docs.py`.
 - **The mark is the only place the orange and green appear.** Both are segmentation class colours
   and the timeline draws its states beside that legend, so a third meaning for either reads as
   data — which is why the banner's bar is the ordinary accent and nothing else is tinted.
-  `branding.py` holds the one path to the asset and the one spelling of the product name; a
-  checkout without it draws nothing rather than failing.
+  `branding.py` holds both paths to it and the one spelling of the product name; a checkout
+  without the asset draws nothing rather than failing. **macOS draws no container for a Dock icon**,
+  so the icon there carries one: a superellipse over 824/1024 of the canvas, measured off the
+  system's own (`test_the_mac_icon_is_the_shape_macos_draws_its_own_icons_in`).
 - **The window asks to be the one in front, and asks after the event loop has started** —
   `test_the_window_asks_to_be_the_one_in_front` says what a window without the keyboard loses on
   macOS. It clears the instant anything is clicked, which is what makes it read as occasional.
