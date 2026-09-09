@@ -52,6 +52,13 @@ LABEL_BADGES = {
 }
 
 
+#: How many filenames a confirmation lists before summarising the rest. Shared
+#: because a bulk state change and a batch operation both list what they are
+#: about to touch, and two caps would have one dialog stop where the other did
+#: not.
+MAX_LISTED_FILES = 12
+
+
 def class_legend_html(config: SegmentationConfig) -> str:
     """Return a swatch and name for each foreground class, as rich text.
 

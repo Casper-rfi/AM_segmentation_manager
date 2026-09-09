@@ -1609,7 +1609,7 @@ def revert_with(window, undoing="conversion", savepoint=""):
     """Answer the revert dialog without opening it."""
     from qtpy.QtWidgets import QDialog
 
-    from am_segmentation_manager.gui.widgets import main_window as module
+    from am_segmentation_manager.gui.widgets import operation_actions as module
 
     class _Answered:
         def __init__(self, *_args):
@@ -1687,7 +1687,7 @@ def take_savepoint(window, title="round 1", note="", gap=False):
     """Answer the savepoint dialog without opening it."""
     from qtpy.QtWidgets import QDialog
 
-    from am_segmentation_manager.gui.widgets import main_window as module
+    from am_segmentation_manager.gui.widgets import operation_actions as module
 
     class _Answered:
         def __init__(self, *_args):
@@ -1749,7 +1749,7 @@ def restore_savepoint(window, savepoint="round 1"):
     """Answer the restore chooser without opening it."""
     from qtpy.QtWidgets import QDialog
 
-    from am_segmentation_manager.gui.widgets import main_window as module
+    from am_segmentation_manager.gui.widgets import operation_actions as module
 
     class _Answered:
         def __init__(self, *_args, **_kwargs):
@@ -2145,7 +2145,7 @@ def _accept_dialog(monkeypatch, chosen, *, accepted=True, opened=None):
             return list(chosen)
 
     monkeypatch.setattr(
-        "am_segmentation_manager.gui.widgets.main_window.AddProjectsDialog", FakeDialog
+        "am_segmentation_manager.gui.widgets.operation_actions.AddProjectsDialog", FakeDialog
     )
 
 

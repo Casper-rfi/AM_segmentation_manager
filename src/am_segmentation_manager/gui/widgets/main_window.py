@@ -1,9 +1,17 @@
-"""The window: four tabs, the controllers behind them, and the keys.
+"""The window: four tabs, the controllers behind them, and what joins them.
 
 *Add data*, *Curate*, *Label* and *Export*. Each has a controller holding no Qt,
 and this module holds none of its own decisions -- it asks a controller what to
 show, and tells it what the user did. The controllers are built and owned here,
 which is also where a signal from one tab reaches the work another does.
+
+**What is left here is the window itself**: building it, remembering it, the
+Curate tab, and joining the four. Three blocks that were about one subject each
+are mixed in beside it -- :mod:`.operation_runner`, :mod:`.operation_actions`
+and :mod:`.label_tab` -- and the keys are :mod:`.shortcuts`, which the window
+holds rather than inherits. Mixins because each is the window acting, reaching
+the same panels and controllers; a mixin says which subject a method belongs to
+without pretending it is a separate object.
 
 Why the window looks and behaves as it does, and every Qt trap in it, is
 ``docs/display.md``.
@@ -26,9 +34,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QSplitter,
-    QStyle,
     QTabWidget,
     QToolButton,
     QToolTip,
@@ -44,7 +50,6 @@ from ...operations.selection import (
     UnmigratedStage,
     current_state,
 )
-from ...progress import Cancellation
 from ..controller import (
     MODE_MODALITIES,
     CurationController,
@@ -55,24 +60,23 @@ from ..export_controller import ExportController
 from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
-from ..operations_controller import OperationReport, OperationsController
+from ..operations_controller import OperationsController
 from ..version_controller import VersionController
 from ..worker import BackgroundOperation
 from .branding import PRODUCT_NAME, logo_pixmap
 from .busy_dialog import BusyDialog
-from .conflict_dialog import ConflictDialog
+from .common import MAX_LISTED_FILES
 from .controls import GripSplitter
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
 from .image_panel import ImagePanel
 from .label_panel import LabelPanel
+from .label_tab import LabelTab
 from .metadata_panel import MetadataPanel
+from .operation_actions import OperationActions
+from .operation_runner import OperationRunner
 from .operations_panel import OperationsPanel
-from .project_dialog import AddProjectsDialog
 from .project_panel import ProjectPanel
-from .report_dialog import ReportDialog
-from .revert_dialog import RevertDialog
-from .savepoint_dialog import SavepointDialog
 from .scan_banner import ScanBanner
 from .settings_dialog import SettingsDialog, author_summary
 from .shortcuts import (
@@ -103,27 +107,12 @@ SETTING_DEVICE = "predict_device"
 SETTING_GEOMETRY = "geometry"
 SETTING_SPLITTER = "splitter"
 
-#: How many filenames a confirmation lists before summarising the rest.
-MAX_LISTED_FILES = 12
-
-#: Names the save in every dialog and log line it produces.
-SAVE_TITLE = "Save labels"
 AUTHOR_TITLE = "Settings"
-RESTORE_TITLE = "Restore an earlier version"
 
 #: The em dash between the product name and the folder in the window title.
 #: Two windows on two collections are told apart by the title and by nothing
 #: else, the taskbar and the window switcher showing only that.
 TITLE_SEPARATOR = " — "
-
-#: What the confirm button says for each thing an operation can be blocked on.
-#: The generic wording is right for including corrected files in a batch;
-#: replacing a label needs the destructive word, because it is one.
-BLOCKED_ACTIONS: dict[str, str] = {
-    "corrected": "Include them",
-    "existing": "Replace them",
-    "conflicts": "Decide each...",
-}
 
 def _brand_mark(on_help) -> QWidget:
     """Return the mark, the product name and the help button, for the tab row.
@@ -200,81 +189,14 @@ def _log_file_path() -> str | None:
 
 #: How a heading is set apart from the rows under it.
 #:
-class SaveLabelsDialog(QDialog):
-    """The one dialog that writes proofread work, laid out on purpose.
+class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
+    """Main window for reviewing and curating adaptive milling data.
 
-    Not a message box. Fusion reports the Windows button order wherever it runs,
-    so a message box ends the row with *Cancel* -- the button that changes
-    nothing sitting where the eye lands last, past both ways of saving. The
-    order here is the shape of the choice: leave, save, save and finish. The
-    last is the default, and therefore the accented one, because proofreading a
-    label and not marking it is the exception.
-
-    Overriding the style hint that decides the order would fix every dialog at
-    once, and was tried: ``QProxyStyle.styleHint`` segfaults PySide6 while a
-    message box is being built.
+    The three bases before ``QMainWindow`` each hold one subject's methods and
+    no state of their own; everything they reach is built here. Their order
+    does not matter -- no name is defined twice, which
+    ``test_no_mixin_shadows_another`` is what keeps true.
     """
-
-    def __init__(
-        self, parent, message: str, note: str, *, offer_corrected: bool
-    ) -> None:
-        """Ask how to save.
-
-        Args:
-            parent: The window the save belongs to.
-            message: What the save would do.
-            note: A second line, or empty. Says how to reach what is not on
-                offer when *offer_corrected* is False.
-            offer_corrected: Whether marking the reviewed set corrected is
-                available, which follows the editing guard.
-        """
-        super().__init__(parent)
-        self.setWindowTitle(SAVE_TITLE)
-        self.mark_corrected = False
-
-        layout = QVBoxLayout(self)
-        said = QHBoxLayout()
-        icon = QLabel()
-        icon.setPixmap(
-            self.style().standardIcon(QStyle.SP_MessageBoxQuestion).pixmap(40, 40)
-        )
-        icon.setAlignment(Qt.AlignTop)
-        said.addWidget(icon)
-        said.addSpacing(8)
-
-        text = QLabel(message if not note else f"{message}\n\n{note}")
-        text.setWordWrap(True)
-        said.addWidget(text, stretch=1)
-        layout.addLayout(said)
-
-        buttons = QHBoxLayout()
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        buttons.addWidget(cancel)
-        buttons.addStretch()
-
-        # "Save only" only means something against a second way of saving.
-        save_only = QPushButton("Save only" if offer_corrected else "Save")
-        save_only.clicked.connect(self.accept)
-        buttons.addWidget(save_only)
-
-        if offer_corrected:
-            mark = QPushButton("Save and mark corrected")
-            mark.clicked.connect(self._mark_and_accept)
-            mark.setDefault(True)
-            buttons.addWidget(mark)
-        else:
-            save_only.setDefault(True)
-        layout.addLayout(buttons)
-
-    def _mark_and_accept(self) -> None:
-        """Accept, having chosen to mark the reviewed set corrected."""
-        self.mark_corrected = True
-        self.accept()
-
-
-class CurationWindow(QMainWindow):
-    """Main window for reviewing and curating adaptive milling data."""
 
     #: Emitted to the background loader thread; see :class:`BackgroundLoader`.
     request_load = Signal(list, int)
@@ -757,6 +679,17 @@ class CurationWindow(QMainWindow):
             self._model_key(self._model_context), self.operations_panel.model()
         )
 
+    def _remember_device(self) -> str:
+        """Store what is in the device box, and return it.
+
+        One machine usually has one answer, so re-choosing it every session is
+        noise. Beside :meth:`_remember_model` because both are the window's
+        memory of what a prediction was last asked for.
+        """
+        device = self.operations_panel.device()
+        self.settings.setValue(SETTING_DEVICE, device)
+        return device
+
     def _follow_model_context(self) -> None:
         """Point the model box at the series and beam now on screen.
 
@@ -859,759 +792,6 @@ class CurationWindow(QMainWindow):
         # The archive can only have changed if something wrote, and everything
         # that writes lands here; so this is where a stale number is dropped.
         self._archive_measured = False
-
-    # -- operations that change files --------------------------------------
-
-    def _run_operation(
-        self, description: str, work, on_done, *, cancellation: Cancellation | None = None
-    ) -> None:
-        """Run *work* off the interface thread, then hand its result to *on_done*.
-
-        The one seam through which every operation reaches its thread, so a test
-        can substitute an inline call and still exercise the rest of the flow.
-
-        Args:
-            cancellation: Pass one to give the dialog a Stop button. The bar is
-                a separate question: the dialog opens indeterminate and turns
-                into a count as soon as the work reports progress, so an
-                operation can say how far it has got without being stoppable.
-        """
-        self._busy = BusyDialog(self, description, stoppable=cancellation is not None)
-        if cancellation is not None:
-            self._busy.stop_requested.connect(cancellation.request)
-        self._busy.show()
-        self.operations_panel.set_busy(True)
-
-        self._pending_operation = (description, on_done)
-        self.request_operation.emit(work)
-
-    def _operation_progressed(self, done: int, total: int) -> None:
-        """Move the busy dialog's bar, on the thread that owns it.
-
-        A report can arrive after the work has returned -- both are queued
-        signals from the same thread -- so a closed dialog is a normal outcome
-        rather than a fault.
-        """
-        if self._busy is None:
-            return
-        self._busy.set_progress(done, total)
-
-    def _operation_finished(self, result) -> None:
-        """Hand a finished operation's result to whatever asked for it."""
-        pending = self._take_pending_operation()
-        if pending is None:  # pragma: no cover - nothing was submitted
-            return
-        _description, on_done = pending
-        on_done(result)
-
-    def _operation_failed(self, error) -> None:
-        """Report an operation that raised, on the thread that can show it."""
-        logger.warning("Operation failed: %s", error)
-        pending = self._take_pending_operation()
-        description = pending[0] if pending else "Operation failed"
-        QMessageBox.critical(self, description, str(error))
-
-    def _take_pending_operation(self) -> tuple | None:
-        """Close the busy dialog and return what was waiting on it, once.
-
-        Cleared before the callback runs, so a callback that starts the next
-        operation -- which is how preview leads to apply -- is not overwritten
-        by the one that just finished.
-        """
-        pending, self._pending_operation = self._pending_operation, None
-        # Detached before it is closed, so anything that runs while it closes
-        # finds no dialog rather than one that is being taken apart.
-        busy, self._busy = self._busy, None
-        if busy is not None:
-            busy.close()
-            busy.deleteLater()
-        self.operations_panel.set_busy(False)
-        return pending
-
-    def _operate(
-        self,
-        title: str,
-        run,
-        *,
-        cancellation: Cancellation | None = None,
-        rescan: bool = False,
-        confirm: Callable[[str, OperationReport, str], bool] | None = None,
-    ) -> None:
-        """Preview an operation, confirm it, then apply what was previewed.
-
-        Args:
-            title: Names the operation in every dialog it opens.
-            run: Called as ``run(allow, dry_run)``, returning an
-                :class:`OperationReport`. ``allow`` answers whatever the report
-                was blocked on. It runs on the worker thread, so it must touch
-                nothing belonging to the window.
-            cancellation: Makes the applying run stoppable. The previews are
-                not: they open no file and answer in milliseconds, so a Stop
-                button on one is a button with nothing to stop.
-            rescan: Read the collection again afterwards, for an operation
-                whose effect is not the list of files it wrote. See
-                :meth:`_operation_applied`.
-            confirm: Asks about a blocked report, in place of the ordinary
-                one. For an operation whose answer is more than yes -- a merge
-                collects a decision per conflict -- and it runs here, on the
-                thread that may open a dialog, rather than inside *run*.
-
-        Preview and apply are two runs of the same function rather than one run
-        whose result is replayed: a preview held across a dialog describes a
-        filesystem the user has had time to change.
-        """
-
-        ask = confirm if confirm is not None else self._confirm_report
-
-        def previewed(report: OperationReport, allowed: bool = False) -> None:
-            if report.blocked and not allowed:
-                action = BLOCKED_ACTIONS.get(report.blocked, "Include them")
-                if not ask(title, report, action):
-                    return
-                self._run_operation(
-                    title, lambda: run(True, True), lambda r: previewed(r, True)
-                )
-                return
-            if not report.count:
-                self._show_report(title, report)
-                return
-            if not self._confirm_report(title, report, "Apply"):
-                return
-            self._run_operation(
-                title,
-                lambda: run(allowed, False),
-                lambda applied: self._operation_applied(title, applied, rescan),
-                cancellation=cancellation,
-            )
-
-        self._run_operation(title, lambda: run(False, True), previewed)
-
-    def _operation_applied(
-        self, title: str, report: OperationReport, rescan: bool = False
-    ) -> None:
-        """Record what an operation did and bring the window back in step.
-
-        Args:
-            rescan: For an operation whose effect is not a list of files it
-                wrote -- a new *project*, which changes what the index holds
-                rather than what a record carries. Everything that only creates
-                labels or predictions names them through ``written`` instead.
-        """
-        self.state_panel.show_last_change(f"{title}: {report.headline}")
-        logger.info("%s: %s", title, report.headline)
-        self._show_report(title, report)
-        # An operation that says what it wrote needs no scan to find it: the
-        # paths go on the records, and both views drop what they had read from
-        # the files those paths name -- the Export tab keys its label states
-        # and measurements by path, so a replaced label would keep reporting
-        # the one it replaced.
-        self.controller.attach_written(report.written)
-        self.export_controller.forget_labels(report.written)
-        # Marked on both sides, as the steps of a prediction run are: the last
-        # thing an operation does is read the whole collection again, and a
-        # window that disappears once the work is finished has to be placed
-        # either side of that read.
-        logger.info("%s: %s", title, "rescanning" if rescan else "refreshing")
-        if rescan:
-            self.rescan()
-        else:
-            self.refresh(reload_lists=True)
-        logger.info("%s: the window is back in step", title)
-
-    def _confirm_report(self, title: str, report: OperationReport, action: str) -> bool:
-        """Show a report and ask whether to go ahead."""
-        return ReportDialog(self, title, report.text(), action).exec() == QDialog.Accepted
-
-    def _show_report(self, title: str, report: OperationReport) -> None:
-        """Show a report with nothing to accept."""
-        ReportDialog(self, title, report.text()).exec()
-
-    def _editable_records(self) -> list | None:
-        """Return what an operation would act on, or None with a reason shown.
-
-        The same guard and the same selection the state buttons use: an
-        operation that writes files is no less of a change for being called
-        something else.
-        """
-        if not self.controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' before running an operation.",
-            )
-            return None
-        records = self.controller.scoped_records()
-        if not records:
-            self._flash("Nothing selected")
-            return None
-        return records
-
-    def _predict(self, model: str) -> None:
-        """Predict the selection with the model named in the panel.
-
-        Guarded in the order the answers are needed: whether this window may
-        write at all, then whether it can predict, then whether it was told
-        what with. Asking for a model first would ask for a file before saying
-        the operation was never going to run.
-        """
-        records = self._editable_records()
-        if records is None:
-            return
-
-        # No check that imports torch. The window predicts in a child process
-        # precisely so that torch is never loaded here, and asking whether it
-        # would load is asking by loading it. A stack that is missing or broken
-        # is reported by the child, which is the process that has to import it.
-        if not model:
-            self._flash("Choose a model to predict with")
-            return
-        weights = Path(model)
-        # Remembered against the view it was chosen for, so the next session
-        # opens with the same model in the box -- one model, many runs.
-        self._remember_model()
-        device = self.operations_panel.device()
-        self.settings.setValue(SETTING_DEVICE, device)
-
-        # Created here rather than in _operate so the work closure and the
-        # dialog share one: the closure polls it on the worker thread, the
-        # dialog's Stop button sets it on this one.
-        cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-
-        # Not rescanned: a prediction that did not exist when the scan ran is
-        # not in the index and nothing would offer to convert it, but the run
-        # says where it put every one, which is the whole of what a scan would
-        # have found here.
-        self._operate(
-            "Predict labels",
-            lambda allow, dry: self.operations_controller.predict(
-                records, weights, device=device, dry_run=dry,
-                cancellation=None if dry else cancellation,
-                on_progress=None if dry else progressed.emit,
-            ),
-            cancellation=cancellation,
-        )
-
-    def _offer_devices(self) -> None:
-        """Fill the device box with what the machine actually has.
-
-        Asked of a separate process, because this one never imports torch --
-        that is what predicting in a child is for. It costs an interpreter
-        start and a torch import, so it is done once per session, when the box
-        is first opened: by then the user has said they want to choose one.
-        """
-        if self._devices is not None:
-            return
-        from ...operations.predict_process import probe_devices
-
-        self.project_panel.announce("Asking which devices are available...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            self._devices = probe_devices()
-        finally:
-            QApplication.restoreOverrideCursor()
-        logger.info("Devices available for prediction: %s", self._devices or "none")
-        self.operations_panel.show_devices(self._devices)
-        self.refresh()
-
-    def _convert_predictions(self) -> None:
-        records = self._editable_records()
-        if records is None:
-            return
-        # Not rescanned, for the reason under Predict labels: the new labels
-        # would otherwise keep drawing as unlabelled, and naming them on their
-        # records says the same thing without walking the collection.
-        self._operate(
-            "Convert predictions",
-            lambda allow, dry: self.operations_controller.convert_predictions(
-                records, allow_overwrite=allow, dry_run=dry
-            ),
-        )
-
-    def _find_specks(self, size: int) -> None:
-        """Report which of the ticked projects hold labels with specks.
-
-        The size comes from the box beside the button rather than from the
-        Label tab's slider, which is where it used to come from: a control on
-        another tab quietly deciding what this reports is one nobody can see
-        when they press it.
-
-        No editing guard, unlike the two buttons above it: this reads and
-        writes nothing, and asking someone to switch editing on to look at
-        their data would be a lock on the wrong door.
-
-        Stoppable, and freely so -- what a stopped sweep leaves is a smaller
-        answer rather than a half-finished anything.
-        """
-        records = self.controller.scoped_records()
-        if not records:
-            self._flash("Tick a project, a lamella or a frame first")
-            return
-        cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
-            f"Reading the labels of {len(records)} image(s)",
-            lambda: self.operations_controller.find_specks(
-                records, at_most=size,
-                on_progress=progressed.emit, cancellation=cancellation,
-            ),
-            lambda report: self._show_report("Find specks", report),
-            cancellation=cancellation,
-        )
-
-    def _revert(self) -> None:
-        """Put the selection's labels back to what they held before something.
-
-        The same guard and the same selection every other operation in this
-        panel uses: what a revert acts on is what is ticked, which is also what
-        was converted. The three ways of naming what to go back to are one
-        dialog, for the reason :class:`RevertDialog` gives.
-        """
-        records = self._editable_records()
-        if records is None:
-            return
-        projects = self.controller.projects
-        dialog = RevertDialog(
-            self,
-            f"{len(records)} image(s) in {self.controller.selection.describe()}",
-            self.operations_controller.savepoints_here(projects),
-        )
-        if dialog.exec_() != QDialog.Accepted:
-            return
-        undoing, savepoint = dialog.undoing, dialog.savepoint
-        self._operate(
-            "Revert labels",
-            lambda allow, dry: self.operations_controller.revert_labels(
-                records,
-                undoing=undoing or "conversion",
-                savepoint=savepoint,
-                projects=projects,
-                allow_corrected=allow,
-                dry_run=dry,
-            ),
-        )
-
-    def _measure_archive(self) -> None:
-        """Say what the kept label versions cost, once per scan.
-
-        Here rather than in the scan: measuring walks every project's archive
-        and reads every log, which is a cost worth paying on the tab that can
-        act on the number and not worth paying to open a collection. Somebody
-        who never opens this tab never pays it.
-
-        Off the interface thread, because on a collection of a hundred
-        projects it is seconds; the line stays as it was until the answer
-        arrives, rather than flickering through a placeholder.
-        """
-        if self._archive_measured or not self.controller.projects:
-            return
-        self._archive_measured = True
-        projects = self.controller.projects
-        if not self.operations_controller.archive_exists(projects):
-            # One stat per project rather than a walk of each: a collection
-            # that has never replaced a label has nothing to measure, and a
-            # dialog flashing up to say so is worse than saying nothing.
-            self.metadata_panel.set_archive("")
-            return
-        self._run_operation(
-            "Archive",
-            lambda: self.operations_controller.measure_archive(projects),
-            lambda size: self.metadata_panel.set_archive(size.describe()),
-        )
-
-    def _restore_savepoint(self) -> None:
-        """Put every label under the folder back to a savepoint.
-
-        A savepoint is taken over the whole collection from this tab, so this
-        is where putting the whole collection back belongs -- reaching Curate
-        and ticking everything first was the asymmetry this closes. Curate's
-        Revert keeps the same choice for a selection.
-        """
-        if not self.metadata_controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' before restoring a savepoint.",
-            )
-            return
-        projects = self.controller.projects
-        if not projects:
-            self._flash("Scan a folder first")
-            return
-        savepoints = self.operations_controller.savepoints_here(projects)
-        if not savepoints:
-            QMessageBox.information(
-                self, "Restore savepoint",
-                "No savepoint has been taken here yet. Savepoint... names the "
-                "state of every label, which is what this puts back.",
-            )
-            return
-
-        records = [
-            record for project in projects for record in project.image_records
-        ]
-        dialog = RevertDialog(
-            self,
-            f"{len(records)} image(s) in all {len(projects)} project(s)",
-            savepoints,
-            operations=False,
-        )
-        if dialog.exec_() != QDialog.Accepted:
-            return
-        savepoint = dialog.savepoint
-        self._operate(
-            "Restore savepoint",
-            lambda allow, dry: self.operations_controller.revert_labels(
-                records,
-                savepoint=savepoint,
-                projects=projects,
-                allow_corrected=allow,
-                dry_run=dry,
-            ),
-        )
-
-    def _reclaim_archive(self) -> None:
-        """Remove the kept label versions no savepoint needs.
-
-        The whole collection, the command line being per project: what pruning
-        keeps is decided by savepoints, which are collection-wide, so asking
-        one project at a time asks one question repeatedly.
-        """
-        if not self.metadata_controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' before reclaiming archive space.",
-            )
-            return
-        projects = self.controller.projects
-        if not projects:
-            self._flash("Scan a folder first")
-            return
-        self._operate(
-            "Reclaim space",
-            lambda allow, dry: self.operations_controller.reclaim_archive(
-                projects, dry_run=dry
-            ),
-        )
-
-    def _take_savepoint(self) -> None:
-        """Name the state of the whole collection.
-
-        The scan rather than the selection, for the reason
-        :meth:`OperationsController.take_savepoint` gives. Behind the same
-        editing guard as recompressing: both write, and both act on everything
-        under the folder.
-        """
-        if not self.metadata_controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' before taking a savepoint.",
-            )
-            return
-        projects = self.controller.projects
-        if not projects:
-            self._flash("Scan a folder first")
-            return
-
-        dialog = SavepointDialog(self, len(projects))
-        if dialog.exec_() != QDialog.Accepted:
-            return
-        title, note, gap = dialog.title, dialog.description, dialog.closing_gap
-        self._operate(
-            "Savepoint",
-            lambda allow, dry: self.operations_controller.take_savepoint(
-                projects, title, description=note, close_the_gap=gap, dry_run=dry
-            ),
-        )
-
-    def _compress_labels(self) -> None:
-        """Recompress every label under the scanned folder.
-
-        The whole collection rather than a selection: recompression preserves
-        the pixels exactly, so there is no label it should be withheld from,
-        and choosing which ones to shrink is not a decision worth a control.
-        The corrected-label confirmation still applies -- rewriting the file is
-        what needs the yes, not changing what is in it.
-        """
-        if not self.metadata_controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' before recompressing labels.",
-            )
-            return
-        records = [
-            record
-            for project in self.controller.projects
-            for record in project.image_records
-        ]
-        if not records:
-            self._flash("Scan a folder first")
-            return
-        # Only the applying run counts: the preview reads the file sizes and
-        # answers at once, where re-encoding a whole collection is minutes with
-        # nothing else on screen to say it is working.
-        cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-        self._operate(
-            "Compress labels",
-            lambda allow, dry: self.operations_controller.compress_labels(
-                records, allow_corrected=allow, dry_run=dry,
-                on_progress=None if dry else progressed.emit,
-                cancellation=None if dry else cancellation,
-            ),
-            cancellation=cancellation,
-        )
-
-    def _inspect_layout(self) -> None:
-        """Report how the scanned directory is interpreted. Read-only."""
-        root = self.controller.start_path
-        if root is None:
-            self._flash("Scan a folder first")
-            return
-        self._run_operation(
-            "Inspect layout",
-            lambda: self.operations_controller.survey(root),
-            lambda report: self._show_report("Inspect layout", report),
-        )
-
-    def _add_projects(self) -> None:
-        """Ask which directories become projects, then write their files.
-
-        The dialog *is* the preview: every row already says what it would
-        become, so this goes straight to writing rather than through the
-        confirm-a-report pair the other operations use. Showing the same
-        information a second time would not be read.
-        """
-        root = self.controller.start_path
-        if root is None:
-            self._flash("Scan a folder first")
-            return
-        if not self.metadata_controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' before writing metadata files.",
-            )
-            return
-        dialog = AddProjectsDialog(self, self.operations_controller, root)
-        if not dialog.exec_():
-            return
-        chosen = dialog.chosen()
-        if not chosen:
-            return
-        # Rescanned afterwards: making an unindexed dataset into a project is
-        # the point of this, and only a scan discovers the projects it created.
-        self._run_operation(
-            "Add projects",
-            lambda: self.operations_controller.create_projects(chosen, dry_run=False),
-            lambda report: self._operation_applied("Add projects", report, True),
-        )
-
-    def _check_csv(self, path: str) -> None:
-        """Check that every path an exported CSV records still exists."""
-        root = self.controller.start_path
-        if root is None:
-            self._flash("Scan a folder first")
-            return
-        self._run_operation(
-            "Check exported CSV",
-            lambda: self.operations_controller.check_csv(Path(path), root),
-            lambda report: self._show_report("Check exported CSV", report),
-        )
-
-    def _measure_labels(self) -> None:
-        """Measure every label off the interface thread, then redraw.
-
-        The first thing in the Export tab slow enough to need the worker: it
-        opens each label and labels its components, tens of milliseconds each
-        against half a millisecond for a header. Long enough that the dialog
-        has to say it is advancing rather than only that it is busy.
-        """
-        labels = self.export_controller.measurable_labels()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
-            f"Measuring {labels} label(s)",
-            lambda: self.export_controller.load_measurements(progressed.emit),
-            lambda measured: self._labels_measured(measured),
-        )
-
-    def _labels_measured(self, measured: int) -> None:
-        """Redraw with the measurements the worker read."""
-        logger.info("Measured labels for %d image(s)", measured)
-        self.export_panel.refresh()
-
-    def _with_labels(self, then: Callable[[], None]) -> None:
-        """Read the labels this selection needs, then do the thing needing them.
-
-        An export has to know what is inside each label -- a blank mask is
-        never paired with an image -- and that is the one slow read in this
-        tab. Doing it here rather than inside the write keeps it off the
-        interface thread and behind a dialog that counts, and doing it only
-        when it has not already happened means measuring first costs the
-        export nothing.
-        """
-        if self.export_controller.labels_known():
-            then()
-            return
-        labels = self.export_controller.measurable_labels()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
-            f"Reading {labels} label(s)",
-            lambda: self.export_controller.warm_labels(progressed.emit),
-            lambda _read: (self.export_panel.refresh(), then()),
-        )
-
-    def _export_training(self, directory: str) -> None:
-        if not self.export_controller.selected_records():
-            self._flash("Nothing matches these filters")
-            return
-        self._with_labels(lambda: self._write_training(directory))
-
-    def _write_training(self, directory: str) -> None:
-        if not self._confirm_dropping_corrected():
-            return
-        try:
-            train, validation = self.export_controller.export_training(Path(directory))
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Export failed", str(error))
-            return
-        written = ", ".join(str(path.name) for path in (train, validation) if path)
-        self._flash(f"Wrote {written}", 4000)
-        logger.info("Exported training CSV to %s", directory)
-
-    def _confirm_dropping_corrected(self) -> bool:
-        """Ask before writing a training set that silently omits proofread work.
-
-        The export skips an image whose label is missing or blank, which is
-        right -- pairing an image with a blank mask teaches a model that the
-        structure is background. What is wrong is doing it quietly: a corrected
-        image being dropped means the proofreading or the label has gone
-        missing, and the CSV that results is short with nothing saying so.
-        """
-        readiness = self.export_controller.unexportable_corrected()
-        if not readiness:
-            return True
-
-        rows = [
-            f"{record.project or '?'} / {record.lamella or '?'} / {record.image_path.name}"
-            for record in readiness.records
-        ]
-        shown = "\n".join(rows[:MAX_LISTED_FILES])
-        if len(rows) > MAX_LISTED_FILES:
-            shown += f"\n... and {len(rows) - MAX_LISTED_FILES} more"
-
-        answer = QMessageBox.warning(
-            self,
-            "Export without proofread images?",
-            f"These images are marked corrected, but hold no annotation to "
-            f"pair them with, so the export will leave them out "
-            f"({readiness.summary()}):\n\n{shown}\n\nWrite the files anyway?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
-        )
-        return answer == QMessageBox.Yes
-
-    def _copy_files(self, directory: str) -> None:
-        """Copy the matching images, labels and project files into *directory*.
-
-        On the same preview-then-apply path as the operations that write into
-        the collection, and stoppable for the same reason: this one writes
-        gigabytes, and a copy that lands by rename leaves whole files wherever
-        it is stopped.
-
-        No rescan afterwards. Nothing in the scanned collection has changed --
-        the copy is somewhere else, and refuses to be anywhere else.
-        """
-        if not self.export_controller.selected_records():
-            self._flash("Nothing matches these filters")
-            return
-
-        cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-        self._operate(
-            "Export images and labels",
-            lambda allow, dry: self.operations_controller.copy_files(
-                self.export_controller.selected_records(),
-                Path(directory),
-                projects=self.export_controller.projects,
-                start_path=self.export_controller.start_path,
-                scope=self.export_controller.describe_filters(),
-                dry_run=dry,
-                cancellation=None if dry else cancellation,
-                on_progress=None if dry else progressed.emit,
-            ),
-            cancellation=cancellation,
-        )
-
-    def _merge_copy(self, directory: str) -> None:
-        """Bring the work done in a copy back into this collection.
-
-        The other half of the round trip the button above it starts. Behind the
-        curation tab's editing guard rather than Add data's: what this writes
-        is labels and their state, which is what that guard protects.
-
-        A rescan follows, this being the one operation here that changes the
-        collection the window is showing rather than writing somewhere else.
-        """
-        if not self.controller.editing_enabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Tick 'Enable editing' on the Curate tab before merging a copy "
-                "back: a merge writes labels into this collection.",
-            )
-            return
-        source = Path(directory)
-        projects = self.controller.projects
-        #: What has been decided so far, filled in by the chooser below and
-        #: read by every later run. A decision changes what the whole
-        #: comparison comes to, so it goes into the plan rather than onto one
-        #: already made.
-        decided: dict[str, str] = {}
-
-        def ask(title: str, report: OperationReport, action: str) -> bool:
-            if report.blocked != "conflicts":
-                return self._confirm_report(title, report, action)
-            if not self._confirm_report(title, report, action):
-                return False
-            dialog = ConflictDialog(
-                self, report.conflicts, self.controller.config
-            )
-            if dialog.exec_() != QDialog.Accepted:
-                return False
-            decided.update(dialog.resolutions)
-            return True
-
-        self._operate(
-            "Merge a copy back",
-            lambda allow, dry: self.operations_controller.merge_copy(
-                source, projects, resolutions=dict(decided),
-                allow_corrected=allow, dry_run=dry,
-            ),
-            rescan=True,
-            confirm=ask,
-        )
-
-    def _export_image_metadata(self, path: str) -> None:
-        if not self.export_controller.selected_records():
-            self._flash("Nothing matches these filters")
-            return
-        try:
-            self.export_controller.export_image_metadata(Path(path))
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Export failed", str(error))
-            return
-        self._flash(f"Wrote {Path(path).name}", 4000)
-
-    def _export_project_metadata(self, path: str) -> None:
-        from ...operations.metadata_csv import export_project_metadata_csv
-
-        try:
-            export_project_metadata_csv(
-                self.export_controller.projects,
-                self.controller.start_path or Path(path).parent,
-                Path(path),
-            )
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Export failed", str(error))
-            return
-        self._flash(f"Wrote {Path(path).name}", 4000)
 
     # -- copying paths out of the window -----------------------------------
 
@@ -2369,60 +1549,6 @@ class CurationWindow(QMainWindow):
         self.state_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
 
-    def _point_label_tab(self) -> None:
-        """Show the lamella the curation view is on, and draw it.
-
-        The Label tab has no lamella list of its own: proofreading follows the
-        lamella being curated, so there is one cursor over the collection rather
-        than two that can disagree. Where that would throw away unsaved edits,
-        the tab stays where it is instead.
-        """
-        wanted = self.controller.lamella
-        current = self.label_controller.lamella
-        changing = wanted is not None and (
-            current is None or wanted.path != current.path
-        )
-        if changing and not self._may_discard_label_edits():
-            self.label_panel.refresh()
-            return
-        self.label_controller.set_lamella(wanted)
-        self.label_panel.set_variant_descriptions(self._variant_descriptions())
-        self.label_panel.refresh()
-
-    def _step_label_lamella(self, delta: int) -> None:
-        """Move both views to another lamella, from the Label tab."""
-        if not self._may_discard_label_edits():
-            return
-        self._step_lamella(delta)
-        self._point_label_tab()
-
-    def _may_discard_label_edits(self) -> bool:
-        """Ask before throwing away unsaved label edits; return whether to go on.
-
-        Deliberately not offered as "save these first": saving runs off the
-        interface thread and asks its own questions, and threading a navigation
-        through the far side of that is how a half-finished save ends up moving
-        files under a lamella nobody is looking at any more.
-        """
-        pending = self.label_controller.pending_count()
-        if not pending:
-            return True
-        lamella = self.label_controller.lamella
-        name = lamella.display_name if lamella is not None else "this lamella"
-        answer = QMessageBox.warning(
-            self,
-            "Unsaved label edits",
-            f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
-            f"{'have' if pending != 1 else 'has'} not been saved.\n\n"
-            "Save them with Ctrl+S first, or discard them to continue.",
-            QMessageBox.Discard | QMessageBox.Cancel,
-            QMessageBox.Cancel,
-        )
-        if answer != QMessageBox.Discard:
-            return False
-        self.label_controller.discard_edits()
-        return True
-
     def show_settings(self) -> None:
         """Open the settings that belong to this machine rather than the data.
 
@@ -2457,193 +1583,6 @@ class CurationWindow(QMainWindow):
         self._corner.author.setToolTip(
             author_summary(recorder.by, asked=True) + " Press F2 to change it."
         )
-
-    def restore_label_version(self) -> None:
-        """Put the chosen earlier version of this label back, having asked.
-
-        A write, so the window asks rather than the panel acting: what is on
-        disk now is kept first, which makes this reversible, and the reviewer
-        is told that before deciding rather than after.
-        """
-        versions = self.label_panel.versions_controller
-        chosen = versions.selected
-        if chosen is None:
-            self._flash("No earlier version is chosen")
-            return
-        if self.label_controller.pending_count():
-            QMessageBox.warning(
-                self,
-                RESTORE_TITLE,
-                "Save or discard the edits waiting first: restoring writes over "
-                "this label, and unsaved strokes would be lost with it.",
-            )
-            return
-
-        corrected = self.label_controller.is_reviewed()
-        if QMessageBox.question(
-            self,
-            RESTORE_TITLE,
-            f"Put back the version from {chosen.when or 'an unrecorded time'}"
-            f", saved by {chosen.who}?\n\n"
-            "What is on disk now is kept first, so this can itself be undone."
-            + (
-                "\n\nThis label is marked corrected. Restoring writes over "
-                "proofread work."
-                if corrected else ""
-            ),
-        ) != QMessageBox.Yes:
-            return
-
-        try:
-            versions.restore_selected(corrected=corrected, confirmed=True)
-        except (ValueError, PermissionError, RuntimeError) as error:
-            QMessageBox.critical(self, RESTORE_TITLE, str(error))
-            return
-        self.label_controller.discard_edits()
-        self.label_panel.refresh()
-        self._flash("Earlier version restored")
-
-    def save_labels(self) -> None:
-        """Write this lamella's edited labels, after asking what to do with them."""
-        if not self.label_controller.pending_count():
-            self._flash("No label edits to save")
-            return
-
-        plan = self.label_controller.save_plan()
-        if plan.stale:
-            QMessageBox.critical(
-                self,
-                SAVE_TITLE,
-                f"{len(plan.stale)} label(s) changed on disk since you opened "
-                f"them, so nothing has been saved:\n\n"
-                + "\n".join(item.destination.name for item in plan.stale)
-                + "\n\nRe-scan to see what is there now. Re-opening the "
-                "lamella will discard the edits made here.",
-            )
-            return
-
-        choice = self._ask_how_to_save(plan)
-        if choice is None:
-            return
-        mark_corrected = choice
-        allow_corrected = bool(plan.corrected)
-        self._run_operation(
-            SAVE_TITLE,
-            lambda: self.label_controller.save(
-                mark_corrected=mark_corrected, allow_corrected=allow_corrected
-            ),
-            self._labels_saved,
-        )
-
-    def _ask_how_to_save(self, plan) -> bool | None:
-        """Ask whether to mark the saved labels corrected; None cancels.
-
-        Marking corrected is a state change, so it is offered only while editing
-        is switched on -- the same guard every other state change is behind.
-        With it switched off the dialog says nothing about what marking would
-        move: describing an option that is not on offer is what made this ask
-        three questions at once.
-        """
-        editing = self.controller.editing_enabled
-        lines = [f"Save {plan.summary()} in this lamella?"]
-        spread = self._modality_note()
-        if spread:
-            lines.append(spread)
-        if plan.corrected:
-            lines.append(
-                f"{len(plan.corrected)} of them replace a label already marked "
-                "corrected."
-            )
-        approved = len(self.label_controller.approved_records()) if editing else 0
-        if approved:
-            lines.append(
-                f"Marking corrected would cover {approved} image(s), and the "
-                "labels they share."
-            )
-
-        note = "" if editing else (
-            "To set their state to corrected as well, switch on Enable editing "
-            "in the Curate tab."
-        )
-        dialog = SaveLabelsDialog(
-            self, "\n\n".join(lines), note, offer_corrected=editing
-        )
-        if dialog.exec_() != QDialog.Accepted:
-            return None
-        return dialog.mark_corrected
-
-    def _modality_note(self) -> str:
-        """Return the line naming what is waiting per modality, or nothing.
-
-        Only when more than one is involved. A save writes the whole lamella's
-        edits, so the reviewer working through the SEM images has to be told
-        that the FIB labels they touched an hour ago are going out too.
-        """
-        counts = self.label_controller.pending_modalities()
-        if len(counts) < 2:
-            return ""
-        return "They are " + " and ".join(
-            f"{count} {modality}" for modality, count in sorted(counts.items())
-        ) + "."
-
-    def _labels_saved(self, headline: str) -> None:
-        """Record what a save did and bring the window back in step.
-
-        Refreshed rather than rescanned. A save is the one write whose whole
-        effect is already in memory when it finishes: the labels it created are
-        named on their records, and declaring a group corrected writes a file
-        and updates those records without moving anything. Reading the
-        collection again to learn what is already known cost twenty seconds of
-        the action taken most often, and threw away the prepared frames of the
-        lamella being proofread on the way.
-        """
-        self.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
-        logger.info("%s: %s", SAVE_TITLE, headline)
-        self._flash(headline, 4000)
-        self.refresh(reload_lists=True)
-        self.label_panel.refresh()
-
-    def _schedule_label_loads(self) -> None:
-        """Ask the Label tab's loader to prepare the frames around this one."""
-        token = self.label_loader.next_token()
-        requests = self.label_controller.pending_loads()
-        if requests:
-            self.request_label_load.emit(requests, token)
-        self._sweep_specks(token)
-
-    def _sweep_specks(self, token: int | None = None) -> None:
-        """Count the specks of frames nothing has counted yet.
-
-        On the loader's thread and behind whatever frame preparation is queued
-        there, which is the order that matters: the frame on screen is what the
-        reviewer is waiting for and the marks are what they will look at next.
-
-        Sharing the loader's token means moving to another lamella abandons a
-        sweep in flight. That costs the label it was reading and nothing else,
-        the sweep asking each time only for what is still uncounted.
-        """
-        labels = self.label_controller.uncounted_labels()
-        if not labels:
-            return
-        if token is None:
-            token = self.label_loader.next_token()
-        self.request_speck_counts.emit(
-            labels, token, self.label_controller.speck_size
-        )
-
-    def _on_speck_counted(self, token: int, key, count: int) -> None:
-        """Take one label's count from the sweep and redraw the marks."""
-        if token != self.label_loader.token:
-            return
-        self.label_controller.record_speck_count(key, count)
-        self.label_panel.refresh_timeline()
-
-    def _on_label_loaded(self, token: int, request) -> None:
-        """Redraw the canvas when the frame on screen finishes preparing."""
-        if token != self.label_loader.token:
-            return
-        if request.frame_index == self.label_controller.frame_index:
-            self.label_panel.draw_current()
 
     def _schedule_loads(self) -> None:
         """Ask the loader thread to prepare the frames around this one.

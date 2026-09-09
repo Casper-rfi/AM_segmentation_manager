@@ -1,0 +1,271 @@
+"""The window's side of the Label tab: which lamella, and saving what was drawn.
+
+Proofreading follows the lamella being curated rather than having a list of its
+own, so moving between lamellae is a window question and lives here; so does
+saving, which is the one action that writes a person's own work and therefore
+asks before it discards anything.
+
+The drawing, the tools and the versions bar are :mod:`.label_panel`; what is on
+screen and what a save would do with it are
+:mod:`am_segmentation_manager.gui.label_controller`. A mixin on the window,
+because every one of these reaches both tabs.
+"""
+from __future__ import annotations
+
+import logging
+
+from qtpy.QtWidgets import QDialog, QMessageBox
+
+from .save_dialog import SAVE_TITLE, SaveLabelsDialog
+
+logger = logging.getLogger(__name__)
+
+#: Names the restore in every dialog it opens.
+RESTORE_TITLE = "Restore an earlier version"
+
+
+class LabelTab:
+    """Choosing what the Label tab looks at, and writing what it changed."""
+
+    def _point_label_tab(self) -> None:
+        """Show the lamella the curation view is on, and draw it.
+
+        The Label tab has no lamella list of its own: proofreading follows the
+        lamella being curated, so there is one cursor over the collection rather
+        than two that can disagree. Where that would throw away unsaved edits,
+        the tab stays where it is instead.
+        """
+        wanted = self.controller.lamella
+        current = self.label_controller.lamella
+        changing = wanted is not None and (
+            current is None or wanted.path != current.path
+        )
+        if changing and not self._may_discard_label_edits():
+            self.label_panel.refresh()
+            return
+        self.label_controller.set_lamella(wanted)
+        self.label_panel.set_variant_descriptions(self._variant_descriptions())
+        self.label_panel.refresh()
+
+    def _step_label_lamella(self, delta: int) -> None:
+        """Move both views to another lamella, from the Label tab."""
+        if not self._may_discard_label_edits():
+            return
+        self._step_lamella(delta)
+        self._point_label_tab()
+
+    def _may_discard_label_edits(self) -> bool:
+        """Ask before throwing away unsaved label edits; return whether to go on.
+
+        Deliberately not offered as "save these first": saving runs off the
+        interface thread and asks its own questions, and threading a navigation
+        through the far side of that is how a half-finished save ends up moving
+        files under a lamella nobody is looking at any more.
+        """
+        pending = self.label_controller.pending_count()
+        if not pending:
+            return True
+        lamella = self.label_controller.lamella
+        name = lamella.display_name if lamella is not None else "this lamella"
+        answer = QMessageBox.warning(
+            self,
+            "Unsaved label edits",
+            f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
+            f"{'have' if pending != 1 else 'has'} not been saved.\n\n"
+            "Save them with Ctrl+S first, or discard them to continue.",
+            QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if answer != QMessageBox.Discard:
+            return False
+        self.label_controller.discard_edits()
+        return True
+
+
+    def restore_label_version(self) -> None:
+        """Put the chosen earlier version of this label back, having asked.
+
+        A write, so the window asks rather than the panel acting: what is on
+        disk now is kept first, which makes this reversible, and the reviewer
+        is told that before deciding rather than after.
+        """
+        versions = self.label_panel.versions_controller
+        chosen = versions.selected
+        if chosen is None:
+            self._flash("No earlier version is chosen")
+            return
+        if self.label_controller.pending_count():
+            QMessageBox.warning(
+                self,
+                RESTORE_TITLE,
+                "Save or discard the edits waiting first: restoring writes over "
+                "this label, and unsaved strokes would be lost with it.",
+            )
+            return
+
+        corrected = self.label_controller.is_reviewed()
+        if QMessageBox.question(
+            self,
+            RESTORE_TITLE,
+            f"Put back the version from {chosen.when or 'an unrecorded time'}"
+            f", saved by {chosen.who}?\n\n"
+            "What is on disk now is kept first, so this can itself be undone."
+            + (
+                "\n\nThis label is marked corrected. Restoring writes over "
+                "proofread work."
+                if corrected else ""
+            ),
+        ) != QMessageBox.Yes:
+            return
+
+        try:
+            versions.restore_selected(corrected=corrected, confirmed=True)
+        except (ValueError, PermissionError, RuntimeError) as error:
+            QMessageBox.critical(self, RESTORE_TITLE, str(error))
+            return
+        self.label_controller.discard_edits()
+        self.label_panel.refresh()
+        self._flash("Earlier version restored")
+
+    def save_labels(self) -> None:
+        """Write this lamella's edited labels, after asking what to do with them."""
+        if not self.label_controller.pending_count():
+            self._flash("No label edits to save")
+            return
+
+        plan = self.label_controller.save_plan()
+        if plan.stale:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                f"{len(plan.stale)} label(s) changed on disk since you opened "
+                f"them, so nothing has been saved:\n\n"
+                + "\n".join(item.destination.name for item in plan.stale)
+                + "\n\nRe-scan to see what is there now. Re-opening the "
+                "lamella will discard the edits made here.",
+            )
+            return
+
+        choice = self._ask_how_to_save(plan)
+        if choice is None:
+            return
+        mark_corrected = choice
+        allow_corrected = bool(plan.corrected)
+        self._run_operation(
+            SAVE_TITLE,
+            lambda: self.label_controller.save(
+                mark_corrected=mark_corrected, allow_corrected=allow_corrected
+            ),
+            self._labels_saved,
+        )
+
+    def _ask_how_to_save(self, plan) -> bool | None:
+        """Ask whether to mark the saved labels corrected; None cancels.
+
+        Marking corrected is a state change, so it is offered only while editing
+        is switched on -- the same guard every other state change is behind.
+        With it switched off the dialog says nothing about what marking would
+        move: describing an option that is not on offer is what made this ask
+        three questions at once.
+        """
+        editing = self.controller.editing_enabled
+        lines = [f"Save {plan.summary()} in this lamella?"]
+        spread = self._modality_note()
+        if spread:
+            lines.append(spread)
+        if plan.corrected:
+            lines.append(
+                f"{len(plan.corrected)} of them replace a label already marked "
+                "corrected."
+            )
+        approved = len(self.label_controller.approved_records()) if editing else 0
+        if approved:
+            lines.append(
+                f"Marking corrected would cover {approved} image(s), and the "
+                "labels they share."
+            )
+
+        note = "" if editing else (
+            "To set their state to corrected as well, switch on Enable editing "
+            "in the Curate tab."
+        )
+        dialog = SaveLabelsDialog(
+            self, "\n\n".join(lines), note, offer_corrected=editing
+        )
+        if dialog.exec_() != QDialog.Accepted:
+            return None
+        return dialog.mark_corrected
+
+    def _modality_note(self) -> str:
+        """Return the line naming what is waiting per modality, or nothing.
+
+        Only when more than one is involved. A save writes the whole lamella's
+        edits, so the reviewer working through the SEM images has to be told
+        that the FIB labels they touched an hour ago are going out too.
+        """
+        counts = self.label_controller.pending_modalities()
+        if len(counts) < 2:
+            return ""
+        return "They are " + " and ".join(
+            f"{count} {modality}" for modality, count in sorted(counts.items())
+        ) + "."
+
+    def _labels_saved(self, headline: str) -> None:
+        """Record what a save did and bring the window back in step.
+
+        Refreshed rather than rescanned. A save is the one write whose whole
+        effect is already in memory when it finishes: the labels it created are
+        named on their records, and declaring a group corrected writes a file
+        and updates those records without moving anything. Reading the
+        collection again to learn what is already known cost twenty seconds of
+        the action taken most often, and threw away the prepared frames of the
+        lamella being proofread on the way.
+        """
+        self.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
+        logger.info("%s: %s", SAVE_TITLE, headline)
+        self._flash(headline, 4000)
+        self.refresh(reload_lists=True)
+        self.label_panel.refresh()
+
+    def _schedule_label_loads(self) -> None:
+        """Ask the Label tab's loader to prepare the frames around this one."""
+        token = self.label_loader.next_token()
+        requests = self.label_controller.pending_loads()
+        if requests:
+            self.request_label_load.emit(requests, token)
+        self._sweep_specks(token)
+
+    def _sweep_specks(self, token: int | None = None) -> None:
+        """Count the specks of frames nothing has counted yet.
+
+        On the loader's thread and behind whatever frame preparation is queued
+        there, which is the order that matters: the frame on screen is what the
+        reviewer is waiting for and the marks are what they will look at next.
+
+        Sharing the loader's token means moving to another lamella abandons a
+        sweep in flight. That costs the label it was reading and nothing else,
+        the sweep asking each time only for what is still uncounted.
+        """
+        labels = self.label_controller.uncounted_labels()
+        if not labels:
+            return
+        if token is None:
+            token = self.label_loader.next_token()
+        self.request_speck_counts.emit(
+            labels, token, self.label_controller.speck_size
+        )
+
+    def _on_speck_counted(self, token: int, key, count: int) -> None:
+        """Take one label's count from the sweep and redraw the marks."""
+        if token != self.label_loader.token:
+            return
+        self.label_controller.record_speck_count(key, count)
+        self.label_panel.refresh_timeline()
+
+    def _on_label_loaded(self, token: int, request) -> None:
+        """Redraw the canvas when the frame on screen finishes preparing."""
+        if token != self.label_loader.token:
+            return
+        if request.frame_index == self.label_controller.frame_index:
+            self.label_panel.draw_current()
+
