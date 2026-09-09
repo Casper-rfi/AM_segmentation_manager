@@ -138,14 +138,34 @@ of one of these files, is held by `test_docs.py`.
   it meant**: a folder's box is Qt's tri-state, so ticking one ticks its projects and each reports
   itself. A tree needs the list rules of `theme.py` as well as the list *settings*, or Qt paints its
   current row in the full accent.
-- **What differs between the three is passed in** — the chip, and whether rows are checkable at all
-  (`test_a_tree_can_be_built_without_tick_boxes`). **That flag is cleared rather than merely not
-  set**: `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state
-  exists, so every row would report as checkable and the first `setCheckState` would put the boxes
-  back. Export has no project list but a project *filter*, whose values are relative paths: that one
-  draws as a tree, named in `NESTED_FILTERS`, a display decision belonging in the interface rather
-  than as a flag on `Breakdown` below it. Every other filter stays a list, and the row holds both
-  widgets and shows one rather than having either pretend to be the other.
+- **The furniture round the tree comes from `lists.project_box`, and what differs is passed in** —
+  the chip, and whether rows are checkable at all (`test_a_tree_can_be_built_without_tick_boxes`).
+  Three tabs listing the same projects had three arrangements of one widget: a filter field and
+  ticks, neither, then ticks and no field. Which of them a reader is looking at is not something the
+  window should have to teach. **The checkable flag is cleared rather than merely not set**:
+  `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state exists, so
+  every row would report as checkable and the first `setCheckState` would put the boxes back.
+- **Export filters *by* project rather than listing them, and that control is never taken away.**
+  Which projects an export covers is the first question anyone asks of one, and it was a row
+  somebody had to know to add — indistinguishable, once added, from a filter on the microscope
+  (`test_the_project_filter_cannot_be_taken_away`). Being dedicated is what lets every other filter
+  row be a flat list again: the values with a hierarchy were the only reason a row carried a tree, a
+  set of folds and a flag deciding which to show (`test_a_filter_row_is_always_a_flat_list`).
+- **Every project ticked is stored as no filter, and none ticked as a filter matching nothing.** The
+  values on offer are recomputed from the records the other filters pass, so a stored list of all of
+  them would quietly drop a project that appeared afterwards — from a rescan, or from widening
+  another filter (`test_a_project_that_appears_later_joins_an_unfiltered_export`). The other end
+  needs saying too, and needs `set_choice_filter`'s `empty_keeps_everything`: an empty choice is how
+  a filter *row* says it has stopped filtering, so storing one here would widen the export to
+  everything at the press of a button called None
+  (`test_unticking_every_project_matches_nothing_rather_than_everything`). What is ticked is read
+  off the tree, never re-derived from the controller, which is the rule a filter row already keeps.
+- **Its buttons wrap, and the columns they sit in are sized for them.** Tick all, None, Expand and
+  Collapse want 284px, which is more than the Export tab's filter column has: a row that cannot
+  wrap is clipped, and a button reading "ollaps" is worse than one on a second line. Curate's
+  column opens wide enough for one line and Export's does not, the middle of that tab being the
+  point of it — the furniture is what the three share, not the number of lines it takes
+  (`test_no_button_in_a_project_box_is_ever_clipped`).
 - **A folder is closed until it is opened, and what is open survives a rebuild.** Three things
   open one anyway: holding the current project, being rebuilt after a rescan having been open
   before, and matching a *filter* (`test_a_folder_holding_a_match_is_opened_to_show_it`), which
@@ -190,7 +210,7 @@ of one of these files, is held by `test_docs.py`.
   Choosing a folder moves no frame and no state: the lamella in view is kept when the new list holds
   it, which it does whenever the folder chosen is the one already being worked in.
 - **A list is never rebuilt from inside its own signal**, which corrupts the heap rather than merely
-  glitching — `test_ticking_a_folder_ticks_every_project_under_it` sets out how. Selecting a project
+  glitching — `test_unticking_a_folder_unticks_every_project_under_it` sets out how. Selecting a project
   rebuilds the lamellae and nothing else; `_refresh_lists` is for a scan or a state change, where
   every chip really has moved. **Where the signal comes from Qt rather than from this package the
   answer is a zero-delay single-shot timer** (`ExportPanel._recount`,
@@ -227,6 +247,13 @@ of one of these files, is held by `test_docs.py`.
   PySide6** as the array dies under the buffer; and `fit_to_screen` sizes from the label's own hint,
   `adjustSize` being useless when a scroll area reports a small default instead of its contents.
 
+- **Every column of the Export tab can be dragged, as the other tabs' can.** Its three boxes were
+  fixed where Add data and Curate have divided theirs from the start, and the filter column now
+  holds two things wanting the room for different reasons — thirty sessions to scroll, or four
+  filters each with a long list — so those get a divider of their own rather than a ratio decided
+  here. `FILTER_LIST_HEIGHT` is a floor rather than a cap for the same reason. Both are saved by
+  name with the rest and carry a grip like every other
+  (`test_every_division_that_moves_is_marked_as_one`).
 - **A collection-wide act goes on Add data; anything narrowed goes on Curate.** `operations_panel`
   promises that everything in it follows the ticks, so a savepoint — which is over the whole dataset
   a model was trained on — would break that promise there. Taking one, restoring one over everything

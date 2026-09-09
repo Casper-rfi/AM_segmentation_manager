@@ -44,7 +44,7 @@ from ..export_controller import (
     DEFAULT_SERIES,
     LABEL_FILTERS,
     MODALITIES,
-    NESTED_FILTERS,
+    PROJECT_FILTER,
     STATES,
     ExportController,
 )
@@ -56,8 +56,8 @@ from .common import (
     horizontal_rule,
     ticked_caption,
 )
-from .controls import SegmentedControl, StepCombo, ToggleSwitch
-from .lists import CheckList, ProjectTree, add_fold_buttons
+from .controls import GripSplitter, SegmentedControl, StepCombo, ToggleSwitch
+from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import choose_directory, choose_open_file, choose_save_file
 from .theme import COMPACT_BUTTON
 
@@ -72,9 +72,17 @@ NOTHING_MATCHES = "Nothing matches these filters"
 #: cross-tabulation. Not ``None``, which is what a group heading carries.
 NO_CROSS = ""
 
-#: How tall a filter list is, in pixels. Four ticked rows: enough to see that a
-#: list has been narrowed without any one property taking the column, and the
-#: caption says how many are ticked whether or not they are in view.
+#: How tall the project box may shrink to, in pixels. A minimum rather than a
+#: fixed height: it shares the Filters column with the rows below it, and which
+#: of the two wants the room is the reader's to decide.
+PROJECT_BOX_MIN_HEIGHT = 150
+
+#: How tall a filter list is at least, in pixels. Four ticked rows: enough to
+#: see that a list has been narrowed without any one property taking the
+#: column, and the caption says how many are ticked whether or not they are in
+#: view. A floor rather than a cap, the rows sharing a splitter with the
+#: projects above them: a reader who wants to see thirty values at once should
+#: be able to drag the room to do it.
 FILTER_LIST_HEIGHT = 84
 
 #: Item data of a filter row's "(choose a property)" entry, meaning the row is
@@ -160,7 +168,7 @@ class FilterRow(QWidget):
         column.addWidget(self.count)
 
         self.values = CheckList()
-        self.values.setMaximumHeight(FILTER_LIST_HEIGHT)
+        self.values.setMinimumHeight(FILTER_LIST_HEIGHT)
         # A lamella is named "project / lamella" and a stage one level deeper,
         # so these rows are long and differ at the *end*. A list with a
         # horizontal scrollbar scrolls rather than eliding, which leaves a
@@ -175,30 +183,16 @@ class FilterRow(QWidget):
         self.values.setVisible(False)
         column.addWidget(self.values)
 
-        # One property's values are relative paths -- see NESTED_FILTERS -- and
-        # a flat list of those is a run of timestamps with the session folder
-        # repeated on every row. Both widgets are built and one is shown, which
-        # is simpler than one widget pretending to be either: they answer the
-        # same three questions and nothing else is shared.
-        self.tree = ProjectTree()
-        self.tree.setMaximumHeight(FILTER_LIST_HEIGHT)
-        self.tree.setToolTip(self.values.toolTip())
-        self.tree.row_ticked.connect(lambda _row, _on: self.changed.emit())
-        self.tree.setVisible(False)
-        column.addWidget(self.tree)
-
-        # Under the tree rather than beside the property box: they act on what
-        # is below them, and a filter row on a flat property has no folds.
-        self.folds = QWidget()
-        fold_row = QHBoxLayout(self.folds)
-        fold_row.setContentsMargins(0, 0, 0, 0)
-        fold_row.setSpacing(4)
-        add_fold_buttons(fold_row, self.tree)
-        fold_row.addStretch(1)
-        self.folds.setVisible(False)
-        column.addWidget(self.folds)
-        #: The values behind the tree's rows, which are addressed by number.
-        self._nested_values: list[str] = []
+        # Under the list rather than beside the property box: they act on what
+        # is above them, and a row on no property yet has nothing to tick.
+        self.buttons = QWidget()
+        button_row = QHBoxLayout(self.buttons)
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.setSpacing(4)
+        add_check_all_buttons(button_row, self._tick_all, "values")
+        button_row.addStretch(1)
+        self.buttons.setVisible(False)
+        column.addWidget(self.buttons)
 
     # -- what this row is on -----------------------------------------------
 
@@ -207,20 +201,18 @@ class FilterRow(QWidget):
         """Return the breakdown this row filters on, or "" for none yet."""
         return self._property
 
-    @property
-    def _nested(self) -> bool:
-        """Return whether this row's values are drawn as a tree."""
-        return self._property in NESTED_FILTERS
-
     def ticked_values(self) -> list[str]:
         """Return the values this row keeps. Empty means it narrows nothing."""
-        if self._nested:
-            return [
-                self._nested_values[row]
-                for row in self.tree.ticked_rows()
-                if row is not None and row < len(self._nested_values)
-            ]
         return self.values.ticked_values()
+
+    def _tick_all(self, wanted: bool) -> None:
+        """Tick or clear every value this row offers.
+
+        Reported once rather than per row: the list is what the caller asked
+        about, and a signal per value would sweep the collection for each.
+        """
+        self.values.show_ticks([wanted] * self.values.count())
+        self.changed.emit()
 
     def offer(self, groups, taken: set[str]) -> None:
         """Fill the dropdown with the properties this row may be put on.
@@ -279,23 +271,12 @@ class FilterRow(QWidget):
         """Put the property's values in the list, keeping what was ticked."""
         self._filling = True
         try:
-            if self._nested:
-                self._nested_values = list(values)
-                self.tree.set_projects(
-                    [_folder_of(value) for value in values],
-                    [_name_of(value) for value in values],
-                    ticked=[value in chosen for value in values],
-                    # The row carries the name and the folder above says the
-                    # rest, so the whole path goes here as it does in the list.
-                    tooltips=values,
-                )
-            else:
-                self.values.set_values(
-                    values,
-                    ticked=[value in chosen for value in values],
-                    # Elided rows lose their middle; the tooltip keeps it.
-                    tooltips=values,
-                )
+            self.values.set_values(
+                values,
+                ticked=[value in chosen for value in values],
+                # Elided rows lose their middle; the tooltip keeps it.
+                tooltips=values,
+            )
         finally:
             self._filling = False
         self.count.setText(ticked_caption(label, len(values), len(chosen)))
@@ -303,15 +284,13 @@ class FilterRow(QWidget):
     def show_empty(self) -> None:
         """Hide the list, for a row not on a property yet."""
         self.values.setVisible(False)
-        self.tree.setVisible(False)
-        self.folds.setVisible(False)
+        self.buttons.setVisible(False)
         self.count.setVisible(False)
 
     def show_filled(self) -> None:
-        """Show whichever list this row's property calls for."""
-        self.values.setVisible(not self._nested)
-        self.tree.setVisible(self._nested)
-        self.folds.setVisible(self._nested)
+        """Show the list and the buttons acting on it."""
+        self.values.setVisible(True)
+        self.buttons.setVisible(True)
         self.count.setVisible(True)
 
     def untick(self) -> None:
@@ -319,7 +298,6 @@ class FilterRow(QWidget):
         self._filling = True
         try:
             self.values.show_ticks([])
-            self.tree.show_ticks([])
         finally:
             self._filling = False
 
@@ -381,9 +359,20 @@ class ExportPanel(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(8)
-        layout.addWidget(self._filters_box, stretch=0)
-        layout.addWidget(self._breakdown_box, stretch=1)
-        layout.addWidget(self._export_box, stretch=0)
+        # In a splitter, as the other two tabs divide their columns: how much
+        # of the width a long project path or a wide table wants is the
+        # reader's to decide, and this tab was the one that decided for them.
+        # The window saves where the dividers were left, by the same name.
+        self.columns = GripSplitter(Qt.Horizontal)
+        self.columns.addWidget(self._filters_box)
+        self.columns.addWidget(self._breakdown_box)
+        self.columns.addWidget(self._export_box)
+        self.columns.setStretchFactor(1, 1)
+        # The middle is the point of this tab, so the filter column opens
+        # narrower than Curate's and the project box's buttons take two lines
+        # there. Dragged wider they take one; clipped they never are.
+        self.columns.setSizes([300, 900, 280])
+        layout.addWidget(self.columns)
 
     def apply_defaults(self, values) -> None:
         """Open this tab's controls at what the settings say. See `ImagePanel`.
@@ -517,7 +506,16 @@ class ExportPanel(QWidget):
         self.filter_scroller.setWidgetResizable(True)
         self.filter_scroller.setFrameShape(QScrollArea.NoFrame)
         self.filter_scroller.setWidget(self.filter_box)
-        column.addWidget(self.filter_scroller, stretch=1)
+
+        # The projects and the rows share this column, and which of the two
+        # wants the room depends on what is being looked for: thirty sessions
+        # to scroll, or four filters each with a long list. So they are given a
+        # divider rather than a ratio decided here.
+        self.filters = GripSplitter(Qt.Vertical)
+        self.filters.addWidget(self._build_projects())
+        self.filters.addWidget(self.filter_scroller)
+        self.filters.setSizes([260, 340])
+        column.addWidget(self.filters, stretch=1)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -547,6 +545,104 @@ class ExportPanel(QWidget):
         # spending the column on lists nobody asked for.
         self._add_filter()
         return box
+
+    def _build_projects(self) -> QWidget:
+        """Build the project filter, which every other tab draws as a list too.
+
+        Shown rather than added, and with no button to take it away: which
+        projects an export covers is the first question anyone asks of one, and
+        it was a row somebody had to know to go and add -- indistinguishable,
+        once added, from a filter on the microscope or the sample.
+
+        **Every row ticked is written as no filter at all.** The values on
+        offer are recomputed from the records the other filters pass, so a
+        literal list of all of them would quietly exclude a project that
+        appeared afterwards -- from a rescan, or from widening another filter.
+        Opening with everything ticked says plainly that nothing is excluded;
+        `_projects_changed` is what keeps that true underneath.
+        """
+        box, self.project_filter, self.project_tree = project_box(
+            "Autolamella projects",
+            on_check_all=self._tick_all_projects,
+            tooltip=(
+                "Which projects the counts and every export cover, under the "
+                "folder each sits in. All of them to start with; untick to "
+                "narrow."
+            ),
+        )
+        box.setMinimumHeight(PROJECT_BOX_MIN_HEIGHT)
+        self.project_filter.textChanged.connect(self.project_tree.hide_rows_without)
+        # Queued through the same timer the filter rows use: a tick arrives
+        # from Qt while it is still being delivered to the folder's other
+        # children, and catching up rebuilds the very tree it came from.
+        self.project_tree.row_ticked.connect(lambda _row, _on: self._recount.start())
+        #: The relative paths behind the tree's rows, which are addressed by
+        #: number. Held because a row says only its own name, the folder above
+        #: it saying the rest.
+        self._project_values: list[str] = []
+        return box
+
+    def _tick_all_projects(self, wanted: bool) -> None:
+        """Tick or clear every project, then catch up once."""
+        self.project_tree.show_ticks([wanted] * len(self._project_values))
+        self._recount.start()
+
+    def _show_projects(self) -> None:
+        """List the projects the rest of the selection still holds.
+
+        What is ticked comes from the tree rather than from the controller,
+        the way a filter row's does: the two agree except while somebody is
+        part-way through a gesture, and re-deriving would undo them mid-way.
+        With everything ticked the answer is everything, so a project that
+        appears later -- from a rescan, or from widening another filter --
+        joins the export rather than being silently left out of it.
+        """
+        values = self.controller.choice_values(PROJECT_FILTER)
+        if self._all_projects_ticked():
+            ticked = [True] * len(values)
+        else:
+            held = {
+                self._project_values[row]
+                for row in self.project_tree.ticked_rows()
+                if row is not None and row < len(self._project_values)
+            }
+            ticked = [value in held for value in values]
+        self._project_values = list(values)
+        self.project_tree.set_projects(
+            [_folder_of(value) for value in values],
+            [_name_of(value) for value in values],
+            ticked=ticked,
+            tooltips=values,
+        )
+
+    def _all_projects_ticked(self) -> bool:
+        """Return whether every project on offer is ticked, an empty tree included.
+
+        An empty one counts as everything: a tab that has not scanned yet
+        excludes nothing, and reading it as "none of them" would open the
+        Export tab counting zero images.
+        """
+        return len(self.project_tree.ticked_rows()) == len(self._project_values)
+
+    def _projects_changed(self) -> None:
+        """Copy the ticked projects into the controller.
+
+        Every row ticked is stored as no filter, which is what it means: see
+        :meth:`_build_projects`. None ticked is stored as an empty choice,
+        which matches nothing -- unlike a filter row, where ticking none of a
+        property's values is how you stop filtering on it.
+        """
+        ticked = [
+            self._project_values[row]
+            for row in self.project_tree.ticked_rows()
+            if row is not None and row < len(self._project_values)
+        ]
+        if self._all_projects_ticked():
+            self.controller.set_choice_filter(PROJECT_FILTER, [])
+            return
+        self.controller.set_choice_filter(
+            PROJECT_FILTER, ticked, empty_keeps_everything=False
+        )
 
     # -- the filter rows ---------------------------------------------------
 
@@ -950,6 +1046,7 @@ class ExportPanel(QWidget):
         """
         self._updating = True
         try:
+            self._show_projects()
             groups = self.controller.filterable_groups()
             held = {row.property_name for row in self.filter_rows if row.property_name}
             for row in self.filter_rows:
@@ -978,11 +1075,18 @@ class ExportPanel(QWidget):
         return label[:1].upper() + label[1:]
 
     def _clear_filters(self) -> None:
-        """Untick every filter's values, then recount once."""
+        """Untick every filter's values, then recount once.
+
+        The projects are put back to *all* ticked rather than to none: there,
+        every row ticked is what "not filtered" looks like, so clearing them
+        would narrow the export to nothing at the press of a button called
+        Clear.
+        """
         self._updating = True
         try:
             for row in self.filter_rows:
                 row.untick()
+            self.project_tree.show_ticks([True] * len(self._project_values))
         finally:
             self._updating = False
         self._controls_changed()
@@ -999,6 +1103,7 @@ class ExportPanel(QWidget):
             name for name, box in self.series_boxes.items() if box.isChecked()
         )
         filters.conditions = "primary" if self.conditions.isChecked() else "all"
+        self._projects_changed()
         for row in self.filter_rows:
             if row.property_name:
                 self.controller.set_choice_filter(row.property_name, row.ticked_values())

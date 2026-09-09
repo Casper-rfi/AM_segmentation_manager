@@ -32,7 +32,7 @@ from ...layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..controller import CurationStatus
 from .common import chip_icon, ticked_caption
 from .controls import GripSplitter
-from .lists import CheckList, ProjectTree, add_fold_buttons
+from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import add_path_menu, choose_directory
 from .theme import (
     SWATCH_CELL,
@@ -129,7 +129,7 @@ class ProjectPanel(QWidget):
         # In a splitter so that an archive with many projects but few lamellae
         # (or the reverse) can be given the space where it is needed.
         self.project_box, self.project_filter, self.project_list = self._build_tree(
-            "Projects", "Filter projects",
+            "Projects"
         )
         self.project_filter.textChanged.connect(
             lambda text: self._apply_filter(self.project_list, self._project_labels, text)
@@ -161,45 +161,27 @@ class ProjectPanel(QWidget):
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
 
-    def _build_tree(self, title: str, placeholder: str):
+    def _build_tree(self, title: str):
         """Build the project tree, boxed and filterable like the lamella list.
 
-        Same furniture as :meth:`_build_list` deliberately: the two sit one
-        above the other, and a tree that framed itself differently would read
-        as a different kind of thing rather than the same list, grouped.
+        The furniture comes from `lists.project_box`, which the Add data and
+        Export tabs use too: three tabs listing the same projects had three
+        arrangements of the same widget, and which of them a reader is looking
+        at is not a thing the window should have to teach.
         """
-        box = QGroupBox(title)
-        box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(6, 4, 6, 6)
-        box_layout.setSpacing(3)
-
-        filter_edit = QLineEdit()
-        filter_edit.setPlaceholderText(placeholder)
-        filter_edit.setClearButtonEnabled(True)
-        filter_edit.setToolTip("Show only entries whose name contains this text")
-        box_layout.addWidget(filter_edit)
-
-        tree = ProjectTree()
-        tree.setToolTip(
-            "Projects, under the folder each is in. Click a row to look at it; "
-            "tick rows to choose what a change applies to. Ticking a folder "
-            "ticks its projects, and ticking here clears the lamellae."
+        box, filter_edit, tree = project_box(
+            title,
+            on_check_all=self.projects_check_all.emit,
+            tooltip=(
+                "Projects, under the folder each is in. Click a row to look at "
+                "it; tick rows to choose what a change applies to. Ticking a "
+                "folder ticks its projects, and ticking here clears the "
+                "lamellae."
+            ),
         )
         tree.project_selected.connect(self._project_changed)
         tree.folder_selected.connect(self.folder_selected)
         tree.row_ticked.connect(self.project_checked)
-        box_layout.addWidget(tree)
-
-        # Opening and closing every folder goes on the same row as ticking
-        # every project, both being "do this to the whole tree" -- but past the
-        # stretch, so what the ticks decide stays apart from what is merely on
-        # screen. Neither reaches the controller: which folders are open is the
-        # widget's own business and nothing else asks.
-        box_layout.addLayout(
-            add_fold_buttons(
-                self._build_check_all(self.projects_check_all, "projects"), tree
-            )
-        )
         return box, filter_edit, tree
 
     def _build_list(
@@ -235,14 +217,7 @@ class ProjectPanel(QWidget):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
-        for caption, checked, hint in (
-            ("Tick all", True, f"Choose every one of the {noun} listed"),
-            ("None", False, f"Clear the ticks on all {noun}"),
-        ):
-            button = QPushButton(caption)
-            button.setToolTip(hint)
-            button.clicked.connect(lambda _checked=False, v=checked: signal.emit(v))
-            row.addWidget(button)
+        add_check_all_buttons(row, signal.emit, noun)
         row.addStretch(1)
         return row
 

@@ -20,14 +20,17 @@ from qtpy.QtGui import (
     QIcon,
 )
 from qtpy.QtWidgets import (
-    QHBoxLayout,
+    QGroupBox,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
+    QVBoxLayout,
 )
 
+from .controls import FlowArea, FlowLayout
 from .theme import SWATCH_HEIGHT, SWATCH_WIDTH
 
 logger = logging.getLogger(__name__)
@@ -44,7 +47,7 @@ PROJECT_INDEX = Qt.UserRole + 1
 TREE_INDENT = 12
 
 
-def add_fold_buttons(row: QHBoxLayout, tree: ProjectTree) -> QHBoxLayout:
+def add_fold_buttons(row, tree: ProjectTree):
     """Append Expand and Collapse for *tree* to an existing row, and return it.
 
     A folder opens when it is clicked and stays as the reader left it, which is
@@ -65,6 +68,104 @@ def add_fold_buttons(row: QHBoxLayout, tree: ProjectTree) -> QHBoxLayout:
         button.clicked.connect(act)
         row.addWidget(button)
     return row
+
+
+def add_check_all_buttons(row, on_all, noun: str):
+    """Append Tick all and None to an existing row, and return it.
+
+    Appended like :func:`add_fold_buttons`, and usually beside it: what a
+    change applies to and what is merely on screen are different questions,
+    which is why the two runs are separate and why the stretch between them
+    belongs to the caller.
+
+    Args:
+        on_all: Called with True to tick every row and False to clear them.
+        noun: What the rows are, for the tooltips -- "projects", "lamellae".
+    """
+    for caption, wanted, hint in (
+        ("Tick all", True, f"Choose every one of the {noun} listed"),
+        ("None", False, f"Clear the ticks on all {noun}"),
+    ):
+        button = QPushButton(caption)
+        button.setToolTip(hint)
+        button.clicked.connect(lambda _checked=False, value=wanted: on_all(value))
+        row.addWidget(button)
+    return row
+
+
+#: Between the buttons deciding what a change covers and those deciding only
+#: what is on screen. A gap rather than a stretch: the run wraps, and a
+#: stretch in a flow layout is a spacer of no width. Narrow, because the four
+#: buttons want 284px before it and the columns they sit in are ~300.
+FOLD_GAP = 8
+
+#: What a project box's filter field says while it is empty, and what its rows
+#: are called in the tick-all tooltips. One spelling, so three tabs cannot
+#: describe the same list differently.
+PROJECT_PLACEHOLDER = "Filter projects"
+PROJECT_NOUN = "projects"
+
+
+def project_box(
+    title: str,
+    *,
+    checkable: bool = True,
+    on_check_all=None,
+    tooltip: str = "",
+) -> tuple[QGroupBox, QLineEdit, ProjectTree]:
+    """Return a titled box holding a filter field, a project tree and its buttons.
+
+    The three tabs that list projects all want the same furniture around the
+    same widget, and had three arrangements of it: one with a filter field and
+    ticks, one with neither, one with ticks and no field. Which of them a
+    reader is looking at is not a thing the window should have to teach.
+
+    Args:
+        checkable: Whether rows carry tick boxes. False where the tab acts on
+            what is being looked at rather than on a set.
+        on_check_all: Called with True or False to tick or clear every row.
+            None leaves the tick-all buttons off, which is what a tree with no
+            boxes wants.
+        tooltip: What the tree says about itself, which differs by what the
+            ticks mean on that tab.
+
+    Returns:
+        The box, its filter field and the tree -- the field and the tree
+        because the caller has to connect them to whatever it filters and
+        selects.
+    """
+    box = QGroupBox(title)
+    column = QVBoxLayout(box)
+    column.setContentsMargins(6, 4, 6, 6)
+    column.setSpacing(3)
+
+    filter_edit = QLineEdit()
+    filter_edit.setPlaceholderText(PROJECT_PLACEHOLDER)
+    filter_edit.setClearButtonEnabled(True)
+    filter_edit.setToolTip("Show only entries whose name contains this text")
+    column.addWidget(filter_edit)
+
+    tree = ProjectTree(checkable=checkable)
+    if tooltip:
+        tree.setToolTip(tooltip)
+    column.addWidget(tree)
+
+    # Opening and closing every folder goes on the same row as ticking every
+    # project, both being "do this to the whole tree" -- but past a gap, so
+    # what the ticks decide stays apart from what is merely on screen.
+    #
+    # Wrapped, because four buttons want 284px and the Export tab's filter
+    # column is narrower than that: a row that cannot wrap is clipped, and a
+    # button reading "ollaps" is worse than one on a second line.
+    buttons = FlowArea()
+    row = FlowLayout(spacing=4)
+    buttons.setLayout(row)
+    if on_check_all is not None:
+        add_check_all_buttons(row, on_check_all, PROJECT_NOUN)
+        row.addSpacing(FOLD_GAP)
+    add_fold_buttons(row, tree)
+    column.addWidget(buttons)
+    return box, filter_edit, tree
 
 
 class ProjectTree(QTreeWidget):

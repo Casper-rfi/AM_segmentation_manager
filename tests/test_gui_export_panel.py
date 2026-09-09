@@ -966,94 +966,157 @@ def test_the_buttons_that_move_files_are_kept_off_the_csv_run(panel: ExportPanel
     # Under a rule, so the eye does not run the two groups together.
     assert isinstance(ordered[ordered.index(panel.files_button) - 1], QFrame)
 
-
 # ---------------------------------------------------------------------------
-# The project filter, as a tree
+# The project filter, which has a control of its own
 # ---------------------------------------------------------------------------
 
-def _project_filter(panel) -> FilterRow:
-    """Return a filter row put on the Autolamella project, with values in it."""
-    from qtpy.QtCore import Qt
+SESSIONS = [
+    "20250428_AM/AutoLamella-2025-04-28-16-59",
+    "20250428_AM/AutoLamella-2025-04-29-07-42",
+    "20250512_AM_all/AutoLamella-2025-05-12-09-11",
+    "Grid21_adaptive_milling",
+]
 
-    row = panel.filter_rows[0]
-    row.show_values(
-        [
-            "20250428_AM/AutoLamella-2025-04-28-16-59",
-            "20250428_AM/AutoLamella-2025-04-29-07-42",
-            "20250512_AM_all/AutoLamella-2025-05-12-09-11",
-            "Grid21_adaptive_milling",
-        ],
-        set(),
-        "Autolamella project",
+
+def _projects_in(panel, values=None):
+    """Fill the project box directly, as a scan would, and return its tree."""
+    from am_segmentation_manager.gui.widgets.export_panel import _folder_of, _name_of
+
+    values = SESSIONS if values is None else values
+    panel._project_values = list(values)
+    panel.project_tree.set_projects(
+        [_folder_of(value) for value in values],
+        [_name_of(value) for value in values],
+        ticked=[True] * len(values),
+        tooltips=values,
     )
-    assert Qt  # imported for the tick helper below
-    return row
+    return panel.project_tree
 
 
 def test_the_project_filter_groups_its_values_by_session(panel):
     """Its values are relative paths: a flat list of them is a run of
     timestamps with the session folder repeated on every row."""
-    from am_segmentation_manager.gui.widgets.export_panel import FilterRow
-
-    row = panel.filter_rows[0]
-    row._property = "autolamella-project"
-    _project_filter(panel)
+    tree = _projects_in(panel)
 
     folders = [
-        row.tree.topLevelItem(i).text(0)
-        for i in range(row.tree.topLevelItemCount())
-        if row.tree.project_of(row.tree.topLevelItem(i)) is None
+        tree.topLevelItem(i).text(0)
+        for i in range(tree.topLevelItemCount())
+        if tree.project_of(tree.topLevelItem(i)) is None
     ]
     assert folders == ["20250428_AM", "20250512_AM_all"]
-    assert isinstance(row, FilterRow)
 
 
 def test_a_project_at_the_scan_root_stays_at_the_top_level(panel):
     """Inventing a "(root)" row would name a directory that is not there."""
-    row = panel.filter_rows[0]
-    row._property = "autolamella-project"
-    _project_filter(panel)
+    tree = _projects_in(panel)
 
     tops = [
-        row.tree.topLevelItem(i).text(0)
-        for i in range(row.tree.topLevelItemCount())
-        if row.tree.project_of(row.tree.topLevelItem(i)) is not None
+        tree.topLevelItem(i).text(0)
+        for i in range(tree.topLevelItemCount())
+        if tree.project_of(tree.topLevelItem(i)) is not None
     ]
     assert tops == ["Grid21_adaptive_milling"]
 
 
-def test_ticking_in_the_tree_keeps_the_whole_path(panel):
-    """The row shows the name under its folder; the filter needs the identity,
+def test_unticking_a_project_keeps_the_whole_path(panel):
+    """A row shows the name under its folder; the filter needs the identity,
     which is the relative path the breakdown keys on."""
     from qtpy.QtCore import Qt
 
-    row = panel.filter_rows[0]
-    row._property = "autolamella-project"
-    _project_filter(panel)
-    row.tree.project_item(2).setCheckState(0, Qt.Checked)
+    tree = _projects_in(panel)
+    tree.project_item(2).setCheckState(0, Qt.Unchecked)
     _settle()
 
-    assert row.ticked_values() == [
-        "20250512_AM_all/AutoLamella-2025-05-12-09-11"
+    kept = panel.controller.filters.choices["autolamella-project"]
+    assert "20250512_AM_all/AutoLamella-2025-05-12-09-11" not in kept
+    assert "20250428_AM/AutoLamella-2025-04-28-16-59" in kept
+
+
+def test_every_project_ticked_is_stored_as_no_filter_at_all(panel):
+    """The values on offer are recomputed from the records the other filters
+    pass, so a stored list of all of them would quietly exclude a project that
+    appeared afterwards -- from a rescan, or from widening another filter.
+    Opening with everything ticked says nothing is excluded; this is what
+    keeps that true underneath."""
+    from qtpy.QtCore import Qt
+
+    _projects_in(panel)
+    panel._projects_changed()
+
+    assert "autolamella-project" not in panel.controller.filters.choices
+
+    panel.project_tree.project_item(0).setCheckState(0, Qt.Unchecked)
+    _settle()
+    assert panel.controller.filters.choices["autolamella-project"]
+
+    panel.project_tree.project_item(0).setCheckState(0, Qt.Checked)
+    _settle()
+    assert "autolamella-project" not in panel.controller.filters.choices, (
+        "ticking the last one back is not a filter on everything"
+    )
+
+
+def test_clearing_the_filters_puts_every_project_back_rather_than_none(panel):
+    """Here every row ticked is what "not filtered" looks like, so clearing
+    them would narrow the export to nothing at the press of a button called
+    Clear."""
+    from qtpy.QtCore import Qt
+
+    tree = _projects_in(panel)
+    tree.project_item(0).setCheckState(0, Qt.Unchecked)
+    _settle()
+
+    panel._clear_filters()
+    _settle()
+
+    assert tree.ticked_rows() == [0, 1, 2, 3]
+    assert "autolamella-project" not in panel.controller.filters.choices
+
+
+def test_the_project_filter_is_not_also_offered_as_a_filter_row(panel):
+    """Two controls on one filter would disagree about it, and the row would
+    be the one nobody could see was in force."""
+    offered = {
+        name
+        for _heading, rows in panel.controller.filterable_groups()
+        for name, _label in rows
+    }
+
+    assert "autolamella-project" not in offered
+
+
+def test_the_project_filter_cannot_be_taken_away(panel):
+    """Which projects an export covers is the first question anyone asks of
+    one. As a row it was something you had to know to go and add, and once
+    added it looked like a filter on the microscope or the sample."""
+    from qtpy.QtWidgets import QPushButton
+
+    from am_segmentation_manager.gui.widgets.export_panel import REMOVE_GLYPH
+
+    box = panel.project_tree.parent()
+    removes = [
+        button
+        for button in box.findChildren(QPushButton)
+        if button.text() == REMOVE_GLYPH
     ]
+
+    assert not removes
 
 
 def _project_tree_panel(tmp_path) -> ExportPanel:
-    """A panel with records, on the Autolamella project filter.
+    """A panel with records, so the project box is filled from real values.
 
     Records matter: without them ``refresh`` returns before it refills the
-    filter rows, and the fault these tests are about is in the refilling.
+    filters, and the fault these tests are about is in the refilling.
     """
-    panel = _loaded_panel(tmp_path, name="AutoLamella-2025-04-28-16-59")
-    _choose(_only_row(panel), "autolamella-project")
-    return panel
+    return _loaded_panel(tmp_path, name="AutoLamella-2025-04-28-16-59")
 
 
-def test_ticking_a_folder_ticks_every_project_under_it(qt_app, tmp_path):
+def test_unticking_a_folder_unticks_every_project_under_it(qt_app, tmp_path):
     """The fault this pins crashed the process.
 
-    Acting on a tick refills the row, and refilling clears the tree -- so doing
-    it from inside ``itemChanged`` destroyed the item whose signal was being
+    Acting on a tick refills the tree, and refilling clears it -- so doing it
+    from inside ``itemChanged`` destroyed the item whose signal was being
     emitted while Qt was still propagating the tick to the folder's other
     children. On the reference collection one project of nine came out ticked,
     and the heap was corrupted on the way, which shows as a segfault a few
@@ -1062,15 +1125,13 @@ def test_ticking_a_folder_ticks_every_project_under_it(qt_app, tmp_path):
     from qtpy.QtCore import Qt
 
     panel = _project_tree_panel(tmp_path)
-    row = _only_row(panel)
-    wanted = len(row._nested_values)
-    assert wanted, "the tree is empty, so this proves nothing"
+    assert panel._project_values, "the tree is empty, so this proves nothing"
 
-    for index in range(row.tree.topLevelItemCount()):
-        row.tree.topLevelItem(index).setCheckState(0, Qt.Checked)
+    for index in range(panel.project_tree.topLevelItemCount()):
+        panel.project_tree.topLevelItem(index).setCheckState(0, Qt.Unchecked)
     _settle()
 
-    assert len(row.ticked_values()) == wanted
+    assert panel.project_tree.ticked_rows() == []
 
 
 def test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered(qt_app, tmp_path):
@@ -1081,7 +1142,6 @@ def test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered(qt_app, tmp_pa
     from am_segmentation_manager.gui.widgets.lists import ProjectTree
 
     panel = _project_tree_panel(tmp_path)
-    row = _only_row(panel)
 
     inside = []
     original = ProjectTree.set_projects
@@ -1096,7 +1156,7 @@ def test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered(qt_app, tmp_pa
 
     ProjectTree.set_projects = watched
     try:
-        row.tree.project_item(0).setCheckState(0, Qt.Checked)
+        panel.project_tree.project_item(0).setCheckState(0, Qt.Unchecked)
         _settle()
     finally:
         ProjectTree.set_projects = original
@@ -1106,63 +1166,81 @@ def test_nothing_is_rebuilt_while_a_tick_is_still_being_delivered(qt_app, tmp_pa
 
 
 def test_a_gesture_that_moves_many_ticks_recounts_once(qt_app, tmp_path):
-    """Ticking a folder is one signal per project under it, and each recount
+    """Unticking a folder is one signal per project under it, and each recount
     sweeps every record in the collection."""
     from qtpy.QtCore import Qt
 
     panel = _project_tree_panel(tmp_path)
-    row = _only_row(panel)
     counts = []
     original = panel._controls_changed
     panel._recount.timeout.disconnect(original)
     panel._recount.timeout.connect(lambda: (counts.append(None), original())[1])
 
-    for index in range(row.tree.topLevelItemCount()):
-        row.tree.topLevelItem(index).setCheckState(0, Qt.Checked)
+    for index in range(panel.project_tree.topLevelItemCount()):
+        panel.project_tree.topLevelItem(index).setCheckState(0, Qt.Unchecked)
     _settle()
 
     assert len(counts) == 1
 
 
-def test_every_other_filter_stays_a_flat_list(panel):
-    """Their values have no hierarchy, and a tree of one level is a list with
-    an indent."""
+def test_a_filter_row_is_always_a_flat_list(panel):
+    """The one property whose values had a hierarchy has a control of its own
+    now, so a row draws a list and nothing else -- where before it carried a
+    tree, a set of folds and the flag deciding which to show."""
     row = panel.filter_rows[0]
     row._property = "microscope"
 
     row.show_values(["Helios 5", "Aquilos 2"], set(), "Microscope model")
     row.show_filled()
 
-    assert not row.tree.isVisible() or row.tree.isHidden()
+    assert not hasattr(row, "tree"), "a row has no tree to keep in step"
     assert row.values.count() == 2
     assert row.ticked_values() == []
 
 
-def test_the_project_filter_offers_expand_and_collapse(panel):
-    """Thirty session rows are what a reader can look down, but finding one
-    project among them means opening folders, and putting them away again is
-    the other half of that."""
-    row = panel.filter_rows[0]
-    row._property = "autolamella-project"
-    _project_filter(panel)
-    row.show_filled()
+def test_unticking_every_project_matches_nothing_rather_than_everything(panel):
+    """The button says None and has to mean it.
 
-    assert not row.folds.isHidden()
-    captions = [
-        row.folds.layout().itemAt(i).widget().text()
-        for i in range(row.folds.layout().count())
-        if row.folds.layout().itemAt(i).widget() is not None
-    ]
-    assert captions == ["Expand", "Collapse"]
+    An empty choice is how a filter *row* says it has stopped filtering, so
+    storing one here would widen the export to every project at the press of a
+    button called None -- and the refill would then tick them all back, which
+    is a control that visibly undoes itself.
+    """
+    _projects_in(panel)
+    panel._tick_all_projects(False)
+    _settle()
+
+    assert panel.project_tree.ticked_rows() == []
+    assert panel.controller.filters.choices["autolamella-project"] == []
+    assert panel.controller.selected_records() == []
 
 
-def test_a_flat_filter_offers_no_folds(panel):
-    """There is nothing to fold, and a control that does nothing reads as one
-    that is broken."""
+def test_a_project_that_appears_later_joins_an_unfiltered_export(panel):
+    """With everything ticked the answer is everything, not the list of names
+    that happened to be on screen when it was last looked at."""
+    _projects_in(panel, SESSIONS[:2])
+    panel._projects_changed()
+
+    _projects_in(panel, SESSIONS)
+    panel._projects_changed()
+
+    assert panel.project_tree.ticked_rows() == [0, 1, 2, 3]
+    assert "autolamella-project" not in panel.controller.filters.choices
+
+
+def test_a_filter_row_offers_tick_all_and_none(panel):
+    """A property with thirty values is one nobody wants to click through, and
+    the two buttons are what the project box and the curation lists already
+    offer for the same reason."""
+    from qtpy.QtWidgets import QPushButton
+
     row = panel.filter_rows[0]
     row._property = "microscope"
-
-    row.show_values(["Helios 5"], set(), "Microscope model")
+    row.show_values(["Helios 5", "Aquilos 2"], set(), "Microscope model")
     row.show_filled()
 
-    assert row.folds.isHidden()
+    buttons = row.buttons.findChildren(QPushButton)
+    assert [button.text() for button in buttons] == ["Tick all", "None"]
+
+    buttons[0].click()
+    assert sorted(row.ticked_values()) == ["Aquilos 2", "Helios 5"]

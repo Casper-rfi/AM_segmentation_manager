@@ -423,7 +423,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.curate.addWidget(centre)
         self.curate.addWidget(right)
         self.curate.setStretchFactor(1, 1)
-        self.curate.setSizes([300, 1080, 260])
+        # The left column opens wide enough for the project box's four
+        # buttons to sit on one line; narrower and they wrap, which is the
+        # reader's call rather than the default.
+        self.curate.setSizes([330, 1050, 260])
 
         # Left to right in workflow order: describe the data, curate it,
         # proofread its labels, export it. Curate opens, because it is where the
@@ -697,6 +700,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             "curate": self.curate,
             "lists": self.project_panel.lists,
             "add_data": self.metadata_panel.panes,
+            "export": self.export_panel.columns,
+            "export_filters": self.export_panel.filters,
         }
 
     def _apply_defaults(self) -> None:

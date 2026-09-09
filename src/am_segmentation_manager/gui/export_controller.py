@@ -92,12 +92,27 @@ LABEL_FILTERS: dict[str, frozenset[str]] = {
     "no label yet": frozenset({MISSING}),
 }
 
+#: The one filter whose values are the projects themselves. Named so the
+#: window can find its dedicated control's values without knowing the string,
+#: and so `PROJECT_FILTER not in DEDICATED_CONTROLS` cannot silently become
+#: true and leave the tab with two controls on one filter.
+PROJECT_FILTER = "autolamella-project"
+
 #: Breakdowns with a control of their own in the Filters box, so they are not
 #: also offered as a list of values. Modality, workflow state and series are
-#: fixed sets of choices rather than whatever the data holds, and the label
-#: filter is five named questions rather than four states -- "has a label" is
-#: not a value any record carries.
-DEDICATED_CONTROLS = frozenset({"modality", "state", "label", "series"})
+#: fixed sets of choices rather than whatever the data holds; the label filter
+#: is five named questions rather than four states -- "has a label" is not a
+#: value any record carries -- and the projects are a tree that every tab
+#: shows, not a row somebody has to go and add.
+DEDICATED_CONTROLS = frozenset({"modality", "state", "label", "series", PROJECT_FILTER})
+
+#: Of those, the ones that are not choice filters underneath. Each has a field
+#: of its own on :class:`Filters`, so a value written into ``choices`` for one
+#: would be stored and never read -- which is what :meth:`_require_filter`
+#: refuses. The project filter is a dedicated *control* over an ordinary
+#: choice filter, so it is deliberately not here: the two ideas were one set
+#: until something needed to be both.
+FIXED_CONTROLS = frozenset({"modality", "state", "label", "series"})
 
 #: What the series control starts on where the settings name nothing -- see
 #: `gui/preferences.py`. **The one filter that does not open on everything**,
@@ -115,15 +130,6 @@ DEFAULT_SERIES: tuple[str, ...] = ("adaptive",)
 #: ``--electron-source``; what is dropped is the value list, the window's
 #: scarcest space being the column those lists sit in.
 UNFILTERABLE = frozenset({"lamella", "stage", "electron-source"})
-
-#: Filters whose values are relative paths, and so read as a tree rather than a
-#: flat list. An Autolamella project is identified by its relative path, so a
-#: hundred of them are a hundred timestamps with the session folder repeated on
-#: every row -- the same list the Curate tab stopped showing. Which filters draw
-#: this way is a display decision, and so is settled here rather than as a flag
-#: on :class:`~...aggregate.Breakdown` below the interface.
-NESTED_FILTERS = frozenset({"autolamella-project"})
-
 
 #: What the label filter starts on: everything. The tab opens on the whole
 #: collection and is narrowed towards an export, rather than opening on the
@@ -671,8 +677,9 @@ class ExportController:
         if self.filters.label != ANY_LABEL:
             parts.append(f"label {self.filters.label}")
         for name, values in sorted(self.filters.choices.items()):
-            if values:
-                parts.append(f"{name} {', '.join(sorted(values))}")
+            parts.append(
+                f"{name} {', '.join(sorted(values))}" if values else f"{name} none"
+            )
         return "; ".join(parts) if parts else "everything in the scan"
 
     def selected_records(self, ignoring: str | None = None) -> list[ImageRecord]:
@@ -706,10 +713,13 @@ class ExportController:
         # Compared as the string the list offered, so what was picked and what
         # is matched cannot drift: a pixel size is grouped to four significant
         # figures, and the filter has to agree with the table about that.
+        # Present with no values is a filter that matches nothing, not an
+        # absent one: see :meth:`set_choice_filter`. So membership decides
+        # here, never whether the list is empty.
         chosen = {
             name: set(values)
             for name, values in self.filters.choices.items()
-            if name != ignoring and values
+            if name != ignoring
         }
         if chosen:
             for name, key in zip(chosen, self._keys(list(chosen))):
@@ -1070,21 +1080,32 @@ class ExportController:
             values | set(self.filters.choices.get(name, ())), key=_sortable
         )
 
-    def set_choice_filter(self, name: str, values: Sequence[str]) -> None:
+    def set_choice_filter(
+        self, name: str, values: Sequence[str], *, empty_keeps_everything: bool = True
+    ) -> None:
         """Set or clear one filter.
+
+        Args:
+            empty_keeps_everything: What an empty *values* means. True clears
+                the filter, which is what a filter row wants -- ticking none
+                of a property's values is how you stop filtering on it. False
+                keeps an empty choice, which matches no record at all: a
+                control that is always on screen and starts with everything
+                ticked has no other way to say "none of them", and unticking
+                its last row would otherwise widen the export to everything.
 
         Raises:
             ValueError: If *name* is not a breakdown offered as a filter.
         """
         self._require_filter(name)
-        if values:
+        if values or not empty_keeps_everything:
             self.filters.choices[name] = list(values)
         else:
             self.filters.choices.pop(name, None)
 
     def _require_filter(self, name: str) -> None:
         """Raise unless *name* is a breakdown that can be filtered on."""
-        if name not in self.breakdowns or name in DEDICATED_CONTROLS:
+        if name not in self.breakdowns or name in FIXED_CONTROLS:
             raise ValueError(f"Unknown filter: {name}")
         if self.breakdowns[name].kind == "measurement":
             raise ValueError(f"Cannot filter on a measured property: {name}")

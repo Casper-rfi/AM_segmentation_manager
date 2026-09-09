@@ -420,3 +420,32 @@ def test_a_tree_carries_tick_boxes_by_default(tree):
 
     for item in tree.project_items():
         assert item.flags() & Qt.ItemIsUserCheckable
+
+
+def test_no_button_in_a_project_box_is_ever_clipped(qt_app):
+    """Four buttons want more width than the Export tab's filter column has.
+
+    A row that cannot wrap is not shortened but clipped, and Qt cuts a caption
+    from both ends -- "Tick all, None, Expand, Collapse" came out as "ick al,
+    None, xpan, ollaps", which reads as a rendering fault rather than as a
+    column that wants dragging. Asserted at a width narrower than any tab
+    offers, because the point is that there is no width at which it breaks.
+    """
+    from qtpy.QtWidgets import QPushButton
+
+    from am_segmentation_manager.gui.widgets.lists import project_box
+    from conftest import destroy
+
+    box, _filter_edit, _tree = project_box("Projects", on_check_all=lambda _on: None)
+    try:
+        for width in (200, 260, 320, 500):
+            box.resize(width, 300)
+            box.grab()
+            clipped = {
+                button.text(): (button.width(), button.sizeHint().width())
+                for button in box.findChildren(QPushButton)
+                if button.width() < button.sizeHint().width()
+            }
+            assert not clipped, f"at {width}px: {clipped}"
+    finally:
+        destroy(box)

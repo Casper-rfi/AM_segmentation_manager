@@ -43,7 +43,7 @@ from ..metadata_controller import (
 from .common import chip_icon, match_anywhere
 from .controls import ChipEditor, GripSplitter, ToggleSwitch
 from .frame_strip import MISMATCH, STATE_COLOURS
-from .lists import ProjectTree, add_fold_buttons
+from .lists import project_box
 from .paths import add_path_menu
 from .theme import (
     BADGE_STYLES,
@@ -203,31 +203,36 @@ class MetadataPanel(QWidget):
         layout.addWidget(self.panes)
 
     def _build_projects(self) -> QWidget:
-        box = QGroupBox("Projects")
+        # The same box the Curate and Export tabs list projects in: an
+        # Autolamella project is named for the minute it started, and
+        # describing a collection means working down the folder somebody filed
+        # them under. The filter field comes with it -- a hundred projects is
+        # a hundred timestamps to read past otherwise.
+        # No tick boxes: this tab describes the folder or the project being
+        # looked at, so a box would offer a set it cannot act on, and a change
+        # would reach projects nobody had in view.
+        box, self.project_filter, self.projects = project_box(
+            "Projects",
+            checkable=False,
+            tooltip=(
+                "Projects, under the folder each is in. Click a project to "
+                "describe it, or a folder to describe everything under it at "
+                "once."
+            ),
+        )
         box.setMinimumWidth(PROJECT_PANE_MIN_WIDTH)
-        column = QVBoxLayout(box)
-        # The same tree the Curate tab lists projects in: an Autolamella
-        # project is named for the minute it started, and describing a
-        # collection means working down the folder somebody filed them under.
-        # Eliding, the scrollbar and the folds are all the widget's own.
-        # No tick boxes: this tab describes the project being looked at, one
-        # at a time, so a box would offer a set it cannot act on.
-        self.projects = ProjectTree(checkable=False)
         self.projects.project_selected.connect(self._select)
         self.projects.folder_selected.connect(self._select_folder)
+        # The tree matches on the row's own text, which is the project's name
+        # under its folder -- the labels a flat list would need are the one
+        # thing it does not want.
+        self.project_filter.textChanged.connect(self.projects.hide_rows_without)
         add_path_menu(
             self.projects, "project",
             self.project_path_requested, self.project_reveal_requested,
             row_of=self.projects.project_of,
         )
-        column.addWidget(self.projects)
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(4)
-        add_fold_buttons(row, self.projects)
-        row.addStretch(1)
-        column.addLayout(row)
-        column.addWidget(self._build_collection_actions())
+        box.layout().addWidget(self._build_collection_actions())
         return box
 
     def _build_collection_actions(self) -> QWidget:
