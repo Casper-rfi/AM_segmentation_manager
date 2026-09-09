@@ -67,13 +67,16 @@ future extensibility.
 
 The core is four layers — `layout.py` (what things are called), `discovery.py` (where
 they are), `scanner.py` (what they mean), `operations/` (what you can do to them).
-Higher layers depend on lower ones, never the reverse; `io/` sits below all four, and
-`gui/` and `ml/` sit above everything with nothing below them importing either.
-Everything else supports that spine, and **its module docstring says how** — whether it
-carries data between the layers, reads an index without writing to it, or is a surface
-onto one. Resolve names through `layout.py` rather than embedding a path of your own,
-and outside `scanner.py` and `survey.py` work on the ProjectIndex and the dataclasses
-rather than re-traversing the filesystem.
+Higher layers depend on lower ones, never the reverse; `io/` sits below all four.
+**Nothing imports `gui/`**: every decision lives below the widgets, so whatever the
+window can do the command line can do, and the core installs without Qt. **Nothing
+outside `ml/` imports it at module level**: the main environment has no torch, and the
+window, the command line and the prediction child each import it inside the function
+that needs it. Everything else supports that spine, and **its module docstring says
+how** — whether it carries data between the layers, reads an index without writing to
+it, or is a surface onto one. Resolve names through `layout.py` rather than embedding
+a path of your own, and outside `scanner.py` and `survey.py` work on the ProjectIndex
+and the dataclasses rather than re-traversing the filesystem.
 
 ---
 

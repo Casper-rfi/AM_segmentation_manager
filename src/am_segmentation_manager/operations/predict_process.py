@@ -110,8 +110,8 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
     """
     _forward_logs(queue)
     # Inside the child process, deliberately: torch is never imported into
-    # the parent, which is the whole point of running inference here. This
-    # is the one place operations/ reaches up into ml/.
+    # the parent, which is the whole point of running inference here and is
+    # what CLAUDE.md's rule about ml/ asks for.
     from ..ml.environment import available_devices, resolve_device
     from ..ml.model import load_model, read_model_description, run_name_of
 

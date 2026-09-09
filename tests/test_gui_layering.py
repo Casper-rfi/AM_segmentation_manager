@@ -171,20 +171,17 @@ def test_no_mixin_carries_state_of_its_own():
 #
 # `CLAUDE.md` names four layers -- layout (what things are called), discovery
 # (where they are), scanner (what they mean), operations (what you can do to
-# them) -- with io/ below all four and gui/, ml/ and cli/ above everything.
+# them) -- with io/ below all four, nothing importing gui/, and nothing outside
+# ml/ importing it at module level.
+#
 # The checks below read *every* import, including the ones inside functions:
 # roughly a third of this package's edges are written there, and a rule nobody
-# can see is a rule nobody keeps.
+# can see is a rule nobody keeps. There is no exception list. The one rule that
+# would have needed one is stated so that it does not: what matters about ml/
+# is that torch is not *loaded*, which is a rule about module-level imports, so
+# the prediction child importing it inside the function that runs there keeps
+# the rule rather than breaking it.
 # ---------------------------------------------------------------------------
-
-#: Imports that break the spine on purpose. Each names why, and each is a
-#: single edge rather than a module-wide exemption.
-ALLOWED_UPWARD = {
-    ("am_segmentation_manager.operations.predict_process",
-     "am_segmentation_manager.ml.environment"),
-    ("am_segmentation_manager.operations.predict_process",
-     "am_segmentation_manager.ml.model"),
-}
 
 
 def _package_imports() -> list[tuple[str, str, str, int]]:
@@ -248,9 +245,7 @@ def test_a_layer_does_not_import_one_above_it(layer, must_not_import):
     broken = [
         (source, target, function, line)
         for source, target, function, line in _package_imports()
-        if _tops(source) == layer
-        and _tops(target) in must_not_import
-        and (source, target) not in ALLOWED_UPWARD
+        if _tops(source) == layer and _tops(target) in must_not_import
     ]
     assert not broken, "\n".join(
         f"{s}:{n} {'in ' + f + '()' if f else '(module level)'} imports {t}"
@@ -258,9 +253,15 @@ def test_a_layer_does_not_import_one_above_it(layer, must_not_import):
     )
 
 
-def test_nothing_below_the_window_imports_it():
-    """`gui/` and `cli/` are surfaces: everything may be used by them, and
-    nothing below may reach back up into one."""
+def test_nothing_imports_the_window():
+    """`gui/` and `cli/` are surfaces: they may use everything, and nothing may
+    reach back up into one.
+
+    What this protects is not tidiness. An operation that could open a dialog
+    would be unscriptable, unbatchable and untestable even where Qt is
+    installed, and the command line would stop being able to do what the window
+    does -- which is the whole claim `README.md` makes for it.
+    """
     reaching = [
         (source, target, function, line)
         for source, target, function, line in _package_imports()
@@ -268,3 +269,21 @@ def test_nothing_below_the_window_imports_it():
         and _tops(source) not in {"gui", "cli"}
     ]
     assert not reaching, reaching
+
+
+def test_torch_is_not_loaded_outside_the_module_that_runs_it():
+    """Nothing outside `ml/` may import it at *module* level.
+
+    The main environment has no torch, so a module-level import anywhere the
+    window or the command line reaches would break it outright. Inside a
+    function is fine and is how all three callers do it: the cost is paid by
+    whoever predicts, and by nobody else.
+    """
+    loaded = [
+        (source, target, line)
+        for source, target, function, line in _package_imports()
+        if _tops(target) == "ml" and _tops(source) != "ml" and not function
+    ]
+    assert not loaded, "\n".join(
+        f"{s}:{n} imports {t} at module level" for s, t, n in loaded
+    )
