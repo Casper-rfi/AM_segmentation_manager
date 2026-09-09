@@ -59,14 +59,11 @@ of one of these files, is held by `test_docs.py`.
   file unasked, its failures not being visible in the terminal that started it.
 - **The window fits the screen it is on, and nothing in it may force otherwise.** Qt clamps a
   resize to the window's minimum, so a row of controls that cannot wrap is a floor under the whole
-  window rather than a blemish in one tab: the Label tab's needed 1560px against the 1512 a 14"
-  MacBook Pro has, and the right of every tab sat off the display with no way to drag it back. So
-  a row wraps (`FlowArea`, under Controls) and the floor is held against a named screen size
+  window rather than a blemish in one tab: rows wrap (`FlowArea`, under Controls) and the floor is
+  held against a named screen size
   (`test_no_tab_needs_more_room_than_the_smallest_screen_supported`). `fit_to_screen` is the other
-  half: `DEFAULT_SIZE` is chosen for a desktop monitor and `restoreGeometry` puts back a size
-  recorded on whatever the last session used, neither asking what screen this is
-  (`test_a_window_remembered_off_the_edge_is_moved_back_on`). Undocking is watched through
-  `screenChanged`, connected on first show — a window has no `windowHandle` before then.
+  half, `DEFAULT_SIZE` and a restored geometry both naming a screen this may not be on
+  (`test_a_window_remembered_off_the_edge_is_moved_back_on`).
 - **A worker thread that will not stop outlives the window rather than being collected.** A frame
   read is one call into an image library and cannot be interrupted part-way, so a file on a
   cloud-synced volume outlasts any deadline worth waiting for on close. `loader.keep_alive` states
@@ -104,19 +101,16 @@ of one of these files, is held by `test_docs.py`.
   wildcard, and a name left out is a segment silently drawn as a plain button. `buttons` exposes the
   segments so a caller can grey one out, which is how a view the frame has nothing to show for is
   disabled. **The State group is deliberately not one**: it is non-exclusive so a frame whose SEM
-  and FIB disagree can show *nothing* chosen, which a run of segments cannot say.
+  and FIB disagree can show *nothing* chosen, which a run of segments cannot say. **Nor is the
+  Export tab's beam**, which is one of three and still a dropdown: among a run of dropdowns a
+  fourth kind of widget reads as clutter before it reads as a choice.
 - **A caption and the control it names are one flow item, and so are two controls that pair.** The
-  rule the segments keep, for their reason: a flow wraps between items, so anything loose splits at
-  whatever width the pane happens to be — a caption ending a line with its slider starting the
-  next, reading as a heading for what follows (`test_a_caption_is_never_a_flow_item_of_its_own`).
-  `controls.keep_together` holds a caption to its control, `keep_paired` stacks two into an aligned
-  grid. **Pairing is also what makes the row fit**: 1441px loose against the 850 the centre pane
-  has on the smallest screen supported, 759px paired, so one block is drawn on every screen rather
-  than a shape that moved with the window
-  (`test_the_view_controls_are_one_block_on_the_smallest_screen_supported`). What pairs answers one
-  question of two things — series over variant, the two Show switches, the two sliders, and the two
-  acting on the pane rather than on what is drawn in it. A cell fills its column, right for a
-  slider and wrong for a lone button, so `align` is the exception.
+  rule the segments keep, for their reason: a flow wraps between its items, so anything loose is
+  split at whatever width the pane happens to be
+  (`test_a_caption_is_never_a_flow_item_of_its_own`). `controls.keep_together` holds a caption to
+  its control and `keep_paired` stacks two into an aligned grid, which also halves the width a row
+  of them needs (`test_the_view_controls_are_one_block_on_the_smallest_screen_supported`). What
+  pairs answers one question of two things — series over variant, the two Show switches.
 - **A row is ticked; a control on its own is switched.** `controls.ToggleSwitch` draws the second and
   is a **subclass of `QCheckBox`** (`test_it_is_a_check_box`), so only `paintEvent` differs. It
   paints everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the
@@ -140,39 +134,30 @@ of one of these files, is held by `test_docs.py`.
   current row in the full accent.
 - **The furniture round the tree comes from `lists.project_box`, and what differs is passed in** —
   the chip, and whether rows are checkable at all (`test_a_tree_can_be_built_without_tick_boxes`).
-  Three tabs listing the same projects had three arrangements of one widget: a filter field and
-  ticks, neither, then ticks and no field. Which of them a reader is looking at is not something the
+  Three tabs list the same projects, and which of them a reader is looking at is not something the
   window should have to teach. **The checkable flag is cleared rather than merely not set**:
   `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state exists, so
   every row would report as checkable and the first `setCheckState` would put the boxes back.
-- **The Filters column is the narrowest on the tab and holds the most, so it is read across rather
-  than down.** The projects sit at the top, where the other two tabs put theirs; captions sit beside
-  their boxes rather than above; the beam is a run of segments as it is on Curate; and the two
-  short series switches share a line. *One image per label* went under the beam, both answering
-  which images are in play — under the series it read as a fourth one. Each of those trades height
-  for width, so the column opens wide enough for the widest of them
-  (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`).
+- **The left column is read across rather than down, and is sized for its widest row.** It is the
+  narrowest on the tab and holds the most, so captions sit beside their boxes and the series
+  switches go two to a line; *One image per label* sits at the margin, indented with them having
+  read as a fourth series. Squeezed, Qt cuts a caption from both ends rather than shortening it, so
+  the column opens wider than its widest row
+  (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`). The projects are a
+  filter like the rest, drawn *above* the box rather than as a second outline inside it.
 - **Export filters *by* project rather than listing them, and that control is never taken away.**
   Which projects an export covers is the first question anyone asks of one, and it was a row
-  somebody had to know to add — indistinguishable, once added, from a filter on the microscope
-  (`test_the_project_filter_cannot_be_taken_away`). Being dedicated is what lets every other filter
-  row be a flat list again: the values with a hierarchy were the only reason a row carried a tree, a
-  set of folds and a flag deciding which to show (`test_a_filter_row_is_always_a_flat_list`).
+  somebody had to know to add (`test_the_project_filter_cannot_be_taken_away`). Being dedicated is
+  also what lets every other filter row be a flat list (`test_a_filter_row_is_always_a_flat_list`).
 - **Every project ticked is stored as no filter, and none ticked as a filter matching nothing.** The
   values on offer are recomputed from the records the other filters pass, so a stored list of all of
-  them would quietly drop a project that appeared afterwards — from a rescan, or from widening
-  another filter (`test_a_project_that_appears_later_joins_an_unfiltered_export`). The other end
-  needs saying too, and needs `set_choice_filter`'s `empty_keeps_everything`: an empty choice is how
-  a filter *row* says it has stopped filtering, so storing one here would widen the export to
-  everything at the press of a button called None
-  (`test_unticking_every_project_matches_nothing_rather_than_everything`). What is ticked is read
-  off the tree, never re-derived from the controller, which is the rule a filter row already keeps.
-- **Its buttons wrap, and the columns they sit in are sized for them.** Tick all, None, Expand and
-  Collapse want 284px, which is more than the Export tab's filter column has: a row that cannot
-  wrap is clipped, and a button reading "ollaps" is worse than one on a second line. Curate's
-  column opens wide enough for one line and Export's does not, the middle of that tab being the
-  point of it — the furniture is what the three share, not the number of lines it takes
-  (`test_no_button_in_a_project_box_is_ever_clipped`).
+  them would quietly drop a project that appeared afterwards
+  (`test_a_project_that_appears_later_joins_an_unfiltered_export`). The other end needs
+  `set_choice_filter`'s `empty_keeps_everything`: an empty choice is how a filter *row* says it has
+  stopped filtering, and storing one here would widen the export at the press of a button called
+  None (`test_unticking_every_project_matches_nothing_rather_than_everything`).
+- **Its four buttons wrap rather than clipping**, the furniture being what the three tabs share
+  rather than the number of lines it takes (`test_no_button_in_a_project_box_is_ever_clipped`).
 - **A folder is closed until it is opened, and what is open survives a rebuild.** Three things
   open one anyway: holding the current project, being rebuilt after a rescan having been open
   before, and matching a *filter* (`test_a_folder_holding_a_match_is_opened_to_show_it`), which
@@ -254,13 +239,10 @@ of one of these files, is held by `test_docs.py`.
   PySide6** as the array dies under the buffer; and `fit_to_screen` sizes from the label's own hint,
   `adjustSize` being useless when a scroll area reports a small default instead of its contents.
 
-- **Every column of the Export tab can be dragged, as the other tabs' can.** Its three boxes were
-  fixed where Add data and Curate have divided theirs from the start, and the filter column now
-  holds two things wanting the room for different reasons — thirty sessions to scroll, or four
-  filters each with a long list — so those get a divider of their own rather than a ratio decided
-  here. `FILTER_LIST_HEIGHT` is a floor rather than a cap for the same reason. Both are saved by
-  name with the rest and carry a grip like every other
-  (`test_every_division_that_moves_is_marked_as_one`).
+- **Every column of the Export tab can be dragged, as the other tabs' can**, and so is the left
+  column split between the projects and the filters under them — which of the two wants the room
+  depends on what is being looked for. `FILTER_LIST_HEIGHT` is a floor rather than a cap for the
+  same reason (`test_every_division_that_moves_is_marked_as_one`).
 - **A collection-wide act goes on Add data; anything narrowed goes on Curate.** `operations_panel`
   promises that everything in it follows the ticks, so a savepoint — which is over the whole dataset
   a model was trained on — would break that promise there. Taking one, restoring one over everything
@@ -282,28 +264,21 @@ of one of these files, is held by `test_docs.py`.
   fork point: there is no single tab to say it on and far too many places to warn at. It is muted,
   being a fact rather than a message.
 - **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
-  holds reaches a write path: the command line and every operation keep the packaged constants,
-  which is what makes it safe to keep these on one machine
-  (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`). They are applied once, by
-  the window, which is what lets a panel be built without a store and still open at the packaged
-  answer — and why a control somebody is already using is never moved under them; the dialog says
-  so rather than leaving it to be discovered, and is built from the same table
+  holds reaches a write path, which is what makes it safe to keep these on one machine
+  (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`). The window applies them
+  once, so a panel built without a store still opens at the packaged answer and a control somebody
+  is using is never moved under them; the dialog says so, and is built from the same table
   (`test_the_settings_dialog_offers_every_preference`).
-- **A word-wrapped label reports a one-line hint, and the squeeze lands somewhere else.** Qt asks
-  for a size hint before the label knows its width, so a dialog sized from that comes up short and
-  everything below is pushed towards its minimum — which showed as a group box drawing four
-  switches over the three rows under them, nowhere near the label that caused it.
-  `controls.WrappingLabel` takes its height from the width it has, the answer `FlowArea` already
-  gives for a row (`test_every_group_of_settings_gets_the_height_its_rows_need`).
+- **A word-wrapped label reports a one-line hint, and the squeeze lands somewhere else.** A dialog
+  sized from that hint comes up short and everything below is pushed towards its minimum, nowhere
+  near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,
+  as `FlowArea` does (`test_every_group_of_settings_gets_the_height_its_rows_need`).
 - **The corner is two runs with a rule between them, not one line of text.** Left of it is whose
-  window this is, right of it is what this machine is set to and the gear that changes it — written
-  alike they read as one phrase, and the product name is the brand rather than a caption, so it
-  alone is unmuted (`test_the_product_name_is_not_drawn_like_the_line_beside_it`, on the pixels: a
-  stylesheet is the one thing that can be set and not take effect). The gear and the **?** beside
-  it are the two things nothing else on screen mentions, F2 and F1
-  (`test_the_settings_button_opens_what_f2_opens`). The name is elided against a fixed budget and
-  not by `ElidingLabel`, which sizes itself to what it is given: nothing here decides its width, so
-  it would take its hint from text it had already shortened and shrink on every pass.
+  window this is, right of it what this machine is set to and the gear that changes it; written
+  alike they read as one phrase, so the product name alone is unmuted, asserted on the pixels
+  (`test_the_product_name_is_not_drawn_like_the_line_beside_it`). The gear and the **?** are the
+  two things nothing else on screen mentions, F2 and F1
+  (`test_the_settings_button_opens_what_f2_opens`).
 - **Everything that records shares one `Attribution`, so adopting a name is one assignment.** Several
   controllers write to a log and one is reached through the Label tab rather than the window, so
   telling them individually was a list kept by hand in two places that a new one fell off silently.
@@ -324,20 +299,15 @@ of one of these files, is held by `test_docs.py`.
   on both sides colouring by what each holds has no readable scheme and the mask becomes the thing
   being deciphered. Two labels of different sizes are still both shown — that one is the wrong size
   is the finding — and only the mask goes, there being no pixel to pair.
-- **With the acquisition hidden, something still says where the frame ends.** Dropping it leaves
-  the label alone on screen, which is what finds a four-pixel annotation; but over the pane's own
-  black the label's transparent background and the emptiness past the frame's edge are one surface,
-  and a label a row short along an edge looks like one that runs to it — the reason to hide it at
-  all. So the ground is `display.HIDDEN_IMAGE_GREY`, dark enough that a speck still outshines it
-  (`test_the_ground_under_a_hidden_image_is_not_the_pane_behind_it`). **Two mechanisms, one
-  colour**: Curate fills the array it composes; the canvas, keeping a paintable layer, puts a
-  `BACKDROP_Z` item the size of the picture under it. It follows the image being hidden rather than
-  the speck filter (`test_hiding_the_image_leaves_a_ground_the_size_of_the_frame`), **V** hiding it
-  on its own.
-- **The strip is closed until somebody opens it, and the count sits on the switch.** It used to
-  show itself whenever a label had a version; listing predictions too would have put it on almost
-  every frame, so a label with nothing to compare now says so unopened
-  (`test_the_switch_opens_the_strip_and_says_how_many_there_are`). Off per session, not remembered.
+- **With the acquisition hidden, something still says where the frame ends.** Over the pane's own
+  black, the label's transparent background and the emptiness past the frame's edge are one
+  surface, so a label a row short along an edge looks like one that runs to it — which is the
+  reason to hide the image at all. `display.HIDDEN_IMAGE_GREY` is the ground, dark enough that a
+  speck still outshines it (`test_the_ground_under_a_hidden_image_is_not_the_pane_behind_it`), and
+  two mechanisms carry it (`test_hiding_the_image_leaves_a_ground_the_size_of_the_frame`).
+- **The strip is closed until somebody opens it, and the count sits on the switch**, so a label
+  with nothing to compare says so unopened — with predictions listed too it would otherwise show on
+  almost every frame (`test_the_switch_opens_the_strip_and_says_how_many_there_are`).
 - **Two labels are compared by looking, never by a number.** Every metric over a pair — pixel share,
   IoU, Dice — presupposes that one of them is ground truth, and where a proofread label meets a good
   model's prediction neither is; worse, pixel share ranks lowest exactly the failure that matters

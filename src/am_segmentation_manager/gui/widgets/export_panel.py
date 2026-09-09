@@ -64,7 +64,7 @@ from .controls import (
 )
 from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import choose_directory, choose_open_file, choose_save_file
-from .theme import COMPACT_BUTTON, GROUP_GAP
+from .theme import COMPACT_BUTTON
 
 logger = logging.getLogger(__name__)
 
@@ -390,16 +390,25 @@ class ExportPanel(QWidget):
         # of the width a long project path or a wide table wants is the
         # reader's to decide, and this tab was the one that decided for them.
         # The window saves where the dividers were left, by the same name.
+        # The projects and the filters under them divide the left column: which
+        # of the two wants the room depends on what is being looked for, thirty
+        # sessions to scroll or four filters each with a long list.
+        self.filters = GripSplitter(Qt.Vertical)
+        self.filters.addWidget(self.projects_box)
+        self.filters.addWidget(self._filters_box)
+        self.filters.setSizes([260, 420])
+
         self.columns = GripSplitter(Qt.Horizontal)
-        self.columns.addWidget(self._filters_box)
+        self.columns.addWidget(self.filters)
         self.columns.addWidget(self._breakdown_box)
         self.columns.addWidget(self._export_box)
         self.columns.setStretchFactor(1, 1)
-        # Wide enough for what the column holds at its widest: the project
-        # box's four buttons on one line, and the two short series switches
-        # beside each other. Narrower and both wrap, which is legible but
-        # taller -- and this column is the one with the most in it.
-        self.columns.setSizes([360, 850, 280])
+        # Wide enough for what the column holds at its widest, with room to
+        # spare: the series row wants 331px and the project box's four buttons
+        # 296, and a default that clears the wider of them by three pixels is
+        # one a different font would break. The middle is text, and gives it up
+        # cheaply.
+        self.columns.setSizes([400, 812, 280])
         layout.addWidget(self.columns)
 
     def apply_defaults(self, values) -> None:
@@ -427,64 +436,41 @@ class ExportPanel(QWidget):
     # -- construction ------------------------------------------------------
 
     def _build_filters(self) -> QWidget:
+        """Build the Filters box, and the project box that sits above it.
+
+        The projects are a filter like the rest, and are drawn outside this box
+        rather than inside it: nested, the column carried two outlines one
+        within the other, and the inner one is the tree every other tab shows
+        at the top of its own left column. Filters starts below it.
+        """
+        self.projects_box = self._build_projects()
         box = QGroupBox("Filters")
         box.setMinimumWidth(260)
         column = QVBoxLayout(box)
 
-        # Compact, and in the order a selection is narrowed: which projects,
-        # then which images inside them. The projects go first because that is
-        # the question every other tab puts at the top of its left column, and
-        # a reader moving between tabs should not have to look for it.
+        # Compact, because this column is the narrowest on the tab and holds
+        # the most: a caption beside its box rather than above costs no width
+        # worth having and saves a row each.
         self.fixed_filters = QWidget()
         fixed = QVBoxLayout(self.fixed_filters)
         fixed.setContentsMargins(0, 0, 0, 0)
         fixed.setSpacing(4)
 
-        # A run of segments rather than a dropdown: three fixed answers all
-        # worth showing at once, which is the same control and the same reason
-        # the Curate tab picks a beam with.
-        modality_hint = (
+        # A dropdown rather than a run of segments. Segments are the right
+        # control for one of a small closed set, and this is one -- but three
+        # of the four rows here are dropdowns, and a fourth kind of widget
+        # among them reads as clutter before it reads as a choice.
+        self.modality = StepCombo()
+        self.modality.addItems(MODALITIES)
+        self.modality.currentTextChanged.connect(self._controls_changed)
+        fixed.addLayout(_captioned(
+            "Modality",
+            self.modality,
             "Keep only images taken with one beam. This is the directory the "
             "image sits in, not what its header reports. Narrows the breakdown "
-            "and every export."
-        )
-        self.modality = SegmentedControl([
-            (name, name, modality_hint) for name in MODALITIES
-        ])
-        self.modality.set_current(MODALITIES[0])
-        self.modality.chosen.connect(self._controls_changed)
+            "and every export.",
+        ))
 
-        self.conditions = ToggleSwitch("One image per label")
-        self.conditions.setToolTip(
-            "Several imaging conditions of one scene share one label. "
-            "Ticked, keep one image per label rather than every condition. "
-            "Narrows the breakdown and every export."
-        )
-        self.conditions.toggled.connect(self._controls_changed)
-        beam_row = QHBoxLayout()
-        beam_row.setContentsMargins(0, 0, 0, 0)
-        beam_row.setSpacing(6)
-        beam_row.addWidget(caption_for("Modality", self.modality, modality_hint))
-        beam_row.addWidget(self.modality)
-        beam_row.addStretch(1)
-        fixed.addLayout(beam_row)
-
-        # Under the beam rather than under the series, where it read as a
-        # fourth one: both answer which images are in play, the beam picking a
-        # column of them and this one of each group that shares a label. On its
-        # own line because beside the beam the two want 333px, and this column
-        # is the narrowest on the tab.
-        conditions_row = QHBoxLayout()
-        conditions_row.setContentsMargins(0, 0, 0, 0)
-        conditions_row.setSpacing(6)
-        conditions_row.addSpacing(CAPTION_WIDTH)
-        conditions_row.addWidget(self.conditions)
-        conditions_row.addStretch(1)
-        fixed.addLayout(conditions_row)
-
-        # Captions beside their boxes rather than above them: a column this
-        # narrow has more rows than height, and a word to the left of a
-        # dropdown costs nothing where a line above it costs a row.
         self.state = StepCombo()
         self.state.addItems(STATES)
         self.state.currentTextChanged.connect(self._controls_changed)
@@ -511,27 +497,50 @@ class ExportPanel(QWidget):
         # Switches rather than a dropdown: the three are independent, and an
         # export covering two of them is a real request. The only filter that
         # does not start on everything -- see export_controller.DEFAULT_SERIES.
-        # The two short names share a line, the long one having none to spare.
+        # Two to a line, so none of them stands alone above the others.
         self.series_boxes: dict[str, ToggleSwitch] = {}
         for name in SERIES:
             switch = ToggleSwitch(SERIES_LABELS[name])
             switch.setChecked(name in DEFAULT_SERIES)
             switch.toggled.connect(self._controls_changed)
             self.series_boxes[name] = switch
-        first, *rest = (self.series_boxes[name] for name in SERIES)
-        series_holder = keep_paired((first,), tuple(rest))
+        switches = [self.series_boxes[name] for name in SERIES]
+        series_holder = keep_paired(tuple(switches[:2]), tuple(switches[2:]))
         series_row = QHBoxLayout()
         series_row.setContentsMargins(0, 0, 0, 0)
-        series_row.setSpacing(GROUP_GAP)
+        series_row.setSpacing(6)
         series_hint = (
             "What the images were taken for. Only Adaptive Polishing is "
             "ticked to start with, so an export covers what it always did. "
             "Narrows the breakdown and every export."
         )
-        series_row.addWidget(caption_for("Series", series_holder, series_hint))
+        caption = caption_for("Series", series_holder, series_hint)
+        caption.setMinimumWidth(CAPTION_WIDTH)
+        series_row.addWidget(caption)
         series_row.addWidget(series_holder)
         series_row.addStretch(1)
         fixed.addLayout(series_row)
+
+        self.conditions = ToggleSwitch("One image per label")
+        self.conditions.setToolTip(
+            "Several imaging conditions of one scene share one label. "
+            "Ticked, keep one image per label rather than every condition. "
+            "Narrows the breakdown and every export."
+        )
+        self.conditions.toggled.connect(self._controls_changed)
+        # Under the series but at the margin, where the captions are, rather
+        # than indented with the switches: it is not one of them, and lined up
+        # under "alignment" it read as a fourth series. The rule below says the
+        # fixed filters have ended and the ones you add begin.
+        conditions_row = QHBoxLayout()
+        conditions_row.setContentsMargins(0, 0, 0, 0)
+        conditions_row.setSpacing(6)
+        conditions_row.addWidget(self.conditions)
+        conditions_row.addStretch(1)
+        fixed.addLayout(conditions_row)
+
+        fixed.addSpacing(4)
+        fixed.addWidget(horizontal_rule())
 
         # Filters are added as they are wanted rather than all shown at once.
         # Which properties are on offer comes from the breakdowns, so a property
@@ -558,23 +567,8 @@ class ExportPanel(QWidget):
         self.filter_scroller.setFrameShape(QScrollArea.NoFrame)
         self.filter_scroller.setWidget(self.filter_box)
 
-        # The projects sit above everything, where the other two tabs put
-        # theirs, and the rest of the column is one pane under them: the fixed
-        # filters take the height they need and the rows take the rest, so
-        # dragging the divider trades sessions to scroll against filters to
-        # read.
-        below = QWidget()
-        under = QVBoxLayout(below)
-        under.setContentsMargins(0, 0, 0, 0)
-        under.setSpacing(4)
-        under.addWidget(self.fixed_filters)
-        under.addWidget(self.filter_scroller, stretch=1)
-
-        self.filters = GripSplitter(Qt.Vertical)
-        self.filters.addWidget(self._build_projects())
-        self.filters.addWidget(below)
-        self.filters.setSizes([260, 380])
-        column.addWidget(self.filters, stretch=1)
+        column.addWidget(self.fixed_filters)
+        column.addWidget(self.filter_scroller, stretch=1)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -1155,7 +1149,7 @@ class ExportPanel(QWidget):
         if self._updating:
             return
         filters = self.controller.filters
-        filters.modality = self.modality.current() or MODALITIES[0]
+        filters.modality = self.modality.currentText()
         filters.state = self.state.currentText()
         filters.label = self.label_state.currentText()
         filters.series = tuple(

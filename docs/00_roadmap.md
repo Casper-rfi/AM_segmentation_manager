@@ -21,8 +21,8 @@ Predictions need the second environment `scripts/setup_ml.sh` builds.
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way.
 [`decisions.md`](decisions.md) § History says how each of those decides.
 
-**Settings** (F2) hold the name changes are recorded under, and what each control opens at —
-`gui/preferences.py` declares those and nothing they touch reaches a write path.
+**Settings** (F2) hold the name changes are recorded under and what each control opens at, the
+latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 

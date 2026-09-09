@@ -741,8 +741,7 @@ def test_the_chart_pane_follows_a_filter(qt_app, tmp_path):
     panel.as_chart.setChecked(True)
     first = panel.chart_view._canvas
 
-    panel.modality.set_current("SEM")
-    panel.modality.chosen.emit("SEM")
+    panel.modality.setCurrentText("SEM")
 
     assert panel.chart_view._canvas is not first
 
