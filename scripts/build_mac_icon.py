@@ -33,6 +33,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+#: Where the mark's own files live: the artwork this builds from, and the icon
+#: it writes. The SVG is committed beside the icon so a rebuild needs nothing
+#: from outside the repository.
+DATA = Path(__file__).resolve().parent.parent / "src/am_segmentation_manager/data"
+
 #: The container's side, as a fraction of the canvas. The rest is the margin
 #: macOS reserves for the shadow it draws behind every Dock icon.
 CONTAINER_FRACTION = 824 / 1024
@@ -138,7 +143,9 @@ def render(source: Path, canvas: int) -> Image.Image:
     as the icon changing size.
 
     Raises:
-        ValueError: if *source* is blank, or has no transparent ground to trim.
+        ValueError: if *source* is blank, or fills its canvas. Artwork that
+            carries a container but insets it is not caught, so the default
+            source is the artwork known to be bare.
     """
     inner = round(canvas * CONTAINER_FRACTION)
 
@@ -147,7 +154,15 @@ def render(source: Path, canvas: int) -> Image.Image:
     mark = _load_raster(source, inner * OVERSAMPLE)
     bounds = mark.getchannel("A").getbbox()
     if bounds is None:
-        raise ValueError(f"{source} is blank, or has no transparent ground to trim")
+        raise ValueError(f"{source} is blank")
+    if bounds == (0, 0, mark.width, mark.height):
+        # Artwork that reaches every edge is a tile, not a mark: the drawing of
+        # this logo exists in both forms, and setting the tile in the container
+        # would shrink the mark inside a ground nobody can see against white.
+        raise ValueError(
+            f"{source} fills its canvas, so it carries a ground of its own; "
+            "supply the mark alone, on a transparent ground"
+        )
     mark = mark.crop(bounds)
 
     target = round(inner * MARK_FRACTION)
@@ -204,12 +219,17 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__.splitlines()[0],
         epilog="Supply the mark on a transparent ground, without a container.",
     )
-    parser.add_argument("source", type=Path, help="the mark, as SVG (preferred) or PNG")
+    parser.add_argument(
+        "source",
+        type=Path,
+        nargs="?",
+        default=DATA / "AM_icon.svg",
+        help="the mark, as SVG (preferred) or PNG (default: the committed artwork)",
+    )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).resolve().parent.parent
-        / "src/am_segmentation_manager/data/AM_icon.icns",
+        default=DATA / "AM_icon.icns",
         help="where to write the .icns (default: the packaged icon)",
     )
     parser.add_argument(
@@ -220,7 +240,14 @@ def main(argv: list[str] | None = None) -> int:
     if not arguments.source.exists():
         parser.error(f"no such file: {arguments.source}")
 
-    written = build(arguments.source, arguments.output, arguments.overwrite)
+    try:
+        written = build(arguments.source, arguments.output, arguments.overwrite)
+    except (FileExistsError, RuntimeError, ValueError) as error:
+        # Refusing to overwrite, and artwork that is the wrong shape, are both
+        # things the caller is meant to act on rather than read a traceback of.
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
     print(f"Wrote {written}")
     return 0
 
