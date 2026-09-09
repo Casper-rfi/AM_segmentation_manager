@@ -450,15 +450,23 @@ def test_the_mac_icon_is_the_shape_macos_draws_its_own_icons_in(qt_app):
     from am_segmentation_manager.gui.widgets.branding import MAC_ICON_PATH
 
     image = QIcon(str(MAC_ICON_PATH)).pixmap(512, 512).toImage()
-    opaque = [x for x in range(512) if image.pixelColor(x, 256).alpha() > 127]
+    covered = [
+        [image.pixelColor(x, y).alpha() > 127 for x in range(512)] for y in range(512)
+    ]
 
-    assert image.pixelColor(0, 0).alpha() == 0, "the corners carry the shadow's margin"
-    assert image.pixelColor(256, 256).alpha() == 255
+    assert not covered[0][0], "the corners carry the shadow's margin"
+    assert covered[256][256]
 
+    opaque = [x for x, on in enumerate(covered[256]) if on]
     width = opaque[-1] - opaque[0] + 1
     assert abs(width - round(512 * 824 / 1024)) <= 2
     # Centred: the margin either side of the container is the same.
     assert abs(opaque[0] - (512 - width - opaque[0])) <= 2
+
+    # And the corner is a superellipse rather than the circular arc an rx/ry
+    # rounded rectangle draws. The two cover 0.950 and 0.957 of the container,
+    # so the fraction tells them apart; only the first is the shape macOS uses.
+    assert abs(sum(map(sum, covered)) / (width * width) - 0.9502) < 0.002
 
 
 def test_the_dock_gets_the_container_and_every_other_desktop_the_mark(qt_app, monkeypatch):
