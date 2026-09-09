@@ -1,12 +1,14 @@
-"""Project summary and display utilities.
+"""Turning what a scan found into lines somebody can read.
 
-Functions for producing human-readable summaries of scanned projects.
-Extracted from the CLI so they can be reused by future features such as
-metadata display and filtered overviews.
+Project summaries, the layout survey, the count and cross-tabulation tables,
+the speck report and the label measurements. It formats what other layers
+counted: nothing here scans, filters or measures.
 
-Formatting functions return lists of lines rather than printing, so they can be
-asserted on in tests; the ``print_*`` wrappers emit them through the module
-logger.
+**A ``format_*`` function returns lines and prints nothing**, so what it says
+can be asserted on without capturing output; the ``print_*`` wrappers are the
+only things here that reach a terminal, and they emit through the module
+logger. The window reads the same functions, which is why they return lines
+rather than a block of text.
 """
 from __future__ import annotations
 
