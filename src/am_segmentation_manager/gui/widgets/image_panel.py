@@ -44,9 +44,10 @@ from .controls import (
     RangeSlider,
     SegmentedControl,
     ToggleSwitch,
+    keep_paired,
 )
 from .image_view import ImageView, LinkedImageViews
-from .theme import BADGE_STYLES, SWITCH_RUN_GAP
+from .theme import BADGE_STYLES, GROUP_GAP
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     pass
@@ -125,7 +126,6 @@ class ImagePanel(QWidget):
         self.mode_control.chosen.connect(self.mode_changed.emit)
         #: The segments, so a caller can enable and disable them one at a time.
         self.mode_buttons = self.mode_control.buttons
-        controls.addWidget(self.mode_control)
         self.mode_buttons["sem"].setChecked(True)
 
         # -- series --------------------------------------------------------
@@ -135,7 +135,19 @@ class ImagePanel(QWidget):
         # which file of a frame is drawn. One at a time rather than a set: a
         # timeline mixing alignment runs with polishing frames is not something
         # anyone proofreads.
-        controls.addSpacing(16)
+        self.fit_button = QPushButton("Fit")
+        self.fit_button.setToolTip("Scale the view to the pane\nShortcut: G")
+        self.fit_button.clicked.connect(self.fit)
+        # Which view, and then fit that view to the pane: the only two controls
+        # here that act on the pane itself rather than on what is drawn in it.
+        # Left in its own width, or a lone button stretches to the segments
+        # above it and reads as one more of them.
+        controls.addWidget(keep_paired(
+            (self.mode_control,), (self.fit_button,),
+            align={(1, 0): Qt.AlignLeft},
+        ))
+
+        controls.addSpacing(GROUP_GAP)
         self.series_label = QLabel("Series")
         self.series_combo = QComboBox()
         self.series_combo.setMinimumWidth(140)
@@ -146,13 +158,10 @@ class ImagePanel(QWidget):
         )
         self.series_label.setToolTip(self.series_combo.toolTip())
         self.series_combo.currentIndexChanged.connect(self._series_chosen)
-        controls.addWidget(self.series_label)
-        controls.addWidget(self.series_combo)
 
         # -- imaging condition ---------------------------------------------
         # A dropdown rather than buttons: variant names run long
         # (``8_fi_16``) and a stage can hold five of them.
-        controls.addSpacing(16)
         self.variant_label = QLabel("Variant")
         self.variant_combo = QComboBox()
         self.variant_combo.setMinimumWidth(110)
@@ -163,36 +172,40 @@ class ImagePanel(QWidget):
         )
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
-        controls.addWidget(self.variant_label)
-        controls.addWidget(self.variant_combo)
+        # Which images the timeline is made of, above which file of one is
+        # drawn: the narrower question under the wider one.
+        controls.addWidget(keep_paired(
+            (self.series_label, self.series_combo),
+            (self.variant_label, self.variant_combo),
+        ))
 
-        controls.addSpacing(20)
+        controls.addSpacing(GROUP_GAP)
         self.overlay_check = ToggleSwitch("Show label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip(
             "Draw the label over the right-hand image\nShortcut: V"
         )
         self.overlay_check.toggled.connect(self.overlay_toggled.emit)
-        controls.addWidget(self.overlay_check)
 
-        # A switch ends at its caption, where a tick box carried padding past
-        # it. Without this the two switches and the slider's label ran together
-        # into one phrase -- "Show label Show image Opacity" -- and nothing said
-        # which caption belonged to which control.
-        controls.addSpacing(SWITCH_RUN_GAP)
         self.image_check = ToggleSwitch("Show image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
-            "Draw the label over the acquisition, or over black.\n"
-            "Over black is how an annotation of a few pixels is found; the "
-            "left pane still shows the image."
+            "Draw the label over the acquisition, or over a flat dark "
+            "ground.\nThat ground is how a few-pixel annotation is found, and "
+            "its edge is the frame's; the left pane still shows the image."
         )
         self.image_check.toggled.connect(self.image_toggled.emit)
-        controls.addWidget(self.image_check)
+        # What is drawn, one switch above the other: they answer the same
+        # question of the two layers, and stacked they cost one caption's width
+        # rather than two.
+        controls.addWidget(keep_paired((self.overlay_check,), (self.image_check,)))
 
-        controls.addSpacing(SWITCH_RUN_GAP)
+        # A switch ends at its caption, where a tick box carried padding past
+        # it, so a switch beside a caption reads as one phrase without a gap.
+        # The pairing above is what separates the groups now; this only has to
+        # be wider than the flow's own spacing.
+        controls.addSpacing(GROUP_GAP)
         opacity_label = QLabel("Opacity")
-        controls.addWidget(opacity_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
@@ -200,9 +213,7 @@ class ImagePanel(QWidget):
         self.alpha_slider.setToolTip("How strongly the label colour is drawn over the image")
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
-        controls.addWidget(self.alpha_slider)
 
-        controls.addSpacing(SWITCH_RUN_GAP)
         low, high = DEFAULT_INTENSITY_RANGE
         hint = (
             "The intensities shown as black and as white; outside them is "
@@ -211,20 +222,21 @@ class ImagePanel(QWidget):
         )
         # Fiji's words for these two, which is the vocabulary the people using
         # this already have. "Black / white" named the *result* and left the
-        # reader to work out which end each slider was.
-        range_label = QLabel("Minimum / maximum")
+        # reader to work out which end each slider was. Abbreviated because
+        # this caption sets the width of the paired block it sits in, and the
+        # words spelled out cost the row a third line on a 1440px screen.
+        range_label = QLabel("Min / max")
         range_label.setToolTip(hint)
-        controls.addWidget(range_label)
         self.intensity_slider = RangeSlider(0, 255, low, high)
         self.intensity_slider.setToolTip(hint)
         self.intensity_slider.range_changed.connect(self._range_moved)
-        controls.addWidget(self.intensity_slider)
+        # How the label is drawn, above how the image under it is: two sliders,
+        # aligned, and the long caption no longer sets the row's width alone.
+        controls.addWidget(keep_paired(
+            (opacity_label, self.alpha_slider),
+            (range_label, self.intensity_slider),
+        ))
 
-        controls.addSpacing(20)
-        self.fit_button = QPushButton("Fit")
-        self.fit_button.setToolTip("Scale the view to the pane\nShortcut: G")
-        self.fit_button.clicked.connect(self.fit)
-        controls.addWidget(self.fit_button)
         layout.addWidget(self.controls)
 
         # -- the views -----------------------------------------------------

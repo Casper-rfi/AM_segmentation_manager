@@ -161,6 +161,23 @@ def horizontal_rule() -> QFrame:
     return rule
 
 
+def vertical_rule(height: int) -> QFrame:
+    """Return a hairline for dividing one run of controls from the next in a row.
+
+    :func:`horizontal_rule` turned on its side, and for the same reason: the
+    style draws a sunken frame as two lines of its own choosing. A height is
+    asked for rather than taken from the row, a rule stretched to a layout's
+    full height reading as a border rather than as a separator.
+    """
+    rule = QFrame()
+    rule.setFrameShape(QFrame.VLine)
+    rule.setFrameShadow(QFrame.Plain)
+    rule.setFixedWidth(1)
+    rule.setFixedHeight(height)
+    rule.setStyleSheet(f"background: {theme.BORDER}; border: none;")
+    return rule
+
+
 def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:
     """Return a caption for *widget*, putting *tooltip* on both.
 

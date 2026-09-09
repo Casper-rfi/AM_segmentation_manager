@@ -67,10 +67,11 @@ from ..version_controller import VersionController
 from ..worker import BackgroundOperation
 from .branding import PRODUCT_NAME, logo_pixmap
 from .busy_dialog import BusyDialog
-from .common import MAX_LISTED_FILES
+from .common import MAX_LISTED_FILES, vertical_rule
 from .controls import GripSplitter
 from .export_panel import ExportPanel
 from .frame_strip import FrameTimeline
+from .icons import settings_icon
 from .image_panel import ImagePanel
 from .label_panel import LabelPanel
 from .label_tab import LabelTab
@@ -89,7 +90,7 @@ from .shortcuts import (
     Shortcuts,
 )
 from .state_panel import StatePanel
-from .theme import COMPACT_BUTTON, MUTED
+from .theme import COMPACT_BUTTON, HEADING, MUTED
 
 logger = logging.getLogger(__name__)
 
@@ -116,19 +117,36 @@ AUTHOR_TITLE = "Settings"
 #: else, the taskbar and the window switcher showing only that.
 TITLE_SEPARATOR = " — "
 
-def _brand_mark(on_help) -> QWidget:
-    """Return the mark, the product name and the help button, for the tab row.
+#: What the window opens at where nothing is remembered, in logical pixels.
+#: Chosen for a desktop monitor and **not** a promise that the screen is that
+#: big: :meth:`CurationWindow.fit_to_screen` pulls it back to whatever is
+#: actually there.
+DEFAULT_SIZE = (1600, 950)
+
+#: Left clear of the screen edges when the window is pulled back onto it, in
+#: logical pixels. Enough that it still reads as a window that can be moved
+#: rather than something wedged into the corner, as the shortcut list keeps.
+SCREEN_MARGIN = 40
+
+def _brand_mark(on_help, on_settings) -> QWidget:
+    """Return the mark, the product name and the two buttons, for the tab row.
 
     A widget rather than a `QLabel`, a label showing either a pixmap or text
     and this needing both. **The mark and the name are still not clickable**:
     they say whose window this is and answer no question, so giving either
-    behaviour would only invite pressing. The button beside them is a separate
-    control that looks like one, and it is here because the shortcut list is
-    the best thing in the window and F1 is the only way in -- a key nothing on
-    screen mentions.
+    behaviour would only invite pressing. The buttons beside them are separate
+    controls that look like ones, and they are here because the two things
+    they open are the ones nothing else on screen mentions -- F1 and F2.
+
+    **Two runs, not one.** Left of the rule is who made this; right of it is
+    this machine's own state and the control that changes it. Written as one
+    run of muted text, the product name and the name changes are recorded
+    under read as a single phrase, and the reader had to work out where one
+    ended and the other began.
 
     Args:
         on_help: Called when the help button is pressed.
+        on_settings: Called when the settings button is pressed.
     """
     row = QWidget()
     layout = QHBoxLayout(row)
@@ -139,19 +157,33 @@ def _brand_mark(on_help) -> QWidget:
     mark.setPixmap(logo_pixmap(CORNER_LOGO))
     layout.addWidget(mark)
 
+    # The one piece of text here that is not muted: it is the product's name,
+    # and a brand that reads as a caption is not one.
     name = QLabel(PRODUCT_NAME)
-    name.setStyleSheet(f"color: {MUTED};")
+    name.setStyleSheet(f"color: {HEADING}; font-weight: 600;")
     layout.addWidget(name)
+
+    layout.addSpacing(4)
+    layout.addWidget(vertical_rule(CORNER_LOGO))
+    layout.addSpacing(4)
 
     # Beside the mark rather than in any one tab, and always rather than at
     # the moment of a write: a name reaches every entry written from anywhere
     # in the window, so there is no one tab to put it on and far too many
     # actions to warn at. Muted, because it is a standing fact and not a
-    # message.
+    # message -- and next to the button that changes it, which is what answers
+    # "why is this here" for a reader who has just noticed it.
     author = QLabel()
     author.setObjectName("recordingAs")
     author.setStyleSheet(f"color: {MUTED};")
     layout.addWidget(author)
+
+    settings_button = QToolButton()
+    settings_button.setObjectName(COMPACT_BUTTON)
+    settings_button.setIcon(settings_icon())
+    settings_button.setToolTip("Settings for this machine, including that name (F2)")
+    settings_button.clicked.connect(on_settings)
+    layout.addWidget(settings_button)
 
     # A one-character caption, which the stylesheet's button padding would
     # otherwise clip blank; see `theme.COMPACT_BUTTON`.
@@ -161,7 +193,10 @@ def _brand_mark(on_help) -> QWidget:
     help_button.setToolTip("Show the keyboard shortcuts for this tab (F1)")
     help_button.clicked.connect(on_help)
     layout.addWidget(help_button)
+    row.product_name = name
     row.author = author
+    row.settings_button = settings_button
+    row.help_button = help_button
     return row
 
 
@@ -172,6 +207,11 @@ CORNER_LOGO = 16
 #: The mark's side in the About dialog, where it is the one place in the window
 #: it is shown at a size worth looking at.
 ABOUT_LOGO = 64
+
+#: How wide the recording-as line beside the mark may get, in logical pixels.
+#: The corner shares its row with the tab bar, so a long name has to elide
+#: rather than push the tabs along; the whole of it stays in the tooltip.
+AUTHOR_WIDTH = 220
 
 
 def _log_file_path() -> str | None:
@@ -231,11 +271,15 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         super().__init__()
         self.controller = controller
         self.setWindowTitle(PRODUCT_NAME)
-        self.resize(1600, 950)
+        self.resize(*DEFAULT_SIZE)
 
         self.settings = settings if settings is not None else QSettings(
             SETTINGS_ORGANISATION, SETTINGS_APPLICATION
         )
+        #: Whether the screen the window is on is already being watched. Set
+        #: once: a signal connected again on every show would be delivered
+        #: once per connection.
+        self._watching_screen = False
         self.project_panel = ProjectPanel()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
@@ -395,7 +439,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # window has spare that a reader already looks at. Only here and on the
         # banner -- the orange and green in it are segmentation class colours
         # everywhere else, so a third use would be read as data.
-        self._corner = _brand_mark(self.show_shortcuts)
+        self._corner = _brand_mark(self.show_shortcuts, self.show_settings)
         self.tabs.setCornerWidget(self._corner, Qt.TopRightCorner)
         self.setCentralWidget(self.tabs)
         self._build_menus()
@@ -610,6 +654,22 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Watch for the window being moved to another display.
+
+        Undocking a laptop is exactly the case this is for: the window is put
+        onto a screen smaller than the one it was sized for, with nothing else
+        asking it to fit. The connection is made here rather than in the
+        constructor because a window has no ``windowHandle`` until it is
+        shown, and once rather than per show -- reconnecting would call
+        :meth:`fit_to_screen` once per show of the window's whole life.
+        """
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not self._watching_screen:
+            self._watching_screen = True
+            handle.screenChanged.connect(lambda _screen: self.fit_to_screen())
+
     def changeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Record gaining and losing the keyboard, at debug level.
 
@@ -638,7 +698,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         }
 
     def _restore_layout(self) -> None:
-        """Put the window back the size and shape it was left in."""
+        """Put the window back the size and shape it was left in, on this screen."""
         geometry = self.settings.value(SETTING_GEOMETRY, None, type=QByteArray)
         if geometry:
             self.restoreGeometry(geometry)
@@ -648,6 +708,44 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             )
             if state:
                 splitter.restoreState(state)
+        self.fit_to_screen()
+
+    def fit_to_screen(self) -> None:
+        """Pull the window inside the screen it is on.
+
+        Two ordinary things put it outside one, and neither announces itself:
+        :data:`DEFAULT_SIZE` is chosen for a desktop monitor, and
+        ``restoreGeometry`` puts back a size and place recorded on whatever
+        display the last session used without asking whether this one is the
+        same. Either way the far edge lands off the screen, where there is no
+        way to drag it back.
+        """
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is not None:
+            self._fit_within(screen.availableGeometry())
+
+    def _fit_within(self, room: QRect) -> None:
+        """Resize and move the window to sit inside *room*.
+
+        Split from :meth:`fit_to_screen` so the arithmetic can be tested
+        against a screen this machine does not have: the fault being fixed
+        only appears on a display smaller than the developer's.
+
+        Qt clamps a resize to the window's own minimum, so a window that
+        cannot be made to fit stays too large rather than being cut down to
+        something unusable -- which is the case
+        `test_no_tab_needs_more_room_than_the_smallest_screen_supported`
+        exists to stop arising.
+        """
+        self.resize(
+            min(self.width(), room.width() - SCREEN_MARGIN),
+            min(self.height(), room.height() - SCREEN_MARGIN),
+        )
+        frame = self.frameGeometry()
+        left = max(room.left(), min(frame.left(), room.right() - frame.width() + 1))
+        top = max(room.top(), min(frame.top(), room.bottom() - frame.height() + 1))
+        if (left, top) != (frame.left(), frame.top()):
+            self.move(left, top)
 
     def _save_layout(self) -> None:
         """Record the window's size, its splitter positions and its model box."""
@@ -1582,7 +1680,17 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         no list of who to tell, and so nothing for a new controller to fall off.
         """
         recorder = self._attribution.adopt()
-        self._corner.author.setText(author_summary(recorder.by))
+        line = author_summary(recorder.by)
+        # Elided against a fixed budget rather than by `ElidingLabel`, which
+        # sizes itself to whatever it has been given: in the corner nothing
+        # else decides its width, so it would take its hint from the text it
+        # had already shortened and shrink on every pass. The end of the line
+        # is what goes, the name starting where it is most worth reading.
+        self._corner.author.setText(
+            self._corner.author.fontMetrics().elidedText(
+                line, Qt.ElideRight, AUTHOR_WIDTH
+            )
+        )
         self._corner.author.setToolTip(
             author_summary(recorder.by, asked=True) + " Press F2 to change it."
         )

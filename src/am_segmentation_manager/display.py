@@ -35,6 +35,17 @@ DEFAULT_PLOT_MAX_EDGE = 1600
 #: Opacity of the label colour drawn over the image.
 DEFAULT_ALPHA = 0.4
 
+#: What stands in for the acquisition where it is hidden, as an RGB triple.
+#:
+#: **Not black**, which is also the colour of the pane behind the picture: with
+#: both black, the label's transparent background and the emptiness past the
+#: frame's edge become one surface, and a row of pixels missing along an edge
+#: cannot be seen at all -- which is exactly what somebody checking a label
+#: runs to the edge is looking for. Dark enough that an annotation of a few
+#: pixels is still far and away the brightest thing on screen, that being what
+#: hiding the image is for.
+HIDDEN_IMAGE_GREY = (32, 32, 32)
+
 #: Percentiles used by the optional contrast stretch. Only applied when a
 #: caller explicitly asks for it.
 DEFAULT_PERCENTILES = (0.5, 99.5)
@@ -352,11 +363,11 @@ def compose_overlay(
         hide_background: Leave the background class undrawn. On by default:
             background covers most of the image, and colouring it would hide
             the data being reviewed.
-        hide_image: Draw the label over black rather than over the image. What
-            makes a stray annotation of a few pixels findable -- against the
-            data it is a speck on grey, and against nothing it is the only
-            thing on screen. *alpha* still applies, so a label drawn faintly
-            over black is faint.
+        hide_image: Draw the label over :data:`HIDDEN_IMAGE_GREY` rather than
+            over the image. What makes a stray annotation of a few pixels
+            findable -- against the data it is a speck on grey, and against a
+            flat ground it is the only thing on screen. *alpha* still applies,
+            so a label drawn faintly over that ground is faint.
 
     Returns:
         An ``(H, W, 3)`` uint8 RGB array.
@@ -377,7 +388,7 @@ def compose_overlay(
         )
 
     if hide_image:
-        result = np.zeros((*image.shape[:2], 3), dtype=np.uint8)
+        result = np.full((*image.shape[:2], 3), HIDDEN_IMAGE_GREY, dtype=np.uint8)
     elif image.ndim == 2:
         result = np.repeat(image[:, :, np.newaxis], 3, axis=2)
     else:

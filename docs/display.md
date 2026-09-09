@@ -57,6 +57,16 @@ of one of these files, is held by `test_docs.py`.
   timer**, a hook running part-way through whatever Qt was doing and a modal dialog re-entering the
   event loop there. Off the widget thread only the log gets it — which is why `am-seg gui` logs to a
   file unasked, its failures not being visible in the terminal that started it.
+- **The window fits the screen it is on, and nothing in it may force otherwise.** Qt clamps a
+  resize to the window's minimum, so a row of controls that cannot wrap is a floor under the whole
+  window rather than a blemish in one tab: the Label tab's needed 1560px against the 1512 a 14"
+  MacBook Pro has, and the right of every tab sat off the display with no way to drag it back. So
+  a row wraps (`FlowArea`, under Controls) and the floor is held against a named screen size
+  (`test_no_tab_needs_more_room_than_the_smallest_screen_supported`). `fit_to_screen` is the other
+  half: `DEFAULT_SIZE` is chosen for a desktop monitor and `restoreGeometry` puts back a size
+  recorded on whatever the last session used, neither asking what screen this is
+  (`test_a_window_remembered_off_the_edge_is_moved_back_on`). Undocking is watched through
+  `screenChanged`, connected on first show — a window has no `windowHandle` before then.
 - **A worker thread that will not stop outlives the window rather than being collected.** A frame
   read is one call into an image library and cannot be interrupted part-way, so a file on a
   cloud-synced volume outlasts any deadline worth waiting for on close. `loader.keep_alive` states
@@ -95,6 +105,18 @@ of one of these files, is held by `test_docs.py`.
   segments so a caller can grey one out, which is how a view the frame has nothing to show for is
   disabled. **The State group is deliberately not one**: it is non-exclusive so a frame whose SEM
   and FIB disagree can show *nothing* chosen, which a run of segments cannot say.
+- **A caption and the control it names are one flow item, and so are two controls that pair.** The
+  rule the segments keep, for their reason: a flow wraps between items, so anything loose splits at
+  whatever width the pane happens to be — a caption ending a line with its slider starting the
+  next, reading as a heading for what follows (`test_a_caption_is_never_a_flow_item_of_its_own`).
+  `controls.keep_together` holds a caption to its control, `keep_paired` stacks two into an aligned
+  grid. **Pairing is also what makes the row fit**: 1441px loose against the 850 the centre pane
+  has on the smallest screen supported, 759px paired, so one block is drawn on every screen rather
+  than a shape that moved with the window
+  (`test_the_view_controls_are_one_block_on_the_smallest_screen_supported`). What pairs answers one
+  question of two things — series over variant, the two Show switches, the two sliders, and the two
+  acting on the pane rather than on what is drawn in it. A cell fills its column, right for a
+  slider and wrong for a lone button, so `align` is the exception.
 - **A row is ticked; a control on its own is switched.** `controls.ToggleSwitch` draws the second and
   is a **subclass of `QCheckBox`** (`test_it_is_a_check_box`), so only `paintEvent` differs. It
   paints everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the
@@ -224,7 +246,16 @@ of one of these files, is held by `test_docs.py`.
 - **Who changes are recorded under is a standing line beside the mark, not a warning per action.**
   Ten actions across all four tabs put a name into a log, and one more writes it into an export's
   fork point: there is no single tab to say it on and far too many places to warn at. It is muted,
-  being a fact rather than a message, and F2 changes it.
+  being a fact rather than a message.
+- **The corner is two runs with a rule between them, not one line of text.** Left of it is whose
+  window this is, right of it is what this machine is set to and the gear that changes it — written
+  alike they read as one phrase, and the product name is the brand rather than a caption, so it
+  alone is unmuted (`test_the_product_name_is_not_drawn_like_the_line_beside_it`, on the pixels: a
+  stylesheet is the one thing that can be set and not take effect). The gear and the **?** beside
+  it are the two things nothing else on screen mentions, F2 and F1
+  (`test_the_settings_button_opens_what_f2_opens`). The name is elided against a fixed budget and
+  not by `ElidingLabel`, which sizes itself to what it is given: nothing here decides its width, so
+  it would take its hint from text it had already shortened and shrink on every pass.
 - **Everything that records shares one `Attribution`, so adopting a name is one assignment.** Several
   controllers write to a log and one is reached through the Label tab rather than the window, so
   telling them individually was a list kept by hand in two places that a new one fell off silently.
@@ -245,6 +276,16 @@ of one of these files, is held by `test_docs.py`.
   on both sides colouring by what each holds has no readable scheme and the mask becomes the thing
   being deciphered. Two labels of different sizes are still both shown — that one is the wrong size
   is the finding — and only the mask goes, there being no pixel to pair.
+- **With the acquisition hidden, something still says where the frame ends.** Dropping it leaves
+  the label alone on screen, which is what finds a four-pixel annotation; but over the pane's own
+  black the label's transparent background and the emptiness past the frame's edge are one surface,
+  and a label a row short along an edge looks like one that runs to it — the reason to hide it at
+  all. So the ground is `display.HIDDEN_IMAGE_GREY`, dark enough that a speck still outshines it
+  (`test_the_ground_under_a_hidden_image_is_not_the_pane_behind_it`). **Two mechanisms, one
+  colour**: Curate fills the array it composes; the canvas, keeping a paintable layer, puts a
+  `BACKDROP_Z` item the size of the picture under it. It follows the image being hidden rather than
+  the speck filter (`test_hiding_the_image_leaves_a_ground_the_size_of_the_frame`), **V** hiding it
+  on its own.
 - **The strip is closed until somebody opens it, and the count sits on the switch.** It used to
   show itself whenever a label had a version; listing predictions too would have put it on almost
   every frame, so a label with nothing to compare now says so unopened
@@ -285,8 +326,8 @@ of one of these files, is held by `test_docs.py`.
   says so in the warning colour whenever it is not the whole range. Curate and Label each hold their
   own; on the canvas only the picture is rescaled, the label being painted into as it is or a stroke
   would be recorded against something that is not on disk.
-- **One control sets both limits, and they are called Minimum and Maximum** — Fiji's words, for
-  the reason `image_panel` gives where it names them. `controls.RangeSlider` draws the interval: a
+- **One control sets both limits, and they are called Min and Max** — Fiji's words, abbreviated,
+  for the reason `image_panel` gives where it names them. `controls.RangeSlider` draws the interval: a
   filled span between two handles, the grey ends being what is thrown away. The limits are held
   apart by the control rather than by the transform, a picture turning into a threshold reading as a
   fault instead of a setting; the handle being *moved* is the one that gives way, being pushed along

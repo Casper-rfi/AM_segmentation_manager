@@ -1,4 +1,4 @@
-"""The Label tab's tool icons, drawn rather than shipped.
+"""The window's drawn icons: the Label tab's tools, and the settings gear.
 
 Every one is a few QPainter calls on a transparent square, so the window
 carries no image files and each icon takes the theme's colour rather than a
@@ -165,6 +165,41 @@ def save_icon():
         painter.setCompositionMode(QPainter.CompositionMode_Clear)
         painter.drawRect(QRectF(5.6, 3.0, 4.4, 3.2))
         painter.drawRect(QRectF(4.6, 8.6, 6.8, 3.4))
+    finally:
+        # Always: a QPainter outliving its paint device crashes the process
+        # rather than reporting an error.
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def settings_icon():
+    """Return the settings button's icon: a gear.
+
+    The one shape a reader recognises without a caption, which is what this
+    button needs -- it sits in the corner beside the mark, where there is no
+    room for a word and nothing around it to give it context. Drawn as a ring
+    of teeth around a punched hub rather than as a filled disc with notches:
+    at sixteen pixels a gear is read by its outline, and a solid centre leaves
+    it looking like a flower.
+    """
+    pixmap = _tool_pixmap()
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(TEXT))
+        painter.translate(ICON / 2.0, ICON / 2.0)
+        # Eight teeth, drawn one rotation apart rather than as one path: a
+        # polygon of sixteen points hand-placed at this size drifts, and a
+        # tooth a degree out is the most visible thing in the icon.
+        for _ in range(8):
+            painter.drawRect(QRectF(-1.45, -7.0, 2.9, 2.7))
+            painter.rotate(45)
+        painter.drawEllipse(QPointF(0.0, 0.0), 4.9, 4.9)
+        # Punched out, so the hub is a hole in the body rather than a mark on
+        # it -- the same treatment the disk's shutter gets.
+        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        painter.drawEllipse(QPointF(0.0, 0.0), 1.95, 1.95)
     finally:
         # Always: a QPainter outliving its paint device crashes the process
         # rather than reporting an error.

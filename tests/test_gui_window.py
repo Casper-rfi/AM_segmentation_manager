@@ -240,6 +240,93 @@ def test_every_division_that_moves_is_marked_as_one(window):
 
 
 # ---------------------------------------------------------------------------
+# Fitting the screen
+# ---------------------------------------------------------------------------
+
+#: The smallest display the window is expected to open on, in logical pixels.
+#: A 13" MacBook Air; the 14" MacBook Pro reports 1512x982 and every external
+#: monitor here is larger. Not a guess at the smallest screen in the world --
+#: it is the floor this package holds itself to, and a control row that cannot
+#: wrap breaks it long before anything exotic does.
+SMALLEST_SUPPORTED_SCREEN = (1440, 900)
+
+
+def test_no_tab_needs_more_room_than_the_smallest_screen_supported(window):
+    """A window cannot be made narrower than its widest unwrappable row.
+
+    Qt clamps a resize to the minimum, so a tab needing more width than the
+    screen has does not scroll or wrap: the far edge sits off the display with
+    no way to drag it back. That is not a layout blemish but an unreachable
+    control, and it is invisible to anyone developing on a larger monitor --
+    the Label tab's view controls needed 1560px, against the 1512 a 14"
+    MacBook Pro has, and the right of every tab was cut off there.
+    """
+    wide, tall = SMALLEST_SUPPORTED_SCREEN
+    too_big = {
+        window.tabs.tabText(index): (
+            window.tabs.widget(index).minimumSizeHint().width(),
+            window.tabs.widget(index).minimumSizeHint().height(),
+        )
+        for index in range(window.tabs.count())
+        if window.tabs.widget(index).minimumSizeHint().width() > wide
+        or window.tabs.widget(index).minimumSizeHint().height() > tall
+    }
+
+    assert not too_big, f"needs more than {wide}x{tall}: {too_big}"
+    assert window.minimumSizeHint().width() <= wide
+    assert window.minimumSizeHint().height() <= tall
+
+
+def test_the_view_controls_wrap_rather_than_widening_the_window(window):
+    """The Label tab's controls are the row that broke the rule above.
+
+    Asserted on the row rather than only through the window, so the reason a
+    tab fits stays visible: it fits because this row wraps, and a control
+    added to a plain box layout here would put it back over the edge.
+    """
+    from am_segmentation_manager.gui.widgets.controls import FlowArea, FlowLayout
+
+    controls = window.label_panel.controls
+
+    assert isinstance(controls, FlowArea)
+    assert isinstance(controls.layout(), FlowLayout)
+    assert controls.layout().minimumSize().width() == 0
+
+
+def test_a_window_larger_than_the_screen_is_pulled_onto_it(window):
+    """Tested against a screen this machine does not have.
+
+    The fault only appears on a display smaller than the one it is developed
+    on, so asserting it through the real screen would assert nothing here.
+    """
+    from qtpy.QtCore import QRect
+
+    window.resize(1600, 950)
+    window._fit_within(QRect(0, 0, 1512, 982))
+
+    assert window.width() <= 1512
+    assert window.height() <= 982
+
+
+def test_a_window_remembered_off_the_edge_is_moved_back_on(window):
+    """A geometry saved on a second monitor is restored without one attached.
+
+    Qt puts back what it was given; nothing in ``restoreGeometry`` asks
+    whether the screen it was recorded on is the screen it is being put back
+    on, and a window opening off the edge cannot be dragged back.
+    """
+    from qtpy.QtCore import QRect
+
+    room = QRect(0, 0, 1512, 982)
+    window.resize(1100, 800)
+    window.move(2400, 200)
+
+    window._fit_within(room)
+
+    assert room.contains(window.frameGeometry())
+
+
+# ---------------------------------------------------------------------------
 # The editing guard
 # ---------------------------------------------------------------------------
 
@@ -2657,6 +2744,60 @@ def test_the_shortcut_menu_item_opens_the_same_list_f1_does(window, qt_app):
             window._keys.help.close()
 
 
+def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
+    """The corner is where the name is shown, so it is where it is changed.
+
+    F2 is the only other way in and nothing on screen said so -- the same gap
+    the help button beside it fills for F1.
+    """
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    opened: list[bool] = []
+
+    class _Dismissed:
+        def __init__(self, *_args):
+            self.author = "Ada"
+
+        def exec_(self):
+            opened.append(True)
+            return QDialog.Rejected
+
+    monkeypatch.setattr(module, "SettingsDialog", _Dismissed)
+
+    window._corner.settings_button.click()
+
+    assert opened == [True]
+
+
+def test_the_product_name_is_not_drawn_like_the_line_beside_it(window):
+    """Two facts of different kinds sat in one run of muted text.
+
+    Left of the rule is whose window this is; right of it is what this machine
+    is set to. Written alike they read as one phrase, and a reader had to work
+    out where one ended and the other began. Asserted on the pixels, a
+    stylesheet being the one thing that can be set and not take effect.
+    """
+    from qtpy.QtGui import QColor
+
+    name = window._corner.product_name
+    author = window._corner.author
+    assert name.text() and author.text(), "both say something to compare"
+
+    def darkest(widget) -> int:
+        image = widget.grab().toImage()
+        return min(
+            QColor(image.pixel(x, y)).lightness()
+            for y in range(image.height())
+            for x in range(image.width())
+        )
+
+    assert darkest(name) < darkest(author), (
+        "the product name is drawn more strongly than the machine's own state"
+    )
+
+
 def test_the_help_button_in_the_corner_opens_the_list(window):
     """F1 is the only way in, and nothing on screen mentions F1."""
     corner = window.tabs.cornerWidget(Qt.TopRightCorner)
@@ -4069,9 +4210,88 @@ def test_the_overlay_is_composed_from_the_ranged_image(window, monkeypatch):
     assert composed[0] is shown[0], "composed from what the control produced"
 
 
-def test_the_view_controls_wrap_rather_than_run_off_the_pane(qt_app):
-    """They need more width than the centre pane opens at, so before this the
-    Fit button and part of the opacity slider were past the edge."""
+def test_a_caption_is_never_a_flow_item_of_its_own(qt_app):
+    """A wrapping row may not put a caption on one line and its control on the next.
+
+    The failure this stops is not a control going missing but a row going
+    unreadable: "Minimum / maximum" ended a line with its slider starting the
+    next one, where it read as a heading for whatever followed. Asserted on
+    the structure rather than on a width, because which pairs get split is
+    whatever the pane happens to be -- it looked right on the monitor it was
+    built on and wrong on the one beside it.
+    """
+    from qtpy.QtWidgets import QLabel
+
+    from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    # Held in a local: a PySide6 wrapper lives only as long as the wrapper that
+    # vended it, so `ImagePanel(config).controls` hands back an object already
+    # deleted. `docs/display.md` § The binding.
+    panel = ImagePanel(config)
+    try:
+        layout = panel.controls.layout()
+        loose = [
+            layout.itemAt(index).widget().text()
+            for index in range(layout.count())
+            if isinstance(layout.itemAt(index).widget(), QLabel)
+        ]
+
+        assert not loose, f"captions that can wrap away from their control: {loose}"
+    finally:
+        destroy(panel)
+
+
+def test_the_view_controls_are_one_block_on_the_smallest_screen_supported(
+    qt_app, settings, project
+):
+    """Paired into two lines, they fit the centre pane rather than wrapping.
+
+    The pane is what is left of the window after the project list and the
+    state panel, so these controls have far less width than the tab does.
+    Loose, they needed 1441px against the 922 a laptop leaves, and wrapped
+    into an emergent shape that moved with every window size. Paired, the
+    block is the same on every screen it is asked to open on, which is what
+    makes it readable rather than merely reachable.
+    """
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        window.tabs.setCurrentWidget(window.curate)
+        heights = []
+        for width in (SMALLEST_SUPPORTED_SCREEN[0], 1920):
+            window.resize(width, 900)
+            window.show()
+            qt_app.processEvents()
+            window.grab()
+            heights.append(window.image_panel.controls.height())
+
+        assert heights[0] == heights[1], (
+            f"the row wraps differently at {SMALLEST_SUPPORTED_SCREEN[0]} "
+            f"than at 1920: {heights}"
+        )
+    finally:
+        destroy(window)
+
+
+def test_a_control_row_still_wraps_where_it_has_to(qt_app):
+    """Pairing halves the width it needs; it does not make wrapping optional.
+
+    Answered from the width the row actually has: asked at one width and
+    handed another, the second line lands below the bottom edge, present and
+    invisible.
+    """
     from am_segmentation_manager.gui.widgets.controls import FlowLayout
     from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
 
@@ -4081,33 +4301,58 @@ def test_the_view_controls_wrap_rather_than_run_off_the_pane(qt_app):
     )
     panel = ImagePanel(config)
     layout = panel.controls.layout()
-
     assert isinstance(layout, FlowLayout)
     # A minimum with no width is what lets it wrap; a floor would force the
     # pane wider than the longest row instead.
     assert layout.minimumSize().width() == 0
-    assert layout.sizeHint().width() > 1080, "one row does not fit the pane"
 
-
-def test_a_wrapped_control_row_takes_the_height_it_needs(qt_app):
-    """Answered from the width it actually has: asked at one width and handed
-    another, the second line lands below the bottom edge."""
-    from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
-
-    config = SegmentationConfig(
-        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
-        class_labels={0: "background", 1: "GIS"},
-    )
-    panel = ImagePanel(config)
     panel.resize(1900, 400)
     panel.show()
     qt_app.processEvents()
     wide = panel.controls.height()
 
-    panel.resize(900, 400)
+    panel.resize(500, 400)
     qt_app.processEvents()
 
     assert panel.controls.height() > wide, "narrower means more lines"
+
+
+def test_hiding_the_image_leaves_a_ground_the_size_of_the_frame(qt_app):
+    """The proofreading canvas hides an item where Curate composes an array.
+
+    Two mechanisms, one rule: with the acquisition gone something has to say
+    where the frame ends, or a label a row of pixels short along an edge is
+    indistinguishable from one that runs to it. The canvas keeps the label as
+    its own layer so it can be painted into, and that layer's background is
+    transparent -- so the ground has to be an item under it rather than a fill
+    inside it.
+    """
+    import numpy as np
+
+    from am_segmentation_manager.display import HIDDEN_IMAGE_GREY
+    from am_segmentation_manager.gui.widgets.image_view import ImageView
+
+    view = ImageView()
+    try:
+        view.set_array(np.zeros((40, 60), dtype=np.uint8))
+        backdrop = view._backdrop
+
+        assert not backdrop.isVisible(), "nothing to stand in for while it shows"
+
+        view.set_image_shown(False)
+
+        assert backdrop.isVisible()
+        assert backdrop.rect() == view._item.boundingRect(), (
+            "the ground is the frame, so its edge is the frame's edge"
+        )
+        assert backdrop.brush().color().getRgb()[:3] == HIDDEN_IMAGE_GREY
+        assert backdrop.zValue() < view._item.zValue(), "under the picture"
+
+        view.set_image_shown(True)
+
+        assert not backdrop.isVisible()
+    finally:
+        destroy(view)
 
 
 # ---------------------------------------------------------------------------

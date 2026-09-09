@@ -445,7 +445,7 @@ class CurationController:
         #: does not overwrite. See :func:`~..frames.resolve_series`.
         self.wanted_series: str = DEFAULT_SERIES
         self.show_overlay = True
-        #: Whether the label is drawn over the acquisition or over black.
+        #: Whether the label is drawn over the acquisition or over a flat ground.
         self.show_image = True
         #: Which imaging condition is on screen for each modality. None means
         #: the base image. This is display state only: a state change follows

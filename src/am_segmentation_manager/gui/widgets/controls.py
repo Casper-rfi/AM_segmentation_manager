@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLayout,
@@ -299,6 +300,51 @@ class StepCombo(QComboBox):
             index += delta
 
 
+def keep_together(*widgets: QWidget, spacing: int = 4) -> QWidget:
+    """Return one widget holding *widgets* in a row, so a flow cannot split them.
+
+    A flow layout wraps between its items, and a caption is a separate item
+    from the control it names: at the wrong width the two land on different
+    lines, leaving the caption reading as a heading for whatever followed it.
+    One widget is the same answer :class:`SegmentedControl` gives for the same
+    reason, and `docs/display.md` states it there.
+    """
+    holder = QWidget()
+    row = QHBoxLayout(holder)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(spacing)
+    for widget in widgets:
+        row.addWidget(widget)
+    return holder
+
+
+def keep_paired(top, bottom, *, spacing: int = 4, align=None) -> QWidget:
+    """Return one widget holding two rows of controls, in a grid that aligns them.
+
+    Each argument is that row's widgets, left to right; the grid lines their
+    columns up, so a caption above a caption and a slider above a slider read
+    as a pair rather than as four loose things. One widget for the same reason
+    :func:`keep_together` is one, and a pair costs half the width of the two
+    controls side by side -- which is what keeps a row of them inside a pane
+    the window can actually offer.
+
+    Args:
+        align: Alignment for particular cells, keyed by ``(row, column)``. A
+            cell fills its column by default, which is right for the sliders
+            and wrong for a lone button under a wider control.
+    """
+    align = align or {}
+    holder = QWidget()
+    grid = QGridLayout(holder)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setHorizontalSpacing(spacing)
+    grid.setVerticalSpacing(2)
+    for row, widgets in enumerate((top, bottom)):
+        for column, widget in enumerate(widgets):
+            grid.addWidget(widget, row, column, align.get((row, column), Qt.Alignment()))
+    return holder
+
+
 class FlowLayout(QLayout):
     """A layout that puts its items in a row and wraps onto the next.
 
@@ -388,6 +434,11 @@ class FlowLayout(QLayout):
         right = rect.right() - margins.right()
         x, y = left, rect.y() + margins.top()
         row_height = 0
+        #: Where each item was put, and how tall each row turned out, so the
+        #: items can be centred once the row's height is known -- which is only
+        #: after the last item on it has been placed.
+        placed: list = []
+        rows: list = [(0, 0)]
 
         for item in self._items:
             # Clamped to the row: an item wider than the space it has spills
@@ -398,12 +449,30 @@ class FlowLayout(QLayout):
                 x = left
                 y += row_height + self.spacing()
                 row_height = 0
-            if apply:
-                item.setGeometry(QRect(QPoint(x, y), size))
+                rows.append((len(placed), 0))
+            placed.append((item, QPoint(x, y), size))
             x += size.width() + self.spacing()
             row_height = max(row_height, size.height())
+            rows[-1] = (len(placed), row_height)
 
+        if apply:
+            self._centre_rows(placed, rows)
         return y + row_height - rect.y() + margins.bottom()
+
+    @staticmethod
+    def _centre_rows(placed, rows) -> None:
+        """Put each item in the middle of its row's height.
+
+        A row mixing a two-line block of paired controls with a single button
+        would otherwise hang the button from the top of it, reading as though
+        the two belonged to different rows.
+        """
+        start = 0
+        for end, height in rows:
+            for item, point, size in placed[start:end]:
+                offset = (height - size.height()) // 2
+                item.setGeometry(QRect(QPoint(point.x(), point.y() + offset), size))
+            start = end
 
 
 class FlowArea(QWidget):
@@ -416,9 +485,11 @@ class FlowArea(QWidget):
     every time it gets one, is the only account that cannot disagree with
     itself.
 
-    Used for a field holding several values and for the image panel's row of
-    controls, which are the same problem: however many things there are, at
-    whatever width the pane happens to have.
+    Used for a field holding several values and for the rows of controls above
+    the curation panes and the proofreading canvas, which are the same problem:
+    however many things there are, at whatever width the pane happens to have.
+    On those two rows it is also what stops the window being forced wider than
+    the screen; see `docs/display.md`.
     """
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming

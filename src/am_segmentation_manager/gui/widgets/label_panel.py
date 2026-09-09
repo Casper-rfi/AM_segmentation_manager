@@ -43,7 +43,15 @@ from ...operations.label_measure import (
 from ..label_controller import LabelController
 from ..version_controller import VersionController
 from .common import LABEL_BADGES, chip_icon, fill_choice_combo, intensity_badge
-from .controls import ElidingLabel, RangeSlider, SegmentedControl, ToggleSwitch
+from .controls import (
+    ElidingLabel,
+    FlowArea,
+    FlowLayout,
+    RangeSlider,
+    SegmentedControl,
+    ToggleSwitch,
+    keep_paired,
+)
 from .frame_strip import FrameTimeline
 from .icons import (
     ICON,
@@ -61,7 +69,7 @@ from .label_canvas import (
     TOOL_FILL,
     LabelCanvas,
 )
-from .theme import BADGE_STYLES, SWITCH_RUN_GAP
+from .theme import BADGE_STYLES, GROUP_GAP
 from .versions_bar import DIFFERENCE_CLASS, VersionsBar
 
 logger = logging.getLogger(__name__)
@@ -72,6 +80,14 @@ UNSAVED_NOTE = "not yet written to disk"
 
 #: The swatch drawn on each class's paint button.
 SWATCH = 12
+
+#: How wide the status line beside the view controls may get, in logical
+#: pixels. A cap rather than a share: it sits beside a row that wraps, so width
+#: given to it is width the controls wrap for want of. Measured against the
+#: wrapping rather than chosen -- at 380 the row takes three lines on a 1200px
+#: pane and at 300 it takes two, while no cap at all buys back the second line
+#: on a 1920px one, those controls needing about 1730px to sit in a single row.
+STATUS_MAX_WIDTH = 300
 
 #: How long after the last stroke the specks are counted again. Long enough
 #: that a pause between strokes is not one, short enough that a speck painted
@@ -265,8 +281,20 @@ class LabelPanel(QWidget):
     # -- construction ------------------------------------------------------
 
     def _build_controls(self) -> QHBoxLayout:
-        """Build the row of view controls."""
-        controls = QHBoxLayout()
+        """Build the row of view controls, wrapped, with the status beside it.
+
+        Wrapped for the reason `image_panel` gives of its own row: laid out in
+        one line these controls need more width than a laptop screen has, and
+        a window cannot be made narrower than its widest unwrappable row. The
+        status keeps the end of the row rather than joining the flow, being the
+        one thing here that elides instead of taking the width it would like.
+        """
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        self.controls = FlowArea()
+        controls = FlowLayout(spacing=6)
+        self.controls.setLayout(controls)
 
         self.modality_control = SegmentedControl([
             (
@@ -278,10 +306,21 @@ class LabelPanel(QWidget):
         self.modality_control.chosen.connect(self._modality_chosen)
         #: The segments, so a caller can reach one at a time.
         self.modality_buttons = self.modality_control.buttons
-        controls.addWidget(self.modality_control)
         # Chosen without emitting: the panel is still being built, and the
         # handler redraws a timeline that does not exist yet.
         self.modality_control.set_current(MODALITIES[0])
+
+        self.fit_button = QPushButton("Fit")
+        self.fit_button.setToolTip("Scale the image to the pane\nShortcut: 0")
+        self.fit_button.clicked.connect(self.canvas_fit)
+        # Which view, and then fit that view to the pane: the only two controls
+        # here that act on the pane itself rather than on what is drawn in it.
+        # Left in its own width, or a lone button stretches to the segments
+        # above it and reads as one more of them.
+        controls.addWidget(keep_paired(
+            (self.modality_control,), (self.fit_button,),
+            align={(1, 0): Qt.AlignLeft},
+        ))
 
         # Beside the beam buttons and before the variant, in the same order and
         # for the same reasons as the curation view: the series decides which
@@ -296,9 +335,7 @@ class LabelPanel(QWidget):
         )
         self.series_label.setToolTip(self.series_combo.toolTip())
         self.series_combo.currentIndexChanged.connect(self._series_chosen)
-        controls.addSpacing(12)
-        controls.addWidget(self.series_label)
-        controls.addWidget(self.series_combo)
+        controls.addSpacing(GROUP_GAP)
 
         # A dropdown rather than buttons, as in the curation view: variant names
         # run long, and most projects have none to choose between.
@@ -311,31 +348,33 @@ class LabelPanel(QWidget):
         )
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
-        controls.addSpacing(12)
-        controls.addWidget(self.variant_label)
-        controls.addWidget(self.variant_combo)
+        # Which images the timeline is made of, above which file of one is
+        # drawn: the narrower question under the wider one.
+        controls.addWidget(keep_paired(
+            (self.series_label, self.series_combo),
+            (self.variant_label, self.variant_combo),
+        ))
 
-        controls.addSpacing(20)
+        controls.addSpacing(GROUP_GAP)
         self.overlay_check = ToggleSwitch("Show label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip("Draw the label over the image\nShortcut: V")
         self.overlay_check.toggled.connect(self._overlay_toggled)
-        controls.addWidget(self.overlay_check)
 
-        controls.addSpacing(SWITCH_RUN_GAP)
         self.image_check = ToggleSwitch("Show image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
-            "Draw the acquisition under the label, or leave the label alone "
-            "against black.\nOver black is how an annotation of a few pixels "
-            "is found."
+            "Draw the acquisition under the label, or leave it alone against "
+            "a flat dark ground.\nThat ground is how a few-pixel annotation "
+            "is found, and its edge is the frame's."
         )
         self.image_check.toggled.connect(self._image_toggled)
-        controls.addWidget(self.image_check)
+        # What is drawn, one switch above the other: the same question asked of
+        # the two layers, and stacked they cost one caption's width.
+        controls.addWidget(keep_paired((self.overlay_check,), (self.image_check,)))
 
-        controls.addSpacing(SWITCH_RUN_GAP)
+        controls.addSpacing(GROUP_GAP)
         opacity_label = QLabel("Opacity")
-        controls.addWidget(opacity_label)
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
@@ -343,30 +382,27 @@ class LabelPanel(QWidget):
         self.alpha_slider.setToolTip("How strongly the label colour is drawn")
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
-        controls.addWidget(self.alpha_slider)
 
-        controls.addSpacing(SWITCH_RUN_GAP)
         low, high = DEFAULT_INTENSITY_RANGE
         range_hint = (
             "The intensities shown as black and as white; outside them is "
             "clipped.\nChanges nothing on disk and reaches no label. "
             "Double-click a handle to put it back."
         )
-        range_label = QLabel("Minimum / maximum")
+        range_label = QLabel("Min / max")
         range_label.setToolTip(range_hint)
-        controls.addWidget(range_label)
         self.intensity_slider = RangeSlider(0, 255, low, high)
         self.intensity_slider.setToolTip(range_hint)
         self.intensity_slider.range_changed.connect(self._range_moved)
-        controls.addWidget(self.intensity_slider)
+        # How the label is drawn, above how the image under it is: two
+        # sliders, aligned, and the long caption no longer sets the width alone.
+        controls.addWidget(keep_paired(
+            (opacity_label, self.alpha_slider),
+            (range_label, self.intensity_slider),
+        ))
 
-        controls.addSpacing(20)
-        self.fit_button = QPushButton("Fit")
-        self.fit_button.setToolTip("Scale the image to the pane\nShortcut: 0")
-        self.fit_button.clicked.connect(self.canvas_fit)
-        controls.addWidget(self.fit_button)
 
-        controls.addSpacing(20)
+        controls.addSpacing(GROUP_GAP)
         self.speck_check = ToggleSwitch("Find specks")
         self.speck_check.setToolTip(
             "Ring components of a few pixels -- a stray annotation, or a hole "
@@ -375,9 +411,6 @@ class LabelPanel(QWidget):
             "\nShortcut: X; N steps to the next"
         )
         self.speck_check.toggled.connect(self._finding_toggled)
-        controls.addWidget(self.speck_check)
-
-        controls.addSpacing(SWITCH_RUN_GAP)
         self.speck_slider = QSlider(Qt.Horizontal)
         self.speck_slider.setRange(MIN_SPECK_PIXELS, MAX_SPECK_PIXELS)
         self.speck_slider.setValue(self.controller.speck_size)
@@ -388,11 +421,10 @@ class LabelPanel(QWidget):
             "one pixel of a prediction, so anything smaller was painted by hand."
         )
         self.speck_slider.valueChanged.connect(self._speck_size_changed)
-        controls.addWidget(self.speck_slider)
+
 
         self._show_speck_controls(False)
 
-        controls.addSpacing(20)
         # Off by default and per session. Comparing is wanted a few times a
         # year against a view read every day, so the strip earns its space only
         # while somebody is using it -- and the count says whether opening it
@@ -404,9 +436,14 @@ class LabelPanel(QWidget):
             "show one in place of the label."
         )
         self.versions_check.toggled.connect(self._versions_toggled)
-        controls.addWidget(self.versions_check)
+        # The two ways of looking harder at a label, one above the other: ring
+        # what is too small to see, or put an earlier version in its place.
+        controls.addWidget(keep_paired(
+            (self.speck_check, self.speck_slider),
+            (self.versions_check,),
+        ))
 
-        controls.addStretch()
+        row.addWidget(self.controls, stretch=1)
 
         # Where the reviewer is, at the end of the row that decides it: the
         # modality buttons on the left of this line are half of what it reports.
@@ -415,11 +452,17 @@ class LabelPanel(QWidget):
         # navigation.
         # Elided rather than clipped: the line runs long on a project with
         # timestamped stage names, and this row has other controls in it.
+        # Beside the flow rather than in it: a flow layout gives every item the
+        # width its size hint asks for, which is the whole line here -- so the
+        # status would take a row to itself and never elide at all. Capped, or
+        # sharing the surplus with a row that wraps hands it half the width
+        # while the controls below wrap for want of it.
         self.status = ElidingLabel()
         self.status.setStyleSheet(BADGE_STYLES["info"])
         self.status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        controls.addWidget(self.status, stretch=1)
-        return controls
+        self.status.setMaximumWidth(STATUS_MAX_WIDTH)
+        row.addWidget(self.status, stretch=1)
+        return row
 
     def _build_tools(self) -> QHBoxLayout:
         """Build the bottom bar: the tools, the classes, and what to do next.
@@ -702,8 +745,9 @@ class LabelPanel(QWidget):
 
         Switching on takes the view the reviewer had and replaces it with the
         one that makes a four-pixel annotation visible: the label alone,
-        opaque, against black. Switching off puts theirs back -- a filter that
-        leaves the window rearranged is one you stop using.
+        opaque, against the flat ground that stands in for the acquisition.
+        Switching off puts theirs back -- a filter that leaves the window
+        rearranged is one you stop using.
         """
         if finding:
             self._view_before = (

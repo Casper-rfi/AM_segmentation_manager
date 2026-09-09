@@ -13,9 +13,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QImage, QPainter, QPixmap, QTransform
+from qtpy.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QTransform
 from qtpy.QtWidgets import (
     QGraphicsPixmapItem,
+    QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
     QHBoxLayout,
@@ -24,6 +25,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ...display import HIDDEN_IMAGE_GREY
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -46,6 +49,10 @@ MIN_FIT_FRACTION = 1.0
 #: snaps to the floor rather than overshooting it, which makes a step of 0.8
 #: stop at a band of 5% on each side rather than the 18% two steps would leave.
 LABEL_MIN_FIT_FRACTION = 1 / 1.1
+
+#: Below the picture, which sits at the default zero. The proofreading canvas
+#: puts its label above both; nothing is drawn under this.
+BACKDROP_Z = -1.0
 
 #: Room around the image to scroll into, as a fraction of its size. Without it
 #: the furthest an edge can be brought is the border of the pane, where half the
@@ -106,6 +113,15 @@ class ImageView(QGraphicsView):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
+        # Under the picture, and the size of it. Drawn only where the picture
+        # is hidden, so what is left on screen still says where the frame ends;
+        # see :data:`~...display.HIDDEN_IMAGE_GREY`.
+        self._backdrop = QGraphicsRectItem()
+        self._backdrop.setPen(QPen(Qt.NoPen))
+        self._backdrop.setBrush(QColor(*HIDDEN_IMAGE_GREY))
+        self._backdrop.setZValue(BACKDROP_Z)
+        self._backdrop.setVisible(False)
+        self._scene.addItem(self._backdrop)
         self._item = QGraphicsPixmapItem()
         self._scene.addItem(self._item)
         self.setScene(self._scene)
@@ -191,6 +207,7 @@ class ImageView(QGraphicsView):
     def _set_pixmap(self, pixmap, shape, before, centre, native, same_picture) -> None:
         """Put *pixmap* on screen and decide where the view should be looking."""
         self._item.setPixmap(pixmap)
+        self._sync_backdrop()
         self._scene.setSceneRect(_with_margin(self._item.boundingRect()))
         if shape == self._shape:
             return
@@ -254,11 +271,19 @@ class ImageView(QGraphicsView):
         """Show or hide the image, keeping what it holds and where it sits.
 
         Hiding it leaves anything drawn above it -- the label layer of the
-        proofreading canvas -- alone against the pane's black, which is what
-        makes an annotation of a few pixels findable.
+        proofreading canvas -- alone against a flat ground, which is what makes
+        an annotation of a few pixels findable. That ground is the backdrop
+        rather than the pane behind it, so the frame's own edge is still
+        visible with nothing drawn along it.
         """
         self._image_shown = shown
         self._item.setVisible(shown)
+        self._sync_backdrop()
+
+    def _sync_backdrop(self) -> None:
+        """Keep the backdrop the size of the picture, and shown only without it."""
+        self._backdrop.setRect(self._item.boundingRect())
+        self._backdrop.setVisible(not self._image_shown)
 
     @property
     def image_shown(self) -> bool:
@@ -268,6 +293,7 @@ class ImageView(QGraphicsView):
     def clear(self) -> None:
         """Show nothing."""
         self._item.setPixmap(QPixmap())
+        self._sync_backdrop()
         self._shape = None
 
     def fit(self) -> None:

@@ -261,6 +261,8 @@ def test_overlay_accepts_an_rgb_image(config):
 
 
 def test_hiding_the_image_leaves_only_the_label(config):
+    from am_segmentation_manager.display import HIDDEN_IMAGE_GREY
+
     image = np.full((2, 2), 200, dtype=np.uint8)
     label = np.zeros((2, 2), dtype=np.uint8)
     label[0, 0] = 1
@@ -268,8 +270,33 @@ def test_hiding_the_image_leaves_only_the_label(config):
     result = compose_overlay(image, label, config, alpha=1.0, hide_image=True)
 
     assert tuple(result[0, 0]) == (255, 0, 0), "the annotation still draws"
-    assert tuple(result[1, 1]) == (0, 0, 0), (
-        "and everything else is black, so a speck is the only thing on screen"
+    assert tuple(result[1, 1]) == HIDDEN_IMAGE_GREY, (
+        "and everything else is one flat ground, so a speck is the only thing "
+        "on screen"
+    )
+
+
+def test_the_ground_under_a_hidden_image_is_not_the_pane_behind_it(config):
+    """Two rules decide the colour, and they pull in opposite directions.
+
+    It may not be the pane's own black: with both black there is nothing to
+    mark where the frame ends, so a label missing a row of pixels along an
+    edge looks exactly like one that runs to it -- and checking that is why
+    anyone hides the image. But it has to stay dark, or hiding the image stops
+    making a four-pixel annotation the brightest thing on screen.
+    """
+    from am_segmentation_manager.display import HIDDEN_IMAGE_GREY
+
+    assert HIDDEN_IMAGE_GREY != (0, 0, 0), "the frame's edge would be invisible"
+    assert max(HIDDEN_IMAGE_GREY) < 64, "a speck must still outshine the ground"
+
+    image = np.zeros((2, 2), dtype=np.uint8)
+    label = np.zeros((2, 2), dtype=np.uint8)
+    label[0, 0] = 1
+    result = compose_overlay(image, label, config, alpha=1.0, hide_image=True)
+
+    assert max(result[0, 0]) - max(result[1, 1]) > 128, (
+        "the annotation is far brighter than the ground it sits on"
     )
 
 
@@ -279,7 +306,9 @@ def test_hiding_the_image_still_respects_the_opacity(config):
 
     result = compose_overlay(image, label, config, alpha=0.5, hide_image=True)
 
-    assert tuple(result[0, 0]) == (128, 0, 0), "half of the class colour over black"
+    assert tuple(result[0, 0]) == (144, 16, 16), (
+        "half of the class colour blended with the ground, not with black"
+    )
 
 
 @pytest.mark.parametrize("alpha", [-0.1, 1.1])

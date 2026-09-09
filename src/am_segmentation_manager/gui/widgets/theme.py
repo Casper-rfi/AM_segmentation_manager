@@ -119,6 +119,13 @@ SWITCH_FOCUS = 3.0
 #: so a row of them reads as a single phrase without this.
 SWITCH_RUN_GAP = 16
 
+#: Room between one group of view controls and the next, where the groups are
+#: `controls.keep_paired` blocks rather than loose widgets. Narrower than
+#: :data:`SWITCH_RUN_GAP` because the pairing is what separates the groups now,
+#: and the width this saves is what keeps the whole run inside the pane a
+#: laptop screen can offer; `docs/display.md` gives the measurements.
+GROUP_GAP = 10
+
 #: How a splitter handle is drawn: how thick the handle is, and the rounded bar
 #: down the middle of it. A bar rather than a row of dots, which at this size is
 #: three specks that read as dirt on the screen; short enough against the length
