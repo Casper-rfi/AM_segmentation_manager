@@ -11,7 +11,9 @@ rather than appending to it.
 
 - **No Qt below `gui/widgets/`.** Everything the GUI knows lives in plain Python controllers, which
   is what makes navigation, cache eviction and state expansion testable without a display server.
-  Adding a tab is not a reason to bend it.
+  Adding a tab is not a reason to bend it, and the modules held to it are **found rather than
+  listed** — a list is extended by whoever adds a controller, and three were added without it
+  (`test_module_does_not_import_a_gui_toolkit`). Only `loader` and `worker` are excepted.
 - **No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few lines with
   no dependency, over thousands of records rather than millions.
 

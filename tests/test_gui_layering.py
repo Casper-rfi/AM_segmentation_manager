@@ -21,18 +21,40 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 
 GUI_TOOLKITS = ("PyQt5", "PyQt6", "PySide2", "PySide6", "qtpy")
 
-HEADLESS_MODULES = [
-    "am_segmentation_manager.gui",
-    "am_segmentation_manager.gui.cache",
-    "am_segmentation_manager.gui.controller",
-    "am_segmentation_manager.gui.export_controller",
-    "am_segmentation_manager.gui.metadata_controller",
-    "am_segmentation_manager.gui.operations_controller",
-    "am_segmentation_manager.gui.selection",
+#: The two modules under `gui/` whose whole job is Qt: a worker thread and the
+#: loader that drives one. Everything else there is a controller or the data it
+#: carries, and is held to importing no toolkit.
+GUI_MODULES_THAT_MAY_IMPORT_QT = frozenset({"loader", "worker"})
+
+
+def _headless_gui_modules() -> list[str]:
+    """Return every module directly under `gui/` that must stay toolkit-free.
+
+    Discovered rather than listed. A list has to be extended by whoever adds a
+    controller, and three of them were added without it -- so the guard covered
+    less each time the window grew. A new Qt-importing module under `gui/`
+    fails this instead, which is the question being asked: does it belong in
+    `gui/widgets/`?
+    """
+    package = SRC / "am_segmentation_manager" / "gui"
+    found = [
+        f"am_segmentation_manager.gui.{path.stem}"
+        for path in sorted(package.glob("*.py"))
+        if path.stem != "__init__"
+        and path.stem not in GUI_MODULES_THAT_MAY_IMPORT_QT
+    ]
+    return ["am_segmentation_manager.gui", *found]
+
+
+#: Modules outside `gui/` that the window reads and that must stay drawable
+#: without a display. No directory rule reaches these, so they are named.
+HEADLESS_SUPPORTING_MODULES = [
     "am_segmentation_manager.display",
     "am_segmentation_manager.frames",
     "am_segmentation_manager.config",
 ]
+
+HEADLESS_MODULES = [*_headless_gui_modules(), *HEADLESS_SUPPORTING_MODULES]
 
 
 @pytest.mark.parametrize("module", HEADLESS_MODULES)
