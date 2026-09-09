@@ -932,9 +932,9 @@ def _stray_images(
     **The failure a project-scoped check cannot see.** ``unindexed-images``
     walks one project and ``unindexed-dataset`` reports a directory that *looks
     like* a dataset; a handful of loose files beside a collection's projects is
-    neither, and before this nothing counted them -- 215 in the reference
-    collection, 204 of them under one ``log/`` directory, with no command that
-    would have said so.
+    neither, and before this nothing counted them. The reference collection held
+    215 when this was written, 204 of them under one ``log/`` directory, and no
+    command would have said so.
 
     The walk stops at every project root and at the directories a role already
     claims, so it covers only what the rest of the survey does not: on a

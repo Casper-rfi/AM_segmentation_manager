@@ -89,10 +89,9 @@ rather than appending to it.
   every directory holding one, so `holds_loose_images` asks the extension, not a naming rule
   (`test_a_directory_of_images_no_rule_recognises_is_still_a_stage`).
 - **Indexing the residue moved the alarm rather than silencing it.** `unrecognised-image` is the
-  tripwire that made an unanticipated layout visible — a project holding 430 images once surveyed as
-  holding 100, with nothing saying so — and a set absorbing those files quietly would have
-  disconnected it. So a file is indexed *and* still reported, the count staying small and non-zero
-  being what keeps it a tripwire
+  tripwire that makes an unanticipated layout visible — `_unindexed_findings` says what it once
+  caught — and a set absorbing those files quietly would have disconnected it. So a file is indexed
+  *and* still reported, the count staying small and non-zero being what keeps it a tripwire
   (`test_images_no_naming_rule_reaches_are_indexed_as_other_and_still_reported`). Behind it,
   `unindexed-images` keeps what the *traversal* never offered to a set — below the depth limit, or a
   directory whose role stops the search.
@@ -112,8 +111,8 @@ rather than appending to it.
   `_in_acquisition_order` sorts by time whenever every frame has one — exactly a loose series —
   leaving an Adaptive Polishing timeline, ordered by filename, alone. Ties go to
   `alignment_run_order`: a run takes several images inside the whole second a header records.
-- **Only the scanner opens an image, and only a loose one**, for the beam its filename may not
-  state and the time it never does — one memoised read. Discovery opens nothing: it asks
+- **Indexing opens an image only in the scanner, and only a loose one**, for the beam its filename
+  may not state and the time it never does — one memoised read. Discovery opens nothing: it asks
   `holds_loose_images`, which reads filenames. **It is the largest single cost of a scan**, most
   images in this collection being loose, so a stage's headers are read together in a pool of
   threads — on `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look

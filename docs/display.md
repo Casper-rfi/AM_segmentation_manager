@@ -406,14 +406,13 @@ of one of these files, is held by `test_docs.py`.
   shows the same picture. Unavailable where a project has none, as the plot view is for a stage with
   no figure, and drawn before the empty-frame check so a lamella holding nothing of the series on
   screen can still be located (`test_the_grid_view_survives_stepping_between_lamellae`). **The badge
-  says the marks are approximate every time**, the projection being flat and a reader arriving here
-  having no other way to know; a lamella `experiment.yaml` never positioned is named as such rather
-  than left looking for a ring that is not there, but only where it is one anyone curates — a
-  directory of overview tiles is indexed as a lamella and never had a position
-  (`test_a_lamella_the_experiment_never_positioned_is_told_so`). A mark keeps its size as the picture
-  is zoomed (`ItemIgnoresTransformations`), pointing at a square rather than covering one, and its
-  name sits on a filled chip, a micrograph being grey at every level. **One accent and no second
-  colour**: orange and green are segmentation class colours.
+  says the marks are approximate every time**, the projection being flat; a lamella
+  `experiment.yaml` never positioned is named as such rather than left looking for a ring that is
+  not there, but only where it is one anyone curates — a directory of overview tiles is indexed as a
+  lamella and never had a position (`test_a_lamella_the_experiment_never_positioned_is_told_so`). A
+  mark keeps its size as the picture is zoomed (`ItemIgnoresTransformations`), pointing at a square
+  rather than covering one, and its name sits on a filled chip, a micrograph being grey at every
+  level. **One accent and no second colour**: orange and green are segmentation class colours.
 - **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
   Polishing stage writes one plot per milling cycle into `plots/`, matched to a frame by its
   acquisition number. An alignment run writes one `figure.png` for the several images it took to

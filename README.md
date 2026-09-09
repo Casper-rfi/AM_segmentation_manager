@@ -158,14 +158,15 @@ set their state and predict them; *Label* to proofread one lamella's selected im
 to choose a subset, write out its lists and metadata, or copy the images and labels
 themselves into a folder of their own. Curate and Label each show one series at a time,
 chosen beside the beam buttons, with each alignment run's summary figure on Curate's Plots
-view. Proofreading holds a lamella's edits until you save them, saving offers to mark the
+view and, where a project has one, its grid overview with every lamella marked on Curate's
+Grid view. Proofreading holds a lamella's edits until you save them, saving offers to mark the
 reviewed set corrected, and the Label tab rings the spots likely to be too small to be real.
 Autolamella projects are found by their `experiment.yaml`; datasets predating it, or with
 theirs stripped out, are named on *Add data* through **Add projects**, which proposes the
 directories holding images that nothing indexes and lets you confirm them, look inside one
 that gathers several datasets, or name a folder the scan cannot recognise.
 Reviewing is safe by default: everything that writes stays locked until *Enable editing*
-is ticked. Press **`F1`** for the keys and mouse gestures live on the tab you are on.
+is ticked, and stays locked anyway on a series whose images have no labels to change. Press **`F1`** for the keys and mouse gestures live on the tab you are on.
 
 The command line covers the same ground plus the whole-collection reports, and
 is the place for anything scripted:

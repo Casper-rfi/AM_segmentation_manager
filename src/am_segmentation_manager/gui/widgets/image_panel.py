@@ -1,9 +1,12 @@
-"""Middle panel: the frame itself.
+"""Middle panel: the frame itself, and the grid it was milled from.
 
 Shows the acquisition beside the same acquisition under its label, or the
-summary plot, according to the selected view. Also carries the class legend and
-the badges that explain what is *not* being shown -- a missing label, an
-auto-generated empty one, a resampled one, or a file that would not read.
+summary plot, or the project's grid overview with its lamellae marked,
+according to the selected view. The last is the one view that is not of the
+frame at all, which is why it outlives stepping through a timeline. Also
+carries the class legend and the badges that explain what is *not* being shown
+-- a missing label, an auto-generated empty one, a resampled one, a file that
+would not read, or a position that is only approximate.
 """
 from __future__ import annotations
 

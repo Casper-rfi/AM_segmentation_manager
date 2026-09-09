@@ -1259,11 +1259,10 @@ class CurationController:
         """Return whether the lamella on screen holds a series anyone curates.
 
         False for a directory holding nothing but ``other`` -- a folder of
-        overview tiles is indexed as a lamella because it sits below the
-        project and holds images, and 37 of the reference collection's 824
-        lamella directories are one. Nothing about such a directory is a
-        lamella Autolamella milled, so nothing may be claimed about the stage
-        position it was never going to have.
+        overview tiles is indexed as a lamella, because it sits below the
+        project and holds images. Nothing about such a directory is a lamella
+        Autolamella milled, so nothing may be claimed about the stage position
+        it was never going to have.
         """
         lamella = self.lamella
         if lamella is None:

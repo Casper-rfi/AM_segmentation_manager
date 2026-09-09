@@ -6,7 +6,10 @@ before it is made. The modality sits here rather than beside the ticks because
 it is read together with the reach line it changes, and because both are next
 to the buttons that act on them. Everything that *writes* stays disabled until
 editing is switched on, so reviewing data cannot change it by a stray click;
-choosing what a change would cover writes nothing and stays usable.
+choosing what a change would cover writes nothing and stays usable. Switching
+editing on is necessary and not sufficient: a series whose images carry no
+labels has no state to declare, and the two reasons are held apart so lifting
+one cannot lift the other.
 
 The states are mutually exclusive because a group has exactly one entry in its
 stage's state file. A frame whose acquisitions disagree therefore shows no
