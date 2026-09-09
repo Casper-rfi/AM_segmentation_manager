@@ -30,6 +30,7 @@ if HAS_QT and HAS_IMAGES:
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
+    from am_segmentation_manager.gui.attribution import Attribution
     from am_segmentation_manager.gui.label_controller import LabelController
     from am_segmentation_manager.gui.version_controller import VersionController
     from am_segmentation_manager.gui.widgets.label_panel import LabelPanel
@@ -94,7 +95,7 @@ def _write(path: Path, value: int) -> Path:
 
 
 def _rows(label: Path, recorder: Recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     return controller
 
@@ -197,7 +198,7 @@ def test_a_version_that_is_not_here_cannot_be_looked_at_or_put_back(qt_app):
 def test_the_panel_draws_the_chosen_version_while_comparing(
     qt_app, config, label, recorder
 ):
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel.versions_controller.set_label(label)
         panel.versions.set_rows(panel.versions_controller.rows)
@@ -214,7 +215,7 @@ def test_the_panel_draws_the_chosen_version_while_comparing(
 def test_the_panel_marks_only_the_pixels_that_differ(
     qt_app, config, label, recorder, monkeypatch
 ):
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel.versions_controller.set_label(label)
         panel.versions_controller.select(0)
@@ -239,7 +240,7 @@ def test_the_difference_class_is_one_no_configuration_defines(config):
 
 def test_an_earlier_version_on_screen_cannot_be_painted_on(qt_app, config, recorder):
     """A stroke would be recorded against the label underneath, unseen."""
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel._comparing = True
 
@@ -256,7 +257,7 @@ def test_an_earlier_version_on_screen_cannot_be_painted_on(qt_app, config, recor
 def test_the_compare_key_does_nothing_without_a_version_chosen(
     qt_app, config, recorder
 ):
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel._compare_key_held(True)
 
@@ -267,7 +268,7 @@ def test_the_compare_key_does_nothing_without_a_version_chosen(
 
 def test_the_panel_asks_the_window_to_restore(qt_app, config, recorder):
     """Restoring is a write, so the panel asks and the window confirms."""
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     asked = []
     try:
         panel.restore_requested.connect(lambda: asked.append(True))
@@ -282,7 +283,7 @@ def test_the_switch_opens_the_strip_and_says_how_many_there_are(
     qt_app, config, label, recorder
 ):
     """The count is what makes the switch worth reading while the strip is shut."""
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel.versions_controller.set_label(label)
         panel.versions.set_rows(panel.versions_controller.rows)
@@ -300,7 +301,7 @@ def test_the_switch_opens_the_strip_and_says_how_many_there_are(
 def test_closing_the_switch_puts_the_label_back_on_the_canvas(
     qt_app, config, label, recorder, monkeypatch
 ):
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel.versions_controller.set_label(label)
         panel.versions.set_rows(panel.versions_controller.rows)
@@ -318,7 +319,7 @@ def test_closing_the_switch_puts_the_label_back_on_the_canvas(
 
 
 def test_a_label_with_nothing_to_compare_says_so_on_the_switch(qt_app, config, recorder):
-    panel = LabelPanel(LabelController(config=config), VersionController(recorder))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     try:
         panel._refresh_versions_switch()
         assert panel.versions_check.text() == "Compare versions"

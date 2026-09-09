@@ -33,6 +33,7 @@ from ..operations.label_io import LabelReadiness, classify_labels
 from ..operations.predict import prediction_destination
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
+from .attribution import Attribution
 from .cache import (
     DEFAULT_RADIUS,
     FrameCache,
@@ -380,6 +381,7 @@ class CurationController:
         cache: FrameCache | None = None,
         config: SegmentationConfig | None = None,
         scan: ProjectScanner | None = None,
+        attribution: Attribution | None = None,
     ) -> None:
         """Create a controller.
 
@@ -390,6 +392,9 @@ class CurationController:
                 if not supplied.
             scan: How to discover projects. Defaults to the package scanner;
                 tests inject a stub to avoid touching the filesystem.
+            attribution: Who changes are recorded as. The window hands the
+                same one to every controller; a controller on its own
+                resolves the author itself.
         """
         self.cache = cache if cache is not None else FrameCache()
         self.config = config if config is not None else load_segmentation_config()
@@ -455,8 +460,17 @@ class CurationController:
         self.follow_mode = True
         #: What a state change applies to; see :mod:`.selection`.
         self.selection = Selection()
-        #: Where this view's changes are recorded.
-        self.recorder = Recorder.for_run()
+        #: Who changes are recorded as, shared with every other view.
+        self.attribution = attribution if attribution is not None else Attribution()
+
+    @property
+    def recorder(self) -> Recorder:
+        """Where this view's changes are recorded.
+
+        Shared with every other view, so a name adopted in Settings reaches
+        this one without anybody remembering to pass it on.
+        """
+        return self.attribution.recorder
 
     # -- scanning ----------------------------------------------------------
 

@@ -38,6 +38,7 @@ from ..operations.predictions import (
 from ..operations.selection import current_state
 from ..progress import Cancellation, timed
 from ..reporting import format_bytes
+from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
 
@@ -296,13 +297,22 @@ class OperationsController:
     here.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, attribution: Attribution | None = None) -> None:
         self.start_path: Path | None = None
-        #: Where this view's changes are recorded. A project with no log is
-        #: left without one, so nothing is recorded until a collection opts in.
-        self.recorder = Recorder.for_run()
+        #: Who changes are recorded as, shared with every other view.
+        self.attribution = attribution if attribution is not None else Attribution()
         #: The scanned projects, so a write can start a record where none is.
         self.projects: Sequence = ()
+
+    @property
+    def recorder(self) -> Recorder:
+        """Where this view's changes are recorded.
+
+        Shared with every other view, so a name adopted in Settings reaches
+        this one without anybody remembering to pass it on.
+        """
+        return self.attribution.recorder
+
 
     def set_projects(self, projects: Sequence) -> None:
         """Note the scanned projects, so a write knows whose history to start.

@@ -40,7 +40,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...history import Recorder, clear_author, set_author
+from ...history import clear_author, set_author
 from ...layout import MODALITIES
 from ...operations.selection import (
     RecordState,
@@ -60,6 +60,7 @@ from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationReport, OperationsController
+from ..version_controller import VersionController
 from ..worker import BackgroundOperation
 from .branding import PRODUCT_NAME, logo_pixmap
 from .busy_dialog import BusyDialog
@@ -592,12 +593,20 @@ class CurationWindow(QMainWindow):
         # Handed the curation controller's config rather than loading its own:
         # which class is a crack has to be the same question the overlays
         # answer, and resolving it twice invites two answers.
+        # One attribution, shared by everything that records. The curation
+        # controller was built before the window and brought its own, so that
+        # is the one the rest join rather than a sixth being made here.
+        self._attribution = controller.attribution
         self.export_controller = ExportController(config=controller.config)
-        self.label_controller = LabelController(config=controller.config)
-        self.metadata_controller = MetadataController()
-        self.operations_controller = OperationsController()
+        self.label_controller = LabelController(
+            config=controller.config, attribution=self._attribution
+        )
+        self.metadata_controller = MetadataController(self._attribution)
+        self.operations_controller = OperationsController(self._attribution)
         self.export_panel = ExportPanel(self.export_controller)
-        self.label_panel = LabelPanel(self.label_controller)
+        self.label_panel = LabelPanel(
+            self.label_controller, VersionController(self._attribution)
+        )
         self.metadata_panel = MetadataPanel(self.metadata_controller)
 
         self._build_layout()
@@ -3004,15 +3013,11 @@ class CurationWindow(QMainWindow):
     def _adopt_author(self) -> None:
         """Have everything that records pick the new name up at once.
 
-        Every controller holding a recorder, and the line beside the mark that
-        says which name they carry.
+        One assignment, because every controller records through the same
+        :class:`~am_segmentation_manager.gui.attribution.Attribution`. There is
+        no list of who to tell, and so nothing for a new controller to fall off.
         """
-        recorder = Recorder.for_run()
-        for controller in (
-            self.controller, self.label_controller, self.metadata_controller,
-            self.operations_controller, self.label_panel.versions_controller,
-        ):
-            controller.recorder = recorder
+        recorder = self._attribution.adopt()
         self._corner.author.setText(author_summary(recorder.by))
         self._corner.author.setToolTip(
             author_summary(recorder.by, asked=True) + " Press F2 to change it."

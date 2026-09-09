@@ -41,6 +41,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     from qtpy.QtWidgets import QApplication, QMessageBox, QToolButton
 
     from am_segmentation_manager.config import SegmentationConfig
+    from am_segmentation_manager.gui.attribution import Attribution
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
@@ -2530,6 +2531,42 @@ def test_the_window_says_which_name_it_is_recording_under(window, monkeypatch):
     }
 
 
+#: What the window is known to hold that records. Named so this test fails
+#: loudly if the search below ever stops finding anything, rather than passing
+#: on an empty set; the search is what catches a *new* one.
+KNOWN_RECORDERS = frozenset({
+    "controller",
+    "label_controller",
+    "metadata_controller",
+    "operations_controller",
+    "label_panel.versions_controller",
+})
+
+
+def _things_that_record(window) -> dict[str, object]:
+    """Return everything the window reaches that carries a recorder.
+
+    Instance attributes one level into the panels as well as the window's own:
+    the versions controller belongs to the Label tab rather than to the window,
+    and a search that stopped at the window would miss exactly the one that was
+    hardest to remember. The shared
+    :class:`~am_segmentation_manager.gui.attribution.Attribution` is itself
+    skipped -- it is what they record *through*, not a thing that records.
+    """
+    found: dict[str, object] = {}
+
+    def offer(name: str, held: object) -> None:
+        if isinstance(held, Attribution) or not hasattr(held, "recorder"):
+            return
+        found[name] = held
+
+    for name, held in vars(window).items():
+        offer(name, held)
+        for inner, deeper in vars(held).items() if hasattr(held, "__dict__") else ():
+            offer(f"{name}.{inner}", deeper)
+    return found
+
+
 def test_setting_a_name_reaches_everything_that_records(window, monkeypatch):
     """Including the curation controller, which records state changes -- the
     one the first version of this forgot.
@@ -2556,16 +2593,15 @@ def test_setting_a_name_reaches_everything_that_records(window, monkeypatch):
     window.show_settings()
 
     assert written == ["Ada"], "the name was not written"
+    # Found rather than listed. A list here would have to be extended by
+    # whoever adds a controller, which is the same omission this test exists
+    # to catch -- so it asks the window what it holds.
+    recording = _things_that_record(window)
+    missing = KNOWN_RECORDERS - set(recording)
+    assert not missing, f"the search stopped finding {sorted(missing)}"
     # Identity, not equality: two recorders built from the same file agree by
     # accident, and would go on agreeing while one of them was never updated.
-    carried = {
-        id(controller.recorder)
-        for controller in (
-            window.controller, window.label_controller,
-            window.metadata_controller, window.operations_controller,
-            window.label_panel.versions_controller,
-        )
-    }
+    carried = {id(holder.recorder) for holder in recording.values()}
     assert len(carried) == 1, "something that records did not pick the name up"
     assert window._corner.author.text() == author_summary(
         window.controller.recorder.by

@@ -225,6 +225,12 @@ of one of these files, is held by `test_docs.py`.
   Ten actions across all four tabs put a name into a log, and one more writes it into an export's
   fork point: there is no single tab to say it on and far too many places to warn at. It is muted,
   being a fact rather than a message, and F2 changes it.
+- **Everything that records shares one `Attribution`, so adopting a name is one assignment.** Five
+  controllers write to a log and one of them is reached through the Label tab rather than the
+  window, so telling them individually was a list kept by hand in two places, and a sixth would
+  have gone on writing under the name just replaced. They hold the object instead of a recorder,
+  and the test finds what records rather than naming it
+  (`test_setting_a_name_reaches_everything_that_records`).
 
 ## Images and plots
 

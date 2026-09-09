@@ -41,6 +41,7 @@ from ..operations.label_save import (
     save_labels,
 )
 from ..operations.selection import RecordState, current_state, transition_records
+from .attribution import Attribution
 from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
 from .controller import DEFAULT_SERIES, LABEL_DISPLAY
 from .label_session import LabelSession
@@ -85,6 +86,7 @@ class LabelController:
         config: SegmentationConfig,
         *,
         cache: FrameCache | None = None,
+        attribution: Attribution | None = None,
     ) -> None:
         """Create a controller drawing classes from *config*.
 
@@ -95,8 +97,8 @@ class LabelController:
             cache: Where prepared frames are kept. Defaults to a small
                 full-resolution cache; tests pass one with a stub loader.
         """
-        #: Where this view's changes are recorded.
-        self.recorder = Recorder.for_run()
+        #: Who changes are recorded as, shared with every other view.
+        self.attribution = attribution if attribution is not None else Attribution()
         #: The scanned projects, so a save can bring the one it writes into
         #: into the record first. Empty until the window shares a scan, which
         #: is also every state in which there is nothing to save.
@@ -147,6 +149,16 @@ class LabelController:
         self._label_states: dict[object, str] = {}
         self.session = LabelSession()
         self._keys: dict[Path, Path] = {}
+
+    @property
+    def recorder(self) -> Recorder:
+        """Where this view's changes are recorded.
+
+        Shared with every other view, so a name adopted in Settings reaches
+        this one without anybody remembering to pass it on.
+        """
+        return self.attribution.recorder
+
 
     # -- what is being reviewed --------------------------------------------
 

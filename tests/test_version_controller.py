@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.gui.attribution import Attribution
 from am_segmentation_manager.gui.version_controller import VersionController
 from am_segmentation_manager.history import Recorder
 from am_segmentation_manager.io.atomic import fingerprint_of
@@ -73,14 +74,14 @@ def test_a_label_with_no_kept_versions_has_nothing_to_show(tmp_path: Path, recor
     start_history(tmp_path)
     fresh = _write(tmp_path / "sem_labels" / "new.tif", 1)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(fresh)
 
     assert not controller.has_versions and controller.rows == ()
 
 
 def test_a_replaced_version_is_listed(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     assert controller.has_versions
@@ -92,7 +93,7 @@ def test_a_replaced_version_is_listed(label, recorder):
 
 def test_a_row_says_how_far_the_version_is_from_the_next(label, recorder):
     """The number that makes ten rows readable without opening any of them."""
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     (row,) = controller.rows
@@ -104,7 +105,7 @@ def test_versions_are_listed_newest_first(label, recorder):
     for value in (4, 5):
         _save(label, _pixels(value), recorder)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     assert len(controller.rows) == 3
@@ -116,7 +117,7 @@ def test_a_version_whose_pixels_did_not_travel_is_shown_as_absent(label, recorde
     """A list that hid the row would be worse than one admitting the gap."""
     from am_segmentation_manager.operations.archive import versions_of
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     (kept,) = versions_of(label.parents[1], "sem_labels/img_000.tif")
     kept.path.unlink()
@@ -131,7 +132,7 @@ def test_a_version_whose_pixels_did_not_travel_is_shown_as_absent(label, recorde
 def test_a_label_in_a_project_with_no_history_shows_nothing(tmp_path: Path, recorder):
     lonely = _write(tmp_path / "sem_labels" / "img.tif", 2)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(lonely)
 
     assert not controller.has_versions
@@ -142,7 +143,7 @@ def test_a_label_in_a_project_with_no_history_shows_nothing(tmp_path: Path, reco
 # ---------------------------------------------------------------------------
 
 def test_nothing_is_selected_to_begin_with(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     assert controller.selected is None
@@ -150,7 +151,7 @@ def test_nothing_is_selected_to_begin_with(label, recorder):
 
 
 def test_selecting_a_version_loads_its_pixels(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     controller.select(0)
@@ -159,7 +160,7 @@ def test_selecting_a_version_loads_its_pixels(label, recorder):
 
 
 def test_the_difference_marks_only_where_they_disagree(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     controller.select(0)
 
@@ -180,7 +181,7 @@ def test_a_version_of_another_size_has_no_difference_to_show(
     _write(path, 2)
     _save(path, _pixels(3, shape=(32, 32)), recorder)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(path)
     controller.select(0)
 
@@ -188,7 +189,7 @@ def test_a_version_of_another_size_has_no_difference_to_show(
 
 
 def test_moving_to_another_frame_clears_the_comparison(label, recorder, tmp_path):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     controller.select(0)
 
@@ -198,7 +199,7 @@ def test_moving_to_another_frame_clears_the_comparison(label, recorder, tmp_path
 
 
 def test_selecting_out_of_range_changes_nothing(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     controller.select(9)
@@ -213,7 +214,7 @@ def test_selecting_out_of_range_changes_nothing(label, recorder):
 def test_restoring_puts_the_pixels_back(label, recorder):
     import tifffile
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     controller.select(0)
 
@@ -223,7 +224,7 @@ def test_restoring_puts_the_pixels_back(label, recorder):
 
 
 def test_restoring_keeps_the_version_it_replaced(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     controller.select(0)
 
@@ -234,7 +235,7 @@ def test_restoring_keeps_the_version_it_replaced(label, recorder):
 
 def test_restoring_over_proofread_work_needs_confirming(label, recorder):
     """Restoring is the ordinary save, so the ordinary guard applies."""
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     controller.select(0)
 
@@ -247,7 +248,7 @@ def test_restoring_over_proofread_work_needs_confirming(label, recorder):
 def test_restoring_a_version_that_is_not_here_is_refused(label, recorder):
     from am_segmentation_manager.operations.archive import versions_of
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     (kept,) = versions_of(label.parents[1], "sem_labels/img_000.tif")
     kept.path.unlink()
@@ -259,7 +260,7 @@ def test_restoring_a_version_that_is_not_here_is_refused(label, recorder):
 
 
 def test_restoring_with_nothing_selected_is_refused(label, recorder):
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     with pytest.raises(ValueError, match="No version"):
@@ -269,7 +270,7 @@ def test_restoring_with_nothing_selected_is_refused(label, recorder):
 def test_a_restore_is_recorded_as_one(label, recorder):
     from am_segmentation_manager.history import read_log
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     controller.select(0)
 
@@ -305,7 +306,7 @@ def test_two_models_predictions_both_appear_named_by_model(label, recorder, tmp_
     first = _prediction(tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6")
     second = _prediction(tmp_path / "sem_predictions" / "raw", "img_000.tif", 3, "fpn_v4", "run-4")
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [first, second])
 
     predicted = [row for row in controller.rows if row.source == "prediction"]
@@ -316,7 +317,7 @@ def test_two_models_predictions_both_appear_named_by_model(label, recorder, tmp_
 def test_a_prediction_the_pipeline_post_processed_is_not_offered(label, recorder, tmp_path):
     clean = _write(tmp_path / "sem_predictions" / "clean" / "img_000.tif", 1)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [clean])
 
     assert not [row for row in controller.rows if row.source == "prediction"]
@@ -327,7 +328,7 @@ def test_a_prediction_is_listed_beside_the_kept_versions(label, recorder, tmp_pa
         tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
     )
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
 
     sources = [row.source for row in controller.rows]
@@ -344,7 +345,7 @@ def test_comparing_against_a_prediction_writes_nothing(label, recorder, tmp_path
         for path in sorted(tmp_path.rglob("*")) if path.is_file()
     }
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
     controller.select([row.source for row in controller.rows].index("prediction"))
     assert controller.comparison_pixels() is not None
@@ -362,7 +363,7 @@ def test_a_prediction_is_converted_rather_than_restored(label, recorder, tmp_pat
         tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
     )
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
     controller.select([row.source for row in controller.rows].index("prediction"))
 
@@ -376,7 +377,7 @@ def test_a_prediction_that_will_not_open_is_listed_as_unavailable(label, recorde
     prediction = _prediction(directory, "img_000.tif", 1, "fpn_v6", "run-6")
     prediction.unlink()
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
 
     predicted = [row for row in controller.rows if row.source == "prediction"]
@@ -386,7 +387,7 @@ def test_a_prediction_that_will_not_open_is_listed_as_unavailable(label, recorde
 def test_a_prediction_with_no_provenance_says_so(label, recorder, tmp_path):
     loose = _write(tmp_path / "sem_predictions" / "raw" / "img_000.tif", 1)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [loose])
 
     predicted = [row for row in controller.rows if row.source == "prediction"]
@@ -408,7 +409,7 @@ def test_only_this_label_s_own_archive_directory_is_read(label, recorder, tmp_pa
     monkeypatch.setattr(
         Path, "rglob", lambda self, pattern: pytest.fail("the archive was walked")
     )
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
 
     assert len(controller.rows) == 1, "the other label's version is not this label's"
@@ -422,7 +423,7 @@ def test_a_label_whose_stem_prefixes_another_gets_only_its_own(tmp_path, recorde
     _save(short, _pixels(3), recorder)
     _save(longer, _pixels(3), recorder)
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(short)
 
     assert len(controller.rows) == 1
@@ -436,7 +437,7 @@ def test_the_log_is_read_again_only_when_it_has_changed(label, recorder, tmp_pat
     original = module.read_log
     module.read_log = lambda root: (reads.append(root), original(root))[1]
     try:
-        controller = VersionController(recorder)
+        controller = VersionController(Attribution(recorder))
         controller.set_label(label)
         controller.set_label(tmp_path / "sem_labels" / "other.tif")
         controller.set_label(label)
@@ -467,7 +468,7 @@ def test_a_prediction_takes_its_place_in_time_among_the_kept_versions(
     entry["predictions"]["img_000.tif"]["predicted_at"] = "2035-01-01T09:00:00+00:00"
     record.write_text(yaml.safe_dump(entry))
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
 
     assert controller.rows[0].source == "prediction", "the newest thing is first"
@@ -478,7 +479,7 @@ def test_every_row_carries_its_date_in_the_same_place(label, recorder, tmp_path)
     prediction = _prediction(
         tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
     )
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
 
     from am_segmentation_manager.gui.version_controller import KIND_WIDTH, WHEN_WIDTH
@@ -495,7 +496,7 @@ def test_the_list_is_ordered_newest_first_across_both_clocks(label, recorder, tm
     prediction = _prediction(
         tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
     )
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
 
     from am_segmentation_manager.gui.version_controller import KIND_WIDTH, WHEN_WIDTH
@@ -511,7 +512,7 @@ def test_a_long_training_run_name_is_shortened_at_both_ends(label, recorder, tmp
     prediction = _prediction(
         tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", run
     )
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label, [prediction])
 
     (row,) = [row for row in controller.rows if row.source == "prediction"]
@@ -523,7 +524,7 @@ def test_a_long_training_run_name_is_shortened_at_both_ends(label, recorder, tmp
 
 def test_a_version_whose_change_was_never_measured_says_so(label, recorder):
     """'unknown changed' read as a quantity; it is the absence of one."""
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     row = controller.rows[0]
 
@@ -536,7 +537,7 @@ def test_a_correction_made_in_passing_does_not_read_as_no_change(label, recorder
     """A few hundred pixels of a few million rounds to 0.0%, which is a lie."""
     from dataclasses import replace
 
-    controller = VersionController(recorder)
+    controller = VersionController(Attribution(recorder))
     controller.set_label(label)
     row = controller.rows[0]
 

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from ..history import HistoryLog, Recorder, containing_project, history_file_path, read_log
 from ..operations.archive import ArchivedVersion, label_versions, restore
+from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
 
@@ -114,12 +115,14 @@ class VersionController:
     """The versions of one label, and the one being compared against.
 
     Attributes:
-        recorder: Who a restore is attributed to.
+        attribution: Who a restore is attributed to, shared with every other
+            controller so all of them credit the same person.
     """
 
-    def __init__(self, recorder: Recorder | None = None) -> None:
-        """Create a controller attributing restores to *recorder*."""
-        self.recorder = recorder if recorder is not None else Recorder.for_run()
+    def __init__(self, attribution: Attribution | None = None) -> None:
+        """Create a controller attributing restores through *attribution*."""
+        #: Who changes are recorded as, shared with every other view.
+        self.attribution = attribution if attribution is not None else Attribution()
         self._key: Path | None = None
         self._project: Path | None = None
         self._target: str = ""
@@ -128,6 +131,16 @@ class VersionController:
         self._pixels: dict[Path, object] = {}
         self._log: tuple[object, HistoryLog] | None = None
         self._provenance: dict[Path, dict] = {}
+
+    @property
+    def recorder(self) -> Recorder:
+        """Where this view's changes are recorded.
+
+        Shared with every other view, so a name adopted in Settings reaches
+        this one without anybody remembering to pass it on.
+        """
+        return self.attribution.recorder
+
 
     # -- what is being looked at -------------------------------------------
 

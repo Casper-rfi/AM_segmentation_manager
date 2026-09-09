@@ -36,6 +36,7 @@ from ..operations.metadata_edit import (
     plan_metadata_update,
     update_project_metadata,
 )
+from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ class MetadataController:
     are the same code path.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, attribution: Attribution | None = None) -> None:
         self._projects: list[Project] = []
         self._position = 0
         #: The projects being described. One, or every project under a folder.
@@ -138,9 +139,18 @@ class MetadataController:
         #: The folder whose projects are in scope, or None for a single one.
         self._scope_folder: str | None = None
         self.editing_enabled = False
-        #: Where this view's changes are recorded. A project with no log is
-        #: left without one, so nothing is recorded until a collection opts in.
-        self.recorder = Recorder.for_run()
+        #: Who changes are recorded as, shared with every other view.
+        self.attribution = attribution if attribution is not None else Attribution()
+
+    @property
+    def recorder(self) -> Recorder:
+        """Where this view's changes are recorded.
+
+        Shared with every other view, so a name adopted in Settings reaches
+        this one without anybody remembering to pass it on.
+        """
+        return self.attribution.recorder
+
 
 
     # -- selection ---------------------------------------------------------
