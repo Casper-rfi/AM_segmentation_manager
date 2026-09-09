@@ -587,3 +587,77 @@ def test_the_survey_headline_counts_unindexed_images(tmp_path: Path):
     lines = format_survey(survey_collection(tmp_path, check_labels=False))
 
     assert any("1 directory(ies) hold 1 image(s)" in line for line in lines)
+
+
+# ---------------------------------------------------------------------------
+# Images belonging to no project at all
+# ---------------------------------------------------------------------------
+
+def _finding(survey, category: str):
+    return next(f for f in survey.all_findings if f.category == category)
+
+
+def test_an_image_beside_a_project_is_reported_as_stray(tmp_path: Path):
+    """The failure neither project-scoped check can see: `unindexed-images`
+    walks one project, and a loose file is not a dataset candidate either."""
+    make_project(tmp_path, "v2026_nested")
+    _write_image(tmp_path, "CB015_A2_overview.tif")
+
+    message = _finding(survey_collection(tmp_path), "stray-images").message
+
+    assert "CB015_A2_overview.tif" in message
+    assert "1 image file(s)" in message
+
+
+def test_an_image_below_a_directory_beside_a_project_is_reported(tmp_path: Path):
+    """204 of the 215 found in the reference collection sat three levels down,
+    under a `log/` directory nothing else descends into."""
+    make_project(tmp_path, "v2026_nested")
+    _write_image(tmp_path / "log" / "data" / "crosscorrelation", "1748512510_xcorr.tif")
+
+    assert "1748512510_xcorr.tif" in _finding(
+        survey_collection(tmp_path), "stray-images"
+    ).message
+
+
+def test_a_fully_indexed_collection_reports_no_stray_images(tmp_path: Path):
+    """Every image of a project is inside it, so the walk must find nothing."""
+    make_project(tmp_path, "v2026_nested")
+
+    assert "stray-images" not in _categories(survey_collection(tmp_path))
+
+
+def test_an_image_inside_a_project_is_never_counted_as_stray(tmp_path: Path):
+    """The walk stops at a project root; what is inside is that project's to
+    report, and one file may not raise two findings."""
+    project = make_project(tmp_path, "v2026_nested")
+    _write_image(project, "overview-image-2026-07-28_10-31-00.tif")
+
+    assert "stray-images" not in _categories(survey_collection(tmp_path))
+
+
+def test_a_directory_already_reported_as_a_dataset_is_not_reported_twice(tmp_path: Path):
+    """`unindexed-dataset` already names it, and says the more useful thing."""
+    make_project(tmp_path, "v2026_nested")
+    _write_image(tmp_path / "unmarked" / "lam_001" / "sem", "img_000_SEM.tif")
+
+    categories = _categories(survey_collection(tmp_path))
+
+    assert "unindexed-dataset" in categories
+    assert "stray-images" not in categories
+
+
+def test_a_deliberately_ignored_name_is_not_reported_as_stray(tmp_path: Path):
+    """Not indexed *and* not reported, wherever it sits."""
+    make_project(tmp_path, "v2026_nested")
+    _write_image(tmp_path, "01-ruling-ibex_centring_SEM.tif")
+
+    assert "stray-images" not in _categories(survey_collection(tmp_path))
+
+
+def test_a_label_left_beside_a_project_is_not_reported_as_stray(tmp_path: Path):
+    """A directory whose role is known is not walked, here as everywhere."""
+    make_project(tmp_path, "v2026_nested")
+    _write_image(tmp_path / "sem_labels", "img_000_SEM.tif")
+
+    assert "stray-images" not in _categories(survey_collection(tmp_path))

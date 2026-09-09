@@ -60,7 +60,8 @@ command that writes will act on it.
 Run `am-seg inspect-layout` on a folder to see how it is read and what does not
 fit. It is read-only and the right place to start on unfamiliar data, and it
 reports every image that landed in `other` and why — which is how a naming this
-package has not seen makes itself visible.
+package has not seen makes itself visible — and every image file sitting under
+the folder but inside no project, which nothing indexes at all.
 
 **`--series` chooses which of them a command covers.** `inspect-layout` and
 `stats` report on all of them; every other command acts on Adaptive Polishing

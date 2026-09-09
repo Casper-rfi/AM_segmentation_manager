@@ -324,8 +324,13 @@ def survey_collection(
             )
         )
         unindexed = tuple(describe_dataset_candidates(root, max_depth=max_depth))
+        stray = _stray_images(root, roots, unindexed, max_depth=max_depth)
     findings = tuple(
-        [*_collection_findings(projects), *_unindexed_dataset_findings(unindexed)]
+        [
+            *_collection_findings(projects),
+            *_unindexed_dataset_findings(unindexed),
+            *_stray_image_findings(root, stray),
+        ]
     )
     logger.info(
         "Surveyed %d project(s) and %d unindexed dataset(s) under %s",
@@ -914,6 +919,72 @@ def _unindexed_dataset_findings(
                 )
             )
     return findings
+
+
+def _stray_images(
+    root: Path,
+    project_roots: Iterable[Path],
+    candidates: Iterable[DatasetCandidate],
+    max_depth: int = DEFAULT_MAX_DEPTH,
+) -> list[Path]:
+    """Return image files under *root* that lie inside no project at all.
+
+    **The failure a project-scoped check cannot see.** ``unindexed-images``
+    walks one project and ``unindexed-dataset`` reports a directory that *looks
+    like* a dataset; a handful of loose files beside a collection's projects is
+    neither, and before this nothing counted them -- 215 in the reference
+    collection, 204 of them under one ``log/`` directory, with no command that
+    would have said so.
+
+    The walk stops at every project root and at the directories a role already
+    claims, so it covers only what the rest of the survey does not: on a
+    collection this is a few directory listings rather than a second pass over
+    the tree. A directory already reported as a dataset candidate is skipped
+    too -- it is being reported, and one file is not two findings.
+    """
+    inside = set(project_roots)
+    reported = {candidate.path for candidate in candidates}
+    found: list[Path] = []
+
+    def walk(directory: Path, depth: int) -> None:
+        if directory in inside or directory in reported:
+            return
+        for path in image_files(directory):
+            if not is_ignored_image_name(path.name):
+                found.append(path)
+        if depth >= max_depth:
+            return
+        for child in subdirectories_by_name(directory).values():
+            if directory_role(child.name) == "unknown":
+                walk(child, depth + 1)
+
+    walk(root, 0)
+    return sorted(found)
+
+
+def _stray_image_findings(root: Path, stray: list[Path]) -> list[Finding]:
+    """Return the finding for images belonging to no project, if there are any.
+
+    A warning rather than info, for the reason
+    :func:`_unindexed_dataset_findings` gives: this is data the collection does
+    not contain, and nothing else in the survey mentions it.
+    """
+    if not stray:
+        return []
+    shown = ", ".join(make_path_relative(path, root) for path in stray[:3])
+    more = "" if len(stray) <= 3 else f", and {len(stray) - 3} more"
+    return [
+        Finding(
+            severity="warning",
+            category="stray-images",
+            path=root,
+            message=(
+                f"{len(stray)} image file(s) sit under the scan root but inside no "
+                f"project, so nothing indexes them: {shown}{more}. Move each into the "
+                f"project it belongs to, or make its directory one"
+            ),
+        )
+    ]
 
 
 def _collection_findings(projects: Iterable[ProjectSurvey]) -> list[Finding]:

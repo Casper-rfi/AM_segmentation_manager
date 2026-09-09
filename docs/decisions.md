@@ -91,11 +91,20 @@ rather than appending to it.
 - **Indexing the residue moved the alarm rather than silencing it.** `unrecognised-image` is the
   tripwire that made an unanticipated layout visible — a project holding 430 images once surveyed as
   holding 100, with nothing saying so — and a set absorbing those files quietly would have
-  disconnected it. So a file is indexed *and* still reported, the count staying non-zero being what
-  keeps it a tripwire, 253 across the reference collection
+  disconnected it. So a file is indexed *and* still reported, the count staying small and non-zero
+  being what keeps it a tripwire
   (`test_images_no_naming_rule_reaches_are_indexed_as_other_and_still_reported`). Behind it,
   `unindexed-images` keeps what the *traversal* never offered to a set — below the depth limit, or a
-  directory whose role stops the search — and `unindexed-dataset` whole directories no project claims.
+  directory whose role stops the search.
+- **Three checks cover three ways data hides, and no image is in two of them.** `unindexed-dataset`
+  reports a directory that *looks like* a dataset but has no marker; `stray-images` reports image
+  files under the scan root that are inside no project at all, which is neither that nor anything a
+  project-scoped check can see — 215 in the reference collection when it was written, 204 of them
+  under one `log/` directory, with no command that would have said so
+  (`test_an_image_below_a_directory_beside_a_project_is_reported`). Its walk stops at every project
+  root, at a directory a role already claims, and at one already reported as a candidate, so it
+  costs a few listings rather than a second pass and cannot report a file twice
+  (`test_a_directory_already_reported_as_a_dataset_is_not_reported_twice`).
 - **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing in
   a loose filename orders it: many carry no timestamp, and the epochs that do appear are when the
   milling *stage* started, minutes before the image. **mtime is worse than useless**, the collection
