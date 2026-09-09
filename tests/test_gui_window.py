@@ -843,9 +843,9 @@ def test_no_tooltip_in_the_window_is_longer_than_anyone_reads(window):
 # ---------------------------------------------------------------------------
 
 def test_every_shortcut_is_documented(window):
-    assert len(window._bindings) == len(window._shortcuts)
-    assert all(binding.description for binding in window._bindings)
-    assert any(binding.key == "F1" for binding in window._bindings)
+    assert len(window._keys.bindings) == len(window._keys.shortcuts)
+    assert all(binding.description for binding in window._keys.bindings)
+    assert any(binding.key == "F1" for binding in window._keys.bindings)
 
 
 def test_a_key_is_live_only_on_the_tab_it_belongs_to(window):
@@ -853,7 +853,7 @@ def test_a_key_is_live_only_on_the_tab_it_belongs_to(window):
     ever seeing an arrow key."""
     window.tabs.setCurrentWidget(window.metadata_panel)
 
-    live = {b.key for b, s in zip(window._bindings, window._shortcuts) if s.isEnabled()}
+    live = {b.key for b, s in zip(window._keys.bindings, window._keys.shortcuts) if s.isEnabled()}
 
     assert live == {"Up", "Down", "F1"}
 
@@ -862,7 +862,7 @@ def test_curate_keys_come_back_with_the_curate_tab(window):
     window.tabs.setCurrentWidget(window.metadata_panel)
     window.tabs.setCurrentIndex(_curate_tab(window))
 
-    live = {b.key for b, s in zip(window._bindings, window._shortcuts) if s.isEnabled()}
+    live = {b.key for b, s in zip(window._keys.bindings, window._keys.shortcuts) if s.isEnabled()}
 
     assert {"Left", "Right", "V", "D", "F1"} <= live
 
@@ -878,14 +878,14 @@ def _curate_tab(window) -> int:
 
 def test_f1_puts_the_list_away_again(window):
     window.show_shortcuts()
-    assert window._help.isVisible()
+    assert window._keys.help.isVisible()
     # is_in_front rather than the real thing: an offscreen window is never
     # activated, so nothing here is ever the window in front.
-    window._help.is_in_front = lambda: True
+    window._keys.help.is_in_front = lambda: True
 
     window.show_shortcuts()
 
-    assert not window._help.isVisible(), "the key that opened it closes it"
+    assert not window._keys.help.isVisible(), "the key that opened it closes it"
 
 
 def test_f1_fetches_back_a_list_left_behind_the_window(window):
@@ -894,11 +894,11 @@ def test_f1_fetches_back_a_list_left_behind_the_window(window):
     press?", and pressing it again just put it back. That is most of what made
     F1 look as though it worked only sometimes."""
     window.show_shortcuts()
-    window._help.is_in_front = lambda: False
+    window._keys.help.is_in_front = lambda: False
 
     window.show_shortcuts()
 
-    assert window._help.isVisible()
+    assert window._keys.help.isVisible()
 
 
 def test_f1_is_ignored_while_an_operation_holds_the_window(window, monkeypatch):
@@ -910,7 +910,7 @@ def test_f1_is_ignored_while_an_operation_holds_the_window(window, monkeypatch):
 
     window.show_shortcuts()
 
-    assert window._help is None
+    assert window._keys.help is None
 
 
 def test_f1_works_from_the_list_it_opened(window):
@@ -920,7 +920,7 @@ def test_f1_works_from_the_list_it_opened(window):
     from qtpy.QtCore import Qt
 
     f1 = next(
-        shortcut for binding, shortcut in zip(window._bindings, window._shortcuts)
+        shortcut for binding, shortcut in zip(window._keys.bindings, window._keys.shortcuts)
         if binding.key == "F1"
     )
 
@@ -956,25 +956,25 @@ def test_losing_the_keyboard_is_recorded(window, caplog):
 def test_the_shortcut_list_does_not_block_the_window(window):
     window.show_shortcuts()
 
-    assert not window._help.isModal(), (
+    assert not window._keys.help.isModal(), (
         "a list you must dismiss before trying what it says is read once"
     )
 
 
 def test_the_shortcut_list_follows_the_tab(window):
-    from am_segmentation_manager.gui.widgets.main_window import TAB_LABEL
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_LABEL
 
     window.show_shortcuts()
     window.tabs.setCurrentWidget(window.label_panel)
 
-    assert window._help._text.text() == window.shortcut_help(TAB_LABEL)
+    assert window._keys.help._text.text() == window._keys.help_html(TAB_LABEL)
 
 
 def test_the_help_lists_only_the_active_tab(window):
-    from am_segmentation_manager.gui.widgets.main_window import TAB_ADD_DATA, TAB_CURATE
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_ADD_DATA, TAB_CURATE
 
-    curate = window.shortcut_help(TAB_CURATE)
-    metadata = window.shortcut_help(TAB_ADD_DATA)
+    curate = window._keys.help_html(TAB_CURATE)
+    metadata = window._keys.help_html(TAB_ADD_DATA)
 
     assert "Next frame" in curate and "Next project" not in curate
     assert "Next project" in metadata and "Next frame" not in metadata
@@ -985,9 +985,9 @@ def test_the_help_lists_only_the_active_tab(window):
 def test_the_help_describes_the_mouse_gestures_too(window):
     """Picking frames out has no key to press, so listing only keys left the
     whole selection mechanism undiscoverable."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE
 
-    help_text = window.shortcut_help(TAB_CURATE)
+    help_text = window._keys.help_html(TAB_CURATE)
 
     assert "Ctrl-click" in help_text
     assert "Shift-click" in help_text
@@ -995,7 +995,7 @@ def test_the_help_describes_the_mouse_gestures_too(window):
 
 
 def test_every_gesture_is_described(window):
-    from am_segmentation_manager.gui.widgets.main_window import TAB_GESTURES
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_GESTURES
 
     for gestures in TAB_GESTURES.values():
         assert all(
@@ -1011,27 +1011,27 @@ def _headings() -> set[str]:
     here as well, which is the moment to ask whether the list needs another
     one or the row belongs under a heading that already exists.
     """
-    from am_segmentation_manager.gui.widgets import main_window as window_module
+    from am_segmentation_manager.gui.widgets import shortcuts as shortcuts_module
 
     return {
-        window_module.GROUP_VIEW,
-        window_module.GROUP_CHOOSE,
-        window_module.GROUP_STATE,
-        window_module.GROUP_TOOLS,
-        window_module.GROUP_CLASSES,
-        window_module.GROUP_SPECKS,
-        window_module.GROUP_EDITS,
-        window_module.GROUP_ELSEWHERE,
-        window_module.GROUP_HELP,
+        shortcuts_module.GROUP_VIEW,
+        shortcuts_module.GROUP_CHOOSE,
+        shortcuts_module.GROUP_STATE,
+        shortcuts_module.GROUP_TOOLS,
+        shortcuts_module.GROUP_CLASSES,
+        shortcuts_module.GROUP_SPECKS,
+        shortcuts_module.GROUP_EDITS,
+        shortcuts_module.GROUP_ELSEWHERE,
+        shortcuts_module.GROUP_HELP,
     }
 
 
 def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
     """A row with nowhere to go is one the reader has to place themselves."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_GESTURES
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_GESTURES
 
     headings = _headings()
-    assert {binding.group for binding in window._bindings} <= headings
+    assert {binding.group for binding in window._keys.bindings} <= headings
     for gestures in TAB_GESTURES.values():
         assert {group for group, _action, _description in gestures} <= headings
 
@@ -1039,9 +1039,9 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
 def test_the_three_ways_to_resize_the_brush_are_listed_together(window):
     """[ and ] and Shift with the wheel all do one thing, so they read as one
     group -- and the mouse rows still run together, this one leading them."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_LABEL
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_LABEL
 
-    help_text = window.shortcut_help(TAB_LABEL)
+    help_text = window._keys.help_html(TAB_LABEL)
 
     assert (
         help_text.index("Larger brush")
@@ -1054,13 +1054,10 @@ def test_the_three_ways_to_resize_the_brush_are_listed_together(window):
 def test_a_heading_is_not_drawn_like_the_rows_under_it(window):
     """Every left-hand cell is bold, being the column a reader scans, so bold
     alone left a heading looking like one more key."""
-    from am_segmentation_manager.gui.widgets.main_window import (
-        GROUP_TOOLS,
-        TAB_LABEL,
-    )
+    from am_segmentation_manager.gui.widgets.shortcuts import GROUP_TOOLS, TAB_LABEL
     from am_segmentation_manager.gui.widgets.theme import HEADING
 
-    help_text = window.shortcut_help(TAB_LABEL)
+    help_text = window._keys.help_html(TAB_LABEL)
 
     heading = help_text[: help_text.index(GROUP_TOOLS)].rsplit("<p", 1)[-1]
     assert HEADING in heading, "a heading takes the group-title colour"
@@ -1071,14 +1068,14 @@ def test_a_heading_is_not_drawn_like_the_rows_under_it(window):
 
 
 def test_the_curate_keys_are_grouped_by_what_they_are_for(window):
-    from am_segmentation_manager.gui.widgets.main_window import (
+    from am_segmentation_manager.gui.widgets.shortcuts import (
         GROUP_CHOOSE,
         GROUP_STATE,
         GROUP_VIEW,
         TAB_CURATE,
     )
 
-    help_text = window.shortcut_help(TAB_CURATE)
+    help_text = window._keys.help_html(TAB_CURATE)
 
     for heading in (GROUP_VIEW, GROUP_CHOOSE, GROUP_STATE):
         assert heading in help_text
@@ -1096,13 +1093,9 @@ def test_a_gesture_sits_under_the_same_heading_as_the_keys_it_belongs_with(windo
     Listing the keys and then the gestures separately made the reader do the
     grouping the list is for.
     """
-    from am_segmentation_manager.gui.widgets.main_window import (
-        GROUP_CHOOSE,
-        GROUP_STATE,
-        TAB_CURATE,
-    )
+    from am_segmentation_manager.gui.widgets.shortcuts import GROUP_CHOOSE, GROUP_STATE, TAB_CURATE
 
-    help_text = window.shortcut_help(TAB_CURATE)
+    help_text = window._keys.help_html(TAB_CURATE)
 
     choose = help_text.index(GROUP_CHOOSE)
     state = help_text.index(GROUP_STATE)
@@ -1111,14 +1104,10 @@ def test_a_gesture_sits_under_the_same_heading_as_the_keys_it_belongs_with(windo
 
 
 def test_the_key_that_opens_the_list_is_listed_last(window):
-    from am_segmentation_manager.gui.widgets.main_window import (
-        GROUP_HELP,
-        TAB_CURATE,
-        TAB_LABEL,
-    )
+    from am_segmentation_manager.gui.widgets.shortcuts import GROUP_HELP, TAB_CURATE, TAB_LABEL
 
     for tab in (TAB_CURATE, TAB_LABEL):
-        help_text = window.shortcut_help(tab)
+        help_text = window._keys.help_html(tab)
         heading = help_text.index(GROUP_HELP)
         assert all(
             heading > help_text.index(other)
@@ -1128,9 +1117,9 @@ def test_the_key_that_opens_the_list_is_listed_last(window):
 
 
 def test_a_tab_with_no_keys_of_its_own_says_so(window):
-    from am_segmentation_manager.gui.widgets.main_window import TAB_EXPORT
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT
 
-    help_text = window.shortcut_help(TAB_EXPORT)
+    help_text = window._keys.help_html(TAB_EXPORT)
 
     assert "no keys of its own" in help_text
     assert "F1" in help_text
@@ -1139,9 +1128,9 @@ def test_a_tab_with_no_keys_of_its_own_says_so(window):
 def test_the_project_arrows_are_scoped_to_the_project_list(window):
     """Window-wide, they would take Up/Down from the editable combo boxes on
     the same tab."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_ADD_DATA
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_ADD_DATA
 
-    scoped = [b for b in window._bindings if b.tab == TAB_ADD_DATA]
+    scoped = [b for b in window._keys.bindings if b.tab == TAB_ADD_DATA]
 
     assert {b.key for b in scoped} == {"Up", "Down"}
     assert all(b.scope is window.metadata_panel.projects for b in scoped)
@@ -2478,10 +2467,7 @@ def test_the_title_names_the_folder_that_is_open(window, project: Path):
 def test_a_remembered_folder_still_opens_on_curate(qt_app, settings, tmp_path):
     """Which is the ordinary case: a scan root, once chosen, is remembered, so
     this changes where a first run lands and nothing else."""
-    from am_segmentation_manager.gui.widgets.main_window import (
-        SETTING_SCAN_ROOT,
-        CurationWindow,
-    )
+    from am_segmentation_manager.gui.widgets.main_window import SETTING_SCAN_ROOT, CurationWindow
 
     settings.setValue(SETTING_SCAN_ROOT, str(tmp_path))
     controller = CurationController(cache=FrameCache(), config=CONFIG)
@@ -2663,11 +2649,11 @@ def test_the_shortcut_menu_item_binds_no_key_of_its_own(window):
 def test_the_shortcut_menu_item_opens_the_same_list_f1_does(window, qt_app):
     window._menu_actions["Keyboard shortcuts"].trigger()
     try:
-        assert window._help is not None
-        assert not window._help.isHidden()
+        assert window._keys.help is not None
+        assert not window._keys.help.isHidden()
     finally:
-        if window._help is not None:
-            window._help.close()
+        if window._keys.help is not None:
+            window._keys.help.close()
 
 
 def test_the_help_button_in_the_corner_opens_the_list(window):
@@ -2679,10 +2665,10 @@ def test_the_help_button_in_the_corner_opens_the_list(window):
 
     button.click()
     try:
-        assert window._help is not None
+        assert window._keys.help is not None
     finally:
-        if window._help is not None:
-            window._help.close()
+        if window._keys.help is not None:
+            window._keys.help.close()
 
 
 def test_about_says_the_version_and_where_the_log_went(window, monkeypatch, tmp_path):
@@ -3712,9 +3698,9 @@ def test_the_legend_shows_the_marks_rather_than_describing_them(window, qt_app):
     cannot."""
     from qtpy.QtGui import QImage
 
-    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE
 
-    images = _legend_images(window.shortcut_help(TAB_CURATE))
+    images = _legend_images(window._keys.help_html(TAB_CURATE))
 
     assert len(images) >= 10
     for encoded in images:
@@ -3727,12 +3713,12 @@ def test_the_chip_legend_is_the_chip_the_rows_carry(window, qt_app):
     """The point of the legend: the fill named here is the fill drawn there."""
     from qtpy.QtGui import QImage
 
-    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
     from am_segmentation_manager.gui.widgets.project_panel import CELL_COLOURS
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE
 
     shown = {
         QImage.fromData(encoded, "PNG").pixelColor(1, 1).name()
-        for encoded in _legend_images(window.shortcut_help(TAB_CURATE))
+        for encoded in _legend_images(window._keys.help_html(TAB_CURATE))
     }
 
     assert {colour.name() for colour in CELL_COLOURS.values()} <= shown
@@ -3742,10 +3728,10 @@ def test_the_legend_says_what_the_tab_actually_draws(window):
     """The white band means frames picked out while curating and unsaved edits
     while proofreading. One mark, two meanings: listing both on both tabs would
     make it mean neither."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE, TAB_LABEL
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE, TAB_LABEL
 
-    curate = window.shortcut_help(TAB_CURATE)
-    label = window.shortcut_help(TAB_LABEL)
+    curate = window._keys.help_html(TAB_CURATE)
+    label = window._keys.help_html(TAB_LABEL)
 
     assert "Picked out for a state change" in curate
     assert "unsaved edits" not in curate
@@ -3756,13 +3742,13 @@ def test_the_legend_says_what_the_tab_actually_draws(window):
 def test_a_tab_with_no_marks_gets_no_legend(window):
     """Export draws neither a chip nor the bar, and a heading with nothing
     under it is a question raised and not answered."""
-    from am_segmentation_manager.gui.widgets.main_window import (
+    from am_segmentation_manager.gui.widgets.shortcuts import (
         GROUP_ROW_MARK,
         GROUP_STRIP_MARK,
         TAB_EXPORT,
     )
 
-    help_text = window.shortcut_help(TAB_EXPORT)
+    help_text = window._keys.help_html(TAB_EXPORT)
 
     assert GROUP_ROW_MARK not in help_text
     assert GROUP_STRIP_MARK not in help_text
@@ -3771,7 +3757,7 @@ def test_a_tab_with_no_marks_gets_no_legend(window):
 def test_the_legend_comes_after_the_keys_and_before_this_list(window):
     """A reader looking for a key should not have to read past the pictures,
     and the key that opened the list is the one they have already found."""
-    from am_segmentation_manager.gui.widgets.main_window import (
+    from am_segmentation_manager.gui.widgets.shortcuts import (
         GROUP_HELP,
         GROUP_ROW_MARK,
         GROUP_STRIP_MARK,
@@ -3779,7 +3765,7 @@ def test_the_legend_comes_after_the_keys_and_before_this_list(window):
         TAB_CURATE,
     )
 
-    help_text = window.shortcut_help(TAB_CURATE)
+    help_text = window._keys.help_html(TAB_CURATE)
     places = [
         help_text.index(group)
         for group in (GROUP_VIEW, GROUP_ROW_MARK, GROUP_STRIP_MARK, GROUP_HELP)
@@ -3793,14 +3779,10 @@ def test_the_shortcut_list_is_capped_to_the_screen(window, qt_app):
     dialog merely sized past the screen has no scrollbar the user can reach
     either. Built directly rather than through F1, which does nothing while any
     modal dialog is up."""
-    from am_segmentation_manager.gui.widgets.main_window import (
-        SCREEN_MARGIN,
-        TAB_LABEL,
-        ShortcutHelp,
-    )
+    from am_segmentation_manager.gui.widgets.shortcuts import SCREEN_MARGIN, TAB_LABEL, ShortcutHelp
 
     dialog = ShortcutHelp(window)
-    dialog.show_for("Label", window.shortcut_help(TAB_LABEL))
+    dialog.show_for("Label", window._keys.help_html(TAB_LABEL))
     room = qt_app.primaryScreen().availableGeometry()
 
     assert dialog.height() <= room.height() - SCREEN_MARGIN
@@ -4134,18 +4116,18 @@ def test_a_wrapped_control_row_takes_the_height_it_needs(qt_app):
 def test_the_list_opens_with_a_keyboard(window):
     """Which of the keys under your hands do anything here is a question a
     picture answers faster than a list."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_CURATE
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE
 
-    help_text = window.shortcut_help(TAB_CURATE)
+    help_text = window._keys.help_html(TAB_CURATE)
 
     assert help_text.startswith("<p><img src=\"data:image/png;base64,")
 
 
 def test_a_tab_with_no_keys_of_its_own_gets_no_keyboard(window):
     """An almost empty keyboard says nothing the sentence beneath it does not."""
-    from am_segmentation_manager.gui.widgets.main_window import TAB_EXPORT
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT
 
-    help_text = window.shortcut_help(TAB_EXPORT)
+    help_text = window._keys.help_html(TAB_EXPORT)
 
     assert "<img" not in help_text
     assert "no keys of its own" in help_text
@@ -4154,7 +4136,7 @@ def test_a_tab_with_no_keys_of_its_own_gets_no_keyboard(window):
 def test_a_chord_lights_its_modifiers_too(window):
     """Ctrl+Shift+Z is three keys somebody has to find, and a diagram showing
     only the letter would be saying the shortcut is one."""
-    from am_segmentation_manager.gui.widgets.main_window import Binding, _keys_of
+    from am_segmentation_manager.gui.widgets.shortcuts import Binding, _keys_of
 
     def binding(key: str) -> Binding:
         return Binding(key, "", lambda: None, "any", "group")
@@ -4199,12 +4181,12 @@ def test_every_bound_key_has_somewhere_to_be_drawn(window):
     """A key the diagram has no cap for is one the reader is told about in the
     table and cannot find on the picture."""
     from am_segmentation_manager.gui.widgets.keyboard import KEY_ROWS
-    from am_segmentation_manager.gui.widgets.main_window import _keys_of
+    from am_segmentation_manager.gui.widgets.shortcuts import _keys_of
 
     drawable = {name for row in KEY_ROWS for name in row}
     drawable |= {"Up", "Down", "Left", "Right"}
 
-    assert _keys_of(window._bindings) <= drawable
+    assert _keys_of(window._keys.bindings) <= drawable
 
 
 

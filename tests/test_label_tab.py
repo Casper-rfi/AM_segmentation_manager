@@ -63,11 +63,8 @@ if HAS_QT and HAS_IMAGE_STACK:
         label_to_qimage,
     )
     from am_segmentation_manager.gui.widgets.label_panel import BRUSH_WIDTHS
-    from am_segmentation_manager.gui.widgets.main_window import (
-        TAB_CURATE,
-        TAB_LABEL,
-        CurationWindow,
-    )
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE, TAB_LABEL
     from am_segmentation_manager.operations.label_edit import new_label
 
 CONFIG_COLOURS = {0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)}
@@ -1085,25 +1082,25 @@ def test_the_tab_s_keys_are_live_only_on_it(window):
     window.tabs.setCurrentWidget(window.label_panel)
     live = {
         binding.key
-        for binding, shortcut in zip(window._bindings, window._shortcuts)
+        for binding, shortcut in zip(window._keys.bindings, window._keys.shortcuts)
         if shortcut.isEnabled()
     }
     assert "Right" in live
 
     window.tabs.setCurrentWidget(window.curate)
-    label_keys = [b for b in window._bindings if b.tab == TAB_LABEL]
+    label_keys = [b for b in window._keys.bindings if b.tab == TAB_LABEL]
 
     assert label_keys, "the tab should have keys of its own"
     assert all(
         not shortcut.isEnabled()
-        for binding, shortcut in zip(window._bindings, window._shortcuts)
+        for binding, shortcut in zip(window._keys.bindings, window._keys.shortcuts)
         if binding.tab == TAB_LABEL
     )
 
 
 def keys_of(window, tab):
     """Return the keys bound on *tab*, by what they do."""
-    return {b.description: b.key for b in window._bindings if b.tab == tab}
+    return {b.description: b.key for b in window._keys.bindings if b.tab == tab}
 
 
 def test_the_class_rows_read_as_one_table(window):
@@ -1166,10 +1163,10 @@ def test_the_overlay_and_fit_use_the_same_keys_in_both_tabs(window):
 
 
 def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):
-    from am_segmentation_manager.gui.widgets.main_window import CLASS_KEYS
+    from am_segmentation_manager.gui.widgets.label_panel import CLASS_KEYS
 
     panel = window.label_panel
-    bound = [b for b in window._bindings if b.tab == TAB_LABEL and b.key in CLASS_KEYS]
+    bound = [b for b in window._keys.bindings if b.tab == TAB_LABEL and b.key in CLASS_KEYS]
 
     assert len(bound) == len(panel.class_names())
     for binding in bound:
@@ -1198,7 +1195,7 @@ def test_locking_everything_leaves_the_eraser_alone(window):
 
 
 def test_the_help_lists_the_tab_s_own_keys(window):
-    help_text = window.shortcut_help(TAB_LABEL)
+    help_text = window._keys.help_html(TAB_LABEL)
 
     assert "Next frame" in help_text
     assert "Show / hide the label" in help_text
@@ -1206,7 +1203,7 @@ def test_the_help_lists_the_tab_s_own_keys(window):
 
 
 def test_the_curate_tab_keeps_its_own_keys(window):
-    assert "Set state: corrected" in window.shortcut_help(TAB_CURATE)
+    assert "Set state: corrected" in window._keys.help_html(TAB_CURATE)
 
 
 # ---------------------------------------------------------------------------
@@ -2218,7 +2215,7 @@ def test_choosing_the_fill_switches_off_the_brush_size(window):
 
 
 def test_the_help_lists_both_tools(window):
-    help_text = window.shortcut_help(TAB_LABEL)
+    help_text = window._keys.help_html(TAB_LABEL)
 
     assert "Brush tool" in help_text
     assert "Fill tool" in help_text
