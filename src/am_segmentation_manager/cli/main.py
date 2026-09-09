@@ -1,13 +1,14 @@
 """Parse, dispatch, return an exit code.
 
 The work every command does lives in ``operations/`` and above; what is here is
-the assembly. **Subparsers are registered in workflow order**, argparse listing
-them in that order and ``am-seg --help`` being where somebody finds out what the
-package does -- so the order of the calls below is the order of the help.
+the assembly. **The groups are registered in workflow order**, and ``--help``
+lists them under a heading each, so the step a command belongs to is stated
+rather than left to be inferred from what it sits next to.
 
-The parser and :data:`COMMANDS` are built from the same five modules, each
-declaring both, so a name in one and not the other is a mistake one file wide
-rather than one made across two halves of a long file.
+A group module declares its heading, its subparsers and its handlers together.
+So a command missing from one of the three is a mistake one file wide, and the
+help, the parser and the dispatch table cannot disagree about what exists or
+about where it belongs.
 """
 from __future__ import annotations
 
@@ -19,14 +20,48 @@ from pathlib import Path
 
 from .. import __version__
 from ..history import CONFIG_DISPLAY, USER_ENV_VAR, USER_FILENAME
-from . import adding, curating, quantifying, recording
+from . import adding, curating, quantifying, recording, restoring
 from .logs import DEFAULT_GUI_LOG, LOG_FILE_MAX_BYTES, open_log_file
 
 logger = logging.getLogger(__name__)
 
 #: The command groups, in the order ``am-seg --help`` lists them: the order of
-#: the workflow. Adding a group is a line here and nothing else.
-GROUPS = (adding, curating, quantifying, recording)
+#: the workflow. Adding a group is a line here and nothing else -- its heading,
+#: its subparsers and its handlers all come from the module.
+GROUPS = (adding, curating, quantifying, recording, restoring)
+
+#: Which heading each command is listed under, built from the groups so the
+#: help and the modules cannot disagree about what belongs where.
+HEADINGS: dict[str, str] = {
+    name: group.TITLE for group in GROUPS for name in group.COMMANDS
+}
+
+
+class GroupedHelp(argparse.HelpFormatter):
+    """Lists the commands under their group's heading rather than in one run.
+
+    Twenty-nine commands in a flat list is a list nobody reads to the end, and
+    the order alone was carrying which step of the workflow each belongs to.
+    Reaching into ``argparse``'s private ``_SubParsersAction`` is the only way:
+    there is no public API for grouping subcommands, and the alternative --
+    writing the list into the epilog -- prints every command twice.
+    """
+
+    def _format_action(self, action) -> str:
+        """Insert a heading before the first command of each group."""
+        if not isinstance(action, argparse._SubParsersAction):
+            return super()._format_action(action)
+        parts: list[str] = []
+        heading: str | None = None
+        for command in action._get_subactions():
+            # An alias shares its parser's position, and argparse has already
+            # folded it into that parser's row as "name (alias)".
+            group = HEADINGS.get(command.dest, heading)
+            if group != heading:
+                parts.append(f"\n  {group}\n")
+                heading = group
+            parts.append(super()._format_action(command))
+        return "".join(parts)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         "am_segmentation_manager",
         description="Manage Autolamella segmentation projects",
+        formatter_class=GroupedHelp,
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument(
@@ -64,7 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # Subcommands are registered in workflow order, because argparse lists them
     # in registration order and that listing is how the commands are found.
-    sub = parser.add_subparsers(dest="command")
+    # A metavar rather than the default: without one, argparse prints all
+    # twenty-nine names into the usage line as a single brace-list that wraps
+    # over four lines and says nothing.
+    sub = parser.add_subparsers(dest="command", metavar="<command>", title="commands")
 
     for group in GROUPS:
         group.add_arguments(sub)

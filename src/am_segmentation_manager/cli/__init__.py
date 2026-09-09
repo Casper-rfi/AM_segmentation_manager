@@ -1,9 +1,10 @@
 """The command-line surface, one module per step of the workflow.
 
-`main.py` builds the parser and dispatches; each of the five command modules
-owns both its subparsers and its handlers, so a command's arguments and the
-code reading them cannot drift apart. `scope.py` holds the vocabulary they
-share and `logs.py` the log file every command may be asked for.
+`main.py` builds the parser and dispatches; each command module owns its
+heading, its subparsers and its handlers together, so a command's arguments,
+the code reading them and the step it is filed under cannot drift apart.
+`scope.py` holds the vocabulary they share and `logs.py` the log file every
+command may be asked for.
 
 Re-exported here so ``am_segmentation_manager.cli:main`` stays the entry point
 it has always been.

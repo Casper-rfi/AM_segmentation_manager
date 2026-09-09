@@ -39,6 +39,10 @@ from .scope import (
 logger = logging.getLogger(__name__)
 
 
+#: The heading ``am-seg --help`` files these under.
+TITLE = "Curate it, and prepare labels"
+
+
 def add_arguments(sub) -> None:
     """Register the commands that curate data and prepare labels."""
 

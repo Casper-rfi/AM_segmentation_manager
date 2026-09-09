@@ -76,11 +76,11 @@ WORKFLOW_ORDER = [
     "init-history",
     "savepoint",
     "list-savepoints",
+    "history",
     "merge",
     "revert",
     "archive",
     "prune-archive",
-    "history",
 ]
 
 
@@ -261,3 +261,58 @@ def test_the_readme_names_no_command_the_parser_will_not_accept():
     )
 
     assert not unknown, unknown
+
+
+# ---------------------------------------------------------------------------
+# The headings
+#
+# Twenty-nine commands in one flat list is a list nobody reads to the end, so
+# `--help` files them under the step of the workflow they belong to. The
+# headings come from the command modules, and these hold them to it.
+# ---------------------------------------------------------------------------
+
+def test_every_command_is_filed_under_a_heading():
+    """A command with no heading is one `--help` prints under whatever heading
+    happened to come before it, which is worse than an ungrouped list: it
+    states the wrong step rather than none."""
+    from am_segmentation_manager.cli.main import HEADINGS
+
+    unfiled = [name for name, _parser in _canonical_subcommands() if name not in HEADINGS]
+
+    assert not unfiled, f"{unfiled} would be listed under the group above them"
+
+
+def test_each_group_declares_its_heading():
+    """The heading is the module's, so a group added to `GROUPS` brings one
+    with it rather than needing a table here kept in step.
+
+    A group with *no* `TITLE` never reaches this: `HEADINGS` is built at import
+    and raises, so a parser cannot be built without one. That is deliberate --
+    a blank heading would ship a group filed under nothing. This catches the
+    emptier mistake of declaring one and leaving it blank.
+    """
+    from am_segmentation_manager.cli.main import GROUPS
+
+    missing = [g.__name__ for g in GROUPS if not getattr(g, "TITLE", "")]
+
+    assert not missing, f"{missing} have no TITLE for --help to file them under"
+
+
+def test_the_headings_appear_in_the_help_in_group_order():
+    """The order of the headings is the order of the workflow, and it is the
+    order `GROUPS` registers them in -- not a second list that can drift."""
+    from am_segmentation_manager.cli.main import GROUPS
+
+    text = build_parser().format_help()
+    seen = [g.TITLE for g in GROUPS if g.TITLE in text]
+
+    assert seen == [g.TITLE for g in GROUPS], "a heading is missing or out of order"
+
+
+def test_the_usage_line_does_not_list_every_command():
+    """Without a metavar argparse prints all twenty-nine names into the usage
+    line as one brace-list that wraps over four lines and says nothing."""
+    usage = build_parser().format_usage()
+
+    assert "<command>" in usage
+    assert "inspect-layout" not in usage, "the usage line is listing the commands again"

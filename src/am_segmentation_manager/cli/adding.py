@@ -27,6 +27,10 @@ from .scope import _recorder
 logger = logging.getLogger(__name__)
 
 
+#: The heading ``am-seg --help`` files these under.
+TITLE = "Add data to the collection"
+
+
 def add_arguments(sub) -> None:
     """Register the commands that add data and describe it."""
 

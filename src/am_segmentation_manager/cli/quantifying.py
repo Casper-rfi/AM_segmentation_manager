@@ -64,6 +64,10 @@ from .scope import (
 logger = logging.getLogger(__name__)
 
 
+#: The heading ``am-seg --help`` files these under.
+TITLE = "Quantify it, and export"
+
+
 def add_arguments(sub) -> None:
     """Register the commands that quantify and export."""
 

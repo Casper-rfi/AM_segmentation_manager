@@ -191,7 +191,7 @@ is the place for anything scripted:
 Getting help
 ------------
 
-* `am-seg --help` lists every command in workflow order; `am-seg <command>
+* `am-seg --help` lists every command under its step of the workflow; `am-seg <command>
   --help` explains one, including how to read its output.
 * **If something goes wrong in the window**, it says so in a dialog and writes
   the traceback to `~/.am_segmentation_manager/gui.log`. That file also receives
