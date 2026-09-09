@@ -41,6 +41,7 @@ from ...operations.label_measure import (
     PREDICTION_PIXEL_BLOCK,
 )
 from ..label_controller import LabelController
+from ..preferences import DEFAULT_BRUSH_RADIUS
 from ..version_controller import VersionController
 from .common import LABEL_BADGES, chip_icon, fill_choice_combo, intensity_badge
 from .controls import (
@@ -64,7 +65,6 @@ from .icons import (
     undo_icon,
 )
 from .label_canvas import (
-    DEFAULT_BRUSH_RADIUS,
     TOOL_BRUSH,
     TOOL_FILL,
     LabelCanvas,
@@ -279,6 +279,18 @@ class LabelPanel(QWidget):
                 widget.setFocusPolicy(Qt.NoFocus)
 
     # -- construction ------------------------------------------------------
+
+    def apply_defaults(self, values) -> None:
+        """Open this tab's controls at what the settings say. See `ImagePanel`.
+
+        The speck size goes through the controller as well as the slider: it
+        is held there, so a slider moved without it would report sizes nothing
+        was counted at.
+        """
+        self.alpha_slider.setValue(int(values["label_opacity"]))
+        self.brush_slider.setValue(_width_position(2 * int(values["brush_radius"]) + 1))
+        self.speck_slider.setValue(int(values["speck_pixels"]))
+        self.controller.set_speck_size(int(values["speck_pixels"]))
 
     def _build_controls(self) -> QHBoxLayout:
         """Build the row of view controls, wrapped, with the status beside it.

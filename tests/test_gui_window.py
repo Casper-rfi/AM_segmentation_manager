@@ -2656,6 +2656,9 @@ def test_setting_a_name_reaches_everything_that_records(window, monkeypatch):
     class _Answered:
         def __init__(self, *_args):
             self.author = "Ada"
+            # The dialog carries the preferences too; this test is about the
+            # name, so it offers none to write.
+            self.values: dict[str, int | bool] = {}
 
         def exec_(self):
             return QDialog.Accepted
@@ -2692,6 +2695,7 @@ def test_a_name_can_be_taken_off_again(window, monkeypatch):
     class _Answered:
         def __init__(self, *_args):
             self.author = ""
+            self.values: dict[str, int | bool] = {}
 
         def exec_(self):
             return QDialog.Accepted
@@ -2744,6 +2748,124 @@ def test_the_shortcut_menu_item_opens_the_same_list_f1_does(window, qt_app):
             window._keys.help.close()
 
 
+def test_a_stored_default_is_what_every_control_opens_at(qt_app, settings):
+    """One store, four panels, and no control left on the packaged answer.
+
+    The window is what reads the settings and hands them round, so a panel
+    built on its own still opens at what the package ships -- which is why
+    this asserts through a window rather than through a panel.
+    """
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    preferences.write(settings, {
+        "speck_pixels": 21,
+        "label_opacity": 15,
+        "brush_radius": 3,
+        "train_share": 60,
+        "seed": 7,
+        "one_per_label": True,
+    })
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        assert window.operations_panel.speck_size.value() == 21
+        assert window.label_panel.speck_slider.value() == 21
+        # Held on the controller as well: a slider moved without it would
+        # report sizes nothing was counted at.
+        assert window.label_panel.controller.speck_size == 21
+        assert window.image_panel.alpha_slider.value() == 15
+        assert window.label_panel.alpha_slider.value() == 15
+        assert window.export_panel.train_share.value() == 60
+        assert window.export_panel.seed.value() == 7
+        assert window.export_panel.conditions.isChecked()
+    finally:
+        destroy(window)
+
+
+def test_a_default_decides_what_a_control_opens_at_and_nothing_else(qt_app, settings):
+    """The rule the whole idea rests on, and the reason it is safe to keep
+    these on one machine: what a run produces comes from the packaged
+    constants and the controls as they stand, never from a preference reached
+    behind them. So changing one while a control is on screen changes nothing
+    there -- the dialog says so, and this holds it."""
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        window.image_panel.alpha_slider.setValue(90)
+
+        preferences.write(settings, {"label_opacity": 10})
+
+        assert window.image_panel.alpha_slider.value() == 90, (
+            "a control somebody is using is not moved under them"
+        )
+    finally:
+        destroy(window)
+
+
+def test_the_settings_dialog_offers_every_preference(qt_app, settings):
+    """Built from the table, so a row added there reaches the dialog without
+    an edit here -- and one that did not would be a setting nobody could
+    change."""
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        offered = dialog.values
+
+        assert sorted(offered) == sorted(entry.key for entry in preferences.PREFERENCES)
+        assert offered == preferences.read(settings)
+    finally:
+        destroy(dialog)
+
+
+def test_every_group_of_settings_gets_the_height_its_rows_need(qt_app, settings):
+    """A word-wrapped note reports a one-line hint, and the squeeze lands elsewhere.
+
+    Qt asks a label for its size hint before it knows how wide it will be, so
+    a dialog sized from that comes up short and every widget below is pushed
+    towards its minimum -- which showed as the Export box drawing four
+    switches on top of the three rows under them, some way from the label that
+    caused it. `controls.WrappingLabel` is the fix; this is what noticed.
+    """
+    from qtpy.QtWidgets import QGroupBox
+
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        dialog.show()
+        qt_app.processEvents()
+        dialog.grab()
+
+        short = {
+            box.title(): (box.height(), box.layout().sizeHint().height())
+            for box in dialog.findChildren(QGroupBox)
+            if box.height() < box.layout().sizeHint().height()
+        }
+
+        assert not short, f"boxes shorter than their rows need: {short}"
+    finally:
+        destroy(dialog)
+
+
 def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
     """The corner is where the name is shown, so it is where it is changed.
 
@@ -2759,6 +2881,7 @@ def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
     class _Dismissed:
         def __init__(self, *_args):
             self.author = "Ada"
+            self.values: dict[str, int | bool] = {}
 
         def exec_(self):
             opened.append(True)

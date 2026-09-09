@@ -475,6 +475,28 @@ class FlowLayout(QLayout):
             start = end
 
 
+class WrappingLabel(QLabel):
+    """A word-wrapped label whose height follows the width it actually has.
+
+    Qt asks a label for its size hint before it knows how wide it will be, and
+    a word-wrapped one answers for a single line. A dialog sized from that hint
+    comes up too short, and every widget below the label is squeezed towards
+    its minimum -- which is a group box drawing its rows on top of each other,
+    some way from the label that caused it.
+
+    The same fault :class:`FlowArea` fixes for a row that wraps, and the same
+    answer: take the height from the width, every time there is one.
+    """
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self.setWordWrap(True)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self.setFixedHeight(self.heightForWidth(self.width()))
+
+
 class FlowArea(QWidget):
     """A widget whose height is whatever the flow layout inside it needs.
 

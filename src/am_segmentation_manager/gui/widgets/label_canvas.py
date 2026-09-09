@@ -25,6 +25,7 @@ from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsV
 from ...config import BACKGROUND_CLASS, UNKNOWN_CLASS_COLOR, SegmentationConfig
 from ...display import DEFAULT_ALPHA
 from ...operations.label_edit import fill, paint, patch_between
+from ..preferences import DEFAULT_BRUSH_RADIUS
 from .image_view import LABEL_MIN_FIT_FRACTION, ImageView, event_position
 from .versions_bar import COMPARE_KEY_CODE
 
@@ -62,9 +63,6 @@ SPECK_COLOUR = "#ff2fd0"
 TOOL_BRUSH = "brush"
 TOOL_FILL = "fill"
 TOOLS = (TOOL_BRUSH, TOOL_FILL)
-
-#: Brush radius, in label pixels, before the reviewer chooses one.
-DEFAULT_BRUSH_RADIUS = 8
 
 #: The widest and narrowest brush offered. The upper end is a whole structure at
 #: once on a 3000-pixel acquisition; the lower is a single pixel, for the last

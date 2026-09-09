@@ -287,6 +287,10 @@ class OperationsPanel(QWidget):
         if path:
             self._last_model_directory = Path(path).parent
 
+    def apply_defaults(self, values) -> None:
+        """Open the speck size at what the settings say. See `ImagePanel`."""
+        self.speck_size.setValue(int(values["speck_pixels"]))
+
     def set_prediction_available(self, available: bool) -> None:
         """Offer or withhold the predict button, saying why when withholding.
 

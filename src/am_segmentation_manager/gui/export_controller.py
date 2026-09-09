@@ -35,6 +35,7 @@ from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..models import ImageRecord, Project
 from ..operations.csv import (
+    DEFAULT_TRAIN_RATIO,
     build_training_rows,
     export_training_csv,
     find_matching_label,
@@ -299,7 +300,7 @@ class TrainingExport:
             ``<prefix>_val.csv``.
     """
 
-    train_ratio: float = 0.8
+    train_ratio: float = DEFAULT_TRAIN_RATIO
     seed: int | None = 42
     prefix: str = DEFAULT_PREFIX
 

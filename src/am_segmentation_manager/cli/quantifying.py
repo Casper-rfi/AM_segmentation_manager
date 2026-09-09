@@ -33,7 +33,7 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import export_training_csv
+from ..operations.csv import DEFAULT_TRAIN_RATIO, export_training_csv
 from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
@@ -300,8 +300,11 @@ def add_arguments(sub) -> None:
     create_training_csv.add_argument(
         "--split",
         type=float,
-        default=0.8,
-        help="Ratio of data assigned to training, with the rest set to validation (default: 0.8)",
+        default=DEFAULT_TRAIN_RATIO,
+        help=(
+            "Ratio of data assigned to training, with the rest set to "
+            f"validation (default: {DEFAULT_TRAIN_RATIO})"
+        ),
     )
     create_training_csv.add_argument(
         "--seed",

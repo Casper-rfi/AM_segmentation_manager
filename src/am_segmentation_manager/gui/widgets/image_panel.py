@@ -408,6 +408,15 @@ class ImagePanel(QWidget):
 
     # -- rendering ---------------------------------------------------------
 
+    def apply_defaults(self, values) -> None:
+        """Open the controls at what the settings say, before anything is drawn.
+
+        Called once, at construction: these decide what a control *opens* at,
+        so applying them to a control somebody is already using would undo a
+        choice they made this session.
+        """
+        self.alpha_slider.setValue(int(values["label_opacity"]))
+
     def show_image(
         self,
         frame_image: FrameImage | None,

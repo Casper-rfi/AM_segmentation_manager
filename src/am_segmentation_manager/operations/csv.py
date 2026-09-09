@@ -52,6 +52,12 @@ class TrainingRow:
     group: str
 
 
+#: What share of the exportable pairs goes to training where nobody says.
+#: One spelling for the window, the command line and these functions, which
+#: had four between them and could have drifted apart silently.
+DEFAULT_TRAIN_RATIO = 0.8
+
+
 def find_matching_label(record: ImageRecord) -> Path | None:
     """Return the record's label, or None if it has none on disk.
 
@@ -192,7 +198,7 @@ def build_training_rows(
 def split_grouped(
     items: Sequence,
     key: Callable[[object], str],
-    train_ratio: float = 0.8,
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
 ) -> tuple[list, list]:
     """Split *items* into training and validation, keeping a group together.
@@ -239,7 +245,7 @@ def split_grouped(
 
 def split_rows(
     rows: Sequence[TrainingRow],
-    train_ratio: float = 0.8,
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
 ) -> tuple[list[TrainingRow], list[TrainingRow]]:
     """Split built rows, keeping each row's group whole."""
@@ -248,7 +254,7 @@ def split_rows(
 
 def split_pairs(
     pairs: list[tuple[str, str]],
-    train_ratio: float = 0.8,
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """Split image/label pairs into training and validation sets.
@@ -283,7 +289,7 @@ def export_training_csv(
     start_path: Path,
     output_dir: Path,
     prefix: str = "dataset",
-    train_ratio: float = 0.8,
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
     include_empty_labels: bool = False,
     conditions: str = "primary",

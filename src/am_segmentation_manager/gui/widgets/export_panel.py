@@ -385,6 +385,28 @@ class ExportPanel(QWidget):
         layout.addWidget(self._breakdown_box, stretch=1)
         layout.addWidget(self._export_box, stretch=0)
 
+    def apply_defaults(self, values) -> None:
+        """Open this tab's controls at what the settings say. See `ImagePanel`.
+
+        Set while `_updating` holds, so filling eight controls asks for one
+        recount at the end rather than eight sweeps of the collection.
+        """
+        from .. import preferences
+
+        self._updating = True
+        try:
+            wanted = preferences.series_from(values)
+            for name, box in self.series_boxes.items():
+                box.setChecked(name in wanted)
+            self.conditions.setChecked(bool(values["one_per_label"]))
+            self.train_share.setValue(int(values["train_share"]))
+            self.seeded.setChecked(bool(values["seeded"]))
+            self.seed.setValue(int(values["seed"]))
+            self.seed.setEnabled(bool(values["seeded"]))
+        finally:
+            self._updating = False
+        self._recount.start()
+
     # -- construction ------------------------------------------------------
 
     def _build_filters(self) -> QWidget:

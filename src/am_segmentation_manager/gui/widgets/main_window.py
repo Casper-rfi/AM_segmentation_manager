@@ -51,6 +51,7 @@ from ...operations.selection import (
     UnmigratedStage,
     current_state,
 )
+from .. import preferences
 from ..controller import (
     MODE_MODALITIES,
     CurationController,
@@ -332,6 +333,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         #: project. What the summary line describes; None means the frame.
         #: The shortcut list, built the first time F1 asks for it.
         self._keys = Shortcuts(self)
+        self._apply_defaults()
         self._restore_layout()
         # Says which name is in effect from the moment the window opens, not
         # from the first time somebody changes it.
@@ -696,6 +698,24 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             "lists": self.project_panel.lists,
             "add_data": self.metadata_panel.panes,
         }
+
+    def _apply_defaults(self) -> None:
+        """Open every control at what the settings say it should open at.
+
+        Once, here, rather than in each panel's constructor: the store is the
+        window's and the panels are built without one, which is also what lets
+        a test build a panel with no settings at all and get the packaged
+        answers. Read once and handed round, so eight controls cannot disagree
+        about what was stored.
+        """
+        values = preferences.read(self.settings)
+        for panel in (
+            self.image_panel,
+            self.operations_panel,
+            self.label_panel,
+            self.export_panel,
+        ):
+            panel.apply_defaults(values)
 
     def _restore_layout(self) -> None:
         """Put the window back the size and shape it was left in, on this screen."""
@@ -1657,7 +1677,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         property of the machine, and a name written into a collection travels
         with it.
         """
-        dialog = SettingsDialog(self)
+        dialog = SettingsDialog(self, preferences.read(self.settings))
         if dialog.exec_() != QDialog.Accepted:
             return
         wanted = dialog.author
@@ -1669,6 +1689,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         except (OSError, ValueError) as error:
             QMessageBox.critical(self, AUTHOR_TITLE, str(error))
             return
+        # After the name, and only if it was written: a failure there is
+        # reported and returns, and preferences saved past it would leave the
+        # dialog half applied with nothing saying which half.
+        preferences.write(self.settings, dialog.values)
         self._adopt_author()
         self._flash(author_summary(wanted or None))
 
