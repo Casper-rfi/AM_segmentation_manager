@@ -1,10 +1,9 @@
 """Who the window attributes its changes to, in one place for all of them.
 
-Five controllers record, and every one of them must carry the same author: a
-name adopted in Settings that reaches only four of them has the next thing
-written credited to the name the user has just replaced. So they share this
-object rather than each holding a recorder of its own, and adopting a name is
-one assignment here.
+Every controller that records must carry the same author: a name adopted in
+Settings that reaches all but one of them has the next thing written credited
+to the name the user has just replaced. So they share this object rather than
+each holding a recorder of its own, and adopting a name is one assignment here.
 
 A holder rather than a list of who to tell, because a list is kept by hand and
 a controller can be added without joining it. Qt-free, like the controllers

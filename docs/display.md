@@ -245,7 +245,10 @@ of one of these files, is held by `test_docs.py`.
   on both sides colouring by what each holds has no readable scheme and the mask becomes the thing
   being deciphered. Two labels of different sizes are still both shown — that one is the wrong size
   is the finding — and only the mask goes, there being no pixel to pair.
-- **The versions strip hides itself when a label has none**, which is the ordinary case.
+- **The strip is closed until somebody opens it, and the count sits on the switch.** It used to
+  show itself whenever a label had a version; listing predictions too would have put it on almost
+  every frame, so a label with nothing to compare now says so unopened
+  (`test_the_switch_opens_the_strip_and_says_how_many_there_are`). Off per session, not remembered.
 - **Two labels are compared by looking, never by a number.** Every metric over a pair — pixel share,
   IoU, Dice — presupposes that one of them is ground truth, and where a proofread label meets a good
   model's prediction neither is; worse, pixel share ranks lowest exactly the failure that matters
