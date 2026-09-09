@@ -21,7 +21,7 @@ from collections.abc import Callable
 from qtpy.QtWidgets import QDialog, QMessageBox
 
 from ...progress import Cancellation
-from ..operations_controller import OperationReport
+from ..report import OperationReport
 from .busy_dialog import BusyDialog
 from .report_dialog import ReportDialog
 

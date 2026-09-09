@@ -18,6 +18,7 @@ pytest.importorskip("numpy")
 import numpy as np
 import tifffile
 
+from am_segmentation_manager.gui.history_controller import HistoryController
 from am_segmentation_manager.gui.operations_controller import (
     OperationsController,
     format_bytes,
@@ -835,7 +836,7 @@ def _recorded_collection(tmp_path: Path):
 def test_a_savepoint_can_be_returned_to_by_name(tmp_path: Path):
     """The round trip the whole feature exists for, at controller level:
     name a state, change a label, put the round back."""
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     controller.take_savepoint(projects, "round 1")
@@ -865,7 +866,7 @@ def test_reverting_refuses_proofread_work_until_it_is_named(tmp_path: Path):
     """The rule CLAUDE.md states, checked before anything is written."""
     from am_segmentation_manager.operations.selection import transition_records
 
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     controller.take_savepoint(projects, "round 1")
@@ -885,7 +886,7 @@ def test_reverting_refuses_proofread_work_until_it_is_named(tmp_path: Path):
 
 
 def test_a_savepoint_that_is_not_here_is_reported_rather_than_raised(tmp_path: Path):
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
 
@@ -906,7 +907,7 @@ def test_a_savepoint_is_refused_inside_a_copy(tmp_path: Path):
         write_export_record,
     )
 
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     write_export_record(
@@ -945,7 +946,7 @@ def test_a_copy_worked_on_elsewhere_comes_home(tmp_path: Path):
     """The round trip the Export tab's two buttons are: out, worked on, back."""
     from am_segmentation_manager.scanner import Scanner
 
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     copy = _exported_copy(tmp_path, root, projects)
@@ -975,7 +976,7 @@ def test_a_copy_worked_on_elsewhere_comes_home(tmp_path: Path):
 
 def test_a_folder_that_is_not_a_copy_is_refused_by_name(tmp_path: Path):
     """Only a copy an export made carries the fork point a merge needs."""
-    controller = OperationsController()
+    controller = HistoryController()
     root, _projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     stranger = tmp_path / "stranger"
@@ -993,7 +994,7 @@ def test_merging_over_proofread_work_is_refused_until_it_is_named(tmp_path: Path
     from am_segmentation_manager.operations.selection import transition_records
     from am_segmentation_manager.scanner import Scanner
 
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     copy = _exported_copy(tmp_path, root, projects)
@@ -1062,7 +1063,7 @@ def save_two(label: Path) -> None:
 def test_a_conflict_is_reported_as_something_to_decide(tmp_path: Path):
     """Not as a refusal: a person can answer this, and the report carries what
     they need to answer it with."""
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     copy, ours, theirs = _conflicting_copy(tmp_path, root, projects)
@@ -1082,7 +1083,7 @@ def test_a_label_and_its_state_are_one_decision(tmp_path: Path):
     from am_segmentation_manager.operations.selection import transition_records
     from am_segmentation_manager.scanner import Scanner
 
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     copy, ours, _theirs = _conflicting_copy(tmp_path, root, projects)
@@ -1104,7 +1105,7 @@ def test_a_label_and_its_state_are_one_decision(tmp_path: Path):
 
 def test_deciding_lets_the_merge_go_ahead(tmp_path: Path):
     """The decision goes into the plan rather than onto one already made."""
-    controller = OperationsController()
+    controller = HistoryController()
     root, projects = _recorded_collection(tmp_path)
     controller.set_start_path(root)
     copy, ours, theirs = _conflicting_copy(tmp_path, root, projects)

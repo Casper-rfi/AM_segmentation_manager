@@ -58,7 +58,7 @@ class ConflictViewer(QDialog):
 
         Args:
             parent: The window it belongs to.
-            row: A :class:`~..operations_controller.ConflictRow` with labels.
+            row: A :class:`~..report.ConflictRow` with labels.
             config: Supplies the colour of each class, shared with the rest of
                 the window so a class is one colour everywhere.
         """

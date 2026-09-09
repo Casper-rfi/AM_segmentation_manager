@@ -19,7 +19,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ...progress import Cancellation
-from ..operations_controller import OperationReport
+from ..report import OperationReport
 from .common import MAX_LISTED_FILES
 from .conflict_dialog import ConflictDialog
 from .project_dialog import AddProjectsDialog
@@ -164,14 +164,14 @@ class OperationActions:
         dialog = RevertDialog(
             self,
             f"{len(records)} image(s) in {self.controller.selection.describe()}",
-            self.operations_controller.savepoints_here(projects),
+            self.history_controller.savepoints_here(projects),
         )
         if dialog.exec_() != QDialog.Accepted:
             return
         undoing, savepoint = dialog.undoing, dialog.savepoint
         self._operate(
             "Revert labels",
-            lambda allow, dry: self.operations_controller.revert_labels(
+            lambda allow, dry: self.history_controller.revert_labels(
                 records,
                 undoing=undoing or "conversion",
                 savepoint=savepoint,
@@ -197,7 +197,7 @@ class OperationActions:
             return
         self._archive_measured = True
         projects = self.controller.projects
-        if not self.operations_controller.archive_exists(projects):
+        if not self.history_controller.archive_exists(projects):
             # One stat per project rather than a walk of each: a collection
             # that has never replaced a label has nothing to measure, and a
             # dialog flashing up to say so is worse than saying nothing.
@@ -205,7 +205,7 @@ class OperationActions:
             return
         self._run_operation(
             "Archive",
-            lambda: self.operations_controller.measure_archive(projects),
+            lambda: self.history_controller.measure_archive(projects),
             lambda size: self.metadata_panel.set_archive(size.describe()),
         )
 
@@ -227,7 +227,7 @@ class OperationActions:
         if not projects:
             self._flash("Scan a folder first")
             return
-        savepoints = self.operations_controller.savepoints_here(projects)
+        savepoints = self.history_controller.savepoints_here(projects)
         if not savepoints:
             QMessageBox.information(
                 self, "Restore savepoint",
@@ -250,7 +250,7 @@ class OperationActions:
         savepoint = dialog.savepoint
         self._operate(
             "Restore savepoint",
-            lambda allow, dry: self.operations_controller.revert_labels(
+            lambda allow, dry: self.history_controller.revert_labels(
                 records,
                 savepoint=savepoint,
                 projects=projects,
@@ -278,7 +278,7 @@ class OperationActions:
             return
         self._operate(
             "Reclaim space",
-            lambda allow, dry: self.operations_controller.reclaim_archive(
+            lambda allow, dry: self.history_controller.reclaim_archive(
                 projects, dry_run=dry
             ),
         )
@@ -308,7 +308,7 @@ class OperationActions:
         title, note, gap = dialog.title, dialog.description, dialog.closing_gap
         self._operate(
             "Savepoint",
-            lambda allow, dry: self.operations_controller.take_savepoint(
+            lambda allow, dry: self.history_controller.take_savepoint(
                 projects, title, description=note, close_the_gap=gap, dry_run=dry
             ),
         )
@@ -571,7 +571,7 @@ class OperationActions:
 
         self._operate(
             "Merge a copy back",
-            lambda allow, dry: self.operations_controller.merge_copy(
+            lambda allow, dry: self.history_controller.merge_copy(
                 source, projects, resolutions=dict(decided),
                 allow_corrected=allow, dry_run=dry,
             ),

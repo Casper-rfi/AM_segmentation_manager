@@ -1659,12 +1659,12 @@ def test_reverting_proofread_work_is_refused_until_it_is_named(
     """CLAUDE.md's rule: no automated operation replaces a corrected label
     without explicit confirmation, and the window must not make that a
     checkbox somebody clicks past."""
-    from am_segmentation_manager.gui.operations_controller import OperationReport
+    from am_segmentation_manager.gui.report import OperationReport
 
     window.state_panel.enable_check.setChecked(True)
     asked: list = []
     monkeypatch.setattr(
-        window.operations_controller, "revert_labels",
+        window.history_controller, "revert_labels",
         lambda records, **kwargs: (
             asked.append(kwargs.get("allow_corrected"))
             or OperationReport(
@@ -1875,7 +1875,7 @@ def test_the_archive_is_not_measured_while_nothing_keeps_versions(
     collection that has never replaced a label, and it must cost nothing."""
     walked: list = []
     monkeypatch.setattr(
-        window.operations_controller, "measure_archive",
+        window.history_controller, "measure_archive",
         lambda projects: walked.append(projects),
     )
 
@@ -2107,7 +2107,7 @@ def test_a_missing_inference_stack_comes_back_from_the_child(
 def test_only_the_applying_run_is_given_something_to_stop(window, monkeypatch):
     """A preview opens no file and answers in milliseconds, so a Stop button on
     one is a button with nothing to stop."""
-    from am_segmentation_manager.gui.operations_controller import OperationReport
+    from am_segmentation_manager.gui.report import OperationReport
 
     given: list[object] = []
     monkeypatch.setattr(
@@ -2165,7 +2165,7 @@ def test_converting_does_not_walk_the_collection_again(
     """The scan that used to follow cost a full read of the archive, which on a
     real collection is most of the time the operation takes. What it went
     looking for is the label the run just wrote, and the run says where."""
-    from am_segmentation_manager.gui.operations_controller import OperationReport
+    from am_segmentation_manager.gui.report import OperationReport
     from am_segmentation_manager.operations.label_io import label_destination
 
     record = _unlabelled_record(window)
@@ -2195,7 +2195,7 @@ def test_predicting_does_not_walk_the_collection_again(
     """Preparing labels is predict then convert against the same selection, so
     the scan was paid twice for one decision. Convert reads the predictions off
     the records, so this is also what makes the second step see the first."""
-    from am_segmentation_manager.gui.operations_controller import OperationReport
+    from am_segmentation_manager.gui.report import OperationReport
     from am_segmentation_manager.operations.predict import prediction_destination
 
     record = _unlabelled_record(window)
@@ -2522,6 +2522,7 @@ def test_the_window_says_which_name_it_is_recording_under(window, monkeypatch):
 #: on an empty set; the search is what catches a *new* one.
 KNOWN_RECORDERS = frozenset({
     "controller",
+    "history_controller",
     "label_controller",
     "metadata_controller",
     "operations_controller",
@@ -4199,7 +4200,7 @@ def test_the_chooser_offers_nothing_until_every_row_is_answered(qt_app, window):
     conflict exists because there is not."""
     from qtpy.QtWidgets import QDialogButtonBox
 
-    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.report import ConflictRow
     from am_segmentation_manager.gui.widgets.conflict_dialog import ConflictDialog
 
     rows = (
@@ -4227,7 +4228,7 @@ def test_the_chooser_says_which_rows_are_proofread_work(qt_app, window):
     decides how the choice is made, and a count does not say which row."""
     from qtpy.QtWidgets import QLabel
 
-    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.report import ConflictRow
     from am_segmentation_manager.gui.widgets.conflict_dialog import ConflictDialog
 
     rows = (ConflictRow(key="p/a.tif", title="p/a.tif", corrected=True),)
@@ -4253,7 +4254,7 @@ def test_the_viewer_draws_both_labels_over_the_same_acquisition(
     from qtpy.QtCore import Qt
     from qtpy.QtGui import QKeyEvent
 
-    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.report import ConflictRow
     from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictViewer
 
     image = tmp_path / "img.tif"
@@ -4291,7 +4292,7 @@ def test_neither_version_is_the_one_the_viewer_prefers(qt_app, window, tmp_path:
     import numpy as np
     import tifffile
 
-    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.report import ConflictRow
     from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictViewer
 
     ours = tmp_path / "ours.tif"
@@ -4315,7 +4316,7 @@ def test_labels_of_different_sizes_are_still_shown(qt_app, window, tmp_path: Pat
     import numpy as np
     import tifffile
 
-    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.report import ConflictRow
     from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictViewer
 
     ours = tmp_path / "ours.tif"
@@ -4338,7 +4339,7 @@ def test_labels_of_different_sizes_are_still_shown(qt_app, window, tmp_path: Pat
 
 def test_a_state_row_offers_nothing_to_look_at(qt_app, window):
     """Two words against two words, both already on the row."""
-    from am_segmentation_manager.gui.operations_controller import ConflictRow
+    from am_segmentation_manager.gui.report import ConflictRow
 
     label = ConflictRow(key="k", title="t", ours=Path("a"), theirs=Path("b"))
     state = ConflictRow(key="k", title="t", details=("the state: a, b",))

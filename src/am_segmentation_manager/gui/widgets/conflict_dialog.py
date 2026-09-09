@@ -57,7 +57,7 @@ class ConflictDialog(QDialog):
 
         Args:
             parent: The window it belongs to.
-            rows: :class:`~..operations_controller.ConflictRow` values.
+            rows: :class:`~..report.ConflictRow` values.
             config: Supplies the class colours the viewer draws with. Without
                 one the rows carry no *Look at them* button, which is what a
                 test that only checks the choosing wants.
