@@ -145,6 +145,13 @@ of one of these files, is held by `test_docs.py`.
   window should have to teach. **The checkable flag is cleared rather than merely not set**:
   `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state exists, so
   every row would report as checkable and the first `setCheckState` would put the boxes back.
+- **The Filters column is the narrowest on the tab and holds the most, so it is read across rather
+  than down.** The projects sit at the top, where the other two tabs put theirs; captions sit beside
+  their boxes rather than above; the beam is a run of segments as it is on Curate; and the two
+  short series switches share a line. *One image per label* went under the beam, both answering
+  which images are in play — under the series it read as a fourth one. Each of those trades height
+  for width, so the column opens wide enough for the widest of them
+  (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`).
 - **Export filters *by* project rather than listing them, and that control is never taken away.**
   Which projects an export covers is the first question anyone asks of one, and it was a row
   somebody had to know to add — indistinguishable, once added, from a filter on the microscope

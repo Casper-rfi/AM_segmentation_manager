@@ -426,7 +426,10 @@ def test_the_filters_box_holds_every_control_that_narrows(panel: ExportPanel):
     numbers on screen describing different collections."""
     filters = panel._filters_box
     for widget in (panel.modality, panel.state, panel.label_state, panel.conditions):
-        assert widget.parent() is filters, f"{widget} narrows from outside Filters"
+        # An ancestor rather than the parent: the column nests these inside a
+        # holder and a splitter to fit them, and which of those a control sits
+        # in is arrangement, where being inside the box at all is the rule.
+        assert filters.isAncestorOf(widget), f"{widget} narrows from outside Filters"
 
     narrowing = (QComboBox, QCheckBox, QListWidget)
     for widget in panel._export_box.findChildren(QWidget):
@@ -738,7 +741,8 @@ def test_the_chart_pane_follows_a_filter(qt_app, tmp_path):
     panel.as_chart.setChecked(True)
     first = panel.chart_view._canvas
 
-    panel.modality.setCurrentText("SEM")
+    panel.modality.set_current("SEM")
+    panel.modality.chosen.emit("SEM")
 
     assert panel.chart_view._canvas is not first
 
@@ -892,7 +896,7 @@ def test_a_caption_carries_its_control_s_tooltip(panel: ExportPanel):
     }
 
     assert captions["Modality"]
-    assert captions["Workflow state"]
+    assert captions["State"]
     assert captions["Break down by"]
     assert captions["Training"] == panel.train_share.toolTip()
 

@@ -2866,6 +2866,54 @@ def test_every_group_of_settings_gets_the_height_its_rows_need(qt_app, settings)
         destroy(dialog)
 
 
+def test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at(
+    qt_app, settings
+):
+    """Every compaction here trades height for width, and the width has to be there.
+
+    Captions beside their boxes, a run of segments for the beam and two short
+    switches on one line each save a row and cost columns -- and squeezed, Qt
+    does not shorten a caption but cuts it from both ends. The first cut of
+    this column drew the beam's segments blank and "Adaptive Polishing" as
+    "Adaptive Po", which reads as a rendering fault rather than as a column
+    that wants dragging.
+    """
+    from qtpy.QtWidgets import QAbstractButton, QLabel
+
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        window.tabs.setCurrentWidget(window.export_panel)
+        window.resize(1512, 900)
+        window.show()
+        qt_app.processEvents()
+        window.grab()
+
+        # PySide6 takes one type, not a tuple of them.
+        block = window.export_panel.fixed_filters
+        shown = [
+            *block.findChildren(QLabel),
+            *block.findChildren(QAbstractButton),
+        ]
+        clipped = {
+            widget.text(): (widget.width(), widget.sizeHint().width())
+            for widget in shown
+            if widget.text() and widget.width() < widget.sizeHint().width()
+        }
+
+        assert not clipped, f"cut off in the Filters column: {clipped}"
+    finally:
+        destroy(window)
+
+
 def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
     """The corner is where the name is shown, so it is where it is changed.
 
