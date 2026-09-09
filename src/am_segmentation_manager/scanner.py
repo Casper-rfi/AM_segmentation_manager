@@ -37,7 +37,6 @@ from .layout import (
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
-    classify_loose_image,
     directory_cache,
     image_files,
     image_files_by_name,
@@ -57,7 +56,7 @@ from .metadata import (
 )
 from .models import ImageRecord, Lamella, Project, Stage
 from .progress import timed
-from .state import StageState, StateFileError, read_state, state_key
+from .state import DEFAULT_STATE, StageState, StateFileError, read_state, state_key
 from .tasks import NO_TASKS, TaskVocabulary, read_vocabularies
 
 logger = logging.getLogger(__name__)
@@ -210,18 +209,16 @@ class Scanner:
         still memoises, and a path this misses is simply read when asked for.
 
         The predicate is :func:`~..layout.build_loose_image_sets`'s own, so a
-        file it will not look at is not opened for it.
+        file it will not look at is not opened for it -- which now includes the
+        names no rule recognises, the header being the only thing that can put
+        one of those in an ``other`` set of a stated beam.
         """
         if self._read_header is None:
             return
         wanted = [
             path
             for path in image_files(discovered.path)
-            if path not in self._headers
-            and not is_ignored_image_name(path.name)
-            and classify_loose_image(
-                path.name, in_alignment_run=discovered.in_alignment_run
-            ) is not None
+            if path not in self._headers and not is_ignored_image_name(path.name)
         ]
         if len(wanted) < 2:
             return
@@ -594,11 +591,11 @@ class Scanner:
         """Return every image set in a stage, of both shapes.
 
         Adaptive Polishing sets first, then the loose reference and alignment
-        ones, so display order puts the images this package was built to curate
-        at the top. What a loose set's files could not be made of -- an
-        unrecognised name, or a beam nothing could establish -- is logged here
-        and reported properly by ``inspect-layout``, which surveys the tree
-        itself rather than reading this.
+        ones and finally ``other``, so display order puts the images this
+        package was built to curate at the top and the residue at the bottom.
+        Why a file reached ``other`` rather than a set of its own is logged
+        here and reported properly by ``inspect-layout``, which surveys the
+        tree itself rather than reading this.
         """
         sets = list(build_image_sets(discovered.path))
         self._prefetch_headers(discovered)
@@ -609,13 +606,13 @@ class Scanner:
         )
         if loose.unrecognised:
             logger.debug(
-                "%d image(s) in %s match no naming rule: %s",
+                "%d image(s) in %s match no naming rule and are indexed as other: %s",
                 len(loose.unrecognised), discovered.path, ", ".join(loose.unrecognised[:5]),
             )
         if loose.unresolved:
             logger.info(
-                "%d image(s) in %s state no beam and none could be read; not indexed",
-                len(loose.unresolved), discovered.path,
+                "%d image(s) in %s state no beam and none could be read; "
+                "indexed as other", len(loose.unresolved), discovered.path,
             )
         return sets + list(loose.sets)
 
@@ -774,12 +771,18 @@ class Scanner:
         siblings = subdirectories_by_name(stage_path)
 
         for image_set in image_sets:
-            labels_map = image_files_by_name(image_set.labels_directory)
+            labels_directory = image_set.labels_directory
+            labels_map = (
+                image_files_by_name(labels_directory) if labels_directory else {}
+            )
             predictions_directory = self._predictions_directory(image_set, siblings)
-            predictions_map = self._collect_predictions(predictions_directory)
+            predictions_map = (
+                self._collect_predictions(predictions_directory)
+                if predictions_directory
+                else {}
+            )
 
             for name, image_path in sorted(image_files_of(image_set).items()):
-                key = state_key(image_set.labels_directory / name, stage_path)
                 record = ImageRecord(
                     image_path=image_path,
                     project=project_name,
@@ -790,10 +793,18 @@ class Scanner:
                     variant=image_set.variant,
                     series=image_set.series,
                     acquired_at=self._header(image_path)[1] if image_set.is_loose else None,
-                    labels_directory=image_set.labels_directory,
+                    labels_directory=labels_directory,
                     predictions_directory=predictions_directory,
                     label_shared=image_set.labels_are_shared,
-                    state=declared.state_of(key),
+                    # A set with no label directory has no label group, so
+                    # there is nothing for a state file to be keyed on and the
+                    # default stands. Nothing may change it: the write paths
+                    # refuse this series.
+                    state=(
+                        declared.state_of(state_key(labels_directory / name, stage_path))
+                        if labels_directory
+                        else DEFAULT_STATE
+                    ),
                     task=self._resolve_task(image_path, lamella_path, vocabulary),
                 )
                 prediction = predictions_map.get(name)
@@ -853,7 +864,7 @@ class Scanner:
     @staticmethod
     def _predictions_directory(
         image_set: ImageSet, siblings: Mapping[str, Path]
-    ) -> Path:
+    ) -> Path | None:
         """Return where an image set's predictions live or would live.
 
         **Reading and writing resolve here, once.** A record carries the answer
@@ -869,9 +880,14 @@ class Scanner:
         loose set resolves by exact name instead, for the reason
         :func:`~..layout.resolve_loose_predictions_directory` gives.
 
-        Returned whether or not it exists, since that is also where a
-        prediction would be written.
+        Returns:
+            The directory, whether or not it exists, since that is also where a
+            prediction would be written -- or ``None`` for an ``other`` set,
+            which is never predicted and whose predictions could only be
+            converted into labels it may not have.
         """
+        if image_set.series == "other":
+            return None
         if image_set.is_loose:
             directory, _ = resolve_loose_predictions_directory(
                 image_set.directory, image_set.series, image_set.modality, siblings

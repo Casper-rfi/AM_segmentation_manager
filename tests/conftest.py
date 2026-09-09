@@ -519,9 +519,11 @@ def build_dataset(
         plots: Write a summary plot per acquisition.
         predictions: Write ``predictions/raw`` and ``predictions/clean``.
         out_of_scope: Write the alignment and rough-milling images that real
-            Autolamella projects carry alongside the adaptive-polish stages.
-            They are context only and must never be indexed as segmentation
-            targets, so a test that they are ignored needs them present.
+            Autolamella projects carry alongside the adaptive-polish stages,
+            under names no rule recognises. They are context only and must
+            never become segmentation targets -- they are indexed as ``other``,
+            which has no labels -- so a test that they stay out of the curated
+            series needs them present.
 
     Returns:
         Where everything landed.

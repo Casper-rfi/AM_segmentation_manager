@@ -168,13 +168,33 @@ def test_an_image_whose_beam_nothing_can_state_is_reported(project: Path, monkey
     assert "ref_PositionReady.tif" in message
 
 
-def test_images_no_image_set_claims_are_reported(project: Path):
-    """The check that catches a layout nobody anticipated."""
+def test_images_no_naming_rule_reaches_are_indexed_as_other_and_still_reported(project):
+    """Both halves at once: the image is indexed so it can be opened, and the
+    tripwire still fires so a name Autolamella has newly invented does not
+    vanish into the residue."""
     touch(project, "overview-image-2026-07-28_10-31-00.tif")
 
-    message = finding(survey_project(project), "unindexed-images").message
+    surveyed = survey_project(project)
 
-    assert "overview-image-2026-07-28_10-31-00.tif" in message
+    assert "overview-image-2026-07-28_10-31-00.tif" in finding(
+        surveyed, "unrecognised-image"
+    ).message
+    assert "unindexed-images" not in categories(surveyed)
+    assert surveyed.images_by_series["other"] == 1
+
+
+def test_an_image_at_the_project_root_is_indexed_above_every_lamella(project: Path):
+    """Where a grid overview sits: the project root standing in for a lamella
+    and a stage, which is the shape the oldest layouts already needed."""
+    touch(project, "overview-image-2026-07-28_10-31-00.tif")
+
+    surveyed = survey_project(project)
+    sets = [
+        entry.image_set for entry in surveyed.image_sets if entry.image_set.series == "other"
+    ]
+
+    assert [one.directory for one in sets] == [project]
+    assert sets[0].labels_directory is None
 
 
 def test_deliberately_omitted_images_are_not_reported_as_unindexed(project: Path):

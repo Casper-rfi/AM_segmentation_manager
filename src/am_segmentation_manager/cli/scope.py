@@ -18,7 +18,7 @@ from ..filtering import (
     iter_matching_records,
 )
 from ..history import Recorder
-from ..layout import SERIES
+from ..layout import LABELLED_SERIES
 from ..operations.init_history import writing_recorder
 from ..operations.selection import record_from_image_path
 from ..scanner import Scanner
@@ -43,18 +43,47 @@ DEFAULT_SERIES: str = "adaptive"
 REPORTING_SERIES: str = "all"
 
 
+def _series_argument_type(choices: tuple[str, ...]):
+    """Return the parser for one ``--series`` value, accepting only *choices*.
+
+    **A command that cannot act on a series does not offer it**, rather than
+    accepting the word and failing once a scan has run. ``other`` has no label
+    directory and no predictions directory, so pointing ``predict`` or
+    ``correct`` at it can only end in a refusal; refusing at the argument is
+    the same answer given before any work, in the words argparse uses for every
+    other bad value.
+
+    One value may name several series comma-separated, which is why this is a
+    ``type`` rather than argparse's own ``choices``.
+    """
+    def parse(raw: str) -> str:
+        named = {value.strip() for value in raw.split(",") if value.strip()}
+        unknown = sorted(named - set(choices) - {"all"})
+        if unknown:
+            raise argparse.ArgumentTypeError(
+                f"{', '.join(unknown)}; this command covers "
+                f"{', '.join(choices)} or 'all'"
+            )
+        return raw
+
+    return parse
+
+
 def _add_scope_arguments(
     parser: argparse.ArgumentParser,
     default_modality: str | None = None,
     include_state: bool = True,
     default_series: str = DEFAULT_SERIES,
+    series_choices: tuple[str, ...] = LABELLED_SERIES,
 ) -> None:
     """Add the common scope-selection arguments to *parser*.
 
     Set *include_state* to False when the caller registers its own
     ``--state`` argument (for example to make it required). Set
     *default_series* to :data:`REPORTING_SERIES` for a command that reports on
-    the collection rather than acting on part of it.
+    the collection rather than acting on part of it, and *series_choices* to
+    :data:`~..layout.SERIES` where that command can also say something about
+    an image with no labels.
     """
     parser.add_argument("paths", nargs="*", help="Explicit image paths or scan directory")
     parser.add_argument("--start-path", default=".", help="Directory to start scanning from")
@@ -84,15 +113,15 @@ def _add_scope_arguments(
     )
     parser.add_argument(
         "--series", action="append", default=[],
-        metavar="SERIES",
+        metavar="SERIES", type=_series_argument_type(series_choices),
         help=(
             "What the images were taken for: "
-            + ", ".join(SERIES)
+            + ", ".join(series_choices)
             + ", or 'all'. Repeat or comma-separate to include several "
             f"(default: {default_series})"
         ),
     )
-    parser.set_defaults(default_series=default_series)
+    parser.set_defaults(default_series=default_series, series_choices=series_choices)
     parser.add_argument(
         "--task", action="append", default=[], metavar="TASK",
         help=(
@@ -238,13 +267,21 @@ def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
 def _series_selectors(args: argparse.Namespace) -> list[str]:
     """Return the series to match, falling back to the command's default.
 
-    A command declares its own default through :func:`_add_scope_arguments`,
-    so which series a command covers when nobody says is decided where the
-    command is registered rather than here.
+    A command declares its own default and its own vocabulary through
+    :func:`_add_scope_arguments`, so which series a command covers when nobody
+    says is decided where the command is registered rather than here.
+
+    ``all`` is expanded to that vocabulary rather than passed on, because it
+    means "every series this command covers" and those differ: ``stats --series
+    all`` counts the ``other`` images and ``predict --series all`` must not
+    reach them.
     """
-    return getattr(args, "series", None) or [
+    chosen = getattr(args, "series", None) or [
         getattr(args, "default_series", DEFAULT_SERIES)
     ]
+    named = {value.strip() for raw in chosen for value in raw.split(",") if value.strip()}
+    choices = getattr(args, "series_choices", LABELLED_SERIES)
+    return list(choices) if "all" in named else chosen
 
 
 

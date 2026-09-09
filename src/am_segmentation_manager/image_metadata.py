@@ -895,16 +895,18 @@ def header_reader() -> Callable[[Path], LooseHeader] | None:
     Returns None where the optional image stack is absent, so that scanning
     keeps working in a minimal install: :func:`read_image_metadata` raises
     there rather than returning None, and a scan is a filesystem walk that has
-    never needed the image stack. Images whose beam is then unknown are left
-    out and reported; the rest are indexed unordered.
+    never needed the image stack. Images whose beam is then unknown are indexed
+    as ``other`` rather than into the series their name states, and reported;
+    the rest are indexed unordered.
 
     The scanner and the survey both take their reader from here, so the two
     cannot disagree about which images are indexable.
     """
     if image_stack_problems():
         logger.info(
-            "No image stack installed; images whose filename states no beam "
-            "cannot be indexed. Install the [all] extra to include them"
+            "No image stack installed; images whose filename states no beam are "
+            "indexed as 'other' rather than their own series. Install the [all] "
+            "extra to place them"
         )
         return None
     return read_loose_header

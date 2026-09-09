@@ -24,11 +24,11 @@ from pathlib import Path
 
 from .layout import (
     build_image_sets,
-    classify_loose_image,
     directory_cache,
     directory_role,
     image_files,
     is_alignment_directory,
+    is_ignored_image_name,
     subdirectories_by_name,
 )
 
@@ -138,23 +138,18 @@ def holds_images(directory: Path) -> bool:
     return any(image_files(image_set.directory) for image_set in build_image_sets(directory))
 
 
-def holds_loose_images(directory: Path, in_alignment_run: bool = False) -> bool:
+def holds_loose_images(directory: Path) -> bool:
     """Return whether *directory* holds images loose among its other files.
 
-    Cheaper than building the sets, and that is the point: discovery only needs
-    to know whether there is anything here, so it asks the filenames and
-    **never opens an image to find out**. Establishing the beam of an image
-    whose name does not state it is the scanner's job, once, for a directory
-    already known to be a stage.
-
-    Args:
-        directory: The directory to look in.
-        in_alignment_run: Whether *directory* is one alignment run, whose
-            fixed filenames mean nothing without that context.
+    Any image file it does not deliberately omit, whether or not a naming rule
+    recognises it: one that none reaches is indexed as ``other``, and a
+    directory that never became a stage is one no set could be built in. So
+    this asks the extension and :func:`~..layout.is_ignored_image_name`, and
+    **never opens an image to find out** -- establishing a beam is the
+    scanner's job, once, for a directory already known to be a stage.
     """
     return any(
-        classify_loose_image(path.name, in_alignment_run=in_alignment_run) is not None
-        for path in image_files(directory)
+        not is_ignored_image_name(path.name) for path in image_files(directory)
     )
 
 
@@ -336,7 +331,8 @@ def find_stage_directories(
     come in: image *directories* such as ``sem/``, or images sitting loose
     among a directory's other files. The project root itself is a candidate,
     which is what supports the oldest layouts where neither the lamella nor the
-    stage level exists as a folder.
+    stage level exists as a folder -- and is where a project's grid overviews
+    are found, sitting above every lamella.
 
     **A loose-image stage does not stop the search, and a directory-shaped one
     does.** This is the invariant the whole layout rests on. A 2026 lamella
@@ -358,23 +354,23 @@ def find_stage_directories(
     """
     found: list[Path] = []
 
-    def walk(directory: Path, depth: int, in_alignment_run: bool) -> None:
+    def walk(directory: Path, depth: int) -> None:
         if directory != project_root and project_markers(directory):
             logger.debug("Not crossing into nested project %s", directory)
             return
         if build_image_sets(directory):
             found.append(directory)
             return
-        if holds_loose_images(directory, in_alignment_run=in_alignment_run):
+        if holds_loose_images(directory):
             found.append(directory)
         if depth >= max_depth:
             logger.debug("Stopping at depth %d: %s", depth, directory)
             return
         for child in subdirectories_by_name(directory).values():
             if directory_role(child.name) == "unknown":
-                walk(child, depth + 1, is_alignment_directory(directory.name))
+                walk(child, depth + 1)
 
-    walk(project_root, 0, False)
+    walk(project_root, 0)
     return found
 
 

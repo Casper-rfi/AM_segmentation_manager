@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from qtpy.QtGui import QColor, QPalette
 
+from ...layout import MODALITIES, SERIES
+
 #: The surface a panel sits on, and the surface a value sits in. Inputs and
 #: lists are white against an off-white window, which is what separates "you can
 #: type here" from "this is background" without drawing a box around everything.
@@ -137,12 +139,16 @@ GRIP_LENGTH = 28.0
 #: **SEM above FIB**. The gap shows the row behind it rather than a border,
 #: which is what separates one cell from the next.
 #:
+#: The width is counted from ``SERIES`` rather than written down, so that adding
+#: a series widens the chip instead of painting a column outside the pixmap,
+#: which clips without reporting anything.
+#:
 #: **The height must stay even**, or the chip lands half a pixel below the tick
 #: beside it -- `docs/display.md` § Controls says why.
 SWATCH_CELL = 7
 SWATCH_GAP = 2
-SWATCH_WIDTH = 3 * SWATCH_CELL + 2 * SWATCH_GAP
-SWATCH_HEIGHT = 2 * SWATCH_CELL + SWATCH_GAP
+SWATCH_WIDTH = len(SERIES) * SWATCH_CELL + (len(SERIES) - 1) * SWATCH_GAP
+SWATCH_HEIGHT = len(MODALITIES) * SWATCH_CELL + (len(MODALITIES) - 1) * SWATCH_GAP
 
 
 def build_palette() -> QPalette:

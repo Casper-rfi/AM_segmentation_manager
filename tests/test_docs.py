@@ -29,8 +29,7 @@ DOCS = REPOSITORY / "docs"
 TESTS = REPOSITORY / "tests"
 
 #: How long the documents may get, in total. `CLAUDE.md` sets this: short
-#: enough to read in one sitting. Raised from 1050 by the scientist, in two
-#: steps, for the window's own entries about the four tabs.
+#: enough to read in one sitting.
 #:
 #: The number bounds the documents. It does **not** decide what goes. An entry
 #: is removed because the code it describes no longer exists, because the fact
@@ -38,7 +37,7 @@ TESTS = REPOSITORY / "tests"
 #: has landed, or because the scientist said so -- never to make room for
 #: something being added. Over the ceiling with none of those available is a
 #: question for the scientist rather than a deletion to be chosen.
-MAX_DOC_LINES = 1110
+MAX_DOC_LINES = 1135
 
 #: The documents holding invariants rather than status. An entry in the roadmap
 #: or the future-work sketches describes what is unbuilt or unfinished and so

@@ -229,6 +229,11 @@ def _format_project(project: ProjectSurvey, root: Path, detail: bool) -> list[st
 def _format_image_set(entry) -> str:
     """Return a one-line description of an image set and its labels."""
     image_set = entry.image_set
+    if image_set.labels_directory is None:
+        return (
+            f"{image_set.name:<20} {image_set.display_name:<14} "
+            f"{entry.image_count:>4} image(s)  labels: none (not a labelled series)"
+        )
     labels = image_set.labels_directory.name
     if not image_set.labels_exist:
         labels_note = f"{labels}/ (not created)"

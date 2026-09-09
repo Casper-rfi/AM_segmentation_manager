@@ -106,16 +106,34 @@ DirectoryRole = Literal[
 #: wrote them loose in the lamella directory instead. Reference and alignment
 #: images are always loose, sharing a directory with whatever else Autolamella
 #: wrote there. :func:`classify_loose_image` recognises any of the three.
-Series = Literal["adaptive", "reference", "alignment"]
+#:
+#: ``other`` is every remaining image file, and is not a claim about what it is
+#: for: it is where an image goes when no naming rule reaches it, so that a
+#: picture nobody anticipated can be opened and looked at instead of merely
+#: counted. It carries no labels and no predictions, and the write paths refuse
+#: it.
+Series = Literal["adaptive", "reference", "alignment", "other"]
 
-#: The series, in display order.
-SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment")
+#: The series, in display order. ``other`` last: it is the residue, and a
+#: reader scanning a row wants the curated series first.
+SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment", "other")
 
 #: The series whose images can sit loose in a directory rather than filling
 #: one, and so need a name invented for them before their labels have somewhere
-#: to go. All three: an Adaptive Polishing image usually has a directory to take
-#: its name from, but not where the prototype wrote it beside the references.
+#: to go. All three curated ones: an Adaptive Polishing image usually has a
+#: directory to take its name from, but not where the prototype wrote it beside
+#: the references. ``other`` is excluded because it has no labels to name a
+#: directory for -- :func:`other_image_set_name` names those sets instead.
 LOOSE_SERIES: Final[tuple[Series, ...]] = ("adaptive", "reference", "alignment")
+
+#: The series an operation may be pointed at, and so the ``--series`` vocabulary
+#: of every command that writes, measures or exports label data. Everything but
+#: ``other``, whose images have no label directory and no predictions directory
+#: for such a command to act on. Derived rather than written out, so that adding
+#: a series has to decide which side of this it falls on.
+LABELLED_SERIES: Final[tuple[Series, ...]] = tuple(
+    series for series in SERIES if series != "other"
+)
 
 #: The series whose images are expected to be labelled, so that an unlabelled
 #: one is worth reporting. Everything outside this is indexed and countable but
@@ -130,6 +148,7 @@ SERIES_LABELS: Final[dict[Series, str]] = {
     "adaptive": "Adaptive Polishing",
     "reference": "reference",
     "alignment": "alignment",
+    "other": "other",
 }
 
 #: Filename suffix to the modality it names. Autolamella writes one on nearly
@@ -185,9 +204,11 @@ class ImageSet:
 
     Attributes:
         directory: The directory the images sit in.
-        modality: ``"SEM"`` or ``"FIB"``. Always known: an image whose beam
-            neither its name nor its header states is reported rather than put
-            in a set, since nothing downstream could say which beam it is.
+        modality: ``"SEM"`` or ``"FIB"``, or ``None`` for an ``other`` set
+            whose beam neither its filenames nor their headers state. Known for
+            every curated series: an image of one whose beam nothing states is
+            reported rather than put in a set, since nothing downstream could
+            say which beam it is.
         variant: The imaging-condition suffix, or ``None`` for the base
             directory. Always ``None`` for a loose set, which has no image
             directory to carry one.
@@ -196,7 +217,9 @@ class ImageSet:
             set is the whole directory. Read it through
             :func:`image_files_of` rather than testing it.
         labels_directory: Where this set's labels live, whether or not that
-            directory exists yet.
+            directory exists yet. ``None`` for an ``other`` set, which has no
+            labels and no place one could be written: a caller reaching for a
+            label there has lost track of what it is holding.
         labels_exist: Whether *labels_directory* is present on disk.
         labels_are_shared: Whether another image set in the same stage resolves
             to the same label directory.
@@ -205,9 +228,9 @@ class ImageSet:
     """
 
     directory: Path
-    modality: str
+    modality: str | None
     variant: str | None
-    labels_directory: Path
+    labels_directory: Path | None
     labels_exist: bool
     labels_are_shared: bool
     labels_are_legacy: bool
@@ -225,8 +248,11 @@ class ImageSet:
 
         The image directory's name, or the invented one a loose set's labels
         are named after -- which is the same string
-        :func:`labels_directory_name` was given, either way.
+        :func:`labels_directory_name` was given, either way. An ``other`` set
+        has no labels, so :func:`other_image_set_name` names it instead.
         """
+        if self.series == "other":
+            return other_image_set_name(self.modality)
         if self.is_loose:
             return loose_image_set_name(self.series, self.modality)
         return self.directory.name
@@ -235,6 +261,8 @@ class ImageSet:
     def display_name(self) -> str:
         """Return a short label such as ``'SEM'``, ``'SEM [8_fi_1]'`` or
         ``'SEM (reference)'``."""
+        if self.modality is None:
+            return f"({SERIES_LABELS[self.series]})"
         if self.is_loose:
             return f"{self.modality} ({SERIES_LABELS[self.series]})"
         if self.variant is None:
@@ -625,14 +653,28 @@ def loose_image_set_name(series: Series, modality: str) -> str:
 
     Raises:
         ValueError: If *series* is not one of :data:`LOOSE_SERIES`, which is
-            every series -- so this fires only for a value that is not a series
-            at all, and means the caller has lost track of what it is holding.
+            every series that has labels -- so this fires for ``other``, or for
+            a value that is not a series at all, and means the caller has lost
+            track of what it is holding.
     """
     if series not in LOOSE_SERIES:
         raise ValueError(
             f"Not a loose series: {series!r}; expected one of {list(LOOSE_SERIES)}"
         )
     return f"{series}_{modality.lower()}"
+
+
+def other_image_set_name(modality: str | None) -> str:
+    """Return the name identifying one modality of ``other`` images.
+
+    The counterpart of :func:`loose_image_set_name` for the series that has no
+    labels, and deliberately not that function: feeding this to
+    :func:`labels_directory_name` would name a directory nothing may write to.
+    The beam is part of the name where one is known, so that a directory
+    holding both keeps them apart; a set whose beam nothing states is simply
+    ``other``, there being at most one of those per directory.
+    """
+    return f"other_{modality.lower()}" if modality else "other"
 
 
 # ---------------------------------------------------------------------------
@@ -995,8 +1037,15 @@ class LooseImageSets:
         sets: The sets found, ordered by series then modality.
         unrecognised: Filenames no classification rule matched. Deliberate
             omissions are not among them -- see :func:`is_ignored_image_name`.
+            These are *also* in the ``other`` set, which is not a contradiction:
+            the set is where the file is indexed and this is why it landed
+            there, and the survey reports the reason so that a name Autolamella
+            has newly invented stays visible rather than being absorbed.
         unresolved: Filenames classified into a series, but whose beam neither
-            the name nor *resolve_modality* could establish.
+            the name nor *resolve_modality* could establish. A curated series'
+            set is keyed by beam and there is nothing to key these on, so they
+            join the beamless ``other`` set -- indexed, and reported here so
+            that the series their name does state is not quietly lost.
     """
 
     sets: tuple[ImageSet, ...] = ()
@@ -1028,11 +1077,12 @@ def build_loose_image_sets(
             is a filesystem walk, and this is the one narrow exception to it.
 
     Returns:
-        A :class:`LooseImageSets` holding the sets and everything that did not
-        fit into one.
+        A :class:`LooseImageSets` holding the sets and, for each file that
+        reached the ``other`` set or no set at all, why.
     """
     siblings = subdirectories_by_name(directory)
     grouped: dict[tuple[Series, str], list[str]] = {}
+    other: dict[str | None, list[str]] = {}
     unrecognised: list[str] = []
     unresolved: list[str] = []
 
@@ -1040,14 +1090,28 @@ def build_loose_image_sets(
         if is_ignored_image_name(path.name):
             continue
         classified = classify_loose_image(path.name, in_alignment_run=in_alignment_run)
-        if classified is None:
-            unrecognised.append(path.name)
-            continue
-        modality = classified.modality
+        # `beam_modality` for the unrecognised, because `classify_loose_image`
+        # never got as far as reading the suffix off a name it rejected -- and
+        # a suffix the filename states beats a header nobody has opened.
+        modality = (
+            classified.modality if classified is not None else beam_modality(path.name)
+        )
         if modality is None and resolve_modality is not None:
             modality = resolve_modality(path)
+        if classified is None:
+            # No rule reached it, so it is indexed as `other` and reported as
+            # unrecognised. Both: the file becomes something a reviewer can
+            # open, and the finding that makes an unanticipated layout visible
+            # keeps its data.
+            unrecognised.append(path.name)
+            other.setdefault(modality, []).append(path.name)
+            continue
         if modality is None:
+            # Its name says which series, but a set of that series is keyed by
+            # beam. Indexing it as `other` keeps it openable; the finding says
+            # what was known about it, which is what `other` cannot carry.
             unresolved.append(path.name)
+            other.setdefault(None, []).append(path.name)
             continue
         grouped.setdefault((classified.series, modality), []).append(path.name)
 
@@ -1071,6 +1135,20 @@ def build_loose_image_sets(
                 image_names=tuple(sorted(grouped[(series, modality)])),
             )
         )
+    for modality in sorted(other, key=_other_group_sort_key):
+        sets.append(
+            ImageSet(
+                directory=directory,
+                modality=modality,
+                variant=None,
+                labels_directory=None,
+                labels_exist=False,
+                labels_are_shared=False,
+                labels_are_legacy=False,
+                series="other",
+                image_names=tuple(sorted(other[modality])),
+            )
+        )
 
     if unrecognised:
         logger.debug("%d unrecognised image name(s) in %s", len(unrecognised), directory)
@@ -1088,6 +1166,17 @@ def _loose_group_sort_key(group: tuple[Series, str]) -> tuple[int, int]:
         SERIES.index(series),
         MODALITIES.index(modality) if modality in MODALITIES else len(MODALITIES),
     )
+
+
+def _other_group_sort_key(modality: str | None) -> tuple[int, int]:
+    """Order ``other`` sets by modality, the beamless one last.
+
+    Last because it is the least informative of them, and because sorting
+    ``None`` against strings raises rather than choosing.
+    """
+    if modality is None:
+        return (1, 0)
+    return (0, MODALITIES.index(modality) if modality in MODALITIES else len(MODALITIES))
 
 
 def image_files_of(image_set: ImageSet) -> dict[str, Path]:

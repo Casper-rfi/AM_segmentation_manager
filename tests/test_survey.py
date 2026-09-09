@@ -112,15 +112,32 @@ def test_every_era_formats_without_error(tmp_path: Path, era: str):
 def test_nested_stage_is_found_below_intermediate_directories(tmp_path: Path):
     project = make_project(tmp_path, "v2026_nested")
     stages = find_stage_directories(project)
-    assert [stage.name for stage in stages] == ["adaptive_polish_2026-07-09-11-23-46AM"]
+    assert "adaptive_polish_2026-07-09-11-23-46AM" in [stage.name for stage in stages]
 
 
-def test_alignment_directories_are_not_indexed(tmp_path: Path):
-    """Alignment images are context only and out of scope."""
+def test_a_directory_of_images_no_rule_recognises_is_still_a_stage(tmp_path: Path):
+    """A set cannot be built in a directory the search never returned, so
+    reaching every image means reaching every directory holding one."""
+    project = make_project(tmp_path, "v2026_nested")
+
+    names = [stage.name for stage in find_stage_directories(project)]
+
+    assert "Fine 1-11-01-38" in names
+    assert "Rough-Milling" in names
+
+
+def test_alignment_images_are_indexed_but_never_become_segmentation_targets(tmp_path):
+    """Context only, which is now a series rather than an omission: they are
+    countable and openable, and there is nowhere for a label of one to go."""
     make_project(tmp_path, "v2026_nested")
-    survey = survey_collection(tmp_path)
-    indexed = {entry.image_set.directory.name for entry in survey.projects[0].image_sets}
-    assert indexed == {"sem", "fib"}
+    sets = [entry.image_set for entry in survey_collection(tmp_path).projects[0].image_sets]
+
+    curated = {one.directory.name for one in sets if one.series != "other"}
+    other = {one.directory.name for one in sets if one.series == "other"}
+
+    assert curated == {"sem", "fib"}
+    assert other == {"Fine 1-11-01-38", "Rough-Milling"}
+    assert all(one.labels_directory is None for one in sets if one.series == "other")
 
 
 def test_collapsed_layout_synthesises_lamella_and_stage(tmp_path: Path):

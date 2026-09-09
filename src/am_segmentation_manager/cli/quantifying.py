@@ -27,6 +27,7 @@ from ..config import load_segmentation_config
 from ..filtering import filter_by_metadata
 from ..image_metadata import read_records_metadata
 from ..io.path import make_path_relative
+from ..layout import SERIES
 from ..operations.copy_export import (
     DestinationInsideSource,
     copy_export,
@@ -91,7 +92,10 @@ def add_arguments(sub) -> None:
             "the per-lamella view."
         ),
     )
-    _add_scope_arguments(stats_cmd, default_modality="all", default_series=REPORTING_SERIES)
+    _add_scope_arguments(
+        stats_cmd, default_modality="all",
+        default_series=REPORTING_SERIES, series_choices=SERIES,
+    )
     stats_cmd.add_argument(
         "--by", action="append", default=[], metavar="PROPERTY",
         help=(
@@ -193,7 +197,10 @@ def add_arguments(sub) -> None:
             "create-training-csv writes."
         ),
     )
-    _add_scope_arguments(export_metadata, default_modality="all")
+    # Counts and describes rather than acting, and an `other` image has a
+    # header and a place in the collection like any other; a deposition wants
+    # the grid overviews listed beside the lamellae they hold.
+    _add_scope_arguments(export_metadata, default_modality="all", series_choices=SERIES)
     _add_metadata_filters(export_metadata)
     export_metadata.add_argument("-o", "--output", required=True, help="CSV file to write")
     export_metadata.add_argument(
@@ -235,7 +242,10 @@ def add_arguments(sub) -> None:
             "structural ones."
         ),
     )
-    _add_scope_arguments(export_files, default_modality="all")
+    # Copies each image and whatever label pairs with it, so a series with no
+    # labels copies its images and nothing else -- which is what makes the
+    # result the same collection, smaller.
+    _add_scope_arguments(export_files, default_modality="all", series_choices=SERIES)
     export_files.add_argument(
         "-o", "--output", required=True, metavar="DIRECTORY",
         help="Directory to copy into. It must not be inside the folder scanned",

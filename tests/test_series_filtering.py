@@ -14,8 +14,13 @@ import pytest
 
 from am_segmentation_manager.aggregate import BREAKDOWNS, by_series, count_by
 from am_segmentation_manager.cli import build_parser
-from am_segmentation_manager.cli.scope import DEFAULT_SERIES, REPORTING_SERIES
+from am_segmentation_manager.cli.scope import (
+    DEFAULT_SERIES,
+    REPORTING_SERIES,
+    _series_selectors,
+)
 from am_segmentation_manager.filtering import matches_series
+from am_segmentation_manager.layout import LABELLED_SERIES, SERIES
 from am_segmentation_manager.models import ImageRecord
 
 
@@ -133,3 +138,91 @@ def test_every_command_with_a_scope_offers_the_selector():
         options = {option for action in sub._actions for option in action.option_strings}
         if "--variant" in options:
             assert "--series" in options, name
+
+
+# ---------------------------------------------------------------------------
+# Which series a command will take at all
+# ---------------------------------------------------------------------------
+
+#: Commands that write, measure or export label data. An `other` record has no
+#: label directory and no predictions directory, so none of these could do
+#: anything but refuse it once a scan had run.
+ACTING_COMMANDS = [
+    "predict", "convert-predictions", "select", "deselect", "correct",
+    "find-specks", "compress-labels", "quantify-labels", "create-training-csv",
+    "revert",
+]
+
+#: Commands that describe what is on disk. An image with no labels still has a
+#: header, a place in the collection and a file to copy.
+REPORTING_COMMANDS = ["stats", "export-metadata-csv", "export-files"]
+
+
+@pytest.mark.parametrize("command", ACTING_COMMANDS)
+def test_a_command_that_acts_will_not_take_other_at_all(command, capsys):
+    """Refused at the argument, before a scan, rather than at the record -- and
+    the message names what the command does take, so the refusal is a usable
+    answer rather than only a rejection. Reading stderr also proves the exit is
+    this refusal and not a required argument these commands have of their own.
+    """
+    with pytest.raises(SystemExit):
+        subcommands()[command].parse_args(["--series", "other", "--modality", "all"])
+
+    assert "this command covers adaptive, reference, alignment" in capsys.readouterr().err
+
+
+def test_other_is_refused_even_beside_a_series_that_is_offered():
+    with pytest.raises(SystemExit):
+        subcommands()["predict"].parse_args(
+            ["--series", "adaptive,other", "--modality", "all"]
+        )
+
+
+def scope_of(command: str, series: list[str] | None = None) -> argparse.Namespace:
+    """Return what *command* would resolve --series to, without parsing a line.
+
+    Read off the parser for the reason :func:`default_series_of` gives: several
+    of these have required arguments of their own, and none of that is what
+    this is about.
+    """
+    sub = subcommands()[command]
+    return argparse.Namespace(
+        series=series or [],
+        default_series=sub.get_default("default_series"),
+        series_choices=sub.get_default("series_choices"),
+    )
+
+
+@pytest.mark.parametrize("command", REPORTING_COMMANDS)
+def test_a_command_that_only_describes_takes_other(command):
+    assert _series_selectors(scope_of(command, ["other"])) == ["other"]
+
+
+def test_all_means_every_series_this_command_covers_not_every_series():
+    """The two differ, which is the whole point: `stats --series all` counts the
+    residue and `predict --series all` must not reach it."""
+    acting = _series_selectors(scope_of("predict", ["all"]))
+
+    assert acting == list(LABELLED_SERIES)
+    assert "other" not in acting
+    assert _series_selectors(scope_of("stats", ["all"])) == list(SERIES)
+
+
+def test_the_acting_vocabulary_is_every_series_but_the_residue():
+    """Derived from SERIES, so a series added later has to pick a side."""
+    assert set(SERIES) - set(LABELLED_SERIES) == {"other"}
+
+
+def test_a_command_that_acts_still_defaults_to_adaptive_polishing():
+    """Narrowing the vocabulary must not have widened the default."""
+    assert _series_selectors(scope_of("predict")) == ["adaptive"]
+
+
+def test_the_help_of_a_command_that_acts_does_not_offer_other():
+    """A word the help lists is a word the command takes."""
+    for command in ACTING_COMMANDS:
+        series = next(
+            action for action in subcommands()[command]._actions
+            if "--series" in action.option_strings
+        )
+        assert "other" not in series.help, command

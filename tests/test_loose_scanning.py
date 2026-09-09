@@ -172,7 +172,8 @@ def test_a_loose_set_is_given_no_predictions(project, records):
 def test_scanning_works_without_the_image_stack(project, monkeypatch):
     """A scan is a filesystem walk and has never needed tifffile.
 
-    Only images whose filename states no beam are lost, and they are logged.
+    Nothing is lost without it; images whose filename states no beam are
+    indexed as `other` rather than into their own series, and logged.
     """
     monkeypatch.setattr(
         "am_segmentation_manager.image_metadata.image_stack_problems",
@@ -182,8 +183,8 @@ def test_scanning_works_without_the_image_stack(project, monkeypatch):
 
     records = Scanner(project.parent).build_index().find_by_name("bitmap").image_records
 
-    assert "ref_PositionReady.tif" not in by_name(records)
-    assert "ref_Polishing_start_eb.tif" in by_name(records)
+    assert by_name(records)["ref_PositionReady.tif"].series == "other"
+    assert by_name(records)["ref_Polishing_start_eb.tif"].series == "reference"
 
 
 def test_a_beam_read_from_a_header_indexes_the_image(project, monkeypatch):

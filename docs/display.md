@@ -143,7 +143,7 @@ of one of these files, is held by `test_docs.py`.
 - **The left column is read across rather than down, and is sized for its widest row.** It is the
   narrowest on the tab and holds the most, so captions sit beside their boxes and the series
   switches go two to a line; *One image per label* sits at the margin, indented with them having
-  read as a fourth series. Squeezed, Qt cuts a caption from both ends rather than shortening it, so
+  read as one more of them. Squeezed, Qt cuts a caption from both ends rather than shortening it, so
   the column opens wider than its widest row
   (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`). The projects are a
   filter like the rest, drawn *above* the box rather than as a second outline inside it.
@@ -174,10 +174,12 @@ of one of these files, is held by `test_docs.py`.
   by the rule in [`decisions.md`](decisions.md) § Workflow state. Writing a value needs no asking;
   **clearing** one is confirmed, reading as tidying a placeholder rather than as emptying that field
   everywhere under the folder.
-- **The status chip is a cell per series and beam, and nothing combines across the two.** Three
-  columns in `SERIES` order, SEM above FIB; only `LABELS_EXPECTED` ever varies, a reference column
-  that changed being a claim that work nobody intends to do is outstanding. Combined, reference
-  images sitting at the default state for ever make a finished project report as part-done.
+- **The status chip is a cell per series and beam, and nothing combines across the two.** A column
+  per `SERIES` entry, SEM above FIB; only `LABELS_EXPECTED` ever varies, a reference column that
+  changed being a claim that work nobody intends to do is outstanding. Combined, reference
+  images sitting at the default state for ever make a finished project report as part-done. Its
+  width counts `SERIES` rather than writing the number down: a column painted outside the pixmap
+  is clipped silently.
 - **Its cells are told apart by brightness, not by hue, and none is outlined.** The timeline's blue
   and teal are the same brightness, so a cell split between them was separated by the one channel
   the eye cannot use at that size. `CELL_COLOURS` is a ramp, lightest

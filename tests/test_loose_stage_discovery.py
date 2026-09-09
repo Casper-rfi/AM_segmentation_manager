@@ -184,16 +184,18 @@ def test_an_alignment_run_is_marked_at_either_level(modern_project: Path, parts)
 # holds_loose_images
 # ---------------------------------------------------------------------------
 
-def test_holds_loose_images_needs_the_alignment_directory_for_generic_names(tmp_path):
+def test_holds_loose_images_does_not_need_a_rule_to_recognise_the_name(tmp_path):
+    """A name no rule reaches is indexed as `other`, so the directory holding it
+    has to become a stage -- a set cannot be built in one that never does."""
     run = touch(tmp_path / "Alignment" / "Fine 1-10-56-09", "reference_image.tif")
 
-    assert not holds_loose_images(run)
-    assert holds_loose_images(run, in_alignment_run=True)
+    assert holds_loose_images(run)
+    assert holds_loose_images(touch(tmp_path / "d", "something_new_eb.tif"))
 
 
-def test_holds_loose_images_ignores_what_no_rule_recognises(tmp_path):
-    assert not holds_loose_images(touch(tmp_path / "d", "something_new_eb.tif"))
+def test_holds_loose_images_ignores_what_this_package_omits_on_purpose(tmp_path):
     assert not holds_loose_images(touch(tmp_path / "e", "01-ape_centring_SEM.tif"))
+    assert not holds_loose_images(touch(tmp_path / "f", "notes.txt"))
 
 
 # ---------------------------------------------------------------------------

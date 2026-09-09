@@ -440,11 +440,18 @@ def survey_project(
 def _unindexed_findings(project_root: Path, survey: ProjectSurvey) -> list[Finding]:
     """Report image files in the project that no image set claims.
 
-    **The check that catches a layout nobody anticipated.** Every other finding
-    describes something the conventions recognised; this one counts what they
-    did not reach at all, which is the failure that hides best -- before
-    reference images were indexed, a project holding 430 images was surveyed as
-    holding 100, and nothing said so.
+    **The last-resort check for a layout nobody anticipated.** Every other
+    finding describes something the conventions recognised; this one counts
+    what they did not reach at all, which is the failure that hides best --
+    before reference images were indexed, a project holding 430 images was
+    surveyed as holding 100, and nothing said so.
+
+    Since the ``other`` series, an image no naming rule recognises is indexed
+    rather than missed, and ``unrecognised-image`` reports that population per
+    stage. So this is normally empty, and what is left in it is an image the
+    *traversal* never offered to a set at all -- one below the stage search's
+    depth limit, or in a directory whose role stops the search -- which no
+    classification rule can fix and which nothing else would say.
 
     Labels and predictions are excluded by counting only what is not inside a
     label or prediction directory, so a project is not reported as holding
@@ -476,12 +483,12 @@ def _unindexed_findings(project_root: Path, survey: ProjectSurvey) -> list[Findi
     more = "" if len(unindexed) <= 3 else f", and {len(unindexed) - 3} more"
     return [
         Finding(
-            severity="info",
+            severity="warning",
             category="unindexed-images",
             path=project_root,
             message=(
-                f"{len(unindexed)} image file(s) belong to no image set and are not "
-                f"indexed: {shown}{more}"
+                f"{len(unindexed)} image file(s) were never offered to an image set "
+                f"and are not indexed: {shown}{more}"
             ),
         )
     ]
@@ -608,11 +615,15 @@ def _survey_stage(
 def _loose_findings(stage_path: Path, loose) -> list[Finding]:
     """Report the loose files that could not be made into an image set.
 
-    Two different problems. A name no rule recognises may be an Autolamella
-    version writing something new, and is the reason classification returns
-    nothing rather than guessing. A beam nothing could establish means the
-    filename says none and the header would not read, which leaves no way to
-    say which column took the image -- so it is not indexed at all.
+    Two different problems, and both files are indexed as ``other`` -- what is
+    reported here is the reason, which is the part ``other`` cannot carry. A
+    name no rule recognises may be an Autolamella version writing something
+    new: **this is the tripwire** that made an unanticipated layout visible
+    before the series existed, and the count staying non-zero is what keeps it
+    one. A beam nothing could establish means the filename says none and the
+    header would not read; the series its name does state is known and is worth
+    saying, because a set of that series is keyed by beam and so could not take
+    it.
     """
     findings: list[Finding] = []
     if loose.unrecognised:
@@ -625,7 +636,7 @@ def _loose_findings(stage_path: Path, loose) -> list[Finding]:
                 path=stage_path,
                 message=(
                     f"{len(loose.unrecognised)} image(s) match no naming rule and are "
-                    f"not indexed: {shown}{more}"
+                    f"indexed as the 'other' series: {shown}{more}"
                 ),
             )
         )
@@ -637,8 +648,8 @@ def _loose_findings(stage_path: Path, loose) -> list[Finding]:
                 path=stage_path,
                 message=(
                     f"{len(loose.unresolved)} image(s) state no beam in their filename "
-                    f"and none could be read from their header; not indexed, "
-                    f"starting with {loose.unresolved[0]}"
+                    f"and none could be read from their header; indexed as the 'other' "
+                    f"series rather than their own, starting with {loose.unresolved[0]}"
                 ),
             )
         )
@@ -660,6 +671,7 @@ def _declared_state_findings(
         candidate
         for image_set in image_sets
         for directory in (image_set.image_set.directory, image_set.image_set.labels_directory)
+        if directory is not None
         for candidate in state_directories(directory)[1:]
         if candidate.is_dir()
     ]
@@ -720,6 +732,7 @@ def _declared_state_findings(
     known = {
         state_key(image_set.image_set.labels_directory / name, stage_path)
         for image_set in image_sets
+        if image_set.image_set.labels_directory is not None
         for name in image_set.image_names
     }
     orphaned = sorted(set(declared.states) - known)

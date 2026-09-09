@@ -37,9 +37,10 @@ than invented:
     project/lamella/SEM_8/                     no stage directory
     project/SEM/                               no lamella or stage directory
 
-**Three series of images are indexed**, because Autolamella writes far more
-than the Adaptive Polishing images. The other two sit *loose* in a directory
-rather than filling one, so a lamella directory holds several at once:
+**Every image is indexed, under one of four series**, because Autolamella
+writes far more than the Adaptive Polishing images. Reference and alignment
+images sit *loose* in a directory rather than filling one, so a lamella
+directory holds several at once:
 
     Adaptive Polishing   the `sem/` and `fib/` directories above
     reference            ref_<task>_*_eb.tif in a lamella directory, and
@@ -48,20 +49,25 @@ rather than filling one, so a lamella directory holds several at once:
     alignment            beam_shift_alignment_*, ref_*_initial_alignment_*,
                          ref_alignment_ib.tif, and the reference_image /
                          new_image_<n> / final_image trio in an Alignment run
+    other                every remaining .tif — grid overviews, diagnostics,
+                         and anything a naming rule does not reach
 
 A loose image's beam comes from its `_eb`/`_ib` suffix, and from the image
 header for the few names that carry neither. Labels for one go in
-`<series>_<modality>_labels/` beside the images.
+`<series>_<modality>_labels/` beside the images; `other` has none, and no
+command that writes will act on it.
 
 Run `am-seg inspect-layout` on a folder to see how it is read and what does not
 fit. It is read-only and the right place to start on unfamiliar data, and it
-reports any image file that belongs to no series — which is how a naming this
+reports every image that landed in `other` and why — which is how a naming this
 package has not seen makes itself visible.
 
-**`--series` chooses which of the three a command covers.** `inspect-layout` and
+**`--series` chooses which of them a command covers.** `inspect-layout` and
 `stats` report on all of them; every other command acts on Adaptive Polishing
-unless told otherwise, so indexing the other two changed nothing that was
-already being written:
+unless told otherwise, so indexing the rest changed nothing that was already
+being written. A command that writes, measures or exports label data does not
+offer `other` at all, and `--series all` means every series *that command*
+covers:
 
     am-seg stats ... --by series                 # how many of each
     am-seg create-training-csv ... --series reference,adaptive

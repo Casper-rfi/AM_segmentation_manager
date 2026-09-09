@@ -34,7 +34,7 @@ rather than appending to it.
   `<modality>` directory that names them, but the script-based prototype wrote them beside
   Autolamella's own references as `adapt_mill_img_000_electron_000.tif` — spelling the beam out
   rather than suffixing it, which is why `beam_modality` cannot read it and the rule does. So all
-  three series are in `LOOSE_SERIES`, and such a set's labels go to `adaptive_sem_labels/` by the
+  three labelled series are in `LOOSE_SERIES`, and such a set's labels go to `adaptive_sem_labels/` by the
   same naming rule the other loose series use. That name has no shared form on purpose: a shared
   `sem_labels/` would let a reference set claim the same lamella's Adaptive Polishing labels.
 - **A condition that repeats its variant in the filename is renamed, not parsed around.** Stripping
@@ -79,12 +79,23 @@ rather than appending to it.
   every finding worth acting on. `layout.LABELS_EXPECTED` names the series that get the report; a
   set whose label directory *does* exist is reported on normally whatever its series.
   `unexpected-stage-name` is narrowed the same way, to a stage found by holding image *directories*.
-- **The survey counts what it could not reach at all.** Every other finding describes something
-  the conventions recognised; `unindexed-images` counts image files no image set claims, and
-  `unindexed-dataset` counts whole directories no project claims — the two failures that hide best.
-  A project can survey as holding a fraction of its images with nothing saying so. Labels,
-  predictions and ignored names are excluded, or annotating a project would report thousands.
-  Turning that count into something viewable is [`04_future_work.md`](04_future_work.md) §6.
+- **Every image is indexed, and `other` holds the ones no naming rule reaches** — the residue, not
+  a claim about what an image is for, so a picture nobody anticipated can be opened rather than only
+  counted. Its `labels_directory` and `predictions_directory` are `None`, which is what makes every
+  write path refuse it where a runtime guess would not
+  (`test_alignment_images_are_indexed_but_never_become_segmentation_targets`); an image whose beam
+  neither filename nor header states joins it too, a labelled series' set being keyed by beam
+  (`test_a_resolver_that_cannot_say_leaves_the_image_reported`). Reaching every image means reaching
+  every directory holding one, so `holds_loose_images` asks the extension, not a naming rule
+  (`test_a_directory_of_images_no_rule_recognises_is_still_a_stage`).
+- **Indexing the residue moved the alarm rather than silencing it.** `unrecognised-image` is the
+  tripwire that made an unanticipated layout visible — a project holding 430 images once surveyed as
+  holding 100, with nothing saying so — and a set absorbing those files quietly would have
+  disconnected it. So a file is indexed *and* still reported, the count staying non-zero being what
+  keeps it a tripwire, 253 across the reference collection
+  (`test_images_no_naming_rule_reaches_are_indexed_as_other_and_still_reported`). Behind it,
+  `unindexed-images` keeps what the *traversal* never offered to a set — below the depth limit, or a
+  directory whose role stops the search — and `unindexed-dataset` whole directories no project claims.
 - **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing in
   a loose filename orders it: many carry no timestamp, and the epochs that do appear are when the
   milling *stage* started, minutes before the image. **mtime is worse than useless**, the collection
@@ -315,6 +326,14 @@ rather than appending to it.
   (`scope.DEFAULT_SERIES` and `REPORTING_SERIES`). `by_series` returns the slug rather than the
   display label, a value counted having to be one `--series` accepts; and unlike a variant a series
   is a closed vocabulary, so `--series refrence` raises — a typo, not a request for nothing.
+- **A command is not offered a series it could only refuse.** `other` has neither directory, so
+  anything that writes, measures or exports label data takes `layout.LABELLED_SERIES`; only the
+  three that describe what is on disk take `SERIES` — `stats`, `export-metadata-csv` and
+  `export-files`, which copies each image and whatever label pairs with it. Refusing at the argument
+  answers before a scan rather than after one
+  (`test_a_command_that_acts_will_not_take_other_at_all`), and **`all` therefore means "every series
+  this command covers"**, expanded per command rather than passed on
+  (`test_all_means_every_series_this_command_covers_not_every_series`).
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`
   already answering "which directory". The directory is tried before the filename and is the only
   thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the

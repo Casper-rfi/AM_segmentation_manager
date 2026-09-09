@@ -785,7 +785,9 @@ def test_centring_images_leave_no_trace(tmp_path):
     assert build_loose_image_sets(stage) == LooseImageSets()
 
 
-def test_a_name_no_rule_recognises_is_reported(tmp_path):
+def test_a_name_no_rule_recognises_is_reported_and_indexed_as_other(tmp_path):
+    """Both: the file becomes something a reviewer can open, and the finding
+    that makes an unanticipated layout visible keeps its data."""
     lamella = make_files(
         tmp_path / "01-ruling-ibex", [*LAMELLA_FILES, "something_new_eb.tif"]
     )
@@ -793,7 +795,49 @@ def test_a_name_no_rule_recognises_is_reported(tmp_path):
     found = build_loose_image_sets(lamella)
 
     assert found.unrecognised == ("something_new_eb.tif",)
-    assert len(found.sets) == 3
+    other = [image_set for image_set in found.sets if image_set.series == "other"]
+    assert [(one.modality, one.image_names) for one in other] == [
+        ("SEM", ("something_new_eb.tif",))
+    ]
+    assert other[0].labels_directory is None
+
+
+def test_an_other_set_takes_its_beam_from_the_header_when_the_name_is_silent(tmp_path):
+    lamella = make_files(tmp_path / "01-ruling-ibex", ["something_new.tif"])
+
+    found = build_loose_image_sets(lamella, resolve_modality=lambda path: "FIB")
+
+    assert [(one.series, one.modality) for one in found.sets] == [("other", "FIB")]
+
+
+def test_an_other_set_indexes_an_image_no_beam_can_be_established_for(tmp_path):
+    """The population that would otherwise stay unindexed: a name no rule
+    recognises whose header states no beam either."""
+    lamella = make_files(tmp_path / "01-ruling-ibex", ["something_new.tif"])
+
+    found = build_loose_image_sets(lamella, resolve_modality=lambda path: None)
+
+    assert [(one.series, one.modality) for one in found.sets] == [("other", None)]
+    assert found.unresolved == ()
+
+
+def test_other_sets_are_split_by_beam_with_the_beamless_one_last(tmp_path):
+    lamella = make_files(
+        tmp_path / "01-ruling-ibex", ["new_a_eb.tif", "new_b_ib.tif", "new_c.tif"]
+    )
+
+    found = build_loose_image_sets(lamella, resolve_modality=lambda path: None)
+
+    assert [one.modality for one in found.sets] == ["SEM", "FIB", None]
+    assert [one.name for one in found.sets] == ["other_sem", "other_fib", "other"]
+
+
+def test_a_deliberately_ignored_name_still_reaches_no_set(tmp_path):
+    """`other` is for names nothing recognises, not for names this package
+    decided against; see is_ignored_image_name."""
+    stage = make_files(tmp_path / "01-ruling-ibex", ["01-ruling-ibex_centring_SEM.tif"])
+
+    assert build_loose_image_sets(stage) == LooseImageSets()
 
 
 # ---------------------------------------------------------------------------
@@ -815,7 +859,7 @@ def test_an_unstated_beam_is_reported_when_nothing_can_resolve_it(tmp_path):
 
     found = build_loose_image_sets(run, in_alignment_run=True)
 
-    assert found.sets == ()
+    assert [(one.series, one.modality) for one in found.sets] == [("other", None)]
     assert found.unresolved == tuple(sorted(ALIGNMENT_RUN_FILES))
 
 
@@ -844,12 +888,15 @@ def test_the_resolver_is_asked_only_about_names_that_do_not_state_a_beam(tmp_pat
 
 
 def test_a_resolver_that_cannot_say_leaves_the_image_reported(tmp_path):
+    """A set of its own series is keyed by beam and could not take it, so it
+    joins the residue -- and the finding keeps what its name did say."""
     lamella = make_files(tmp_path / "01-ruling-ibex", ["ref_PositionReady.tif"])
 
     found = build_loose_image_sets(lamella, resolve_modality=lambda path: None)
 
-    assert found.sets == ()
+    assert [(one.series, one.modality) for one in found.sets] == [("other", None)]
     assert found.unresolved == ("ref_PositionReady.tif",)
+    assert found.unrecognised == ()
 
 
 # ---------------------------------------------------------------------------

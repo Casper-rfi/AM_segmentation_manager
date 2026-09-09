@@ -13,7 +13,8 @@ one; prose has to be rewritten whole every time either happens.
 ## What the software does today
 
 Every main function `CLAUDE.md` names is built, across the three series of images Autolamella writes
-and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
+— and a fourth, `other`, holding every image no naming rule reaches — and every layout era the
+collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing.
 Predictions need the second environment `scripts/setup_ml.sh` builds.
 
@@ -31,8 +32,19 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **An "other" series** making unindexed images visible instead of merely counted.
-  [`04_future_work.md`](04_future_work.md) §6.
+- **Finish the `other` series.** The core indexes it and the command line has its vocabulary
+  (`decisions.md` § Filesystem and identity, § Counting and export); two pieces are left. **The
+  window has neither guard the command line now has**: Curate offers `other` wherever a lamella
+  holds one, so Predict and the state buttons reach records whose write paths can only raise —
+  safely, and with nothing written, but as an error dialog rather than a control that was never
+  offered. The beam control needs deciding there too, the series mixing both beams with frames
+  whose beam nothing states, and those reaching no timeline at all. Separately, a collection-level
+  finding should count `.tif` under the scan root belonging to no project: 215 here, 204 of them
+  under one `log/data/crosscorrelation/`, and nothing reports them.
+- **Put a project's lamella positions on its grid overview**, now that the overviews are indexed at
+  the project root. Reprojected from `experiment.yaml` stage coordinates onto the overview's own
+  header, which places all 259 lamellae of the 30 projects holding one. Needs `fibsem` as an
+  optional extra, paired with `opencv-python-headless` and never beside `all` or `gui`.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
