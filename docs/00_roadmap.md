@@ -32,13 +32,6 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **Finish the `other` series.** The core indexes it and the command line has its vocabulary
-  (`decisions.md` § Filesystem and identity, § Counting and export); two pieces are left. **The
-  window has neither guard the command line now has**: Curate offers `other` wherever a lamella
-  holds one, so Predict and the state buttons reach records whose write paths can only raise —
-  safely, and with nothing written, but as an error dialog rather than a control that was never
-  offered. The beam control needs deciding there too, the series mixing both beams with frames
-  whose beam nothing states, and those reaching no timeline at all.
 - **Put a project's lamella positions on its grid overview**, now that the overviews are indexed at
   the project root. Reprojected from `experiment.yaml` stage coordinates onto the overview's own
   header, which places all 259 lamellae of the 30 projects holding one. Needs `fibsem` as an

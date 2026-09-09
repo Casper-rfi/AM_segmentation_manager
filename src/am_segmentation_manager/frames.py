@@ -388,14 +388,20 @@ def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
     then by acquisition number with the unnumbered ones after, so a CSV written
     twice from one selection comes out the same both times.
 
-    Records of an unrecognised modality are dropped, with a warning: nothing
-    here can say which beam they belong to.
+    Records of an unrecognised modality are dropped: a frame is a moment seen
+    by one beam or both, and nothing here can say which one these belong to.
+    An image with **no** beam is the expected case and is logged at debug --
+    the ``other`` series holds every image whose beam neither its filename nor
+    its header states, and warning once per image on every rebuild would teach
+    a reader to ignore this log. A modality that is a *value* and not one of
+    :data:`~.layout.MODALITIES` is a defect somewhere above and still warns.
     """
     grouped: dict[tuple[Path, FrameKey], dict[str, list[ImageRecord]]] = {}
     for record in records:
         modality = (record.modality or "").upper()
         if modality not in MODALITIES:
-            logger.warning(
+            report = logger.debug if record.modality is None else logger.warning
+            report(
                 "Skipping %s: unknown modality %r", record.image_path, record.modality
             )
             continue

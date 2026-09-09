@@ -72,7 +72,12 @@ class OperationsPanel(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._last_model_directory: Path | None = None
+        #: The three independent reasons a button here may be locked. Kept
+        #: apart and applied together by :meth:`_apply_lock`, so that lifting
+        #: one cannot offer a button another still forbids.
         self._prediction_available = True
+        self._series_is_editable = True
+        self._busy = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -300,15 +305,28 @@ class OperationsPanel(QWidget):
         terminal's job; this is a hover.
         """
         self._prediction_available = available
-        self.predict_button.setEnabled(available)
-        self.model_edit.setEnabled(available)
-        self.browse_button.setEnabled(available)
-        self.device_box.setEnabled(available)
         if not available:
             self.predict_button.setToolTip(
                 "The inference dependencies are not installed.\n"
                 "Run scripts/setup_ml.sh to build an environment with them."
             )
+        self._apply_lock()
+
+    def set_series_editable(self, editable: bool) -> None:
+        """Offer or withhold every button for the series on screen.
+
+        All of them, not only the ones that write: each of these reads or
+        writes a label, and the series this withholds for has none. A button
+        that would answer "nothing selected" over a full timeline is worse than
+        one that is plainly unavailable and says why.
+        """
+        self._series_is_editable = bool(editable)
+        self.box.setToolTip(
+            ""
+            if editable
+            else "These images have no labels, so none of these operations applies."
+        )
+        self._apply_lock()
 
     def set_busy(self, busy: bool) -> None:
         """Lock the buttons while an operation runs.
@@ -316,13 +334,23 @@ class OperationsPanel(QWidget):
         One at a time: two batch operations over the same files would each have
         validated a set the other is changing underneath it.
         """
+        self._busy = bool(busy)
+        self._apply_lock()
+
+    def _apply_lock(self) -> None:
+        """Enable each control only where every reason allows it.
+
+        One place rather than each setter undoing the others: re-enabling
+        everything after an operation used to offer the Predict button on a
+        machine with no inference stack, whether it is installed being asked
+        once and never again.
+        """
+        usable = self._series_is_editable and not self._busy
         for button in self.buttons:
-            button.setEnabled(not busy)
-        self.device_box.setEnabled(not busy)
+            button.setEnabled(usable)
+        self.device_box.setEnabled(usable)
+        self.model_edit.setEnabled(self._prediction_available and usable)
         if not self._prediction_available:
-            # Re-enabling everything after an operation would otherwise offer
-            # the Predict button on a machine with no inference stack, since
-            # whether it is installed is asked once and never again.
             self.predict_button.setEnabled(False)
             self.browse_button.setEnabled(False)
             self.device_box.setEnabled(False)

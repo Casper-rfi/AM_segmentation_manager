@@ -1674,6 +1674,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         )
         self.state_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
+        # Asked of the series being shown rather than the one chosen: a lamella
+        # holding only unclassified images resolves to `other` on its own.
+        editable = self.controller.series_is_editable
+        self.state_panel.set_series_editable(editable)
+        self.operations_panel.set_series_editable(editable)
 
     def show_settings(self) -> None:
         """Open the settings that belong to this machine rather than the data.

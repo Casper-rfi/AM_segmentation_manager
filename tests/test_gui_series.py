@@ -351,3 +351,80 @@ def test_a_project_holding_no_images_holds_no_series():
     status = controller.project_statuses()[0]
 
     assert not any(status.holds(s) for s in ("adaptive", "reference", "alignment"))
+
+
+# ---------------------------------------------------------------------------
+# A series no operation can act on
+# ---------------------------------------------------------------------------
+
+def other_lamella(name: str = "02-other-elk") -> Lamella:
+    """A lamella holding nothing but images no naming rule reached."""
+    path = Path(name)
+    return Lamella(
+        name=name,
+        path=path,
+        number="02",
+        stages=[
+            Stage(
+                name=name, path=path, number="01", synthetic=True,
+                images=[
+                    ImageRecord(
+                        image_path=path / "something_new_eb.tif",
+                        modality="SEM", series="other", stage_path=path,
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_a_labelled_series_is_editable(controller: CurationController):
+    assert controller.series == "adaptive"
+    assert controller.series_is_editable is True
+
+
+def test_the_other_series_is_not_editable():
+    """An `other` record has no label directory and no predictions directory,
+    so every operation could only refuse it."""
+    controller = make_controller([other_lamella()])
+
+    assert controller.series == "other"
+    assert controller.series_is_editable is False
+
+
+def test_a_lamella_holding_only_other_lands_there_without_being_chosen():
+    """The guard cannot be a question of what the reviewer picked: resolve_series
+    falls back to the only series a lamella holds."""
+    controller = make_controller([other_lamella()])
+
+    assert controller.wanted_series == "adaptive"
+    assert controller.series == "other"
+    assert controller.series_is_editable is False
+
+
+def test_no_record_of_an_unactionable_series_is_ever_scoped():
+    """The backstop every operation reads, so each need not guard itself."""
+    controller = make_controller([other_lamella()])
+    controller.set_editing_enabled(True)
+
+    assert controller.frames, "the timeline still shows them"
+    assert controller.scoped_records() == []
+
+
+def test_a_state_change_on_an_unactionable_series_changes_nothing():
+    controller = make_controller([other_lamella()])
+    controller.set_editing_enabled(True)
+
+    assert controller.apply_state("deselected") == 0
+
+
+def test_a_ticked_lamella_that_resolves_to_other_contributes_nothing(controller):
+    """The tab can be showing a labelled series while a ticked lamella holds
+    none of it and resolves to `other` on its own."""
+    mixed = make_controller([controller.lamellae[0], other_lamella()])
+    mixed.set_target("both")
+    for position in range(len(mixed.lamellae)):
+        mixed.set_lamella_checked(position, True)
+
+    assert mixed.series == "adaptive"
+    assert {record.series for record in mixed.scoped_records()} == {"adaptive"}

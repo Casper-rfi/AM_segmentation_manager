@@ -95,6 +95,28 @@ def mixed_project(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def residue_project(tmp_path: Path) -> Path:
+    """Two lamellae: one Adaptive Polishing, one holding only unrecognised names.
+
+    The second is what a grid overview, a diagnostic or an Autolamella version
+    naming something new looks like once it is indexed.
+    """
+    root = tmp_path / "scan"
+    project = root / "AutoLamella-2026-07-28-10-31"
+    image = np.full((64, 96), 100, dtype=np.uint8)
+
+    stage = (
+        project / "01-ruling-ibex" / "Milling" / "Polishing"
+        / "adaptive_polish_2026-07-28-11-34-24AM"
+    )
+    _write(stage / "sem" / "img_000_SEM.tif", image)
+    _write(project / "02-ruling-oryx" / "something_new_eb.tif", image)
+
+    (project / "experiment.yaml").write_text("name: residue\n", encoding="utf-8")
+    return root
+
+
+@pytest.fixture
 def plain_project(tmp_path: Path) -> Path:
     """An ordinary Autolamella project: Adaptive Polishing images only."""
     root = tmp_path / "scan"
@@ -299,5 +321,102 @@ def test_the_frame_readout_follows_the_chosen_series(qt_app, modern_project: Pat
                what="the timeline to be rebuilt")
 
         assert window.frame_label.text() == "1 / 1"
+    finally:
+        destroy(window)
+
+
+# ---------------------------------------------------------------------------
+# A series no operation can act on
+# ---------------------------------------------------------------------------
+
+def test_the_controls_that_change_data_are_offered_for_a_labelled_series(
+    qt_app, residue_project: Path
+):
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.set_editing_enabled(True)
+        window.state_panel.set_editing_enabled(True)
+        window.refresh()
+
+        assert window.controller.series == "adaptive"
+        assert window.state_panel.state_box.isEnabled()
+        assert window.operations_panel.specks_button.isEnabled()
+    finally:
+        destroy(window)
+
+
+def test_the_controls_that_change_data_are_withheld_for_the_residue(
+    qt_app, residue_project: Path
+):
+    """A button that would answer "nothing selected" over a full timeline is
+    worse than one plainly unavailable."""
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.set_editing_enabled(True)
+        window.state_panel.set_editing_enabled(True)
+        window.controller.select_lamella(1)
+        window.refresh()
+
+        assert window.controller.series == "other"
+        assert not window.state_panel.state_box.isEnabled()
+        assert not window.operations_panel.specks_button.isEnabled()
+        assert not window.operations_panel.convert_button.isEnabled()
+    finally:
+        destroy(window)
+
+
+def test_the_withheld_controls_say_why(qt_app, residue_project: Path):
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.select_lamella(1)
+        window.refresh()
+
+        assert "no labels" in window.operations_panel.box.toolTip()
+        assert "no labels" in window.state_panel.state_box.toolTip()
+    finally:
+        destroy(window)
+
+
+def test_switching_editing_back_on_does_not_unlock_the_residue(
+    qt_app, residue_project: Path
+):
+    """Two independent reasons, so lifting one may not lift the other."""
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.select_lamella(1)
+        window.refresh()
+        window.state_panel.set_editing_enabled(True)
+
+        assert not window.state_panel.state_box.isEnabled()
+    finally:
+        destroy(window)
+
+
+def test_the_timeline_still_shows_the_residue(qt_app, residue_project: Path):
+    """Withholding the controls must not withhold the images: being able to
+    open one and decide whether the rule or the data is wrong is the point."""
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.select_lamella(1)
+        window.refresh()
+
+        assert [frame.series for frame in window.controller.frames] == ["other"]
+    finally:
+        destroy(window)
+
+
+def test_leaving_the_residue_offers_the_controls_again(qt_app, residue_project: Path):
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.set_editing_enabled(True)
+        window.state_panel.set_editing_enabled(True)
+        window.controller.select_lamella(1)
+        window.refresh()
+        window.controller.select_lamella(0)
+        window.refresh()
+
+        assert window.state_panel.state_box.isEnabled()
+        assert window.operations_panel.specks_button.isEnabled()
+        assert window.operations_panel.box.toolTip() == ""
     finally:
         destroy(window)

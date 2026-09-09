@@ -464,10 +464,15 @@ class LabelController:
 
         A label whose dimensions disagree with its image is refused: it was
         resampled to be displayed, and saving that back would rewrite the
-        annotation at the wrong scale.
+        annotation at the wrong scale. A frame with no label to proofread
+        *through* is refused for the same reason -- an ``other`` image has no
+        label directory, so there is nowhere a stroke could be saved, and a
+        canvas that accepts one would lose the work without saying so.
         """
         prepared = self.cached_image()
         if prepared is None or prepared.failed or prepared.display is None:
+            return False
+        if self.current_key is None:
             return False
         return not prepared.display.label_resized
 

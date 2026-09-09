@@ -24,7 +24,7 @@ from ..frames import (
     series_present,
 )
 from ..history import Recorder
-from ..layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
+from ..layout import LABELLED_SERIES, LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..models import Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.init_history import writing_recorder
@@ -1238,6 +1238,19 @@ class CurationController:
         )
         return touched
 
+    @property
+    def series_is_editable(self) -> bool:
+        """Return whether the series on screen is one an operation may act on.
+
+        The window's half of the rule the command line states as
+        :data:`~..layout.LABELLED_SERIES`: an ``other`` record has no label
+        directory and no predictions directory, so every operation could only
+        refuse it. This is asked of the series actually being shown, not of the
+        one the reviewer chose -- :func:`~..frames.resolve_series` lands on
+        ``other`` by itself for a lamella that holds nothing else.
+        """
+        return self.series in LABELLED_SERIES
+
     def scoped_records(self) -> list:
         """Return every record a state change would apply to.
 
@@ -1249,20 +1262,28 @@ class CurationController:
 
         Whole lamellae are read straight from the scanned stages rather than
         through frames, since the chronological pairing only matters for display.
+
+        **A series no operation can act on contributes nothing**, whichever
+        level is picked out. The window disables those controls as well, and
+        this is the backstop that holds however a change was triggered: it is
+        the one method every operation reads, so filtering here covers all of
+        them rather than each guarding itself. Ticked lamellae need it even
+        when the tab is showing a labelled series, one that holds no other
+        resolving to ``other`` on its own.
         """
         level = self.selection.level
         if level == LEVEL_CURRENT_FRAME:
-            return self.target_records()
-        if level == LEVEL_PROJECTS:
-            return self._records_of(self._checked_lamellae())
-        if level == LEVEL_LAMELLAE:
-            return self._records_of(self._checked_lamellae())
-        return [
-            record
-            for position in sorted(self.selection.frames)
-            if 0 <= position < len(self._frames)
-            for record in self.target_records(self._frames[position])
-        ]
+            chosen = self.target_records()
+        elif level in (LEVEL_PROJECTS, LEVEL_LAMELLAE):
+            chosen = self._records_of(self._checked_lamellae())
+        else:
+            chosen = [
+                record
+                for position in sorted(self.selection.frames)
+                if 0 <= position < len(self._frames)
+                for record in self.target_records(self._frames[position])
+            ]
+        return [record for record in chosen if record.series in LABELLED_SERIES]
 
     def _checked_lamellae(self) -> list[Lamella]:
         """Return the lamellae the selection covers.

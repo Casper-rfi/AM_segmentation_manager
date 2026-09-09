@@ -64,6 +64,13 @@ class StatePanel(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
 
+        #: The two independent reasons the state buttons may be locked, kept
+        #: apart so that switching editing back on cannot unlock a series that
+        #: has no labels to change. Recomputed together, as the operations
+        #: panel recomputes its own pair.
+        self._editing_enabled = False
+        self._series_is_editable = True
+
         # -- the guard -----------------------------------------------------
         self.enable_check = ToggleSwitch("Enable editing")
         self.enable_check.setToolTip(
@@ -191,11 +198,33 @@ class StatePanel(QWidget):
         nothing, so the ticks and the modality control stay usable with the
         guard on, and the reach line recounts as they change.
         """
-        self.state_box.setEnabled(enabled)
+        self._editing_enabled = bool(enabled)
+        self._apply_lock()
         if self.enable_check.isChecked() != enabled:
             self.enable_check.blockSignals(True)
             self.enable_check.setChecked(enabled)
             self.enable_check.blockSignals(False)
+
+    def set_series_editable(self, editable: bool) -> None:
+        """Lock the state buttons for a series whose images have no labels.
+
+        The reviewer's own toggle is left alone: this is not a guard they can
+        switch off, and clearing their setting to express it would then be
+        restored the moment they moved to a lamella that does have labels. The
+        two reasons are held apart and applied together.
+        """
+        self._series_is_editable = bool(editable)
+        self._apply_lock()
+
+    def _apply_lock(self) -> None:
+        """Enable the state buttons only where both reasons allow it."""
+        allowed = self._editing_enabled and self._series_is_editable
+        self.state_box.setEnabled(allowed)
+        self.state_box.setToolTip(
+            ""
+            if self._series_is_editable
+            else "These images have no labels, so there is no state to declare."
+        )
 
     def show_state(self, target_state, sem_state, fib_state) -> None:
         """Reflect the current state of the frame.
