@@ -15,7 +15,9 @@ import threading
 
 from qtpy.QtCore import QObject, QThread, Signal, Slot
 
+from ..operations.label_measure import count_specks_in, find_specks
 from .cache import FrameCache, LoadRequest
+from .label_session import decode_label
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +114,6 @@ class FrameLoadWorker(QObject):
         drawn as unreadable on the label line, and a count is not the place to
         raise it a second time.
         """
-        from ..operations.label_measure import count_specks_in, find_specks
-        from .label_session import decode_label
 
         for key, source in labels:
             if not self._is_current(token):

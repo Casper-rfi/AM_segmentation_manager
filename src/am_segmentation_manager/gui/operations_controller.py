@@ -21,12 +21,26 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from ..discovery import DatasetCandidate
+from ..discovery import (
+    DatasetCandidate,
+    dataset_candidates_below,
+    describe_dataset_candidates,
+    find_project_roots,
+)
 from ..history import Recorder
+from ..metadata import AM_METADATA_FILENAME
 from ..models import ImageRecord
+from ..operations.copy_export import (
+    DestinationInsideSource,
+    copy_export,
+    plan_copy,
+    record_fork_point,
+)
 from ..operations.csv import find_matching_label
+from ..operations.csv_check import check_csv_paths, summarize_results
 from ..operations.export_record import ExportRecord
 from ..operations.init_history import writing_recorder
+from ..operations.init_project import init_projects, project_placement_problem
 from ..operations.label_compression import compress_labels, existing_labels
 from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, plan_predictions
@@ -40,7 +54,8 @@ from ..operations.predictions import (
 )
 from ..operations.selection import current_state
 from ..progress import Cancellation, timed
-from ..reporting import format_bytes
+from ..reporting import format_bytes, format_survey
+from ..survey import survey_collection
 from .attribution import Attribution
 from .report import MAX_REPORTED_FILES, OperationReport, shown_path
 
@@ -512,6 +527,8 @@ class OperationsController:
         no torch, and none of the 170 MB of weights -- so a preview costs
         nothing and a typo in the description is reported before anything loads.
         """
+        # Imports torch. This controller is built at window start, where a
+        # machine without the second environment must still get a window.
         from ..ml.model import read_model_description, run_name_of
 
         if not weights.exists():
@@ -682,12 +699,6 @@ class OperationsController:
             scope: What the export was narrowed to, recorded in the fork point
                 as context for whoever merges the copy back.
         """
-        from ..operations.copy_export import (
-            DestinationInsideSource,
-            copy_export,
-            plan_copy,
-            record_fork_point,
-        )
 
         root = start_path or self.start_path
         if root is None:
@@ -778,8 +789,6 @@ class OperationsController:
         Read-only. This is the first thing to run on unfamiliar data, which is
         why it is on the tab that adds data rather than behind a scan.
         """
-        from ..reporting import format_survey
-        from ..survey import survey_collection
 
         found = survey_collection(Path(root))
         counts = found.finding_counts()
@@ -797,8 +806,6 @@ class OperationsController:
         and already projects. Giving them the descriptive file is bulk work
         with no judgement in it, unlike deciding what counts as a project.
         """
-        from ..discovery import find_project_roots
-        from ..metadata import AM_METADATA_FILENAME
 
         return [
             path
@@ -826,13 +833,11 @@ class OperationsController:
         decide; :meth:`propose_projects_below` is how a proposal made too high
         is corrected.
         """
-        from ..discovery import describe_dataset_candidates
 
         return describe_dataset_candidates(Path(root))
 
     def propose_projects_below(self, directory: Path) -> list[DatasetCandidate]:
         """Return the proposals one level inside *directory*."""
-        from ..discovery import dataset_candidates_below
 
         return dataset_candidates_below(Path(directory))
 
@@ -868,7 +873,6 @@ class OperationsController:
         stopping partway. An existing file is kept and reported; nothing here
         overwrites one.
         """
-        from ..operations.init_project import init_projects, project_placement_problem
 
         chosen = [Path(path) for path in paths]
         if not chosen:
@@ -932,7 +936,6 @@ class OperationsController:
         Read-only. Paths are resolved against *start_path*, the scan root the
         CSV was written against, which is not necessarily this session's.
         """
-        from ..operations.csv_check import check_csv_paths, summarize_results
 
         results = check_csv_paths(Path(csv_path), Path(start_path))
         lines, problems = summarize_results(results, Path(start_path))

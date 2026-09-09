@@ -10,6 +10,7 @@ other means, an in-process check could not tell who loaded it.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import subprocess
 import sys
@@ -163,3 +164,107 @@ def test_no_mixin_carries_state_of_its_own():
         if base.__name__ in WINDOW_MIXINS and "__init__" in vars(base)
     ]
     assert not with_init, f"{with_init} would need building, so should be objects"
+
+
+# ---------------------------------------------------------------------------
+# The spine
+#
+# `CLAUDE.md` names four layers -- layout (what things are called), discovery
+# (where they are), scanner (what they mean), operations (what you can do to
+# them) -- with io/ below all four and gui/, ml/ and cli/ above everything.
+# The checks below read *every* import, including the ones inside functions:
+# roughly a third of this package's edges are written there, and a rule nobody
+# can see is a rule nobody keeps.
+# ---------------------------------------------------------------------------
+
+#: Imports that break the spine on purpose. Each names why, and each is a
+#: single edge rather than a module-wide exemption.
+ALLOWED_UPWARD = {
+    ("am_segmentation_manager.operations.predict_process",
+     "am_segmentation_manager.ml.environment"),
+    ("am_segmentation_manager.operations.predict_process",
+     "am_segmentation_manager.ml.model"),
+}
+
+
+def _package_imports() -> list[tuple[str, str, str, int]]:
+    """Return every in-package import as (source, target, function, line).
+
+    *function* is empty for an import at module level. Relative imports are
+    resolved the way Python resolves them, so a target here is the module that
+    would actually be loaded.
+    """
+    import importlib.util
+
+    root = SRC / "am_segmentation_manager"
+    found: list[tuple[str, str, str, int]] = []
+    for path in sorted(root.rglob("*.py")):
+        parts = list(path.relative_to(root).with_suffix("").parts)
+        is_package = parts[-1] == "__init__"
+        if is_package:
+            parts.pop()
+        module = ".".join(["am_segmentation_manager", *parts])
+        package = module if is_package else ".".join(
+            ["am_segmentation_manager", *parts[:-1]]
+        )
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[int, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
+                    enclosing.setdefault(line, node.name)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.level:
+                continue
+            target = importlib.util.resolve_name(
+                "." * node.level + (node.module or ""), package
+            )
+            found.append((module, target, enclosing.get(node.lineno, ""), node.lineno))
+    return found
+
+
+def _tops(module: str) -> str:
+    """Return the part of *module* the spine rules are stated about."""
+    name = module.removeprefix("am_segmentation_manager").lstrip(".")
+    return name.split(".")[0]
+
+
+@pytest.mark.parametrize(
+    ("layer", "must_not_import"),
+    [
+        ("io", {"layout", "discovery", "scanner", "operations", "gui", "ml", "cli"}),
+        ("layout", {"discovery", "scanner", "operations", "gui", "ml", "cli"}),
+        ("discovery", {"scanner", "operations", "gui", "ml", "cli"}),
+        ("scanner", {"operations", "gui", "ml", "cli"}),
+        ("operations", {"gui", "cli"}),
+    ],
+)
+def test_a_layer_does_not_import_one_above_it(layer, must_not_import):
+    """The spine only holds if it is checked where the edges actually are.
+
+    An import written inside a function is invisible to a reader skimming the
+    top of the file, and 138 of this package's were, so this reads those too.
+    """
+    broken = [
+        (source, target, function, line)
+        for source, target, function, line in _package_imports()
+        if _tops(source) == layer
+        and _tops(target) in must_not_import
+        and (source, target) not in ALLOWED_UPWARD
+    ]
+    assert not broken, "\n".join(
+        f"{s}:{n} {'in ' + f + '()' if f else '(module level)'} imports {t}"
+        for s, t, f, n in broken
+    )
+
+
+def test_nothing_below_the_window_imports_it():
+    """`gui/` and `cli/` are surfaces: everything may be used by them, and
+    nothing below may reach back up into one."""
+    reaching = [
+        (source, target, function, line)
+        for source, target, function, line in _package_imports()
+        if _tops(target) in {"gui", "cli"}
+        and _tops(source) not in {"gui", "cli"}
+    ]
+    assert not reaching, reaching

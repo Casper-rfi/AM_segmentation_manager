@@ -14,7 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..io.image import has_image_stack_support
+from ..display import is_empty_label
+from ..history import pixel_digest
+from ..io.image import has_image_stack_support, to_2d
 from ..layout import (
     resolve_labels_directory,
     subdirectories_by_name,
@@ -111,8 +113,6 @@ def is_label_file_empty(path: Path) -> bool | None:
 
     import tifffile
 
-    from ..display import is_empty_label
-    from ..io.image import to_2d
 
     try:
         array = tifffile.imread(str(path))
@@ -150,9 +150,6 @@ def label_fields(array) -> dict[str, object]:
     same way: what the pixels are, how they are stored, how big they are, and
     whether there is anything in them at all.
     """
-    from ..display import is_empty_label
-    from ..history import pixel_digest
-    from ..io.image import to_2d
 
     plane = to_2d(array)
     return {
@@ -175,7 +172,6 @@ def changed_fraction(before, after) -> float | None:
         resolution. A percentage across a resize would be arithmetic on two
         different pictures, so the resize is reported instead.
     """
-    from ..io.image import to_2d
 
     first, second = to_2d(before), to_2d(after)
     if first.shape != second.shape:

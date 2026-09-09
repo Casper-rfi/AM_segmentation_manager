@@ -30,6 +30,7 @@ from pathlib import Path
 
 from ..models import ImageRecord
 from ..progress import Cancellation, OperationCancelled
+from .predict import PredictionSource, plan_predictions, run_predictions
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +109,11 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
     including failure: an exception here reaches no handler that could show it.
     """
     _forward_logs(queue)
+    # Inside the child process, deliberately: torch is never imported into
+    # the parent, which is the whole point of running inference here. This
+    # is the one place operations/ reaches up into ml/.
     from ..ml.environment import available_devices, resolve_device
     from ..ml.model import load_model, read_model_description, run_name_of
-    from .predict import PredictionSource, plan_predictions, run_predictions
 
     path = Path(weights)
     try:
@@ -259,6 +262,7 @@ def _reap(process) -> None:
 def _probe(queue) -> None:
     """Report the devices torch can see. Runs in the child."""
     try:
+        # In the child, as above: the parent never imports torch.
         from ..ml.environment import available_devices
 
         queue.put(tuple(available_devices()))

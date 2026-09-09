@@ -19,19 +19,23 @@ from typing import Final, Literal
 
 from ..history import Recorder
 from ..io.atomic import write_atomically
-from ..io.image import to_2d
+from ..io.image import read_array, to_2d
 from ..layout import (
     MODALITIES,
     is_convertible_prediction,
     prediction_precedence,
 )
 from ..models import ImageRecord
+from .archive import Archivist
 from .label_io import (
+    changed_fraction,
     has_image_stack_support,
     is_label_file_empty,
     label_destination,
+    label_fields,
     save_label_image,
 )
+from .predict import read_provenance
 from .selection import current_state
 
 logger = logging.getLogger(__name__)
@@ -347,7 +351,6 @@ def convert_record_predictions(
     plan = plan_conversions(records, overwrite=overwrite)
     archivist = None
     if recorder is not None:
-        from .archive import Archivist
 
         archivist = Archivist(recorder)
 
@@ -376,7 +379,6 @@ def convert_record_predictions(
 def _pixels_of(path: Path):
     """Return what a label holds, or None where it will not open."""
     try:
-        from ..io.image import read_array
 
         return read_array(path)
     except Exception as error:
@@ -394,7 +396,6 @@ def _archive_previous(archivist, destination: Path, previous) -> str | None:
     """
     if archivist is None or previous is None:
         return None
-    from .label_io import label_fields
 
     try:
         fields = label_fields(previous)
@@ -416,7 +417,6 @@ def _record_conversion(
     which is the only account of what filled it; a prediction the pipeline
     wrote rather than this package has none, and says so.
     """
-    from .label_io import changed_fraction, label_fields
 
     written = _pixels_of(conversion.destination)
     if written is None:
@@ -444,7 +444,6 @@ def _record_conversion(
 
 def _recorded_model(prediction: Path) -> str:
     """Return the model named for *prediction*, or that nothing names one."""
-    from .predict import read_provenance
 
     entry = read_provenance(prediction.parent).get(prediction.name)
     if isinstance(entry, dict):

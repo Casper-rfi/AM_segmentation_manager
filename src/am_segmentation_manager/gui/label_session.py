@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..io.image import to_2d
 from ..operations.label_edit import DEFAULT_UNDO_DEPTH, EditPatch, UndoStack
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -51,7 +52,6 @@ def decode_label(data: bytes) -> np.ndarray:
     import cv2
     import numpy as np
 
-    from ..io.image import to_2d
 
     label = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
     if label is None:

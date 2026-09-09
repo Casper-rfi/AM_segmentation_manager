@@ -17,14 +17,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..history import Recorder
+from ..io.yaml import read_yaml
 from ..metadata import (
+    AM_METADATA_FILENAME,
     DESCRIPTIVE_FIELDS,
+    EXPERIMENT_FILENAME,
     FIELD_COMMENTS,
     FIELDS,
     FIELDS_BY_NAME,
     LAMELLA_TYPES,
     TODO_MARKER,
     VALUE_SEPARATOR,
+    build_experiment_metadata,
     field_values,
     format_field_value,
 )
@@ -464,12 +468,6 @@ class MetadataController:
         Without this the view would keep showing what was there before the
         edit, which is the sort of thing that makes a user distrust the tool.
         """
-        from ..io.yaml import read_yaml
-        from ..metadata import (
-            AM_METADATA_FILENAME,
-            EXPERIMENT_FILENAME,
-            build_experiment_metadata,
-        )
 
         experiment_path = project.path / EXPERIMENT_FILENAME
         am_path = project.path / AM_METADATA_FILENAME

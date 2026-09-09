@@ -27,7 +27,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..history import Event, HistoryLog, Recorder, events_for, read_log
+from ..io.atomic import fingerprint_of
+from ..io.image import read_array
 from ..layout import ARCHIVE_DIRECTORY
+from .label_io import label_fields
 
 logger = logging.getLogger(__name__)
 
@@ -515,9 +518,9 @@ def restore(
         PermissionError: If it is proofread work and *allow_corrected* is not
             set.
     """
-    from ..io.atomic import fingerprint_of
-    from ..io.image import read_array
-    from .label_io import label_fields
+    # Imported here because label_save imports this module for Archivist:
+    # restoring is the ordinary save, so the two need each other and only one
+    # of them can say so at the top of the file.
     from .label_save import LabelToSave, WriteProvenance, save_labels
 
     pixels = read_array(version.path)

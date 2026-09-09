@@ -11,9 +11,45 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from ..aggregate import BREAKDOWNS, NEEDS_LABEL_STATES, NEEDS_MEASUREMENTS, NEEDS_METADATA
+from ..aggregate import (
+    BREAKDOWNS,
+    NEEDS_LABEL_STATES,
+    NEEDS_MEASUREMENTS,
+    NEEDS_METADATA,
+    breakdowns_for,
+    count_by,
+    cross_tabulate,
+    project_lookup,
+    resolve_breakdown,
+    summarise_lamellae,
+)
+from ..config import load_segmentation_config
 from ..filtering import filter_by_metadata
+from ..image_metadata import read_records_metadata
 from ..io.path import make_path_relative
+from ..operations.copy_export import (
+    DestinationInsideSource,
+    copy_export,
+    plan_copy,
+    record_fork_point,
+)
+from ..operations.csv import export_training_csv
+from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
+from ..operations.label_io import label_state
+from ..operations.label_measure import measure_records
+from ..operations.metadata_csv import (
+    export_image_metadata_csv,
+    export_label_measurements_csv,
+    export_lamella_quantification_csv,
+    export_project_metadata_csv,
+)
+from ..plots import plot_counts, plot_cross_tabulation
+from ..reporting import (
+    format_bytes,
+    format_counts,
+    format_cross_tabulation,
+    format_label_quantification,
+)
 from ..scanner import Scanner
 from .scope import (
     REPORTING_SERIES,
@@ -321,7 +357,6 @@ def add_arguments(sub) -> None:
 
 def _cmd_export_projects_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg export-projects-csv``."""
-    from ..operations.metadata_csv import export_project_metadata_csv
 
     start_path = Path(args.start_path)
     projects = Scanner(start_path).build_index().all_projects()
@@ -333,9 +368,6 @@ def _cmd_export_projects_csv(args: argparse.Namespace) -> int:
 
 def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg export-metadata-csv``."""
-    from ..aggregate import project_lookup
-    from ..image_metadata import read_records_metadata
-    from ..operations.metadata_csv import export_image_metadata_csv
 
     records, start_path = _resolve_records(args)
     if not records:
@@ -377,13 +409,6 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     # NEEDS_METADATA and BREAKDOWNS are imported at module level; naming
     # them here too would shadow them for the whole of main(), including
     # the parser construction above.
-    from ..aggregate import (
-        count_by,
-        cross_tabulate,
-        project_lookup,
-        resolve_breakdown,
-    )
-    from ..reporting import format_counts, format_cross_tabulation
 
     records, start_path = _resolve_records(args)
     if not records:
@@ -398,8 +423,6 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     # The config decides which classes have an area breakdown, so it is
     # resolved before the chosen names can be looked up at all. Loading it
     # opens one small YAML and scans nothing.
-    from ..aggregate import breakdowns_for
-    from ..config import load_segmentation_config
 
     config = load_segmentation_config(start_path=start_path)
     breakdowns = breakdowns_for(config)
@@ -414,21 +437,18 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     measuring = any(kind_of(name) == "measurement" for name in chosen)
     metadata: dict = {}
     if measuring or any(kind_of(name) == "metadata" for name in chosen):
-        from ..image_metadata import read_records_metadata
 
         logger.info("Reading headers for %d image(s)", len(records))
         metadata = read_records_metadata(records)
 
     measurements: dict = {}
     if measuring:
-        from ..operations.label_measure import measure_records
 
         logger.info("Measuring labels for %d image(s)", len(records))
         measurements = measure_records(records, config, metadata)
 
     label_states: dict = {}
     if any(kind_of(name) == "label" for name in chosen):
-        from ..operations.label_io import label_state
 
         logger.info("Reading labels for %d image(s)", len(records))
         label_states = {
@@ -476,7 +496,6 @@ def _cmd_stats(args: argparse.Namespace) -> int:
         header = [chosen[0], chosen[1], "images"]
 
     if args.plot:
-        from ..plots import plot_counts, plot_cross_tabulation
 
         try:
             if len(keys) == 1:
@@ -504,15 +523,6 @@ def _cmd_stats(args: argparse.Namespace) -> int:
 
 def _cmd_quantify_labels(args: argparse.Namespace) -> int:
     """Handle ``am-seg quantify-labels``."""
-    from ..aggregate import project_lookup, summarise_lamellae
-    from ..config import load_segmentation_config
-    from ..image_metadata import read_records_metadata
-    from ..operations.label_measure import measure_records
-    from ..operations.metadata_csv import (
-        export_label_measurements_csv,
-        export_lamella_quantification_csv,
-    )
-    from ..reporting import format_label_quantification
 
     records, start_path = _resolve_records(args)
     if not records:
@@ -575,7 +585,6 @@ def _cmd_quantify_labels(args: argparse.Namespace) -> int:
 
 def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg create-training-csv``."""
-    from ..operations.csv import export_training_csv
 
     records, start_path = _resolve_records(args)
     if not records:
@@ -586,7 +595,6 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     # only for images that already survived project/lamella/state selection.
     selectors = _metadata_selectors(args)
     if selectors:
-        from ..image_metadata import read_records_metadata
 
         records = filter_by_metadata(records, read_records_metadata(records), selectors)
         if not records:
@@ -621,13 +629,6 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
 
 def _cmd_export_files(args: argparse.Namespace) -> int:
     """Handle ``am-seg export-files``."""
-    from ..operations.copy_export import (
-        DestinationInsideSource,
-        copy_export,
-        plan_copy,
-        record_fork_point,
-    )
-    from ..reporting import format_bytes
 
     records, start_path, projects = _resolve_scope(args)
     if not records:
@@ -705,11 +706,6 @@ _SCOPE_SELECTORS: tuple[str, ...] = (
 
 def _cmd_check_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg check-training-csv``."""
-    from ..operations.csv_check import (
-        check_csv_paths,
-        summarize_results,
-        write_pruned_csv,
-    )
 
     if args.in_place and args.output:
         logger.error("--in-place and --output are mutually exclusive")

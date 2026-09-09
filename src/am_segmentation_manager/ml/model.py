@@ -214,6 +214,8 @@ class LoadedModel:
         import numpy as np
         import torch
 
+        # Imported at the point of inference: reading a model's description
+        # must not pay for the stack that runs one.
         from .preprocessing import image_preprocess
 
         tensor = image_preprocess(

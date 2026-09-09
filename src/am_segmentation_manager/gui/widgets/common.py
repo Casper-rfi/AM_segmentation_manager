@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
 )
 
 from ...config import SegmentationConfig
+from ...display import DEFAULT_INTENSITY_RANGE
 from . import theme
 
 logger = logging.getLogger(__name__)
@@ -365,7 +366,6 @@ def intensity_badge(limits: tuple[int, int]) -> list[tuple[str, str]]:
     proofreading canvas carry the control, and two spellings of this would be
     two answers to "is what I am looking at the file".
     """
-    from ...display import DEFAULT_INTENSITY_RANGE
 
     if tuple(limits) == tuple(DEFAULT_INTENSITY_RANGE):
         return []

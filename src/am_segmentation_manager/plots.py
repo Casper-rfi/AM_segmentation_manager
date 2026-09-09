@@ -20,6 +20,8 @@ import logging
 from collections.abc import Hashable, Mapping, Sequence
 from pathlib import Path
 
+from .aggregate import totals
+
 logger = logging.getLogger(__name__)
 
 INSTALL_HINT = "Install it with: pip install 'am_segmentation_manager[plots]'"
@@ -182,7 +184,6 @@ def heatmap_figure(
 
     import numpy as np
 
-    from .aggregate import totals
 
     rows, columns = totals(table, row_order, column_order)
     counts = np.array(

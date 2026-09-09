@@ -138,6 +138,8 @@ def _apply_icon(application) -> None:
     """
     from qtpy.QtGui import QIcon
 
+    # The widgets create a Qt application on import, which this module
+    # deliberately does not do -- see the docstring above.
     from .widgets.branding import ICON_PATH
 
     if not ICON_PATH.exists():
@@ -220,6 +222,9 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 - reported as a clear instruction
         raise RuntimeError(_missing_qt_message(exc)) from exc
 
+    # Imported here, not at the top: importing the widgets creates a Qt
+    # application, and this module is imported to install error reporting
+    # before there is one.
     from .widgets.main_window import CurationWindow
     from .widgets.theme import apply_theme
 

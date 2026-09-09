@@ -36,9 +36,11 @@ from ..history import (
     history_file_path,
     read_log,
 )
+from ..io.image import read_array
 from ..models import Project
 from ..state import DEFAULT_STATE, RecordState
 from .label_groups import build_groups
+from .label_io import label_fields
 from .selection import current_state
 
 logger = logging.getLogger(__name__)
@@ -303,8 +305,6 @@ def _contents_of(label_path: Path | None) -> tuple[dict[str, object], Path | Non
     if label_path is None:
         return {}, None
     try:
-        from ..io.image import read_array
-        from .label_io import label_fields
 
         return label_fields(read_array(label_path)), None
     except Exception as error:

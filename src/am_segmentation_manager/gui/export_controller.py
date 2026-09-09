@@ -36,6 +36,7 @@ from ..image_metadata import ImageMetadata, read_records_metadata
 from ..models import ImageRecord, Project
 from ..operations.csv import (
     build_training_rows,
+    export_training_csv,
     find_matching_label,
     keep_one_condition_per_scene,
     split_rows,
@@ -50,7 +51,9 @@ from ..operations.label_io import (
     classify_labels,
     is_label_file_empty,
 )
-from ..operations.label_measure import LabelMeasurement
+from ..operations.label_measure import LabelMeasurement, measure_records, measurement_is_empty
+from ..operations.metadata_csv import export_image_metadata_csv
+from ..operations.selection import current_state
 
 logger = logging.getLogger(__name__)
 
@@ -530,7 +533,6 @@ class ExportController:
         Returns:
             How many images have a measured label.
         """
-        from ..operations.label_measure import measure_records
 
         self.load_metadata()
         measured = measure_records(
@@ -553,7 +555,6 @@ class ExportController:
         label-state breakdown are all answered by the one pass the user asked
         for rather than by a second one they did not.
         """
-        from ..operations.label_measure import measurement_is_empty
 
         for image_path, measurement in measured.items():
             self._label_empty[measurement.path] = measurement_is_empty(measurement)
@@ -796,7 +797,6 @@ class ExportController:
         export dropping one means either the proofreading is missing or the
         label is.
         """
-        from ..operations.selection import current_state
 
         corrected = [
             record for record in self.selected_records()
@@ -844,7 +844,6 @@ class ExportController:
             ``(train_csv_path, val_csv_path)``, the second None at a full
             training share.
         """
-        from ..operations.csv import export_training_csv
 
         return export_training_csv(
             records=self.selected_records(),
@@ -873,8 +872,6 @@ class ExportController:
         what a repository deposition wants -- and two such exports append,
         since they carry the same columns.
         """
-        from ..aggregate import project_lookup
-        from ..operations.metadata_csv import export_image_metadata_csv
 
         return export_image_metadata_csv(
             self.selected_records(),
@@ -886,7 +883,6 @@ class ExportController:
 
     def preview(self) -> ExportPreview:
         """Return what the current filters would export."""
-        from ..operations.selection import current_state
 
         matched = self.selected_records()
         if not matched:

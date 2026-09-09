@@ -21,7 +21,35 @@ from pathlib import Path
 
 from ..history import Recorder
 from ..models import ImageRecord
-from ..operations.init_history import writing_recorder
+from ..operations.archive import (
+    apply_prune,
+    archive_root,
+    archived_versions,
+    plan_prune,
+    total_size,
+)
+from ..operations.export_record import read_export_record
+from ..operations.init_history import plan_baseline, writing_recorder
+from ..operations.label_save import StaleLabels
+from ..operations.merge import (
+    CONFLICT,
+    CONVERGED,
+    KEEP_OURS,
+    TAKE_THEIRS,
+    MergeRefused,
+    apply_merge,
+    plan_merge,
+)
+from ..operations.revert import apply_revert, plan_revert, plan_revert_to
+from ..operations.savepoint import (
+    SavepointRefused,
+    apply_savepoint,
+    find_savepoint,
+    list_savepoints,
+    open_round,
+    plan_savepoint,
+    reached_versions,
+)
 from ..reporting import format_bytes
 from .attribution import Attribution
 from .report import MAX_REPORTED_FILES, ConflictRow, OperationReport, shown_path
@@ -81,7 +109,6 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
     they become one row with a line each. Metadata is keyed per field and is a
     row of its own.
     """
-    from ..operations.merge import CONFLICT
 
     rows: dict[str, ConflictRow] = {}
     for project in plan.projects:
@@ -189,13 +216,6 @@ class HistoryController:
                 would destroy.
             dry_run: Report what it would write without writing it.
         """
-        from ..operations.export_record import read_export_record
-        from ..operations.init_history import plan_baseline
-        from ..operations.savepoint import (
-            SavepointRefused,
-            apply_savepoint,
-            plan_savepoint,
-        )
 
         projects = list(projects)
         if not projects:
@@ -257,7 +277,6 @@ class HistoryController:
         A collection that records nothing yet cannot be planned against, and
         saying so beats a count of zero that reads as "this would do nothing".
         """
-        from ..operations.savepoint import SavepointRefused, plan_savepoint
 
         try:
             plan = plan_savepoint(projects, title)
@@ -322,15 +341,6 @@ class HistoryController:
             allow_corrected: Confirm taking work over labels already proofread.
             dry_run: Report what it would do without doing it.
         """
-        from ..operations.label_save import StaleLabels
-        from ..operations.merge import (
-            CONVERGED,
-            KEEP_OURS,
-            TAKE_THEIRS,
-            MergeRefused,
-            apply_merge,
-            plan_merge,
-        )
 
         destination = self.start_path
         if destination is None:
@@ -429,11 +439,6 @@ class HistoryController:
             allow_corrected: Confirm putting proofread work back.
             dry_run: Report what it would do without doing it.
         """
-        from ..operations.revert import apply_revert, plan_revert, plan_revert_to
-        from ..operations.savepoint import (
-            SavepointRefused,
-            find_savepoint,
-        )
 
         records = list(records)
         if not records:
@@ -502,7 +507,6 @@ class HistoryController:
         the listing command orders them oldest first, which reads better as a
         history and worse as a chooser.
         """
-        from ..operations.savepoint import list_savepoints
 
         return list(reversed(list_savepoints(list(projects))))
 
@@ -514,7 +518,6 @@ class HistoryController:
         worth a worker and a dialog. A collection that has never replaced a
         label has nothing to walk, and that is the ordinary case.
         """
-        from ..operations.archive import archive_root
 
         return any(archive_root(project.path).is_dir() for project in projects)
 
@@ -531,8 +534,6 @@ class HistoryController:
         and what could be had back. The second is zero until a savepoint closes
         a round, which is the rule rather than a disappointment.
         """
-        from ..operations.archive import archived_versions, plan_prune, total_size
-        from ..operations.savepoint import list_savepoints, open_round, reached_versions
 
         projects = list(projects)
         savepoints = list_savepoints(projects)
@@ -572,8 +573,6 @@ class HistoryController:
         **The history is left alone.** What was recorded still says what
         happened; only the pixels behind it go.
         """
-        from ..operations.archive import apply_prune, plan_prune
-        from ..operations.savepoint import list_savepoints, open_round, reached_versions
 
         projects = list(projects)
         if not projects:

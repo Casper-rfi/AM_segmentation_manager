@@ -29,6 +29,7 @@ from typing import Final
 
 from ..history import Event, HistoryLog, Recorder, history_file_path, read_log
 from ..models import Project
+from .archive import NAME_DIGEST_LENGTH, keep_version, version_directory
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +319,6 @@ def _archived_file(
     a change to the label. Read from the target towards the filename, never the
     other way, so nothing has to be inferred from a name.
     """
-    from .archive import NAME_DIGEST_LENGTH, version_directory
 
     directory = version_directory(project_root, target)
     if directory not in listing:
@@ -577,7 +577,6 @@ def close_gap(plan: SavepointPlan) -> list[str]:
     Returns:
         The archived paths, relative to their projects.
     """
-    from .archive import keep_version
 
     kept = []
     for project, state in plan.at_risk:

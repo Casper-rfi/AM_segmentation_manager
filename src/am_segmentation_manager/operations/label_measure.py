@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import BACKGROUND_CLASS, SegmentationConfig
-from ..io.image import has_image_stack_support
+from ..image_metadata import read_records_metadata
+from ..io.image import has_image_stack_support, read_array, to_2d
+from .csv import find_matching_label
+from .label_groups import group_key, primary_record
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from collections.abc import Callable, Collection, Iterable, Mapping
@@ -279,7 +282,6 @@ def _count_pixels(path: Path, crack_class: int | None) -> LabelPixels | None:
     """Read *path* and count it, or return None if it cannot be read."""
     import numpy as np
 
-    from ..io.image import read_array, to_2d
 
     try:
         array = to_2d(read_array(path))
@@ -440,7 +442,6 @@ def count_specks_in(path: Path, *, at_most: int = DEFAULT_SPECK_PIXELS) -> int:
     none: the label line already reports it as unreadable, and a count is not
     the place to say so a second time.
     """
-    from ..io.image import read_array, to_2d
 
     try:
         array = to_2d(read_array(path))
@@ -472,8 +473,6 @@ def records_with_specks(
             scene share a file and cost one read between them, so a counter
             over records would sit still for several at a time.
     """
-    from ..io.image import read_array, to_2d
-    from .csv import find_matching_label
 
     records = list(records)
     labels = [
@@ -620,7 +619,6 @@ def measurement_is_empty(measurement: LabelMeasurement) -> bool:
     measured need never read it a second time to find out whether there is
     anything in it.
     """
-    from ..config import BACKGROUND_CLASS
 
     return not any(
         count
@@ -665,8 +663,6 @@ def measure_records(
     Returns:
         Image path to the measurement of that image's label.
     """
-    from .csv import find_matching_label
-    from .label_groups import group_key, primary_record
 
     records = list(records)
     groups: dict[str, list[ImageRecord]] = {}
@@ -674,7 +670,6 @@ def measure_records(
         groups.setdefault(group_key(record), []).append(record)
 
     if metadata is None:
-        from ..image_metadata import read_records_metadata
 
         # Only the primary of each group is ever consulted for scale, so only
         # those headers are read. On a collection with five conditions per

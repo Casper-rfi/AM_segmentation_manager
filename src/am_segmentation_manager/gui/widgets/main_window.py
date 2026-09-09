@@ -42,6 +42,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ... import __version__
 from ...history import clear_author, set_author
 from ...layout import MODALITIES
 from ...operations.selection import (
@@ -577,7 +578,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         line would have chosen, so a run started with ``--log-file`` reports
         where its output actually went.
         """
-        from ... import __version__
 
         lines = [
             f"<b>{PRODUCT_NAME}</b>",

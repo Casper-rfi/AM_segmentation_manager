@@ -26,8 +26,10 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
-from .discovery import PROJECT_MARKERS
+from .discovery import PROJECT_MARKERS, project_markers
+from .io.image import to_2d
 from .io.path import checked_relative_key
+from .io.yaml import read_yaml
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -330,7 +332,6 @@ def pixel_digest(array: np.ndarray) -> str:
     """
     import numpy as np
 
-    from .io.image import to_2d
 
     plane = np.ascontiguousarray(to_2d(array))
     if plane.dtype.kind not in ("u", "i", "b"):
@@ -442,7 +443,6 @@ def _author_from_config() -> str | None:
     if not path.is_file():
         return None
     try:
-        from .io.yaml import read_yaml
 
         document = read_yaml(path)
     except Exception as error:  # pragma: no cover - unreadable config
@@ -560,7 +560,6 @@ def containing_project(path: Path) -> Path | None:
     ``/tmp`` being one on macOS -- is not a prefix of the resolved file, and
     every entry about it would be quietly dropped.
     """
-    from .discovery import project_markers
 
     resolved = path.resolve()
     start = resolved if resolved.is_dir() else resolved.parent

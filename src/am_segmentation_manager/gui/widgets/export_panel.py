@@ -33,8 +33,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ... import plots
 from ...aggregate import AREA_BINS_PER_DECADE, bin_mantissas
 from ...layout import SERIES, SERIES_LABELS
+from ...plots import INSTALL_HINT
+from ...reporting import format_counts, format_cross_tabulation
 from ..export_controller import (
     ANY_LABEL,
     DEFAULT_PREFIX,
@@ -1014,10 +1017,8 @@ class ExportPanel(QWidget):
         is bars, two are a grid. Asking would be asking the user to know which
         shape suits a shape they have not seen yet.
         """
-        from ...plots import bar_figure, has_plot_support, heatmap_figure
 
-        if not has_plot_support():
-            from ...plots import INSTALL_HINT
+        if not plots.has_plot_support():
 
             self.chart_view.show_message(
                 f"Drawing charts requires matplotlib.\n\n{INSTALL_HINT}"
@@ -1049,7 +1050,7 @@ class ExportPanel(QWidget):
             column = breakdowns[other].label
             title = f"Images by {row} and {column}"
             self.chart_view.show_chart(
-                lambda normalise: heatmap_figure(
+                lambda normalise: plots.heatmap_figure(
                     table, row, column, title=title, normalise=normalise,
                     row_order=breakdowns[name].order,
                     column_order=breakdowns[other].order,
@@ -1064,7 +1065,7 @@ class ExportPanel(QWidget):
             return
         title = f"Images by {row}"
         self.chart_view.show_chart(
-            lambda _normalise: bar_figure(
+            lambda _normalise: plots.bar_figure(
                 counts, title, xlabel=row, ordered=bool(breakdowns[name].order),
             )
         )
@@ -1086,7 +1087,6 @@ class ExportPanel(QWidget):
 
     def _counted(self) -> list[str]:
         """Return the table for whichever of the two dropdowns are in use."""
-        from ...reporting import format_counts, format_cross_tabulation
 
         breakdowns = self.controller.breakdowns
         name = self.breakdown.currentData()

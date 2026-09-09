@@ -27,7 +27,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..history import HistoryLog, Recorder, containing_project, history_file_path, read_log
+from ..io.atomic import fingerprint_of
+from ..io.image import read_array, to_2d
+from ..layout import is_convertible_prediction, prediction_precedence
 from ..operations.archive import ArchivedVersion, label_versions, restore
+from ..operations.predict import read_provenance
 from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
@@ -203,7 +207,6 @@ class VersionController:
         is left out: its values are no longer class indices, so drawing it over
         the image would show something that is not a segmentation.
         """
-        from ..layout import is_convertible_prediction, prediction_precedence
 
         usable = [path for path in predictions if is_convertible_prediction(path)]
         usable.sort(key=lambda path: (prediction_precedence(path), path.name))
@@ -232,7 +235,6 @@ class VersionController:
     def _provenance_for(self, directory: Path) -> dict:
         """Return what a predictions directory records, read once per frame set."""
         if directory not in self._provenance:
-            from ..operations.predict import read_provenance
 
             self._provenance[directory] = read_provenance(directory)
         return self._provenance[directory]
@@ -244,7 +246,6 @@ class VersionController:
         time settle whether a held copy is still current. Without this every
         arrow key re-reads every entry the project has.
         """
-        from ..io.atomic import fingerprint_of
 
         assert self._project is not None
         stamp = fingerprint_of(history_file_path(self._project))
@@ -328,7 +329,6 @@ class VersionController:
         other = self.comparison_pixels()
         if other is None or current is None:
             return None
-        from ..io.image import to_2d
 
         mine, theirs = to_2d(current), to_2d(other)
         if mine.shape != theirs.shape:
@@ -456,7 +456,6 @@ def _kept_row(version: ArchivedVersion) -> VersionRow:
 def _read(path: Path):
     """Return what a label or prediction holds, or None where it will not open."""
     try:
-        from ..io.image import read_array
 
         return read_array(path)
     except Exception as error:

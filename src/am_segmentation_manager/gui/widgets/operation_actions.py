@@ -18,6 +18,8 @@ from pathlib import Path
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
+from ...operations.metadata_csv import export_project_metadata_csv
+from ...operations.predict_process import probe_devices
 from ...progress import Cancellation
 from ..report import OperationReport
 from .common import MAX_LISTED_FILES
@@ -92,7 +94,6 @@ class OperationActions:
         """
         if self._devices is not None:
             return
-        from ...operations.predict_process import probe_devices
 
         self.project_panel.announce("Asking which devices are available...")
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -591,7 +592,6 @@ class OperationActions:
         self._flash(f"Wrote {Path(path).name}", 4000)
 
     def _export_project_metadata(self, path: str) -> None:
-        from ...operations.metadata_csv import export_project_metadata_csv
 
         try:
             export_project_metadata_csv(

@@ -161,6 +161,8 @@ class ConflictDialog(QDialog):
         A decision made while looking is not one to carry back and find the
         row for.
         """
+        # Pulls numpy in to compare the two sides, which a dialog that is
+        # only ever built for a conflict need not cost every other window.
         from .conflict_viewer import ConflictViewer
 
         viewer = ConflictViewer(self, row, self._config)

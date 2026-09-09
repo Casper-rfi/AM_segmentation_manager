@@ -20,6 +20,7 @@ from ..filtering import (
 from ..history import Recorder
 from ..layout import SERIES
 from ..operations.init_history import writing_recorder
+from ..operations.selection import record_from_image_path
 from ..scanner import Scanner
 
 logger = logging.getLogger(__name__)
@@ -180,7 +181,6 @@ def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
 
     Returns a tuple of `(records, start_path, projects)`.
     """
-    from ..operations.selection import record_from_image_path
 
     state = getattr(args, "state", "all")
     start_path = Path(args.start_path)

@@ -14,6 +14,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
+from .aggregate import totals
 from .io.path import make_path_relative
 from .layout import MODALITIES, SERIES_LABELS
 from .operations.selection import current_state
@@ -347,7 +348,6 @@ def format_cross_tabulation(
             then count an image once per cell it lands in, and a total larger
             than the collection needs saying rather than working out.
     """
-    from .aggregate import totals
 
     heading = title or f"{row_title} x {column_title}"
     if not table:

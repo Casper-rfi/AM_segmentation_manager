@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
+from ...operations.init_project import project_placement_problem
 from ..operations_controller import OperationsController
 from .paths import choose_directory
 
@@ -224,7 +225,6 @@ class AddProjectsDialog(QDialog):
         data the scan cannot recognise, not for overriding the one check that
         stops several samples landing under a single metadata record.
         """
-        from ...operations.init_project import project_placement_problem
 
         problem = project_placement_problem(self.root)
         if problem is not None:

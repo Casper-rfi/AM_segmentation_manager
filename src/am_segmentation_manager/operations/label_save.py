@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import fingerprint_of, write_atomically
+from ..io.image import read_array
+from .archive import Archivist
 from .label_io import changed_fraction, label_fields, save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -221,7 +223,6 @@ def save_labels(
 
     archivist = None
     if recorder is not None:
-        from .archive import Archivist
 
         archivist = Archivist(recorder)
 
@@ -258,7 +259,6 @@ def _previous_pixels(item: LabelToSave):
     if item.created or not item.destination.is_file():
         return None
     try:
-        from ..io.image import read_array
 
         return read_array(item.destination)
     except Exception as error:

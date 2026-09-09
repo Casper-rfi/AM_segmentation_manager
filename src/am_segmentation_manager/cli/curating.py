@@ -13,9 +13,20 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from ..config import load_segmentation_config
 from ..io.path import make_path_relative
-from ..operations.label_measure import DEFAULT_SPECK_PIXELS, PREDICTION_PIXEL_BLOCK
+from ..operations.csv import find_matching_label
+from ..operations.label_compression import compress_labels
+from ..operations.label_io import classify_labels
+from ..operations.label_measure import (
+    DEFAULT_SPECK_PIXELS,
+    PREDICTION_PIXEL_BLOCK,
+    records_with_specks,
+)
+from ..operations.predict import PredictionSource, plan_predictions, run_predictions
 from ..operations.predictions import convert_record_predictions, plan_conversions
+from ..operations.selection import StaleState, apply_plan, plan_transition
+from ..reporting import format_speck_report
 from .scope import (
     _add_scope_arguments,
     _format_duration,
@@ -234,11 +245,6 @@ def _cmd_gui(args: argparse.Namespace) -> int:
 
 def _cmd_predict(args: argparse.Namespace) -> int:
     """Handle ``am-seg predict``."""
-    from ..operations.predict import (
-        PredictionSource,
-        plan_predictions,
-        run_predictions,
-    )
 
     records, start_path = _resolve_records(args)
     if not records:
@@ -293,6 +299,8 @@ def _cmd_predict(args: argparse.Namespace) -> int:
         return 0
 
     try:
+        # Both import torch, which costs seconds and is only in the second
+        # environment: a command that does not predict must not pay for it.
         from ..ml.environment import resolve_device
         from ..ml.model import load_model
 
@@ -358,8 +366,6 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
 
 def _cmd_state(args: argparse.Namespace) -> int:
     """Handle ``am-seg correct``."""
-    from ..operations.label_io import classify_labels
-    from ..operations.selection import StaleState, apply_plan, plan_transition
 
     records, start_path, projects = _resolve_scope(args)
     if not records:
@@ -428,10 +434,6 @@ def _cmd_state(args: argparse.Namespace) -> int:
 
 def _cmd_find_specks(args: argparse.Namespace) -> int:
     """Handle ``am-seg find-specks``."""
-    from ..config import load_segmentation_config
-    from ..operations.csv import find_matching_label
-    from ..operations.label_measure import records_with_specks
-    from ..reporting import format_speck_report
 
     records, start_path = _resolve_records(args)
     if not records:
@@ -469,7 +471,6 @@ def _cmd_find_specks(args: argparse.Namespace) -> int:
 
 def _cmd_compress_labels(args: argparse.Namespace) -> int:
     """Handle ``am-seg compress-labels``."""
-    from ..operations.label_compression import compress_labels
 
     records, start_path, projects = _resolve_scope(args)
     if not records:

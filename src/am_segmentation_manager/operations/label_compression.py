@@ -16,9 +16,10 @@ from pathlib import Path
 
 from ..history import Recorder
 from ..io.atomic import fingerprint_of, write_atomically
+from ..io.image import read_array
 from ..models import ImageRecord
 from ..progress import OperationCancelled
-from .label_io import has_image_stack_support, save_label_image
+from .label_io import has_image_stack_support, label_fields, save_label_image
 from .selection import current_state
 
 logger = logging.getLogger(__name__)
@@ -152,10 +153,8 @@ def _record_compression(recorder: Recorder, result: LabelCompressionResult) -> N
     makes this a re-encoding rather than an edit -- and both are written so a
     reader can check the claim rather than infer it from an absence.
     """
-    from .label_io import label_fields
 
     try:
-        from ..io.image import read_array
 
         digest = label_fields(read_array(result.label_path))["digest"]
     except Exception as error:

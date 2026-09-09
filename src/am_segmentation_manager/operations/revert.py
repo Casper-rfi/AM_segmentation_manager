@@ -26,6 +26,9 @@ from typing import Final
 from ..history import Recorder, containing_project, events_for, read_log
 from ..models import ImageRecord
 from .archive import ArchivedVersion, label_versions, restore
+from .label_groups import build_groups
+from .savepoint import ARCHIVED, LOST
+from .selection import current_state
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +153,6 @@ def plan_revert(
             f"{' or '.join(sorted(UNDOABLE))}"
         )
 
-    from .label_groups import build_groups
-    from .selection import current_state
 
     items: list[RevertItem] = []
     logs: dict[Path, object] = {}
@@ -274,10 +275,6 @@ def plan_revert_to(records: Iterable[ImageRecord], savepoint) -> RevertPlan:
     Args:
         savepoint: A :class:`~.savepoint.Savepoint`.
     """
-    from .archive import label_versions
-    from .label_groups import build_groups
-    from .savepoint import ARCHIVED, LOST
-    from .selection import current_state
 
     named: dict[Path, dict[str, object]] = {}
     for carried in savepoint.projects:

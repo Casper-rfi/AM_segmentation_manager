@@ -11,8 +11,13 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from ..discovery import describe_dataset_candidates, find_project_roots, project_markers
+from ..filtering import matches_project
 from ..io.path import make_path_relative
 from ..metadata import DESCRIPTIVE_FIELDS, TODO_MARKER, VALUE_SEPARATOR, field_named
+from ..metadata import DESCRIPTIVE_FIELDS as FIELDS
+from ..operations.init_project import init_projects, project_placement_problem, read_defaults
+from ..operations.metadata_edit import MetadataValidationError, update_project_metadata
 from ..reporting import print_project_summary, print_survey
 from ..scanner import Scanner
 from ..survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
@@ -213,12 +218,6 @@ def _cmd_inspect_layout(args: argparse.Namespace) -> int:
 
 def _cmd_init_project(args: argparse.Namespace) -> int:
     """Handle ``am-seg init-project``."""
-    from ..discovery import describe_dataset_candidates, find_project_roots, project_markers
-    from ..operations.init_project import (
-        init_projects,
-        project_placement_problem,
-        read_defaults,
-    )
 
     start_path = Path(args.start_path)
     if args.recursive:
@@ -298,12 +297,6 @@ def _cmd_init_project(args: argparse.Namespace) -> int:
 
 def _cmd_metadata(args: argparse.Namespace) -> int:
     """Handle ``am-seg edit-metadata``."""
-    from ..filtering import matches_project
-    from ..metadata import DESCRIPTIVE_FIELDS as FIELDS
-    from ..operations.metadata_edit import (
-        MetadataValidationError,
-        update_project_metadata,
-    )
 
     start_path = Path(args.start_path)
     projects = Scanner(start_path).build_index().all_projects()

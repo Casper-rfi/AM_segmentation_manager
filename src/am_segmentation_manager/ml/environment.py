@@ -184,6 +184,8 @@ def verify_preprocessing(device: str = "cpu", image_size: int = 512) -> tuple[in
     require_ml_stack("Checking preprocessing")
     import numpy as np
 
+    # torch, imported when a check asks for it rather than when the module
+    # naming the devices is read.
     from .preprocessing import image_preprocess
 
     image = np.random.default_rng(0).integers(

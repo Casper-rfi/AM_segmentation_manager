@@ -26,6 +26,7 @@ from ..operations.archive import (
     plan_prune,
     total_size,
 )
+from ..operations.export_record import read_export_record
 from ..operations.init_history import apply_baseline, plan_baseline
 from ..operations.merge import (
     CONVERGED,
@@ -36,6 +37,17 @@ from ..operations.merge import (
     plan_merge,
 )
 from ..operations.revert import UNDOABLE, apply_revert, plan_revert, plan_revert_to
+from ..operations.savepoint import (
+    LOST,
+    SavepointRefused,
+    apply_savepoint,
+    find_savepoint,
+    list_savepoints,
+    not_recording,
+    open_round,
+    plan_savepoint,
+    reached_versions,
+)
 from ..reporting import format_bytes
 from ..scanner import Scanner
 from .scope import _add_scope_arguments, _recorder, _resolve_records
@@ -368,13 +380,6 @@ def _cmd_init_history(args: argparse.Namespace) -> int:
 
 def _cmd_savepoint(args: argparse.Namespace) -> int:
     """Handle ``am-seg savepoint``."""
-    from ..operations.export_record import read_export_record
-    from ..operations.savepoint import (
-        SavepointRefused,
-        apply_savepoint,
-        find_savepoint,
-        plan_savepoint,
-    )
 
     start_path = Path(args.start_path)
     if read_export_record(start_path) is not None:
@@ -444,12 +449,6 @@ def _cmd_savepoint(args: argparse.Namespace) -> int:
 
 def _cmd_savepoints(args: argparse.Namespace) -> int:
     """Handle ``am-seg savepoints``."""
-    from ..operations.savepoint import (
-        LOST,
-        SavepointRefused,
-        find_savepoint,
-        list_savepoints,
-    )
 
     start_path = Path(args.start_path)
     projects = Scanner(start_path).build_index().all_projects()
@@ -498,7 +497,6 @@ def _report_silent_projects(projects) -> None:
     part of the collection is outside it: a project nothing has changed yet
     records nothing, and nothing else would ever mention it.
     """
-    from ..operations.savepoint import not_recording
 
     silent = not_recording(projects)
     if not silent:
@@ -604,7 +602,6 @@ def _cmd_revert(args: argparse.Namespace) -> int:
         logger.info("No matching images found")
         return 2
 
-    from ..operations.savepoint import SavepointRefused, find_savepoint
 
     try:
         if args.to:
@@ -703,11 +700,6 @@ def _cmd_prune_archive(args: argparse.Namespace) -> int:
         logger.error("No %s at or above %s", AM_HISTORY_FILENAME, args.path)
         return 1
 
-    from ..operations.savepoint import (
-        list_savepoints,
-        open_round,
-        reached_versions,
-    )
 
     root = Path(args.start_path) if args.start_path else project
     savepoints = list_savepoints(Scanner(root).build_index().all_projects())

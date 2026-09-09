@@ -40,7 +40,10 @@ from ..history import (
     declared_project_id,
     read_log,
 )
+from ..io.atomic import fingerprint_of
+from ..io.image import read_array
 from ..models import ImageRecord, Project
+from ..scanner import Scanner
 from ..state import DEFAULT_STATE, RecordState
 from .export_record import (
     AM_EXPORT_FILENAME,
@@ -48,6 +51,11 @@ from .export_record import (
     ProjectFork,
     read_export_record,
 )
+from .label_groups import build_groups
+from .label_io import label_fields
+from .label_save import LabelToSave, WriteProvenance, save_labels
+from .metadata_edit import update_project_metadata
+from .selection import current_state, transition_records
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +322,6 @@ def plan_merge(
             in *destination*, if the two disagree about a project's identity,
             or if the fork point names an entry *destination* has never held.
     """
-    from ..scanner import Scanner
 
     export = read_export_record(source)
     if export is None:
@@ -439,7 +446,6 @@ def _plan_label(
     source_event: str,
 ) -> LabelMerge:
     """Return what becomes of one label, on the digests read from disk now."""
-    from ..io.atomic import fingerprint_of
 
     our_digest = ours.digest if ours else None
     their_digest = theirs.digest
@@ -553,9 +559,6 @@ def _groups_of(project: Project) -> dict[str, _Group]:
     **The digest is taken from the file now**, not from the log: the log says
     what this package did, and a merge has to know what is actually there.
     """
-    from .label_groups import build_groups
-    from .label_io import label_fields
-    from .selection import current_state
 
     groups = {}
     for group in build_groups(project.image_records):
@@ -581,7 +584,6 @@ def _digest_of(path: Path | None, label_fields) -> str | None:
     if path is None or not path.is_file():
         return None
     try:
-        from ..io.image import read_array
 
         return str(label_fields(read_array(path))["digest"])
     except Exception as error:
@@ -698,7 +700,6 @@ def apply_merge(
             f"kept either way, so this can be undone -- but not unasked."
         )
 
-    from .label_save import save_labels
 
     taking = [
         (project, item)
@@ -745,8 +746,6 @@ def _label_to_save(item: LabelMerge, project: ProjectMerge):
     written the way every other label is -- and so that a label that will not
     open stops this one item rather than the whole merge partway through.
     """
-    from ..io.image import read_array
-    from .label_save import LabelToSave, WriteProvenance
 
     try:
         pixels = read_array(item.their_path)
@@ -781,7 +780,6 @@ def _take_state(
     whenever it happened to be needed made the guard describe the situation
     rather than protect against it.
     """
-    from .selection import transition_records
 
     transition_records(
         [item.record],
@@ -793,7 +791,6 @@ def _take_state(
 
 def _take_field(project: ProjectMerge, item: MetadataMerge, recorder: Recorder) -> None:
     """Write the copy's value for one metadata field."""
-    from .metadata_edit import update_project_metadata
 
     update_project_metadata(
         project.our_root, {item.field: item.theirs}, recorder=recorder
