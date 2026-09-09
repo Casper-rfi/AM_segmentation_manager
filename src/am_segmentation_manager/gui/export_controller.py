@@ -99,8 +99,9 @@ LABEL_FILTERS: dict[str, frozenset[str]] = {
 #: not a value any record carries.
 DEDICATED_CONTROLS = frozenset({"modality", "state", "label", "series"})
 
-#: What the series control starts on. **The one filter that does not open on
-#: everything**, and deliberately: a scan holds reference and alignment images
+#: What the series control starts on where the settings name nothing -- see
+#: `gui/preferences.py`. **The one filter that does not open on everything**,
+#: and deliberately: a scan holds reference and alignment images
 #: as well, and an export that silently grew to include them would disagree
 #: with ``create-training-csv``, which defaults the same way. Ticking another
 #: is one click, and the summary line says what is counted.

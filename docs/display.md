@@ -247,17 +247,14 @@ of one of these files, is held by `test_docs.py`.
   Ten actions across all four tabs put a name into a log, and one more writes it into an export's
   fork point: there is no single tab to say it on and far too many places to warn at. It is muted,
   being a fact rather than a message.
-- **A default decides what a control opens at, and nothing else.** `gui/preferences.py` holds them,
-  Qt-free and below the widgets, so the store is passed in and a preference resolves in a test with
-  a dictionary. Nothing they touch reaches a write path: the command line and every operation keep
-  the packaged constants, which is what makes it safe to keep these on one machine
+- **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
+  holds reaches a write path: the command line and every operation keep the packaged constants,
+  which is what makes it safe to keep these on one machine
   (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`). They are applied once, by
   the window, which is what lets a panel be built without a store and still open at the packaged
   answer — and why a control somebody is already using is never moved under them; the dialog says
-  so rather than leaving it to be discovered. **A preference is a row in `PREFERENCES`**, as a
-  field is a row in `metadata.FIELDS`, and the dialog is built from that table
-  (`test_the_settings_dialog_offers_every_preference`). A stored value is clamped and a broken one
-  falls back, an INI file having no types and being editable by hand.
+  so rather than leaving it to be discovered, and is built from the same table
+  (`test_the_settings_dialog_offers_every_preference`).
 - **A word-wrapped label reports a one-line hint, and the squeeze lands somewhere else.** Qt asks
   for a size hint before the label knows its width, so a dialog sized from that comes up short and
   everything below is pushed towards its minimum — which showed as a group box drawing four

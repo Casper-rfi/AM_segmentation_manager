@@ -352,8 +352,8 @@ rather than appending to it.
   task and time, which is otherwise a row per run. The timestamp pattern lives in `layout.py`, the
   scanner reading it to order stages and this to remove one.
 - **Series is the one filter that does not open on everything.** Every other control starts wide
-  and narrows towards an export; this one starts on Adaptive Polishing, a tab silently counting
-  the rest disagreeing with `create-training-csv`. A dedicated control rather than a derived
+  and narrows towards an export; this one starts on Adaptive Polishing unless the settings say
+  otherwise, a tab *silently* counting the rest disagreeing with `create-training-csv`. A dedicated control rather than a derived
   filter row, and checkboxes rather than a dropdown, an export covering two series being a real
   request. The metadata CSV names the series of every row, and `task` beside it: a row not saying
   which it came from cannot be read.

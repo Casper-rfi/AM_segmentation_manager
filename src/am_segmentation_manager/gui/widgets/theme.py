@@ -114,16 +114,13 @@ SWITCH_GAP = 8
 #: side it runs off, which reads as a drawing fault rather than as focus.
 SWITCH_FOCUS = 3.0
 
-#: Room between a switch's caption and whatever control follows it on the same
-#: row. A switch ends at its caption where a tick box carried padding past one,
-#: so a row of them reads as a single phrase without this.
-SWITCH_RUN_GAP = 16
-
 #: Room between one group of view controls and the next, where the groups are
-#: `controls.keep_paired` blocks rather than loose widgets. Narrower than
-#: :data:`SWITCH_RUN_GAP` because the pairing is what separates the groups now,
-#: and the width this saves is what keeps the whole run inside the pane a
-#: laptop screen can offer; `docs/display.md` gives the measurements.
+#: `controls.keep_paired` blocks rather than loose widgets. A switch ends at
+#: its caption, where a tick box carried padding past one, so a run of them
+#: needs a gap to read as separate things -- but the pairing is what separates
+#: the groups now, and the width a narrower gap saves is what keeps the whole
+#: run inside the pane a laptop screen can offer; `docs/display.md` gives the
+#: measurements.
 GROUP_GAP = 10
 
 #: How a splitter handle is drawn: how thick the handle is, and the rounded bar
