@@ -32,7 +32,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from ..history import Event, HistoryLog, Recorder, append_event, read_log
+from ..history import (
+    Event,
+    HistoryLog,
+    Recorder,
+    append_event,
+    declared_project_id,
+    read_log,
+)
 from ..models import ImageRecord, Project
 from ..state import DEFAULT_STATE, RecordState
 from .export_record import (
@@ -360,7 +367,7 @@ def _matching_project(
         )
 
     log = read_log(project.path)
-    declared = _declared_id(log.events)
+    declared = declared_project_id(log.events)
     if fork.project_id and declared and fork.project_id != declared:
         raise MergeRefused(
             f"{key} in the copy says it is project {fork.project_id}, and here "
@@ -410,7 +417,7 @@ def _plan_project(
         key=our_project.key,
         our_root=our_project.path,
         their_root=their_project.path,
-        source_project_id=_declared_id(their_log.events) or "",
+        source_project_id=declared_project_id(their_log.events) or "",
         labels=tuple(item for item in labels if item.outcome != UNCHANGED),
         states=tuple(item for item in states if item.outcome != UNCHANGED),
         metadata=_plan_metadata(ours_since, theirs_since, our_project.key, decided),
@@ -551,7 +558,7 @@ def _groups_of(project: Project) -> dict[str, _Group]:
     from .selection import current_state
 
     groups = {}
-    for group in build_groups(_records_of(project)):
+    for group in build_groups(project.image_records):
         identity = group.label_path or group.identity
         if identity is None:
             continue
@@ -580,11 +587,6 @@ def _digest_of(path: Path | None, label_fields) -> str | None:
     except Exception as error:
         logger.warning("Could not read %s: %s", path, error)
         return None
-
-
-def _records_of(project: Project) -> list[ImageRecord]:
-    """Return every image record of *project*."""
-    return [record for lamella in project.lamellae for record in lamella.image_records]
 
 
 def _projects_by_key(projects: Sequence[Project]) -> dict[str, Project]:
@@ -653,16 +655,6 @@ def _edits_by_field(events: Sequence[Event]) -> dict[str, list[Event]]:
         if isinstance(name, str):
             edits.setdefault(name, []).append(event)
     return edits
-
-
-def _declared_id(events: Sequence[Event]) -> str | None:
-    """Return the identity a log declares, if it declares one."""
-    for event in events:
-        if event.kind == "log-created":
-            declared = event.data.get("project_id")
-            if isinstance(declared, str) and declared:
-                return declared
-    return None
 
 
 # ---------------------------------------------------------------------------

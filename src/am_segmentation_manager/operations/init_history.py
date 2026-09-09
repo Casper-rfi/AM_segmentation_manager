@@ -25,17 +25,18 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from .. import __version__
 from ..history import (
     Recorder,
+    declared_project_id,
     history_file_path,
     read_log,
 )
-from ..models import ImageRecord, Project
+from ..models import Project
 from ..state import DEFAULT_STATE, RecordState
 from .label_groups import build_groups
 from .selection import current_state
@@ -175,7 +176,7 @@ def plan_baseline(projects: Iterable[Project]) -> BaselinePlan:
         planned.append(
             ProjectBaseline(
                 project=project,
-                project_id=_project_id(log.events) or uuid.uuid4().hex,
+                project_id=declared_project_id(log.events) or uuid.uuid4().hex,
                 creates_log=not started,
                 entries=tuple(entries),
                 recorded=len(recorded),
@@ -250,7 +251,7 @@ def _entries_of(project: Project) -> list[BaselineEntry]:
     per unannotated image in the collection.
     """
     entries = []
-    for group in build_groups(_records_of(project)):
+    for group in build_groups(project.image_records):
         identity = group.label_path or group.identity
         if identity is None:
             continue
@@ -266,23 +267,6 @@ def _entries_of(project: Project) -> list[BaselineEntry]:
             BaselineEntry(target=target, label_path=group.label_path, state=state)
         )
     return sorted(entries, key=lambda entry: entry.target)
-
-
-def _records_of(project: Project) -> list[ImageRecord]:
-    """Return every image record of *project*."""
-    return [
-        record for lamella in project.lamellae for record in lamella.image_records
-    ]
-
-
-def _project_id(events: Sequence) -> str | None:
-    """Return the identity an existing log declares, if it declares one."""
-    for event in events:
-        if event.kind == "log-created":
-            declared = event.data.get("project_id")
-            if isinstance(declared, str) and declared:
-                return declared
-    return None
 
 
 # ---------------------------------------------------------------------------

@@ -388,7 +388,9 @@ def _archive_previous(archivist, destination: Path, previous) -> str | None:
     """Keep the label a conversion is about to replace, if it earns keeping.
 
     A conversion is the case the archive exists for: a machine guess going over
-    something a person may have drawn.
+    something a person may have drawn, so the version is kept even where the
+    pixels are unchanged. An ordinary save skips that case -- see
+    ``label_save._archive_previous``, which is otherwise this function.
     """
     if archivist is None or previous is None:
         return None

@@ -273,7 +273,9 @@ def _archive_previous(archivist, item: LabelToSave, previous) -> str | None:
 
     Nothing to do where there was no previous version, or where it holds the
     same pixels: a re-encoding is not a change, and a copy of it records only
-    that somebody pressed save.
+    that somebody pressed save. A conversion keeps the version either way --
+    see ``predictions._archive_previous``, which is deliberately not this
+    function, the unchanged-pixels case being the difference between them.
     """
     if archivist is None or previous is None:
         return None

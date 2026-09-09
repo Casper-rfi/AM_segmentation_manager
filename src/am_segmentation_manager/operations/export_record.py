@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from .. import __version__
-from ..history import read_log, resolve_author
+from ..history import declared_project_id, read_log, resolve_author
 from ..io.atomic import write_atomically
 from ..io.yaml import read_yaml
 from ..models import Project
@@ -145,7 +145,7 @@ def build_export_record(
         tip = log.events[-1].id if log.events else None
         forks[project.key] = ProjectFork(
             key=project.key,
-            project_id=_declared_id(log.events),
+            project_id=declared_project_id(log.events),
             tip=tip,
             entries=len(log.events),
         )
@@ -246,16 +246,6 @@ def _forks(block: Any, path: Path) -> dict[str, ProjectFork]:
             entries=entry.get("entries") if isinstance(entry.get("entries"), int) else 0,
         )
     return forks
-
-
-def _declared_id(events: Iterable) -> str | None:
-    """Return the identity a log declares, if it declares one."""
-    for event in events:
-        if event.kind == "log-created":
-            declared = event.data.get("project_id")
-            if isinstance(declared, str) and declared:
-                return declared
-    return None
 
 
 def _text(value: Any) -> str:

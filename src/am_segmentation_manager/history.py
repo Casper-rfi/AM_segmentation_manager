@@ -52,6 +52,7 @@ __all__ = [
     "append_event",
     "build_event",
     "containing_project",
+    "declared_project_id",
     "events_for",
     "history_file_path",
     "latest_for",
@@ -870,6 +871,22 @@ class Recorder:
 # ---------------------------------------------------------------------------
 # Reading a log back
 # ---------------------------------------------------------------------------
+
+def declared_project_id(events: Iterable[Event]) -> str | None:
+    """Return the identity a log declares for its project, if it declares one.
+
+    The identity lives in the ``log-created`` entry rather than in
+    `AM_metadata.yaml`, so this is the only way to ask; a merge, an export
+    record and a baseline all have to agree on the answer, which is why they
+    ask here rather than each reading the entry for themselves.
+    """
+    for event in events:
+        if event.kind == "log-created":
+            declared = event.data.get("project_id")
+            if isinstance(declared, str) and declared:
+                return declared
+    return None
+
 
 def events_for(log: HistoryLog, target: str) -> list[Event]:
     """Return the entries about *target*, oldest first by when they happened."""
