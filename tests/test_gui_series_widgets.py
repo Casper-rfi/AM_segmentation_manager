@@ -779,7 +779,7 @@ def test_an_overview_that_places_nothing_is_shown_saying_why(
 
         window._set_mode("grid", from_user=True)
 
-        assert "no lamella positions" in window.image_panel.badges.text()
+        assert "record a position" in window.image_panel.badges.text()
         assert "approximate" not in window.image_panel.badges.text()
     finally:
         destroy(window)

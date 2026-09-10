@@ -2,8 +2,8 @@
 
 For the project being looked at: which grid overviews it holds, where its
 lamellae fall on the one chosen, and why nothing is placed where nothing is.
-Answered from what the scan already indexed plus each overview's header and
-one ``experiment.yaml``, held for as long as that project is on screen.
+Answered from what the scan already indexed plus image headers and one
+``experiment.yaml``, held for as long as that project is on screen.
 
 The placement is approximate -- :func:`~..overview.reproject` says what the
 projection ignores -- so whatever draws it says so.
@@ -25,6 +25,7 @@ from ..overview import (
     OverviewImage,
     StagePosition,
     place_lamellae,
+    positions_from_headers,
     project_overviews,
     read_positions,
 )
@@ -184,10 +185,10 @@ class GridController:
 
 def _resolve(project: Project) -> list[OverviewChoice]:
     """Return every overview of *project*, earliest first, with what it places."""
-    overviews = project_overviews(project)
+    overviews = project_overviews(project, _header)
     if not overviews:
         return []
-    positions = read_positions(read_yaml(project.path / EXPERIMENT_FILENAME))
+    positions = _positions(project)
     choices = [_choice(overview, positions) for overview in overviews]
     # Undated ones after the dated, keeping path order, which the sort keeps.
     return sorted(
@@ -196,17 +197,42 @@ def _resolve(project: Project) -> list[OverviewChoice]:
     )
 
 
+def _positions(project: Project) -> list[StagePosition]:
+    """Return each lamella's position: ``experiment.yaml``'s, or where its images were taken.
+
+    Headers are read only for the lamellae ``experiment.yaml`` records nothing
+    for -- few in an Autolamella project, every one in a dataset predating it.
+    """
+    recorded = read_positions(read_yaml(project.path / EXPERIMENT_FILENAME))
+    named = {position.name for position in recorded}
+    unrecorded = {
+        lamella.name: [
+            header for record in lamella.image_records
+            if (header := _header(record.image_path)) is not None
+        ]
+        for lamella in project.lamellae
+        if lamella.path != project.path and lamella.name not in named
+    }
+    return recorded + positions_from_headers(unrecorded)
+
+
+def _header(path: Path) -> ImageMetadata | None:
+    """Return the header of the image at *path*, or None where it cannot be read."""
+    from ..image_metadata import read_image_metadata
+
+    try:
+        return read_image_metadata(path)
+    except Exception as exc:  # noqa: BLE001 - a missing image stack included
+        logger.info("Could not read %s: %s", path.name, exc)
+        return None
+
+
 def _choice(overview: OverviewImage, positions: list[StagePosition]) -> OverviewChoice:
     """Return *overview* as the picker offers it, placing *positions* where it can."""
-    from ..image_metadata import read_image_metadata
     from ..overview import overview_from_metadata
 
     path = overview.record.image_path
-    try:
-        metadata = read_image_metadata(path)
-    except Exception as exc:  # noqa: BLE001 - a missing image stack included
-        logger.info("Could not read %s: %s", path.name, exc)
-        metadata = None
+    metadata = _header(path)
     caption = _caption(path, metadata)
     acquired_at = metadata.acquired_at if metadata is not None else None
 
@@ -219,7 +245,7 @@ def _choice(overview: OverviewImage, positions: list[StagePosition]) -> Overview
     if geometry is None:
         return unplaced("its header states no stage geometry to place positions with")
     if not positions:
-        return unplaced("experiment.yaml records no lamella positions")
+        return unplaced("neither experiment.yaml nor the lamellae's images record a position")
     markers = place_lamellae(geometry, positions)
     if not markers:
         return unplaced("no recorded position could be placed on this overview")

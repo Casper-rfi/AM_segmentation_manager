@@ -16,7 +16,7 @@ Every main function `CLAUDE.md` names is built, across the three series of image
 — and a fourth, `other`, holding every image no naming rule reaches and listed once switched on —
 and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
-Curate also draws a project's grid overviews, any one of them, with its lamellae on it. Predictions
+Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
 need the second environment `scripts/setup_ml.sh` builds.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
@@ -33,11 +33,6 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **Grid overviews for older and non-Autolamella projects**: place lamellae from their images' stage
-  positions where `experiment.yaml` has none, first comparing the two across the collection, and
-  know an overview by its header (CElegans' `VG10G2_*`). Mind RAW against SPECIMEN coordinates, a
-  lift-out lamella that moves, Arctis headers stating no rotation, and fibsemOS's grid-task overviews
-  written below the project root, which `project_overviews` does not search.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.

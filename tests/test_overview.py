@@ -25,6 +25,7 @@ from am_segmentation_manager.overview import (
     is_overview_name,
     overview_from_metadata,
     place_lamellae,
+    positions_from_headers,
     project_overviews,
     read_positions,
     reproject,
@@ -239,8 +240,13 @@ def upright(**overrides) -> Overview:
     return Overview(**{**defaults, **overrides})
 
 
-def at(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=0.0, name=None) -> StagePosition:
-    return StagePosition(x=x, y=y, z=z, rotation=rotation, tilt=tilt, name=name)
+def at(
+    x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=0.0, name=None, coordinate_system=None
+) -> StagePosition:
+    return StagePosition(
+        x=x, y=y, z=z, rotation=rotation, tilt=tilt, name=name,
+        coordinate_system=coordinate_system,
+    )
 
 
 def test_the_centre_of_the_stage_is_the_centre_of_the_image():
@@ -412,6 +418,41 @@ def test_a_small_difference_in_rotation_is_still_the_same_way_round():
     assert reproject(upright(), at(rotation=math.radians(1.5))) == (500.0, 400.0)
 
 
+def test_a_position_recorded_in_another_coordinate_system_is_refused():
+    """RAW and SPECIMEN put the same stage in different places."""
+    raw = upright(
+        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=0.0, coordinate_system="RAW")
+    )
+
+    with pytest.raises(ValueError, match="coordinates"):
+        reproject(raw, at(name="01-ruling-ibex", coordinate_system="SPECIMEN"))
+
+
+def test_a_coordinate_system_is_compared_whatever_its_case():
+    """fibsemOS has written SPECIMEN as both Specimen and SPECIMEN."""
+    specimen = upright(
+        centre=StagePosition(
+            x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=0.0, coordinate_system="Specimen"
+        )
+    )
+
+    assert reproject(specimen, at(coordinate_system="SPECIMEN")) == (500.0, 400.0)
+
+
+def test_a_compustage_saying_nothing_is_taken_to_be_in_specimen_coordinates():
+    """The only system fibsemOS records an Arctis in; the microscope's own
+    headers name none."""
+    arctis = upright(compustage=True)
+
+    assert reproject(arctis, at(coordinate_system="Specimen")) == pytest.approx((500.0, 400.0))
+    with pytest.raises(ValueError, match="coordinates"):
+        reproject(arctis, at(coordinate_system="RAW"))
+
+
+def test_a_flat_stage_saying_nothing_is_compared_with_nothing():
+    assert reproject(upright(), at(coordinate_system="RAW")) == (500.0, 400.0)
+
+
 def test_is_inside_reads_the_overview_bounds():
     overview = upright()
 
@@ -463,32 +504,69 @@ def test_an_arctis_is_known_as_a_compustage():
     "missing",
     ["image_width", "image_height", "pixel_size_nm", "stage_x_um", "stage_y_um",
      "stage_z_um", "stage_rotation_deg", "stage_tilt_deg", "scan_rotation_deg",
-     "beam_type", "ion_column_tilt_deg"],
+     "beam_type"],
 )
 def test_a_header_missing_any_field_places_nothing(missing: str):
-    """A projection missing any of them would be a guess. An overview saved
-    from the microscope's own interface states no column geometry."""
+    """A projection missing any of them would be a guess. A flat stage's
+    overview saved from the microscope's own interface may state no rotation."""
     assert overview_from_metadata(Path("o.tif"), metadata(**{missing: None})) is None
 
 
 @pytest.mark.parametrize(
     "unread",
     ["shuttle_pretilt_deg", "stage_rotation_reference_deg", "stage_rotation_180_deg",
-     "electron_column_tilt_deg"],
+     "electron_column_tilt_deg", "ion_column_tilt_deg"],
 )
 def test_a_header_need_not_state_what_the_projection_does_not_read(unread: str):
     """The pre-tilt decides where the grid lies rather than how the stage
-    moves, and the electron column is the axis every tilt is measured from."""
+    moves, the electron column is the axis every tilt is measured from, and an
+    electron-beam overview is not seen through the ion column."""
     assert overview_from_metadata(Path("o.tif"), metadata(**{unread: None})) is not None
 
 
-@pytest.mark.parametrize("missing", ["shuttle_pretilt_deg", "stage_rotation_reference_deg"])
-def test_a_compustage_header_must_say_where_the_ion_column_is(missing: str):
-    """Which way up a compustage is seen depends on whether it faces the ion
-    column, which these two decide."""
-    header = metadata(microscope_model="Arctis", **{missing: None})
+def test_an_ion_beam_overview_must_state_the_ion_column():
+    header = metadata(beam_type="ION", ion_column_tilt_deg=None)
 
     assert overview_from_metadata(Path("o.tif"), header) is None
+
+
+def microscope_saved(**overrides) -> ImageMetadata:
+    """An Arctis header as the microscope's own software writes one."""
+    return metadata(**{
+        "microscope_model": "Arctis", "stage_rotation_deg": None,
+        "shuttle_pretilt_deg": None, "stage_rotation_reference_deg": None,
+        "stage_rotation_180_deg": None, "electron_column_tilt_deg": None,
+        "ion_column_tilt_deg": None, **overrides,
+    })
+
+
+def test_an_arctis_header_the_microscope_saved_takes_fibsemos_arctis_geometry():
+    """It states no rotation and no column geometry: a compustage cannot
+    rotate, holds the grid with no pre-tilt, and meets the ion column at 52
+    degrees."""
+    resolved = overview_from_metadata(Path("o.tif"), microscope_saved())
+
+    assert resolved is not None
+    assert resolved.compustage is True
+    assert resolved.centre.rotation == 0.0
+    assert resolved.shuttle_pretilt == 0.0
+    assert resolved.rotation_reference == 0.0
+    assert resolved.ion_column_tilt == pytest.approx(math.radians(52))
+
+
+def test_an_arctis_header_stating_its_geometry_is_taken_at_its_word():
+    resolved = overview_from_metadata(
+        Path("o.tif"), microscope_saved(ion_column_tilt_deg=45.0, stage_rotation_deg=10.0)
+    )
+
+    assert resolved.ion_column_tilt == pytest.approx(math.radians(45))
+    assert resolved.centre.rotation == pytest.approx(math.radians(10))
+
+
+def test_an_overview_keeps_the_coordinate_system_its_header_states():
+    resolved = overview_from_metadata(Path("o.tif"), metadata(stage_coordinate_system="RAW"))
+
+    assert resolved.centre.coordinate_system == "RAW"
 
 
 def test_a_header_stating_a_zero_pixel_size_places_nothing():
@@ -541,6 +619,66 @@ def test_an_experiment_predating_positions_yields_nothing():
     assert read_positions({}) == []
     assert read_positions(None) == []
     assert read_positions({"positions": "not a list"}) == []
+
+
+def test_a_position_keeps_the_coordinate_system_it_was_recorded_in():
+    found = read_positions(experiment(position_entry("01-ruling-ibex", coordinate_system="RAW")))
+
+    assert [one.coordinate_system for one in found] == ["RAW"]
+
+
+# ---------------------------------------------------------------------------
+# Positions from the lamellae's own images
+# ---------------------------------------------------------------------------
+
+def seen_at(x_um: float, y_um: float, **overrides) -> ImageMetadata:
+    """The header of a lamella's image, taken with the stage at *x_um*, *y_um*."""
+    return metadata(**{
+        "stage_x_um": x_um, "stage_y_um": y_um, "stage_z_um": 0.0,
+        "stage_rotation_deg": 0.0, "stage_tilt_deg": 0.0, "hfw_um": 150.0, **overrides,
+    })
+
+
+def test_a_lamella_is_placed_where_most_of_its_images_were_taken():
+    """A lift-out lamella moves part-way; it is marked where it spent most of
+    its imaging, at the first image taken there."""
+    found = positions_from_headers({
+        "01-ruling-ibex": [seen_at(900, 0), seen_at(100, 0), seen_at(110, 5), seen_at(95, -3)],
+    })
+
+    assert [(one.name, one.x, one.y) for one in found] == [
+        ("01-ruling-ibex", pytest.approx(100e-6), pytest.approx(0.0))
+    ]
+
+
+def test_of_two_places_imaged_as_often_the_earlier_wins():
+    found = positions_from_headers({"lam_001": [seen_at(900, 0), seen_at(100, 0)]})
+
+    assert found[0].x == pytest.approx(900e-6)
+
+
+def test_an_image_as_wide_as_an_overview_says_nothing_about_a_lamella():
+    """So a folder of overviews, or of a stitch's tiles, is not marked as one."""
+    assert positions_from_headers({"grid_overviews": [seen_at(0, 0, hfw_um=2800.0)]}) == []
+
+
+def test_a_compustage_image_the_microscope_saved_is_placed_at_no_rotation():
+    """Its header states none, and a compustage cannot rotate."""
+    found = positions_from_headers({
+        "lam_001": [seen_at(100, 0, microscope_model="Arctis", stage_rotation_deg=None)],
+    })
+
+    assert [one.rotation for one in found] == [0.0]
+
+
+def test_a_flat_stage_image_stating_no_rotation_places_nothing():
+    assert positions_from_headers({"lam_001": [seen_at(100, 0, stage_rotation_deg=None)]}) == []
+
+
+def test_a_position_from_a_header_keeps_its_coordinate_system():
+    found = positions_from_headers({"lam_001": [seen_at(0, 0, stage_coordinate_system="RAW")]})
+
+    assert [one.coordinate_system for one in found] == ["RAW"]
 
 
 # ---------------------------------------------------------------------------
@@ -625,6 +763,58 @@ def test_an_overview_inside_a_lamella_is_not_the_projects():
     project = make_project(root / "01-ruling-ibex" / "CB016A1_SEM_overview.tif")
 
     assert project_overviews(project) == []
+
+
+def test_an_image_as_wide_as_a_grid_is_an_overview_whatever_its_name():
+    """The microscope's own software saves an overview under whatever its user
+    typed: CB014_A3, grid1_001."""
+    root = Path("/scan/AutoLamella-2026")
+    wide, narrow = root / "CB014_A3.tif", root / "lam_03_final.tif"
+    headers = {wide: metadata(hfw_um=2300.0), narrow: metadata(hfw_um=41.0)}
+
+    found = project_overviews(make_project(wide, narrow), headers.get)
+
+    assert [overview.record.image_path for overview in found] == [wide]
+
+
+def test_a_header_is_read_only_where_the_name_does_not_decide():
+    """An overview's name, or its copy's, already says what it is."""
+    root = Path("/scan/AutoLamella-2026")
+    asked: list[str] = []
+
+    def read(path: Path) -> None:
+        asked.append(path.name)
+
+    project_overviews(
+        make_project(
+            root / "overview-image-2026-04-17_11-17-34.tif",
+            root / "overview-image-2026-04-17_11-17-34-autogamma.tif",
+            root / "CB014_A3.tif",
+        ),
+        read,
+    )
+
+    assert asked == ["CB014_A3.tif"]
+
+
+def test_an_overview_a_grid_task_wrote_is_found_two_folders_down():
+    """fibsemOS's grid tasks write into <experiment>/<grid>/<task>/, and the
+    stitch's tiles a folder further."""
+    task = Path("/scan/AutoLamella-2026") / "Grid-01" / "Acquire Overview Image"
+    stitched = task / "overview-image-2026-09-10_10-00-00.tif"
+    tile = task / "overview-image-2026-09-10_10-00-00" / "tile_0_0_ib.tif"
+    headers = {stitched: metadata(hfw_um=1500.0), tile: metadata(hfw_um=500.0)}
+
+    found = project_overviews(make_project(stitched, tile), headers.get)
+
+    assert [overview.record.image_path for overview in found] == [stitched]
+
+
+def test_an_image_two_folders_down_must_be_as_wide_as_an_overview():
+    """A lamella's own stage folder is as deep, and a name proves nothing there."""
+    image = Path("/scan/AutoLamella-2026") / "01-ruling-ibex" / "stage" / "overview_final.tif"
+
+    assert project_overviews(make_project(image), {image: metadata(hfw_um=150.0)}.get) == []
 
 
 # ---------------------------------------------------------------------------

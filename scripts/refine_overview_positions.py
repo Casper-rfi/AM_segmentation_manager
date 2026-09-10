@@ -42,7 +42,13 @@ import tifffile
 
 from am_segmentation_manager.image_metadata import ImageMetadata, read_image_metadata
 from am_segmentation_manager.io.atomic import write_atomically
-from am_segmentation_manager.overview import Overview, StagePosition, reproject
+from am_segmentation_manager.overview import (
+    OVERVIEW_MIN_FIELD_UM,
+    Overview,
+    StagePosition,
+    positions_from_headers,
+    reproject,
+)
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPOSITORY / "tests" / "data" / "overview_ground_truth.json"
@@ -104,7 +110,15 @@ class Case:
 
 
 def geometry_of(overview: Overview, metadata: ImageMetadata) -> dict:
-    """Return *overview*'s geometry in the schema the reprojection fixtures use."""
+    """Return *overview*'s geometry in the schema the reprojection fixtures use.
+
+    What the header states, and where it states nothing, what the projection
+    took instead: an Arctis header the microscope saved states no column
+    geometry, and ``tests/test_overview.py`` rebuilds the overview from this.
+    """
+    def stated(value: float | None, resolved_rad: float) -> float:
+        return value if value is not None else math.degrees(resolved_rad)
+
     centre = overview.centre
     return {
         "width": overview.width,
@@ -116,24 +130,43 @@ def geometry_of(overview: Overview, metadata: ImageMetadata) -> dict:
                    "r": centre.rotation, "t": centre.tilt},
         "system": {
             "model": metadata.microscope_model,
-            "shuttle_pre_tilt_deg": metadata.shuttle_pretilt_deg,
-            "rotation_reference_deg": metadata.stage_rotation_reference_deg,
+            "shuttle_pre_tilt_deg": stated(metadata.shuttle_pretilt_deg, overview.shuttle_pretilt),
+            "rotation_reference_deg": stated(
+                metadata.stage_rotation_reference_deg, overview.rotation_reference
+            ),
             "rotation_180_deg": metadata.stage_rotation_180_deg,
             "electron_column_tilt_deg": metadata.electron_column_tilt_deg,
-            "ion_column_tilt_deg": metadata.ion_column_tilt_deg,
+            "ion_column_tilt_deg": stated(metadata.ion_column_tilt_deg, overview.ion_column_tilt),
         },
     }
 
 
 def stage_position_of(metadata: ImageMetadata, name: str) -> StagePosition | None:
-    """Return where the stage was when *metadata*'s image was taken."""
-    values = (metadata.stage_x_um, metadata.stage_y_um, metadata.stage_z_um,
-              metadata.stage_rotation_deg, metadata.stage_tilt_deg)
-    if any(value is None for value in values):
-        return None
-    x, y, z, r, t = values
-    return StagePosition(x=x * 1e-6, y=y * 1e-6, z=z * 1e-6,
-                         rotation=math.radians(r), tilt=math.radians(t), name=name)
+    """Return where the stage was when *metadata*'s image was taken, as the Grid view reads it."""
+    found = positions_from_headers({name: [metadata]})
+    return found[0] if found else None
+
+
+def widest_reference(lamella: Path) -> Path | None:
+    """Return the lamella's widest SEM image short of an overview's width.
+
+    For a dataset whose images are named none of :data:`REFERENCES`: the one
+    showing most of the grid around the lamella is the one to line up.
+    """
+    best: tuple[float, Path] | None = None
+    for path in sorted(lamella.rglob("*.tif")):
+        seen = read_image_metadata(path)
+        if (
+            seen is None
+            or seen.beam_type != "ELECTRON"
+            or not seen.hfw_um
+            or seen.hfw_um >= OVERVIEW_MIN_FIELD_UM
+            or stage_position_of(seen, lamella.name) is None
+        ):
+            continue
+        if best is None or seen.hfw_um > best[0]:
+            best = (seen.hfw_um, path)
+    return best[1] if best is not None else None
 
 
 def load_case(collection: Path, relative: str) -> Case | None:
@@ -175,9 +208,11 @@ def load_case(collection: Path, relative: str) -> Case | None:
 
 def _target(lamella: Path, name: str, overview: Overview, metadata: ImageMetadata,
             picture: np.ndarray) -> Target | None:
-    reference = next((lamella / r for r in REFERENCES if (lamella / r).exists()), None)
+    reference = next(
+        (lamella / r for r in REFERENCES if (lamella / r).exists()), None
+    ) or widest_reference(lamella)
     if reference is None:
-        print(f"{name}: no low-resolution SEM reference image", file=sys.stderr)
+        print(f"{name}: no SEM image to line up", file=sys.stderr)
         return None
     seen = read_image_metadata(reference)
     position = stage_position_of(seen, name) if seen is not None else None

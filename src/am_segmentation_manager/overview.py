@@ -1,13 +1,14 @@
 """Placing a project's lamellae on the grid overview they were milled from.
 
-An Autolamella project writes a stitched overview of the whole grid at its
-root, and records every lamella's stage coordinates in ``experiment.yaml``. The
-overview's own header states where the stage was when it was taken and how
-large a pixel is, which is enough to say where each lamella falls in it.
+An overview is an image named as one or as wide as one, at the project root or
+where fibsemOS's grid tasks write it; a lamella is where ``experiment.yaml``
+records it or, failing that, where its own images were taken. The overview's
+header states where the stage was and how large a pixel is, which is enough to
+say where each lamella falls in it.
 
-Reads what :mod:`~am_segmentation_manager.image_metadata` already parsed and
-what :mod:`~am_segmentation_manager.scanner` already indexed; it opens no image
-and walks no directory of its own. **The position is approximate** -- see
+Reads what :mod:`~am_segmentation_manager.image_metadata` parsed and what
+:mod:`~am_segmentation_manager.scanner` indexed, headers through a reader its
+caller passes; it walks no directory of its own. **The position is approximate** -- see
 :func:`reproject`, which says what the projection ignores -- so anything
 showing one says so rather than implying a measurement.
 
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,9 @@ class StagePosition:
         tilt: Stage tilt in radians.
         name: What the position is called, where anything names it -- a
             lamella's petname, which is also its directory.
+        coordinate_system: ``RAW`` or ``SPECIMEN``, in whatever case the
+            recording wrote it, or None where it does not say. The same stage
+            has different coordinates in each.
     """
 
     x: float
@@ -65,6 +69,7 @@ class StagePosition:
     rotation: float
     tilt: float
     name: str | None = None
+    coordinate_system: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,15 +120,34 @@ class Overview:
 #: The model name by which fibsemOS recognises a compustage.
 COMPUSTAGE_MODEL: str = "Arctis"
 
+#: What fibsemOS configures an Arctis with, standing in for what a header saved
+#: by the microscope's own software leaves out: a compustage cannot rotate,
+#: holds the grid with no pre-tilt, and meets the ion column at 52 degrees.
+COMPUSTAGE_DEFAULTS: Mapping[str, float] = {
+    "stage_rotation_deg": 0.0,
+    "shuttle_pretilt_deg": 0.0,
+    "stage_rotation_reference_deg": 0.0,
+    "ion_column_tilt_deg": 52.0,
+}
+
+#: The coordinate system a compustage's position is taken to be in where its
+#: header does not say: the only one fibsemOS records an Arctis in. Assumed of
+#: the microscope's own headers, no file in the reference collection carrying
+#: both kinds of header to compare.
+COMPUSTAGE_FRAME: str = "SPECIMEN"
+
 
 def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | None:
     """Return the geometry *metadata* states, or None if it does not state it.
 
-    None is an ordinary answer, not a defect: an overview saved from the
-    microscope's own interface states no column geometry, and some no stage
-    rotation, and one is unusable rather than wrong. Every field the projection
-    reads is required, since a projection missing any of them would be a guess.
+    None is an ordinary answer, not a defect: a flat stage's overview saved
+    from the microscope's own interface may state no rotation, and is unusable
+    rather than wrong. A compustage's takes :data:`COMPUSTAGE_DEFAULTS` for
+    what it leaves out; anything else the projection reads is required, since a
+    projection missing it would be a guess.
     """
+    compustage = _is_compustage(metadata)
+    ion_column_tilt = _stated(metadata, "ion_column_tilt_deg", compustage)
     fields = (
         metadata.image_width,
         metadata.image_height,
@@ -131,28 +155,36 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
         metadata.stage_x_um,
         metadata.stage_y_um,
         metadata.stage_z_um,
-        metadata.stage_rotation_deg,
+        _stated(metadata, "stage_rotation_deg", compustage),
         metadata.stage_tilt_deg,
         metadata.scan_rotation_deg,
         metadata.beam_type,
-        metadata.ion_column_tilt_deg,
     )
-    compustage = COMPUSTAGE_MODEL in (metadata.microscope_model or "")
-    if compustage:
-        fields += (metadata.shuttle_pretilt_deg, metadata.stage_rotation_reference_deg)
-    if any(field is None for field in fields):
+    if any(field is None for field in fields) or (
+        metadata.beam_type == ION and ion_column_tilt is None
+    ):
         logger.debug("No usable geometry in the header of %s", path)
         return None
-    width, height, pixel_nm, x_um, y_um, z_um, r_deg, t_deg, scan_deg = fields[:9]
+    width, height, pixel_nm, x_um, y_um, z_um, r_deg, t_deg, scan_deg, beam = fields
     if not pixel_nm or width <= 0 or height <= 0:
         logger.debug("Unusable geometry in the header of %s", path)
         return None
+    # The header states nanometres, micrometres and degrees; the projection
+    # works in metres and radians, which is what the instrument records.
+    column_geometry: dict[str, float] = {}
+    if ion_column_tilt is not None:
+        column_geometry["ion_column_tilt"] = math.radians(float(ion_column_tilt))
+    if compustage:
+        column_geometry["shuttle_pretilt"] = math.radians(
+            float(_stated(metadata, "shuttle_pretilt_deg", compustage))
+        )
+        column_geometry["rotation_reference"] = math.radians(
+            float(_stated(metadata, "stage_rotation_reference_deg", compustage))
+        )
     return Overview(
         path=path,
         width=int(width),
         height=int(height),
-        # The header states nanometres, micrometres and degrees; the projection
-        # works in metres and radians, which is what the instrument records.
         pixel_size_m=float(pixel_nm) * 1e-9,
         centre=StagePosition(
             x=float(x_um) * 1e-6,
@@ -160,14 +192,26 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
             z=float(z_um) * 1e-6,
             rotation=math.radians(float(r_deg)),
             tilt=math.radians(float(t_deg)),
+            coordinate_system=metadata.stage_coordinate_system,
         ),
         scan_rotation=math.radians(float(scan_deg)),
-        beam=metadata.beam_type,
-        ion_column_tilt=math.radians(float(metadata.ion_column_tilt_deg)),
+        beam=beam,
         compustage=compustage,
-        shuttle_pretilt=math.radians(float(metadata.shuttle_pretilt_deg or 0.0)),
-        rotation_reference=math.radians(float(metadata.stage_rotation_reference_deg or 0.0)),
+        **column_geometry,
     )
+
+
+def _is_compustage(metadata: ImageMetadata) -> bool:
+    """Return whether *metadata* was recorded on a compustage."""
+    return COMPUSTAGE_MODEL in (metadata.microscope_model or "")
+
+
+def _stated(metadata: ImageMetadata, field: str, compustage: bool) -> Any:
+    """Return *field* of *metadata*, or what fibsemOS configures a compustage with."""
+    value = getattr(metadata, field)
+    if value is None and compustage:
+        return COMPUSTAGE_DEFAULTS.get(field)
+    return value
 
 
 def reproject(overview: Overview, position: StagePosition) -> tuple[float, float]:
@@ -204,7 +248,16 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
             the rotation its lamellae were recorded at.
         ValueError: If *overview* was scanned at a rotation other than a whole
             number of half turns, which fibsemOS does not model either.
+        ValueError: If *position* and *overview* are known to be in different
+            coordinate systems, which put the same stage in different places.
     """
+    frame, recorded = _frame(overview, overview.centre), _frame(overview, position)
+    if frame is not None and recorded is not None and frame != recorded:
+        raise ValueError(
+            f"{position.name or 'The position'} was recorded in {recorded} "
+            f"coordinates and {overview.path.name} in {frame}, which put the same "
+            f"stage in different places"
+        )
     half_turns = _half_turns(overview.scan_rotation)
     if half_turns is None:
         raise ValueError(
@@ -242,6 +295,13 @@ def _half_turns(scan_rotation: float) -> int | None:
     if abs(scan_rotation - turns * math.pi) > SCAN_ROTATION_TOLERANCE_RAD:
         return None
     return turns
+
+
+def _frame(overview: Overview, position: StagePosition) -> str | None:
+    """Return the coordinate system *position* is in, on the stage *overview* was taken on."""
+    if position.coordinate_system:
+        return position.coordinate_system.upper()
+    return COMPUSTAGE_FRAME if overview.compustage else None
 
 
 def _seen_along_y(overview: Overview, delta_y: float, delta_z: float) -> float:
@@ -344,8 +404,8 @@ def read_positions(experiment: Mapping[str, Any] | None) -> list[StagePosition]:
     Named by ``petname``, which is the directory Autolamella writes that
     lamella's images into, so a caller can match a position to the lamella the
     scanner indexed. A position missing coordinates is skipped rather than
-    defaulted: the whole point is where it was, and a lamella the software
-    created but never positioned has no answer.
+    defaulted: the whole point is where it was, and for a lamella the software
+    created but never positioned :func:`positions_from_headers` answers instead.
 
     An experiment with no ``positions`` -- every dataset predating
     ``experiment.yaml`` -- yields nothing, which is why a caller checks the
@@ -360,17 +420,11 @@ def read_positions(experiment: Mapping[str, Any] | None) -> list[StagePosition]:
         if not isinstance(entry, Mapping):
             continue
         name = _lamella_name(entry)
-        state = entry.get("state")
-        recorded = _stage_position(state)
+        recorded = _stage_position(entry.get("state"), name)
         if recorded is None:
             logger.debug("No stage position recorded for %s", name or "a lamella")
             continue
-        found.append(
-            StagePosition(
-                x=recorded[0], y=recorded[1], z=recorded[2],
-                rotation=recorded[3], tilt=recorded[4], name=name,
-            )
-        )
+        found.append(recorded)
     return found
 
 
@@ -390,10 +444,8 @@ def _lamella_name(entry: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _stage_position(
-    state: Any,
-) -> tuple[float, float, float, float, float] | None:
-    """Return ``(x, y, z, rotation, tilt)`` from a position's recorded state."""
+def _stage_position(state: Any, name: str | None) -> StagePosition | None:
+    """Return the stage position a lamella's recorded state holds, if it holds one."""
     if not isinstance(state, Mapping):
         return None
     microscope_state = state.get("microscope_state")
@@ -408,7 +460,73 @@ def _stage_position(
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             return None
         values.append(float(value))
-    return (values[0], values[1], values[2], values[3], values[4])
+    frame = recorded.get("coordinate_system")
+    return StagePosition(
+        x=values[0], y=values[1], z=values[2], rotation=values[3], tilt=values[4],
+        name=name, coordinate_system=frame if isinstance(frame, str) else None,
+    )
+
+
+#: How close two of a lamella's images must be to count as taken at one place,
+#: in micrometres. A lamella's images sit within a few of each other; a
+#: lift-out lamella that moves goes far further.
+PLACE_TOLERANCE_UM: float = 30.0
+
+
+def positions_from_headers(
+    images: Mapping[str, Iterable[ImageMetadata]],
+) -> list[StagePosition]:
+    """Return where each lamella's own images were taken, from their headers.
+
+    For the lamellae ``experiment.yaml`` records no position for, which in a
+    dataset predating it is all of them: the place most of a lamella's images
+    were taken, those within :data:`PLACE_TOLERANCE_UM` of each other being one
+    place and the earlier of equal places winning, at the first image taken
+    there. An image as wide as an overview says nothing about a lamella and is
+    passed over, so a folder of overviews or of a stitch's tiles places nothing.
+
+    Args:
+        images: Each lamella's name, with the headers of its images in scan order.
+    """
+    found: list[StagePosition] = []
+    for name, headers in images.items():
+        places: list[list[StagePosition]] = []
+        for metadata in headers:
+            position = _position_of(metadata, name)
+            if position is None:
+                continue
+            for place in places:
+                if math.hypot(position.x - place[0].x, position.y - place[0].y) * 1e6 <= (
+                    PLACE_TOLERANCE_UM
+                ):
+                    place.append(position)
+                    break
+            else:
+                places.append([position])
+        if places:
+            found.append(max(places, key=len)[0])
+    return found
+
+
+def _position_of(metadata: ImageMetadata, name: str) -> StagePosition | None:
+    """Return where the stage was for one of a lamella's images, if its header says."""
+    if _is_wide(metadata):
+        return None
+    values = (
+        metadata.stage_x_um,
+        metadata.stage_y_um,
+        metadata.stage_z_um,
+        _stated(metadata, "stage_rotation_deg", _is_compustage(metadata)),
+        metadata.stage_tilt_deg,
+    )
+    if any(value is None for value in values):
+        return None
+    x_um, y_um, z_um, r_deg, t_deg = (float(value) for value in values)
+    return StagePosition(
+        x=x_um * 1e-6, y=y_um * 1e-6, z=z_um * 1e-6,
+        rotation=math.radians(r_deg), tilt=math.radians(t_deg),
+        name=name, coordinate_system=metadata.stage_coordinate_system,
+    )
 
 
 #: What a display copy of an overview is called. Autolamella writes the same
@@ -418,10 +536,30 @@ def _stage_position(
 GAMMA_SUFFIX: str = "-autogamma"
 
 
+#: The narrowest field of view that makes an image an overview whatever it is
+#: called, in micrometres. Every image a lamella's own workflow takes in the
+#: reference collection is under 200 wide, and every wider one beside them 500
+#: or more -- a grid, several of its squares, or a stitch's tile.
+OVERVIEW_MIN_FIELD_UM: float = 500.0
+
+#: How many path parts below the project root fibsemOS's grid tasks write an
+#: overview: ``<grid>/<task>/<image>``. A stitch's tiles sit a folder further.
+GRID_TASK_DEPTH: int = 3
+
+
 def is_overview_name(image_name: str) -> bool:
     """Return whether a filename names a grid overview rather than its copy."""
     stem = Path(image_name).stem.lower()
     return "overview" in stem and not stem.endswith(GAMMA_SUFFIX)
+
+
+def _is_wide(metadata: ImageMetadata | None) -> bool:
+    """Return whether *metadata* shows a field of view only an overview reaches."""
+    return (
+        metadata is not None
+        and metadata.hfw_um is not None
+        and metadata.hfw_um >= OVERVIEW_MIN_FIELD_UM
+    )
 
 
 @dataclass(frozen=True)
@@ -439,36 +577,56 @@ class OverviewImage:
     display_path: Path
 
 
-def project_overviews(project: Project) -> list[OverviewImage]:
+def _unread(path: Path) -> ImageMetadata | None:
+    return None
+
+
+def project_overviews(
+    project: Project,
+    read_header: Callable[[Path], ImageMetadata | None] = _unread,
+) -> list[OverviewImage]:
     """Return a project's grid overviews, each once, from what the scan indexed.
 
     Read off the :class:`~.models.Project` rather than by looking in the
-    directory: the overviews are already records, indexed at the project root
-    as the ``other`` series, and a second traversal could disagree with the
-    first about what is there.
+    directory: the overviews are already records, indexed as the ``other``
+    series, and a second traversal could disagree with the first about what is
+    there.
 
-    An overview belongs to the project rather than to any lamella, which is
-    exactly why it sits at the root -- so this looks only at the synthetic
-    lamella standing in for it, never inside a real one. A gamma copy is folded
-    into the overview it copies, and a tile is part of a stitch rather than an
-    overview of its own. In path order, which for Autolamella's timestamped
-    names is the order they were taken.
+    An overview belongs to the project rather than to any lamella, so it is
+    looked for at the root, named as one or as wide as one, and where
+    fibsemOS's grid tasks write it, :data:`GRID_TASK_DEPTH` parts down, as wide
+    as one -- never directly inside a lamella, and never among a stitch's tiles.
+    *read_header* is asked only about ``other`` images whose name does not
+    already decide. A gamma copy is folded into the overview it copies. In path
+    order, which for Autolamella's timestamped names is the order they were taken.
     """
-    records = [
-        record
-        for lamella in project.lamellae
-        if lamella.path == project.path
-        for record in lamella.image_records
-        if record.image_path.parent == project.path
-    ]
+    records = [record for lamella in project.lamellae for record in lamella.image_records]
     present = {record.image_path for record in records}
     found = []
     for record in records:
         path = record.image_path
-        if not is_overview_name(path.name):
+        if not _is_project_overview(record, project.path, read_header):
             continue
         gamma = path.with_name(f"{path.stem}{GAMMA_SUFFIX}{path.suffix}")
         found.append(
             OverviewImage(record=record, display_path=gamma if gamma in present else path)
         )
     return sorted(found, key=lambda overview: overview.record.image_path)
+
+
+def _is_project_overview(
+    record: ImageRecord, root: Path, read_header: Callable[[Path], ImageMetadata | None]
+) -> bool:
+    """Return whether *record* is one of the project's overviews rather than a lamella's."""
+    path = record.image_path
+    if path.stem.lower().endswith(GAMMA_SUFFIX):
+        return False
+    try:
+        depth = len(path.relative_to(root).parts)
+    except ValueError:
+        return False
+    if depth == 1 and is_overview_name(path.name):
+        return True
+    if depth not in (1, GRID_TASK_DEPTH) or record.series != "other":
+        return False
+    return _is_wide(read_header(path))

@@ -42,7 +42,11 @@ POSITIONED = {
 
 
 def header(
-    *, beam: str = "ELECTRON", when: str | float | None = None, geometry: bool = True
+    *,
+    beam: str = "ELECTRON",
+    when: str | float | None = None,
+    geometry: bool = True,
+    hfw: float | None = None,
 ) -> str:
     """Return the description Autolamella writes into an overview."""
     state: dict = {
@@ -53,8 +57,11 @@ def header(
         state["timestamp"] = when
     if geometry:
         state["stage_position"] = {"x": 0.0, "y": 0.0, "z": 0.0, "r": 0.0, "t": 0.0}
+    image: dict = {"beam_type": beam, "resolution": [256, 256]}
+    if hfw is not None:
+        image["hfw"] = hfw
     return json.dumps({
-        "image": {"beam_type": beam, "resolution": [256, 256]},
+        "image": image,
         "pixel_size": {"x": 1e-6, "y": 1e-6},
         "system": {
             "info": {"model": "Aquilos"},
@@ -87,6 +94,22 @@ def add_overview(project: Path, name: str, **described) -> None:
     )
 
 
+def image_taken_at(path: Path, x: float) -> None:
+    """Rewrite a lamella's image with the header Autolamella gives one, taken at *x*."""
+    tifffile.imwrite(
+        str(path),
+        np.full((64, 96), 100, dtype=np.uint8),
+        description=json.dumps({
+            "image": {"beam_type": "ELECTRON", "resolution": [96, 64], "hfw": 80e-6},
+            "pixel_size": {"x": 1e-6, "y": 1e-6},
+            "system": {"info": {"model": "Aquilos"}},
+            "microscope_state": {
+                "stage_position": {"x": x, "y": 0.0, "z": 0.0, "r": 0.0, "t": 0.0},
+            },
+        }),
+    )
+
+
 def grid_for(root: Path) -> GridController:
     grid = GridController()
     grid.set_project(Scanner(root).build_index().all_projects()[0])
@@ -109,6 +132,55 @@ def test_the_earliest_overview_that_places_anything_opens(tmp_path: Path):
         "overview-image-2026-07-28_12-00-00.tif",
     ]
     assert grid.chosen == 1
+    assert [marker.name for marker in grid.placement.markers] == ["01-ruling-ibex"]
+
+
+def test_a_lamella_experiment_yaml_does_not_position_is_placed_where_its_images_were(
+    tmp_path: Path,
+):
+    """Every dataset predating experiment.yaml, and a lamella Autolamella
+    created but never positioned: its own images' headers say where it was."""
+    root, project = make_project(tmp_path, positioned=False)
+    image_taken_at(next(project.rglob("img_000_SEM.tif")), x=20e-6)
+    add_overview(project, "overview-image-2026-07-28_10-31-00.tif", when="2026-07-28 10:31:00")
+
+    grid = grid_for(root)
+
+    assert [(marker.name, marker.x) for marker in grid.placement.markers] == [
+        ("01-ruling-ibex", pytest.approx((128 + 20) / 256))
+    ]
+
+
+def test_an_overview_is_known_by_its_width_whatever_its_name(tmp_path: Path):
+    """What the microscope's own software saved is called whatever its user typed."""
+    root, project = make_project(tmp_path)
+    add_overview(project, "CB015_A2.tif", hfw=2.8e-3)
+
+    grid = grid_for(root)
+
+    assert [choice.overview.record.image_path.name for choice in grid.choices] == [
+        "CB015_A2.tif"
+    ]
+    assert [marker.name for marker in grid.placement.markers] == ["01-ruling-ibex"]
+
+
+def test_an_overview_a_grid_task_wrote_is_offered_and_marks_no_folder_as_a_lamella(
+    tmp_path: Path,
+):
+    """fibsemOS's grid tasks write an ion-beam overview into
+    <experiment>/<grid>/<task>/; the grid's folder is indexed like a lamella's,
+    but an overview says nothing about where a lamella is."""
+    root, project = make_project(tmp_path)
+    task = project / "Grid-01" / "Acquire Overview Image"
+    task.mkdir(parents=True)
+    add_overview(task, "overview-image-2026-07-28_10-31-00.tif", beam="ION", hfw=1.5e-3)
+
+    grid = grid_for(root)
+
+    assert [
+        choice.overview.record.image_path.relative_to(project).as_posix()
+        for choice in grid.choices
+    ] == ["Grid-01/Acquire Overview Image/overview-image-2026-07-28_10-31-00.tif"]
     assert [marker.name for marker in grid.placement.markers] == ["01-ruling-ibex"]
 
 
@@ -135,7 +207,7 @@ def test_an_overview_with_no_positions_recorded_is_offered_and_says_so(tmp_path:
 
     assert grid.current is not None
     assert grid.placement is None
-    assert "no lamella positions" in grid.current.reason
+    assert "record a position" in grid.current.reason
 
 
 def test_an_ion_beam_overview_is_placed_on_too(tmp_path: Path):

@@ -352,6 +352,13 @@ rather than appending to it.
   `scripts/capture_fibsem_reprojection.py`, carry every real position plus the branches no real
   overview reaches (`test_overview_matches_fibsem`); where a person placed the lamellae holds what
   those answers cannot (`test_each_overview_places_its_lamellae_to_within_tens_of_microns`).
+- **Where `experiment.yaml` records no position, a lamella is placed where most of its images were
+  taken** (`test_a_lamella_is_placed_where_most_of_its_images_were_taken`): of the 512 lamellae with
+  both, 510 agree. **An overview is known by its field of view as well as its name**
+  (`test_an_image_as_wide_as_a_grid_is_an_overview_whatever_its_name`): no lamella's own image
+  reaches 200 µm, and nothing beside them falls between that and 500. An Arctis header the
+  microscope saved takes fibsemOS's Arctis geometry and SPECIMEN frame, which no file here confirms
+  but placements by eye can; no file says which grid a lamella was on, so every overview marks it.
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`
   already answering "which directory". The directory is tried before the filename and is the only
   thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the
