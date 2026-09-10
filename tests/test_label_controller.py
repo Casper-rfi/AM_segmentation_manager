@@ -690,3 +690,35 @@ def test_the_size_is_at_least_one_pixel(controller):
     controller.set_speck_size(0)
 
     assert controller.speck_size == 1
+
+
+# ---------------------------------------------------------------------------
+# A series with no labels
+# ---------------------------------------------------------------------------
+
+def other_lamella(root: Path):
+    """Return a lamella holding one image no naming rule reaches."""
+    project = root / "AutoLamella-2026-07-28-10-31"
+    image = project / "02-ruling-oryx" / "something_new_eb.tif"
+    image.parent.mkdir(parents=True)
+    tifffile.imwrite(str(image), np.full((64, 96), 100, dtype=np.uint8))
+    (project / "experiment.yaml").write_text("name: residue\n", encoding="utf-8")
+    return scan_lamella(root)
+
+
+def test_an_image_with_nowhere_for_a_label_has_no_key(tmp_path: Path):
+    """The view asks for a key on every redraw, so it may not raise where the
+    write paths refuse: there is no label, and nowhere one could go."""
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(other_lamella(tmp_path))
+
+    assert controller.series == "other"
+    assert controller.record is not None
+    assert controller.current_key is None
+    assert controller.series_is_labelled is False
+
+
+def test_a_labelled_series_is_labelled(controller):
+    assert controller.series_is_labelled is True
+    assert controller.current_key is not None
+

@@ -27,7 +27,7 @@ from ..frames import (
 )
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
-from ..layout import MODALITIES, SERIES
+from ..layout import LABELLED_SERIES, MODALITIES, SERIES
 from ..models import Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.csv import find_matching_label
@@ -230,6 +230,16 @@ class LabelController:
         """Return the series being proofread."""
         return self._series
 
+    @property
+    def series_is_labelled(self) -> bool:
+        """Return whether the series being proofread has labels at all.
+
+        False for ``other``, which the tab shows view-only rather than as a
+        label missing -- the rule :attr:`.CurationController.series_is_editable`
+        states for the Curate tab.
+        """
+        return self._series in LABELLED_SERIES
+
     def set_series(self, series: str) -> None:
         """Proofread *series* instead, rebuilding the frames to review.
 
@@ -428,11 +438,18 @@ class LabelController:
     def key_for(self, record) -> Path | None:
         """Return where *record*'s label is, or would be written.
 
+        None for a record with no label and nowhere one could be written -- an
+        ``other`` image. :func:`~..operations.label_io.label_destination`
+        refuses such a record, which is right for a write path and wrong for a
+        view that asks on every redraw.
+
         Cached per record: resolving a destination for an image with no label
         yet reads the directory it would go in, which is not something to do on
         every redraw.
         """
         if record is None:
+            return None
+        if not record.labels and record.labels_directory is None:
             return None
         cached = self._keys.get(record.image_path)
         if cached is None:

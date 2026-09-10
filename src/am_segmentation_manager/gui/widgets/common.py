@@ -52,6 +52,11 @@ LABEL_BADGES = {
     "present": ("", "info"),
 }
 
+#: What a series with no labels says in place of :data:`LABEL_BADGES`. A scope
+#: rather than a fault: an ``other`` image has nowhere a label could be
+#: written, so "no label" would report something that could never be otherwise.
+VIEW_ONLY_BADGE = ("view only - labelling is not offered for this series", "info")
+
 
 #: How many filenames a confirmation lists before summarising the rest. Shared
 #: because a bulk state change and a batch operation both list what they are

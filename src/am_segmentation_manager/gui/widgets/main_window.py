@@ -1608,7 +1608,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.image_panel.show_loading()
         else:
             self.image_panel.show_image(
-                cached, self.controller.show_overlay, self.controller.show_image
+                cached, self.controller.show_overlay, self.controller.show_image,
+                labelled=self.controller.series_is_editable,
             )
 
     def _match_plot_size_to_pane(self) -> None:

@@ -471,6 +471,49 @@ def test_leaving_the_residue_offers_the_controls_again(qt_app, residue_project: 
         destroy(window)
 
 
+def test_the_residue_is_badged_view_only_rather_than_unlabelled(
+    qt_app, residue_project: Path
+):
+    """"no label" reports a fault, and an `other` image has nowhere a label
+    could go: it could never be otherwise."""
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.select_lamella(1)
+        window.refresh()
+        settle(
+            qt_app,
+            lambda: "view only" in window.image_panel.badges.text(),
+            what="the residue frame to be drawn",
+        )
+
+        assert "no label" not in window.image_panel.badges.text()
+    finally:
+        destroy(window)
+
+
+def test_the_label_tab_opens_on_the_residue(qt_app, residue_project: Path):
+    """The Label tab asks where a label lives on every refresh. An `other`
+    image has nowhere, and the tab must still open on it, describe it rather
+    than the lamella before it, and refuse a stroke."""
+    window = _window(qt_app, residue_project)
+    try:
+        window.controller.select_lamella(1)
+        window.refresh()
+        window.tabs.setCurrentWidget(window.label_panel)
+        window.label_panel.refresh()
+        settle(
+            qt_app,
+            lambda: "view only" in window.label_panel.badges.text(),
+            what="the residue frame to be drawn in the Label tab",
+        )
+
+        assert window.label_panel.controller.series == "other"
+        assert "02-ruling-oryx" in window.label_panel.status.text()
+        assert not window.label_panel.canvas.editable
+    finally:
+        destroy(window)
+
+
 # ---------------------------------------------------------------------------
 # The grid overview
 # ---------------------------------------------------------------------------

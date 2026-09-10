@@ -43,7 +43,13 @@ from ...operations.label_measure import (
 from ..label_controller import LabelController
 from ..preferences import DEFAULT_BRUSH_RADIUS
 from ..version_controller import VersionController
-from .common import LABEL_BADGES, chip_icon, fill_choice_combo, intensity_badge
+from .common import (
+    LABEL_BADGES,
+    VIEW_ONLY_BADGE,
+    chip_icon,
+    fill_choice_combo,
+    intensity_badge,
+)
 from .controls import (
     ElidingLabel,
     FlowArea,
@@ -1222,9 +1228,12 @@ class LabelPanel(QWidget):
             badges.append(("showing what changed, not a label", "warning"))
         elif self._comparing and chosen is not None:
             badges.append((f"showing the version from {chosen.when[:16]}", "warning"))
-        text, level = LABEL_BADGES[display.label_status]
-        if text:
-            badges.append((text, level))
+        if not self.controller.series_is_labelled:
+            badges.append(VIEW_ONLY_BADGE)
+        else:
+            text, level = LABEL_BADGES[display.label_status]
+            if text:
+                badges.append((text, level))
         if display.label_resized:
             # Editing is refused on these: saving a label resampled to fit the
             # image would rewrite the annotation at the wrong scale.

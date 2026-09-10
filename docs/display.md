@@ -390,17 +390,18 @@ of one of these files, is held by `test_docs.py`.
   lamella showing an empty timeline has, the control being hidden for holding one entry, no way
   back. **The beam follows the same rule** in `_settle_mode`, asked of the whole stack rather than
   the frame on screen; both settle in `_rebuild_frames`.
-- **A series with no labels is shown and not acted on.** The timeline shows `other` — being able to
-  open one and decide whether the rule or the data is wrong is why they are indexed — while the
-  state buttons and every button in the operations panel are withheld, each reading or writing a
-  label the series has none of (`test_the_controls_that_change_data_are_withheld_for_the_residue`),
-  and both say why on hover. Asked of the series *shown*, not the one chosen: `resolve_series` lands
-  there by itself for a lamella holding nothing else. **A second reason, not the editing toggle**,
-  held apart in both panels so switching editing on cannot unlock it
-  (`test_switching_editing_back_on_does_not_unlock_the_residue`). Behind them
-  `controller.scoped_records` drops those records, the one method every operation reads, so none
-  needs a guard of its own. **The beam control is untouched**, already offering what a frame holds;
-  an image whose beam nothing states reaches no frame at all, and `inspect-layout` reports those.
+- **A series with no labels is shown and not acted on.** The timeline shows `other`, opening one to
+  judge whether the rule or the data is wrong being why they are indexed, while the state buttons
+  and every operation button are withheld, each reading or writing a label the series lacks
+  (`test_the_controls_that_change_data_are_withheld_for_the_residue`), and say why on hover. Asked
+  of the series *shown*, not the one chosen: `resolve_series` lands there by itself for a lamella
+  holding nothing else. **A second reason, not the editing toggle**, held apart in both panels so
+  editing cannot unlock it (`test_switching_editing_back_on_does_not_unlock_the_residue`); behind
+  them `controller.scoped_records`, which every operation reads, drops those records. **Both tabs
+  say *view only*, not *no label***; the Label tab's `key_for` answers None where
+  `label_destination` refuses (`test_the_label_tab_opens_on_the_residue`). **The beam control is
+  untouched**, already offering what a frame holds; an image whose beam nothing states reaches no
+  frame, and `inspect-layout` reports those.
 - **The Grid view shows the project, not the frame**, so `available_modes` asks it of the project
   and it survives stepping through a timeline: one overview covers the grid and every lamella on it
   shows the same picture. Unavailable where a project has none, as the plot view is for a stage with

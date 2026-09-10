@@ -5,8 +5,8 @@ summary plot, or the project's grid overview with its lamellae marked,
 according to the selected view. The last is the one view that is not of the
 frame at all, which is why it outlives stepping through a timeline. Also
 carries the class legend and the badges that explain what is *not* being shown
--- a missing label, an auto-generated empty one, a resampled one, a file that
-would not read, or a position that is only approximate.
+-- a missing label, an auto-generated empty one, a resampled one, a series with
+no labels at all, a file that would not read, or an approximate position.
 """
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
 from .common import (
     LABEL_BADGES,
+    VIEW_ONLY_BADGE,
     class_legend_html,
     fill_choice_combo,
     intensity_badge,
@@ -434,11 +435,14 @@ class ImagePanel(QWidget):
         frame_image: FrameImage | None,
         show_overlay: bool,
         with_image: bool = True,
+        labelled: bool = True,
     ) -> None:
         """Draw an acquisition, or explain why there is nothing to draw.
 
         *with_image* governs the overlay pane only. The left pane is the
         acquisition as recorded, which is the whole reason there are two.
+        *labelled* is False for a series with no labels, whose badge then says
+        the frame is view-only rather than that its label is missing.
         """
         if frame_image is None:
             self.pair.clear()
@@ -465,7 +469,9 @@ class ImagePanel(QWidget):
         else:
             self.pair.right.set_array(image)
 
-        self._set_badges(intensity_badge(self._intensity_range) + self._label_badges(display))
+        self._set_badges(
+            intensity_badge(self._intensity_range) + self._label_badges(display, labelled)
+        )
 
     def show_plot(
         self, frame_plot: FramePlot | None, whole: FramePlot | None = None
@@ -631,8 +637,10 @@ class ImagePanel(QWidget):
         """Show the line describing where the user is."""
         self.status.setText(text)
 
-    def _label_badges(self, display) -> list[tuple[str, str]]:
+    def _label_badges(self, display, labelled: bool = True) -> list[tuple[str, str]]:
         """Return the badges describing a frame's label."""
+        if not labelled:
+            return [VIEW_ONLY_BADGE]
         badges: list[tuple[str, str]] = []
         text, level = LABEL_BADGES[display.label_status]
         if text:
