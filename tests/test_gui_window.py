@@ -144,7 +144,7 @@ def test_scanning_populates_the_window(window):
     assert window.frame_label.text() == "1 / 4"
     assert len(list(window.project_panel.project_list.project_items())) == 1
     assert window.project_panel.lamella_list.count() == 2
-    assert "(1/2)" in window.image_panel.status.text()
+    assert "(1/2)" in window.image_panel.status.full_text()
 
 
 def test_both_panes_are_drawn(window):
@@ -179,7 +179,7 @@ def test_changing_lamella_resets_to_its_first_frame(qt_app, window):
     settle(qt_app, lambda: window.controller.lamella.name == "02-beta")
 
     assert window.frame_label.text() == "1 / 2"
-    assert "(2/2)" in window.image_panel.status.text()
+    assert "(2/2)" in window.image_panel.status.full_text()
 
 
 def test_missing_fib_label_is_reported_not_hidden(qt_app, window):
@@ -291,6 +291,26 @@ def test_the_view_controls_wrap_rather_than_widening_the_window(window):
     assert isinstance(controls, FlowArea)
     assert isinstance(controls.layout(), FlowLayout)
     assert controls.layout().minimumSize().width() == 0
+
+
+def test_a_long_caption_does_not_widen_the_curate_tab(window):
+    """The line under the frame names the project path and the image file,
+    which on a grid overview runs past a screen's width. A line that cannot
+    shorten is a floor under the tab, and the splitter takes that width from
+    the lamella list; so the caption elides and the badges wrap."""
+    panel = window.image_panel
+    before = panel.minimumSizeHint().width()
+    caption = (
+        "001: " + "/".join(["AutoLamella-2026-04-08-10-01_virussample"] * 8)
+        + " overview-image-2026-04-08_10-04-53-autogamma.tif"
+    )
+
+    panel.set_status(caption)
+    panel._set_badges([("positions are approximate", "warning")] * 12)
+
+    assert panel.minimumSizeHint().width() <= before
+    assert panel.status.full_text() == caption
+    assert panel.status.toolTip() == caption
 
 
 def test_a_window_larger_than_the_screen_is_pulled_onto_it(window):

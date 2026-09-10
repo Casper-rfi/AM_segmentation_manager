@@ -44,6 +44,7 @@ from .common import (
     intensity_badge,
 )
 from .controls import (
+    ElidingLabel,
     FlowArea,
     FlowLayout,
     RangeSlider,
@@ -265,8 +266,12 @@ class ImagePanel(QWidget):
         layout.addWidget(self.stack, stretch=1)
 
         # -- badges and legend ---------------------------------------------
+        # Wrapped and elided, never full width: a line that cannot shorten is a
+        # floor under the whole tab, and the splitter takes that width from the
+        # lamella list. The caption runs to a project path and a file name.
         self.badges = QLabel("")
         self.badges.setTextFormat(Qt.RichText)
+        self.badges.setWordWrap(True)
         layout.addWidget(self.badges)
 
         self.legend = QLabel("")
@@ -274,7 +279,7 @@ class ImagePanel(QWidget):
         self._build_legend()
         layout.addWidget(self.legend)
 
-        self.status = QLabel("")
+        self.status = ElidingLabel()
         self.status.setStyleSheet(BADGE_STYLES["info"])
         layout.addWidget(self.status)
 

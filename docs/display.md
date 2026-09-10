@@ -59,12 +59,12 @@ of one of these files, is held by `test_docs.py`.
   timer**, a hook running part-way through whatever Qt was doing and a modal dialog re-entering the
   event loop there. Off the widget thread only the log gets it — which is why `am-seg gui` logs to a
   file unasked, its failures not being visible in the terminal that started it.
-- **The window fits the screen it is on, and nothing in it may force otherwise.** Qt clamps a
-  resize to the window's minimum, so a row of controls that cannot wrap is a floor under the whole
-  window rather than a blemish in one tab: rows wrap (`FlowArea`, under Controls) and the floor is
-  held against a named screen size
-  (`test_no_tab_needs_more_room_than_the_smallest_screen_supported`). `fit_to_screen` is the other
-  half, `DEFAULT_SIZE` and a restored geometry both naming a screen this may not be on
+- **The window fits the screen it is on, and nothing in it may force otherwise.** Qt clamps a resize
+  to the window's minimum, so a row of controls that cannot wrap is a floor under the whole window
+  rather than a blemish in one tab: rows wrap (`FlowArea`, under Controls), a caption elides
+  (`test_a_long_caption_does_not_widen_the_curate_tab`), and the floor is held against a named
+  screen size (`test_no_tab_needs_more_room_than_the_smallest_screen_supported`). `fit_to_screen` is
+  the other half, `DEFAULT_SIZE` and a restored geometry both naming a screen this may not be on
   (`test_a_window_remembered_off_the_edge_is_moved_back_on`).
 - **A worker thread that will not stop outlives the window rather than being collected.** A frame
   read is one call into an image library and cannot be interrupted part-way, so a file on a
