@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 from pathlib import Path
 
 import pytest
@@ -125,6 +126,115 @@ def test_the_fixtures_cover_every_overview_that_can_place_a_lamella():
 
     assert len(document["cases"]) >= 35
     assert sum(len(case["positions"]) for case in document["cases"]) >= 265
+
+
+# ---------------------------------------------------------------------------
+# Agreement with a person
+# ---------------------------------------------------------------------------
+
+#: How far a mark may land from where a person placed the lamella, in
+#: micrometres: about one grid square, 125um being a 200-mesh pitch. A mark this
+#: close still points a reader at the lamella's square or the next.
+MARK_TOLERANCE_UM = 125.0
+
+#: How far the marks on one overview may land from a person's placements, as a
+#: median, in micrometres. The flat projection this replaced was 67-80um off on
+#: the Aquilos overviews with a pre-tilted shuttle.
+OVERVIEW_MEDIAN_UM = 35.0
+
+#: Placements that disagree with the projection for a reason not yet
+#: understood, named here rather than hidden by a looser tolerance.
+UNEXPLAINED_MARKS = {
+    "overview-image-2025-07-22_09-43-03.tif::03-causal-ghost": (
+        "placed 268um from its mark where every neighbour is within 35um: the "
+        "reference image may not have been taken where its header says"
+    ),
+}
+UNEXPLAINED_OVERVIEWS = {
+    "overview-image-2026-04-08_10-04-12.tif": (
+        "every mark sits 50-73px above its lamella, a constant offset rather "
+        "than a scale error, which points at the overview's recorded centre"
+    ),
+}
+
+
+def placed_by_a_person() -> list[tuple[str, dict, dict]]:
+    """Return each placement made independently of the projection.
+
+    A placement that is the projection's own first guess, unmoved, says nothing
+    about the projection; one the image match found and a person confirmed
+    over the overview does.
+    """
+    found = []
+    for case in load("overview_ground_truth.json")["cases"]:
+        for entry in case["positions"]:
+            if entry["answer"] != "placed":
+                continue
+            projected_x, projected_y = entry["projected"]
+            if entry["first_guess"] == "projected" and math.hypot(
+                entry["x"] - projected_x, entry["y"] - projected_y
+            ) < 0.5:
+                continue
+            found.append((f"{Path(case['overview']).name}::{entry['name']}", case, entry))
+    return found
+
+
+def error_um(case: dict, entry: dict) -> float:
+    """Return how far the projection lands from a person's placement, in micrometres."""
+    position = entry["position"]
+    x, y = reproject(
+        as_overview(case),
+        StagePosition(
+            x=position["x"], y=position["y"], z=position["z"],
+            rotation=position["r"], tilt=position["t"], name=entry["name"],
+        ),
+    )
+    return math.hypot(x - entry["x"], y - entry["y"]) * case["pixel_size_m"] * 1e6
+
+
+PLACED = placed_by_a_person()
+
+
+def _unexplained(reasons: dict, key: str) -> tuple:
+    return (pytest.mark.xfail(strict=True, reason=reasons[key]),) if key in reasons else ()
+
+
+@pytest.mark.parametrize(
+    "case, entry",
+    [
+        pytest.param(case, entry, id=label, marks=_unexplained(UNEXPLAINED_MARKS, label))
+        for label, case, entry in PLACED
+    ],
+)
+def test_every_mark_lands_within_a_grid_square_of_where_a_person_placed_it(case, entry):
+    """Placed by eye, lining the lamella's own SEM reference image up with the
+    overview's grid bars in ``scripts/refine_overview_positions.py``."""
+    assert error_um(case, entry) <= MARK_TOLERANCE_UM
+
+
+def _overview_errors() -> dict[str, list[float]]:
+    errors: dict[str, list[float]] = {}
+    for _label, case, entry in PLACED:
+        errors.setdefault(Path(case["overview"]).name, []).append(error_um(case, entry))
+    return errors
+
+
+@pytest.mark.parametrize(
+    "errors",
+    [
+        pytest.param(errors, id=name, marks=_unexplained(UNEXPLAINED_OVERVIEWS, name))
+        for name, errors in _overview_errors().items()
+    ],
+)
+def test_each_overview_places_its_lamellae_to_within_tens_of_microns(errors):
+    """What the perspective correction bought, held: the flat projection
+    passes the grid-square test on most lamellae and fails this one."""
+    assert statistics.median(errors) <= OVERVIEW_MEDIAN_UM
+
+
+def test_enough_placements_are_independent_of_the_projection():
+    """Leaving out unmoved guesses must not leave nothing to test."""
+    assert len(PLACED) >= 30
 
 
 # ---------------------------------------------------------------------------

@@ -179,8 +179,10 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
     ``fibsem/imaging/tiled.py`` of fibsem 0.5.1 (MIT, Copyright (c) 2025
     fibsemOS) -- the projection fibsemOS's own minimap draws with.
     ``THIRD_PARTY_NOTICES.md`` carries the licence, ``docs/decisions.md`` says
-    why it is restated here rather than imported, and
-    ``test_overview_matches_fibsem`` holds it to fibsemOS's own answers.
+    why it is restated here rather than imported,
+    ``test_overview_matches_fibsem`` holds it to fibsemOS's own answers, and
+    ``test_each_overview_places_its_lamellae_to_within_tens_of_microns`` to
+    where a person placed the lamellae.
 
     **The result is approximate, and callers must present it as one.** The
     distance along the grid is foreshortened by the angle the beam sees the

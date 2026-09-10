@@ -1,0 +1,942 @@
+{
+ "note": "Where a person placed each lamella on a grid overview, in the overview's own pixels, written by scripts/refine_overview_positions.py. 'first_guess' says whether the starting point came from matching the lamella's reference image or from the projection under test.",
+ "cases": [
+  {
+   "overview": "overview_25.tif",
+   "width": 4096,
+   "height": 4096,
+   "pixel_size_m": 6.8359375e-07,
+   "scan_rotation_rad": 3.141592653589793,
+   "beam_type": "ELECTRON",
+   "centre": {
+    "x": -0.000119008346,
+    "y": 0.000138728843,
+    "z": -8.48e-10,
+    "r": 0.0,
+    "t": -0.00016468926821818495
+   },
+   "system": {
+    "model": "Arctis",
+    "shuttle_pre_tilt_deg": 0.0,
+    "rotation_reference_deg": 0.0,
+    "rotation_180_deg": 0.0,
+    "electron_column_tilt_deg": 0.0,
+    "ion_column_tilt_deg": 52.0
+   },
+   "positions": [
+    {
+     "name": "02-hardy-dragon",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0008069873969999999,
+      "y": 0.000260223018,
+      "z": -3.009656e-06,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      3054.4150688914287,
+      2225.7286193040586
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:51:17",
+     "x": 3065.5,
+     "y": 2254.5
+    },
+    {
+     "name": "03-causal-ghost",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.000526281838,
+      "y": 0.000187331538,
+      "z": -2.980312e-06,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      2643.7829368685716,
+      2119.0987985786664
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:51:32",
+     "x": 2354.5,
+     "y": 1854.5
+    },
+    {
+     "name": "04-epic-burro",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.00027242670500000004,
+      "y": 0.000223422097,
+      "z": -9.126832e-06,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      2272.4291423085715,
+      2171.8941298855516
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:51:42",
+     "x": 2272.4291423085715,
+     "y": 2171.8941298855516
+    },
+    {
+     "name": "05-valid-adder",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 5.5697058e-05,
+      "y": 0.000166263149,
+      "z": -1.5288024e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      1792.4309518628572,
+      2088.278755659483
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:52:00",
+     "x": 1788.5,
+     "y": 2091.5
+    },
+    {
+     "name": "06-super-shiner",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000494280637,
+      "y": 0.000285354592,
+      "z": -2.1425112e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      1150.8458305828572,
+      2262.492521342636
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:52:12",
+     "x": 1135.5,
+     "y": 2278.5
+    },
+    {
+     "name": "07-select-slug",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000542052148,
+      "y": 0.000372574179,
+      "z": -1.9360551999999998e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      1080.9629344914288,
+      2390.0823154523555
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:52:18",
+     "x": 1070.5,
+     "y": 2425.5
+    },
+    {
+     "name": "08-cosmic-elk",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.00045936739299999997,
+      "y": 0.00037781903499999996,
+      "z": -1.2209e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      1201.9189189485714,
+      2397.754790411164
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:52:59",
+     "x": 1192.8038523274479,
+     "y": 2435.4105939004817
+    },
+    {
+     "name": "01-first-bobcat",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.00076088315,
+      "y": -5.413400000000001e-07,
+      "z": -9.91208e-07,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      2986.9711418514285,
+      1844.2676207743
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:53:57",
+     "x": 2986.9711418514285,
+     "y": 1844.2676207743
+    },
+    {
+     "name": "09-cosmic-jennet",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000639937902,
+      "y": 0.000347023587,
+      "z": -2.0345672e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      937.7700600685714,
+      2352.705449947805
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:00",
+     "x": 920.5,
+     "y": 2397.5
+    },
+    {
+     "name": "10-bright-man",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000634234364,
+      "y": 0.00023546224399999998,
+      "z": -1.9311295999999998e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      946.1135213714285,
+      2189.5071446866964
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:08",
+     "x": 946.1135213714285,
+     "y": 2189.5071446866964
+    },
+    {
+     "name": "11-ace-owl",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.0007520464889999999,
+      "y": 0.000215548362,
+      "z": -2.2382984e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      773.7712128000001,
+      2160.375980556038
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:10",
+     "x": 753.5,
+     "y": 2173.5
+    },
+    {
+     "name": "12-ample-dodo",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000850738136,
+      "y": 0.000191162463,
+      "z": -2.5441047999999997e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      629.3994320457143,
+      2124.7028945026677
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:19",
+     "x": 608.5,
+     "y": 2131.5
+    },
+    {
+     "name": "13-expert-bear",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000769321591,
+      "y": -3.6994549999999996e-05,
+      "z": -2.5437904e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      748.5002064457142,
+      1790.941782868895
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:25",
+     "x": 720.5,
+     "y": 1778.5
+    },
+    {
+     "name": "14-moved-monkey",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.0007104408339999999,
+      "y": 4.276348e-06,
+      "z": -2.543476e-05,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      834.6343424000002,
+      1851.3152099815827
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:30",
+     "x": 809.5,
+     "y": 1832.5
+    },
+    {
+     "name": "15-lucky-bream",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": 0.000198436369,
+      "y": -0.000378839915,
+      "z": -9.973616e-06,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      1583.6237311999998,
+      1290.8708557076388
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:54:55",
+     "x": 1573.4754414125202,
+     "y": 1267.7547351524881
+    }
+   ]
+  },
+  {
+   "overview": "overview_40.tif",
+   "width": 4096,
+   "height": 4096,
+   "pixel_size_m": 4.8828125e-07,
+   "scan_rotation_rad": 3.141592653589793,
+   "beam_type": "ELECTRON",
+   "centre": {
+    "x": -0.0028691666669999998,
+    "y": 0.0039835,
+    "z": 0.032435667438,
+    "r": -1.3089745638747365,
+    "t": -1.9547687622336493e-06
+   },
+   "system": {
+    "model": "Aquilos",
+    "shuttle_pre_tilt_deg": 26.0,
+    "rotation_reference_deg": 0.0,
+    "rotation_180_deg": 180.0,
+    "electron_column_tilt_deg": 0.0,
+    "ion_column_tilt_deg": 52.0
+   },
+   "positions": [
+    {
+     "name": "02-honest-badger",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002822916667,
+      "y": 0.004247,
+      "z": 0.032374292695,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      1953.2800000000002,
+      2587.6474854961757
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:55:23",
+     "x": 1919.5,
+     "y": 2579.5
+    },
+    {
+     "name": "04-superb-cattle",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0036384166669999997,
+      "y": 0.004182583332999999,
+      "z": 0.032360178754999996,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      3623.424,
+      2455.7222772586238
+     ],
+     "first_guess": "projected",
+     "answer": "cannot tell",
+     "answered_at": "2026-09-10T20:55:48"
+    },
+    {
+     "name": "05-nearby-pony",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.00218625,
+      "y": 0.003785916667,
+      "z": 0.032646026235,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      649.3866659840003,
+      1643.3497198125096
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:56:16",
+     "x": 682.0530337078652,
+     "y": 1619.8069213483147
+    },
+    {
+     "name": "06-wise-collie",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0023515,
+      "y": 0.0036205,
+      "z": 0.032719167953,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      987.8186659840003,
+      1304.576708785154
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:56:27",
+     "x": 1023.5,
+     "y": 1291.5
+    },
+    {
+     "name": "07-ace-mouse",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0032667499999999997,
+      "y": 0.0037975833329999997,
+      "z": 0.032582754629999995,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      2862.250665984,
+      1667.2430290004552
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:56:59",
+     "x": 2835.9047191011246,
+     "y": 1694.7775280898882
+    },
+    {
+     "name": "08-steady-cat",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0025889999999999997,
+      "y": 0.003690666667,
+      "z": 0.032667791923999996,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      1474.218665984,
+      1448.2779057953912
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:57:24",
+     "x": 1487.2622022471912,
+     "y": 1445.2897078651688
+    },
+    {
+     "name": "09-up-boa",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0030720833329999997,
+      "y": 0.003853333333,
+      "z": 0.032551279578,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      2463.573331968,
+      1781.4189201443337
+     ],
+     "first_guess": "projected",
+     "answer": "cannot tell",
+     "answered_at": "2026-09-10T20:58:16"
+    },
+    {
+     "name": "10-comic-colt",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002810416667,
+      "y": 0.00403825,
+      "z": 0.032475469393,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      1927.6800000000005,
+      2160.127893096454
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:58:53",
+     "x": 1905.816334382023,
+     "y": 2144.4675192808995
+    },
+    {
+     "name": "11-divine-fox",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0021050833329999998,
+      "y": 0.004112,
+      "z": 0.032486175411999996,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      483.1573319680001,
+      2311.167749093961
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T20:59:43",
+     "x": 491.72323523595514,
+     "y": 2260.117204853933
+    },
+    {
+     "name": "12-in-pika",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0028166666669999997,
+      "y": 0.0034797499999999998,
+      "z": 0.032749807099,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      1940.48,
+      1016.3209836102512
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:06:38",
+     "x": 1935.676008701124,
+     "y": 1037.6236825887643
+    },
+    {
+     "name": "13-picked-shark",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.003339833333,
+      "y": 0.0035798333329999997,
+      "z": 0.032685185185,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      3011.925331968,
+      1221.291454173919
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:07:26",
+     "x": 2987.098480179774,
+     "y": 1274.4086378426962
+    },
+    {
+     "name": "14-first-stud",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002096083333,
+      "y": 0.004018833333,
+      "z": 0.032533596965,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      464.7253319680003,
+      2120.362596992976
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:08:18",
+     "x": 477.86789393258437,
+     "y": 2081.1288161797756
+    },
+    {
+     "name": "15-caring-jackal",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.00289325,
+      "y": 0.00360775,
+      "z": 0.032682388117,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      2097.3226659840007,
+      1278.4647336805
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:08:48",
+     "x": 2094.2065617977532,
+     "y": 1301.412415280899
+    },
+    {
+     "name": "01-ruling-pony",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0024329166669999997,
+      "y": 0.004336,
+      "z": 0.032362750772,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      1154.56,
+      2769.9193117168948
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:20:47",
+     "x": 1130.5053664934835,
+     "y": 2736.593909414832
+    },
+    {
+     "name": "03-alive-jackal",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0031045,
+      "y": 0.004268,
+      "z": 0.032348765432,
+      "r": -1.308940599767493,
+      "t": 0.0
+     },
+     "projected": [
+      2529.9626659840005,
+      2630.655444492076
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:21:35",
+     "x": 2486.0440967191016,
+     "y": 2643.259806202248
+    }
+   ]
+  },
+  {
+   "overview": "overview_38.tif",
+   "width": 3072,
+   "height": 3072,
+   "pixel_size_m": 4.8828125e-07,
+   "scan_rotation_rad": 3.141592653589793,
+   "beam_type": "ELECTRON",
+   "centre": {
+    "x": -0.0027177499999999997,
+    "y": 0.0029268333329999997,
+    "z": 0.03588988554499999,
+    "r": -1.3089745638747365,
+    "t": 0.3316123833459974
+   },
+   "system": {
+    "model": "Aquilos",
+    "shuttle_pre_tilt_deg": 45.0,
+    "rotation_reference_deg": 0.0,
+    "rotation_180_deg": 180.0,
+    "electron_column_tilt_deg": 0.0,
+    "ion_column_tilt_deg": 52.0
+   },
+   "positions": [
+    {
+     "name": "01-sweet-egret",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002302583333,
+      "y": 0.002739833333,
+      "z": 0.036152134774,
+      "r": -1.3090085279819803,
+      "t": 0.3316123833459974
+     },
+     "projected": [
+      685.7386659840006,
+      1049.2043299085776
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:10:27",
+     "x": 644.344061123595,
+     "y": 1008.0467703370779
+    },
+    {
+     "name": "02-immune-raven",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002459166667,
+      "y": 0.002662,
+      "z": 0.036236143261,
+      "r": -1.3090085279819803,
+      "t": 0.3316123833459974
+     },
+     "projected": [
+      1006.4213340160006,
+      846.5897336883427
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:10:42",
+     "x": 983.5,
+     "y": 804.5
+    },
+    {
+     "name": "04-on-krill",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002399333333,
+      "y": 0.002723833333,
+      "z": 0.036168049125999996,
+      "r": -1.3090085279819803,
+      "t": 0.3316123833459974
+     },
+     "projected": [
+      883.8826659840006,
+      1007.5533634836434
+     ],
+     "first_guess": "projected",
+     "answer": "cannot tell",
+     "answered_at": "2026-09-10T21:13:50"
+    },
+    {
+     "name": "04-crack-tapir",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0023335,
+      "y": 0.002815583333,
+      "z": 0.036068415638,
+      "r": -1.3090085279819803,
+      "t": 0.3316123833459974
+     },
+     "projected": [
+      749.0560000000008,
+      1246.3956240766272
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:14:12",
+     "x": 742.5,
+     "y": 1205.5
+    }
+   ]
+  },
+  {
+   "overview": "overview_36.tif",
+   "width": 2048,
+   "height": 2048,
+   "pixel_size_m": 1.3671875e-06,
+   "scan_rotation_rad": 3.141592653589793,
+   "beam_type": "ELECTRON",
+   "centre": {
+    "x": -0.002749583333,
+    "y": 0.002924583333,
+    "z": 0.035622202932,
+    "r": -1.3089745638747365,
+    "t": 0.331611597947834
+   },
+   "system": {
+    "model": "Aquilos",
+    "shuttle_pre_tilt_deg": 45.0,
+    "rotation_reference_deg": 0.0,
+    "rotation_180_deg": 180.0,
+    "electron_column_tilt_deg": 0.0,
+    "ion_column_tilt_deg": 52.0
+   },
+   "positions": [
+    {
+     "name": "01-smooth-teal",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002813833333,
+      "y": 0.00336375,
+      "z": 0.035477173354,
+      "r": -1.3090085279819803,
+      "t": 0.3316108125496706
+     },
+     "projected": [
+      1070.9942857142858,
+      1432.297078019099
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:14:21",
+     "x": 1061.0,
+     "y": 1359.5
+    },
+    {
+     "name": "02-good-chimp",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.003153916667,
+      "y": 0.0033204999999999997,
+      "z": 0.035498617541,
+      "r": -1.3090085279819803,
+      "t": 0.3316108125496706
+     },
+     "projected": [
+      1319.7409528685716,
+      1392.0871760587434
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:14:25",
+     "x": 1309.0,
+     "y": 1332.5
+    },
+    {
+     "name": "03-firm-turkey",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.003086166667,
+      "y": 0.0029563333329999998,
+      "z": 0.035861754115000005,
+      "r": -1.3090085279819803,
+      "t": 0.3316108125496706
+     },
+     "projected": [
+      1270.1866671542857,
+      1053.5182517281219
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:14:34",
+     "x": 1266.0,
+     "y": 995.5
+    },
+    {
+     "name": "04-large-hyena",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0032515833329999997,
+      "y": 0.00294575,
+      "z": 0.035860403807,
+      "r": -1.3090085279819803,
+      "t": 0.3316108125496706
+     },
+     "projected": [
+      1391.1771428571428,
+      1043.6788347953177
+     ],
+     "first_guess": "matched",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:14:38",
+     "x": 1385.0,
+     "y": 992.5
+    },
+    {
+     "name": "06-native-bee",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002725666667,
+      "y": 0.0030329999999999997,
+      "z": 0.035807195215999996,
+      "r": -1.3090085279819803,
+      "t": 0.3316108125496706
+     },
+     "projected": [
+      1006.5066671542857,
+      1124.7959202529128
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:15:59",
+     "x": 1005.4574638844302,
+     "y": 1052.0706260032102
+    },
+    {
+     "name": "05-proper-mouse",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.003177833333,
+      "y": 0.002609916667,
+      "z": 0.036194058642,
+      "r": -1.3090085279819803,
+      "t": 0.3316108125496706
+     },
+     "projected": [
+      1337.2342857142858,
+      731.451658033482
+     ],
+     "first_guess": "projected",
+     "answer": "cannot tell",
+     "answered_at": "2026-09-10T21:16:35"
+    }
+   ]
+  },
+  {
+   "overview": "overview_32.tif",
+   "width": 4096,
+   "height": 4096,
+   "pixel_size_m": 6.81152344e-07,
+   "scan_rotation_rad": 3.141592653589793,
+   "beam_type": "ELECTRON",
+   "centre": {
+    "x": -0.003618583333,
+    "y": 0.004150083333,
+    "z": 0.031738104424,
+    "r": -1.2041982077274347,
+    "t": 0.4712369083631217
+   },
+   "system": {
+    "model": "Helios 5 Hydra CX",
+    "shuttle_pre_tilt_deg": 35.0,
+    "rotation_reference_deg": 0.0,
+    "rotation_180_deg": 180.0,
+    "electron_column_tilt_deg": 0.0,
+    "ion_column_tilt_deg": 52.0
+   },
+   "positions": [
+    {
+     "name": "01-exact-mole",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0035439166669999998,
+      "y": 0.004158,
+      "z": 0.031756655093,
+      "r": -1.2041982077274347,
+      "t": 0.06981968015788312
+     },
+     "projected": [
+      1938.3818409233866,
+      2062.0503213291254
+     ],
+     "first_guess": "projected",
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:19:01",
+     "x": 1931.003947581716,
+     "y": 2053.572182404436
+    }
+   ]
+  }
+ ]
+}
