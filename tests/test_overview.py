@@ -144,12 +144,7 @@ OVERVIEW_MEDIAN_UM = 35.0
 
 #: Placements that disagree with the projection for a reason not yet
 #: understood, named here rather than hidden by a looser tolerance.
-UNEXPLAINED_MARKS = {
-    "overview-image-2025-07-22_09-43-03.tif::03-causal-ghost": (
-        "placed 268um from its mark where every neighbour is within 35um: the "
-        "reference image may not have been taken where its header says"
-    ),
-}
+UNEXPLAINED_MARKS: dict[str, str] = {}
 UNEXPLAINED_OVERVIEWS = {
     "overview-image-2026-04-08_10-04-12.tif": (
         "every mark sits 50-73px above its lamella, a constant offset rather "

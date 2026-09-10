@@ -45,26 +45,6 @@
      "y": 2254.5
     },
     {
-     "name": "03-causal-ghost",
-     "reference": "ref_SetupLamella_final_low_res_eb.tif",
-     "position": {
-      "x": -0.000526281838,
-      "y": 0.000187331538,
-      "z": -2.980312e-06,
-      "r": 0.0,
-      "t": -0.40137546247623834
-     },
-     "projected": [
-      2643.7829368685716,
-      2119.0987985786664
-     ],
-     "first_guess": "matched",
-     "answer": "placed",
-     "answered_at": "2026-09-10T20:51:32",
-     "x": 2354.5,
-     "y": 1854.5
-    },
-    {
      "name": "04-epic-burro",
      "reference": "ref_SetupLamella_final_low_res_eb.tif",
      "position": {
@@ -323,6 +303,30 @@
      "answered_at": "2026-09-10T20:54:55",
      "x": 1573.4754414125202,
      "y": 1267.7547351524881
+    },
+    {
+     "name": "03-causal-ghost",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.000526281838,
+      "y": 0.000187331538,
+      "z": -2.980312e-06,
+      "r": 0.0,
+      "t": -0.40137546247623834
+     },
+     "projected": [
+      2643.7829368685716,
+      2119.0987985786664
+     ],
+     "first_guess": "matched",
+     "first_guess_at": [
+      2354.5,
+      1854.5
+     ],
+     "answer": "placed",
+     "answered_at": "2026-09-10T21:37:57",
+     "x": 2658.2544116222734,
+     "y": 2123.175980629538
     }
    ]
   },
