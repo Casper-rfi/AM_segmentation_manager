@@ -41,7 +41,9 @@ POSITIONED = {
 }
 
 
-def header(*, beam: str = "ELECTRON", when: str | None = None, geometry: bool = True) -> str:
+def header(
+    *, beam: str = "ELECTRON", when: str | float | None = None, geometry: bool = True
+) -> str:
     """Return the description Autolamella writes into an overview."""
     state: dict = {
         "electron_beam": {"scan_rotation": 0.0},
@@ -160,3 +162,15 @@ def test_a_project_holding_no_overview_offers_none(tmp_path: Path):
     assert grid.choices == ()
     assert grid.current is None
     assert grid.placement is None
+
+
+def test_a_time_read_as_utc_says_so_in_the_name(tmp_path: Path):
+    """A stitched overview's time is seconds since the epoch, read as UTC; left
+    unsaid, it reads an hour off the time in its own file name."""
+    root, project = make_project(tmp_path)
+    add_overview(project, "overview-image-2026-04-08_10-04-12.tif", when=1775639052.187201)
+
+    grid = grid_for(root)
+
+    assert grid.current.caption == "2026-04-08 09:04 UTC · SEM · 256 px"
+

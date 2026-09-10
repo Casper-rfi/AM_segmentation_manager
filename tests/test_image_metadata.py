@@ -728,3 +728,28 @@ def test_the_microscope_software_version_is_read_from_both_dialects():
     assert metadata.microscope_software_version == "28.4.0.24398"
     assert metadata.microscope_api_version is None
     assert metadata.acquisition_software is None
+
+
+def test_an_epoch_timestamp_is_read_as_utc_and_says_so():
+    """fibsemOS writes a stitched overview's time as seconds since the epoch,
+    which names no zone; read as UTC it means the same on every machine."""
+    from am_segmentation_manager.image_metadata import extract_metadata
+
+    metadata = extract_metadata(
+        {"microscope_state": {"timestamp": 1775639052.187201}}, "fibsem"
+    )
+
+    assert metadata.acquired_at == datetime(2026, 4, 8, 9, 4, 12)
+    assert metadata.acquired_at_timezone == "UTC"
+
+
+def test_a_clock_time_is_left_as_written_and_names_no_zone():
+    from am_segmentation_manager.image_metadata import extract_metadata
+
+    metadata = extract_metadata(
+        {"microscope_state": {"timestamp": "04/08/2026 10:40:01"}}, "fibsem"
+    )
+
+    assert metadata.acquired_at == datetime(2026, 4, 8, 10, 40, 1)
+    assert metadata.acquired_at_timezone is None
+

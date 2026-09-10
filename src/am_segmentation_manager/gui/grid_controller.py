@@ -245,7 +245,10 @@ def _caption(path: Path, metadata: ImageMetadata | None) -> str:
     from ..image_metadata import BEAM_MODALITY
 
     when = metadata.acquired_at if metadata is not None else None
-    parts = [f"{when:%Y-%m-%d %H:%M}" if when is not None else path.stem]
+    stamp = f"{when:%Y-%m-%d %H:%M}" if when is not None else path.stem
+    if when is not None and metadata.acquired_at_timezone:
+        stamp = f"{stamp} {metadata.acquired_at_timezone}"
+    parts = [stamp]
     if metadata is not None and metadata.beam_type is not None:
         parts.append(BEAM_MODALITY.get(metadata.beam_type, metadata.beam_type))
     if metadata is not None and metadata.image_width:

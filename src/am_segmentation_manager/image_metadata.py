@@ -20,6 +20,7 @@ import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from dataclasses import fields as dataclass_fields
+from datetime import UTC as UTC_ZONE
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -124,7 +125,12 @@ class ImageMetadata:
             degrees.
         milling_angle_deg: Angle between the ion beam and the sample, in
             degrees. With the pre-tilt this is the milling geometry.
-        acquired_at: When the image was taken.
+        acquired_at: When the image was taken. Naive whatever the header wrote,
+            so every image's time compares and sorts with every other's.
+        acquired_at_timezone: ``"UTC"`` where the header gave the time as
+            seconds since the epoch, which names no zone and is read as UTC so
+            it means the same on every machine; None where it wrote a clock
+            time with no zone -- the instrument PC's, whichever that was.
         source: The header dialect the values came from.
     """
 
@@ -165,6 +171,7 @@ class ImageMetadata:
     shuttle_pretilt_deg: float | None = None
     milling_angle_deg: float | None = None
     acquired_at: datetime | None = None
+    acquired_at_timezone: str | None = None
     source: str | None = None
 
     @property
@@ -721,22 +728,40 @@ def _detect_beam(document: Mapping[str, Any], dialect: str) -> str | None:
     return None
 
 
-def _acquired_at(document: Mapping[str, Any], dialect: str) -> datetime | None:
-    """Return when the image was taken, from whichever form the dialect uses."""
+#: The zone an epoch timestamp is read in; see :attr:`ImageMetadata.acquired_at_timezone`.
+UTC = "UTC"
+
+
+def _acquired_at(
+    document: Mapping[str, Any], dialect: str
+) -> tuple[datetime | None, str | None]:
+    """Return when the image was taken, and the zone that time is in where known.
+
+    fibsemOS writes an ordinary image's time as text on the instrument's clock
+    and a stitched overview's as seconds since the epoch; the second is read as
+    UTC and said to be, the first left as the clock wrote it.
+    """
     if dialect == "fibsem":
-        stamp = _text(_walk(document, ("microscope_state", "timestamp")))
+        raw = _walk(document, ("microscope_state", "timestamp"))
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            try:
+                taken = datetime.fromtimestamp(raw, tz=UTC_ZONE)
+            except (OverflowError, OSError, ValueError):
+                return None, None
+            return taken.replace(tzinfo=None, microsecond=0), UTC
+        stamp = _text(raw)
         for pattern in ("%m/%d/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
             if stamp:
                 try:
-                    return datetime.strptime(stamp, pattern)
+                    return datetime.strptime(stamp, pattern), None
                 except ValueError:
                     continue
-        return None
+        return None, None
     date = _text(_walk(document, ("User", "Date")))
     time = _text(_walk(document, ("User", "Time")))
     if not date or not time:
-        return None
-    return _parse_datetime(date, time)
+        return None, None
+    return _parse_datetime(date, time), None
 
 
 #: How the FEI dialect writes a date, most likely first. US ordering, because
@@ -824,7 +849,7 @@ def extract_metadata(document: Mapping[str, Any], dialect: str) -> ImageMetadata
 
         values[field.name] = value
 
-    values["acquired_at"] = _acquired_at(document, dialect)
+    values["acquired_at"], values["acquired_at_timezone"] = _acquired_at(document, dialect)
 
     # Floors apply only to a header that described an acquisition. Inferring
     # "one pass" from a document that yielded nothing at all would be the
