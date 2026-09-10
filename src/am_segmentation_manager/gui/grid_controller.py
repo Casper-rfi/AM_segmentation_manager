@@ -1,9 +1,9 @@
 """What the Curate tab's Grid view shows, and holds no Qt.
 
-One question: for the project being looked at, is there a grid overview, and
-where does each of its lamellae fall on it. Answered from what the scan already
-indexed plus one header and one ``experiment.yaml`` per project, held for as
-long as that project is on screen.
+For the project being looked at: which grid overviews it holds, where its
+lamellae fall on the one chosen, and why nothing is placed where nothing is.
+Answered from what the scan already indexed plus each overview's header and
+one ``experiment.yaml``, held for as long as that project is on screen.
 
 The placement is approximate -- :func:`~..overview.reproject` says what the
 projection ignores -- so whatever draws it says so.
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,13 +22,17 @@ from ..models import Project
 from ..overview import (
     LamellaMarker,
     Overview,
-    overview_records,
+    OverviewImage,
+    StagePosition,
     place_lamellae,
+    project_overviews,
     read_positions,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
+
+    from ..image_metadata import ImageMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +58,27 @@ class GridPlacement:
 
 
 @dataclass(frozen=True)
+class OverviewChoice:
+    """One overview on offer, and what could be placed on it.
+
+    Attributes:
+        overview: The picture, and the file drawn for it.
+        caption: What the picker calls it: when, by which beam, and how large.
+        acquired_at: When its header says it was taken, where it says.
+        placement: The geometry and the markers, or None where nothing can be
+            placed on it.
+        reason: Why nothing is placed, where nothing is -- said to the reviewer
+            rather than leaving a picture with no rings to explain itself.
+    """
+
+    overview: OverviewImage
+    caption: str
+    acquired_at: datetime | None = None
+    placement: GridPlacement | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class GridImage:
     """A prepared overview, or why it could not be prepared."""
 
@@ -65,7 +91,7 @@ class GridImage:
 
 
 class GridController:
-    """Resolves a project's overview and holds it while that project is shown.
+    """Resolves a project's overviews and holds the one shown while it is on screen.
 
     One project at a time, which is what the Curate tab shows: moving to
     another drops the previous one rather than growing a cache, an overview
@@ -74,82 +100,157 @@ class GridController:
 
     def __init__(self) -> None:
         self._key: str | None = None
-        self._placement: GridPlacement | None = None
+        self._choices: tuple[OverviewChoice, ...] = ()
+        self._chosen = 0
         self._image: GridImage | None = None
 
     def set_project(self, project: Project | None) -> None:
-        """Resolve the overview for *project*, or clear it for None.
+        """Resolve the overviews of *project*, or clear them for None.
 
         Cheap to call repeatedly: a project already resolved is left alone, so
-        the window may ask on every refresh.
+        the window may ask on every refresh. Opens on the earliest overview
+        that places anything: taken before the lamellae were milled or coated,
+        it is usually the clearest picture of where they are.
         """
         key = project.key if project is not None else None
         if key == self._key:
             return
         self._key = key
         self._image = None
-        self._placement = _resolve(project) if project is not None else None
+        self._choices = tuple(_resolve(project)) if project is not None else ()
+        self._chosen = next(
+            (
+                index for index, choice in enumerate(self._choices)
+                if choice.placement is not None
+            ),
+            0,
+        )
+
+    @property
+    def choices(self) -> tuple[OverviewChoice, ...]:
+        """Return every overview of the project on screen, earliest first."""
+        return self._choices
+
+    @property
+    def chosen(self) -> int:
+        """Return the position among :attr:`choices` of the overview shown."""
+        return self._chosen
+
+    def choose(self, index: int) -> None:
+        """Show the overview at *index* instead; its picture is read when asked."""
+        if not self._choices:
+            return
+        index = max(0, min(index, len(self._choices) - 1))
+        if index == self._chosen:
+            return
+        self._chosen = index
+        self._image = None
+
+    @property
+    def current(self) -> OverviewChoice | None:
+        """Return the overview shown, or None for a project holding none."""
+        return self._choices[self._chosen] if self._choices else None
 
     @property
     def placement(self) -> GridPlacement | None:
-        """Return the overview and markers for the project on screen, if any.
-
-        None is the ordinary answer for most projects: only the 2025 layout
-        and later writes an overview, and one saved by hand carries no header
-        to place anything with.
-        """
-        return self._placement
+        """Return the geometry and markers of the overview shown, if it places any."""
+        current = self.current
+        return current.placement if current is not None else None
 
     def image(self) -> GridImage | None:
-        """Return the overview picture, reading it once per project.
+        """Return the picture of the overview shown, reading it once per choice.
 
         Read here rather than by the frame loader: an overview belongs to the
         project rather than to any frame, so nothing about stepping through a
         timeline decides when it is wanted or when it should be dropped.
         """
-        if self._placement is None:
+        current = self.current
+        if current is None:
             return None
         if self._image is None:
-            self._image = _read(self._placement.overview.path)
+            self._image = _read(current.overview.display_path)
         return self._image
 
     def marker_named(self, name: str | None) -> LamellaMarker | None:
         """Return the marker for the lamella called *name*, if it has one."""
-        if name is None or self._placement is None:
+        placement = self.placement
+        if name is None or placement is None:
             return None
-        for marker in self._placement.markers:
+        for marker in placement.markers:
             if marker.name == name:
                 return marker
         return None
 
 
-def _resolve(project: Project) -> GridPlacement | None:
-    """Return the first usable overview of *project* and its markers."""
-    from ..image_metadata import read_image_metadata
+def _resolve(project: Project) -> list[OverviewChoice]:
+    """Return every overview of *project*, earliest first, with what it places."""
+    overviews = project_overviews(project)
+    if not overviews:
+        return []
+    positions = read_positions(read_yaml(project.path / EXPERIMENT_FILENAME))
+    choices = [_choice(overview, positions) for overview in overviews]
+    # Undated ones after the dated, keeping path order, which the sort keeps.
+    return sorted(
+        choices,
+        key=lambda choice: (choice.acquired_at is None, choice.acquired_at or datetime.min),
+    )
+
+
+def _choice(overview: OverviewImage, positions: list[StagePosition]) -> OverviewChoice:
+    """Return *overview* as the picker offers it, placing *positions* where it can.
+
+    An ion-beam overview is offered and not placed on: the projection is the
+    electron beam's, and a tilted ion column foreshortens the grid too far for
+    a mark to point at the right square.
+    """
+    from ..image_metadata import ION, read_image_metadata
     from ..overview import overview_from_metadata
 
-    records = overview_records(project)
-    if not records:
-        return None
-    positions = read_positions(read_yaml(project.path / EXPERIMENT_FILENAME))
-    if not positions:
-        logger.debug("%s records no lamella positions to place", project.name)
-        return None
+    path = overview.record.image_path
+    try:
+        metadata = read_image_metadata(path)
+    except Exception as exc:  # noqa: BLE001 - a missing image stack included
+        logger.info("Could not read %s: %s", path.name, exc)
+        metadata = None
+    caption = _caption(path, metadata)
+    acquired_at = metadata.acquired_at if metadata is not None else None
 
-    for record in records:
-        try:
-            metadata = read_image_metadata(record.image_path)
-        except Exception as exc:  # noqa: BLE001 - a missing image stack included
-            logger.info("Could not read %s: %s", record.image_path.name, exc)
-            continue
-        overview = overview_from_metadata(record.image_path, metadata)
-        if overview is None:
-            continue
-        markers = place_lamellae(overview, positions)
-        if markers:
-            return GridPlacement(overview=overview, markers=tuple(markers))
-    logger.debug("No overview of %s can place its lamellae", project.name)
-    return None
+    def unplaced(reason: str) -> OverviewChoice:
+        return OverviewChoice(overview, caption, acquired_at, reason=reason)
+
+    if metadata is None:
+        return unplaced("no header to place positions with")
+    if metadata.beam_type == ION:
+        return unplaced("positions are not placed on an ion-beam overview")
+    geometry = overview_from_metadata(path, metadata)
+    if geometry is None:
+        return unplaced("its header states no stage position to place positions with")
+    if not positions:
+        return unplaced("experiment.yaml records no lamella positions")
+    markers = place_lamellae(geometry, positions)
+    if not markers:
+        return unplaced("no recorded position could be placed on this overview")
+    return OverviewChoice(
+        overview, caption, acquired_at, GridPlacement(geometry, tuple(markers))
+    )
+
+
+def _caption(path: Path, metadata: ImageMetadata | None) -> str:
+    """Return what the picker calls an overview: when, by which beam, how large.
+
+    Taken from the header rather than the name, which only Autolamella's own
+    overviews date; the name stands in where the header says nothing. The size
+    tells a retake apart from the overview it replaced a minute later.
+    """
+    from ..image_metadata import BEAM_MODALITY
+
+    when = metadata.acquired_at if metadata is not None else None
+    parts = [f"{when:%Y-%m-%d %H:%M}" if when is not None else path.stem]
+    if metadata is not None and metadata.beam_type is not None:
+        parts.append(BEAM_MODALITY.get(metadata.beam_type, metadata.beam_type))
+    if metadata is not None and metadata.image_width:
+        parts.append(f"{metadata.image_width} px")
+    return " · ".join(parts)
 
 
 def _read(path: Path) -> GridImage:

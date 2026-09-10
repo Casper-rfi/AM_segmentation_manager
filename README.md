@@ -159,7 +159,7 @@ to choose a subset, write out its lists and metadata, or copy the images and lab
 themselves into a folder of their own. Curate and Label each show one series at a time,
 chosen beside the beam buttons, with each alignment run's summary figure on Curate's Plots
 view and, where a project has one, its grid overview with every lamella marked on Curate's
-Grid view. The **Series shown** switches decide which series the lists and their chips
+Grid view, where a menu picks between several. The **Series shown** switches decide which series the lists and their chips
 cover at all; *other* — grid overviews, their tiles, diagnostics — starts switched off,
 and the lamella list says how many it is leaving out. Proofreading holds a lamella's edits until you save them, saving offers to mark the
 reviewed set corrected, and the Label tab rings the spots likely to be too small to be real.

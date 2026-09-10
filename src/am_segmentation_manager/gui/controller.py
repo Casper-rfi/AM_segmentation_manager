@@ -914,7 +914,7 @@ class CurationController:
                 modes.append("fib")
             if frame.displayed_plot is not None:
                 modes.append("plot")
-        if self.grid.placement is not None:
+        if self.grid.current is not None:
             modes.append("grid")
         return modes
 

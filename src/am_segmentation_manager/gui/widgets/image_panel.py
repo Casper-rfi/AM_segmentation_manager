@@ -68,6 +68,19 @@ logger = logging.getLogger(__name__)
 #: exact. Nothing flaps at this margin: a wheel step is 25%.
 PLOT_DETAIL_MAGNIFICATION = 1.01
 
+#: What the shared slot beside the series is for, in each view. The frame
+#: views choose an imaging condition there; the Grid view has none, and a
+#: project can hold several overviews, so it chooses between those instead.
+VARIANT_HINT = (
+    "Which imaging condition to display. This is a view choice only: a "
+    "state change follows the label, so images sharing a label always "
+    "change together whichever one you are looking at."
+)
+OVERVIEW_HINT = (
+    "Which of the project's grid overviews to show. The earliest that can "
+    "place the lamellae opens; a later one may show them milled or coated."
+)
+
 class ImagePanel(QWidget):
     """The frame view, its mode controls, legend and badges."""
 
@@ -86,6 +99,8 @@ class ImagePanel(QWidget):
     variant_changed = Signal(str)
     #: Emitted with the series whose timeline to show.
     series_changed = Signal(str)
+    #: Emitted with the position of the grid overview to show.
+    overview_chosen = Signal(int)
     #: Emitted when the user asks for the displayed file's path, or to open its
     #: folder. The panel does not know which file it is showing -- it is handed
     #: a prepared image -- so the window answers these from the controller.
@@ -105,6 +120,9 @@ class ImagePanel(QWidget):
         #: Whether the figure on show describes the whole stage; see
         #: :meth:`set_plot_scope`.
         self._plot_is_shared = False
+        #: Whether the slot beside the series is choosing between overviews
+        #: rather than imaging conditions; see :meth:`set_overviews`.
+        self._choosing_overview = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -173,11 +191,7 @@ class ImagePanel(QWidget):
         self.variant_label = QLabel("Variant")
         self.variant_combo = QComboBox()
         self.variant_combo.setMinimumWidth(110)
-        self.variant_combo.setToolTip(
-            "Which imaging condition to display. This is a view choice only: a "
-            "state change follows the label, so images sharing a label always "
-            "change together whichever one you are looking at."
-        )
+        self.variant_combo.setToolTip(VARIANT_HINT)
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
         # Which images the timeline is made of, above which file of one is
@@ -326,6 +340,8 @@ class ImagePanel(QWidget):
         """Reflect the current view without re-emitting a change."""
         self.mode_control.set_current(mode)
         self.stack.setCurrentIndex(self._PAGES.get(mode, 0))
+        if mode != "grid":
+            self._offer_overviews(False)
 
     def set_available_modes(self, modes: list[str]) -> None:
         """Disable the views this frame has nothing to show for."""
@@ -359,8 +375,14 @@ class ImagePanel(QWidget):
         )
 
     def _variant_chosen(self, index: int) -> None:
-        """Emit the chosen condition, using an empty string for the base."""
+        """Emit the chosen condition, using an empty string for the base.
+
+        Or the chosen overview, while the slot is offering those instead.
+        """
         if index < 0:
+            return
+        if self._choosing_overview:
+            self.overview_chosen.emit(int(self.variant_combo.itemData(index)))
             return
         value = self.variant_combo.itemData(index)
         self.variant_changed.emit(value or "")
@@ -384,6 +406,7 @@ class ImagePanel(QWidget):
             descriptions: Human-readable names from the project metadata, keyed
                 by variant. A variant with no description shows its raw name.
         """
+        self._offer_overviews(False)
         described = descriptions or {}
         fill_choice_combo(
             self.variant_combo,
@@ -393,6 +416,37 @@ class ImagePanel(QWidget):
             ],
             current,
         )
+
+    def set_overviews(self, captions: list[str], current: int) -> None:
+        """Offer the project's grid overviews in the imaging condition's place.
+
+        The same slot rather than a control of its own, which would appear and
+        move the row each time the Grid view is chosen. Leaving the Grid view
+        hands the slot back -- see :meth:`set_mode`.
+
+        Args:
+            captions: One per overview, in the order the controller holds them.
+            current: The position of the one shown.
+        """
+        self._offer_overviews(True)
+        fill_choice_combo(
+            self.variant_combo,
+            [(caption, index) for index, caption in enumerate(captions)],
+            current,
+        )
+
+    def _offer_overviews(self, offering: bool) -> None:
+        """Name the shared slot for what it is choosing between."""
+        if offering == self._choosing_overview:
+            return
+        self._choosing_overview = offering
+        self.variant_label.setText("Overview" if offering else "Variant")
+        hint = OVERVIEW_HINT if offering else VARIANT_HINT
+        self.variant_combo.setToolTip(hint)
+        self.variant_label.setToolTip(hint)
+        # Emptied either way: an overview's caption left behind reads as a
+        # condition, and a condition as an overview.
+        fill_choice_combo(self.variant_combo, [], None)
 
     def _build_legend(self) -> None:
         """Render a colour swatch and name for each foreground class."""
@@ -587,6 +641,7 @@ class ImagePanel(QWidget):
         current: str | None = None,
         error: str | None = None,
         unplaced: bool = False,
+        reason: str | None = None,
     ) -> None:
         """Draw the project's grid overview with its lamellae marked.
 
@@ -599,6 +654,8 @@ class ImagePanel(QWidget):
             unplaced: The lamella on screen is a real one that this overview
                 does not mark, so the reviewer is told rather than left looking
                 for a ring that is not there.
+            reason: Why nothing is placed on this overview, said in place of
+                the approximation, there being nothing approximate on screen.
 
         **The badge says the marks are approximate**, every time rather than
         once: the projection is flat, so a mark is where a lamella is to within
@@ -617,7 +674,10 @@ class ImagePanel(QWidget):
         height, width = image.shape[:2]
         self.grid_view.set_markers(markers, current, (width, height))
 
-        badges = [("positions are approximate", "warning")]
+        badges = (
+            [(reason, "info")] if reason is not None
+            else [("positions are approximate", "warning")]
+        )
         if unplaced:
             badges.append(("this lamella has no recorded position", "warning"))
         off = sum(1 for marker in markers if not marker.inside)

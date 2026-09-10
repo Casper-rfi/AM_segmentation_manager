@@ -726,6 +726,59 @@ def test_a_lamella_the_experiment_did_position_is_not_told_that(
         destroy(window)
 
 
+def test_the_grid_view_offers_every_overview_in_the_variant_slot(
+    qt_app, grid_project: Path
+):
+    """A retake, or one before and one after coating: the reviewer chooses,
+    in the slot the Grid view has no imaging condition for, and leaving the
+    view hands the slot back."""
+    import shutil
+
+    project = grid_project / "AutoLamella-2026-07-28-10-31"
+    shutil.copy(
+        project / "overview-image-2026-07-28_10-31-00.tif",
+        project / "overview-image-2026-07-28_12-00-00.tif",
+    )
+    window = _window(qt_app, grid_project)
+    try:
+        window._set_mode("grid", from_user=True)
+        panel = window.image_panel
+
+        assert panel.variant_label.text() == "Overview"
+        assert panel.variant_combo.count() == 2
+        assert panel.variant_combo.isEnabled()
+        assert window.controller.grid.chosen == 0
+
+        panel.variant_combo.setCurrentIndex(1)
+
+        assert window.controller.grid.chosen == 1
+
+        window._set_mode("sem", from_user=True)
+
+        assert panel.variant_label.text() == "Variant"
+    finally:
+        destroy(window)
+
+
+def test_an_overview_that_places_nothing_is_shown_saying_why(
+    qt_app, grid_project: Path
+):
+    """The picture is still the grid; a view withheld for want of rings would
+    hide it, and one shown without them would not say why."""
+    project = grid_project / "AutoLamella-2026-07-28-10-31"
+    (project / "experiment.yaml").write_text("name: grid\n", encoding="utf-8")
+    window = _window(qt_app, grid_project)
+    try:
+        assert "grid" in window.controller.available_modes()
+
+        window._set_mode("grid", from_user=True)
+
+        assert "no lamella positions" in window.image_panel.badges.text()
+        assert "approximate" not in window.image_panel.badges.text()
+    finally:
+        destroy(window)
+
+
 def test_the_grid_view_survives_stepping_between_lamellae(qt_app, grid_project: Path):
     """It shows the project, so moving within it does not take it away."""
     window = _window(qt_app, grid_project)

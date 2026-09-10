@@ -329,8 +329,8 @@ def _stage_position(
 
 #: What a display copy of an overview is called. Autolamella writes the same
 #: picture twice, once as acquired and once with a gamma curve applied for
-#: looking at; the second carries the same header and would place the same
-#: lamellae, so offering it would be one overview listed twice.
+#: looking at. The copy carries the same header, so it is folded into the
+#: overview it copies and drawn in its place, rather than offered as a second.
 GAMMA_SUFFIX: str = "-autogamma"
 
 
@@ -340,8 +340,23 @@ def is_overview_name(image_name: str) -> bool:
     return "overview" in stem and not stem.endswith(GAMMA_SUFFIX)
 
 
-def overview_records(project: Project) -> list[ImageRecord]:
-    """Return a project's grid overviews, from what the scan already indexed.
+@dataclass(frozen=True)
+class OverviewImage:
+    """One grid overview a project holds, as acquired and as it is looked at.
+
+    Attributes:
+        record: The overview as acquired, whose header places anything on it.
+        display_path: The file to draw: the gamma copy where there is one --
+            the same pixels and the same header, made for looking at -- and
+            the acquired file otherwise.
+    """
+
+    record: ImageRecord
+    display_path: Path
+
+
+def project_overviews(project: Project) -> list[OverviewImage]:
+    """Return a project's grid overviews, each once, from what the scan indexed.
 
     Read off the :class:`~.models.Project` rather than by looking in the
     directory: the overviews are already records, indexed at the project root
@@ -350,13 +365,26 @@ def overview_records(project: Project) -> list[ImageRecord]:
 
     An overview belongs to the project rather than to any lamella, which is
     exactly why it sits at the root -- so this looks only at the synthetic
-    lamella standing in for it, never inside a real one.
+    lamella standing in for it, never inside a real one. A gamma copy is folded
+    into the overview it copies, and a tile is part of a stitch rather than an
+    overview of its own. In path order, which for Autolamella's timestamped
+    names is the order they were taken.
     """
-    return [
+    records = [
         record
         for lamella in project.lamellae
         if lamella.path == project.path
         for record in lamella.image_records
         if record.image_path.parent == project.path
-        and is_overview_name(record.image_path.name)
     ]
+    present = {record.image_path for record in records}
+    found = []
+    for record in records:
+        path = record.image_path
+        if not is_overview_name(path.name):
+            continue
+        gamma = path.with_name(f"{path.stem}{GAMMA_SUFFIX}{path.suffix}")
+        found.append(
+            OverviewImage(record=record, display_path=gamma if gamma in present else path)
+        )
+    return sorted(found, key=lambda overview: overview.record.image_path)

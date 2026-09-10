@@ -562,6 +562,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
+        self.image_panel.overview_chosen.connect(self._choose_overview)
         self.image_panel.series_changed.connect(self._set_series)
         self.image_panel.overlay_toggled.connect(self._set_overlay)
         self.image_panel.image_toggled.connect(self._set_image_shown)
@@ -1256,6 +1257,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller.set_variant(variant or None)
         self.refresh()
 
+    def _choose_overview(self, index: int) -> None:
+        """Show another of the project's grid overviews."""
+        self.controller.grid.choose(index)
+        self._render()
+
     def apply_state(self, state: RecordState) -> None:
         """Declare the targeted records to be in *state*, confirming where required.
 
@@ -1579,7 +1585,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         if self.controller.mode == "grid":
             self.image_panel.set_available_modes(self.controller.available_modes())
             self.image_panel.set_mode("grid")
-            self.image_panel.set_variants([])
             self.image_panel.set_status(self._status_text())
             self._render_grid()
             return
@@ -1658,13 +1663,20 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         The picture is read on the interface thread, once per project: it is
         one file of a few megabytes, where the frame loader exists for a
-        timeline being stepped through several times a second.
+        timeline being stepped through several times a second. The overview
+        drawn is the one the picker names; one that places nothing is still
+        drawn, with the reason in place of the marks.
         """
-        placement = self.controller.grid.placement
-        if placement is None:
+        grid = self.controller.grid
+        choice = grid.current
+        if choice is None:
             self.image_panel.show_grid(None)
             return
-        prepared = self.controller.grid.image()
+        self.image_panel.set_overviews(
+            [entry.caption for entry in grid.choices], grid.chosen
+        )
+        placement = choice.placement
+        prepared = grid.image()
         if prepared is None or prepared.failed:
             self.image_panel.show_grid(
                 None, error=prepared.error if prepared is not None else None
@@ -1683,10 +1695,12 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         name = lamella.name if lamella is not None else None
         self.image_panel.show_grid(
             prepared.image,
-            placement.markers,
+            placement.markers if placement is not None else (),
             name,
-            unplaced=expects_a_position
-            and self.controller.grid.marker_named(name) is None,
+            unplaced=placement is not None
+            and expects_a_position
+            and grid.marker_named(name) is None,
+            reason=choice.reason,
         )
 
     def _render_plot(self) -> None:

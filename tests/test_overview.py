@@ -23,8 +23,8 @@ from am_segmentation_manager.overview import (
     is_inside,
     is_overview_name,
     overview_from_metadata,
-    overview_records,
     place_lamellae,
+    project_overviews,
     read_positions,
     reproject,
 )
@@ -343,11 +343,30 @@ def test_a_projects_overviews_are_read_off_the_index():
         root / "something_new_eb.tif",
     )
 
-    found = overview_records(project)
+    found = project_overviews(project)
 
-    assert [record.image_path.name for record in found] == [
+    assert [overview.record.image_path.name for overview in found] == [
         "overview-image-2026-04-17_11-17-34.tif"
     ]
+
+
+def test_an_overview_is_drawn_from_its_gamma_copy_where_there_is_one():
+    """The copy is made for looking at and carries the same header, so it is
+    the picture while the file as acquired stays the geometry."""
+    root = Path("/scan/AutoLamella-2026")
+    project = make_project(
+        root / "overview-image-2026-04-17_11-17-34.tif",
+        root / "overview-image-2026-04-17_11-17-34-autogamma.tif",
+        root / "overview-image-2026-04-17_11-20-05.tif",
+    )
+
+    found = project_overviews(project)
+
+    assert [overview.display_path.name for overview in found] == [
+        "overview-image-2026-04-17_11-17-34-autogamma.tif",
+        "overview-image-2026-04-17_11-20-05.tif",
+    ]
+    assert found[0].record.image_path.name == "overview-image-2026-04-17_11-17-34.tif"
 
 
 def test_an_overview_inside_a_lamella_is_not_the_projects():
@@ -356,7 +375,7 @@ def test_an_overview_inside_a_lamella_is_not_the_projects():
     root = Path("/scan/AutoLamella-2026")
     project = make_project(root / "01-ruling-ibex" / "CB016A1_SEM_overview.tif")
 
-    assert overview_records(project) == []
+    assert project_overviews(project) == []
 
 
 # ---------------------------------------------------------------------------
