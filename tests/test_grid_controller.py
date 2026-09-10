@@ -56,6 +56,12 @@ def header(
     return json.dumps({
         "image": {"beam_type": beam, "resolution": [256, 256]},
         "pixel_size": {"x": 1e-6, "y": 1e-6},
+        "system": {
+            "info": {"model": "Aquilos"},
+            "stage": {"shuttle_pre_tilt": 0.0, "rotation_reference": 0.0, "rotation_180": 180.0},
+            "electron": {"column_tilt": 0.0},
+            "ion": {"column_tilt": 52.0},
+        },
         "microscope_state": state,
     })
 
@@ -132,16 +138,16 @@ def test_an_overview_with_no_positions_recorded_is_offered_and_says_so(tmp_path:
     assert "no lamella positions" in grid.current.reason
 
 
-def test_nothing_is_placed_on_an_ion_beam_overview(tmp_path: Path):
-    """The projection is the electron beam's; a tilted ion column foreshortens
-    the grid too far for a mark to point at the right square."""
+def test_an_ion_beam_overview_is_placed_on_too(tmp_path: Path):
+    """fibsemOS can take its overview with either beam, and the projection
+    takes the ion column's angle into account."""
     root, project = make_project(tmp_path)
     add_overview(project, "overview-image-2026-07-28_10-31-00.tif", beam="ION")
 
     grid = grid_for(root)
 
-    assert grid.placement is None
-    assert "ion-beam" in grid.current.reason
+    assert grid.placement is not None
+    assert grid.placement.overview.beam == "ION"
 
 
 def test_an_overview_is_named_by_when_by_which_beam_and_how_large(tmp_path: Path):

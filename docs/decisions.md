@@ -342,15 +342,15 @@ rather than appending to it.
   this command covers"**, expanded per command rather than passed on
   (`test_all_means_every_series_this_command_covers_not_every_series`).
 - **The reprojection is fibsemOS's, reimplemented rather than imported.** Its software wrote both
-  the overview and the coordinates, so `calculate_reprojected_stage_position` is the definition of
-  where a lamella falls; `overview.py` restates it in ~30 lines. Importing it costs 1.9s and 1,255
-  modules, adds a second provider of `cv2` — the hazard § Environment warns about most — and would
-  read a header `image_metadata.py` already parses every field of. **The copy is held honest by
-  fibsemOS's own answers** rather than by review: `tests/data/fibsem_reprojection*.json` carry 265
-  real positions plus the scan-rotation and compustage branches no real overview reaches, and the
-  suite compares against them with no fibsem installed (`test_overview_matches_fibsem`).
-  `_transform_position` is deliberately not copied and a position needing it refused, it carrying a
-  calibration measured on one microscope. `THIRD_PARTY_NOTICES.md` carries the MIT notice.
+  the overview and the coordinates, so `calculate_reprojected_stage_position2` — what its own
+  minimap draws with — is the definition of where a lamella falls; `overview.py` restates it and the
+  `_inverse_y_corrected_stage_movement` it calls. Importing it costs 1.9s and 1,255 modules, adds a
+  second provider of `cv2` — the hazard § Environment warns about most — and would read a header
+  `image_metadata.py` already parses every field of. **The copy is held honest by fibsemOS's own
+  answers** rather than by review: `tests/data/fibsem_reprojection*.json`, written by
+  `scripts/capture_fibsem_reprojection.py`, carry every real position plus the branches no real
+  overview reaches, and the suite compares against them with no fibsem installed
+  (`test_overview_matches_fibsem`).
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`
   already answering "which directory". The directory is tried before the filename and is the only
   thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the

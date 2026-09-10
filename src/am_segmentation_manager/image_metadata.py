@@ -125,6 +125,13 @@ class ImageMetadata:
             degrees.
         milling_angle_deg: Angle between the ion beam and the sample, in
             degrees. With the pre-tilt this is the milling geometry.
+        stage_rotation_reference_deg: The stage rotation that faces the grid to
+            the electron column, as the acquisition software was configured.
+        stage_rotation_180_deg: The rotation that faces it to the ion column.
+        electron_column_tilt_deg: The electron column's angle from vertical.
+        ion_column_tilt_deg: The ion column's angle from vertical. With the
+            pre-tilt and the stage tilt, these decide the angle an overview
+            sees the grid at.
         acquired_at: When the image was taken. Naive whatever the header wrote,
             so every image's time compares and sorts with every other's.
         acquired_at_timezone: ``"UTC"`` where the header gave the time as
@@ -170,6 +177,10 @@ class ImageMetadata:
     stage_coordinate_system: str | None = None
     shuttle_pretilt_deg: float | None = None
     milling_angle_deg: float | None = None
+    stage_rotation_reference_deg: float | None = None
+    stage_rotation_180_deg: float | None = None
+    electron_column_tilt_deg: float | None = None
+    ion_column_tilt_deg: float | None = None
     acquired_at: datetime | None = None
     acquired_at_timezone: str | None = None
     source: str | None = None
@@ -478,7 +489,8 @@ FIELDS: tuple[HeaderField, ...] = (
     # From system.*, which elsewhere in this table is the wrong place to read:
     # it holds both beams' configured defaults. The stage has one geometry
     # whichever beam fired, so there is no other column's value to confuse
-    # these with. Both are stated in degrees already.
+    # these with, nor for a column's own tilt, which is geometry rather than a
+    # beam setting. All are stated in degrees already.
     HeaderField(
         "shuttle_pretilt_deg",
         fibsem=(("system", "stage", "shuttle_pre_tilt"),),
@@ -486,6 +498,22 @@ FIELDS: tuple[HeaderField, ...] = (
     HeaderField(
         "milling_angle_deg",
         fibsem=(("system", "stage", "milling_angle"),),
+    ),
+    HeaderField(
+        "stage_rotation_reference_deg",
+        fibsem=(("system", "stage", "rotation_reference"),),
+    ),
+    HeaderField(
+        "stage_rotation_180_deg",
+        fibsem=(("system", "stage", "rotation_180"),),
+    ),
+    HeaderField(
+        "electron_column_tilt_deg",
+        fibsem=(("system", "electron", "column_tilt"),),
+    ),
+    HeaderField(
+        "ion_column_tilt_deg",
+        fibsem=(("system", "ion", "column_tilt"),),
     ),
 )
 

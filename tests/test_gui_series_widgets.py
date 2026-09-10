@@ -117,6 +117,12 @@ def grid_project(tmp_path: Path) -> Path:
     described = json.dumps({
         "image": {"beam_type": "ELECTRON", "resolution": [256, 256]},
         "pixel_size": {"x": 1e-6, "y": 1e-6},
+        "system": {
+            "info": {"model": "Aquilos"},
+            "stage": {"shuttle_pre_tilt": 0.0, "rotation_reference": 0.0, "rotation_180": 180.0},
+            "electron": {"column_tilt": 0.0},
+            "ion": {"column_tilt": 52.0},
+        },
         "microscope_state": {
             "stage_position": {"x": 0.0, "y": 0.0, "z": 0.0, "r": 0.0, "t": 0.0},
             "electron_beam": {"scan_rotation": 0.0},

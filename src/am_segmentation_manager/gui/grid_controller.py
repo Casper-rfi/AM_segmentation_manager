@@ -197,13 +197,8 @@ def _resolve(project: Project) -> list[OverviewChoice]:
 
 
 def _choice(overview: OverviewImage, positions: list[StagePosition]) -> OverviewChoice:
-    """Return *overview* as the picker offers it, placing *positions* where it can.
-
-    An ion-beam overview is offered and not placed on: the projection is the
-    electron beam's, and a tilted ion column foreshortens the grid too far for
-    a mark to point at the right square.
-    """
-    from ..image_metadata import ION, read_image_metadata
+    """Return *overview* as the picker offers it, placing *positions* where it can."""
+    from ..image_metadata import read_image_metadata
     from ..overview import overview_from_metadata
 
     path = overview.record.image_path
@@ -220,11 +215,9 @@ def _choice(overview: OverviewImage, positions: list[StagePosition]) -> Overview
 
     if metadata is None:
         return unplaced("no header to place positions with")
-    if metadata.beam_type == ION:
-        return unplaced("positions are not placed on an ion-beam overview")
     geometry = overview_from_metadata(path, metadata)
     if geometry is None:
-        return unplaced("its header states no stage position to place positions with")
+        return unplaced("its header states no stage geometry to place positions with")
     if not positions:
         return unplaced("experiment.yaml records no lamella positions")
     markers = place_lamellae(geometry, positions)

@@ -9,7 +9,8 @@ ours" has one answer.
 ## fibsemOS (`fibsem`)
 
 **Used by:** `src/am_segmentation_manager/overview.py`, whose `reproject` is a
-reimplementation of `calculate_reprojected_stage_position` from
+reimplementation of `calculate_reprojected_stage_position2`, and the
+`_inverse_y_corrected_stage_movement` it calls, from
 `fibsem/imaging/tiled.py` in fibsem 0.5.1. The projection places a lamella's
 recorded stage coordinates on a grid overview; fibsemOS's acquisition software
 wrote both, so its arithmetic is the definition of where they fall.
