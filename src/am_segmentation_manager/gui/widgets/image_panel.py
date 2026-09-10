@@ -658,9 +658,9 @@ class ImagePanel(QWidget):
                 the approximation, there being nothing approximate on screen.
 
         **The badge says the marks are approximate**, every time rather than
-        once: the grid is taken as flat, so a mark is where a lamella is to
-        within what the grid's curvature moves it, and a reader arriving at this
-        view for the first time has no other way to know that.
+        once: a mark is where a lamella is only to within what
+        ``overview.reproject`` ignores, and a reader arriving at this view for
+        the first time has no other way to know that.
         """
         if image is None:
             self.grid_view.clear_markers()

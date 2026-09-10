@@ -2,10 +2,10 @@
 
 The projection is a reimplementation of fibsemOS's, so the tests that matter
 are the ones holding it to fibsemOS's own answers: ``data/*.json`` carry real
-overview headers with the coordinates fibsem 0.5.1 computed for them, captured
-in the second environment, and the suite here runs with no fibsem installed.
-That is what makes "is this still the same projection?" a question this suite
-answers rather than an assumption.
+overview headers with the coordinates fibsem computed for them, captured in its
+own environment, and the suite here runs with no fibsem installed. Where a
+person placed each lamella by eye holds what those answers cannot say: that the
+arithmetic puts a mark on the lamella.
 """
 from __future__ import annotations
 
@@ -57,11 +57,9 @@ def as_overview(case: dict) -> Overview:
         ),
         scan_rotation=case["scan_rotation_rad"],
         beam=case["beam_type"],
+        ion_column_tilt=math.radians(system["ion_column_tilt_deg"]),
         shuttle_pretilt=math.radians(system["shuttle_pre_tilt_deg"]),
         rotation_reference=math.radians(system["rotation_reference_deg"]),
-        rotation_180=math.radians(system["rotation_180_deg"]),
-        electron_column_tilt=math.radians(system["electron_column_tilt_deg"]),
-        ion_column_tilt=math.radians(system["ion_column_tilt_deg"]),
         compustage="Arctis" in (system["model"] or ""),
     )
 
@@ -145,12 +143,7 @@ OVERVIEW_MEDIAN_UM = 35.0
 #: Placements that disagree with the projection for a reason not yet
 #: understood, named here rather than hidden by a looser tolerance.
 UNEXPLAINED_MARKS: dict[str, str] = {}
-UNEXPLAINED_OVERVIEWS = {
-    "overview-image-2026-04-08_10-04-12.tif": (
-        "every mark sits 50-73px above its lamella, a constant offset rather "
-        "than a scale error, which points at the overview's recorded centre"
-    ),
-}
+UNEXPLAINED_OVERVIEWS: dict[str, str] = {}
 
 
 def placed_by_a_person() -> list[tuple[str, dict, dict]]:
@@ -284,17 +277,42 @@ def test_an_ion_beam_overview_sees_the_grid_at_its_column_s_angle():
     assert offset == pytest.approx(-50.0 * math.cos(math.radians(52)))
 
 
-def test_the_shuttle_pre_tilt_is_taken_out_of_the_stage_move():
-    """The shuttle holds the grid at its pre-tilt, so moving the stage along y
-    moves the grid further than y along its own surface."""
-    pretilted = upright(
-        shuttle_pretilt=math.radians(35),
-        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=math.radians(35)),
+def test_a_height_change_is_invisible_to_a_beam_looking_straight_down_the_stage():
+    assert reproject(upright(), at(z=50e-6)) == (500.0, 400.0)
+
+
+def test_raising_a_tilted_stage_moves_the_mark_by_the_sine_of_the_tilt():
+    """The stage's z axis tilts with it, so a height change is seen across the
+    image -- which is what places a lamella whose height was corrected after the
+    overview was taken."""
+    tilted = upright(
+        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=math.radians(30))
     )
 
-    offset = reproject(pretilted, at(y=50e-6, tilt=math.radians(35)))[1] - 400.0
+    offset = reproject(tilted, at(z=50e-6, tilt=math.radians(30)))[1] - 400.0
 
-    assert offset == pytest.approx(-50.0 / math.cos(math.radians(35)))
+    assert offset == pytest.approx(50.0 * math.sin(math.radians(30)))
+
+
+@pytest.mark.parametrize("beam", ["ELECTRON", "ION"])
+@pytest.mark.parametrize("pretilt_deg", [26.0, 35.0, 45.0])
+def test_a_move_along_a_pre_tilted_grid_is_foreshortened_by_the_grid_s_angle(beam, pretilt_deg):
+    """The distance along the grid, shrunk by the cosine of the angle between
+    the grid and the beam, whatever the pre-tilt that angle includes."""
+    stage_tilt, pretilt = math.radians(19), math.radians(pretilt_deg)
+    column = math.radians(52) if beam == "ION" else 0.0
+    overview = upright(
+        beam=beam,
+        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=stage_tilt),
+    )
+    along = 50e-6
+
+    offset = reproject(
+        overview,
+        at(y=along * math.cos(pretilt), z=-along * math.sin(pretilt), tilt=stage_tilt),
+    )[1] - 400.0
+
+    assert offset == pytest.approx(-50.0 * math.cos(stage_tilt - pretilt - column))
 
 
 def test_a_half_turn_of_scan_rotation_mirrors_both_axes():
@@ -308,11 +326,68 @@ def test_a_half_turn_of_scan_rotation_mirrors_both_axes():
     )
 
 
+def test_a_scan_rotation_is_read_in_whole_half_turns_to_a_header_s_rounding():
+    """A full turn is no turn, and a header rounding pi to five decimals still
+    means half of one."""
+    point = at(x=10e-6, y=10e-6)
+
+    assert reproject(upright(scan_rotation=2 * math.pi), point) == pytest.approx((510.0, 390.0))
+    assert reproject(upright(scan_rotation=3.14159), point) == pytest.approx((490.0, 410.0))
+    assert reproject(upright(scan_rotation=-math.pi), point) == pytest.approx((490.0, 410.0))
+
+
+@pytest.mark.parametrize("degrees", [90.0, 45.0, 179.0])
+def test_a_scan_rotation_between_half_turns_is_refused(degrees: float):
+    """Placing it as if unrotated would put every mark somewhere else."""
+    with pytest.raises(ValueError, match="scanned at"):
+        reproject(upright(scan_rotation=math.radians(degrees)), at())
+
+
+def test_an_overview_scanned_between_half_turns_places_nothing():
+    """Every position is left out rather than guessed, as a rotated one is."""
+    markers = place_lamellae(
+        upright(scan_rotation=math.radians(90)), [at(name="01-ruling-ibex")]
+    )
+
+    assert markers == []
+
+
 def test_a_compustage_at_no_tilt_is_seen_as_a_flat_stage():
     """It images the back of the grid, half a turn over, and at no tilt the
     two turns cancel."""
     assert reproject(upright(compustage=True), at(x=10e-6, y=10e-6)) == pytest.approx(
         reproject(upright(), at(x=10e-6, y=10e-6))
+    )
+
+
+def test_a_compustage_turned_over_is_seen_the_other_way_up():
+    """Tilted a half turn from level, it shows the grid's front rather than its
+    back, so a move north is drawn south."""
+    turned_over = upright(
+        compustage=True,
+        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=-math.pi),
+    )
+
+    assert reproject(turned_over, at(y=10e-6, tilt=-math.pi))[1] == pytest.approx(410.0)
+
+
+def test_a_compustage_facing_the_ion_column_is_seen_the_right_way_up():
+    """fibsemOS knows the ion column's pose by its tilt, the ion column's angle
+    less the pre-tilt and a half turn, at the reference rotation."""
+    facing_ion = math.radians(52 - 180)
+    facing = upright(
+        compustage=True,
+        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=0.0, tilt=facing_ion),
+    )
+    turned = upright(
+        compustage=True,
+        centre=StagePosition(x=0.0, y=0.0, z=0.0, rotation=math.pi / 2, tilt=facing_ion),
+    )
+    seen = math.cos(facing_ion + math.pi) * 10.0
+
+    assert reproject(facing, at(y=10e-6, tilt=facing_ion))[1] == pytest.approx(400.0 - seen)
+    assert reproject(turned, at(y=10e-6, rotation=math.pi / 2, tilt=facing_ion))[1] == (
+        pytest.approx(400.0 + seen)
     )
 
 
@@ -373,7 +448,6 @@ def test_the_header_units_are_converted_to_the_instrument_s_own():
     assert resolved.centre.x == pytest.approx(1e-6)
     assert resolved.centre.rotation == pytest.approx(math.pi)
     assert resolved.scan_rotation == pytest.approx(math.pi)
-    assert resolved.shuttle_pretilt == pytest.approx(math.radians(35))
     assert resolved.ion_column_tilt == pytest.approx(math.radians(52))
     assert resolved.compustage is False
 
@@ -389,13 +463,32 @@ def test_an_arctis_is_known_as_a_compustage():
     "missing",
     ["image_width", "image_height", "pixel_size_nm", "stage_x_um", "stage_y_um",
      "stage_z_um", "stage_rotation_deg", "stage_tilt_deg", "scan_rotation_deg",
-     "beam_type", "shuttle_pretilt_deg", "stage_rotation_reference_deg",
-     "stage_rotation_180_deg", "electron_column_tilt_deg", "ion_column_tilt_deg"],
+     "beam_type", "ion_column_tilt_deg"],
 )
 def test_a_header_missing_any_field_places_nothing(missing: str):
     """A projection missing any of them would be a guess. An overview saved
-    from the microscope's own interface states no pre-tilt or column geometry."""
+    from the microscope's own interface states no column geometry."""
     assert overview_from_metadata(Path("o.tif"), metadata(**{missing: None})) is None
+
+
+@pytest.mark.parametrize(
+    "unread",
+    ["shuttle_pretilt_deg", "stage_rotation_reference_deg", "stage_rotation_180_deg",
+     "electron_column_tilt_deg"],
+)
+def test_a_header_need_not_state_what_the_projection_does_not_read(unread: str):
+    """The pre-tilt decides where the grid lies rather than how the stage
+    moves, and the electron column is the axis every tilt is measured from."""
+    assert overview_from_metadata(Path("o.tif"), metadata(**{unread: None})) is not None
+
+
+@pytest.mark.parametrize("missing", ["shuttle_pretilt_deg", "stage_rotation_reference_deg"])
+def test_a_compustage_header_must_say_where_the_ion_column_is(missing: str):
+    """Which way up a compustage is seen depends on whether it faces the ion
+    column, which these two decide."""
+    header = metadata(microscope_model="Arctis", **{missing: None})
+
+    assert overview_from_metadata(Path("o.tif"), header) is None
 
 
 def test_a_header_stating_a_zero_pixel_size_places_nothing():

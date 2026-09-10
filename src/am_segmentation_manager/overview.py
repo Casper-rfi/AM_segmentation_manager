@@ -34,10 +34,15 @@ logger = logging.getLogger(__name__)
 #: the stage was rotated between the two and :func:`reproject` declines.
 ROTATION_TOLERANCE_DEG: float = 2.0
 
-#: How far a stage rotation may be from a configured reference and still face
-#: that column, in degrees. fibsemOS's own tolerance for which side of the
-#: stage the grid is on, and so which way the pre-tilt leans.
-FACING_TOLERANCE_DEG: float = 5.0
+#: How far a scan rotation may be from a whole number of half turns and still
+#: count as one, in radians: the rounding a header's decimals introduce.
+SCAN_ROTATION_TOLERANCE_RAD: float = 1e-3
+
+#: How far a compustage may be from the pose facing the ion column and still
+#: face it: fibsemOS's own tolerances, on the tilt in radians and on the
+#: rotation in degrees.
+FACING_TILT_TOLERANCE_RAD: float = 0.1
+FACING_ROTATION_TOLERANCE_DEG: float = 5.0
 
 
 @dataclass(frozen=True)
@@ -66,8 +71,8 @@ class StagePosition:
 class Overview:
     """A grid overview and the geometry that places anything on it.
 
-    The defaults are a flat stage under a vertical electron column, which is
-    what a test builds by hand; a header states every one of them.
+    The defaults are a flat stage seen by the electron column, which is what a
+    test builds by hand; a header states every one of them.
 
     Attributes:
         path: The image file.
@@ -80,18 +85,18 @@ class Overview:
         scan_rotation: The beam's scan rotation in radians, which says whether
             the image is written the way the stage moves or turned about.
         beam: ``"ELECTRON"`` or ``"ION"``: which column took it, and so which
-            angle it saw the grid at.
-        shuttle_pretilt: The angle the shuttle holds the grid at on the stage,
-            in radians.
-        rotation_reference: The stage rotation facing the grid to the electron
-            column, in radians.
-        rotation_180: The stage rotation facing it to the ion column, in radians.
-        electron_column_tilt: The electron column's angle from vertical, in
-            radians.
-        ion_column_tilt: The ion column's angle from vertical, in radians.
+            angle it saw the stage at.
+        ion_column_tilt: The ion column's angle from the electron column, in
+            radians, which is what an ion-beam overview is seen through.
         compustage: Whether the stage is a compustage, which holds the grid
             upside down and does not rotate. fibsemOS knows one by the
             microscope's model name.
+        shuttle_pretilt: The angle the shuttle holds the grid at, in radians.
+            Read only for a compustage, for the tilt that faces it to the ion
+            column.
+        rotation_reference: The stage rotation facing the grid to the electron
+            column, in radians. Read only for a compustage, which faces the
+            ion column only at this rotation.
     """
 
     path: Path
@@ -101,12 +106,10 @@ class Overview:
     centre: StagePosition
     scan_rotation: float
     beam: str = ELECTRON
-    shuttle_pretilt: float = 0.0
-    rotation_reference: float = 0.0
-    rotation_180: float = math.pi
-    electron_column_tilt: float = 0.0
     ion_column_tilt: float = math.radians(52)
     compustage: bool = False
+    shuttle_pretilt: float = 0.0
+    rotation_reference: float = 0.0
 
 
 #: The model name by which fibsemOS recognises a compustage.
@@ -117,9 +120,9 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
     """Return the geometry *metadata* states, or None if it does not state it.
 
     None is an ordinary answer, not a defect: an overview saved from the
-    microscope's own interface states no pre-tilt or column geometry, and some
-    no stage rotation, and one is unusable rather than wrong. Every field is
-    required, since a projection missing any of them would be a guess.
+    microscope's own interface states no column geometry, and some no stage
+    rotation, and one is unusable rather than wrong. Every field the projection
+    reads is required, since a projection missing any of them would be a guess.
     """
     fields = (
         metadata.image_width,
@@ -132,12 +135,11 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
         metadata.stage_tilt_deg,
         metadata.scan_rotation_deg,
         metadata.beam_type,
-        metadata.shuttle_pretilt_deg,
-        metadata.stage_rotation_reference_deg,
-        metadata.stage_rotation_180_deg,
-        metadata.electron_column_tilt_deg,
         metadata.ion_column_tilt_deg,
     )
+    compustage = COMPUSTAGE_MODEL in (metadata.microscope_model or "")
+    if compustage:
+        fields += (metadata.shuttle_pretilt_deg, metadata.stage_rotation_reference_deg)
     if any(field is None for field in fields):
         logger.debug("No usable geometry in the header of %s", path)
         return None
@@ -161,12 +163,10 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
         ),
         scan_rotation=math.radians(float(scan_deg)),
         beam=metadata.beam_type,
-        shuttle_pretilt=math.radians(float(metadata.shuttle_pretilt_deg)),
-        rotation_reference=math.radians(float(metadata.stage_rotation_reference_deg)),
-        rotation_180=math.radians(float(metadata.stage_rotation_180_deg)),
-        electron_column_tilt=math.radians(float(metadata.electron_column_tilt_deg)),
         ion_column_tilt=math.radians(float(metadata.ion_column_tilt_deg)),
-        compustage=COMPUSTAGE_MODEL in (metadata.microscope_model or ""),
+        compustage=compustage,
+        shuttle_pretilt=math.radians(float(metadata.shuttle_pretilt_deg or 0.0)),
+        rotation_reference=math.radians(float(metadata.stage_rotation_reference_deg or 0.0)),
     )
 
 
@@ -175,19 +175,21 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
 
     **Derived from fibsemOS**, whose acquisition software wrote both the
     overview and the coordinates: ``calculate_reprojected_stage_position2`` and
-    the ``_inverse_y_corrected_stage_movement`` it calls, in
-    ``fibsem/imaging/tiled.py`` of fibsem 0.5.1 (MIT, Copyright (c) 2025
-    fibsemOS) -- the projection fibsemOS's own minimap draws with.
-    ``THIRD_PARTY_NOTICES.md`` carries the licence, ``docs/decisions.md`` says
-    why it is restated here rather than imported,
+    the ``inverse_view_corrected_dy`` it reaches, in
+    ``fibsem/imaging/tiling/reprojection.py`` and ``fibsem/transformations.py``
+    as fibsemOS's FIB-766 left them, first released in fibsem 0.5.2rc1 (MIT,
+    Copyright (c) 2025 fibsemOS) -- the projection fibsemOS's own minimap
+    draws with. ``THIRD_PARTY_NOTICES.md`` carries the licence,
+    ``docs/decisions.md`` says why it is restated here rather than imported,
     ``test_overview_matches_fibsem`` holds it to fibsemOS's own answers, and
     ``test_each_overview_places_its_lamellae_to_within_tens_of_microns`` to
     where a person placed the lamellae.
 
     **The result is approximate, and callers must present it as one.** The
-    distance along the grid is foreshortened by the angle the beam sees the
-    grid at, which the pre-tilt, the stage tilt and the column decide; what is
-    still ignored, as fibsemOS ignores it, is the grid's curvature.
+    stage is treated as rigid, so a move is seen foreshortened by the angle
+    between the stage and the beam, its height included, and the grid's shape
+    does not enter. What is ignored: the tilt a position was recorded at, the
+    overview's own being used; and beam shift.
 
     Returns:
         ``(x, y)`` in pixels, which may fall outside the image -- a lamella
@@ -200,7 +202,17 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
             which is not a constant this package can carry: nothing in the
             reference collection needs it, every overview there being taken at
             the rotation its lamellae were recorded at.
+        ValueError: If *overview* was scanned at a rotation other than a whole
+            number of half turns, which fibsemOS does not model either.
     """
+    half_turns = _half_turns(overview.scan_rotation)
+    if half_turns is None:
+        raise ValueError(
+            f"{overview.path.name} was scanned at "
+            f"{math.degrees(overview.scan_rotation):.1f} degrees of rotation, so nothing "
+            f"can be placed on it: only a scan square to the stage or half a turn "
+            f"from it is modelled"
+        )
     turned = abs(math.degrees(overview.centre.rotation - position.rotation))
     if turned > ROTATION_TOLERANCE_DEG:
         raise ValueError(
@@ -217,55 +229,54 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
 
     # A scan rotation of half a turn writes the image upside down and
     # backwards, so the offsets are measured the other way.
-    if math.isclose(overview.scan_rotation, math.pi, abs_tol=1e-6):
+    if half_turns % 2:
         offset_x = -offset_x
         offset_y = -offset_y
 
     return (overview.width / 2 + offset_x, overview.height / 2 + offset_y)
 
 
+def _half_turns(scan_rotation: float) -> int | None:
+    """Return how many half turns *scan_rotation* is, or None if not a whole number."""
+    turns = round(scan_rotation / math.pi)
+    if abs(scan_rotation - turns * math.pi) > SCAN_ROTATION_TOLERANCE_RAD:
+        return None
+    return turns
+
+
 def _seen_along_y(overview: Overview, delta_y: float, delta_z: float) -> float:
     """Return how far along the image's y axis a stage move is seen, in metres.
 
-    The stage moves the grid along its own surface, which the shuttle holds at
-    its pre-tilt: the distance along the grid is recovered from whichever of y
-    and z carries more of it, then foreshortened by the angle between the grid
-    and the beam that took the overview.
+    The stage's y and z axes tilt with it, so both are seen through the angle
+    between the stage and the beam, measured from the electron column. The
+    shuttle's pre-tilt does not enter: it decides where the grid lies, not how
+    the stage carrying it moves.
     """
     stage_tilt = overview.centre.tilt
     compustage_sign = 1.0
     if overview.compustage:
-        # A compustage images the back of the grid, half a turn over.
-        if -math.pi / 2 < stage_tilt <= 0:
-            compustage_sign = -1.0
+        # A compustage images the back of the grid, half a turn over, and is
+        # seen the other way up except when it faces the ion column.
+        compustage_sign = 1.0 if _faces_the_ion_column(overview) else -1.0
         stage_tilt += math.pi
 
-    # The pre-tilt leans towards whichever column the stage faces.
-    pretilt_sign = 1.0
-    if _faces(overview.centre.rotation, overview.rotation_reference):
-        pretilt_sign = 1.0
-    if _faces(overview.centre.rotation, overview.rotation_180):
-        pretilt_sign = -1.0
-    pretilt = pretilt_sign * (overview.shuttle_pretilt + overview.electron_column_tilt)
-
-    adjustment = -pretilt
-    if overview.beam == ION:
-        adjustment -= overview.ion_column_tilt
-
-    cos_pretilt, sin_pretilt = math.cos(pretilt), math.sin(pretilt)
-    if abs(cos_pretilt) > abs(sin_pretilt):
-        along = delta_y / cos_pretilt
-    else:
-        along = -delta_z / sin_pretilt
-    return along * math.cos(stage_tilt + adjustment) * compustage_sign
+    seen_at = stage_tilt - (overview.ion_column_tilt if overview.beam == ION else 0.0)
+    return (delta_y * math.cos(seen_at) - delta_z * math.sin(seen_at)) * compustage_sign
 
 
-def _faces(rotation: float, reference: float) -> bool:
-    """Return whether *rotation* is within :data:`FACING_TOLERANCE_DEG` of *reference*."""
+def _faces_the_ion_column(overview: Overview) -> bool:
+    """Return whether a compustage was posed facing the ion column, as fibsemOS decides it.
+
+    That pose is tilted by the ion column's angle less the pre-tilt and a half
+    turn, at the reference rotation, a compustage having no other.
+    """
+    facing_tilt = overview.ion_column_tilt - overview.shuttle_pretilt - math.pi
+    if abs(overview.centre.tilt - facing_tilt) > FACING_TILT_TOLERANCE_RAD:
+        return False
     full = 2 * math.pi
-    first, second = rotation % full, reference % full
+    first, second = overview.centre.rotation % full, overview.rotation_reference % full
     large, small = max(first, second), min(first, second)
-    return min(large - small, full + small - large) < math.radians(FACING_TOLERANCE_DEG)
+    return min(large - small, full + small - large) < math.radians(FACING_ROTATION_TOLERANCE_DEG)
 
 
 @dataclass(frozen=True)

@@ -2,9 +2,9 @@
 """Capture fibsemOS's own reprojections, which ``tests/test_overview.py`` holds to.
 
 **This is a standalone script, not an ``am-seg`` command**, and it runs in an
-environment with fibsem installed -- fibsemOS's own -- which neither of this
-package's environments is. Run it when the fibsemOS function ``overview.py``
-restates changes, and commit what it writes.
+environment with fibsem 0.5.2rc1 or later installed -- fibsemOS's own -- which
+neither of this package's environments is. Run it when the fibsemOS function
+``overview.py`` restates changes, and commit what it writes.
 
 It reads a collection without changing it and writes two fixtures into
 ``tests/data``: ``fibsem_reprojection.json``, where fibsemOS places every
@@ -45,7 +45,7 @@ def geometry(image: FibsemImage) -> dict:
     beam = metadata.image_settings.beam_type
     scan = (state.electron_beam if beam is BeamType.ELECTRON else state.ion_beam).scan_rotation
     centre = state.stage_position
-    system = metadata.system
+    hardware = metadata.hardware_geometry
     return {
         "width": int(image.data.shape[1]),
         "height": int(image.data.shape[0]),
@@ -54,12 +54,12 @@ def geometry(image: FibsemImage) -> dict:
         "beam_type": beam.name,
         "centre": {axis: getattr(centre, axis) for axis in "xyzrt"},
         "system": {
-            "model": system.info.model,
-            "shuttle_pre_tilt_deg": system.stage.shuttle_pre_tilt,
-            "rotation_reference_deg": system.stage.rotation_reference,
-            "rotation_180_deg": system.stage.rotation_180,
-            "electron_column_tilt_deg": system.electron.column_tilt,
-            "ion_column_tilt_deg": system.ion.column_tilt,
+            "model": metadata.system_info.model,
+            "shuttle_pre_tilt_deg": hardware.shuttle_pre_tilt,
+            "rotation_reference_deg": hardware.rotation_reference,
+            "rotation_180_deg": hardware.rotation_180,
+            "electron_column_tilt_deg": hardware.column_tilt,
+            "ion_column_tilt_deg": hardware.fib_column_tilt,
         },
     }
 
@@ -172,16 +172,17 @@ def branch_cases(image: FibsemImage) -> list[dict]:
 
     def facing_the_ion_column(metadata):
         rotation = math.degrees(metadata.microscope_state.stage_position.r)
-        metadata.system.stage.rotation_180 = rotation
-        metadata.system.stage.rotation_reference = rotation + 180
+        metadata.hardware_geometry.rotation_180 = rotation
+        metadata.hardware_geometry.rotation_reference = rotation + 180
 
     def shallow_pretilt(metadata):
-        metadata.system.stage.shuttle_pre_tilt = 35.0
+        metadata.hardware_geometry.shuttle_pre_tilt = 35.0
 
     def compustage(tilt_deg):
         def change(metadata):
-            metadata.system.info.model = "Arctis"
-            metadata.system.stage.shuttle_pre_tilt = 0.0
+            metadata.system_info.model = "Arctis"
+            metadata.hardware_geometry.is_compustage = True
+            metadata.hardware_geometry.shuttle_pre_tilt = 0.0
             metadata.microscope_state.stage_position.t = math.radians(tilt_deg)
         return change
 

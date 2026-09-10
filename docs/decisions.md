@@ -342,15 +342,16 @@ rather than appending to it.
   this command covers"**, expanded per command rather than passed on
   (`test_all_means_every_series_this_command_covers_not_every_series`).
 - **The reprojection is fibsemOS's, reimplemented rather than imported.** Its software wrote both
-  the overview and the coordinates, so `calculate_reprojected_stage_position2` — what its own
-  minimap draws with — is the definition of where a lamella falls; `overview.py` restates it and the
-  `_inverse_y_corrected_stage_movement` it calls. Importing it costs 1.9s and 1,255 modules, adds a
-  second provider of `cv2` — the hazard § Environment warns about most — and would read a header
-  `image_metadata.py` already parses every field of. **The copy is held honest by fibsemOS's own
-  answers** rather than by review: `tests/data/fibsem_reprojection*.json`, written by
+  the overview and the coordinates, so what its own minimap draws with is the definition of where a
+  lamella falls; `overview.py` restates it as FIB-766 left it (fibsem 0.5.2rc1), reading a move's
+  height off the stage rather than the grid plane, which misplaces by up to 100 µm a lamella whose
+  height was corrected after the overview. Importing it costs 1.9s and 1,255 modules, adds a second
+  provider of `cv2` — the hazard § Environment warns about most — and would read a header
+  `image_metadata.py` already parses. **The copy is held honest by fibsemOS's own answers** rather
+  than by review: `tests/data/fibsem_reprojection*.json`, written by
   `scripts/capture_fibsem_reprojection.py`, carry every real position plus the branches no real
-  overview reaches, and the suite compares against them with no fibsem installed
-  (`test_overview_matches_fibsem`).
+  overview reaches (`test_overview_matches_fibsem`); where a person placed the lamellae holds what
+  those answers cannot (`test_each_overview_places_its_lamellae_to_within_tens_of_microns`).
 - **A milling task is matched by `tasks.py`, and there is no separate stage axis**, `stage-name`
   already answering "which directory". The directory is tried before the filename and is the only
   thing resolving a name Autolamella spells two ways (`Milling/Fiducial/` for `Mill Fiducial`); the

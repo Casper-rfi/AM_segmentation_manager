@@ -411,7 +411,7 @@ of one of these files, is held by `test_docs.py`.
   **Several overviews are one picker**, in the slot the Grid view has no imaging condition for,
   opening on the earliest that places anything and drawn from its gamma copy; one placing nothing is
   shown saying why (`test_the_grid_view_offers_every_overview_in_the_variant_slot`). **The badge
-  says the marks are approximate every time**, the grid being taken as flat; a lamella anyone
+  says the marks are approximate every time**, for what `reproject` ignores; a lamella anyone
   curates that `experiment.yaml` never positioned is named as such
   (`test_a_lamella_the_experiment_never_positioned_is_told_so`). A mark keeps its size as the
   picture is zoomed (`ItemIgnoresTransformations`) and its name sits on a filled chip, `grid_view`

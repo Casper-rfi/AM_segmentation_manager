@@ -941,6 +941,127 @@
      "y": 2053.572182404436
     }
    ]
+  },
+  {
+   "overview": "overview_34.tif",
+   "width": 4096,
+   "height": 4096,
+   "pixel_size_m": 5.37109375e-07,
+   "scan_rotation_rad": 3.141592653589793,
+   "beam_type": "ELECTRON",
+   "centre": {
+    "x": -0.0028123333329999997,
+    "y": 0.003404083333,
+    "z": 0.032438175154,
+    "r": -1.3089745638747365,
+    "t": 0.4537731089610814
+   },
+   "system": {
+    "model": "Aquilos",
+    "shuttle_pre_tilt_deg": 26.0,
+    "rotation_reference_deg": 0.0,
+    "rotation_180_deg": 180.0,
+    "electron_column_tilt_deg": 0.0,
+    "ion_column_tilt_deg": 52.0
+   },
+   "positions": [
+    {
+     "name": "02-mint-elf",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002662916667,
+      "y": 0.003243916667,
+      "z": 0.032595968364,
+      "r": -1.3089745638747365,
+      "t": 0.0
+     },
+     "projected": [
+      1769.813334574546,
+      1651.1945237781545
+     ],
+     "first_guess": "projected",
+     "first_guess_at": [
+      1769.813334574546,
+      1651.1945237781545
+     ],
+     "answer": "placed",
+     "answered_at": "2026-09-10T22:44:55",
+     "x": 1783.7305985699695,
+     "y": 1644.7594688457611
+    },
+    {
+     "name": "01-keen-buck",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0027305,
+      "y": 0.0033734999999999998,
+      "z": 0.032566968879,
+      "r": -1.3089745638747365,
+      "t": 0.0
+     },
+     "projected": [
+      1895.6412127418184,
+      1891.7072682125695
+     ],
+     "first_guess": "projected",
+     "first_guess_at": [
+      1895.6412127418184,
+      1891.7072682125695
+     ],
+     "answer": "placed",
+     "answered_at": "2026-09-10T22:59:54",
+     "x": 1900.6109417773241,
+     "y": 1891.2926463738513
+    },
+    {
+     "name": "03-warm-viper",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.002503,
+      "y": 0.003220916667,
+      "z": 0.032608121142,
+      "r": -1.3089745638747365,
+      "t": 0.0
+     },
+     "projected": [
+      1472.0775763781824,
+      1602.7878472228913
+     ],
+     "first_guess": "projected",
+     "first_guess_at": [
+      1472.0775763781824,
+      1602.7878472228913
+     ],
+     "answer": "placed",
+     "answered_at": "2026-09-10T23:02:00",
+     "x": 1491.7305658835548,
+     "y": 1592.5448825331976
+    },
+    {
+     "name": "04-polite-feline",
+     "reference": "ref_SetupLamella_final_low_res_eb.tif",
+     "position": {
+      "x": -0.0030174166669999997,
+      "y": 0.0033170833329999997,
+      "z": 0.032572016461,
+      "r": -1.3089745638747365,
+      "t": 0.0
+     },
+     "projected": [
+      2429.827880029091,
+      1793.1799783442448
+     ],
+     "first_guess": "projected",
+     "first_guess_at": [
+      2429.827880029091,
+      1793.1799783442448
+     ],
+     "answer": "placed",
+     "answered_at": "2026-09-10T23:02:45",
+     "x": 2430.388167517876,
+     "y": 1804.2147824310525
+    }
+   ]
   }
  ]
 }

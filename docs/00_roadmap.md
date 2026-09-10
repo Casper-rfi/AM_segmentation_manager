@@ -33,9 +33,6 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **One grid overview disagrees with the projection** (`UNEXPLAINED_OVERVIEWS`, `test_overview.py`):
-  on `virussample` every mark sits 50–73px above its lamella, a constant offset. Compare its 2048px
-  overview with the 4096px retake 40s later, and its recorded centre with its tile's.
 - **Grid overviews for older and non-Autolamella projects**: place lamellae from their images' stage
   positions where `experiment.yaml` has none, first comparing the two across the collection, and
   know an overview by its header (CElegans' `VG10G2_*`). Mind RAW against SPECIMEN coordinates, a
