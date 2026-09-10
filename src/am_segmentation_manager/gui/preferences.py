@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..display import DEFAULT_ALPHA
-from ..layout import SERIES, SERIES_LABELS
+from ..layout import LABELLED_SERIES, SERIES, SERIES_LABELS
 from ..operations.csv import DEFAULT_TRAIN_RATIO
 from ..operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
@@ -58,6 +58,13 @@ DEFAULT_ONE_PER_LABEL = False
 #: preference is felt on, not the module it reaches.
 PROOFREADING = "Proofreading"
 EXPORT = "Export"
+SHOWN = "Series shown"
+
+#: Which series Curate and Label open showing: every one with labels. `other`
+#: is the residue no naming rule reaches -- grid overviews, their tiles,
+#: diagnostics -- worth being able to open and not worth listing beside the
+#: lamellae by default.
+DEFAULT_SHOWN_SERIES: tuple[str, ...] = LABELLED_SERIES
 
 
 @dataclass(frozen=True)
@@ -132,6 +139,21 @@ PREFERENCES: tuple[Preference, ...] = (
             "How strongly a label is drawn over the image, on both tabs that "
             "draw one. Changes nothing on disk and reaches no export."
         ),
+    ),
+    *(
+        Preference(
+            key=f"shown/{name}",
+            group=SHOWN,
+            label=SERIES_LABELS[name],
+            fallback=name in DEFAULT_SHOWN_SERIES,
+            hint=(
+                f"Whether Curate and Label open showing {SERIES_LABELS[name]} "
+                "images. A lamella holding only series switched off leaves the "
+                "list, counted in its title. The switches beside the lists "
+                "move it for a session."
+            ),
+        )
+        for name in SERIES
     ),
     *(
         Preference(
@@ -269,3 +291,13 @@ def series_from(values: Mapping[str, int | bool]) -> tuple[str, ...]:
     """
     chosen = tuple(name for name in SERIES if values.get(f"series/{name}"))
     return chosen or DEFAULT_SERIES
+
+
+def shown_series_from(values: Mapping[str, int | bool]) -> tuple[str, ...]:
+    """Return the series Curate and Label should open showing, in `SERIES` order.
+
+    Shown nowhere would list nothing, which reads as a fault rather than as a
+    setting -- so an empty answer falls back to what the package ships with.
+    """
+    chosen = tuple(name for name in SERIES if values.get(f"shown/{name}"))
+    return chosen or DEFAULT_SHOWN_SERIES

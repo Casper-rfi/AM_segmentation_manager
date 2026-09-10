@@ -1,7 +1,7 @@
 """Left panel: choosing what to review, and what to change.
 
-Holds the scan root, the projects found under it, and the lamellae of the
-selected project. Scanning happens on the caller's terms -- this panel only
+Holds the scan root, the switches saying which series the lists cover, the
+projects found under it, and the lamellae of the selected project. Scanning happens on the caller's terms -- this panel only
 reports that the user asked for it. Which *rows* a change covers is chosen
 here; which modality, and which state, are chosen beside the buttons that act.
 
@@ -16,7 +16,9 @@ visible on screen.
 """
 from __future__ import annotations
 
-from qtpy.QtCore import Qt, Signal
+from collections.abc import Mapping, Sequence
+
+from qtpy.QtCore import QSize, Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QGroupBox,
@@ -30,8 +32,8 @@ from qtpy.QtWidgets import (
 
 from ...layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..controller import CurationStatus
-from .common import chip_icon, ticked_caption
-from .controls import GripSplitter
+from .common import caption_for, chip_icon, ticked_caption
+from .controls import FlowArea, FlowLayout, GripSplitter, ToggleSwitch
 from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import add_path_menu, choose_directory
 from .theme import (
@@ -39,6 +41,14 @@ from .theme import (
     SWATCH_GAP,
     SWATCH_HEIGHT,
     SWATCH_WIDTH,
+    swatch_width,
+)
+
+#: What the series switches are for, said on the caption and on each switch.
+SHOWN_HINT = (
+    "Which series the lamella list, the chips and the series menu cover. A "
+    "lamella holding only series switched off leaves the list and is counted "
+    "in its title. Opens as Settings (F2) say."
 )
 
 
@@ -69,11 +79,18 @@ class ProjectPanel(QWidget):
     #: Emitted with whether to tick or clear every row of that list.
     projects_check_all = Signal(bool)
     lamellae_check_all = Signal(bool)
+    #: Emitted with the series switched on, in `SERIES` order, whenever one is
+    #: switched. Never empty: the last one cannot be switched off.
+    shown_series_changed = Signal(tuple)
 
     def __init__(self) -> None:
         super().__init__()
         self._project_labels: list[str] = []
         self._lamella_labels: list[str] = []
+        #: The series each chip has a column for.
+        self._chip_series: tuple[str, ...] = SERIES
+        #: Lamellae the list leaves out, for its title.
+        self._hidden_lamellae = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 2, 4)
@@ -125,6 +142,27 @@ class ProjectPanel(QWidget):
 
         layout.addLayout(row)
 
+        # -- series shown --------------------------------------------------
+        # Switches, as the Export tab's series are: independent, and several at
+        # once is the ordinary case. In a flow under their caption rather than
+        # beside it, so the column can still be narrowed: a row that cannot
+        # wrap is a floor under the whole panel.
+        self.shown_boxes: dict[str, ToggleSwitch] = {}
+        for name in SERIES:
+            switch = ToggleSwitch(SERIES_LABELS[name])
+            switch.setChecked(True)
+            switch.toggled.connect(
+                lambda checked, name=name: self._shown_toggled(name, checked)
+            )
+            self.shown_boxes[name] = switch
+        self.shown_flow = FlowArea()
+        flow = FlowLayout(spacing=6)
+        self.shown_flow.setLayout(flow)
+        for name in SERIES:
+            flow.addWidget(self.shown_boxes[name])
+        layout.addWidget(caption_for("Series shown", self.shown_flow, SHOWN_HINT))
+        layout.addWidget(self.shown_flow)
+
         # -- projects and lamellae -----------------------------------------
         # In a splitter so that an archive with many projects but few lamellae
         # (or the reverse) can be given the space where it is needed.
@@ -156,6 +194,7 @@ class ProjectPanel(QWidget):
         self.lists.addWidget(self.lamella_box)
         self.lists.setSizes([200, 300])
         layout.addWidget(self.lists, stretch=1)
+        self.set_chip_series(SERIES)
 
         self.summary = QLabel("No project loaded")
         self.summary.setWordWrap(True)
@@ -246,6 +285,51 @@ class ProjectPanel(QWidget):
         """Show *path* as the scan root."""
         self.path_edit.setText(path)
 
+    def shown_series(self) -> tuple[str, ...]:
+        """Return the series switched on, in `SERIES` order."""
+        return tuple(name for name in SERIES if self.shown_boxes[name].isChecked())
+
+    def _shown_toggled(self, name: str, checked: bool) -> None:
+        """Say which series are on, refusing to switch the last one off.
+
+        None at all would list nothing and draw an empty chip, which reads as a
+        fault rather than a choice.
+        """
+        if not checked and not self.shown_series():
+            switch = self.shown_boxes[name]
+            switch.blockSignals(True)
+            switch.setChecked(True)
+            switch.blockSignals(False)
+            return
+        self.shown_series_changed.emit(self.shown_series())
+
+    def apply_defaults(self, values: Mapping[str, int | bool]) -> None:
+        """Open the series switches at what the settings say. See `ImagePanel`.
+
+        Set quietly and announced once, so opening does not redraw the lists
+        once per switch.
+        """
+        from .. import preferences
+
+        wanted = preferences.shown_series_from(values)
+        for name, switch in self.shown_boxes.items():
+            switch.blockSignals(True)
+            switch.setChecked(name in wanted)
+            switch.blockSignals(False)
+        self.shown_series_changed.emit(self.shown_series())
+
+    def set_chip_series(self, series: Sequence[str]) -> None:
+        """Draw the chips with a column for each of *series* only.
+
+        Both lists are told the chip's size, or Qt scales it to a text line's
+        height and the cells come out a smudge. The rows are drawn again by
+        :meth:`show_projects` and :meth:`show_lamellae`, not here.
+        """
+        self._chip_series = tuple(series)
+        size = QSize(swatch_width(len(self._chip_series)), SWATCH_HEIGHT)
+        self.project_list.setIconSize(size)
+        self.lamella_list.setIconSize(size)
+
     def show_projects(
         self,
         labels: list[str],
@@ -270,7 +354,7 @@ class ProjectPanel(QWidget):
             folders if folders is not None else [""] * len(labels),
             labels,
             ticked=checks or [],
-            icons=[_status_icon(status) for status in statuses or []],
+            icons=[_status_icon(status, self._chip_series) for status in statuses or []],
             tooltips=[
                 f"{label}\n{status.summary}"
                 for label, status in zip(labels, statuses or [])
@@ -289,12 +373,18 @@ class ProjectPanel(QWidget):
         current: int,
         statuses: list[CurationStatus] | None = None,
         checks: list[bool] | None = None,
+        hidden: int = 0,
     ) -> None:
-        """List the selected project's lamellae, with their curation progress."""
+        """List the selected project's lamellae, with their curation progress.
+
+        *hidden* counts the lamellae left out for holding only series switched
+        off, which the title says so that leaving them out is never silent.
+        """
         self._lamella_labels = list(labels)
+        self._hidden_lamellae = hidden
         self._set_items(self.lamella_list, labels, current, statuses, checks)
         self.lamella_box.setTitle(
-            self._list_title("Lamellae", labels, checks)
+            self._list_title("Lamellae", labels, checks, hidden)
         )
         self._apply_filter(self.lamella_list, self._lamella_labels, self.lamella_filter.text())
 
@@ -314,14 +404,18 @@ class ProjectPanel(QWidget):
             self._list_title("Projects", self._project_labels, project_checks)
         )
         self.lamella_box.setTitle(
-            self._list_title("Lamellae", self._lamella_labels, lamella_checks)
+            self._list_title(
+                "Lamellae", self._lamella_labels, lamella_checks, self._hidden_lamellae
+            )
         )
 
     @staticmethod
-    def _list_title(noun: str, labels: list[str], checks: list[bool] | None) -> str:
-        """Return the box title, saying how many rows are ticked when any are."""
+    def _list_title(
+        noun: str, labels: list[str], checks: list[bool] | None, hidden: int = 0
+    ) -> str:
+        """Return the box title, saying how many rows are ticked and hidden."""
         return ticked_caption(
-            noun, len(labels), sum(1 for checked in checks or [] if checked)
+            noun, len(labels), sum(1 for checked in checks or [] if checked), hidden
         )
 
     def show_summary(self, text: str) -> None:
@@ -357,7 +451,7 @@ class ProjectPanel(QWidget):
         widget.set_values(
             labels,
             ticked=checks or [],
-            icons=[_status_icon(status) for status in statuses or []],
+            icons=[_status_icon(status, self._chip_series) for status in statuses or []],
             tooltips=[
                 f"{label}\n{status.summary}"
                 for label, status in zip(labels, statuses or [])
@@ -392,8 +486,11 @@ STATUS_EMPTY = "empty"
 #: it cannot be read as a step of one.
 STATUS_UNLABELLED = "unlabelled"
 
-def _status_icon(status: CurationStatus) -> QIcon:
+def _status_icon(status: CurationStatus, series: Sequence[str] = SERIES) -> QIcon:
     """Return the chip: a cell per series and beam, SEM above FIB.
+
+    A column for each of *series* only -- the ones switched on -- in the order
+    given, so a series switched off takes no room rather than an empty column.
 
     One icon rather than two, so a row stays one line and the two questions a
     reader has -- what is here, and how far along is it -- are answered in one
@@ -407,18 +504,18 @@ def _status_icon(status: CurationStatus) -> QIcon:
     which is the point rather than a shortcoming, a reference column that
     changed would be claiming work nobody intends to do.
     """
-    pixmap = QPixmap(SWATCH_WIDTH, SWATCH_HEIGHT)
+    pixmap = QPixmap(swatch_width(len(series)), SWATCH_HEIGHT)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     try:
-        for column, series in enumerate(SERIES):
+        for column, name in enumerate(series):
             for row, modality in enumerate(MODALITIES):
                 _paint_cell(
                     painter,
                     column * (SWATCH_CELL + SWATCH_GAP),
                     row * (SWATCH_CELL + SWATCH_GAP),
-                    status.of(series, modality),
-                    expected=series in LABELS_EXPECTED,
+                    status.of(name, modality),
+                    expected=name in LABELS_EXPECTED,
                 )
     finally:
         # A painter left alive past its pixmap crashes the process instead of
@@ -488,7 +585,8 @@ def status_legend() -> list[tuple[QPixmap, str]]:
     return [
         (
             _status_icon(example).pixmap(SWATCH_WIDTH, SWATCH_HEIGHT),
-            f"Left to right: {columns}. SEM above, FIB below.",
+            f"Left to right, those switched on under Series shown: {columns}. "
+            "SEM above, FIB below.",
         ),
         (
             _legend_swatch(STATUS_EMPTY, expected=True),

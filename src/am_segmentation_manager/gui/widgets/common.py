@@ -196,18 +196,20 @@ def caption_for(text: str, widget: QWidget, tooltip: str) -> QLabel:
     return label
 
 
-def ticked_caption(noun: str, total: int, ticked: int) -> str:
+def ticked_caption(noun: str, total: int, ticked: int, hidden: int = 0) -> str:
     """Return a list's caption, saying how many of its rows are ticked.
 
     Spelled "3 of 12 ticked" rather than as two bare numbers: the ticks decide
     what an operation covers, the lists scroll, and a reader should not have to
-    work out which number is which.
+    work out which number is which. *hidden* counts rows a filter leaves out,
+    which a list that says nothing of them would drop in silence.
     """
-    if not total:
-        return noun
-    if ticked:
-        return f"{noun} ({ticked} of {total} ticked)"
-    return f"{noun} ({total})"
+    counts = []
+    if total:
+        counts.append(f"{ticked} of {total} ticked" if ticked else f"{total}")
+    if hidden:
+        counts.append(f"{hidden} hidden")
+    return f"{noun} ({', '.join(counts)})" if counts else noun
 
 
 def match_anywhere(box: QComboBox) -> None:

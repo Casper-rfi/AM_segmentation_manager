@@ -632,6 +632,18 @@ def _chip_image(**cells):
     return icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage()
 
 
+def test_a_chip_has_a_column_per_series_it_is_given(qt_app):
+    """A series switched off takes no room, rather than an empty column."""
+    from am_segmentation_manager.gui.widgets.project_panel import _status_icon
+    from am_segmentation_manager.gui.widgets.theme import SWATCH_WIDTH, swatch_width
+    from am_segmentation_manager.layout import SERIES
+
+    icon = _status_icon(_status(), ("adaptive", "reference"))
+
+    assert swatch_width(len(SERIES)) == SWATCH_WIDTH
+    assert icon.availableSizes()[0].width() == swatch_width(2)
+
+
 def _cell_centre(column: int, row: int):
     """Return a point inside the cell at *column* and *row* of a chip."""
     from am_segmentation_manager.gui.widgets.theme import SWATCH_CELL, SWATCH_GAP

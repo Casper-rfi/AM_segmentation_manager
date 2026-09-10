@@ -184,6 +184,11 @@ def _write(path: Path, array) -> None:
     tifffile.imwrite(str(path), array)
 
 
+def _show_other(window) -> None:
+    """Switch `other` on, which the lists open without."""
+    window.project_panel.shown_boxes["other"].setChecked(True)
+
+
 def _window(qt_app, root: Path) -> CurationWindow:
     config = SegmentationConfig(
         class_colors={0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)},
@@ -383,6 +388,7 @@ def test_the_controls_that_change_data_are_offered_for_a_labelled_series(
 ):
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.set_editing_enabled(True)
         window.state_panel.set_editing_enabled(True)
         window.refresh()
@@ -401,6 +407,7 @@ def test_the_controls_that_change_data_are_withheld_for_the_residue(
     worse than one plainly unavailable."""
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.set_editing_enabled(True)
         window.state_panel.set_editing_enabled(True)
         window.controller.select_lamella(1)
@@ -417,6 +424,7 @@ def test_the_controls_that_change_data_are_withheld_for_the_residue(
 def test_the_withheld_controls_say_why(qt_app, residue_project: Path):
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.select_lamella(1)
         window.refresh()
 
@@ -432,6 +440,7 @@ def test_switching_editing_back_on_does_not_unlock_the_residue(
     """Two independent reasons, so lifting one may not lift the other."""
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.select_lamella(1)
         window.refresh()
         window.state_panel.set_editing_enabled(True)
@@ -446,6 +455,7 @@ def test_the_timeline_still_shows_the_residue(qt_app, residue_project: Path):
     open one and decide whether the rule or the data is wrong is the point."""
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.select_lamella(1)
         window.refresh()
 
@@ -457,6 +467,7 @@ def test_the_timeline_still_shows_the_residue(qt_app, residue_project: Path):
 def test_leaving_the_residue_offers_the_controls_again(qt_app, residue_project: Path):
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.set_editing_enabled(True)
         window.state_panel.set_editing_enabled(True)
         window.controller.select_lamella(1)
@@ -478,6 +489,7 @@ def test_the_residue_is_badged_view_only_rather_than_unlabelled(
     could go: it could never be otherwise."""
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.select_lamella(1)
         window.refresh()
         settle(
@@ -497,6 +509,7 @@ def test_the_label_tab_opens_on_the_residue(qt_app, residue_project: Path):
     than the lamella before it, and refuse a stroke."""
     window = _window(qt_app, residue_project)
     try:
+        _show_other(window)
         window.controller.select_lamella(1)
         window.refresh()
         window.tabs.setCurrentWidget(window.label_panel)
@@ -510,6 +523,112 @@ def test_the_label_tab_opens_on_the_residue(qt_app, residue_project: Path):
         assert window.label_panel.controller.series == "other"
         assert "02-ruling-oryx" in window.label_panel.status.text()
         assert not window.label_panel.canvas.editable
+    finally:
+        destroy(window)
+
+
+# ---------------------------------------------------------------------------
+# Series switched off
+# ---------------------------------------------------------------------------
+
+def test_opening_the_window_raises_nothing(qt_app, tmp_path: Path, monkeypatch):
+    """A slot's exception is printed rather than raised, so a failure while
+    the window is being built -- where the switches first announce what they
+    show -- passes every test that only looks at the result."""
+    import sys
+
+    caught = []
+    monkeypatch.setattr(sys, "excepthook", lambda *info: caught.append(info))
+    window = CurationWindow(
+        CurationController(cache=FrameCache()),
+        settings=QSettings(str(tmp_path / "preferences.ini"), QSettings.IniFormat),
+    )
+    try:
+        assert not caught, caught[0][1] if caught else None
+    finally:
+        destroy(window)
+
+
+def test_the_residue_opens_switched_off_and_counted(qt_app, residue_project: Path):
+    """`other` is worth being able to open and not worth listing beside the
+    lamellae; leaving it out is said in the title, or it would be silent."""
+    window = _window(qt_app, residue_project)
+    try:
+        assert not window.project_panel.shown_boxes["other"].isChecked()
+        assert [lamella.name for lamella in window.controller.lamellae] == [
+            "01-ruling-ibex"
+        ]
+        assert window.project_panel.lamella_box.title() == "Lamellae (1, 1 hidden)"
+    finally:
+        destroy(window)
+
+
+def test_switching_a_series_on_lists_its_lamellae(qt_app, residue_project: Path):
+    window = _window(qt_app, residue_project)
+    try:
+        _show_other(window)
+
+        assert len(window.controller.lamellae) == 2
+        assert window.project_panel.lamella_box.title() == "Lamellae (2)"
+    finally:
+        destroy(window)
+
+
+def test_the_chip_has_a_column_per_series_switched_on(qt_app, residue_project: Path):
+    from am_segmentation_manager.gui.widgets.theme import swatch_width
+
+    window = _window(qt_app, residue_project)
+    try:
+        assert window.project_panel.lamella_list.iconSize().width() == swatch_width(3)
+
+        _show_other(window)
+
+        assert window.project_panel.lamella_list.iconSize().width() == swatch_width(4)
+        assert window.project_panel.project_list.iconSize().width() == swatch_width(4)
+    finally:
+        destroy(window)
+
+
+def test_the_last_series_cannot_be_switched_off(qt_app, plain_project: Path):
+    """None at all would list nothing, which reads as a fault."""
+    window = _window(qt_app, plain_project)
+    try:
+        boxes = window.project_panel.shown_boxes
+        for name in ("reference", "alignment", "adaptive"):
+            boxes[name].setChecked(False)
+
+        assert boxes["adaptive"].isChecked()
+        assert window.controller.shown_series == ("adaptive",)
+    finally:
+        destroy(window)
+
+
+def test_the_series_menus_offer_only_what_is_switched_on(
+    qt_app, modern_project: Path
+):
+    window = _window(qt_app, modern_project)
+    try:
+        window.project_panel.shown_boxes["reference"].setChecked(False)
+
+        combo = window.image_panel.series_combo
+        offered = [combo.itemData(index) for index in range(combo.count())]
+        assert "reference" not in offered and "adaptive" in offered
+        assert "reference" not in window.label_controller.available_series()
+    finally:
+        destroy(window)
+
+
+def test_the_settings_decide_which_series_the_lists_open_on(
+    qt_app, residue_project: Path
+):
+    settings = QSettings(str(residue_project / "preferences.ini"), QSettings.IniFormat)
+    settings.setValue("defaults/shown/other", True)
+    settings.sync()
+
+    window = _window(qt_app, residue_project)
+    try:
+        assert window.project_panel.shown_boxes["other"].isChecked()
+        assert len(window.controller.lamellae) == 2
     finally:
         destroy(window)
 

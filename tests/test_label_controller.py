@@ -722,3 +722,14 @@ def test_a_labelled_series_is_labelled(controller):
     assert controller.series_is_labelled is True
     assert controller.current_key is not None
 
+
+def test_a_series_switched_off_is_not_offered_for_proofreading(three_series):
+    three_series.set_shown_series(("adaptive", "alignment"))
+
+    assert "reference" not in three_series.available_series()
+
+
+def test_switching_off_the_series_being_proofread_moves_to_one_shown(three_series):
+    three_series.set_shown_series(("reference",))
+
+    assert three_series.series == "reference"

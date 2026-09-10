@@ -142,6 +142,9 @@ class LabelController:
         #: choice rather than the Curate tab's, as the modality already is.
         self._series = DEFAULT_SERIES
         self._wanted_series = DEFAULT_SERIES
+        #: The series the Curate tab's switches leave on; see
+        #: :meth:`set_shown_series`.
+        self._shown_series: tuple[str, ...] = SERIES
         #: The imaging condition on screen, per modality. Purely a view choice:
         #: the conditions of one acquisition share a label, so which one is
         #: being looked at never decides what an edit or a state change touches.
@@ -221,9 +224,12 @@ class LabelController:
 
         What it *holds*, not what it has work to do in: a series whose images
         are all deselected is still worth being able to look at, and the tab
-        says so rather than leaving the choice out.
+        says so rather than leaving the choice out. Only series switched on
+        are offered; see :meth:`set_shown_series`.
         """
-        return series_present(self._lamella)
+        return [
+            name for name in series_present(self._lamella) if name in self._shown_series
+        ]
 
     @property
     def series(self) -> str:
@@ -256,6 +262,20 @@ class LabelController:
         if series == self._series:
             return
         self._rebuild_frames(keep_frame=None)
+
+    def set_shown_series(self, series: Iterable[str]) -> None:
+        """Offer only *series*, as the Curate tab's switches say.
+
+        Handed in rather than decided here, as the lamella is: the collection
+        has one place where what is covered gets chosen. The frames are
+        rebuilt, staying on the frame in view where the series is unchanged.
+        """
+        wanted = set(series)
+        chosen = tuple(name for name in SERIES if name in wanted)
+        if chosen == self._shown_series:
+            return
+        self._shown_series = chosen
+        self._rebuild_frames(keep_frame=self.frame_index)
 
     @property
     def lamella(self) -> Lamella | None:

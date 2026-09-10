@@ -14,6 +14,7 @@ import pytest
 from am_segmentation_manager.config import SegmentationConfig
 from am_segmentation_manager.gui.cache import FrameCache
 from am_segmentation_manager.gui.controller import DEFAULT_SERIES, CurationController
+from am_segmentation_manager.layout import LABELLED_SERIES, SERIES
 from am_segmentation_manager.models import ImageRecord, Lamella, Project, Stage
 from am_segmentation_manager.scanner import ProjectIndex
 
@@ -428,3 +429,97 @@ def test_a_ticked_lamella_that_resolves_to_other_contributes_nothing(controller)
 
     assert mixed.series == "adaptive"
     assert {record.series for record in mixed.scoped_records()} == {"adaptive"}
+
+
+# ---------------------------------------------------------------------------
+# Series switched off
+# ---------------------------------------------------------------------------
+
+def reference_lamella(name: str = "03-ruling-yak") -> Lamella:
+    """A lamella holding reference images and nothing else."""
+    path = Path(name)
+    return Lamella(
+        name=name,
+        path=path,
+        number="03",
+        stages=[
+            Stage(
+                name=name, path=path, number="01", synthetic=True,
+                images=[
+                    ImageRecord(
+                        image_path=path / "ref_Polishing_start_eb.tif",
+                        modality="SEM", series="reference", stage_path=path,
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_every_series_is_shown_until_told_otherwise(controller):
+    assert controller.shown_series == SERIES
+
+
+def test_a_lamella_holding_only_series_switched_off_leaves_the_list(controller):
+    """And is counted, or leaving it out would be silent."""
+    mixed = make_controller([controller.lamellae[0], other_lamella()])
+    mixed.set_shown_series(LABELLED_SERIES)
+
+    assert [lamella.name for lamella in mixed.lamellae] == [LAMELLA.name]
+    assert mixed.hidden_lamellae == 1
+
+
+def test_switching_a_series_back_on_lists_its_lamellae_again(controller):
+    mixed = make_controller([controller.lamellae[0], other_lamella()])
+    mixed.set_shown_series(LABELLED_SERIES)
+    mixed.set_shown_series(SERIES)
+
+    assert len(mixed.lamellae) == 2
+    assert mixed.hidden_lamellae == 0
+
+
+def test_the_lamella_in_view_stays_while_it_is_still_listed(controller):
+    mixed = make_controller([other_lamella(), controller.lamellae[0]])
+    mixed.select_lamella(1)
+    mixed.set_shown_series(LABELLED_SERIES)
+
+    assert mixed.lamella.name == LAMELLA.name
+
+
+def test_a_series_switched_off_is_not_offered(controller):
+    controller.set_shown_series(("adaptive", "alignment"))
+
+    assert "reference" not in controller.available_series()
+
+
+def test_switching_off_the_series_on_screen_keeps_what_was_chosen(controller):
+    """The view moves to one that is on, and comes back when it is on again."""
+    controller.set_shown_series(("reference",))
+
+    assert controller.series == "reference"
+    assert controller.wanted_series == "adaptive"
+
+    controller.set_shown_series(SERIES)
+
+    assert controller.series == "adaptive"
+
+
+def test_a_ticked_project_reaches_nothing_of_a_series_switched_off(controller):
+    """What is ticked on screen is the whole of what a change touches, and a
+    lamella that left the list is not on screen."""
+    mixed = make_controller([controller.lamellae[0], reference_lamella()])
+    mixed.set_shown_series(("adaptive",))
+    mixed.set_target("both")
+    mixed.set_project_checked(0, True)
+
+    assert {record.series for record in mixed.scoped_records()} == {"adaptive"}
+
+
+def test_showing_nothing_is_refused(controller):
+    with pytest.raises(ValueError):
+        controller.set_shown_series(())
+
+
+def test_an_unknown_series_cannot_be_shown(controller):
+    with pytest.raises(ValueError):
+        controller.set_shown_series(("refrence",))

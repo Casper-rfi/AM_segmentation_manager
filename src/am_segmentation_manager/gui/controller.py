@@ -418,6 +418,14 @@ class CurationController:
         #: The folder whose lamellae are listed, or None when a single project
         #: is. Only the summary line and :meth:`position` ask.
         self._scope_folder: str | None = None
+        #: The series the lists and the series menu cover; see
+        #: :meth:`set_shown_series`. Every one until the window says otherwise.
+        self._shown_series: tuple[str, ...] = SERIES
+        #: The projects the lamella list is drawn from, kept so a change of
+        #: :attr:`shown_series` can list them again.
+        self._listed_projects: list[Project] = []
+        #: Lamellae of those projects the list leaves out.
+        self._hidden_lamellae = 0
         self._frames: list[LamellaFrame] = []
 
         #: What each record's label turned out to be, keyed by image path, in
@@ -695,19 +703,75 @@ class CurationController:
         screen, and a tick nobody can see is one that decides what an operation
         touches without saying so. The ticked projects stay, the tree still
         showing them.
+
+        **A lamella holding only series switched off is left out**, and
+        counted in :attr:`hidden_lamellae` -- see :meth:`set_shown_series`.
         """
         self._scope_folder = folder
+        self._listed_projects = list(projects)
         was = self.lamella
-        self._entries = [
+        every = [
             LamellaEntry(project, lamella)
             for project in projects
             for lamella in project.lamellae
         ]
+        self._entries = [entry for entry in every if self._is_listed(entry.lamella)]
+        self._hidden_lamellae = len(every) - len(self._entries)
         self.selection.lamellae.clear()
         self.select_lamella(
             _index_of([entry.lamella for entry in self._entries],
                       was.path if was is not None else None) or 0
         )
+
+    def _is_listed(self, lamella: Lamella) -> bool:
+        """Return whether *lamella* belongs on the list under :attr:`shown_series`.
+
+        One holding no images at all stays: switching a series off says
+        nothing about it, and hiding it would leave it nowhere to be seen.
+        """
+        present = series_present(lamella)
+        return not present or any(name in self._shown_series for name in present)
+
+    @property
+    def shown_series(self) -> tuple[str, ...]:
+        """Return the series the lists and the series menu cover, in `SERIES` order."""
+        return self._shown_series
+
+    @property
+    def hidden_lamellae(self) -> int:
+        """Return how many lamellae of the listed projects the list leaves out."""
+        return self._hidden_lamellae
+
+    def set_shown_series(self, series: Iterable[str]) -> None:
+        """Cover only *series*: in the lamella list, the chips and the series menu.
+
+        **Hiding is never silent.** A lamella holding only series switched off
+        leaves the list and is counted in :attr:`hidden_lamellae`, and a ticked
+        project's hidden lamellae contribute nothing to a change -- what is
+        ticked on screen has to be the whole of what a change touches. The
+        grid overview belongs to the project, and stays.
+
+        The list is drawn again, clearing its ticks for the reason
+        :meth:`_list_lamellae` gives and staying on the lamella in view where
+        it is still listed.
+
+        Raises:
+            ValueError: If *series* names nothing, or a series this package
+                does not index.
+        """
+        wanted = set(series)
+        unknown = wanted - set(SERIES)
+        if unknown:
+            raise ValueError(
+                f"Unknown series: {sorted(unknown)}; expected some of {list(SERIES)}"
+            )
+        chosen = tuple(name for name in SERIES if name in wanted)
+        if not chosen:
+            raise ValueError("At least one series must be shown")
+        if chosen == self._shown_series:
+            return
+        self._shown_series = chosen
+        self._list_lamellae(self._listed_projects, folder=self._scope_folder)
 
     def select_lamella(self, position: int) -> None:
         """Select a lamella by index and rebuild its frame stack.
@@ -859,9 +923,12 @@ class CurationController:
 
         A pre-Autolamella lamella has only Adaptive Polishing images and gets
         no choice to make -- but the control still shows what it is on, rather
-        than disappearing.
+        than disappearing. Only series switched on are offered; see
+        :meth:`set_shown_series`.
         """
-        return series_present(self.lamella)
+        return [
+            name for name in series_present(self.lamella) if name in self._shown_series
+        ]
 
     def set_series(self, series: str) -> None:
         """Show one series' timeline, rebuilding the frame stack.
@@ -1354,12 +1421,18 @@ class CurationController:
         Each lamella is asked what it can show of the chosen series, exactly as
         navigating to it would -- see :func:`~..frames.resolve_series` -- so a
         lamella holding none of it contributes the series it does hold rather
-        than nothing at all.
+        than nothing at all. One holding only series switched off contributes
+        nothing, not being on the list -- see :meth:`set_shown_series`.
         """
         modalities = ("SEM", "FIB") if self.target == "both" else (self.target,)
         records: list = []
         for lamella in lamellae:
-            series = resolve_series(self.wanted_series, series_present(lamella))
+            present = [
+                name for name in series_present(lamella) if name in self._shown_series
+            ]
+            if not present:
+                continue
+            series = resolve_series(self.wanted_series, present)
             records.extend(
                 record
                 for record in lamella.image_records

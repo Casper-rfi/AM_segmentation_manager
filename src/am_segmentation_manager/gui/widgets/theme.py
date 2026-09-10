@@ -139,15 +139,23 @@ GRIP_LENGTH = 28.0
 #: **SEM above FIB**. The gap shows the row behind it rather than a border,
 #: which is what separates one cell from the next.
 #:
-#: The width is counted from ``SERIES`` rather than written down, so that adding
-#: a series widens the chip instead of painting a column outside the pixmap,
-#: which clips without reporting anything.
+#: The width is counted from the series drawn -- see :func:`swatch_width` --
+#: rather than written down, so drawing another widens the chip instead of
+#: painting a column outside the pixmap, which clips without reporting anything.
 #:
 #: **The height must stay even**, or the chip lands half a pixel below the tick
 #: beside it -- `docs/display.md` § Controls says why.
 SWATCH_CELL = 7
 SWATCH_GAP = 2
-SWATCH_WIDTH = len(SERIES) * SWATCH_CELL + (len(SERIES) - 1) * SWATCH_GAP
+
+
+def swatch_width(columns: int) -> int:
+    """Return how wide a chip of *columns* series is, in pixels."""
+    return columns * SWATCH_CELL + max(columns - 1, 0) * SWATCH_GAP
+
+
+#: A chip of every series. The lists draw one of the series switched on.
+SWATCH_WIDTH = swatch_width(len(SERIES))
 SWATCH_HEIGHT = len(MODALITIES) * SWATCH_CELL + (len(MODALITIES) - 1) * SWATCH_GAP
 
 

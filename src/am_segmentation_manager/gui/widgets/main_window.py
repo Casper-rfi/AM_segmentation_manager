@@ -558,6 +558,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.project_panel.lamella_checked.connect(self._check_lamella)
         self.project_panel.projects_check_all.connect(self._check_all_projects)
         self.project_panel.lamellae_check_all.connect(self._check_all_lamellae)
+        self.project_panel.shown_series_changed.connect(self._show_series)
 
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
@@ -719,6 +720,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.operations_panel,
             self.label_panel,
             self.export_panel,
+            # Last: its switches redraw the lists, which the others feed.
+            self.project_panel,
         ):
             panel.apply_defaults(values)
 
@@ -1113,6 +1116,24 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller.select_lamella(row)
         self.refresh()
 
+    def _show_series(self, series: tuple) -> None:
+        """Cover only *series*, in both tabs, both lists and every chip.
+
+        Nothing is redrawn before the first scan: there is nothing listed, and
+        the switches first announce themselves while the window is still being
+        built, before the frame loader a redraw schedules exists. The Label tab
+        is pointed again if it is in front, the lamella it was on having
+        possibly left the list.
+        """
+        self.controller.set_shown_series(series)
+        self.label_controller.set_shown_series(series)
+        self.project_panel.set_chip_series(series)
+        if not self.controller.projects:
+            return
+        self.refresh(reload_lists=True)
+        if self.tabs.currentWidget() is self.label_panel:
+            self._point_label_tab()
+
     def _seek_frame(self, value: int) -> None:
         if value != self.controller.frame_position:
             self.controller.select_frame(value)
@@ -1475,6 +1496,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.controller.lamella_position,
             self.controller.lamella_statuses(),
             self.controller.lamella_checks(),
+            hidden=self.controller.hidden_lamellae,
         )
 
     def _summary_text(self) -> str:

@@ -13,11 +13,11 @@ one; prose has to be rewritten whole every time either happens.
 ## What the software does today
 
 Every main function `CLAUDE.md` names is built, across the three series of images Autolamella writes
-— and a fourth, `other`, holding every image no naming rule reaches — and every layout era the
-collection holds. Add data, Curate, Label and Export are four tabs, each with a controller holding no
-Qt, and the command line does the same work for scripting and testing; Curate also draws a
-project's grid overview with its lamellae on it. Predictions need the second environment
-`scripts/setup_ml.sh` builds.
+— and a fourth, `other`, holding every image no naming rule reaches and listed once switched on —
+and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
+with a controller holding no Qt, and the command line does the same work for scripting and testing;
+Curate also draws a project's grid overview with its lamellae on it. Predictions need the second
+environment `scripts/setup_ml.sh` builds.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way.
@@ -33,9 +33,6 @@ latter declared in `gui/preferences.py` and reaching no write path.
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
   real training run in the middle: the parts have each been rehearsed, the loop never once end to
   end.
-- **A directory of overview tiles is indexed as a lamella**, 37 of the collection's 824, since
-  every directory holding a `.tif` became a stage. Correct as indexing, but it reads oddly in the
-  Curate lamella list: decide whether that list should say what a directory holds.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.

@@ -175,11 +175,11 @@ of one of these files, is held by `test_docs.py`.
   **clearing** one is confirmed, reading as tidying a placeholder rather than as emptying that field
   everywhere under the folder.
 - **The status chip is a cell per series and beam, and nothing combines across the two.** A column
-  per `SERIES` entry, SEM above FIB; only `LABELS_EXPECTED` ever varies, a reference column that
-  changed being a claim that work nobody intends to do is outstanding. Combined, reference
-  images sitting at the default state for ever make a finished project report as part-done. Its
-  width counts `SERIES` rather than writing the number down: a column painted outside the pixmap
-  is clipped silently.
+  per series switched on, SEM above FIB; only `LABELS_EXPECTED` ever varies, a reference column that
+  changed being a claim that work nobody intends to do is outstanding. Combined, reference images
+  sitting at the default state for ever make a finished project report as part-done. Its width is
+  `swatch_width` of the columns drawn rather than a number written down: a column painted outside
+  the pixmap is clipped silently.
 - **Its cells are told apart by brightness, not by hue, and none is outlined.** The timeline's blue
   and teal are the same brightness, so a cell split between them was separated by the one channel
   the eye cannot use at that size. `CELL_COLOURS` is a ramp, lightest
@@ -389,7 +389,10 @@ of one of these files, is held by `test_docs.py`.
   `resolve_series` falls back to a series the lamella holds without touching the choice, or a
   lamella showing an empty timeline has, the control being hidden for holding one entry, no way
   back. **The beam follows the same rule** in `_settle_mode`, asked of the whole stack rather than
-  the frame on screen; both settle in `_rebuild_frames`.
+  the frame on screen; both settle in `_rebuild_frames`. **Which series are covered at all is a
+  second choice**, the *Series shown* switches: a lamella holding only series switched off leaves
+  the list, counted in its title, and reaches no change
+  (`test_the_residue_opens_switched_off_and_counted`); `other` opens off.
 - **A series with no labels is shown and not acted on.** The timeline shows `other`, opening one to
   judge whether the rule or the data is wrong being why they are indexed, while the state buttons
   and every operation button are withheld, each reading or writing a label the series lacks

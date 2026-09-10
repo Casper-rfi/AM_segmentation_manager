@@ -219,7 +219,7 @@ class ProjectTree(QTreeWidget):
         # Narrower than Qt's default, which spends most of a 270px panel on
         # saying that a project is one level down.
         self.setIndentation(TREE_INDENT)
-        # Or Qt scales the chip to a text line's height and the six cells
+        # Or Qt scales the chip to a text line's height and the cells
         # come out a smudge.
         self.setIconSize(QSize(SWATCH_WIDTH, SWATCH_HEIGHT))
         self.itemChanged.connect(self._item_changed)

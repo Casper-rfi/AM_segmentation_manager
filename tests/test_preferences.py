@@ -118,3 +118,20 @@ def test_the_groups_hold_every_preference_once():
     assert sorted(entry.key for entry in grouped) == sorted(
         entry.key for entry in preferences.PREFERENCES
     )
+
+
+def test_the_lists_open_without_the_residue():
+    """`other` is worth reaching and not worth listing beside the lamellae."""
+    values = preferences.read(Store())
+
+    assert preferences.shown_series_from(values) == tuple(
+        name for name in SERIES if name != "other"
+    )
+
+
+def test_showing_no_series_falls_back_to_what_the_package_ships():
+    values = preferences.read(
+        Store({f"{preferences.SETTINGS_PREFIX}/shown/{name}": False for name in SERIES})
+    )
+
+    assert preferences.shown_series_from(values) == preferences.DEFAULT_SHOWN_SERIES
