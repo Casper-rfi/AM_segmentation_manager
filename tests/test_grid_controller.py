@@ -184,6 +184,22 @@ def test_an_overview_a_grid_task_wrote_is_offered_and_marks_no_folder_as_a_lamel
     assert [marker.name for marker in grid.placement.markers] == ["01-ruling-ibex"]
 
 
+def test_the_rows_below_the_scan_are_not_drawn(tmp_path: Path):
+    """The microscope's own software writes an information bar below the scan,
+    in rows its header does not count. A mark is a fraction of the scan, so a
+    picture keeping the bar would put every mark too low."""
+    root, project = make_project(tmp_path)
+    tifffile.imwrite(
+        str(project / "overview-image-2026-07-28_10-31-00.tif"),
+        np.full((256 + 20, 256), 40, dtype=np.uint8),
+        description=header(when="2026-07-28 10:31:00"),
+    )
+
+    grid = grid_for(root)
+
+    assert grid.image().image.shape[:2] == (256, 256)
+
+
 def test_choosing_an_overview_shows_that_one(tmp_path: Path):
     root, project = make_project(tmp_path)
     add_overview(project, "overview-image-2026-07-28_10-31-00.tif", when="2026-07-28 10:31:00")

@@ -70,6 +70,9 @@ class OverviewChoice:
             placed on it.
         reason: Why nothing is placed, where nothing is -- said to the reviewer
             rather than leaving a picture with no rings to explain itself.
+        scanned_height: How many of the file's rows the scan fills, as its
+            header counts them, where it says. The microscope's own software
+            writes an information bar below the scan, in rows it does not count.
     """
 
     overview: OverviewImage
@@ -77,6 +80,7 @@ class OverviewChoice:
     acquired_at: datetime | None = None
     placement: GridPlacement | None = None
     reason: str | None = None
+    scanned_height: int | None = None
 
 
 @dataclass(frozen=True)
@@ -169,7 +173,7 @@ class GridController:
         if current is None:
             return None
         if self._image is None:
-            self._image = _read(current.overview.display_path)
+            self._image = _read(current.overview.display_path, current.scanned_height)
         return self._image
 
     def marker_named(self, name: str | None) -> LamellaMarker | None:
@@ -235,9 +239,12 @@ def _choice(overview: OverviewImage, positions: list[StagePosition]) -> Overview
     metadata = _header(path)
     caption = _caption(path, metadata)
     acquired_at = metadata.acquired_at if metadata is not None else None
+    scanned_height = metadata.image_height if metadata is not None else None
 
     def unplaced(reason: str) -> OverviewChoice:
-        return OverviewChoice(overview, caption, acquired_at, reason=reason)
+        return OverviewChoice(
+            overview, caption, acquired_at, reason=reason, scanned_height=scanned_height
+        )
 
     if metadata is None:
         return unplaced("no header to place positions with")
@@ -250,7 +257,8 @@ def _choice(overview: OverviewImage, positions: list[StagePosition]) -> Overview
     if not markers:
         return unplaced("no recorded position could be placed on this overview")
     return OverviewChoice(
-        overview, caption, acquired_at, GridPlacement(geometry, tuple(markers))
+        overview, caption, acquired_at, GridPlacement(geometry, tuple(markers)),
+        scanned_height=scanned_height,
     )
 
 
@@ -275,14 +283,23 @@ def _caption(path: Path, metadata: ImageMetadata | None) -> str:
     return " · ".join(parts)
 
 
-def _read(path: Path) -> GridImage:
-    """Read an overview reduced to :data:`MAX_EDGE`, or say why it would not."""
+def _read(path: Path, rows: int | None = None) -> GridImage:
+    """Read an overview reduced to :data:`MAX_EDGE`, or say why it would not.
+
+    Only its top *rows* where given: a mark is placed as a fraction of the
+    scan, so a picture with the microscope's information bar still below it
+    would put every mark too low, by up to the bar's height.
+    """
     try:
-        from ..display import prepare_plot
+        from ..display import fit_within, read_color_array, require_image_stack, to_rgb
     except Exception as exc:  # noqa: BLE001 - the optional image stack
         return GridImage(error=str(exc))
     try:
-        return GridImage(image=prepare_plot(path, max_size=(MAX_EDGE, MAX_EDGE)))
+        require_image_stack("Displaying overviews")
+        picture = to_rgb(read_color_array(path))
+        if rows:
+            picture = picture[:rows]
+        return GridImage(image=fit_within(picture, (MAX_EDGE, MAX_EDGE)))
     except Exception as exc:  # noqa: BLE001 - an unreadable file is reportable
         logger.warning("Could not prepare overview %s: %s", path, exc)
         return GridImage(error=str(exc))
