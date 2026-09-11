@@ -46,6 +46,6 @@ latter declared in `gui/preferences.py` and reaching no write path.
   `[project.urls]`, and the version pinned at `0.0.0`. `mypy` is not configured and `ruff` does not check types, so the
   annotations are unverified. The suite passed under German and Japanese locales on 2026-09-11; run
   it so again before any release, for the reasons in [`display.md`](display.md) § Testing the window. And
-  [`decisions.md`](decisions.md) § Environment names the collection twice by absolute path, which
+  [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which
   is what makes never writing to it a rule about a real place rather than a principle: decide then
   whether a reader outside this machine needs the paths or only the rule.

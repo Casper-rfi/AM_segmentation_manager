@@ -566,9 +566,8 @@ rather than appending to it.
   move, overwrite or delete anything inside it without permission asked for and given for that
   specific change. It holds thousands of proofread labels that cannot be reconstructed, and the copy
   that used to absorb mistakes is gone — which is why this entry names real data at all. Read it,
-  and copy *out* of it; `<collection>/` holds the original
-  labels those were placed from, read-only on the same terms. `test_reference_collection.py`
-  snapshots every file before and after; nothing enforces this for anything else you run.
+  and copy *out* of it. `test_reference_collection.py` snapshots every file before and after;
+  nothing enforces this for anything else you run.
 - **`matplotlib` is in the `gui` and `all` extras rather than only `plots`**: against the OpenCV
   and Qt those already install, its size is not what makes an environment large. Why figures are
   never built through `pyplot` is `plots.py`'s own docstring.
