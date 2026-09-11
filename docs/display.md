@@ -260,9 +260,15 @@ of one of these files, is held by `test_docs.py`.
   and no count, which `_show_report` shows and dismisses.
 - **Neither side of a conflict is offered as the answer.** A default is a rule about which tree wins,
   and a conflict exists precisely because there is not one — so nothing is chosen in advance and
-  *Merge* stays disabled until every row is answered. **Qt makes the first accepting button in a
-  `QDialogButtonBox` the default and draws it in the accent**, which recommends a side in the one
-  place nothing may: both are cleared and Cancel takes it, as before every other write.
+  *Merge* stays disabled until every conflict is answered. **Qt makes the first accepting button in
+  a `QDialogButtonBox` the default and draws it in the accent**, which recommends a side in the one
+  place nothing may: both are cleared and Cancel takes it, as before every other write. Return and
+  Escape therefore reach Cancel, which asks before discarding decisions already made.
+- **A conflict heading shows decisions and holds none.** Two marks per row, *Here* and *Copy*, each
+  full, dotted or empty: a heading decided both ways must show some of each, which one control per
+  row could not (`test_a_heading_shows_how_much_of_it_each_side_holds`). **The keys decide the
+  conflict on screen, never a heading**, or one keystroke could decide a folder of a thousand
+  (`test_the_keys_act_on_the_conflict_on_screen_never_a_heading`).
 - **Who changes are recorded under is a standing line beside the mark, not a warning per action.**
   Ten actions across all four tabs put a name into a log, and one more writes it into an export's
   fork point: there is no single tab to say it on and far too many places to warn at. It is muted,

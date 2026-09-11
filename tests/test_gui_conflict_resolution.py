@@ -190,6 +190,19 @@ def test_undeciding_puts_every_conflict_under_a_row_back():
     assert resolution.outstanding() == 2
 
 
+def test_toggling_fills_a_mark_that_is_not_full_and_empties_one_that_is():
+    rows = [_group(P, "01-cat", n) for n in (1, 2)]
+    resolution = ConflictResolution(rows)
+    lamella = _node(resolution.labels, "session_a", "Auto-1", "01-cat")
+    resolution.decide(resolution.conflict(rows[0].key), THEIRS)
+
+    resolution.toggle(lamella, THEIRS)
+    assert resolution.coverage(lamella, THEIRS) == ALL
+
+    resolution.toggle(lamella, THEIRS)
+    assert resolution.resolutions == {}
+
+
 def test_a_side_that_is_neither_is_refused():
     resolution = ConflictResolution([_group(P, "01-cat", 1)])
 

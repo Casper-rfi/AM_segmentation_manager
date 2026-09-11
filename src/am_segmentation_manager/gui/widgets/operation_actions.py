@@ -21,6 +21,7 @@ from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 from ...operations.metadata_csv import export_project_metadata_csv
 from ...operations.predict_process import probe_devices
 from ...progress import Cancellation
+from .. import preferences
 from ..report import OperationReport
 from .common import MAX_LISTED_FILES
 from .conflict_dialog import ConflictDialog
@@ -563,7 +564,10 @@ class OperationActions:
             if not self._confirm_report(title, report, action):
                 return False
             dialog = ConflictDialog(
-                self, report.conflicts, self.controller.config
+                self, report.conflicts, self.controller.config,
+                advance=bool(
+                    preferences.read(self.settings)["advance_after_deciding"]
+                ),
             )
             if dialog.exec_() != QDialog.Accepted:
                 return False

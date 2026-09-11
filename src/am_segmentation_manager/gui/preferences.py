@@ -99,6 +99,11 @@ class Preference:
         return isinstance(self.fallback, bool)
 
 
+#: Whether the conflict resolver moves on after a decision. Off, because a
+#: view that moves as the key is pressed has to be learnt before it helps.
+DEFAULT_ADVANCE = False
+
+
 PREFERENCES: tuple[Preference, ...] = (
     Preference(
         key="speck_pixels",
@@ -138,6 +143,17 @@ PREFERENCES: tuple[Preference, ...] = (
         hint=(
             "How strongly a label is drawn over the image, on both tabs that "
             "draw one. Changes nothing on disk and reaches no export."
+        ),
+    ),
+    Preference(
+        key="advance_after_deciding",
+        group=PROOFREADING,
+        label="Move on after deciding a conflict",
+        fallback=DEFAULT_ADVANCE,
+        hint=(
+            "Whether a merge's conflict resolver opens going to the next "
+            "undecided conflict once one is decided. The switch beside its "
+            "viewer changes it for one merge."
         ),
     ),
     *(

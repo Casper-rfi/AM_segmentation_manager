@@ -502,12 +502,14 @@ rather than appending to it.
 - **A label and its workflow state are one decision.** Both resolve under the key
   `<project>/<target>`, so taking the copy's pixels takes its state with them. Deliberate: holding
   their label under a `corrected` claim made here would assert that somebody proofread pixels nobody
-  here has seen. The conflict list is one row per group because of this, and splitting the key would
+  here has seen. The resolver has one row per group because of this, and splitting the key would
   have to come first.
 - **One resolution function serves labels, states and metadata fields**, so three kinds of change
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which
-  tree wins. A conflict is decided by name or not at all, and **one stops the whole merge**.
+  tree wins. A conflict is decided by a person or not at all — by name, or by a folder, project or
+  lamella the resolver expands into names, so the merge still reads one decision per conflict — and
+  **one stops the whole merge**.
 - **The fork point proves where a copy came from; the ancestor is the history the two logs share**,
   for the reason `merge.py` opens with. A merge verifies before it compares — path, declared id, and
   the tip looked for here — since a copy of a copy carries a plausible file naming an ancestor that

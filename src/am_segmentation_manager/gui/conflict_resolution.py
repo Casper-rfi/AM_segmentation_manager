@@ -168,6 +168,13 @@ class ConflictResolution:
             else:
                 self._decided[key] = side
 
+    def toggle(self, node: ConflictNode, side: str) -> None:
+        """Give *side* to everything under *node*, or take it away where it holds it throughout.
+
+        What clicking a mark does: a full mark empties, any other fills.
+        """
+        self.decide(node, None if self.coverage(node, side) == ALL else side)
+
     def decide_all(self, nodes: Iterable[ConflictNode], side: str | None) -> None:
         """Decide every row of *nodes* the same way, as :meth:`decide` does one."""
         for node in nodes:
