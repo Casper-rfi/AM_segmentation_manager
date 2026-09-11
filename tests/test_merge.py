@@ -33,10 +33,19 @@ from am_segmentation_manager.operations.label_save import LabelToSave, save_labe
 from am_segmentation_manager.operations.merge import (
     CONFLICT,
     CONVERGED,
+    EVERYTHING,
     KEEP_OURS,
+    OURS,
     TAKE_THEIRS,
+    THEIRS,
+    LabelMerge,
+    MergePlan,
     MergeRefused,
+    MetadataMerge,
+    ProjectMerge,
+    StateMerge,
     apply_merge,
+    decisions_for,
     plan_merge,
 )
 from am_segmentation_manager.scanner import Scanner
@@ -489,6 +498,165 @@ def test_a_malformed_decision_is_refused(forked):
     assert main(
         ["merge", str(forked.copy), "--into", str(forked.main), "--resolve", "nonsense"]
     ) == 2
+
+
+def test_the_command_decides_a_whole_project_at_once(forked, recorder):
+    """Its labels and its fields together, as a project's mark does in the
+    window."""
+    from am_segmentation_manager.cli import main
+    from am_segmentation_manager.io.yaml import read_yaml
+    from am_segmentation_manager.operations.metadata_edit import update_project_metadata
+
+    _edit(forked.label(forked.main), 3, recorder)
+    _edit(forked.label(forked.copy), 4, recorder)
+    update_project_metadata(forked.project, {"sample": "yeast"}, recorder=recorder)
+    update_project_metadata(
+        forked.copy / "project", {"sample": "HeLa"}, recorder=recorder
+    )
+    theirs = _digest(forked.label(forked.copy))
+
+    assert main(
+        [
+            "merge", str(forked.copy), "--into", str(forked.main), "--apply",
+            "--resolve", "project=theirs",
+        ]
+    ) == 0
+
+    assert _digest(forked.label(forked.main)) == theirs
+    assert read_yaml(forked.project / "AM_metadata.yaml")["metadata"]["sample"] == "HeLa"
+
+
+def test_a_decision_that_decides_nothing_is_refused(forked, recorder):
+    """A mistyped path deciding nothing would pass unnoticed otherwise."""
+    from am_segmentation_manager.cli import main
+
+    _edit(forked.label(forked.main), 3, recorder)
+    _edit(forked.label(forked.copy), 4, recorder)
+    ours = _digest(forked.label(forked.main))
+
+    assert main(
+        [
+            "merge", str(forked.copy), "--into", str(forked.main), "--apply",
+            "--resolve", f"project/{forked.target}=theirs",
+            "--resolve", "elsewhere=ours",
+        ]
+    ) == 2
+    assert _digest(forked.label(forked.main)) == ours
+
+
+# ---------------------------------------------------------------------------
+# Deciding by scope
+# ---------------------------------------------------------------------------
+
+def _plan_of(*projects) -> MergePlan:
+    """Return a plan holding label and field conflicts, with no trees behind it.
+
+    Each project is ``(key, label targets, field names)``.
+    """
+    return MergePlan(
+        source=Path("copy"),
+        destination=Path("collection"),
+        record=None,
+        projects=tuple(
+            ProjectMerge(
+                key=key,
+                our_root=Path(key),
+                their_root=Path(key),
+                labels=tuple(
+                    LabelMerge(
+                        target=target, ancestor="a", ours="b", theirs="c",
+                        our_path=Path(target), their_path=Path(target),
+                        outcome=CONFLICT,
+                    )
+                    for target in targets
+                ),
+                metadata=tuple(
+                    MetadataMerge(
+                        field=name, ancestor=None, ours="x", theirs="y",
+                        outcome=CONFLICT,
+                    )
+                    for name in fields
+                ),
+            )
+            for key, targets, fields in projects
+        ),
+    )
+
+
+@pytest.fixture
+def scoped() -> MergePlan:
+    """Conflicts in two folders, one project's name the start of another's."""
+    return _plan_of(
+        ("f/p1", ("lam1/s/a.tif", "lam1/s/b.tif", "lam2/s/a.tif"), ("sample",)),
+        ("f/p10", ("lam1/s/a.tif",), ()),
+        ("g/p3", ("lam1/s/a.tif",), ()),
+    )
+
+
+def test_a_scope_decides_every_conflict_under_it_and_nothing_else(scoped):
+    assert decisions_for(scoped, {"f/p1/lam1": THEIRS}) == {
+        "f/p1/lam1/s/a.tif": THEIRS,
+        "f/p1/lam1/s/b.tif": THEIRS,
+    }
+
+
+def test_a_project_holds_its_fields_and_a_folder_its_projects(scoped):
+    by_project = decisions_for(scoped, {"f/p1": OURS})
+    assert set(by_project) == {
+        "f/p1/lam1/s/a.tif", "f/p1/lam1/s/b.tif", "f/p1/lam2/s/a.tif", "f/p1:sample"
+    }, "a project whose name only starts the same, f/p10, is not under it"
+
+    by_folder = decisions_for(scoped, {"f": OURS})
+    assert set(by_folder) == {key for key in scoped.conflict_keys if key.startswith("f/")}
+
+
+def test_everything_is_one_scope(scoped):
+    assert set(decisions_for(scoped, {EVERYTHING: THEIRS})) == set(scoped.conflict_keys)
+
+
+def test_the_narrowest_scope_decides_whatever_order_they_come_in(scoped):
+    given = {EVERYTHING: THEIRS, "f/p1": OURS, "f/p1/lam1/s/a.tif": THEIRS}
+    for chosen in (given, dict(reversed(list(given.items())))):
+        decided = decisions_for(scoped, chosen)
+        assert decided["f/p1/lam1/s/a.tif"] == THEIRS
+        assert decided["f/p1/lam1/s/b.tif"] == OURS
+        assert decided["g/p3/lam1/s/a.tif"] == THEIRS
+
+
+def test_a_scope_holding_no_conflict_is_refused(scoped):
+    with pytest.raises(ValueError, match="f/p2"):
+        decisions_for(scoped, {"f/p1": OURS, "f/p2": THEIRS})
+
+
+def test_a_scope_is_read_as_its_conflicts_are_named(scoped):
+    assert decisions_for(scoped, {"./f/p1/lam1/": THEIRS}) == decisions_for(
+        scoped, {"f/p1/lam1": THEIRS}
+    )
+
+
+def test_a_side_that_is_neither_is_refused(scoped):
+    with pytest.raises(ValueError, match="both"):
+        decisions_for(scoped, {"f": "both"})
+
+
+def test_a_label_and_its_state_are_one_name(scoped):
+    project = scoped.projects[0]
+    state = StateMerge(
+        target="lam1/s/a.tif", ancestor="selected", ours="corrected",
+        theirs="deselected", record=None, outcome=CONFLICT,
+    )
+    plan = MergePlan(
+        source=scoped.source, destination=scoped.destination, record=None,
+        projects=(
+            ProjectMerge(
+                key=project.key, our_root=project.our_root,
+                their_root=project.their_root, labels=project.labels[:1],
+                states=(state,),
+            ),
+        ),
+    )
+
+    assert plan.conflict_keys == ("f/p1/lam1/s/a.tif",)
 
 
 # ---------------------------------------------------------------------------

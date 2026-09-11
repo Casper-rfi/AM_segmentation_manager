@@ -508,8 +508,10 @@ rather than appending to it.
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which
   tree wins. A conflict is decided by a person or not at all — by name, or by a folder, project or
-  lamella the resolver expands into names, so the merge still reads one decision per conflict — and
-  **one stops the whole merge**.
+  lamella that the resolver or `--resolve` expands into names, the narrowest scope deciding
+  (`test_the_narrowest_scope_decides_whatever_order_they_come_in`), so the merge still reads one
+  decision per conflict — and **one stops the whole merge**. A scope holding no conflict is refused
+  rather than ignored, or a mistyped path would decide nothing without saying so.
 - **The fork point proves where a copy came from; the ancestor is the history the two logs share**,
   for the reason `merge.py` opens with. A merge verifies before it compares — path, declared id, and
   the tip looked for here — since a copy of a copy carries a plausible file naming an ancestor that

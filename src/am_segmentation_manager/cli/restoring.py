@@ -33,6 +33,7 @@ from ..operations.merge import (
     THEIRS,
     MergeRefused,
     apply_merge,
+    decisions_for,
     plan_merge,
 )
 from ..operations.revert import UNDOABLE, apply_revert, plan_revert, plan_revert_to
@@ -66,7 +67,8 @@ def add_arguments(sub) -> None:
             "the copy's AM_export.yaml names, so what changed is read from the "
             "files rather than believed from a log. A target only one side "
             "changed is taken; one both changed differently is a conflict, and "
-            "one conflict stops the whole merge until it is decided by name. "
+            "one conflict stops the whole merge until it is decided -- by name, "
+            "or by the folder, project or lamella holding it. "
             "Nothing is ever deleted: a target the copy does not hold is not a "
             "deletion, and no image is moved. Previews by default."
         ),
@@ -77,10 +79,13 @@ def add_arguments(sub) -> None:
         help="The collection it came from",
     )
     merge_cmd.add_argument(
-        "--resolve", action="append", default=[], metavar="TARGET=SIDE",
+        "--resolve", action="append", default=[], metavar="SCOPE=SIDE",
         help=(
-            "Decide one conflict: '<project>/<label>=theirs' or "
-            "'<project>:<field>=ours'. Repeatable. Both versions stay in the "
+            "Decide conflicts, SIDE being 'theirs' or 'ours'. SCOPE is one "
+            "conflict ('<project>/<label>' or '<project>:<field>'), a folder, "
+            "project or lamella holding several, or '.' for all of them. "
+            "Repeatable; the narrowest scope holding a conflict decides it, and "
+            "a scope holding none is refused. Both versions stay in the "
             "archive whichever way it goes"
         ),
     )
@@ -203,17 +208,25 @@ def add_arguments(sub) -> None:
 def _cmd_merge(args: argparse.Namespace) -> int:
     """Handle ``am-seg merge``."""
     try:
-        resolutions = _resolutions(args.resolve)
+        chosen = _resolutions(args.resolve)
     except ValueError as error:
         logger.error("%s", error)
         return 2
 
+    source, destination = Path(args.source), Path(args.into)
     try:
-        plan = plan_merge(
-            Path(args.source), Path(args.into), resolutions=resolutions
-        )
+        plan = plan_merge(source, destination)
+        if chosen:
+            # A scope names conflicts, so the plan that finds them comes
+            # first; the merge itself reads one decision per conflict.
+            plan = plan_merge(
+                source, destination, resolutions=decisions_for(plan, chosen)
+            )
     except MergeRefused as error:
         logger.error("Refused: %s", error)
+        return 2
+    except ValueError as error:
+        logger.error("Nothing was merged: %s", error)
         return 2
 
     for line in plan.describe():
@@ -231,9 +244,10 @@ def _cmd_merge(args: argparse.Namespace) -> int:
         )
     if plan.is_refused:
         logger.error(
-            "Nothing was merged. Decide each conflict with --resolve "
-            "'<target>=theirs' or '<target>=ours'; both versions stay in the "
-            "archive either way."
+            "Nothing was merged. Decide them with --resolve '<scope>=theirs' "
+            "or '<scope>=ours', the scope being a conflict, the folder, project "
+            "or lamella holding some, or '.' for all; both versions stay in "
+            "the archive either way."
         )
         return 2
     if not taken and not any(project.incoming for project in plan.projects):
@@ -266,20 +280,20 @@ def _cmd_merge(args: argparse.Namespace) -> int:
 
 
 def _resolutions(chosen: list[str]) -> dict[str, str]:
-    """Return the conflicts decided on the command line.
+    """Return the scopes decided on the command line, and the side each was given.
 
     Raises:
-        ValueError: If one is not ``<target>=theirs`` or ``<target>=ours``.
+        ValueError: If one is not ``<scope>=theirs`` or ``<scope>=ours``.
     """
     resolutions = {}
     for item in chosen:
-        target, _, side = item.rpartition("=")
-        if not target or side not in (THEIRS, OURS):
+        scope, _, side = item.rpartition("=")
+        if not scope or side not in (THEIRS, OURS):
             raise ValueError(
-                f"{item!r} is not a decision: write '<target>=theirs' or "
-                "'<target>=ours'"
+                f"{item!r} is not a decision: write '<scope>=theirs' or "
+                "'<scope>=ours'"
             )
-        resolutions[target] = side
+        resolutions[scope] = side
     return resolutions
 
 

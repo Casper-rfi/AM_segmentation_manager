@@ -20,7 +20,8 @@ Curate also draws a project's grid overviews, whatever wrote them, with its lame
 need the second environment `scripts/setup_ml.sh` builds.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
-`AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way.
+`AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its
+conflicts decided one at a time or a folder, project or lamella at once.
 [`decisions.md`](decisions.md) § History says how each of those decides.
 
 **Settings** (F2) hold the name changes are recorded under and what each control opens at, the
@@ -28,9 +29,8 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 
-- **A resolver for merge conflicts**, on branch `conflict-resolver`: metadata fields, then labels,
-  then the merge, each page a tree by folder and project beside the values or the viewer. Still to
-  build: bulk `--resolve` by scope on the command line.
+- **Try the conflict resolver on a real merge** before branch `conflict-resolver` joins main. Its
+  keys have been exercised only through their handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Run `init-history` there, so a savepoint covers
   everything rather than only what has been touched since — around 950 KB across 3,236 labels, two
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a

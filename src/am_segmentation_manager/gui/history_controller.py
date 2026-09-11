@@ -38,6 +38,8 @@ from ..operations.merge import (
     TAKE_THEIRS,
     MergeRefused,
     apply_merge,
+    field_key,
+    label_key,
     plan_merge,
 )
 from ..operations.revert import apply_revert, plan_revert, plan_revert_to
@@ -115,7 +117,7 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
         for item in project.labels:
             if item.outcome != CONFLICT:
                 continue
-            key = f"{project.key}/{item.target}"
+            key = label_key(project.key, item.target)
             rows[key] = ConflictRow(
                 key=key,
                 title=key,
@@ -131,7 +133,7 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
         for item in project.states:
             if item.outcome != CONFLICT:
                 continue
-            key = f"{project.key}/{item.target}"
+            key = label_key(project.key, item.target)
             line = f"the state: {item.ours} here, {item.theirs} in the copy"
             existing = rows.get(key)
             rows[key] = (
@@ -145,7 +147,7 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
         for item in project.metadata:
             if item.outcome != CONFLICT:
                 continue
-            key = f"{project.key}:{item.field}"
+            key = field_key(project.key, item.field)
             rows[key] = ConflictRow(
                 key=key,
                 title=f"{project.key} — {item.field}",

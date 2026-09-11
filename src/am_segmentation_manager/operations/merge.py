@@ -21,8 +21,8 @@ version while reporting success.
 **A merge is additive and it never guesses.** A target the copy does not hold is
 not a deletion, a copy holding a fraction of a collection being the ordinary
 case; no image is ever moved; and a target both sides changed differently is a
-conflict a person resolves by name, never by a timestamp or a rule about which
-tree wins. Both versions survive in the archive whichever way it goes.
+conflict a person resolves, never a timestamp or a rule about which tree
+wins. Both versions survive in the archive whichever way it goes.
 """
 from __future__ import annotations
 
@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CONFLICT",
     "CONVERGED",
+    "EVERYTHING",
     "KEEP_OURS",
     "OURS",
     "TAKE_THEIRS",
@@ -75,6 +76,9 @@ __all__ = [
     "ProjectMerge",
     "StateMerge",
     "apply_merge",
+    "decisions_for",
+    "field_key",
+    "label_key",
     "plan_merge",
 ]
 
@@ -92,6 +96,9 @@ CONFLICT: Final[str] = "conflict"
 #: What a person's decision about a conflict says, as :func:`plan_merge` reads it.
 OURS: Final[str] = "ours"
 THEIRS: Final[str] = "theirs"
+
+#: The scope holding every conflict of a merge.
+EVERYTHING: Final[str] = "."
 
 #: Outcomes a merge writes something for.
 _APPLIED: Final[frozenset[str]] = frozenset({TAKE_THEIRS})
@@ -228,6 +235,22 @@ class MergePlan:
         return tuple(item for project in self.projects for item in project.conflicts)
 
     @property
+    def conflict_keys(self) -> tuple[str, ...]:
+        """Return the name of every unresolved conflict, once each, in plan order.
+
+        A label and its state share a name, being one decision.
+        """
+        keys: dict[str, None] = {}
+        for project in self.projects:
+            for item in (*project.labels, *project.states):
+                if item.outcome == CONFLICT:
+                    keys[label_key(project.key, item.target)] = None
+            for item in project.metadata:
+                if item.outcome == CONFLICT:
+                    keys[field_key(project.key, item.field)] = None
+        return tuple(keys)
+
+    @property
     def corrected(self) -> tuple[object, ...]:
         """Return everything here that would write over, or unmark, proofread work.
 
@@ -304,6 +327,72 @@ class MergeReport:
     fields_taken: int = 0
     entries_added: int = 0
     archived: tuple[str, ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Naming a decision
+# ---------------------------------------------------------------------------
+
+def label_key(project: str, target: str) -> str:
+    """Return the name a decision about a label group, and its state, is keyed by."""
+    return f"{project}/{target}"
+
+
+def field_key(project: str, field: str) -> str:
+    """Return the name a decision about a project metadata field is keyed by."""
+    return f"{project}:{field}"
+
+
+def decisions_for(plan: MergePlan, chosen: Mapping[str, str]) -> dict[str, str]:
+    """Return one decision per conflict of *plan*, from decisions about scopes.
+
+    A scope is a conflict's own name, a folder, project or lamella -- any path
+    the names sit under -- or :data:`EVERYTHING`. **The narrowest scope holding
+    a conflict decides it**, in whatever order they were given, so a project
+    can go one way and a lamella in it the other.
+
+    Raises:
+        ValueError: If a side is neither :data:`OURS` nor :data:`THEIRS`, or a
+            scope holds no conflict of *plan*: a mistyped path would otherwise
+            decide nothing without saying so.
+    """
+    scopes = {_scope(scope): side for scope, side in chosen.items()}
+    wrong = sorted(side for side in scopes.values() if side not in (OURS, THEIRS))
+    if wrong:
+        raise ValueError(
+            f"{', '.join(map(repr, wrong))} is not a side: write {OURS!r} or {THEIRS!r}"
+        )
+    keys = plan.conflict_keys
+    empty = [scope for scope in scopes if not any(_within(key, scope) for key in keys)]
+    if empty:
+        raise ValueError(
+            f"{', '.join(map(repr, empty))} holds no conflict of this merge; "
+            f"the conflicts are named '<project>/<label>' or '<project>:<field>'."
+        )
+    decided = {}
+    for key in keys:
+        holding = [scope for scope in scopes if _within(key, scope)]
+        if holding:
+            decided[key] = scopes[max(holding, key=_narrowness)]
+    return decided
+
+
+def _scope(scope: str) -> str:
+    """Return *scope* as its conflicts are named: relative, with no trailing slash."""
+    scope = scope.strip().removeprefix("./").rstrip("/")
+    return scope or EVERYTHING
+
+
+def _within(key: str, scope: str) -> bool:
+    """Return whether the conflict named *key* sits under *scope*, by whole names."""
+    if scope == EVERYTHING:
+        return True
+    return key == scope or key.startswith((f"{scope}/", f"{scope}:"))
+
+
+def _narrowness(scope: str) -> int:
+    """Return how narrow *scope* is: of two holding one conflict, one holds the other."""
+    return -1 if scope == EVERYTHING else len(scope)
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +507,7 @@ def _plan_project(
     labels = tuple(
         _plan_label(
             target, ancestors.get(target), our_groups.get(target), their_group,
-            our_project.path, decided.get(f"{our_project.key}/{target}"),
+            our_project.path, decided.get(label_key(our_project.key, target)),
             their_tips.get(target, ""),
         )
         for target, their_group in sorted(their_groups.items())
@@ -426,7 +515,7 @@ def _plan_project(
     states = tuple(
         _plan_state(
             target, _state_at(shared, target), our_groups.get(target), their_group,
-            decided.get(f"{our_project.key}/{target}"),
+            decided.get(label_key(our_project.key, target)),
         )
         for target, their_group in sorted(their_groups.items())
     )
@@ -512,7 +601,7 @@ def _plan_metadata(
         our_value = mine[-1].data.get("new") if mine else ancestor
         their_value = other[-1].data.get("new") if other else ancestor
         outcome, reason = _resolve(
-            ancestor, our_value, their_value, decided.get(f"{key}:{name}")
+            ancestor, our_value, their_value, decided.get(field_key(key, name))
         )
         if outcome != UNCHANGED:
             merged.append(
