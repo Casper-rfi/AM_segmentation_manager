@@ -31,11 +31,10 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 - **Try the conflict resolver on a real merge** before branch `conflict-resolver` joins main. Its
   keys have been exercised only through their handlers, an offscreen window never being activated.
-- **Close one round on the real collection.** Run `init-history` there, so a savepoint covers
-  everything rather than only what has been touched since — around 950 KB across 3,236 labels, two
-  minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
-  real training run in the middle: the parts have each been rehearsed, the loop never once end to
-  end.
+- **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
+  taken 2026-09-11 over all 123 projects with 3,236/3,236 labels reachable. Close **one whole
+  round** from there with a real training run in the middle: the parts have each been rehearsed,
+  the loop never once end to end.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.

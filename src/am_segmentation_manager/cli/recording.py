@@ -48,11 +48,14 @@ def add_arguments(sub) -> None:
         description=(
             "Write each project's first AM_history.jsonl and one baseline entry "
             "per label group that has a label or a state other than selected. "
-            "Nothing records until this has run, so this is what a collection "
-            "opts in with. Re-runnable: a second run adds only what is new. "
+            "A project starts recording the first time anything changes it; "
+            "this brings every project in at once, so a savepoint covers the "
+            "whole collection rather than whatever had been edited. "
+            "Re-runnable: a second run adds only what is new. "
             "A baseline says what was *seen*, never when it was annotated -- "
-            "that is not recoverable, the collection having been copied. "
-            "Previews by default; pass --apply to write."
+            "that is not recoverable, the collection having been copied. It is "
+            "written once, under the name --user or Settings gives or none, so "
+            "set that first. Previews by default; pass --apply to write."
         ),
     )
     init_history_cmd.add_argument(
@@ -178,11 +181,6 @@ def add_arguments(sub) -> None:
 # The commands
 # ---------------------------------------------------------------------------
 
-
-# ---------------------------------------------------------------------------
-# The commands
-# ---------------------------------------------------------------------------
-
 def _cmd_init_history(args: argparse.Namespace) -> int:
     """Handle ``am-seg init-history``."""
     start_path = Path(args.start_path)
@@ -297,7 +295,7 @@ def _cmd_savepoint(args: argparse.Namespace) -> int:
 
 
 def _cmd_savepoints(args: argparse.Namespace) -> int:
-    """Handle ``am-seg savepoints``."""
+    """Handle ``am-seg list-savepoints``."""
 
     start_path = Path(args.start_path)
     projects = Scanner(start_path).build_index().all_projects()
@@ -429,11 +427,6 @@ def _print_history_entry(event: Event) -> None:
     if details:
         print(f"    {details}")
 
-
-
-
-#: What each of this group's subcommands runs. Registered above and dispatched
-#: here, so the two cannot name different sets.
 
 #: What each of this group's subcommands runs. Registered above and dispatched
 #: here, so the two cannot name different sets.

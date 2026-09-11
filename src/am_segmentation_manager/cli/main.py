@@ -90,8 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--user", default=None, metavar="NAME",
         help=(
             "Record changes under this name. Otherwise taken from "
-            f"{USER_ENV_VAR}, then from {CONFIG_DISPLAY}/{USER_FILENAME}, then "
-            "from the account running the command"
+            f"{USER_ENV_VAR}, then from {CONFIG_DISPLAY}/{USER_FILENAME}; with "
+            "none of those, changes are recorded under no name"
         ),
     )
     parser.add_argument(

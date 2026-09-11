@@ -224,8 +224,9 @@ class Event:
             for an entry about the log itself.
         batch: Groups the entries of one run, or None.
         note: Free text, never parsed.
-        id: Hash of everything above, so two runs of one operation produce one
-            entry and a union of two logs needs no coordination to deduplicate.
+        id: Hash of everything above, the time included, so an entry keeps its
+            identity wherever it is copied and a union of two logs needs no
+            coordination to deduplicate.
     """
 
     kind: str
@@ -352,9 +353,10 @@ def pixel_digest(array: np.ndarray) -> str:
 def _event_id(document: Mapping[str, Any]) -> str:
     """Return the id of an entry, hashed over its body without the id.
 
-    Deterministic on content, so re-running an operation that changed nothing
-    records nothing new. That is what makes the baseline idempotent and a union
-    of two logs correct without either knowing about the other.
+    Deterministic on content, the time and batch included, so an entry keeps
+    its id wherever it is copied and a union of two logs is correct without
+    either knowing about the other. Two runs of one operation get two ids: an
+    operation that must not record twice skips what is recorded already.
     """
     body = {key: value for key, value in document.items() if key != "id"}
     canonical = json.dumps(
@@ -732,9 +734,9 @@ class Recorder:
 
     An operation is given one of these or nothing at all, so what records and
     what does not is visible at the call site rather than ambient. **A project
-    with no log is left without one**: recording begins when somebody asks for
-    it, which is what lets this ship without changing a collection that has
-    not opted in.
+    with no log is left without one**: a log starts with a baseline of the
+    whole project, which ``writing_recorder`` writes before a change, so a
+    recorder alone never adds a file to a collection.
 
     **Recording never fails an operation.** A change that happened and went
     unrecorded is a gap in the record; a save refused because its entry could

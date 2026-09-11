@@ -187,8 +187,8 @@ class VersionController:
     def _kept_rows(self) -> list[VersionRow]:
         """Return a row per kept version, oldest first.
 
-        Empty where the project keeps no log, which is a collection that has
-        never opted into recording -- the ordinary case today.
+        Empty where the project keeps no log, which is one nothing has changed
+        yet.
         """
         if self._project is None or not self._target:
             return []

@@ -450,19 +450,14 @@ rather than appending to it.
   `history` never prints it silently.
 - **A dataset that arrives annotated is credited to whoever annotated it; the log, to whoever
   started it** — crediting *everything* to the annotator would replace one false record with
-  another, since they never touched this machine. With no name recorded by default, `--as` is the
-  main way one ever appears, which is attribution given case by case rather than collected.
+  another, since they never touched this machine. `--as` names the annotator, as `declared`; your
+  own name comes from Settings, `--user` or `AM_SEG_USER` — stated, never collected.
 - **Recording is always on, and the first write starts it.** `writing_recorder` puts
   `ensure_recording` in front of every change and nowhere else, so **looking never modifies** — a
   rule about call sites, not one the function can enforce. A baseline that fails is logged and the
   change goes ahead: a gap in the record costs less than the work. **The whole project is
   baselined**, or a savepoint would cover whatever happened to have been edited; `init-history` is
   then the catch-up that makes a record start complete, not a switch.
-- **A path is resolved before the project holding it is looked for**, or a root reached through a
-  symlinked parent is no prefix of the resolved file and every entry is dropped in silence — which
-  only a test making its own symlink finds. **And a log counts only where the directory is a
-  project**: one at a collection root would swallow every project below it into a single log, under
-  targets that match nothing else and travel with nothing.
 - **`init-history` covers every series**: one covering only Adaptive Polishing would leave the rest
   unrecorded, with no second chance at a baseline.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
@@ -535,9 +530,6 @@ rather than appending to it.
   directory into per-condition ones changes every key exactly as a rename does, and unlike a rename
   no script records it. And a case-only difference is one file on this filesystem and two targets in
   a log. Both orphan the history of everything they touch.
-- **What a relative key may look like is `io/path.checked_relative_key`**, shared by the state file
-  and the log. Both read paths out of files that can be edited, and two copies of that rule would
-  drift; only the exception type belongs to each caller.
 
 ## Environment
 

@@ -14,7 +14,7 @@ here asks the state at all. Where no such record exists the provenance is
 unknown and the version is kept, that being the safe direction.
 
 Archiving happens only where a project keeps a history, which is the same rule
-recording follows: a collection that has not opted in gains no files.
+recording follows: a project nothing has written to gains no files.
 """
 from __future__ import annotations
 

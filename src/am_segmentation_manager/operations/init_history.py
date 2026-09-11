@@ -1,8 +1,9 @@
 """Writing the first history a project has, for the data already on disk.
 
-Recording only happens where a log exists, so this is what a collection opts in
-with: a ``log-created`` entry naming the project, then one ``baseline`` entry
-per label group that has a label or a state other than selected.
+The first write to a project brings it in through :func:`writing_recorder`, and
+``init-history`` brings a whole collection in at once: a ``log-created`` entry
+naming the project, then one ``baseline`` entry per label group that has a
+label or a state other than selected.
 
 **A baseline observes; it does not claim.** When each label was annotated is not
 recoverable -- the collection has been copied, so no timestamp on disk means
@@ -10,9 +11,9 @@ anything -- so an entry records when it was *seen*, marked ``baseline-scan``,
 and nothing here should be read as saying when the work was done.
 
 **Who** is a different matter, because a name reaches a deposition where a
-timestamp does not. By default a baseline is attributed to whoever runs it,
-which is right for a collection they annotated themselves and wrong for one
-that arrived annotated. So the annotator can be named, and is then recorded as
+timestamp does not. By default a baseline is credited to the name whoever runs
+it has stated, or to none -- right for a collection they annotated themselves
+and wrong for one that arrived annotated. So the annotator can be named, and is then recorded as
 ``declared`` -- somebody stating a name on another person's behalf, which this
 package cannot verify. Starting the log stays attributed to whoever did it.
 

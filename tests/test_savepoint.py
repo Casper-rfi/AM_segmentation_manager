@@ -549,8 +549,8 @@ def test_a_project_that_records_nothing_is_named_rather_than_left_silent(
 ):
     """Data arrives manually, and a project with no log joins no savepoint.
 
-    Recording only where a log exists is what lets a collection opt in, and the
-    same rule is what makes a project added afterwards silently absent.
+    Nothing that only reads may start a log, which is what makes a project
+    added afterwards, and not yet changed, silently absent.
     """
     from am_segmentation_manager.cli import main
     from am_segmentation_manager.operations.savepoint import not_recording
