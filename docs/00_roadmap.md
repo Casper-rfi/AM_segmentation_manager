@@ -41,8 +41,8 @@ latter declared in `gui/preferences.py` and reaching no write path.
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
   obligation this package carries whatever licence it takes), no CI, no `CHANGELOG.md`, no
   `[project.urls]`, and the version pinned at `0.0.0`. `mypy` is not configured and `ruff` does not check types, so the
-  annotations are unverified. The suite has not been run under a non-English locale — do that
-  before any release, for the reasons in [`display.md`](display.md) § Testing the window. And
+  annotations are unverified. The suite passed under German and Japanese locales on 2026-09-11; run
+  it so again before any release, for the reasons in [`display.md`](display.md) § Testing the window. And
   [`decisions.md`](decisions.md) § Environment names the collection twice by absolute path, which
   is what makes never writing to it a rule about a real place rather than a principle: decide then
   whether a reader outside this machine needs the paths or only the rule.
