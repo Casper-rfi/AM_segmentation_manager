@@ -1,10 +1,10 @@
 """The conflict resolver's metadata page: the tree beside the two values.
 
 Shaped like Add data -- projects under their folders on the left, their fields
-on the right -- with each conflicting field a row of *Field | Here | Copy*, so
-two values are read side by side rather than out of a sentence. A value is
-chosen by clicking it and unchosen by clicking it again, as a mark in the tree
-decides a whole folder or project. Decisions are held by the resolution.
+on the right -- with each conflicting field a row of *Field | Here | Copy*. A
+value is chosen by clicking it and unchosen by clicking it again, as a mark in
+the tree decides a whole folder or project. Decisions are held by the
+resolution.
 """
 from __future__ import annotations
 

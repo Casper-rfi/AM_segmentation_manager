@@ -1,10 +1,9 @@
 """Deciding what a merge cannot decide for itself.
 
 A conflict is one thing both sides changed differently since the copy was
-taken. Nothing here guesses and nothing is chosen in advance: the metadata
-fields come first, then the labels, and *Merge* is offered only once every
-conflict on both pages is answered -- a default would be the rule about which
-tree wins that the merge refuses to have. Decisions are held by a
+taken. The metadata fields come first, then the labels, and *Merge* is
+offered only once every conflict on both pages is answered; nothing is chosen
+in advance. Decisions are held by a
 :class:`~..conflict_resolution.ConflictResolution`; the pages only show them.
 """
 from __future__ import annotations

@@ -2,9 +2,8 @@
 
 Two marks beside each row, *Here* and *Copy*, say how much of what is under it
 keeps this collection's version and how much takes the copy's -- all, some or
-none, drawn filled, dotted or empty. Both empty is undecided, and a heading
-decided both ways shows some of each, which one control per row could not.
-Clicking a mark asks for that side; the tree decides nothing itself.
+none, drawn filled, dotted or empty -- so both empty is undecided. Clicking a
+mark asks for that side; the tree decides nothing itself.
 """
 from __future__ import annotations
 

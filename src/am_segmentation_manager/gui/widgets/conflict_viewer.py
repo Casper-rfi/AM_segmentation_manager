@@ -1,11 +1,9 @@
 """Looking at the two versions of a label a merge cannot decide between.
 
 Both are drawn over the same acquisition in the same place, and holding **B**
-swaps between them. Side by side halves the resolution of each, and a crack
-is a fraction of a percent of a frame: the difference that decides this is not
-one a smaller picture shows. The mask answers *where* they differ, holding B
-answers *what* each holds there. The acquisition is this collection's -- a
-merge never moves an image -- and nothing here writes or decides.
+swaps between them; the mask marks where they differ. The acquisition is this
+collection's, a merge never moving an image, and nothing here writes or
+decides.
 """
 from __future__ import annotations
 

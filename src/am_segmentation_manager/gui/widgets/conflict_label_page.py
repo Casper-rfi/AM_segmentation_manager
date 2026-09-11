@@ -3,8 +3,7 @@
 The tree shows what is decided, and decides a whole folder, project or lamella
 at a click. The viewer shows one conflict at a time, stepped through with the
 arrow keys as Curate steps through frames. **The keys decide the conflict on
-screen, never a heading**: one keystroke must not be able to decide a folder of
-a thousand. Decisions are held by the resolution it is given.
+screen, never a heading.** Decisions are held by the resolution it is given.
 """
 from __future__ import annotations
 

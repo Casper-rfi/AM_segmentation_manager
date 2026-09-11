@@ -576,8 +576,8 @@ rather than appending to it.
   a mixed conda-forge/Anaconda environment paired Anaconda's OpenCV with conda-forge's protobuf so
   that `cv2` would not load at all. **The second environment is pip-first for the same reason**:
   albumentations, which the vendored preprocessing imports, requires `opencv-python-headless`, a
-  third provider no ordering of install commands avoids, so `environment-ml.yml` takes only python
-  and pip from conda and the whole stack from the `[ml]` extra. That also lets the torch build be
+  third provider no ordering of install commands avoids, so `environment-ml.yml` takes only python,
+  pip and the test tools from conda and the whole stack from the `[ml]` extra. That also lets the torch build be
   chosen per machine (`AM_SEG_TORCH_INDEX_URL`). **It is a superset, not a peer**: the curation
   environment is the *lighter* of the two, and splitting them the other way forces an environment
   switch mid-workflow.
