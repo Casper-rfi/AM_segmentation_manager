@@ -57,7 +57,7 @@ from ..progress import Cancellation, timed
 from ..reporting import format_bytes, format_survey
 from ..survey import survey_collection
 from .attribution import Attribution
-from .report import MAX_REPORTED_FILES, OperationReport, shown_path
+from .report import OperationReport, capped, shown_path
 
 logger = logging.getLogger(__name__)
 
@@ -715,10 +715,7 @@ class OperationsController:
                 f"from what this would copy there. Nothing has been copied; "
                 f"choose an empty folder, or the one an earlier run of this "
                 f"same export wrote.",
-                tuple(
-                    str(item.destination.name)
-                    for item in plan.conflicts[:MAX_REPORTED_FILES]
-                ),
+                capped(str(item.destination.name) for item in plan.conflicts),
             )
         if plan.short_by:
             return OperationReport(

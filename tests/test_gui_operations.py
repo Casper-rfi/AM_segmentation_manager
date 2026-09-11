@@ -1077,6 +1077,48 @@ def test_a_conflict_is_reported_as_something_to_decide(tmp_path: Path):
     assert any("label" in line for line in row.details)
 
 
+def test_a_report_says_how_many_lines_it_left_out():
+    """A list that stops without saying so reads as the whole of it."""
+    from am_segmentation_manager.gui.report import MAX_REPORTED_FILES, capped
+
+    lines = [f"line {n}" for n in range(MAX_REPORTED_FILES + 7)]
+
+    shown = capped(lines)
+
+    assert shown[:-1] == tuple(lines[:MAX_REPORTED_FILES])
+    assert shown[-1] == "... and 7 more"
+    assert capped(lines[:MAX_REPORTED_FILES]) == tuple(lines[:MAX_REPORTED_FILES])
+
+
+def test_conflicts_past_the_listed_ones_are_counted_and_still_decided(
+    tmp_path: Path, monkeypatch
+):
+    """The report lists only so many, and says so; the dialog gets every one."""
+    from am_segmentation_manager.gui import report as report_module
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.operations.metadata_edit import (
+        update_project_metadata,
+    )
+
+    controller = HistoryController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy = _exported_copy(tmp_path, root, projects)
+    for tree, value in ((root, "here"), (copy, "there")):
+        update_project_metadata(
+            tree / projects[0].key,
+            {"description": value, "sample": value},
+            recorder=Recorder.for_run(),
+        )
+    monkeypatch.setattr(report_module, "MAX_REPORTED_FILES", 1)
+
+    report = controller.merge_copy(copy, projects, dry_run=True)
+
+    assert report.blocked == "conflicts"
+    assert len(report.conflicts) == 2
+    assert report.lines[-1] == "... and 1 more"
+
+
 def test_a_label_and_its_state_are_one_decision(tmp_path: Path):
     """They resolve under one key, so two controls over one key would be a
     window lying about what a click did."""

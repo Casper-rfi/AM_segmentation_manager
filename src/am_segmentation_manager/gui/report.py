@@ -9,6 +9,7 @@ Qt-free, like everything it is passed between.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,6 +92,20 @@ class OperationReport:
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""
         return [self.headline, *self.lines]
+
+
+def capped(lines: Iterable[str]) -> tuple[str, ...]:
+    """Return *lines* cut to :data:`MAX_REPORTED_FILES`, saying how many were left out.
+
+    A list that stops without saying so reads as the whole of it.
+    """
+    lines = tuple(lines)
+    if len(lines) <= MAX_REPORTED_FILES:
+        return lines
+    return (
+        *lines[:MAX_REPORTED_FILES],
+        f"... and {len(lines) - MAX_REPORTED_FILES} more",
+    )
 
 
 def shown_path(path: Path | None, root: Path | None) -> str:

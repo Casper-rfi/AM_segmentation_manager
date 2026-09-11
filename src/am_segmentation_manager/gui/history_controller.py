@@ -52,7 +52,7 @@ from ..operations.savepoint import (
 )
 from ..reporting import format_bytes
 from .attribution import Attribution
-from .report import MAX_REPORTED_FILES, ConflictRow, OperationReport, shown_path
+from .report import ConflictRow, OperationReport, capped, shown_path
 
 logger = logging.getLogger(__name__)
 
@@ -362,9 +362,7 @@ class HistoryController:
                 f"{len(rows)} thing(s) were changed on both sides since the "
                 f"copy was taken, so nothing can be merged until each is "
                 f"decided. Both versions stay in the archive either way.",
-                tuple(
-                    f"{row.title}: {'; '.join(row.details)}" for row in rows
-                )[:MAX_REPORTED_FILES],
+                capped(f"{row.title}: {'; '.join(row.details)}" for row in rows),
                 blocked="conflicts",
                 conflicts=rows,
             )
@@ -378,10 +376,10 @@ class HistoryController:
                 f"{len(plan.corrected)} piece(s) of proofread work here would "
                 f"be written over or unmarked. The version here is kept either "
                 f"way, so this can be undone -- but not unasked.",
-                tuple(
+                capped(
                     getattr(item, "target", getattr(item, "field", ""))
                     for item in plan.corrected
-                )[:MAX_REPORTED_FILES],
+                ),
                 taking,
                 blocked="corrected",
             )
@@ -389,7 +387,7 @@ class HistoryController:
             return OperationReport(
                 f"Would merge {taking} change(s) from {Path(source).name}, and "
                 f"add {incoming} history entr(ies).",
-                tuple([*context, *plan.describe()])[:MAX_REPORTED_FILES],
+                capped([*context, *plan.describe()]),
                 taking,
             )
 
@@ -458,9 +456,7 @@ class HistoryController:
             return OperationReport(
                 f"Nothing to put back: none of these {len(plan.items)} label(s) "
                 f"can reach {naming}.",
-                tuple(f"{item.target}: {item.blocked}" for item in plan.blocked)[
-                    :MAX_REPORTED_FILES
-                ],
+                capped(f"{item.target}: {item.blocked}" for item in plan.blocked),
             )
 
         left = (
@@ -472,7 +468,7 @@ class HistoryController:
             return OperationReport(
                 f"{len(plan.corrected)} of the {len(plan.revertible)} label(s) "
                 f"this would put back to {naming} are proofread work.",
-                tuple(item.target for item in plan.corrected)[:MAX_REPORTED_FILES],
+                capped(item.target for item in plan.corrected),
                 len(plan.revertible),
                 blocked="corrected",
             )
@@ -480,7 +476,7 @@ class HistoryController:
             return OperationReport(
                 f"Would put {len(plan.revertible)} label(s) back to {naming}"
                 f"{left}. What is there now is kept, so this can be undone.",
-                tuple(plan.describe())[:MAX_REPORTED_FILES],
+                capped(plan.describe()),
                 len(plan.revertible),
             )
 
@@ -489,9 +485,9 @@ class HistoryController:
             recorder=writing_recorder(projects, self.recorder),
             allow_corrected=allow_corrected,
         )
-        lines = tuple(
+        lines = capped(
             f"{self._relative(path)}: {why}" for path, why in report.failed
-        )[:MAX_REPORTED_FILES]
+        )
         headline = f"Put {len(report.restored)} label(s) back to {naming}{left}."
         if report.failed:
             headline += f" {len(report.failed)} could not be written."
@@ -604,12 +600,12 @@ class HistoryController:
                 f"version(s) stay. Naming a state is what closes a round."
             )
 
-        lines = tuple(
+        lines = capped(
             f"{project.key}/{version.target}: {version.path.name} "
             f"({format_bytes(version.size)})"
             for project, plan in removable
             for version in plan.remove
-        )[:MAX_REPORTED_FILES]
+        )
         count = sum(len(plan.remove) for _, plan in removable)
         if dry_run:
             return OperationReport(
