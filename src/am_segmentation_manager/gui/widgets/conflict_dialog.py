@@ -31,21 +31,18 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...operations.merge import OURS, THEIRS
 from .controls import SegmentedControl
 from .theme import BADGE_STYLES, MUTED
 
-__all__ = ["ConflictDialog", "KEEP_OURS", "TAKE_THEIRS"]
-
-#: What a decision is called where a merge reads it.
-KEEP_OURS = "ours"
-TAKE_THEIRS = "theirs"
+__all__ = ["ConflictDialog"]
 
 #: The two sides, as the control offers them. "Here" and "the copy" rather
 #: than "ours" and "theirs": one machine's copy is not another person, and the
 #: reader is looking at one of the two trees.
 CHOICES: tuple[tuple[str, str, str], ...] = (
-    (KEEP_OURS, "Keep this one", "Keep what this collection holds now."),
-    (TAKE_THEIRS, "Take the copy's", "Replace it with what the copy holds."),
+    (OURS, "Keep this one", "Keep what this collection holds now."),
+    (THEIRS, "Take the copy's", "Replace it with what the copy holds."),
 )
 
 

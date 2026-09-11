@@ -28,6 +28,13 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 
+- **A resolver for merge conflicts, replacing the dialog that asks one row at a time**, on branch
+  `conflict-resolver`. `gui/conflict_resolution.py` arranges the conflicts by folder, project and
+  lamella and holds one decision per conflict. Still to build: the label page (the tree beside the
+  viewer, arrow keys through a lamella and across lamellae, keys to decide, an optional jump to the
+  next undecided), a metadata page shaped like Add data, the flow metadata → labels → merge, and
+  bulk `--resolve` by scope on the command line. Deciding by scope qualifies `decisions.md`'s
+  "decided by name", to be corrected when it lands.
 - **Close one round on the real collection.** Run `init-history` there, so a savepoint covers
   everything rather than only what has been touched since — around 950 KB across 3,236 labels, two
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a

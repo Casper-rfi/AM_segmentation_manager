@@ -240,8 +240,7 @@ class Project:
         projects for a reader: an Autolamella project is named for the minute it
         started, where the folder somebody put it in says what it was.
         """
-        parent = PurePath(self.relative_path or self.name).parent
-        return "" if str(parent) == "." else str(parent)
+        return folder_of(self.relative_path or self.name)
 
     @property
     def own_name(self) -> str:
@@ -252,6 +251,15 @@ class Project:
         """
         name = PurePath(self.relative_path or self.name).name
         return f"{self.number}: {name}" if self.number else name
+
+
+def folder_of(key: str) -> str:
+    """Return the directory holding the project whose identity is *key*.
+
+    Empty for a project at the scan root.
+    """
+    parent = PurePath(key).parent
+    return "" if str(parent) == "." else str(parent)
 
 
 def projects_holding(paths: Iterable[Path], projects: Sequence[Project]) -> list[Project]:

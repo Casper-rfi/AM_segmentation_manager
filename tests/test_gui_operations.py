@@ -1119,6 +1119,55 @@ def test_conflicts_past_the_listed_ones_are_counted_and_still_decided(
     assert report.lines[-1] == "... and 1 more"
 
 
+def test_a_conflict_says_where_it_sits(tmp_path: Path):
+    """What the resolver arranges conflicts by -- project, lamella, the image
+    for acquisition order, the field -- comes with each one."""
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.operations.metadata_edit import (
+        update_project_metadata,
+    )
+
+    controller = HistoryController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy, _ours, _theirs = _conflicting_copy(tmp_path, root, projects)
+    for tree, value in ((root, "here"), (copy, "there")):
+        update_project_metadata(
+            tree / projects[0].key, {"description": value},
+            recorder=Recorder.for_run(),
+        )
+
+    report = controller.merge_copy(copy, projects, dry_run=True)
+
+    group = next(row for row in report.conflicts if not row.is_field)
+    field = next(row for row in report.conflicts if row.is_field)
+    assert group.project == projects[0].key
+    assert group.record is not None
+    assert group.lamella and group.lamella == group.record.lamella
+    assert (field.project, field.metadata_field) == (projects[0].key, "description")
+
+
+def test_what_the_resolver_decides_is_what_the_merge_reads(tmp_path: Path):
+    from am_segmentation_manager.gui.conflict_resolution import ConflictResolution
+    from am_segmentation_manager.operations.merge import THEIRS
+
+    controller = HistoryController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    copy, ours, theirs = _conflicting_copy(tmp_path, root, projects)
+    wanted = tifffile.imread(str(theirs))
+
+    blocked = controller.merge_copy(copy, projects, dry_run=True)
+    resolution = ConflictResolution(blocked.conflicts)
+    resolution.decide_all(resolution.labels, THEIRS)
+    applied = controller.merge_copy(
+        copy, projects, resolutions=resolution.resolutions, allow_corrected=True
+    )
+
+    assert applied.applied, applied.headline
+    assert np.array_equal(tifffile.imread(str(ours)), wanted)
+
+
 def test_a_label_and_its_state_are_one_decision(tmp_path: Path):
     """They resolve under one key, so two controls over one key would be a
     window lying about what a click did."""

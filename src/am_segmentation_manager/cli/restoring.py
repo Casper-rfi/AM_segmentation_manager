@@ -28,7 +28,9 @@ from ..operations.archive import (
 from ..operations.merge import (
     CONVERGED,
     KEEP_OURS,
+    OURS,
     TAKE_THEIRS,
+    THEIRS,
     MergeRefused,
     apply_merge,
     plan_merge,
@@ -272,7 +274,7 @@ def _resolutions(chosen: list[str]) -> dict[str, str]:
     resolutions = {}
     for item in chosen:
         target, _, side = item.rpartition("=")
-        if not target or side not in ("theirs", "ours"):
+        if not target or side not in (THEIRS, OURS):
             raise ValueError(
                 f"{item!r} is not a decision: write '<target>=theirs' or "
                 "'<target>=ours'"

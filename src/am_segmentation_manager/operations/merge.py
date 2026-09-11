@@ -63,7 +63,9 @@ __all__ = [
     "CONFLICT",
     "CONVERGED",
     "KEEP_OURS",
+    "OURS",
     "TAKE_THEIRS",
+    "THEIRS",
     "UNCHANGED",
     "LabelMerge",
     "MergePlan",
@@ -86,6 +88,10 @@ KEEP_OURS: Final[str] = "keep-ours"
 CONVERGED: Final[str] = "converged"
 #: Both changed it, differently. A person decides.
 CONFLICT: Final[str] = "conflict"
+
+#: What a person's decision about a conflict says, as :func:`plan_merge` reads it.
+OURS: Final[str] = "ours"
+THEIRS: Final[str] = "theirs"
 
 #: Outcomes a merge writes something for.
 _APPLIED: Final[frozenset[str]] = frozenset({TAKE_THEIRS})
@@ -126,6 +132,9 @@ class LabelMerge:
             Carried so a conflict can be looked at: both trees hold the same
             image, a merge never moving one, and this side is the one less
             likely to have been changed since the copy was taken.
+        record: The group's first image record -- this collection's, or the
+            copy's where only the copy holds the group. Carried so a conflict
+            can be placed in its lamella and in acquisition order.
     """
 
     target: str
@@ -140,6 +149,7 @@ class LabelMerge:
     corrected: bool = False
     our_fingerprint: tuple[int, int] | None = None
     our_image: Path | None = None
+    record: ImageRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -314,8 +324,8 @@ def plan_merge(
         source: The copy, holding an ``AM_export.yaml``.
         destination: The collection it came from.
         resolutions: Conflicts a person has already decided, keyed
-            ``<project>/<target>`` or ``<project>:<field>``, valued ``theirs``
-            or ``ours``.
+            ``<project>/<target>`` or ``<project>:<field>``, valued
+            :data:`THEIRS` or :data:`OURS`.
 
     Raises:
         MergeRefused: If the copy has no fork point, if a project in it is not
@@ -459,6 +469,7 @@ def _plan_label(
         corrected=bool(ours and ours.state == "corrected"),
         our_fingerprint=fingerprint_of(our_path),
         our_image=ours.record.image_path if ours else None,
+        record=ours.record if ours else theirs.record,
     )
 
 
@@ -531,9 +542,9 @@ def _resolve(
         return TAKE_THEIRS, ""
     if theirs == ancestor:
         return KEEP_OURS, ""
-    if decision == "theirs":
+    if decision == THEIRS:
         return TAKE_THEIRS, "resolved by hand"
-    if decision == "ours":
+    if decision == OURS:
         return KEEP_OURS, "resolved by hand"
     return CONFLICT, "both changed this since the copy was taken"
 

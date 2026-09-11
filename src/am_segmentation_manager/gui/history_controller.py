@@ -124,6 +124,9 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
                 ours=item.our_path,
                 theirs=item.their_path,
                 image=item.our_image,
+                project=project.key,
+                lamella=_lamella_of(item.record),
+                record=item.record,
             )
         for item in project.states:
             if item.outcome != CONFLICT:
@@ -134,7 +137,10 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
             rows[key] = (
                 replace(existing, details=(*existing.details, line))
                 if existing is not None
-                else ConflictRow(key=key, title=key, details=(line,))
+                else ConflictRow(
+                    key=key, title=key, details=(line,), project=project.key,
+                    lamella=_lamella_of(item.record), record=item.record,
+                )
             )
         for item in project.metadata:
             if item.outcome != CONFLICT:
@@ -144,8 +150,15 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
                 key=key,
                 title=f"{project.key} — {item.field}",
                 details=(f"{item.ours!r} here, {item.theirs!r} in the copy",),
+                project=project.key,
+                metadata_field=item.field,
             )
     return tuple(rows[key] for key in sorted(rows))
+
+
+def _lamella_of(record) -> str:
+    """Return the lamella *record* belongs to, or empty where there is none."""
+    return (record.lamella or "") if record is not None else ""
 
 
 class HistoryController:

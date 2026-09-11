@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
 from ...config import SegmentationConfig
 from ...display import DEFAULT_ALPHA, compose_overlay, to_display_8bit
 from ...io.image import read_array, to_2d
+from ...operations.merge import OURS, THEIRS
 from .image_view import ImageView
 from .theme import BADGE_STYLES, MUTED
 
@@ -120,8 +121,8 @@ class ConflictViewer(QDialog):
             button.setDefault(False)
             button.setAutoDefault(False)
         cancel.setDefault(True)
-        self.keep.clicked.connect(lambda: self._decide("ours"))
-        self.take.clicked.connect(lambda: self._decide("theirs"))
+        self.keep.clicked.connect(lambda: self._decide(OURS))
+        self.take.clicked.connect(lambda: self._decide(THEIRS))
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.buttons = buttons

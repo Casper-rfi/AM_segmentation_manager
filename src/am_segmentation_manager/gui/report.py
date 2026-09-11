@@ -10,10 +10,14 @@ Qt-free, like everything it is passed between.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..io.path import make_path_relative
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ..models import ImageRecord
 
 #: How many filenames a report lists before leaving the rest to the count. A
 #: copy of a whole collection runs to thousands of files, and a dialog listing
@@ -38,6 +42,12 @@ class ConflictRow:
         ours: The label here, where this is a label. For looking at.
         theirs: The copy's label, where this is a label.
         image: The acquisition both labels describe, for looking at them over.
+        project: The identity of the project it is in.
+        lamella: The lamella a group belongs to. Empty for a metadata field,
+            and for a group whose image names no lamella.
+        metadata_field: The field in conflict, or empty where this is a group.
+        record: The group's first image, for placing it in acquisition order.
+            Left out of comparison, a record being mutable.
     """
 
     key: str
@@ -47,6 +57,15 @@ class ConflictRow:
     ours: Path | None = None
     theirs: Path | None = None
     image: Path | None = None
+    project: str = ""
+    lamella: str = ""
+    metadata_field: str = ""
+    record: ImageRecord | None = field(default=None, compare=False)
+
+    @property
+    def is_field(self) -> bool:
+        """Return whether this is a project metadata field rather than a group."""
+        return bool(self.metadata_field)
 
     @property
     def is_label(self) -> bool:
