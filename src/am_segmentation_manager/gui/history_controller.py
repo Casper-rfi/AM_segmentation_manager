@@ -152,6 +152,8 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
                 details=(f"{item.ours!r} here, {item.theirs!r} in the copy",),
                 project=project.key,
                 metadata_field=item.field,
+                our_value=item.ours,
+                their_value=item.theirs,
             )
     return tuple(rows[key] for key in sorted(rows))
 

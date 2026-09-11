@@ -36,6 +36,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.report import ConflictRow
     from am_segmentation_manager.gui.widgets.conflict_dialog import ConflictDialog
+    from am_segmentation_manager.gui.widgets.conflict_field_page import UNSET
     from am_segmentation_manager.gui.widgets.conflict_tree import SIDE_COLUMNS
     from am_segmentation_manager.gui.widgets.conflict_viewer import ConflictView
     from am_segmentation_manager.models import ImageRecord
@@ -89,10 +90,11 @@ def _group(project, lamella, number, *, corrected=False, **paths) -> ConflictRow
     )
 
 
-def _field(project, name) -> ConflictRow:
+def _field(project, name, here="a", there="b") -> ConflictRow:
     return ConflictRow(
         key=f"{project}:{name}", title=name, project=project, metadata_field=name,
-        details=("'a' here, 'b' in the copy",),
+        details=(f"{here!r} here, {there!r} in the copy",),
+        our_value=here, their_value=there,
     )
 
 
@@ -127,7 +129,8 @@ def test_merge_is_offered_only_once_every_conflict_on_both_pages_is_decided(open
     assert not dialog.next.isHidden() and not dialog.next.isEnabled()
     assert dialog.merge.isHidden()
 
-    dialog.field_page._choices[rows[0].key][THEIRS].click()
+    fields = dialog.field_page
+    fields.table.cellClicked.emit(fields.row_of(rows[0].key), SIDE_COLUMNS[THEIRS])
     assert dialog.next.isEnabled()
 
     dialog.next.click()
@@ -186,6 +189,79 @@ def test_cancelling_asks_before_losing_decisions_and_only_then(opened, monkeypat
     answer[0] = QMessageBox.Yes
     dialog.reject()
     assert "decided" in closed
+
+
+# ---------------------------------------------------------------------------
+# The metadata page
+# ---------------------------------------------------------------------------
+
+def _headings(table) -> list[str]:
+    """Return the project headings the table lists, in order."""
+    return [
+        table.item(row, 0).text()
+        for row in range(table.rowCount())
+        if table.columnSpan(row, 0) > 1
+    ]
+
+
+def test_the_metadata_page_sets_the_two_values_side_by_side(opened):
+    rows = [_field(P, "description", "here", "there"), _field(P, "grid_id", None, "G7")]
+    page = opened(rows).field_page
+    table = page.table
+
+    first = page.row_of(rows[0].key)
+    assert table.item(first, SIDE_COLUMNS[OURS]).text() == "here"
+    assert table.item(first, SIDE_COLUMNS[THEIRS]).text() == "there"
+    assert table.item(page.row_of(rows[1].key), SIDE_COLUMNS[OURS]).text() == UNSET
+    assert _headings(table) == [P], "a project heads its fields"
+
+
+def test_clicking_a_value_chooses_it_and_clicking_it_again_undecides(opened):
+    rows = [_field(P, "description")]
+    dialog = opened(rows)
+    page = dialog.field_page
+    row = page.row_of(rows[0].key)
+
+    page.table.cellClicked.emit(row, SIDE_COLUMNS[THEIRS])
+    assert dialog.resolutions == {rows[0].key: THEIRS}
+    assert page.table.item(row, SIDE_COLUMNS[THEIRS]).font().bold()
+    assert not page.table.item(row, SIDE_COLUMNS[OURS]).font().bold()
+
+    page.table.cellClicked.emit(row, SIDE_COLUMNS[THEIRS])
+    assert dialog.resolutions == {}
+
+    page.table.cellClicked.emit(row, 0)
+    assert dialog.resolutions == {}, "a field's name chooses nothing"
+
+
+def test_a_folder_lists_every_project_under_it_and_its_mark_decides_them(opened):
+    rows = [
+        _field(P, "description"),
+        _field(Q, "description"),
+        _field("session_b/Auto-3", "description"),
+    ]
+    dialog = opened(rows)
+    page = dialog.field_page
+    folder = _node(dialog.resolution.fields, "session_a")
+
+    page.tree.setCurrentItem(page.tree.item_of(folder))
+    assert _headings(page.table) == [P, Q]
+
+    page.tree.itemClicked.emit(page.tree.item_of(folder), SIDE_COLUMNS[OURS])
+    assert dialog.resolutions == {rows[0].key: OURS, rows[1].key: OURS}
+
+
+def test_a_field_chosen_in_the_tree_lists_its_whole_project(opened):
+    rows = [_field(P, "description"), _field(P, "grid_id"), _field(Q, "description")]
+    dialog = opened(rows)
+    page = dialog.field_page
+
+    page.tree.setCurrentItem(page.tree.item_of(dialog.resolution.conflict(rows[1].key)))
+
+    assert _headings(page.table) == [P]
+    assert {page.row_of(rows[0].key), page.row_of(rows[1].key)}
+    with pytest.raises(KeyError):
+        page.row_of(rows[2].key)
 
 
 # ---------------------------------------------------------------------------

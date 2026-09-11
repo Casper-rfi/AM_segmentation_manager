@@ -46,6 +46,9 @@ class ConflictRow:
         lamella: The lamella a group belongs to. Empty for a metadata field,
             and for a group whose image names no lamella.
         metadata_field: The field in conflict, or empty where this is a group.
+        our_value: What the field holds here, where this is a field. None
+            where it is unset.
+        their_value: What the field holds in the copy, likewise.
         record: The group's first image, for placing it in acquisition order.
             Left out of comparison, a record being mutable.
     """
@@ -60,6 +63,8 @@ class ConflictRow:
     project: str = ""
     lamella: str = ""
     metadata_field: str = ""
+    our_value: str | None = None
+    their_value: str | None = None
     record: ImageRecord | None = field(default=None, compare=False)
 
     @property

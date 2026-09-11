@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - Qt 5
 from ...config import SegmentationConfig
 from ...operations.merge import OURS, THEIRS
 from ..conflict_resolution import ConflictNode, ConflictResolution
-from .conflict_tree import ConflictTree
+from .conflict_tree import ConflictTree, decide_all_buttons
 from .conflict_viewer import ConflictView
 from .controls import GripSplitter
 from .theme import BADGE_STYLES, MUTED
@@ -126,21 +126,7 @@ class LabelConflictPage(QWidget):
         self.tree.side_requested.connect(self._side_requested)
         column.addWidget(self.tree, stretch=1)
 
-        row = QHBoxLayout()
-        for caption, side, hint in (
-            ("Keep all here", OURS, "Keep this collection's version of every label"),
-            ("Take all the copy's", THEIRS, "Take the copy's version of every label"),
-            ("Clear", None, "Undecide every label"),
-        ):
-            button = QPushButton(caption)
-            button.setAutoDefault(False)
-            button.setToolTip(hint)
-            button.clicked.connect(
-                lambda _checked=False, s=side: self.decide_everything(s)
-            )
-            row.addWidget(button)
-        row.addStretch(1)
-        column.addLayout(row)
+        column.addLayout(decide_all_buttons("label", self.decide_everything))
 
         self.outstanding = QLabel("")
         self.outstanding.setStyleSheet(f"color: {MUTED};")

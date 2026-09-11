@@ -1,4 +1,4 @@
-"""A merge's conflicts, under the folder, project and lamella each is in.
+"""A merge's conflicts, arranged as the collection is.
 
 Two marks beside each row, *Here* and *Copy*, say how much of what is under it
 keeps this collection's version and how much takes the copy's -- all, some or
@@ -13,14 +13,20 @@ from collections.abc import Iterable, Sequence
 
 from qtpy.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from qtpy.QtGui import QBrush, QColor, QIcon, QPainter, QPen, QPixmap
-from qtpy.QtWidgets import QHeaderView, QTreeWidget, QTreeWidgetItem
+from qtpy.QtWidgets import (
+    QHBoxLayout,
+    QHeaderView,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+)
 
 from ...operations.merge import OURS, THEIRS
 from ..conflict_resolution import ALL, SOME, ConflictNode, ConflictResolution
 from .lists import TREE_INDENT
 from .theme import ACCENT, WARNING
 
-__all__ = ["ConflictTree", "SIDE_COLUMNS"]
+__all__ = ["ConflictTree", "SIDE_COLUMNS", "decide_all_buttons", "mark_icon"]
 
 #: Which column holds which side's mark.
 SIDE_COLUMNS: dict[str, int] = {OURS: 1, THEIRS: 2}
@@ -79,13 +85,18 @@ class ConflictTree(QTreeWidget):
     # -- filling -----------------------------------------------------------
 
     def set_nodes(
-        self, nodes: Sequence[ConflictNode], resolution: ConflictResolution
+        self,
+        nodes: Sequence[ConflictNode],
+        resolution: ConflictResolution,
+        *,
+        depth: int = 1,
     ) -> None:
         """Replace the rows with *nodes* and everything under them.
 
-        Opened down to the lamellae, whose conflicts open as they are stepped
-        into: a merge of a thousand conflicts is otherwise a thousand rows to
-        read past to find the second lamella.
+        Opened *depth* levels down -- by default to the lamellae, whose
+        conflicts open as they are stepped into: a merge of a thousand
+        conflicts is otherwise a thousand rows to read past to find the second
+        lamella.
         """
         self.blockSignals(True)
         try:
@@ -96,7 +107,7 @@ class ConflictTree(QTreeWidget):
                 self.addTopLevelItem(self._build(node, resolution))
         finally:
             self.blockSignals(False)
-        self.expandToDepth(1)
+        self.expandToDepth(depth)
         self.show_decisions(resolution)
 
     def _build(self, node: ConflictNode, resolution: ConflictResolution) -> QTreeWidgetItem:
@@ -125,7 +136,7 @@ class ConflictTree(QTreeWidget):
         """Redraw every row's two marks from *resolution*."""
         for node, item in self._items.items():
             for side, column in SIDE_COLUMNS.items():
-                item.setIcon(column, _mark(resolution.coverage(node, side)))
+                item.setIcon(column, mark_icon(resolution.coverage(node, side)))
 
     # -- where the reader is -------------------------------------------------
 
@@ -166,8 +177,31 @@ class ConflictTree(QTreeWidget):
         super().keyPressEvent(event)
 
 
+def decide_all_buttons(noun: str, on_decide) -> QHBoxLayout:
+    """Return Keep all here, Take all the copy's and Clear, as one row.
+
+    Args:
+        noun: What a page's conflicts are, for the tooltips -- "label", "field".
+        on_decide: Called with the side to give every conflict, or None to
+            undecide them all.
+    """
+    row = QHBoxLayout()
+    for caption, side, hint in (
+        ("Keep all here", OURS, f"Keep this collection's version of every {noun}"),
+        ("Take all the copy's", THEIRS, f"Take the copy's version of every {noun}"),
+        ("Clear", None, f"Undecide every {noun}"),
+    ):
+        button = QPushButton(caption)
+        button.setAutoDefault(False)
+        button.setToolTip(hint)
+        button.clicked.connect(lambda _checked=False, s=side: on_decide(s))
+        row.addWidget(button)
+    row.addStretch(1)
+    return row
+
+
 @functools.cache
-def _mark(coverage: str) -> QIcon:
+def mark_icon(coverage: str) -> QIcon:
     """Return the mark for how much of a row one side holds.
 
     Told apart by shape as well as by fill, so none of the three depends on

@@ -268,7 +268,9 @@ of one of these files, is held by `test_docs.py`.
   full, dotted or empty: a heading decided both ways must show some of each, which one control per
   row could not (`test_a_heading_shows_how_much_of_it_each_side_holds`). **The keys decide the
   conflict on screen, never a heading**, or one keystroke could decide a folder of a thousand
-  (`test_the_keys_act_on_the_conflict_on_screen_never_a_heading`).
+  (`test_the_keys_act_on_the_conflict_on_screen_never_a_heading`). A field conflict is a row of
+  *Field | Here | Copy* and a value is chosen by clicking it, so two values are compared side by side
+  rather than read out of a sentence (`test_clicking_a_value_chooses_it_and_clicking_it_again_undecides`).
 - **Who changes are recorded under is a standing line beside the mark, not a warning per action.**
   Ten actions across all four tabs put a name into a log, and one more writes it into an export's
   fork point: there is no single tab to say it on and far too many places to warn at. It is muted,

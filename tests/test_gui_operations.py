@@ -1145,6 +1145,7 @@ def test_a_conflict_says_where_it_sits(tmp_path: Path):
     assert group.record is not None
     assert group.lamella and group.lamella == group.record.lamella
     assert (field.project, field.metadata_field) == (projects[0].key, "description")
+    assert (field.our_value, field.their_value) == ("here", "there")
 
 
 def test_what_the_resolver_decides_is_what_the_merge_reads(tmp_path: Path):

@@ -11,38 +11,25 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFrame,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
-    QPushButton,
-    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ...config import SegmentationConfig
-from ...operations.merge import OURS, THEIRS
 from ..conflict_resolution import ConflictResolution
 from ..preferences import DEFAULT_ADVANCE
 from ..report import ConflictRow
+from .conflict_field_page import FieldConflictPage
 from .conflict_label_page import LabelConflictPage
-from .theme import BADGE_STYLES, MUTED
+from .theme import MUTED
 
-__all__ = ["ConflictDialog", "FieldConflictPage"]
-
-#: The two sides, as a row's buttons offer them. "Here" and "the copy" rather
-#: than "ours" and "theirs": one machine's copy is not another person, and the
-#: reader is looking at one of the two trees.
-CHOICES: tuple[tuple[str, str, str], ...] = (
-    (OURS, "Keep this one", "Keep what this collection holds now."),
-    (THEIRS, "Take the copy's", "Replace it with what the copy holds."),
-)
+__all__ = ["ConflictDialog"]
 
 
 class ConflictDialog(QDialog):
@@ -164,108 +151,3 @@ class ConflictDialog(QDialog):
         ) != QMessageBox.Yes:
             return
         super().reject()
-
-
-class FieldConflictPage(QWidget):
-    """Decides metadata conflicts, one field to a row."""
-
-    #: Emitted whenever a decision changes.
-    changed = Signal()
-
-    def __init__(self, resolution: ConflictResolution, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.resolution = resolution
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        keys = [key for node in resolution.fields for key in node.keys]
-
-        intro = QLabel(
-            f"{len(keys)} project metadata field(s) were changed differently "
-            f"here and in the copy since it was taken. Choose which to keep; "
-            f"the history keeps both values either way."
-        )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-
-        inner = QWidget()
-        column = QVBoxLayout(inner)
-        column.setContentsMargins(0, 0, 0, 0)
-        self._choices: dict[str, dict[str, QPushButton]] = {}
-        for key in keys:
-            column.addWidget(self._build_row(key))
-        column.addStretch(1)
-        area = QScrollArea()
-        area.setWidgetResizable(True)
-        area.setWidget(inner)
-        layout.addWidget(area, stretch=1)
-
-        row = QHBoxLayout()
-        for caption, side, hint in (
-            ("Keep all here", OURS, "Keep this collection's value of every field"),
-            ("Take all the copy's", THEIRS, "Take the copy's value of every field"),
-            ("Clear", None, "Undecide every field"),
-        ):
-            button = QPushButton(caption)
-            button.setAutoDefault(False)
-            button.setToolTip(hint)
-            button.clicked.connect(
-                lambda _checked=False, s=side: self.decide_everything(s)
-            )
-            row.addWidget(button)
-        row.addStretch(1)
-        layout.addLayout(row)
-        self._refresh()
-
-    def _build_row(self, key: str) -> QWidget:
-        """Return one field as a block: what it is, what each side holds, the choice."""
-        node = self.resolution.conflict(key)
-        block = QFrame()
-        stack = QVBoxLayout(block)
-        stack.setContentsMargins(0, 6, 0, 10)
-        heading = QLabel(f"{node.row.project} — {node.caption}")
-        heading.setWordWrap(True)
-        heading.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        stack.addWidget(heading)
-        for line in node.row.details:
-            detail = QLabel(line)
-            detail.setWordWrap(True)
-            detail.setStyleSheet(f"color: {MUTED};")
-            stack.addWidget(detail)
-        if node.row.corrected:
-            warning = QLabel("Proofread work here would be replaced")
-            warning.setStyleSheet(BADGE_STYLES["warning"])
-            stack.addWidget(warning)
-        choose = QHBoxLayout()
-        buttons: dict[str, QPushButton] = {}
-        for side, caption, hint in CHOICES:
-            button = QPushButton(caption)
-            button.setCheckable(True)
-            button.setAutoDefault(False)
-            button.setToolTip(hint)
-            button.clicked.connect(
-                lambda checked, k=key, s=side: self._decide(k, s if checked else None)
-            )
-            choose.addWidget(button)
-            buttons[side] = button
-        choose.addStretch(1)
-        stack.addLayout(choose)
-        self._choices[key] = buttons
-        return block
-
-    def decide_everything(self, side: str | None) -> None:
-        """Decide every field one way, or undecide them all with None."""
-        self.resolution.decide_all(self.resolution.fields, side)
-        self._refresh()
-        self.changed.emit()
-
-    def _decide(self, key: str, side: str | None) -> None:
-        self.resolution.decide(self.resolution.conflict(key), side)
-        self._refresh()
-        self.changed.emit()
-
-    def _refresh(self) -> None:
-        """Light each row's button for the side it holds."""
-        for key, buttons in self._choices.items():
-            chosen = self.resolution.side(key)
-            for side, button in buttons.items():
-                button.setChecked(side == chosen)

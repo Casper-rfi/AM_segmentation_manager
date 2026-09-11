@@ -29,9 +29,8 @@ latter declared in `gui/preferences.py` and reaching no write path.
 ## What to pick up next
 
 - **A resolver for merge conflicts**, on branch `conflict-resolver`: metadata fields, then labels,
-  then the merge, with the label conflicts under their folder, project and lamella beside the viewer.
-  Still to build: a metadata page shaped like Add data in place of the one-row-per-field list, and
-  bulk `--resolve` by scope on the command line.
+  then the merge, each page a tree by folder and project beside the values or the viewer. Still to
+  build: bulk `--resolve` by scope on the command line.
 - **Close one round on the real collection.** Run `init-history` there, so a savepoint covers
   everything rather than only what has been touched since — around 950 KB across 3,236 labels, two
   minutes, adding two files per project and modifying nothing. Then close **one whole round** with a
