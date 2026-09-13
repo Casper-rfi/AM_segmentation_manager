@@ -219,3 +219,143 @@ def test_cli_create_training_csv_requires_explicit_state(tmp_path: Path):
             "--stage", "all",
             "--image", "all",
         ])
+
+
+# ---------------------------------------------------------------------------
+# Replacing an earlier export, and the manifest
+# ---------------------------------------------------------------------------
+
+def _labelled_records(root: Path, count: int = 10) -> list[ImageRecord]:
+    """Return *count* SEM images of one stage, each with a label of its own."""
+    stage = root / "01-lamella" / "Adaptive_polish_1"
+    (stage / "sem").mkdir(parents=True)
+    (stage / "labels").mkdir(parents=True)
+    records = []
+    for i in range(count):
+        image = stage / "sem" / f"AP_img_{i:03d}_SEM.tif"
+        label = stage / "labels" / f"AP_img_{i:03d}_SEM.tif"
+        image.write_text("img")
+        label.write_text("lbl")
+        records.append(
+            ImageRecord(image_path=image, labels=[label], state="corrected", modality="SEM")
+        )
+    return records
+
+
+def _manifest(out_dir: Path, prefix: str = "dataset") -> dict:
+    import yaml
+
+    return yaml.safe_load((out_dir / f"{prefix}_manifest.yaml").read_text())
+
+
+def test_an_existing_validation_file_stops_the_export_before_anything_is_written(
+    tmp_path: Path,
+):
+    """A split replaced by accident is gone with the seed that made it, so the
+    refusal comes before a label is opened, not after the train file."""
+    root = tmp_path / "dataset"
+    records = _labelled_records(root)
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    (out_dir / "dataset_val.csv").write_text("earlier")
+    opened = []
+
+    with pytest.raises(FileExistsError, match="dataset_val.csv"):
+        export_training_csv(
+            records, root, out_dir, is_empty=lambda path: opened.append(path) or False
+        )
+
+    assert opened == []
+    assert (out_dir / "dataset_val.csv").read_text() == "earlier"
+    assert sorted(path.name for path in out_dir.iterdir()) == ["dataset_val.csv"]
+
+
+def test_overwriting_replaces_an_earlier_training_set(tmp_path: Path):
+    root = tmp_path / "dataset"
+    records = _labelled_records(root)
+    out_dir = tmp_path / "output"
+    export_training_csv(records, root, out_dir, seed=1)
+
+    export_training_csv(records, root, out_dir, seed=2, overwrite=True)
+
+    assert _manifest(out_dir)["split"]["seed"] == 2
+
+
+def test_the_manifest_counts_what_the_files_hold(tmp_path: Path):
+    root = tmp_path / "dataset"
+    records = _labelled_records(root)
+    out_dir = tmp_path / "output"
+
+    train, val = export_training_csv(
+        records, root, out_dir, prefix="run", train_ratio=0.8, seed=42,
+        scope="modality SEM", user="Ada Lovelace",
+    )
+
+    manifest = _manifest(out_dir, "run")
+    rows = {
+        "train": len(train.read_text().splitlines()) - 1,
+        "validation": len(val.read_text().splitlines()) - 1,
+    }
+    assert manifest["files"] == {"train": "run_train.csv", "validation": "run_val.csv"}
+    assert manifest["counts"]["train"] == rows["train"] == 8
+    assert manifest["counts"]["validation"] == rows["validation"] == 2
+    assert manifest["counts"]["rows"] == manifest["counts"]["images"] == 10
+    assert manifest["counts"]["images_left_out"] == 0
+    assert manifest["split"] == {"train_ratio": 0.8, "seed": 42}
+    assert manifest["columns"] == ["image", "label"]
+    assert manifest["scope"] == "modality SEM"
+    assert manifest["written_by"] == "Ada Lovelace"
+    assert manifest["source"] == str(root)
+
+
+def test_an_unseeded_split_records_no_seed(tmp_path: Path):
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+
+    export_training_csv(_labelled_records(root), root, out_dir, seed=None)
+
+    assert _manifest(out_dir)["split"]["seed"] is None
+
+
+def test_a_full_training_share_is_not_stopped_by_a_validation_file_it_would_not_write(
+    tmp_path: Path,
+):
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    (out_dir / "dataset_val.csv").write_text("earlier")
+
+    _, val = export_training_csv(_labelled_records(root), root, out_dir, train_ratio=1.0)
+
+    assert val is None
+    assert _manifest(out_dir)["files"]["validation"] is None
+    assert (out_dir / "dataset_val.csv").read_text() == "earlier"
+
+
+def test_cli_refuses_to_replace_a_training_set_without_overwrite(tmp_path: Path):
+    project = tmp_path / "projX"
+    stage = project / "L1" / "stage1"
+    (stage / "sem").mkdir(parents=True)
+    (stage / "labels").mkdir(parents=True)
+    (project / "experiment.yaml").write_text("name: projX")
+    for i in range(5):
+        (stage / "sem" / f"img{i}.tif").write_text("img")
+        (stage / "labels" / f"img{i}.tif").write_text("lbl")
+    _declare_corrected(stage, [f"img{i}.tif" for i in range(5)])
+    out_dir = tmp_path / "csv_output"
+    command = [
+        "create-training-csv", "--start-path", str(tmp_path), "--project", "projX",
+        "--lamella", "all", "--stage", "all", "--image", "all",
+        "--state", "corrected", "--modality", "SEM", "-o", str(out_dir),
+    ]
+
+    assert main(command) == 0
+    first = (out_dir / "dataset_train.csv").read_text()
+
+    assert main([*command, "--seed", "7"]) == 2
+    assert (out_dir / "dataset_train.csv").read_text() == first
+
+    assert main([*command, "--seed", "7", "--overwrite"]) == 0
+    manifest = _manifest(out_dir)
+    assert manifest["split"]["seed"] == 7
+    assert "--state corrected" in manifest["scope"]

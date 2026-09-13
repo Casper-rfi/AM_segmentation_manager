@@ -240,7 +240,9 @@ def _export(tmp_path: Path, *extra: str, modality: str = "all") -> list[dict]:
     assert main([
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
         "--lamella", "all", "--stage", "all", "--image", "all", "--state", "all",
-        "--modality", modality, "-o", str(output), "--split", "1.0", *extra,
+        "--modality", modality, "-o", str(output), "--split", "1.0",
+        # Called more than once per test into one folder, deliberately.
+        "--overwrite", *extra,
     ]) == 0
     with (output / "dataset_train.csv").open(encoding="utf-8") as handle:
         return list(csv_module.DictReader(handle))

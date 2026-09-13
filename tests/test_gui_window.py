@@ -1411,6 +1411,34 @@ def test_cancelling_the_export_warning_writes_nothing(window, monkeypatch, tmp_p
     assert list(tmp_path.glob("*.csv")) == []
 
 
+def test_an_earlier_training_set_is_replaced_only_when_asked(window, monkeypatch, tmp_path):
+    """Cancel leaves the earlier files; Yes is the only way to overwrite=True."""
+    from qtpy.QtWidgets import QMessageBox
+
+    asked_to_overwrite = []
+
+    def export(output, *, overwrite=False):
+        asked_to_overwrite.append(overwrite)
+        if not overwrite:
+            raise FileExistsError("dataset_train.csv already in here; nothing was written")
+        return output / "dataset_train.csv", None
+
+    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
+    monkeypatch.setattr(window.export_controller, "export_training", export)
+
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning", lambda *a, **k: QMessageBox.Cancel
+    )
+    window._write_training(str(tmp_path))
+    assert asked_to_overwrite == [False]
+
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning", lambda *a, **k: QMessageBox.Yes
+    )
+    window._write_training(str(tmp_path))
+    assert asked_to_overwrite == [False, False, True]
+
+
 def _tick_lamella(window, row: int = 0) -> None:
     """Tick a lamella through the widget, as a user would."""
     window.project_panel.lamella_list.item(row).setCheckState(Qt.Checked)

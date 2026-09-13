@@ -425,6 +425,11 @@ rather than appending to it.
 - **`check-training-csv` reads the header rather than assuming it.** Any column called `image` or
   `label`, or ending in `_image` or `_label`, holds a path, so one command checks either shape above
   and files written before both. A blank cell records nothing, so it cannot have gone missing.
+- **A training export replaces nothing unasked, and leaves a manifest of what it was made from.**
+  Every file it would write is checked before a label is opened
+  (`test_an_existing_validation_file_stops_the_export_before_anything_is_written`): a split
+  replaced by accident is gone with the seed that made it. The manifest is written last, so it
+  names only files written whole (`test_the_manifest_counts_what_the_files_hold`).
 
 ## History
 

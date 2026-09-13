@@ -909,15 +909,16 @@ class ExportPanel(QWidget):
         column.addWidget(self._build_split())
 
         column.addSpacing(8)
-        # The training export writes two files it names itself, so it asks for a
+        # The training export writes files it names itself, so it asks for a
         # directory; the other two write one file the user names.
         for label, signal, directory, tooltip in (
             (
                 "Training CSV...",
                 self.training_export_requested,
                 True,
-                "Write the two training files into a directory you choose: "
-                "one row per image and the label it is paired with.",
+                "Write the training and validation CSVs, and a manifest of "
+                "what they were made from, into a directory you choose. Files "
+                "already there are replaced only if you say so.",
             ),
             (
                 "Per-image metadata CSV...",
@@ -1041,9 +1042,9 @@ class ExportPanel(QWidget):
             caption_for(
                 "Name",
                 self.prefix,
-                f"Names the two files: <prefix>_train.csv and <prefix>_val.csv. "
-                f"Left empty, they are called {DEFAULT_PREFIX}_train.csv and "
-                f"{DEFAULT_PREFIX}_val.csv.",
+                f"Names the files: <prefix>_train.csv, <prefix>_val.csv and "
+                f"<prefix>_manifest.yaml. Left empty, the prefix is "
+                f"{DEFAULT_PREFIX}.",
             )
         )
         row.addWidget(self.prefix, stretch=1)

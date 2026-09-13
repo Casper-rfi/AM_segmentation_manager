@@ -275,7 +275,9 @@ def add_arguments(sub) -> None:
             "acquisition, as sem_image, sem_label, fib_image, fib_label -- so a "
             "model can be trained on either beam from one file, or on the two "
             "together. A cell is blank where that beam has no image, or no "
-            "label worth pairing with one."
+            "label worth pairing with one. A <prefix>_manifest.yaml beside them "
+            "records what they were made from, and nothing already there is "
+            "replaced without --overwrite."
         ),
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
@@ -330,6 +332,15 @@ def add_arguments(sub) -> None:
             "default: the segmentation software writes an empty label for every "
             "image it is pointed at, so exporting one pairs an image with a "
             "blank mask"
+        ),
+    )
+    create_training_csv.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Replace the CSV files and manifest an earlier export wrote under "
+            "this prefix. Without it, a run that would replace any of them "
+            "writes nothing"
         ),
     )
 
@@ -619,19 +630,37 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             return 2
 
     output_dir = Path(args.output_dir)
-    train_csv, val_csv = export_training_csv(
-        records=records,
-        start_path=start_path,
-        output_dir=output_dir,
-        prefix=args.output_prefix,
-        train_ratio=args.split,
-        seed=args.seed,
-        include_empty_labels=args.include_empty_labels,
-        conditions=args.conditions,
-        # The same rule the window applies, so one selection exported
-        # either way gives the same two files.
-        paired=args.modality == "all",
-    )
+    scope = " ".join([
+        _describe_scope(args),
+        *(
+            f"--{name} {value}"
+            for name, values in selectors.items()
+            for value in values
+        ),
+    ]).strip()
+    try:
+        train_csv, val_csv = export_training_csv(
+            records=records,
+            start_path=start_path,
+            output_dir=output_dir,
+            prefix=args.output_prefix,
+            train_ratio=args.split,
+            seed=args.seed,
+            include_empty_labels=args.include_empty_labels,
+            conditions=args.conditions,
+            # The same rule the window applies, so one selection exported
+            # either way gives the same two files.
+            paired=args.modality == "all",
+            overwrite=args.overwrite,
+            scope=scope,
+            user=getattr(args, "user", None),
+        )
+    except FileExistsError as error:
+        logger.error(
+            "Could not export: %s. Pass --overwrite to replace them, or choose "
+            "another --output-prefix", error,
+        )
+        return 2
     if args.modality == "all":
         logger.info(
             "Both modalities selected: writing one row per acquisition, "

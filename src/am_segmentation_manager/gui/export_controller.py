@@ -832,8 +832,10 @@ class ExportController:
             is_empty=self._is_empty_label,
         )
 
-    def export_training(self, output_dir: Path) -> tuple[Path, Path | None]:
-        """Write the training files for the current selection.
+    def export_training(
+        self, output_dir: Path, *, overwrite: bool = False
+    ) -> tuple[Path, Path | None]:
+        """Write the training files and their manifest for the current selection.
 
         Here rather than in the window because every part of it is a decision
         -- which records, which shape, how split, what named -- and the window's
@@ -844,6 +846,10 @@ class ExportController:
         Returns:
             ``(train_csv_path, val_csv_path)``, the second None at a full
             training share.
+
+        Raises:
+            FileExistsError: If an earlier export's files are in the way and
+                *overwrite* is False.
         """
 
         return export_training_csv(
@@ -862,6 +868,8 @@ class ExportController:
             conditions="all",
             paired=self.paired,
             is_empty=self._is_empty_label,
+            overwrite=overwrite,
+            scope=self.describe_filters(),
         )
 
     def export_image_metadata(self, output: Path) -> Path:

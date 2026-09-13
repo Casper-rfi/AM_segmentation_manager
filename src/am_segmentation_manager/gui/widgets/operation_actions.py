@@ -461,14 +461,37 @@ class OperationActions:
     def _write_training(self, directory: str) -> None:
         if not self._confirm_dropping_corrected():
             return
+        output = Path(directory)
         try:
-            train, validation = self.export_controller.export_training(Path(directory))
+            try:
+                train, validation = self.export_controller.export_training(output)
+            except FileExistsError as existing:
+                if not self._confirm_overwriting(existing):
+                    return
+                train, validation = self.export_controller.export_training(
+                    output, overwrite=True
+                )
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
             return
         written = ", ".join(str(path.name) for path in (train, validation) if path)
-        self._flash(f"Wrote {written}", 4000)
+        self._flash(f"Wrote {written} and the manifest", 4000)
         logger.info("Exported training CSV to %s", directory)
+
+    def _confirm_overwriting(self, existing: FileExistsError) -> bool:
+        """Ask before replacing a training set written earlier under the same name.
+
+        Cancel is the default: a split replaced by accident cannot be recovered,
+        and nothing else records the seed that made it.
+        """
+        answer = QMessageBox.warning(
+            self,
+            "Replace the earlier training files?",
+            f"{existing}.\n\nReplace them with this export?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return answer == QMessageBox.Yes
 
     def _confirm_dropping_corrected(self) -> bool:
         """Ask before writing a training set that silently omits proofread work.

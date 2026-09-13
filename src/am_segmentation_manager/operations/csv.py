@@ -23,6 +23,7 @@ from ..io.path import make_path_relative
 from ..models import ImageRecord
 from .label_groups import condition_sort_key
 from .label_io import is_label_file_empty
+from .training_manifest import manifest_path, write_training_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -295,11 +296,16 @@ def export_training_csv(
     conditions: str = "primary",
     paired: bool = False,
     is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+    *,
+    overwrite: bool = False,
+    scope: str = "",
+    user: str | None = None,
 ) -> tuple[Path, Path | None]:
     """Export image and label paths to CSV files for ML model training.
 
-    Writes ``<output_dir>/<prefix>_train.csv`` and, unless *train_ratio* is
-    1.0, ``<output_dir>/<prefix>_val.csv``.
+    Writes ``<output_dir>/<prefix>_train.csv``, ``<output_dir>/<prefix>_val.csv``
+    unless *train_ratio* is 1.0, and last ``<prefix>_manifest.yaml`` saying what
+    they were made from.
 
     Two shapes, decided by *paired*::
 
@@ -330,18 +336,39 @@ def export_training_csv(
             one ``image`` column is not something anyone trains on.
         is_empty: Answers whether a label holds only background; see
             :func:`build_training_rows`.
+        overwrite: Replace files an earlier export wrote under *prefix*.
+        scope: What the records were narrowed to, recorded in the manifest.
+        user: The name to record as writing it; see :func:`write_training_manifest`.
 
     Returns:
         ``(train_csv_path, val_csv_path)``. The second is None when
         *train_ratio* is 1.0.
+
+    Raises:
+        FileExistsError: If a file this would write exists and *overwrite* is
+            False. Nothing has been read or written by then.
+        ValueError: If *conditions* is not a known policy.
     """
+    if conditions not in ("primary", "all"):
+        raise ValueError(f"Unknown conditions policy: {conditions}")
+
+    train_path = output_dir / f"{prefix}_train.csv"
+    val_path = output_dir / f"{prefix}_val.csv" if train_ratio < 1.0 else None
+    manifest = manifest_path(output_dir, prefix)
+    existing = [
+        path for path in (train_path, val_path, manifest)
+        if path is not None and path.exists()
+    ]
+    if existing and not overwrite:
+        raise FileExistsError(
+            f"{', '.join(path.name for path in existing)} already in {output_dir}; "
+            f"nothing was written"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected = list(records)
     if conditions == "primary":
         selected = keep_one_condition_per_scene(selected)
-    elif conditions != "all":
-        raise ValueError(f"Unknown conditions policy: {conditions}")
 
     rows = build_training_rows(
         selected,
@@ -352,22 +379,25 @@ def export_training_csv(
     )
     if not rows:
         logger.warning("No image/label pairs found to export")
+    if paired:
+        left_out = "label_cells_left_blank", sum(
+            1 for row in rows for cell in (row.values[1], row.values[3]) if not cell
+        )
+    else:
+        left_out = "images_left_out", len(selected) - len(rows)
     if not include_empty_labels:
         # Reported either way, because it is the same rule with two shapes: a
         # blank mask is never paired with an image, which drops the row where
         # there is one beam and empties a cell where there are two. Silence
         # would be a training set quietly short of what somebody labelled.
         if paired:
-            blank = sum(
-                1 for row in rows for cell in (row.values[1], row.values[3]) if not cell
-            )
-            if blank:
+            if blank := left_out[1]:
                 logger.info(
                     "Left %d label cell(s) blank: no label, or one holding only "
                     "background; pass --include-empty-labels to pair the latter "
                     "anyway", blank,
                 )
-        elif (dropped := len(selected) - len(rows)) > 0:
+        elif (dropped := left_out[1]) > 0:
             logger.info(
                 "Excluded %d image(s) with no label, or whose label holds only "
                 "background; pass --include-empty-labels to export the latter",
@@ -393,9 +423,27 @@ def export_training_csv(
         logger.info("Wrote %d row(s) to %s", len(written), path)
         return path
 
-    train_path = _write_csv(output_dir / f"{prefix}_train.csv", train_rows)
-    val_path = None
-    if val_rows or train_ratio < 1.0:
-        val_path = _write_csv(output_dir / f"{prefix}_val.csv", val_rows)
-
+    _write_csv(train_path, train_rows)
+    if val_path is not None:
+        _write_csv(val_path, val_rows)
+    write_training_manifest(
+        manifest,
+        source=start_path,
+        scope=scope,
+        files={"train": train_path, "validation": val_path},
+        columns=columns,
+        train_ratio=train_ratio,
+        seed=seed,
+        conditions=conditions,
+        include_empty_labels=include_empty_labels,
+        counts={
+            "images": len(selected),
+            "rows": len(rows),
+            "groups": len(groups),
+            "train": len(train_rows),
+            "validation": len(val_rows),
+            left_out[0]: left_out[1],
+        },
+        user=user,
+    )
     return train_path, val_path
