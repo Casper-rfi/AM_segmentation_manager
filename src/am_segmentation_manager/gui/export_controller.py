@@ -56,6 +56,7 @@ from ..operations.label_io import (
 from ..operations.label_measure import LabelMeasurement, measure_records, measurement_is_empty
 from ..operations.metadata_csv import export_image_metadata_csv
 from ..operations.selection import current_state
+from ..reporting import counts_as_rows, cross_tabulation_as_rows, write_table_csv
 
 logger = logging.getLogger(__name__)
 
@@ -999,6 +1000,32 @@ class ExportController:
             self.selected_records(), row_key, column_key,
             row_multi=self.breakdowns[row].multi,
             column_multi=self.breakdowns[column].multi,
+        )
+
+    def export_breakdown_csv(
+        self, output: Path, name: str, other: str | None = None
+    ) -> Path:
+        """Write the breakdown on screen as CSV, as ``am-seg stats --output`` does.
+
+        Raises:
+            ValueError: If a property it counts by needs the labels measured and
+                they are not -- which would write every image under "no-label".
+        """
+        unmeasured = [
+            chosen for chosen in (name, other)
+            if chosen and self.needs_measurements(chosen)
+        ]
+        if unmeasured and not self.measurements_loaded():
+            raise ValueError(
+                f"Counting by {' and '.join(unmeasured)} needs the labels measured first"
+            )
+        if other:
+            return write_table_csv(
+                output, [name, other, "images"],
+                cross_tabulation_as_rows(self.cross_tabulation(name, other)),
+            )
+        return write_table_csv(
+            output, [name, "images"], counts_as_rows(self.breakdown(name))
         )
 
     def filterable_breakdowns(self) -> list[tuple[str, str]]:

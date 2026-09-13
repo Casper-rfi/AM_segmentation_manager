@@ -340,6 +340,8 @@ class ExportPanel(QWidget):
     training_export_requested = Signal(str)
     image_metadata_export_requested = Signal(str)
     project_metadata_export_requested = Signal(str)
+    #: Emitted with where to write the counts behind the chart.
+    breakdown_export_requested = Signal(str)
     #: Emitted with the directory to copy the matching files into.
     files_export_requested = Signal(str)
     #: Emitted with the copy to bring back when the user asks to merge.
@@ -805,6 +807,11 @@ class ExportPanel(QWidget):
         self.table = BreakdownTable()
 
         self.chart_view = ChartView()
+        self.chart_view.export_table_requested.connect(
+            lambda: self._choose(
+                self.breakdown_export_requested, "Export table as CSV", False
+            )
+        )
 
         # One pane showing one of the two, rather than a split: they are the
         # same numbers, and half a chart beside half a table reads worse than
@@ -863,10 +870,10 @@ class ExportPanel(QWidget):
         self.crack_threshold.valueChanged.connect(self._controls_changed)
         row.addWidget(
             caption_for(
-                "Crack from",
+                "Count cracks ≥",
                 self.crack_threshold,
-                "Smallest component counted as a crack; anything smaller is "
-                "left out of the crack breakdowns.",
+                "Count a connected component as a crack from this area up; "
+                "anything smaller is left out of the crack breakdowns.",
             )
         )
         row.addWidget(self.crack_threshold)
@@ -1227,12 +1234,12 @@ class ExportPanel(QWidget):
             column = breakdowns[other].label
             title = f"Images by {row} and {column}"
             self.chart_view.show_chart(
-                lambda normalise: plots.heatmap_figure(
-                    table, row, column, title=title, normalise=normalise,
+                lambda shading: plots.heatmap_figure(
+                    table, row, column, title=title, shading=shading,
                     row_order=breakdowns[name].order,
                     column_order=breakdowns[other].order,
                 ),
-                normalisable=True,
+                shadeable=True,
             )
             return
 
@@ -1242,7 +1249,7 @@ class ExportPanel(QWidget):
             return
         title = f"Images by {row}"
         self.chart_view.show_chart(
-            lambda _normalise: plots.bar_figure(
+            lambda _shading: plots.bar_figure(
                 counts, title, xlabel=row, ordered=bool(breakdowns[name].order),
             )
         )

@@ -46,10 +46,13 @@ from ..operations.metadata_csv import (
 )
 from ..plots import plot_counts, plot_cross_tabulation
 from ..reporting import (
+    counts_as_rows,
+    cross_tabulation_as_rows,
     format_bytes,
     format_counts,
     format_cross_tabulation,
     format_label_quantification,
+    write_table_csv,
 )
 from ..scanner import Scanner
 from .scope import (
@@ -432,7 +435,6 @@ def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
 
 def _cmd_stats(args: argparse.Namespace) -> int:
     """Handle ``am-seg stats``."""
-    import csv as csv_module
 
     # NEEDS_METADATA and BREAKDOWNS are imported at module level; naming
     # them here too would shadow them for the whole of main(), including
@@ -505,7 +507,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             multi=entry.multi,
         ):
             print(line)
-        rows = [(str(key), count) for key, count in counts.items()]
+        rows = counts_as_rows(counts)
         header = [chosen[0], "images"]
     else:
         table = cross_tabulate(
@@ -520,7 +522,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             multi=breakdowns[chosen[0]].multi or breakdowns[chosen[1]].multi,
         ):
             print(line)
-        rows = [(str(a), str(b), count) for (a, b), count in table.items()]
+        rows = cross_tabulation_as_rows(table)
         header = [chosen[0], chosen[1], "images"]
 
     if args.plot:
@@ -540,12 +542,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             return 2
 
     if args.output:
-        output = Path(args.output)
-        with output.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv_module.writer(handle)
-            writer.writerow(header)
-            writer.writerows(rows)
-        logger.info("Wrote %d row(s) to %s", len(rows), output)
+        write_table_csv(Path(args.output), header, rows)
     return 0
 
 

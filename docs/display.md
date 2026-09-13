@@ -429,6 +429,11 @@ of one of these files, is held by `test_docs.py`.
   picture is zoomed (`ItemIgnoresTransformations`) and its name sits on a filled chip, `grid_view`
   saying why of both. **One accent and no second colour**: orange and green are segmentation class
   colours.
+- **The chart carries its own bar, never matplotlib's toolbar.** That toolbar's *Subplots* and
+  *Customize* change a figure bound for a paper with nothing recording it, so the bar offers reset,
+  pan, zoom, save and copy, pan and zoom still driven by a hidden toolbar
+  (`test_the_chart_offers_no_way_to_edit_the_figure`). **A cell nothing was counted in is grey and
+  unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
 - **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
   Polishing stage writes one plot per milling cycle into `plots/`, matched to a frame by its
   acquisition number. An alignment run writes one `figure.png` for the several images it took to

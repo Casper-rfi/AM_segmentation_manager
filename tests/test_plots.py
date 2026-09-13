@@ -145,7 +145,7 @@ def test_two_bars_are_not_worth_a_share_line():
 
 def test_a_grid_can_be_shaded_by_share_of_its_row():
     """One row dwarfing the rest hides the pattern inside the small ones."""
-    figure = heatmap_figure(TABLE, "microscope", "modality", normalise=True)
+    figure = heatmap_figure(TABLE, "microscope", "modality", shading="row")
 
     texts = {text.get_text() for text in figure.axes[0].texts}
     assert "50%" in texts        # Aquilos is half SEM, half FIB
@@ -154,17 +154,46 @@ def test_a_grid_can_be_shaded_by_share_of_its_row():
 
 def test_a_row_with_nothing_in_it_is_not_a_division_by_zero():
     """A cross-tabulation can carry a row the filters emptied."""
-    figure = heatmap_figure({("a", "x"): 0, ("b", "x"): 3}, "r", "c", normalise=True)
+    figure = heatmap_figure({("a", "x"): 0, ("b", "x"): 3}, "r", "c", shading="row")
 
-    assert {text.get_text() for text in figure.axes[0].texts} == {"0%", "100%"}
+    assert {text.get_text() for text in figure.axes[0].texts} == {"100%"}
 
 
-def test_a_combination_nothing_was_acquired_for_is_drawn_empty():
-    """The blank cells are the finding, so zero has to be the palette's floor."""
-    figure = heatmap_figure({("a", "x"): 5, ("b", "y"): 5}, "r", "c")
+def test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered():
+    """The empty cells are the finding, and against the palette's white floor
+    a 1 and a 0 looked alike."""
+    from matplotlib.colors import to_rgba
+
+    from am_segmentation_manager.plots import ZERO_COLOUR
+
+    figure = heatmap_figure({("a", "x"): 5, ("b", "y"): 1}, "r", "c")
     image = figure.axes[0].images[0]
 
     assert image.norm.vmin == 0
+    assert list(image.get_array().mask.ravel()) == [False, True, True, False]
+    assert tuple(image.cmap.get_bad()) == pytest.approx(to_rgba(ZERO_COLOUR))
+    assert sorted(text.get_text() for text in figure.axes[0].texts) == ["1", "5"]
+
+
+def test_a_share_too_small_to_round_up_is_not_read_as_nothing():
+    """One image in a row of thousands is a finding; "0%" beside the grey
+    cells that hold nothing would say it is not there."""
+    figure = heatmap_figure({("a", "x"): 1, ("a", "y"): 999}, "r", "c", shading="row")
+
+    assert {text.get_text() for text in figure.axes[0].texts} == {"<1%", "100%"}
+
+
+def test_a_grid_can_be_shaded_by_share_of_its_column():
+    figure = heatmap_figure(TABLE, "microscope", "modality", shading="column")
+
+    texts = {text.get_text() for text in figure.axes[0].texts}
+    assert {"96%", "4%"} <= texts        # Arctis took 1261 of the 1311 SEM images
+    assert figure.axes[-1].get_ylabel() == "share of column (%)"
+
+
+def test_an_unknown_shading_is_refused():
+    with pytest.raises(ValueError, match="shading"):
+        heatmap_figure(TABLE, "r", "c", shading="diagonal")
 
 
 def test_the_missing_dependency_error_says_how_to_fix_it(monkeypatch):

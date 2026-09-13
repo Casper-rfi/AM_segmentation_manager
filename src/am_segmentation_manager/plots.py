@@ -38,6 +38,22 @@ _WIDTH_PER_COLUMN = 1.15
 _BAR_COLOUR = "#4c78c8"
 _LINE_COLOUR = "#c44e52"
 
+#: How a grid can be shaded: by the count in each cell, or by the cell's share
+#: of its own row or of its own column.
+SHADINGS: tuple[str, ...] = ("count", "row", "column")
+
+#: A cell nothing was counted in. Grey rather than the palette's floor, which is
+#: white: against white a 1 and a 0 look alike, and the empty cells are the
+#: combinations nothing was acquired for -- the finding the grid is drawn for.
+ZERO_COLOUR = "#d9dce1"
+
+#: What the colour bar says it measures, for each shading.
+_SHADING_LABELS = {
+    "count": "images",
+    "row": "share of row (%)",
+    "column": "share of column (%)",
+}
+
 #: Fewest groups worth drawing a running share over. Below this the line says
 #: nothing the two bars beside it do not.
 _MIN_BARS_FOR_SHARE = 3
@@ -164,26 +180,28 @@ def heatmap_figure(
     title: str | None = None,
     row_order: Sequence[Hashable] = (),
     column_order: Sequence[Hashable] = (),
-    normalise: bool = False,
+    shading: str = "count",
 ):
     """Draw a two-dimensional breakdown as a grid of counts.
 
     Args:
-        normalise: Colour each cell by its share of its own row rather than by
-            the count. That answers a different question -- whether the mix is
-            the same on every instrument, rather than where the data is -- and
-            it is the one worth asking once one row dwarfs the others.
+        shading: One of :data:`SHADINGS`. ``"row"`` colours each cell by its
+            share of its own row, which asks whether the mix is the same on
+            every instrument rather than where the data is -- the question worth
+            asking once one row dwarfs the others. ``"column"`` asks it the
+            other way round.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
-        ValueError: If there is nothing to draw.
+        ValueError: If there is nothing to draw, or *shading* is unknown.
     """
     require_plot_support()
+    if shading not in SHADINGS:
+        raise ValueError(f"Unknown shading {shading!r}; choose from {', '.join(SHADINGS)}")
     if not table:
         raise ValueError("Nothing to plot")
 
     import numpy as np
-
 
     rows, columns = totals(table, row_order, column_order)
     counts = np.array(
@@ -192,34 +210,33 @@ def heatmap_figure(
     )
 
     shown = counts
-    if normalise:
-        row_totals = counts.sum(axis=1, keepdims=True)
-        # A row with nothing in it has no shares; leave it at zero rather than
-        # dividing by nothing and painting the whole row as not-a-number.
-        shown = np.divide(
-            100 * counts, row_totals, out=np.zeros_like(counts), where=row_totals > 0
-        )
+    if shading != "count":
+        sums = counts.sum(axis=1 if shading == "row" else 0, keepdims=True)
+        # A row or column with nothing in it has no shares; leave it at zero
+        # rather than dividing by nothing and painting it as not-a-number.
+        shown = np.divide(100 * counts, sums, out=np.zeros_like(counts), where=sums > 0)
 
     figure, axes = _new_figure(
         max(_WIDTH, len(columns) * _WIDTH_PER_COLUMN + 4.0),
         max(_MIN_HEIGHT, len(rows) * _HEIGHT_PER_ROW + 2.4),
     )
-    # Blues puts white at zero, so a combination nothing was acquired for is a
-    # blank cell rather than a dark one -- which is the point of the chart.
-    #
     # Counts are shaded on a square root, because one row usually dwarfs the
     # rest -- "no crack" outnumbers every crack size put together -- and on a
     # linear ramp that one cell pushes everything else to white, hiding the
     # pattern the chart was opened to find. Shares already span 0 to 100 and
     # need no such help.
+    from matplotlib import colormaps
     from matplotlib.colors import Normalize, PowerNorm
 
     ceiling = float(shown.max()) or 1.0
     norm = (
-        Normalize(vmin=0, vmax=ceiling) if normalise
-        else PowerNorm(gamma=0.5, vmin=0, vmax=ceiling)
+        PowerNorm(gamma=0.5, vmin=0, vmax=ceiling) if shading == "count"
+        else Normalize(vmin=0, vmax=ceiling)
     )
-    image = axes.imshow(shown, cmap="Blues", aspect="auto", norm=norm)
+    palette = colormaps["Blues"].with_extremes(bad=ZERO_COLOUR)
+    image = axes.imshow(
+        np.ma.masked_where(counts == 0, shown), cmap=palette, aspect="auto", norm=norm
+    )
 
     axes.set_xticks(range(len(columns)))
     axes.set_xticklabels([str(column) for column in columns])
@@ -232,8 +249,15 @@ def heatmap_figure(
 
     for row in range(len(rows)):
         for column in range(len(columns)):
+            if not counts[row, column]:
+                continue
             value = shown[row, column]
-            text = f"{value:.0f}%" if normalise else str(int(counts[row, column]))
+            if shading == "count":
+                text = str(int(counts[row, column]))
+            else:
+                # A cell holding images whose share rounds to nothing would read
+                # "0%" beside the grey cells that really hold none.
+                text = f"{value:.0f}%" if value >= 0.5 else "<1%"
             axes.text(
                 column, row, text, ha="center", va="center", fontsize=8,
                 # Measured off the shading rather than the value, so the switch
@@ -245,9 +269,7 @@ def heatmap_figure(
     axes.set_xlabel(column_title)
     axes.set_ylabel(row_title)
     axes.set_title(title or f"{row_title} by {column_title}  (n={int(counts.sum())})")
-    figure.colorbar(
-        image, ax=axes, label="share of row (%)" if normalise else "images"
-    )
+    figure.colorbar(image, ax=axes, label=_SHADING_LABELS[shading])
     return figure
 
 

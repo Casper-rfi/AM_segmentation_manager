@@ -610,6 +610,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.export_panel.training_export_requested.connect(self._export_training)
         self.export_panel.image_metadata_export_requested.connect(self._export_image_metadata)
         self.export_panel.project_metadata_export_requested.connect(self._export_project_metadata)
+        self.export_panel.breakdown_export_requested.connect(self._export_breakdown)
         # Editing metadata changes what the export view groups by, so it has to
         # be told rather than left showing the previous sample name.
         self.metadata_panel.metadata_changed.connect(self.export_panel.refresh)

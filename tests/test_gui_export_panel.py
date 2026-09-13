@@ -781,7 +781,7 @@ def test_one_property_is_charted_as_bars(qt_app, tmp_path):
 
     assert panel.chart_view._canvas is not None
     # Bars have no row to take a share of, so the shading toggle is not offered.
-    assert panel.chart_view.normalise.isHidden()
+    assert panel.chart_view.shading.isHidden()
 
 
 @needs_plots
@@ -792,7 +792,7 @@ def test_two_properties_are_charted_as_a_shadeable_grid(qt_app, tmp_path):
 
     panel.as_chart.setChecked(True)
 
-    assert not panel.chart_view.normalise.isHidden()
+    assert not panel.chart_view.shading.isHidden()
 
 
 @needs_plots
@@ -805,7 +805,7 @@ def test_toggling_the_shading_redraws_rather_than_stacking_canvases(qt_app, tmp_
     panel.as_chart.setChecked(True)
     first = panel.chart_view._canvas
 
-    panel.chart_view.normalise.setChecked(True)
+    panel.chart_view.shading.buttons["row"].click()
 
     assert panel.chart_view._canvas is not first
     # Taken out of the layout, not merely covered by the new one: a canvas
@@ -825,6 +825,121 @@ def test_charting_without_matplotlib_explains_rather_than_failing(
 
     assert "pip install" in panel.chart_view.message.text()
     assert panel.chart_view._canvas is None
+
+
+def test_the_shading_offers_exactly_what_a_grid_can_be_shaded_by(panel: ExportPanel):
+    from am_segmentation_manager.plots import SHADINGS
+
+    assert tuple(panel.chart_view.shading.buttons) == SHADINGS
+
+
+@needs_plots
+def test_the_chart_offers_no_way_to_edit_the_figure(qt_app, tmp_path):
+    """Matplotlib's toolbar carries Subplots and Customize, which change a
+    figure bound for a paper with nothing recording that they did."""
+    from qtpy.QtWidgets import QToolButton
+
+    panel = measurable(qt_app, tmp_path)
+    panel.as_chart.setChecked(True)
+    view = panel.chart_view
+
+    assert view._toolbar.isHidden()
+    captions = {
+        button.text() for button in view.findChildren(QToolButton)
+        if not view._toolbar.isAncestorOf(button)
+    }
+    assert {
+        "Reset view", "Pan", "Zoom", "Save figure...", "Copy figure",
+        "Export table as CSV...",
+    } <= captions
+    assert not {"Subplots", "Customize"} & captions
+
+
+@needs_plots
+def test_pan_and_zoom_are_matplotlib_s_and_the_buttons_say_which_is_on(qt_app, tmp_path):
+    panel = measurable(qt_app, tmp_path)
+    panel.as_chart.setChecked(True)
+    view = panel.chart_view
+
+    view.pan_button.click()
+    assert view._toolbar.mode == "pan/zoom"
+    assert view.pan_button.isChecked() and not view.zoom_button.isChecked()
+
+    view.zoom_button.click()
+    assert view._toolbar.mode == "zoom rect"
+    assert view.zoom_button.isChecked() and not view.pan_button.isChecked()
+
+
+@needs_plots
+@pytest.mark.parametrize(
+    "suffix, magic", [(".png", b"\x89PNG"), (".svg", b"<?xml"), (".pdf", b"%PDF")]
+)
+def test_a_figure_is_saved_in_the_format_its_name_asks_for(
+    qt_app, tmp_path, monkeypatch, suffix, magic
+):
+    panel = measurable(qt_app, tmp_path)
+    output = tmp_path / f"chart{suffix}"
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.chart_view.choose_save_file",
+        lambda *args, **kwargs: output,
+    )
+    panel.as_chart.setChecked(True)
+
+    panel.chart_view.save_button.click()
+
+    assert output.read_bytes().startswith(magic)
+
+
+@needs_plots
+def test_copy_figure_puts_the_chart_on_the_clipboard(qt_app, tmp_path):
+    from qtpy.QtWidgets import QApplication
+
+    panel = measurable(qt_app, tmp_path)
+    panel.as_chart.setChecked(True)
+    QApplication.clipboard().clear()
+
+    panel.chart_view.copy_button.click()
+
+    assert not QApplication.clipboard().image().isNull()
+
+
+@needs_plots
+def test_the_counts_behind_a_chart_are_written_as_stats_writes_them(
+    qt_app, tmp_path, monkeypatch
+):
+    import csv
+
+    panel = measurable(qt_app, tmp_path)
+    panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
+    output = tmp_path / "counts.csv"
+    asked: list[str] = []
+    panel.breakdown_export_requested.connect(asked.append)
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.export_panel.choose_save_file",
+        lambda *args, **kwargs: output,
+    )
+    panel.as_chart.setChecked(True)
+
+    panel.chart_view.export_button.click()
+    assert asked == [str(output)]
+
+    panel.controller.export_breakdown_csv(output, "modality")
+    with output.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    assert rows[0] == ["modality", "images"]
+    assert {row[0]: int(row[1]) for row in rows[1:]} == dict(
+        panel.controller.breakdown("modality")
+    )
+
+
+def test_a_breakdown_needing_measured_labels_is_not_written_unmeasured(qt_app, tmp_path):
+    """Written anyway, every image would land under "no-label"."""
+    panel = measurable(qt_app, tmp_path)
+
+    with pytest.raises(ValueError, match="measured"):
+        panel.controller.export_breakdown_csv(tmp_path / "counts.csv", "has-crack")
+
+    assert not (tmp_path / "counts.csv").exists()
 
 
 # ---------------------------------------------------------------------------

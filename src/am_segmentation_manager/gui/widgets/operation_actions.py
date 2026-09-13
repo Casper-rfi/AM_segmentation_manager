@@ -619,6 +619,18 @@ class OperationActions:
             return
         self._flash(f"Wrote {Path(path).name}", 4000)
 
+    def _export_breakdown(self, path: str) -> None:
+        """Write the counts behind the chart, as am-seg stats --output writes them."""
+        panel = self.export_panel
+        try:
+            self.export_controller.export_breakdown_csv(
+                Path(path), panel.breakdown.currentData(), panel.cross.currentData() or None
+            )
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Export failed", str(error))
+            return
+        self._flash(f"Wrote {Path(path).name}", 4000)
+
     def _export_project_metadata(self, path: str) -> None:
 
         try:
