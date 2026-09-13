@@ -72,7 +72,7 @@ from .busy_dialog import BusyDialog
 from .common import MAX_LISTED_FILES, vertical_rule
 from .controls import GripSplitter
 from .export_panel import ExportPanel
-from .frame_strip import FrameTimeline
+from .frame_strip import CURATE_BAND, FrameTimeline
 from .icons import settings_icon
 from .image_panel import ImagePanel
 from .label_panel import LabelPanel
@@ -524,7 +524,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         row.setContentsMargins(2, 0, 2, 0)
         row.setSpacing(6)
 
-        self.timeline = FrameTimeline()
+        self.timeline = FrameTimeline(band=CURATE_BAND)
         self.timeline.frame_selected.connect(self._seek_frame)
         self.timeline.frame_toggled.connect(self._toggle_frame)
         self.timeline.extend_started.connect(self._begin_extend)

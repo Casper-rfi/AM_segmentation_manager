@@ -60,7 +60,7 @@ from .controls import (
     ToggleSwitch,
     keep_paired,
 )
-from .frame_strip import FrameTimeline
+from .frame_strip import LABEL_BAND, FrameTimeline
 from .icons import (
     ICON,
     brush_icon,
@@ -699,12 +699,7 @@ class LabelPanel(QWidget):
         row.setContentsMargins(2, 0, 2, 0)
         row.setSpacing(6)
 
-        self.timeline = FrameTimeline()
-        self.timeline.setToolTip(
-            "The images of this lamella worth proofreading, in order.\nThe thin "
-            "line is each label, bright where it holds an annotation.\nClick or "
-            "drag to jump to one; Left and Right step."
-        )
+        self.timeline = FrameTimeline(band=LABEL_BAND)
         self.timeline.frame_selected.connect(self.select_frame)
         row.addWidget(self.timeline, stretch=1)
 

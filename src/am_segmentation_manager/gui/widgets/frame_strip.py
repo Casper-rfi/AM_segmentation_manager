@@ -1,17 +1,26 @@
 """The frame timeline: position and curation progress in one widget.
 
 The position marker and the state rows are drawn on the same pixels, so their
-alignment is structural rather than something to maintain.
-
-Each modality gets its own row, because a curation step often targets one --
-deselecting a SEM while leaving its FIB selected is routine -- and a combined row
-could only report that the two disagree.
+alignment is structural rather than something to maintain. Each modality gets
+its own row, because a curation step often targets one, and a combined row
+could only report that the two disagree. Hovering a frame shows a card naming
+what it holds above what every mark means, so the legend is where the marks
+are read and not only behind F1.
 """
 from __future__ import annotations
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QPoint, Qt, Signal
 from qtpy.QtGui import QColor, QFontMetrics, QPainter, QPixmap
-from qtpy.QtWidgets import QSizePolicy, QWidget
+from qtpy.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .theme import TIMELINE_CARD, TIMELINE_LEGEND
 
 #: Workflow state colours.
 #:
@@ -139,13 +148,34 @@ SELECTION_BAND = SELECTION_HEIGHT + SELECTION_GAP
 #: would occupy more of the bar than the states they separate.
 MIN_TICK_SPACING = 5
 
+#: What the white band means on each tab's timeline -- one mark, two meanings,
+#: named once for the hover card and the F1 list alike.
+CURATE_BAND = "Picked out for a state change"
+LABEL_BAND = "This label has unsaved edits"
+
+#: How a frame's label line is put into words on the hover card.
+LABEL_WORDS = {
+    "present": "label holds an annotation",
+    "empty": "label is empty",
+    "missing": "no label file",
+}
+
+#: Space kept between the hover card and the strip it describes.
+CARD_GAP = 6
+
+
+def _at(values: list, index: int):
+    """Return *values* at *index*, or None past its end."""
+    return values[index] if index < len(values) else None
+
 
 class FrameTimeline(QWidget):
     """Position within a lamella, each modality's state, and what is selected.
 
     Click or drag to move to a frame. Ctrl (Cmd) and Shift pick frames out for
     a state change instead of moving to them -- deliberately separate, so that
-    building a selection never sets a lamella's worth of images loading.
+    building a selection never sets a lamella's worth of images loading. Hover
+    to see what a frame holds.
     """
 
     #: Emitted with a frame index when the user clicks or drags.
@@ -159,8 +189,17 @@ class FrameTimeline(QWidget):
     #: it, so dragging back shrinks the range again.
     extend_reached = Signal(int)
 
-    def __init__(self) -> None:
+    def __init__(self, band: str = CURATE_BAND) -> None:
+        """Build an empty timeline.
+
+        Args:
+            band: What the white band means on the tab this timeline is on.
+        """
         super().__init__()
+        self._band = band
+        self._card: TimelineCard | None = None
+        #: The frame the card is describing, while it shows.
+        self._hovered: int | None = None
         self._rows: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._labels: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
         self._specks: dict[str, list] = {modality: [] for modality in ROW_MODALITIES}
@@ -177,11 +216,9 @@ class FrameTimeline(QWidget):
         )
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip(
-            "Curation progress: SEM above, FIB below, each with a thin line "
-            "for its labels, bright where one holds an annotation.\n"
-            "Click to jump; F1 says what every mark means."
-        )
+        # The hover card instead of a tooltip, which could say what the strip
+        # is but not what the frame under the pointer holds.
+        self.setMouseTracking(True)
 
     def set_states(
         self,
@@ -219,6 +256,11 @@ class FrameTimeline(QWidget):
         self._selected = set(selected or ())
         self._count = max((len(states) for states in self._rows.values()), default=0)
         self._current = current
+        if self._hovered is not None:
+            if self._count:
+                self._show_card(min(self._hovered, self._count - 1), refresh=True)
+            else:
+                self._hide_card()
         self.update()
 
     def _frame_width(self) -> float:
@@ -369,6 +411,72 @@ class FrameTimeline(QWidget):
         room = (width - advance) / 2
         return min(clear, max(0.0, room))
 
+    @property
+    def card(self) -> TimelineCard | None:
+        """Return the hover card, or None before anything has been hovered."""
+        return self._card
+
+    def describe_frame(self, index: int) -> list[str]:
+        """Return what the timeline shows of frame *index*, a line per beam.
+
+        The hover card's text, read from what this widget draws, so the card
+        cannot describe a frame differently from how the strip shows it.
+        """
+        heading = f"Frame {index + 1} of {self._count}"
+        lines = [f"{heading} (where you are)" if index == self._current else heading]
+        for modality in ROW_MODALITIES:
+            state = _at(self._rows[modality], index)
+            if state is None:
+                lines.append(f"{modality}: no image")
+                continue
+            parts = [state]
+            label = _at(self._labels[modality], index)
+            if label in LABEL_WORDS:
+                parts.append(LABEL_WORDS[label])
+            specks = _at(self._specks[modality], index)
+            if specks:
+                parts.append(f"{specks} speck{'s' if specks != 1 else ''}")
+            lines.append(f"{modality}: {', '.join(parts)}")
+        if index in self._selected:
+            lines.append(self._band)
+        return lines
+
+    def _show_card(self, index: int, *, refresh: bool = False) -> None:
+        """Describe frame *index* on the card, over the column it is drawn in."""
+        if self._card is None:
+            self._card = TimelineCard(self, self._band)
+        if index == self._hovered and self._card.isVisible() and not refresh:
+            return
+        self._hovered = index
+        self._card.describe(self.describe_frame(index))
+        self._card.adjustSize()
+        self._card.move(self._card_position(index))
+        self._card.show()
+
+    def _hide_card(self) -> None:
+        self._hovered = None
+        if self._card is not None:
+            self._card.hide()
+
+    def _card_position(self, index: int) -> QPoint:
+        """Return where the card goes: centred on the frame, above the strip.
+
+        Below the strip where the screen has no room above it, and never past
+        either side of the screen.
+        """
+        card = self._card
+        width = self._frame_width()
+        above = self.mapToGlobal(QPoint(int(index * width + width / 2), 0))
+        x = above.x() - card.width() // 2
+        y = above.y() - card.height() - CARD_GAP
+        screen = self.screen()
+        if screen is not None:
+            room = screen.availableGeometry()
+            x = max(room.left(), min(x, room.right() - card.width()))
+            if y < room.top():
+                y = self.mapToGlobal(QPoint(0, self.height())).y() + CARD_GAP
+        return QPoint(x, y)
+
     def _frame_at(self, x: int) -> int:
         width = self._frame_width()
         if not width:
@@ -389,6 +497,7 @@ class FrameTimeline(QWidget):
         return "seek"
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._hide_card()
         if not self._count or event.button() != Qt.LeftButton:
             return
         frame = self._frame_at(event.pos().x())
@@ -402,19 +511,31 @@ class FrameTimeline(QWidget):
             self.frame_selected.emit(frame)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Scrub, or widen the selection, while the button is held.
+        """Scrub, or widen the selection, while the button is held; else describe.
 
         A drag with either modifier extends: dragging is how a run is picked
         out, and toggling frame by frame under the pointer would flicker items
         in and out as the pointer crossed them.
         """
-        if not self._count or not event.buttons() & Qt.LeftButton:
+        if not self._count:
             return
         frame = self._frame_at(event.pos().x())
+        if not event.buttons() & Qt.LeftButton:
+            self._show_card(frame)
+            return
+        self._hide_card()
         if self._picking(event.modifiers()) == "seek":
             self.frame_selected.emit(frame)
         else:
             self.extend_reached.emit(frame)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._hide_card()
+        super().leaveEvent(event)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._hide_card()
+        super().hideEvent(event)
 
 
 #: How wide a legend sample is drawn. Wide enough to read as a band rather than
@@ -512,6 +633,16 @@ def timeline_legend(band: str) -> list[tuple[QPixmap, str]]:
             "One column per frame, in order. SEM above, FIB below, each with a "
             "thin line for its label.",
         ),
+        *_mark_legend(band),
+    ]
+
+
+def _mark_legend(band: str) -> list[tuple[QPixmap, str]]:
+    """Return what each mark means, without the miniature of the whole strip.
+
+    The hover card's legend, where the strip itself is right under it.
+    """
+    return [
         (_state_sample("deselected"), "Deselected: no label is wanted here"),
         (_state_sample("selected"), "Selected: a label is wanted and not yet finished"),
         (_state_sample("corrected"), "Corrected: the label has been proofread"),
@@ -560,3 +691,42 @@ def _cursor_sample() -> QPixmap:
     finally:
         painter.end()
     return pixmap
+
+
+class TimelineCard(QFrame):
+    """What the frame under the pointer holds, above what every mark means.
+
+    A window flagged as a tooltip, so it takes no focus and no room in the
+    layout: a QToolTip holds text, and could not show the marks themselves.
+    """
+
+    def __init__(self, parent: QWidget, band: str) -> None:
+        super().__init__(parent, Qt.ToolTip)
+        self.setObjectName(TIMELINE_CARD)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(8, 6, 8, 8)
+        column.setSpacing(8)
+
+        #: The frame's own lines, replaced as the pointer moves.
+        self.frame = QLabel()
+        column.addWidget(self.frame)
+
+        legend = QGridLayout()
+        legend.setHorizontalSpacing(8)
+        legend.setVerticalSpacing(3)
+        rows = _mark_legend(band)
+        for row, (sample, meaning) in enumerate(rows):
+            picture = QLabel()
+            picture.setPixmap(sample)
+            legend.addWidget(picture, row, 0)
+            caption = QLabel(meaning)
+            caption.setObjectName(TIMELINE_LEGEND)
+            legend.addWidget(caption, row, 1)
+        column.addLayout(legend)
+        #: What each legend row says, in order.
+        self.meanings = [meaning for _, meaning in rows]
+
+    def describe(self, lines: list[str]) -> None:
+        """Show *lines* as what the frame under the pointer holds."""
+        self.frame.setText("\n".join(lines))

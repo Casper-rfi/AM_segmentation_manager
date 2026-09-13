@@ -22,6 +22,8 @@ if HAS_QT:
     from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.gui.widgets.frame_strip import (
+        CURATE_BAND,
+        LABEL_BAND,
         LABEL_COLOURS,
         LABEL_LINE_HEIGHT,
         ROW_HEIGHT,
@@ -30,6 +32,7 @@ if HAS_QT:
         SPECK_INK,
         STATE_COLOURS,
         FrameTimeline,
+        timeline_legend,
     )
 
 
@@ -480,3 +483,100 @@ def test_a_count_elsewhere_stays_centred(timeline):
     )
 
     assert left_half > 0, "a centred count straddles the middle of its cell"
+
+
+# ---------------------------------------------------------------------------
+# Hovering: what the frame under the pointer holds, above what the marks mean.
+# ---------------------------------------------------------------------------
+
+def _hover(widget, index: int) -> None:
+    """Move the pointer over a frame's column with no button held."""
+    from qtpy.QtCore import Qt
+    from qtpy.QtGui import QMouseEvent
+
+    widget.mouseMoveEvent(_mouse_event(
+        widget, index, QMouseEvent.MouseMove, Qt.NoButton, Qt.NoButton, Qt.NoModifier,
+    ))
+
+
+def test_a_frame_is_described_as_it_is_drawn(timeline):
+    timeline.set_states(
+        {"SEM": ["selected", "corrected"], "FIB": ["deselected", None]},
+        0,
+        labels={"SEM": ["present", "empty"], "FIB": ["missing", None]},
+        selected={1},
+        specks={"SEM": [0, 3]},
+    )
+
+    assert timeline.describe_frame(0) == [
+        "Frame 1 of 2 (where you are)",
+        "SEM: selected, label holds an annotation",
+        "FIB: deselected, no label file",
+    ]
+    assert timeline.describe_frame(1) == [
+        "Frame 2 of 2",
+        "SEM: corrected, label is empty, 3 specks",
+        "FIB: no image",
+        CURATE_BAND,
+    ]
+
+
+def test_hovering_a_frame_shows_what_it_holds_above_the_legend(loaded):
+    """The legend is drawn by what draws the strip, as the F1 list's is."""
+    _hover(loaded, 3)
+
+    card = loaded.card
+    assert not card.isHidden()
+    assert card.frame.text() == "\n".join(loaded.describe_frame(3))
+    assert card.meanings == [meaning for _, meaning in timeline_legend(CURATE_BAND)[1:]]
+
+
+def test_the_card_follows_the_pointer_to_another_frame(loaded):
+    _hover(loaded, 1)
+    _hover(loaded, 5)
+
+    assert loaded.card.frame.text().startswith("Frame 6 of 8")
+
+
+def test_the_card_goes_when_the_pointer_leaves(loaded):
+    from qtpy.QtCore import QEvent
+
+    _hover(loaded, 2)
+    loaded.leaveEvent(QEvent(QEvent.Leave))
+
+    assert loaded.card.isHidden()
+
+
+def test_no_card_while_pressing_or_dragging(loaded):
+    """A card over the strip while scrubbing would cover what is being scrubbed."""
+    from qtpy.QtCore import Qt
+
+    _hover(loaded, 2)
+    _click(loaded, 2)
+    assert loaded.card.isHidden()
+
+    _drag_to(loaded, 4, Qt.NoModifier)
+    assert loaded.card.isHidden()
+
+
+def test_a_state_changing_under_the_pointer_is_described_at_once(loaded):
+    _hover(loaded, 2)
+
+    loaded.set_states({"SEM": ["corrected"] * 8, "FIB": ["selected"] * 8}, 0)
+
+    assert "SEM: corrected" in loaded.card.frame.text()
+
+
+def test_the_label_tab_s_card_names_its_own_band(qt_app):
+    widget = FrameTimeline(band=LABEL_BAND)
+    widget.resize(400, widget.height())
+    widget.set_states({"SEM": ["selected"] * 2, "FIB": ["selected"] * 2}, 0, selected={1})
+
+    _hover(widget, 1)
+
+    assert LABEL_BAND in widget.card.meanings
+    assert widget.describe_frame(1)[-1] == LABEL_BAND
+
+
+def test_the_strip_has_no_tooltip_to_show_beside_the_card(timeline):
+    assert timeline.toolTip() == ""

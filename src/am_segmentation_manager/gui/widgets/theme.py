@@ -92,6 +92,14 @@ VALUE_CHIP_STYLE = (
 #: ``setObjectName``; see the rule of the same name below.
 COMPACT_BUTTON = "compactButton"
 
+#: Object name of the timeline's hover card, so the stylesheet can draw it as it
+#: draws a tooltip.
+TIMELINE_CARD = "timelineCard"
+
+#: Object name of a legend caption on that card, muted so the frame's own lines
+#: above it are what the eye lands on.
+TIMELINE_LEGEND = "timelineLegend"
+
 #: The outline round the completeness bar, which is partly filled and so needs
 #: its unfilled end drawn to be a bar at all. The status chip has none: its
 #: cells are filled edge to edge.
@@ -382,6 +390,13 @@ def stylesheet() -> str:
         border-radius: 4px;
         padding: 4px 6px;
     }}
+    /* The timeline's hover card is a tooltip holding pictures, and looks like one. */
+    QFrame#{TIMELINE_CARD} {{
+        background: {BASE};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+    }}
+    QLabel#{TIMELINE_LEGEND} {{ color: {MUTED}; }}
     """
 
 

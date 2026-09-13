@@ -29,7 +29,7 @@ from qtpy.QtWidgets import (
 )
 
 from .common import mark_image
-from .frame_strip import timeline_legend
+from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram
 from .label_panel import CLASS_KEYS
 from .metadata_panel import completeness_legend
@@ -505,12 +505,12 @@ def _tab_marks(tab: str) -> tuple[tuple[str, str, str], ...]:
             (GROUP_ROW_MARK, status_legend()),
             (
                 GROUP_STRIP_MARK,
-                timeline_legend("Picked out for a state change"),
+                timeline_legend(CURATE_BAND),
             ),
         ]
     elif tab == TAB_LABEL:
         rows = [
-            (GROUP_STRIP_MARK, timeline_legend("This label has unsaved edits")),
+            (GROUP_STRIP_MARK, timeline_legend(LABEL_BAND)),
         ]
     elif tab == TAB_ADD_DATA:
         rows = [(GROUP_ROW_MARK, completeness_legend())]
