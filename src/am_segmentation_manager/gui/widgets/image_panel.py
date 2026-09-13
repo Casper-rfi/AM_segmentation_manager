@@ -19,7 +19,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QMenu,
     QPushButton,
-    QSlider,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -51,6 +50,7 @@ from .controls import (
     RangeSlider,
     SegmentedControl,
     ToggleSwitch,
+    ValueSlider,
     keep_paired,
 )
 from .grid_view import GridView
@@ -229,7 +229,7 @@ class ImagePanel(QWidget):
         # be wider than the flow's own spacing.
         controls.addSpacing(GROUP_GAP)
         opacity_label = QLabel("Opacity")
-        self.alpha_slider = QSlider(Qt.Horizontal)
+        self.alpha_slider = ValueSlider()
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)

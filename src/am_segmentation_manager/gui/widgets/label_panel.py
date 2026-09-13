@@ -21,7 +21,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QSlider,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -58,6 +57,7 @@ from .controls import (
     RangeSlider,
     SegmentedControl,
     ToggleSwitch,
+    ValueSlider,
     keep_paired,
 )
 from .frame_strip import LABEL_BAND, FrameTimeline
@@ -395,7 +395,7 @@ class LabelPanel(QWidget):
 
         controls.addSpacing(GROUP_GAP)
         opacity_label = QLabel("Opacity")
-        self.alpha_slider = QSlider(Qt.Horizontal)
+        self.alpha_slider = ValueSlider()
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
@@ -431,7 +431,7 @@ class LabelPanel(QWidget):
             "\nShortcut: X; N steps to the next"
         )
         self.speck_check.toggled.connect(self._finding_toggled)
-        self.speck_slider = QSlider(Qt.Horizontal)
+        self.speck_slider = ValueSlider()
         self.speck_slider.setRange(MIN_SPECK_PIXELS, MAX_SPECK_PIXELS)
         self.speck_slider.setValue(self.controller.speck_size)
         self.speck_slider.setFixedWidth(90)
@@ -544,7 +544,7 @@ class LabelPanel(QWidget):
             grid.addWidget(button, row, 0)
             self.tool_buttons[tool] = button
 
-        self.brush_slider = QSlider(Qt.Horizontal)
+        self.brush_slider = ValueSlider()
         # One step of the slider is one entry in BRUSH_WIDTHS, not one pixel:
         # see why there.
         self.brush_slider.setRange(0, len(BRUSH_WIDTHS) - 1)

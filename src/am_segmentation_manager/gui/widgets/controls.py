@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
     QLayoutItem,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QSpacerItem,
     QSplitter,
     QSplitterHandle,
@@ -666,6 +667,142 @@ RANGE_FOCUS = 3.0
 SLIDER_WIDTH = 150
 
 
+def _track_span(width: float) -> tuple[float, float]:
+    """Return the x range a handle's centre moves between, in a widget *width* wide."""
+    return RANGE_HANDLE + RANGE_FOCUS, width - RANGE_HANDLE - RANGE_FOCUS
+
+
+def _x_along(value: int, minimum: int, maximum: int, width: float) -> float:
+    """Return where *value* sits along the track of a widget *width* wide."""
+    left, right = _track_span(width)
+    if maximum == minimum:  # pragma: no cover - a degenerate range
+        return left
+    return left + (value - minimum) / (maximum - minimum) * (right - left)
+
+
+def _value_along(x: float, minimum: int, maximum: int, width: float) -> int:
+    """Return the value at *x* along the track of a widget *width* wide."""
+    left, right = _track_span(width)
+    if right <= left:  # pragma: no cover - not yet laid out
+        return minimum
+    fraction = max(0.0, min(1.0, (x - left) / (right - left)))
+    return round(minimum + fraction * (maximum - minimum))
+
+
+def _slider_side() -> int:
+    """Return how tall a slider is: a handle and the focus ring round it."""
+    return int(2 * (RANGE_HANDLE + RANGE_FOCUS))
+
+
+def _paint_track(
+    painter: QPainter,
+    left: float,
+    right: float,
+    middle: float,
+    filled_from: float,
+    filled_to: float,
+) -> None:
+    """Draw a slider's groove, filled in the accent between two points along it."""
+    groove = QRectF(left, middle - RANGE_GROOVE / 2, right - left, RANGE_GROOVE)
+    radius = RANGE_GROOVE / 2
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(theme.BORDER))
+    painter.drawRoundedRect(groove, radius, radius)
+    painter.setBrush(QColor(theme.ACCENT))
+    painter.drawRoundedRect(
+        QRectF(filled_from, groove.top(), filled_to - filled_from, RANGE_GROOVE),
+        radius, radius,
+    )
+
+
+def _paint_knob(painter: QPainter, x: float, middle: float, *, ringed: bool) -> None:
+    """Draw one round handle, ringed in the accent when it is the one the keys move."""
+    centre = QPointF(x, middle)
+    if ringed:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(theme.ACCENT))
+        painter.drawEllipse(centre, RANGE_HANDLE + RANGE_FOCUS, RANGE_HANDLE + RANGE_FOCUS)
+    pen = QPen(QColor(theme.BORDER))
+    pen.setWidthF(1.0)
+    painter.setPen(pen)
+    painter.setBrush(QColor(theme.BASE))
+    painter.drawEllipse(centre, RANGE_HANDLE, RANGE_HANDLE)
+
+
+class ValueSlider(QSlider):
+    """A horizontal slider drawn as :class:`RangeSlider` is, with one handle.
+
+    **A subclass of** :class:`QSlider` **on purpose**, as :class:`ToggleSwitch`
+    is of ``QCheckBox``: the range, the keys, the wheel and ``valueChanged``
+    are Qt's own, and only the drawing and where a press lands differ. Painted
+    entirely here, so no stylesheet rule may name it.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(Qt.Horizontal, parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self._dragging = False
+
+    def _x_of(self, value: int) -> float:
+        """Return where *value* sits along the track."""
+        return _x_along(value, self.minimum(), self.maximum(), self.width())
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Put the handle under the pointer and take hold of it."""
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self._dragging = True
+        self.setSliderDown(True)
+        self._drag_to(_event_x(event))
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Move the handle that was taken hold of."""
+        if not self._dragging:
+            super().mouseMoveEvent(event)
+            return
+        self._drag_to(_event_x(event))
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Let go."""
+        if not self._dragging:
+            super().mouseReleaseEvent(event)
+            return
+        self._dragging = False
+        self.setSliderDown(False)
+        event.accept()
+
+    def _drag_to(self, x: float) -> None:
+        """Move the handle to the value at *x*, as a drag would."""
+        self.setSliderPosition(
+            _value_along(x, self.minimum(), self.maximum(), self.width())
+        )
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt naming
+        """Draw the groove, filled up to the handle, and the handle."""
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+            left, right = _track_span(self.width())
+            middle = self.height() / 2
+            x = self._x_of(self.value())
+            _paint_track(painter, left, right, middle, left, x)
+            _paint_knob(painter, x, middle, ringed=self.hasFocus())
+        finally:
+            painter.end()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        """Return the size a range slider asks for, so a pair ends together."""
+        return QSize(SLIDER_WIDTH, _slider_side())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        """Return enough for the handle to travel and nothing more."""
+        side = _slider_side()
+        return QSize(2 * side, side)
+
+
 class RangeSlider(QWidget):
     """One control for a low and a high limit, with a handle for each.
 
@@ -828,24 +965,15 @@ class RangeSlider(QWidget):
 
     def _span(self) -> tuple[float, float]:
         """Return the x range the handles' centres move between."""
-        return RANGE_HANDLE + RANGE_FOCUS, self.width() - RANGE_HANDLE - RANGE_FOCUS
+        return _track_span(self.width())
 
     def _x_of(self, value: int) -> float:
         """Return where *value* sits along the track."""
-        left, right = self._span()
-        if self._maximum == self._minimum:  # pragma: no cover - a degenerate range
-            return left
-        fraction = (value - self._minimum) / (self._maximum - self._minimum)
-        return left + fraction * (right - left)
+        return _x_along(value, self._minimum, self._maximum, self.width())
 
     def _value_at(self, x: float) -> int:
         """Return the value at *x* along the track."""
-        left, right = self._span()
-        if right <= left:  # pragma: no cover - not yet laid out
-            return self._minimum
-        fraction = (x - left) / (right - left)
-        span = self._maximum - self._minimum
-        return round(self._minimum + max(0.0, min(1.0, fraction)) * span)
+        return _value_along(x, self._minimum, self._maximum, self.width())
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt naming
         """Draw the groove, the span between the handles, and the handles."""
@@ -854,49 +982,23 @@ class RangeSlider(QWidget):
             painter.setRenderHint(QPainter.Antialiasing)
             left, right = self._span()
             middle = self.height() / 2
-            groove = QRectF(
-                left, middle - RANGE_GROOVE / 2, right - left, RANGE_GROOVE
-            )
-            radius = RANGE_GROOVE / 2
-
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(theme.BORDER))
-            painter.drawRoundedRect(groove, radius, radius)
-
             low_x, high_x = self._x_of(self._low), self._x_of(self._high)
-            painter.setBrush(QColor(theme.ACCENT))
-            painter.drawRoundedRect(
-                QRectF(low_x, groove.top(), high_x - low_x, RANGE_GROOVE),
-                radius, radius,
-            )
+            _paint_track(painter, left, right, middle, low_x, high_x)
             for name, x in (("low", low_x), ("high", high_x)):
-                self._paint_handle(painter, x, middle, focused=name == self._active)
+                _paint_knob(
+                    painter, x, middle,
+                    ringed=name == self._active and self.hasFocus(),
+                )
         finally:
             painter.end()
 
-    def _paint_handle(
-        self, painter: QPainter, x: float, middle: float, *, focused: bool
-    ) -> None:
-        """Draw one handle, ringed when it is the one the keys would move."""
-        centre = QPointF(x, middle)
-        if focused and self.hasFocus():
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(theme.ACCENT))
-            painter.drawEllipse(centre, RANGE_HANDLE + RANGE_FOCUS, RANGE_HANDLE + RANGE_FOCUS)
-        pen = QPen(QColor(theme.BORDER))
-        pen.setWidthF(1.0)
-        painter.setPen(pen)
-        painter.setBrush(QColor(theme.BASE))
-        painter.drawEllipse(centre, RANGE_HANDLE, RANGE_HANDLE)
-
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
         """Return the room the track, the handles and a focus ring need."""
-        side = int(2 * (RANGE_HANDLE + RANGE_FOCUS))
-        return QSize(SLIDER_WIDTH, side)
+        return QSize(SLIDER_WIDTH, _slider_side())
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
         """Return enough for both handles side by side and nothing more."""
-        side = int(2 * (RANGE_HANDLE + RANGE_FOCUS))
+        side = _slider_side()
         return QSize(4 * side, side)
 
 

@@ -4664,6 +4664,21 @@ def test_the_view_controls_are_one_block_on_the_smallest_screen_supported(
         destroy(window)
 
 
+def test_every_view_slider_is_drawn_one_way(window):
+    """Opacity beside Min / Max read as two kinds of control while Fusion drew
+    one of them."""
+    from am_segmentation_manager.gui.widgets.controls import ValueSlider
+
+    sliders = (
+        window.image_panel.alpha_slider,
+        window.label_panel.alpha_slider,
+        window.label_panel.brush_slider,
+        window.label_panel.speck_slider,
+    )
+
+    assert all(isinstance(slider, ValueSlider) for slider in sliders)
+
+
 def test_the_opacity_and_min_max_sliders_are_the_same_length(qt_app, settings):
     """Paired one above the other, they read as a pair only if they end together."""
     from am_segmentation_manager.gui.controller import CurationController

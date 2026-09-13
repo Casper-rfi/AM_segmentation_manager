@@ -370,7 +370,9 @@ of one of these files, is held by `test_docs.py`.
   fault instead of a setting; the handle being *moved* is the one that gives way, being pushed along
   reading as the control having taken the wrong one. Double click puts one handle back without
   touching the other, Qt offering no gesture for neutral. **Painted entirely itself like
-  `ToggleSwitch`, so no stylesheet rule may name it.**
+  `ToggleSwitch`, so no stylesheet rule may name it.** Every one-handled slider beside it is a
+  `controls.ValueSlider`, Qt's slider drawn the same way, Fusion's having read as another kind of
+  control (`test_it_is_drawn_as_the_range_slider_is`).
 - **The image panes have no scrollbars, their scene is bigger than the image, and zooming out lands
   through `fitInView`.** The scene carries a quarter of the image as slack on every side, so an edge
   can be dragged into the middle of the pane to be worked on — which is also why scrollbars go, a
