@@ -165,7 +165,7 @@ def test_the_plan_names_what_changed(tmp_path: Path):
 def test_a_corrected_label_is_not_replaced_without_consent(tmp_path: Path):
     destination = existing(tmp_path / "labels" / "img.tif")
 
-    with pytest.raises(PermissionError, match="proofread"):
+    with pytest.raises(PermissionError, match="corrected label"):
         save_labels([item(destination, corrected=True)])
 
     assert (tifffile.imread(str(destination)) == 1).all()

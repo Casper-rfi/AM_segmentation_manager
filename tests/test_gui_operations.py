@@ -336,7 +336,7 @@ def test_the_summary_separates_the_reasons_nothing_is_ready(tmp_path: Path):
     assert "Nothing to convert" in summary
     assert "post-processed" in summary
     assert "no prediction yet" in summary
-    assert "proofread" in summary
+    assert "corrected, never replaced" in summary
 
 
 def test_a_replaceable_label_is_not_reported_as_nothing_to_convert(tmp_path: Path):
@@ -938,7 +938,7 @@ def test_reverting_refuses_proofread_work_until_it_is_named(tmp_path: Path):
 
     assert report.blocked == "corrected"
     assert not report.applied
-    assert "proofread work" in report.headline
+    assert "are corrected" in report.headline
 
 
 def test_a_savepoint_that_is_not_here_is_reported_rather_than_raised(tmp_path: Path):
@@ -1072,7 +1072,7 @@ def test_merging_over_proofread_work_is_refused_until_it_is_named(tmp_path: Path
 
     assert report.blocked == "corrected"
     assert not report.applied
-    assert "proofread work" in report.headline
+    assert "corrected item(s)" in report.headline
 
 
 # ---------------------------------------------------------------------------

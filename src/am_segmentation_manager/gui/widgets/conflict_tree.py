@@ -122,9 +122,9 @@ class ConflictTree(QTreeWidget):
             # work decides how the choice is made.
             item.setForeground(0, QBrush(QColor(WARNING)))
             tooltip += (
-                "\nProofread work here: taking the copy's replaces it."
+                "\nCorrected label here: taking the copy's replaces it."
                 if node.is_conflict else
-                f"\n{proofread} of the {len(node.keys)} here are proofread work."
+                f"\n{proofread} of the {len(node.keys)} here are corrected."
             )
         item.setToolTip(0, tooltip)
         for child in node.children:

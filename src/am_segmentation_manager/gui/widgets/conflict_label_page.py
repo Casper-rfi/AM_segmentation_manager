@@ -145,7 +145,7 @@ class LabelConflictPage(QWidget):
         self.details.setWordWrap(True)
         self.details.setStyleSheet(f"color: {MUTED};")
         column.addWidget(self.details)
-        self.proofread = QLabel("Proofread work here: taking the copy's replaces it.")
+        self.proofread = QLabel("Corrected label here: taking the copy's replaces it.")
         self.proofread.setStyleSheet(BADGE_STYLES["warning"])
         self.proofread.setHidden(True)
         column.addWidget(self.proofread)

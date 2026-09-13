@@ -1815,7 +1815,7 @@ def test_reverting_proofread_work_is_refused_until_it_is_named(
         lambda records, **kwargs: (
             asked.append(kwargs.get("allow_corrected"))
             or OperationReport(
-                "2 label(s) are proofread work.", ("a", "b"), 2, blocked="corrected"
+                "2 label(s) are corrected.", ("a", "b"), 2, blocked="corrected"
             )
         ),
     )

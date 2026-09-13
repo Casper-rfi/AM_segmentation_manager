@@ -234,7 +234,7 @@ def test_proofread_work_is_refused_without_confirmation(converted, recorder):
     plan = plan_revert([record], "conversion")
     before = _digest(converted)
 
-    with pytest.raises(PermissionError, match="proofread"):
+    with pytest.raises(PermissionError, match="corrected label"):
         apply_revert(plan, recorder=recorder)
 
     assert _digest(converted) == before

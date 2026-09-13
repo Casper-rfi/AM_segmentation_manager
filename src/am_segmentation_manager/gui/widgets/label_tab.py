@@ -112,7 +112,7 @@ class LabelTab:
             "What is on disk now is kept first, so this can itself be undone."
             + (
                 "\n\nThis label is marked corrected. Restoring writes over "
-                "proofread work."
+                "the corrected version."
                 if corrected else ""
             ),
         ) != QMessageBox.Yes:

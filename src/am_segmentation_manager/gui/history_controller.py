@@ -390,7 +390,7 @@ class HistoryController:
             )
         if plan.corrected and not allow_corrected:
             return OperationReport(
-                f"{len(plan.corrected)} piece(s) of proofread work here would "
+                f"{len(plan.corrected)} corrected item(s) here would "
                 f"be written over or unmarked. The version here is kept either "
                 f"way, so this can be undone -- but not unasked.",
                 capped(
@@ -484,7 +484,7 @@ class HistoryController:
             # here is what lets the window say how much is at stake first.
             return OperationReport(
                 f"{len(plan.corrected)} of the {len(plan.revertible)} label(s) "
-                f"this would put back to {naming} are proofread work.",
+                f"this would put back to {naming} are corrected.",
                 capped(item.target for item in plan.corrected),
                 len(plan.revertible),
                 blocked="corrected",

@@ -96,7 +96,7 @@ def add_arguments(sub) -> None:
     merge_cmd.add_argument(
         "--allow-corrected", action="store_true",
         help=(
-            "Take the copy's work over labels this collection has proofread, "
+            "Take the copy's work over labels corrected in this collection, "
             "and let it drop a corrected claim. The version here is kept "
             "either way, so this can be undone -- but not unasked"
         ),
@@ -137,7 +137,7 @@ def add_arguments(sub) -> None:
         "--confirm-corrected", action="store_true",
         help=(
             "Put back labels whose group is declared corrected. Required for "
-            "those, proofread work being what this is most likely to be undoing"
+            "those, corrected labels being what this is most likely to undo"
         ),
     )
     revert_cmd.add_argument(
@@ -239,7 +239,7 @@ def _cmd_merge(args: argparse.Namespace) -> int:
     )
     if plan.corrected:
         logger.warning(
-            "%d piece(s) of proofread work would be written over or unmarked",
+            "%d corrected item(s) would be written over or unmarked",
             len(plan.corrected),
         )
     if plan.is_refused:
@@ -259,7 +259,7 @@ def _cmd_merge(args: argparse.Namespace) -> int:
 
     if plan.corrected and not args.allow_corrected:
         logger.error(
-            "%d piece(s) of proofread work would be written over or unmarked: "
+            "%d corrected item(s) would be written over or unmarked: "
             "%s. Nothing was merged. Re-run with --allow-corrected to take it "
             "anyway; the version here is kept either way.",
             len(plan.corrected),
@@ -335,7 +335,7 @@ def _cmd_revert(args: argparse.Namespace) -> int:
         return 0
     if plan.corrected and not args.confirm_corrected:
         logger.error(
-            "%d of them are proofread work. Re-run with --confirm-corrected to "
+            "%d of them are corrected. Re-run with --confirm-corrected to "
             "put those back; what is there now is kept either way.",
             len(plan.corrected),
         )

@@ -981,8 +981,8 @@ class ExportPanel(QWidget):
         self.merge_button = QPushButton("Merge a copy back...")
         self.merge_button.setToolTip(
             "Bring the work done in a copy back into this collection.\n"
-            "Nothing is merged while a conflict stands, and proofread work "
-            "here is never written over unasked."
+            "Nothing is merged while a conflict stands, and corrected labels "
+            "here are never written over unasked."
         )
         self.merge_button.clicked.connect(self._choose_copy)
         column.addWidget(self.merge_button)

@@ -150,7 +150,7 @@ def add_arguments(sub) -> None:
         default="corrected",
         help=(
             "Workflow state to measure (default: 'corrected'). Widening this "
-            "mixes proofread labels with prediction-derived ones"
+            "mixes corrected labels with prediction-derived ones"
         ),
     )
     _add_metadata_filters(quantify)

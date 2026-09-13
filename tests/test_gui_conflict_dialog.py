@@ -356,7 +356,7 @@ def test_proofread_work_is_marked_where_it_is_decided(opened):
 
     conflict = page.tree.item_of(resolution.conflict(rows[0].key))
     lamella = page.tree.item_of(_node(resolution.labels, "session_a", "Auto-1", "01-cat"))
-    assert "Proofread" in conflict.toolTip(0)
+    assert "Corrected label" in conflict.toolTip(0)
     assert "1 of the 2" in lamella.toolTip(0)
 
 

@@ -179,7 +179,7 @@ class OperationsPanel(QWidget):
         self.convert_button = QPushButton("Convert predictions...")
         self.convert_button.setToolTip(
             "Write a label from each selected image's prediction.\n"
-            "Replacing an existing label has to be confirmed, and a proofread "
+            "Replacing an existing label has to be confirmed, and a corrected "
             "one is never replaced. Post-processed (clean/) predictions are "
             "not used."
         )

@@ -217,7 +217,7 @@ def save_labels(
     if plan.corrected and not allow_corrected:
         names = ", ".join(item.destination.name for item in plan.corrected)
         raise PermissionError(
-            f"Refusing to replace {len(plan.corrected)} proofread label(s) "
+            f"Refusing to replace {len(plan.corrected)} corrected label(s) "
             f"without explicit confirmation ({names})"
         )
 

@@ -134,7 +134,7 @@ EXISTING_DESCRIPTIONS: Final[dict[ExistingLabel, str]] = {
     "none": "write",
     "placeholder": "replace (empty placeholder)",
     "annotated": "replace (holds annotation)",
-    "corrected": "refused (proofread)",
+    "corrected": "refused (corrected)",
 }
 
 

@@ -743,7 +743,7 @@ def test_a_merge_over_proofread_work_is_refused_without_confirmation(forked, rec
     plan = plan_merge(forked.copy, forked.main)
     assert plan.corrected, "the plan has to say so before it is carried out"
 
-    with pytest.raises(PermissionError, match="proofread work"):
+    with pytest.raises(PermissionError, match="corrected item"):
         apply_merge(plan, recorder=recorder)
 
     assert _digest(forked.label(forked.main)) == ours, "nothing was written"

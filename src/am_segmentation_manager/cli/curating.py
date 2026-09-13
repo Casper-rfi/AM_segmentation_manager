@@ -368,7 +368,7 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
         for item in plan.conversions:
             logger.info("%s %s", item.describe(), item.destination)
     for item in plan.refused:
-        logger.warning("Refused %s: a proofread label is already there", item.destination)
+        logger.warning("Refused %s: a corrected label is already there", item.destination)
     if plan.replaceable:
         logger.warning(
             "%d label(s) already exist and were kept; pass --overwrite to replace them",

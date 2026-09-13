@@ -795,8 +795,8 @@ def apply_merge(
     if plan.corrected and not allow_corrected:
         names = ", ".join(item.target for item in plan.corrected[:3])
         raise PermissionError(
-            f"Refusing to merge over {len(plan.corrected)} piece(s) of proofread "
-            f"work without explicit confirmation ({names}). The version here is "
+            f"Refusing to merge over {len(plan.corrected)} corrected item(s) "
+            f"without explicit confirmation ({names}). The version here is "
             f"kept either way, so this can be undone -- but not unasked."
         )
 

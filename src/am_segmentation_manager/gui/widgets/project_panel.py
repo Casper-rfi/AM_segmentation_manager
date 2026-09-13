@@ -598,14 +598,14 @@ def status_legend() -> list[tuple[QPixmap, str]]:
         ),
         (
             _legend_swatch("not started", expected=True),
-            "Nothing proofread yet",
+            "Nothing corrected yet",
         ),
         (
             _legend_swatch("in progress", expected=True),
-            "Part proofread",
+            "Part corrected",
         ),
         (
             _legend_swatch("done", expected=True),
-            "Proofread, or deselected as not wanted",
+            "Corrected, or deselected as not wanted",
         ),
     ]

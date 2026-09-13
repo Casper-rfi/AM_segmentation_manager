@@ -257,7 +257,7 @@ class OperationsController:
                 f"{prefer} one",
             ),
             (counts.labelled, "with a replaceable label"),
-            (counts.corrected, "proofread, never replaced"),
+            (counts.corrected, "corrected, never replaced"),
             (counts.post_processed, "with post-processed predictions only"),
             (counts.no_prediction, "with no prediction yet"),
         ]
@@ -274,7 +274,7 @@ class OperationsController:
         if not plan.refused:
             return ()
         return (
-            f"{len(plan.refused)} image(s) refused: a proofread label is already "
+            f"{len(plan.refused)} image(s) refused: a corrected label is already "
             f"there. Set the group back to selected to re-convert it.",
         ) + tuple(f"  {self._relative(item.destination)}" for item in plan.refused)
 
@@ -644,8 +644,8 @@ class OperationsController:
             # The refusal itself lives in compress_labels and still fires; asking
             # here is what lets the window say how much is at stake in advance.
             return OperationReport(
-                f"{len(corrected)} of these {len(labels)} label(s) hold proofread "
-                f"work. Recompressing rewrites the file.",
+                f"{len(corrected)} of these {len(labels)} label(s) are "
+                f"corrected. Recompressing rewrites the file.",
                 tuple(self._relative(label) for label in corrected),
                 len(labels),
                 blocked="corrected",

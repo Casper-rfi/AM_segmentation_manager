@@ -516,7 +516,7 @@ class OperationActions:
 
         answer = QMessageBox.warning(
             self,
-            "Export without proofread images?",
+            "Export without corrected images?",
             f"These images are marked corrected, but hold no annotation to "
             f"pair them with, so the export will leave them out "
             f"({readiness.summary()}):\n\n{shown}\n\nWrite the files anyway?",

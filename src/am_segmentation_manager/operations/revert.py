@@ -233,7 +233,7 @@ def apply_revert(
     if plan.corrected and not allow_corrected:
         names = ", ".join(item.target for item in plan.corrected[:3])
         raise PermissionError(
-            f"Refusing to put back {len(plan.corrected)} proofread label(s) "
+            f"Refusing to put back {len(plan.corrected)} corrected label(s) "
             f"without explicit confirmation ({names})"
         )
 
