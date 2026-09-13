@@ -20,7 +20,6 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtCore import Qt
-    from qtpy.QtGui import QFontMetricsF
     from qtpy.QtTest import QTest
     from qtpy.QtWidgets import (
         QApplication,
@@ -545,22 +544,27 @@ def test_the_table_is_headed_with_the_readable_name(qt_app, tmp_path):
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("variant"))
     panel.refresh()
 
-    assert panel.table.toPlainText().startswith("Images by imaging condition")
+    assert panel.table.text().startswith("Images by imaging condition")
 
 
 # ---------------------------------------------------------------------------
 # Stepping through the list, and cross-referencing two properties
 # ---------------------------------------------------------------------------
 
-def test_the_table_is_drawn_in_a_font_its_columns_can_line_up_in(
-    panel: ExportPanel,
-):
-    """reporting.py pads its columns with spaces. In the window's own
-    proportional font that padding is not alignment, and the table reads as a
-    ragged list rather than as rows."""
-    metrics = QFontMetricsF(panel.table.font())
+def test_the_counts_are_a_table_rather_than_padded_text(qt_app, tmp_path):
+    """Padded text lines up only in a fixed-width font and cannot be sorted;
+    the text is still what Copy as text gives."""
+    panel = measurable(qt_app, tmp_path)
+    panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
+    panel.refresh()
 
-    assert metrics.horizontalAdvance("i") == metrics.horizontalAdvance("W")
+    grid = panel.table.grid
+    headers = [grid.horizontalHeaderItem(column).text() for column in range(grid.columnCount())]
+    assert headers[1:] == ["Images", "Share"]
+    assert {grid.item(row, 0).text() for row in range(grid.rowCount())} == set(
+        panel.controller.breakdown("modality")
+    )
+    assert panel.table.text().startswith("Images by modality")
 
 
 def test_the_arrow_keys_step_through_the_list(panel: ExportPanel):
@@ -621,12 +625,12 @@ def test_choosing_a_second_property_turns_the_table_into_a_grid(qt_app, tmp_path
 
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
     panel.refresh()
-    assert panel.table.toPlainText().startswith("Images by modality")
+    assert panel.table.text().startswith("Images by modality")
 
     panel.cross.setCurrentIndex(panel.cross.findData("state"))
     panel.refresh()
 
-    text = panel.table.toPlainText()
+    text = panel.table.text()
     assert text.startswith("Images by modality (SEM / FIB) and workflow state")
     assert "total" in text      # the grid carries its margins
 
@@ -661,7 +665,7 @@ def test_an_unmeasured_crack_breakdown_asks_rather_than_answering(qt_app, tmp_pa
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("crack-count"))
     panel.refresh()
 
-    text = panel.table.toPlainText()
+    text = panel.table.text()
     assert "needs the labels measured" in text
     assert "no-label" not in text
 
@@ -673,7 +677,7 @@ def test_measuring_fills_the_table_in_and_spends_the_button(qt_app, tmp_path):
     panel.controller.load_measurements()
     panel.refresh()
 
-    assert "needs the labels measured" not in panel.table.toPlainText()
+    assert "needs the labels measured" not in panel.table.text()
     assert panel.measure_button.text() == "Labels measured"
     assert not panel.measure_button.isEnabled()
 
@@ -684,7 +688,7 @@ def test_the_prompt_names_both_halves_of_a_cross_reference(qt_app, tmp_path):
     panel.cross.setCurrentIndex(panel.cross.findData("has-crack"))
     panel.refresh()
 
-    assert "cracked (yes / no)" in panel.table.toPlainText()
+    assert "cracked (yes / no)" in panel.table.text()
 
 
 # ---------------------------------------------------------------------------

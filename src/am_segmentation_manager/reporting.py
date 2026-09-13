@@ -304,6 +304,13 @@ def print_survey(
 # rather than there so the counting stays free of presentation.
 # ---------------------------------------------------------------------------
 
+#: Said under a breakdown an image can be counted under several rows of, and
+#: over a grid it can land in several cells of. Named, so the window's table and
+#: this text say it in the same words.
+MULTI_ROW_NOTE = "An image holding several values is counted under each."
+MULTI_CELL_NOTE = "An image holding several values is counted in each cell."
+
+
 def format_counts(
     counts: dict, title: str, *, total: int | None = None, multi: bool = False
 ) -> list[str]:
@@ -327,7 +334,7 @@ def format_counts(
     width = max(len(str(key)) for key in counts)
     lines = [f"{title}  ({total} image(s))"]
     if multi:
-        lines.append("  An image holding several values is counted under each.")
+        lines.append(f"  {MULTI_ROW_NOTE}")
     for key, count in counts.items():
         share = f"{100 * count / total:5.1f}%" if total else "    -"
         lines.append(f"  {str(key):<{width}}  {count:>7}  {share}")
@@ -371,7 +378,7 @@ def format_cross_tabulation(
     )
     lines = [heading]
     if multi:
-        lines.append("An image holding several values is counted in each cell.")
+        lines.append(MULTI_CELL_NOTE)
     lines += [header, "-" * len(header)]
 
     for row in rows:

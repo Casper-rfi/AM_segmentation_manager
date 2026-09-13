@@ -23,7 +23,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -36,7 +35,12 @@ from ... import plots
 from ...aggregate import AREA_BINS_PER_DECADE, bin_mantissas
 from ...layout import SERIES, SERIES_LABELS
 from ...plots import INSTALL_HINT
-from ...reporting import format_counts, format_cross_tabulation
+from ...reporting import (
+    MULTI_CELL_NOTE,
+    MULTI_ROW_NOTE,
+    format_counts,
+    format_cross_tabulation,
+)
 from ..export_controller import (
     ANY_LABEL,
     DEFAULT_PREFIX,
@@ -47,11 +51,11 @@ from ..export_controller import (
     STATES,
     ExportController,
 )
+from .breakdown_table import BreakdownTable, count_rows, cross_rows
 from .chart_view import ChartView
 from .common import (
     caption_for,
     fill_grouped_combo,
-    fixed_width_font,
     horizontal_rule,
     ticked_caption,
 )
@@ -798,13 +802,7 @@ class ExportPanel(QWidget):
 
         column.addLayout(self._build_view_choice())
 
-        self.table = QPlainTextEdit()
-        self.table.setReadOnly(True)
-        # reporting.py pads its columns with spaces, which only line up in a
-        # fixed-width font. The window's own font is proportional, so without
-        # this the table is padded but not aligned.
-        self.table.setFont(fixed_width_font())
-        self.table.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.table = BreakdownTable()
 
         self.chart_view = ChartView()
 
@@ -1174,18 +1172,17 @@ class ExportPanel(QWidget):
         """Recount and redraw. Cheap: the records are already in memory."""
         if not self.controller.records:
             self.summary.setText(NOTHING_SCANNED)
-            self.table.setPlainText("")
+            self.table.show_message(NOTHING_SCANNED)
             self.chart_view.show_message(NOTHING_SCANNED)
             return
 
         self.summary.setText(self.controller.preview().summary())
         self._show_measure_state()
         try:
-            lines = self._counted()
+            self._show_breakdown()
         except ValueError as error:  # unknown breakdown, should not happen
-            self.table.setPlainText(str(error))
+            self.table.show_message(str(error))
             return
-        self.table.setPlainText("\n".join(lines))
         if self.as_chart.isChecked():
             self._draw_inline_chart()
         self._refresh_filter_rows()
@@ -1265,8 +1262,8 @@ class ExportPanel(QWidget):
         self.measure_button.setText(f"Measure {labels} label(s)")
         self.measure_button.setEnabled(bool(labels))
 
-    def _counted(self) -> list[str]:
-        """Return the table for whichever of the two dropdowns are in use."""
+    def _show_breakdown(self) -> None:
+        """Count by whichever of the two dropdowns are in use, into the table."""
 
         breakdowns = self.controller.breakdowns
         name = self.breakdown.currentData()
@@ -1281,30 +1278,44 @@ class ExportPanel(QWidget):
         if unmeasured and not self.controller.measurements_loaded():
             # Counting anyway would put every image under "no-label", which
             # reads as a finding rather than as a question not yet asked.
-            return [
+            self.table.show_message(
                 f"Counting by {' and '.join(unmeasured)} needs the labels "
-                f"measured.",
-                "",
-                "Press Measure labels above.",
-            ]
+                f"measured.\n\nPress Measure labels above."
+            )
+            return
 
         if not other:
             counts = self.controller.breakdown(name)
-            return format_counts(
-                counts,
-                f"Images by {row}",
-                total=len(self.controller.selected_records()),
-                multi=breakdowns[name].multi,
+            total = len(self.controller.selected_records())
+            title = f"Images by {row}"
+            multi = breakdowns[name].multi
+            lines = format_counts(counts, title, total=total, multi=multi)
+            if not counts:
+                self.table.show_message("\n".join(lines))
+                return
+            self.table.show_rows(
+                f"{title}  ({total} image(s))",
+                count_rows(counts, row, total),
+                lines,
+                note=MULTI_ROW_NOTE if multi else "",
             )
+            return
 
         column = breakdowns[other].label
         table = self.controller.cross_tabulation(name, other)
-        return format_cross_tabulation(
-            table,
-            row,
-            column,
-            title=f"Images by {row} and {column}",
-            row_order=breakdowns[name].order,
-            column_order=breakdowns[other].order,
-            multi=breakdowns[name].multi or breakdowns[other].multi,
+        title = f"Images by {row} and {column}"
+        multi = breakdowns[name].multi or breakdowns[other].multi
+        row_order, column_order = breakdowns[name].order, breakdowns[other].order
+        lines = format_cross_tabulation(
+            table, row, column, title=title,
+            row_order=row_order, column_order=column_order, multi=multi,
+        )
+        if not table:
+            self.table.show_message("\n".join(lines))
+            return
+        self.table.show_rows(
+            title,
+            cross_rows(table, row, row_order=row_order, column_order=column_order),
+            lines,
+            note=MULTI_CELL_NOTE if multi else "",
         )
