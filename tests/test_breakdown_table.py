@@ -82,6 +82,16 @@ def test_a_grid_carries_a_total_column_and_a_total_row():
     assert _texts(rows.footer) == ["total", "1", "6", "7"]
 
 
+def test_a_heading_is_bold_and_as_large_as_the_values_under_it(qt_app):
+    """macOS gives a header its own smaller font, which put the headings below
+    the numbers they name."""
+    widget = BreakdownTable()
+    header = widget.grid.horizontalHeader().font()
+
+    assert header.bold()
+    assert header.pointSizeF() == widget.grid.font().pointSizeF()
+
+
 def test_clicking_a_heading_sorts_by_it_and_again_reverses(qt_app):
     widget = BreakdownTable()
     rows = count_rows({"a": 1, "b": 5, "c": 3}, "letter", total=9)

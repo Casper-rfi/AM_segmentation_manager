@@ -142,12 +142,13 @@ of one of these files, is held by `test_docs.py`.
   `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state exists, so
   every row would report as checkable and the first `setCheckState` would put the boxes back.
 - **The left column is read across rather than down, and is sized for its widest row.** It is the
-  narrowest on the tab and holds the most, so captions sit beside their boxes and the series
-  switches go two to a line; *One image per label* sits at the margin, indented with them having
-  read as one more of them. Squeezed, Qt cuts a caption from both ends rather than shortening it, so
-  the column opens wider than its widest row
-  (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`). The projects are a
-  filter like the rest, drawn *above* the box rather than as a second outline inside it.
+  narrowest on the tab and holds the most, so captions sit beside their boxes and *One image per
+  label* sits at the margin. Squeezed, Qt cuts a caption from both ends rather than shortening it,
+  so the column opens wider than its widest row
+  (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`). The series switches
+  head the column above the projects, where Curate asks the same question of its lists
+  (`test_the_series_switches_head_the_column_above_the_projects`); the projects are a filter like
+  the rest, drawn *above* the box rather than as a second outline inside it.
 - **Export filters *by* project rather than listing them, and that control is never taken away.**
   Which projects an export covers is the first question anyone asks of one, and it was a row
   somebody had to know to add (`test_the_project_filter_cannot_be_taken_away`). Being dedicated is

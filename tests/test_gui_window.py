@@ -3018,10 +3018,12 @@ def test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at(
         window.grab()
 
         # PySide6 takes one type, not a tuple of them.
-        block = window.export_panel.fixed_filters
         shown = [
-            *block.findChildren(QLabel),
-            *block.findChildren(QAbstractButton),
+            widget
+            for block in (window.export_panel.series_block, window.export_panel.fixed_filters)
+            for widget in (
+                *block.findChildren(QLabel), *block.findChildren(QAbstractButton)
+            )
         ]
         clipped = {
             widget.text(): (widget.width(), widget.sizeHint().width())

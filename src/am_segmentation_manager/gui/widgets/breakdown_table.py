@@ -12,6 +12,7 @@ from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
 
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -129,6 +130,11 @@ class BreakdownTable(QWidget):
         self.grid.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.grid.verticalHeader().setVisible(False)
         header = self.grid.horizontalHeader()
+        # The cells' own font, bold. macOS gives a header a smaller system font
+        # of its own, which set a heading below the values it names.
+        heading = QFont(self.grid.font())
+        heading.setBold(True)
+        header.setFont(heading)
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setSectionsClickable(True)
         header.setToolTip("Click a heading to sort by it, and again to reverse")

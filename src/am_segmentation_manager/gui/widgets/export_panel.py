@@ -60,11 +60,12 @@ from .common import (
     ticked_caption,
 )
 from .controls import (
+    FlowArea,
+    FlowLayout,
     GripSplitter,
     SegmentedControl,
     StepCombo,
     ToggleSwitch,
-    keep_paired,
 )
 from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import choose_directory, choose_open_file, choose_save_file
@@ -478,16 +479,21 @@ class ExportPanel(QWidget):
         self.filters.addWidget(self.projects_box)
         self.filters.addWidget(self._filters_box)
         self.filters.setSizes([260, 420])
+        left = QWidget()
+        left_column = QVBoxLayout(left)
+        left_column.setContentsMargins(0, 0, 0, 0)
+        left_column.setSpacing(4)
+        left_column.addWidget(self._build_series())
+        left_column.addWidget(self.filters, stretch=1)
 
         self.columns = GripSplitter(Qt.Horizontal)
-        self.columns.addWidget(self.filters)
+        self.columns.addWidget(left)
         self.columns.addWidget(self._breakdown_box)
         self.columns.addWidget(self._export_box)
         self.columns.setStretchFactor(1, 1)
         # Wide enough for what the column holds at its widest, with room to
-        # spare: the series row wants 331px and the project box's four buttons
-        # 296, and a default that clears the wider of them by three pixels is
-        # one a different font would break. The middle is text, and gives it up
+        # spare: the project box's four buttons want 296px, and a default that
+        # clears them by a few pixels is one a different font would break. The middle is text, and gives it up
         # cheaply.
         self.columns.setSizes([400, 812, 280])
         layout.addWidget(self.columns)
@@ -536,33 +542,6 @@ class ExportPanel(QWidget):
         fixed = QVBoxLayout(self.fixed_filters)
         fixed.setContentsMargins(0, 0, 0, 0)
         fixed.setSpacing(4)
-
-        # Switches rather than a dropdown: the three are independent, and an
-        # export covering two of them is a real request. The only filter that
-        # does not start on everything -- see export_controller.DEFAULT_SERIES.
-        # Two to a line, so none of them stands alone above the others.
-        self.series_boxes: dict[str, ToggleSwitch] = {}
-        for name in SERIES:
-            switch = ToggleSwitch(SERIES_LABELS[name])
-            switch.setChecked(name in DEFAULT_SERIES)
-            switch.toggled.connect(self._controls_changed)
-            self.series_boxes[name] = switch
-        switches = [self.series_boxes[name] for name in SERIES]
-        series_holder = keep_paired(tuple(switches[:2]), tuple(switches[2:]))
-        series_row = QHBoxLayout()
-        series_row.setContentsMargins(0, 0, 0, 0)
-        series_row.setSpacing(6)
-        series_hint = (
-            "What the images were taken for. Only Adaptive Polishing is "
-            "ticked to start with, so an export covers what it always did. "
-            "Narrows the breakdown and every export."
-        )
-        caption = caption_for("Series", series_holder, series_hint)
-        caption.setMinimumWidth(CAPTION_WIDTH)
-        series_row.addWidget(caption)
-        series_row.addWidget(series_holder)
-        series_row.addStretch(1)
-        fixed.addLayout(series_row)
 
         # A dropdown rather than a run of segments. Segments are the right
         # control for one of a small closed set, and this is one -- but three
@@ -678,6 +657,39 @@ class ExportPanel(QWidget):
         # spending the column on lists nobody asked for.
         self._add_filter()
         return box
+
+    def _build_series(self) -> QWidget:
+        """Build the series switches, which head the left column as on Curate.
+
+        Above the projects rather than among the filters: which series an
+        export covers is asked before anything about those images, and it is
+        where the Curate tab asks the same question of its lists. Switches
+        rather than a dropdown, the series being independent; in a flow under
+        their caption, so the column can still be narrowed. The only filter
+        that does not start on everything -- see `DEFAULT_SERIES`.
+        """
+        self.series_block = QWidget()
+        column = QVBoxLayout(self.series_block)
+        column.setContentsMargins(4, 0, 4, 0)
+        column.setSpacing(4)
+        self.series_boxes: dict[str, ToggleSwitch] = {}
+        flow_area = FlowArea()
+        flow = FlowLayout(spacing=6)
+        flow_area.setLayout(flow)
+        for name in SERIES:
+            switch = ToggleSwitch(SERIES_LABELS[name])
+            switch.setChecked(name in DEFAULT_SERIES)
+            switch.toggled.connect(self._controls_changed)
+            self.series_boxes[name] = switch
+            flow.addWidget(switch)
+        hint = (
+            "What the images were taken for. Only Adaptive Polishing is "
+            "ticked to start with, so an export covers what it always did. "
+            "Narrows the breakdown and every export."
+        )
+        column.addWidget(caption_for("Series", flow_area, hint))
+        column.addWidget(flow_area)
+        return self.series_block
 
     def _build_projects(self) -> QWidget:
         """Build the project filter, which every other tab draws as a list too.
