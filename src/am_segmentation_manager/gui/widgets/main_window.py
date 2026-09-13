@@ -64,6 +64,7 @@ from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationsController
+from ..selection import counted
 from ..version_controller import VersionController
 from ..worker import BackgroundOperation
 from .branding import PRODUCT_NAME, logo_pixmap
@@ -82,6 +83,7 @@ from .operation_runner import OperationRunner
 from .operations_panel import OperationsPanel
 from .project_panel import ProjectPanel
 from .scan_banner import ScanBanner
+from .scan_bar import ScanBar
 from .settings_dialog import SettingsDialog, author_summary
 from .shortcuts import (
     TAB_ADD_DATA,
@@ -282,6 +284,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         #: once per connection.
         self._watching_screen = False
         self.project_panel = ProjectPanel()
+        self.scan_bar = ScanBar()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
         self.operations_panel = OperationsPanel()
@@ -370,7 +373,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
         if remembered:
-            self.project_panel.set_path(remembered)
+            self.scan_bar.set_path(remembered)
             self._show_folder_in_title(Path(remembered))
 
         #: Whether the window opened on Add data for want of anything to
@@ -446,6 +449,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # everywhere else, so a third use would be read as data.
         self._corner = _brand_mark(self.show_shortcuts, self.show_settings)
         self.tabs.setCornerWidget(self._corner, Qt.TopRightCorner)
+        # Opposite the mark rather than in Curate: a scan serves every tab,
+        # and this is the one place all four of them show.
+        self.tabs.setCornerWidget(self.scan_bar, Qt.TopLeftCorner)
         self.setCentralWidget(self.tabs)
         self._build_menus()
 
@@ -477,7 +483,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._menu_actions = {}
         file_menu = self._menus["file"] = menus.addMenu("&File")
         self._add_action(
-            file_menu, "Open folder...", self.project_panel.browse,
+            file_menu, "Open folder...", self.scan_bar.browse,
             QKeySequence.Open,
         )
         self._add_action(
@@ -538,7 +544,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.label_panel.speck_counts_needed.connect(self._sweep_specks)
         self.label_panel.save_requested.connect(self.save_labels)
         self.label_panel.restore_requested.connect(self.restore_label_version)
-        self.project_panel.scan_requested.connect(self.scan)
+        self.scan_bar.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
         self.project_panel.folder_selected.connect(self._select_folder)
         self.project_panel.lamella_selected.connect(self._select_lamella)
@@ -1008,7 +1014,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             f"Scanning {directory.name} for projects...",
             phase=f"Reading {directory.name}",
         ):
-            self.project_panel.set_path(str(directory))
+            self.scan_bar.set_path(str(directory))
             self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
             self._show_folder_in_title(directory)
             if self._awaiting_first_scan:
@@ -1074,6 +1080,12 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             # happening, and what follows it is the window catching up.
             self.banner.end()
             self._share_scan()
+            projects = self.controller.projects
+            lamellae = sum(len(project.lamellae) for project in projects)
+            self.scan_bar.show_summary(
+                f"{counted(len(projects), 'project', 'projects')} · "
+                f"{counted(lamellae, 'lamella', 'lamellae')}"
+            )
             self.refresh(reload_lists=True)
         finally:
             self.banner.end()

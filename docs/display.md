@@ -286,7 +286,10 @@ of one of these files, is held by `test_docs.py`.
   sized from that hint comes up short and everything below is pushed towards its minimum, nowhere
   near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,
   as `FlowArea` does (`test_every_group_of_settings_gets_the_height_its_rows_need`).
-- **The corner is two runs with a rule between them, not one line of text.** Left of it is whose
+- **The folder is chosen in the tab row, not in a tab.** A scan serves all four, and only Curate
+  could show which folder was read; the left corner holds the path, Browse and Scan, and says on
+  hover what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
+- **The right corner is two runs with a rule between, not one line of text.** Left of it is whose
   window this is, right of it what this machine is set to and the gear that changes it; written
   alike they read as one phrase, so the product name alone is unmuted, asserted on the pixels
   (`test_the_product_name_is_not_drawn_like_the_line_beside_it`). The gear and the **?** are the

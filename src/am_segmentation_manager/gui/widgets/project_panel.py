@@ -1,8 +1,8 @@
 """Left panel: choosing what to review, and what to change.
 
-Holds the scan root, the switches saying which series the lists cover, the
-projects found under it, and the lamellae of the selected project. Scanning happens on the caller's terms -- this panel only
-reports that the user asked for it. Which *rows* a change covers is chosen
+Holds the switches saying which series the lists cover, the projects a scan
+found, and the lamellae of the selected project; which folder is scanned is
+chosen in the tab row, by :mod:`.scan_bar`. Which *rows* a change covers is chosen
 here; which modality, and which state, are chosen beside the buttons that act.
 
 The lists do two jobs at once: the *current* row is what is being looked at,
@@ -25,7 +25,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -35,7 +34,7 @@ from ..controller import CurationStatus
 from .common import caption_for, chip_icon, ticked_caption
 from .controls import FlowArea, FlowLayout, GripSplitter, ToggleSwitch
 from .lists import CheckList, add_check_all_buttons, project_box
-from .paths import add_path_menu, choose_directory
+from .paths import add_path_menu
 from .theme import (
     SWATCH_CELL,
     SWATCH_GAP,
@@ -53,10 +52,8 @@ SHOWN_HINT = (
 
 
 class ProjectPanel(QWidget):
-    """Scan root, project list and lamella list."""
+    """Series switches, project list and lamella list."""
 
-    #: Emitted with the directory to scan.
-    scan_requested = Signal(str)
     #: Emitted with the index of the project the user picked.
     project_selected = Signal(int)
     #: Emitted with the folder the user picked, which is a question about
@@ -95,52 +92,6 @@ class ProjectPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 2, 4)
         layout.setSpacing(4)
-
-        # -- scan root -----------------------------------------------------
-        # No group box. A "Scan root" title said the same thing as the field's
-        # placeholder and the Scan button beside it -- one fact stated three
-        # times. The placeholder carries the explanation where it is useful
-        # (visible while the field is empty, gone once a path is in it), and the
-        # tooltips carry what neither a label nor a button caption can say.
-        #
-        # The path keeps a row to itself. Putting it beside both buttons was
-        # tried and left roughly 140px for the field in a 270px panel, showing
-        # the tail of a path and nothing else -- and reading the path is the
-        # entire reason the field is there.
-        self.path_edit = QLineEdit()
-        self.path_edit.setPlaceholderText("Folder to scan for Autolamella projects")
-        self.path_edit.setToolTip(
-            "Folder searched recursively for Autolamella projects "
-            "(any folder containing an experiment.yaml or AM_metadata.yaml)"
-        )
-        self.path_edit.returnPressed.connect(
-            lambda: self.scan_requested.emit(self.path_edit.text())
-        )
-        layout.addWidget(self.path_edit)
-
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(4)
-        row.addStretch(1)
-
-        browse = QPushButton("Browse...")
-        browse.setToolTip("Choose a folder to scan")
-        browse.clicked.connect(self.browse)
-        row.addWidget(browse)
-
-        # Not full width any more: Scan is not the window's primary action, and
-        # a full-width button implied that it was.
-        self.scan_button = QPushButton("Scan")
-        self.scan_button.setToolTip(
-            "Re-read the folder from disk. Use this after changing files "
-            "outside the window."
-        )
-        self.scan_button.clicked.connect(
-            lambda: self.scan_requested.emit(self.path_edit.text())
-        )
-        row.addWidget(self.scan_button)
-
-        layout.addLayout(row)
 
         # -- series shown --------------------------------------------------
         # Switches, as the Export tab's series are: independent, and several at
@@ -260,19 +211,6 @@ class ProjectPanel(QWidget):
         row.addStretch(1)
         return row
 
-    def browse(self) -> None:
-        """Ask for a folder to scan, and request a scan of it if one is chosen.
-
-        Public because the File menu offers the same thing: two ways in, one
-        behaviour, rather than the menu opening a dialog of its own.
-        """
-        directory = choose_directory(
-            self, "Choose a folder to scan", self.path_edit.text() or None
-        )
-        if directory is not None:
-            self.path_edit.setText(str(directory))
-            self.scan_requested.emit(str(directory))
-
     def _project_changed(self, row: int) -> None:
         if row >= 0:
             self.project_selected.emit(row)
@@ -280,10 +218,6 @@ class ProjectPanel(QWidget):
     def _lamella_changed(self, row: int) -> None:
         if row >= 0:
             self.lamella_selected.emit(row)
-
-    def set_path(self, path: str) -> None:
-        """Show *path* as the scan root."""
-        self.path_edit.setText(path)
 
     def shown_series(self) -> tuple[str, ...]:
         """Return the series switched on, in `SERIES` order."""

@@ -70,7 +70,7 @@ logger = logging.getLogger(__name__)
 
 #: Said wherever the pane has nothing to show, so the table and the chart give
 #: the same answer rather than two phrasings of it.
-NOTHING_SCANNED = "No data loaded. Scan a folder in the Curate tab."
+NOTHING_SCANNED = "No data loaded. Choose a folder to scan, top left."
 NOTHING_MATCHES = "Nothing matches these filters"
 
 #: Item data of the second dropdown's "(none)" row, meaning no

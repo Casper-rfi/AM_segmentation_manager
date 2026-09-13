@@ -794,10 +794,9 @@ def test_curate_is_the_tab_that_opens(window):
 # widget that will hold the keyboard, which is the same either way.
 
 def test_curate_opens_with_the_keyboard_on_the_project_list(window):
-    """Not on the scan box. It is the first focusable widget in the tab, and a
-    focused QLineEdit claims Left and Right for its own cursor -- so the keys
-    that step through frames never reach the window until something is
-    clicked."""
+    """Not on the scan box: a focused QLineEdit claims Left and Right for its
+    own cursor -- so the keys that step through frames never reach the window
+    until something is clicked."""
     assert window.focusWidget() is window.project_panel.project_list
 
 
@@ -821,9 +820,49 @@ def test_the_scan_box_is_what_would_have_swallowed_the_frame_keys(window):
         QApplication.sendEvent(widget, event)
         return event.isAccepted()
 
-    assert claims(window.project_panel.path_edit, Qt.Key_Left)
+    assert claims(window.scan_bar.path_edit, Qt.Key_Left)
     assert not claims(window.project_panel.project_list, Qt.Key_Left)
     assert not claims(window.project_panel.project_list, Qt.Key_Down)
+
+
+def test_the_folder_is_chosen_in_the_tab_row_on_every_tab(window):
+    """A scan serves all four tabs, and only Curate could show which folder it
+    had read."""
+    bar = window.tabs.cornerWidget(Qt.TopLeftCorner)
+
+    assert bar is window.scan_bar
+    assert not window.project_panel.isAncestorOf(bar)
+    for index in range(window.tabs.count()):
+        window.tabs.setCurrentIndex(index)
+        assert not bar.isHidden(), window.tabs.tabText(index)
+
+
+def test_the_scan_box_is_never_reached_by_tab(window):
+    """Tabbed into, it would take Left and Right from the frame keys."""
+    assert window.scan_bar.path_edit.focusPolicy() == Qt.ClickFocus
+
+
+def test_return_and_scan_both_ask_for_the_typed_folder(qt_app):
+    from am_segmentation_manager.gui.widgets.scan_bar import ScanBar
+
+    bar = ScanBar()
+    asked: list[str] = []
+    bar.scan_requested.connect(asked.append)
+    bar.path_edit.setText("/some/folder")
+
+    bar.path_edit.returnPressed.emit()
+    bar.scan_button.click()
+
+    assert asked == ["/some/folder", "/some/folder"]
+    bar.deleteLater()
+
+
+def test_the_scan_box_says_what_the_folder_held(window, project):
+    tip = window.scan_bar.path_edit.toolTip()
+
+    assert window.scan_bar.path_edit.text() == str(project)
+    assert "1 project" in tip
+    assert "2 lamellae" in tip
 
 
 def test_opening_export_reads_the_headers_and_not_the_labels(window, monkeypatch):
