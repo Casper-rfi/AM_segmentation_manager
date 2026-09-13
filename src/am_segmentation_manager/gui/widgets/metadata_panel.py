@@ -40,7 +40,7 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import chip_icon, match_anywhere
+from .common import MAX_LISTED_FILES, chip_icon, match_anywhere
 from .controls import ChipEditor, GripSplitter, ToggleSwitch
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .lists import project_box
@@ -161,6 +161,18 @@ def _suggestion_box() -> QComboBox:
     return box
 
 
+def source_tooltip(paths: tuple[Path, ...]) -> str:
+    """Return the hover text naming the file a value came from in each project."""
+    if not paths:
+        return "Which file this value came from"
+    if len(paths) == 1:
+        return f"From {paths[0]}"
+    listed = [str(path) for path in paths[:MAX_LISTED_FILES]]
+    if len(paths) > MAX_LISTED_FILES:
+        listed.append(f"... and {len(paths) - MAX_LISTED_FILES} more")
+    return f"From this file in each of the {len(paths)} projects:\n" + "\n".join(listed)
+
+
 class MetadataPanel(QWidget):
     """Project list on the left, its fields on the right."""
 
@@ -238,12 +250,12 @@ class MetadataPanel(QWidget):
     def _build_collection_actions(self) -> QWidget:
         """Return the steps that act on the folder rather than on one project.
 
-        The first two come before this list has rows in it, which is why they
-        sit under the list rather than beside the fields: a collection with no
-        metadata files has nothing to select, and naming its projects is what
-        puts the first row there. Compressing and taking a savepoint join them
-        because neither has anything to narrow to: both act on the whole
-        collection, which is the rule that keeps them off Curate.
+        Two cards. *Data* reads the folder and names its projects, and comes
+        before this list has rows in it: a collection with no metadata files has
+        nothing to select, and naming its projects is what puts the first row
+        there. *Maintenance* acts on every label under the folder -- the rule
+        that keeps these off Curate -- and restoring and reclaiming change what
+        is kept, so they are held apart from the two that only read or add.
 
         Two to a row rather than three across. A button clips its caption
         rather than eliding it, and clipping takes the ends off both sides at
@@ -251,8 +263,12 @@ class MetadataPanel(QWidget):
         "nspect layou". Two fit, and the grid keeps them the same width as each
         other whatever they are called.
         """
-        self.collection_box = box = QGroupBox("Whole collection")
-        grid = QGridLayout(box)
+        holder = QWidget()
+        column = QVBoxLayout(holder)
+        column.setContentsMargins(0, 0, 0, 0)
+
+        self.data_box = QGroupBox("Data")
+        data = QGridLayout(self.data_box)
 
         self.survey_button = QPushButton("Inspect layout")
         self.survey_button.setToolTip(
@@ -260,7 +276,7 @@ class MetadataPanel(QWidget):
             "fit. Reads nothing but the directory structure, and changes nothing."
         )
         self.survey_button.clicked.connect(self.survey_requested.emit)
-        grid.addWidget(self.survey_button, 0, 0)
+        data.addWidget(self.survey_button, 0, 0)
 
         self.init_button = QPushButton("Add projects...")
         self.init_button.setToolTip(
@@ -269,20 +285,28 @@ class MetadataPanel(QWidget):
             "to confirm; an existing file is never overwritten."
         )
         self.init_button.clicked.connect(self.init_requested.emit)
-        grid.addWidget(self.init_button, 0, 1)
+        data.addWidget(self.init_button, 0, 1)
 
-        self.compress_button = QPushButton("Compress labels...")
-        self.compress_button.setToolTip(
-            "Re-encode every label under this folder so it takes less disk "
-            "space. Pixel values and dimensions are unchanged, and a file that "
-            "would not shrink is left alone."
-        )
-        self.compress_button.clicked.connect(self.compress_requested.emit)
-        grid.addWidget(self.compress_button, 1, 0)
+        # The list above shows what is indexed, which says nothing about what
+        # is sitting in the folder unindexed -- the state a collection is in
+        # before any of this has been done, and the one the list cannot show.
+        self.unindexed = QLabel("")
+        self.unindexed.setWordWrap(True)
+        self.unindexed.setStyleSheet(f"color: {MISMATCH.name()};")
+        data.addWidget(self.unindexed, 1, 0, 1, 2)
+        column.addWidget(self.data_box)
 
-        # Beside the other two collection-wide acts rather than in Curate,
-        # whose operations all narrow to what is ticked: a savepoint covers the
-        # whole dataset a model was trained on and has nothing to narrow to.
+        self.maintenance_box = QGroupBox("Maintenance")
+        maintenance = QGridLayout(self.maintenance_box)
+        caption = QLabel("Acts on every label under the folder, once editing is on.")
+        caption.setWordWrap(True)
+        caption.setStyleSheet(f"color: {MUTED};")
+        maintenance.addWidget(caption, 0, 0, 1, 2)
+
+        # Taking a savepoint beside putting one back: a savepoint is taken over
+        # the whole collection here, so this is where restoring the whole
+        # collection belongs. Curate's Revert keeps the same choice for a
+        # selection.
         self.savepoint_button = QPushButton("Savepoint...")
         self.savepoint_button.setToolTip(
             "Record what every label under this folder holds now, under a name "
@@ -291,20 +315,8 @@ class MetadataPanel(QWidget):
             "states and project metadata are not covered."
         )
         self.savepoint_button.clicked.connect(self.savepoint_requested.emit)
-        grid.addWidget(self.savepoint_button, 1, 1)
+        maintenance.addWidget(self.savepoint_button, 1, 0)
 
-        self.reclaim_button = QPushButton("Reclaim space...")
-        self.reclaim_button.setToolTip(
-            "Remove the kept label versions no savepoint needs.\n"
-            "Everything since the most recent savepoint stays, and the history "
-            "is unchanged: what was recorded still says what happened."
-        )
-        self.reclaim_button.clicked.connect(self.reclaim_requested.emit)
-        grid.addWidget(self.reclaim_button, 2, 0)
-
-        # Beside the button that takes one: a savepoint is taken over the whole
-        # collection here, so this is where putting the whole collection back
-        # belongs. Curate's Revert keeps the same choice for a selection.
         self.restore_button = QPushButton("Restore savepoint...")
         self.restore_button.setToolTip(
             "Put every label under this folder back to what it held at a "
@@ -313,27 +325,37 @@ class MetadataPanel(QWidget):
             "a corrected label is never replaced without being named."
         )
         self.restore_button.clicked.connect(self.restore_requested.emit)
-        grid.addWidget(self.restore_button, 2, 1)
+        maintenance.addWidget(self.restore_button, 1, 1)
 
-        # Beside the button that acts on it, in the same slot as the unindexed
-        # line below: both are collection-level facts the project list has no
-        # column for. Measured when this tab is opened rather than during a
-        # scan -- see OperationsController.measure_archive.
+        self.compress_button = QPushButton("Compress labels...")
+        self.compress_button.setToolTip(
+            "Re-encode every label under this folder so it takes less disk "
+            "space. Pixel values and dimensions are unchanged, and a file that "
+            "would not shrink is left alone."
+        )
+        self.compress_button.clicked.connect(self.compress_requested.emit)
+        maintenance.addWidget(self.compress_button, 2, 0)
+
+        self.reclaim_button = QPushButton("Reclaim space...")
+        self.reclaim_button.setToolTip(
+            "Remove the kept label versions no savepoint needs.\n"
+            "Everything since the most recent savepoint stays, and the history "
+            "is unchanged: what was recorded still says what happened."
+        )
+        self.reclaim_button.clicked.connect(self.reclaim_requested.emit)
+        maintenance.addWidget(self.reclaim_button, 2, 1)
+
+        # Beside the button that acts on it: a collection-level fact the project
+        # list has no column for. Measured when this tab is opened rather than
+        # during a scan -- see OperationsController.measure_archive.
         self.archive = QLabel("")
         self.archive.setWordWrap(True)
         self.archive.setStyleSheet(f"color: {MUTED};")
-        grid.addWidget(self.archive, 3, 0, 1, 2)
-
-        # The list above shows what is indexed, which says nothing about what
-        # is sitting in the folder unindexed -- the state a collection is in
-        # before any of this has been done, and the one the list cannot show.
-        self.unindexed = QLabel("")
-        self.unindexed.setWordWrap(True)
-        self.unindexed.setStyleSheet(f"color: {MISMATCH.name()};")
-        grid.addWidget(self.unindexed, 4, 0, 1, 2)
+        maintenance.addWidget(self.archive, 3, 0, 1, 2)
+        column.addWidget(self.maintenance_box)
 
         self._update_collection_buttons()
-        return box
+        return holder
 
     def set_archive(self, summary: str) -> None:
         """Say what the kept label versions cost, once something has measured."""
@@ -351,15 +373,13 @@ class MetadataPanel(QWidget):
         )
 
     def set_root(self, root) -> None:
-        """Name the folder the two collection actions would act on.
+        """Name the folder the collection actions would act on.
 
         Named rather than left implicit because these act on everything under
         it, and the tab otherwise never says which folder is loaded.
         """
         self.root = root
-        self.collection_box.setTitle(
-            "Whole collection" if root is None else f"Whole collection: {root.name}"
-        )
+        self.data_box.setTitle("Data" if root is None else f"Data: {root.name}")
         self._update_collection_buttons()
 
     def _update_collection_buttons(self) -> None:
@@ -389,6 +409,16 @@ class MetadataPanel(QWidget):
         self.summary = QLabel("No project selected")
         self.summary.setWordWrap(True)
         column.addWidget(self.summary)
+
+        # Above the fields rather than under them: it decides whether any of
+        # them can be typed in, and a switch below a form is found last.
+        self.enable = ToggleSwitch("Enable editing")
+        self.enable.setToolTip(
+            "Unlock the fields. Only AM_metadata.yaml is written; "
+            "experiment.yaml is never touched."
+        )
+        self.enable.toggled.connect(self._set_editing)
+        column.addWidget(self.enable)
 
         form = QFormLayout()
         self.editors: dict[str, QWidget] = {}
@@ -425,14 +455,6 @@ class MetadataPanel(QWidget):
             self.notes[entry.name] = note
             self.captions[entry.name] = caption
         column.addLayout(form)
-
-        self.enable = ToggleSwitch("Enable editing")
-        self.enable.setToolTip(
-            "Unlock the fields. Only AM_metadata.yaml is written; "
-            "experiment.yaml is never touched."
-        )
-        self.enable.toggled.connect(self._set_editing)
-        column.addWidget(self.enable)
 
         buttons = QHBoxLayout()
         self.preview_button = QPushButton("Preview changes")
@@ -595,7 +617,13 @@ class MetadataPanel(QWidget):
         return answer == QMessageBox.Yes
 
     def _show_note(
-        self, field: str, source: str, outstanding: bool, *, mixed: bool = False
+        self,
+        field: str,
+        source: str,
+        outstanding: bool,
+        *,
+        mixed: bool = False,
+        paths: tuple[Path, ...] = (),
     ) -> None:
         """Annotate one field with where its value came from, or that it is due.
 
@@ -609,6 +637,9 @@ class MetadataPanel(QWidget):
         showing a value at all, and it is the authoritative statement: the
         marker in the box is editable text that could in principle have been
         typed, where this is derived from the projects in scope.
+
+        Args:
+            paths: The file behind the value in each project in scope.
         """
         note = self.notes[field]
         if mixed:
@@ -623,9 +654,12 @@ class MetadataPanel(QWidget):
             note.setStyleSheet(BADGE_STYLES["warning"])
             note.setToolTip("Still a placeholder; nobody has filled this in")
         elif source:
-            note.setText(f"[{source}]")
+            # Plain words in the muted colour rather than a bracketed badge:
+            # where a value came from is a quiet fact, and the badges are kept
+            # for the two states that ask for something.
+            note.setText(f"from {source}")
             note.setStyleSheet(BADGE_STYLES["info"])
-            note.setToolTip("Which file this value came from")
+            note.setToolTip(source_tooltip(paths))
         else:
             note.setText("")
             note.setToolTip("")
@@ -636,6 +670,7 @@ class MetadataPanel(QWidget):
         try:
             values = self.controller.values()
             sources = self.controller.sources()
+            paths = self.controller.source_paths()
             outstanding = set(self.controller.outstanding())
             mixed = set(self.controller.mixed_fields())
             for field, editor in self.editors.items():
@@ -650,6 +685,7 @@ class MetadataPanel(QWidget):
                     sources.get(field, ""),
                     field in outstanding,
                     mixed=field in mixed,
+                    paths=paths.get(field, ()),
                 )
             # Saving is exactly when a project stops being incomplete, so the
             # marks in the list must not be left describing the state before

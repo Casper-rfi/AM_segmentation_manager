@@ -136,6 +136,8 @@ def test_reach_counts_the_expanded_set_not_the_scope(tmp_path: Path):
     assert reach.images == len(SEM_VARIANTS)
     assert reach.labels == 1
     assert reach.shared == len(SEM_VARIANTS) - 1
+    assert len(reach.shared_images) == reach.shared
+    assert all("/" in name for name in reach.shared_images)
 
 
 def test_reach_on_an_unshared_modality_reports_no_sharing(tmp_path: Path):

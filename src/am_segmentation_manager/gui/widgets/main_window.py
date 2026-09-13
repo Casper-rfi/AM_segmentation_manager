@@ -1774,7 +1774,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.controller.state_of("FIB"),
         )
         reach = self.controller.reach()
-        self.state_panel.show_reach(reach.summary(), reach.shared_note())
+        self.state_panel.show_reach(
+            reach.summary(), reach.shared_note(), reach.shared_images
+        )
         self.state_panel.show_selection(self.controller.describe_selection())
         self.operations_panel.show_selection(self.controller.describe_selection())
         self._refresh_prediction_summary()

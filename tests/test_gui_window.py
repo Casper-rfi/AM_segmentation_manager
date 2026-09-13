@@ -3219,14 +3219,35 @@ def test_the_collection_actions_fit_the_pane_they_sit_in(window):
         PROJECT_PANE_MIN_WIDTH,
     )
 
-    needed = window.metadata_panel.collection_box.minimumSizeHint().width()
-
-    assert needed <= PROJECT_PANE_MIN_WIDTH
+    for box in (window.metadata_panel.data_box, window.metadata_panel.maintenance_box):
+        assert box.minimumSizeHint().width() <= PROJECT_PANE_MIN_WIDTH, box.title()
 
 
 def test_scanning_names_the_collection_the_actions_would_write_to(window, project: Path):
     assert window.metadata_panel.root == project
-    assert project.name in window.metadata_panel.collection_box.title()
+    assert project.name in window.metadata_panel.data_box.title()
+
+
+def test_what_acts_on_every_label_is_held_apart_from_what_reads_the_folder(window):
+    """Restoring and reclaiming change what is kept across every project;
+    inspecting the layout and adding projects only read the folder or add to it."""
+    panel = window.metadata_panel
+
+    for button in (panel.survey_button, panel.init_button):
+        assert panel.data_box.isAncestorOf(button), button.text()
+    for button in (
+        panel.savepoint_button, panel.restore_button,
+        panel.compress_button, panel.reclaim_button,
+    ):
+        assert panel.maintenance_box.isAncestorOf(button), button.text()
+
+
+def test_the_editing_switch_comes_before_the_fields_it_unlocks(window):
+    """It decides whether any field can be typed in, and was found last."""
+    panel = window.metadata_panel
+    column = panel.summary.parentWidget().layout()
+
+    assert column.indexOf(panel.enable) == column.indexOf(panel.summary) + 1
 
 
 def test_the_operations_box_says_what_it_would_act_on(window):
@@ -3647,9 +3668,29 @@ def test_a_field_holding_several_says_so_without_being_hovered(metadata_panel):
 
 
 def test_a_value_is_annotated_with_the_file_it_came_from(metadata_panel):
-    assert metadata_panel.notes["sample"].text() == "[AM_metadata.yaml]"
-    assert metadata_panel.notes["organisation"].text() == "[experiment.yaml]"
+    """In quiet words rather than a bracketed badge, the badges being kept for
+    the states that ask for something; the whole path is on hover."""
+    assert metadata_panel.notes["sample"].text() == "from AM_metadata.yaml"
+    assert metadata_panel.notes["organisation"].text() == "from experiment.yaml"
     assert metadata_panel.notes["sample"].styleSheet() == BADGE_STYLES["info"]
+    tip = metadata_panel.notes["sample"].toolTip()
+    assert tip.startswith("From /") and tip.endswith("AM_metadata.yaml")
+
+
+def test_a_folder_names_the_file_in_every_project_it_covers():
+    from am_segmentation_manager.gui.widgets.common import MAX_LISTED_FILES
+    from am_segmentation_manager.gui.widgets.metadata_panel import source_tooltip
+
+    paths = tuple(
+        Path(f"/collection/project{index}/AM_metadata.yaml")
+        for index in range(MAX_LISTED_FILES + 2)
+    )
+
+    tip = source_tooltip(paths)
+
+    assert tip.startswith(f"From this file in each of the {len(paths)} projects:")
+    assert str(paths[0]) in tip
+    assert tip.endswith("... and 2 more")
 
 
 def _current_project(panel) -> int | None:

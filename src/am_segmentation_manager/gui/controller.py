@@ -312,6 +312,9 @@ class StateChangeReach:
             :data:`~am_segmentation_manager.layout.MODALITIES` order. Reported
             per modality because the edit target moves one or both, and a
             single total cannot say which.
+        shared_images: The images counted in *shared*, as ``directory/file``:
+            conditions sharing a label often share a file name, so the
+            directory is what tells them apart.
     """
 
     images: int
@@ -319,6 +322,7 @@ class StateChangeReach:
     shared: int
     lamellae: int
     modalities: tuple[tuple[str, int], ...] = ()
+    shared_images: tuple[str, ...] = ()
 
     def summary(self) -> str:
         """Return the description shown above the state controls."""
@@ -1506,6 +1510,7 @@ class CurationController:
         if not scoped:
             return StateChangeReach(images=0, labels=0, shared=0, lamellae=0)
         expanded = self.expanded_records(scoped)
+        requested = {str(record.image_path) for record in scoped}
         labels = {
             str(label)
             for record in expanded
@@ -1522,6 +1527,11 @@ class CurationController:
             modalities=tuple(
                 (modality, sum(1 for r in expanded if r.modality == modality))
                 for modality in MODALITIES
+            ),
+            shared_images=tuple(
+                f"{record.image_path.parent.name}/{record.image_path.name}"
+                for record in expanded
+                if str(record.image_path) not in requested
             ),
         )
 

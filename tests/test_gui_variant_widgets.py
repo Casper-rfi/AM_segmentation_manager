@@ -208,6 +208,12 @@ def test_the_reach_line_reports_images_pulled_in_by_a_shared_label(
             "2 more share a label with this one"
         )
         assert window.state_panel.reach_shared.isHidden() is False
+        from am_segmentation_manager.gui.widgets.theme import BADGE_STYLES
+
+        assert window.state_panel.reach_shared.styleSheet() == BADGE_STYLES["warning"]
+        tip = window.state_panel.reach_shared.toolTip().splitlines()
+        assert tip[0] == "Also changed, through the label they share:"
+        assert len(tip) == 1 + 2, "one line per image the label pulls in"
     finally:
         destroy(window)
 

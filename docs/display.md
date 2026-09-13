@@ -251,7 +251,7 @@ of one of these files, is held by `test_docs.py`.
 - **A collection-wide act goes on Add data; anything narrowed goes on Curate.** `operations_panel`
   promises that everything in it follows the ticks, so a savepoint — which is over the whole dataset
   a model was trained on — would break that promise there. Taking one, restoring one over everything
-  and reclaiming archive space sit in *Whole collection* with `compress-labels`, and reverting a
+  and reclaiming archive space sit in *Maintenance* with `compress-labels`, and reverting a
   selection stays in Curate. **What the archive costs is measured when that tab is opened**, never
   during a scan: it walks every project's archive and reads every log, and one stat per project
   decides whether that is worth a worker at all.

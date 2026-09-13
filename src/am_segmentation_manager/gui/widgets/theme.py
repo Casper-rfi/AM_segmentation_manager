@@ -72,10 +72,6 @@ BADGE_STYLES = {
     "info": f"color: {MUTED};",
 }
 
-#: The shared-label note reports a consequence the user did not ask for, so it
-#: is set apart rather than reading as body text.
-SHARED_NOTE_STYLE = f"color: {WARNING};"
-
 #: A chip standing for one value of a field that holds several. Tinted rather
 #: than outlined, so a row of them reads as several things where a plain
 #: comma-separated line reads as one; the cross is the muted text colour, being

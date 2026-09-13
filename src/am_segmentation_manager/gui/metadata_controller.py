@@ -280,6 +280,19 @@ class MetadataController:
             if len(names) == 1 and self._named_by_all(field)
         }
 
+    def source_paths(self) -> dict[str, tuple[Path, ...]]:
+        """Return the file behind each value :meth:`sources` names, per project.
+
+        One path for one project, one for each project under a folder -- all
+        with the file name :meth:`sources` required them to agree on.
+        """
+        return {
+            field: tuple(
+                project.experiment_metadata.sources[field] for project in self._scope
+            )
+            for field in self.sources()
+        }
+
     def _named_by_all(self, field: str) -> bool:
         """Return whether every project in scope names a source for *field*.
 

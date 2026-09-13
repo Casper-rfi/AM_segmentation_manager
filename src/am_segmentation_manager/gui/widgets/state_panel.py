@@ -17,6 +17,8 @@ option chosen.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from qtpy.QtCore import QSize, Qt, Signal
 from qtpy.QtGui import QIcon, QPixmap
 from qtpy.QtWidgets import (
@@ -31,9 +33,10 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState
 from ..controller import MIXED
+from .common import MAX_LISTED_FILES
 from .controls import SegmentedControl, ToggleSwitch
 from .frame_strip import STATE_COLOURS
-from .theme import BADGE_STYLES, SHARED_NOTE_STYLE
+from .theme import BADGE_STYLES
 
 #: Workflow order, which is also the order of the rows in the timeline: data is
 #: excluded, or queued for proofreading, or finished.
@@ -111,7 +114,9 @@ class StatePanel(QWidget):
 
         self.reach_shared = QLabel("")
         self.reach_shared.setWordWrap(True)
-        self.reach_shared.setStyleSheet(SHARED_NOTE_STYLE)
+        # The warning badge rather than tinted body text: it reports a
+        # consequence nobody asked for, which the line above cannot show.
+        self.reach_shared.setStyleSheet(BADGE_STYLES["warning"])
         self.reach_shared.setToolTip(self.reach.toolTip())
         layout.addWidget(self.reach_shared)
 
@@ -253,17 +258,28 @@ class StatePanel(QWidget):
         self.last_change.setText(description)
         self.last_change.setVisible(bool(description))
 
-    def show_reach(self, summary: str, shared_note: str = "") -> None:
+    def show_reach(
+        self, summary: str, shared_note: str = "", shared_images: Sequence[str] = ()
+    ) -> None:
         """Show how far the next state change would reach.
 
         Args:
             summary: The always-present line, e.g. ``"Covers 4 images + 1 label"``.
-            shared_note: The extra line naming images pulled in by a shared
-                label, or empty when nothing is shared.
+            shared_note: The extra line saying how many images a shared label
+                pulls in, or empty when nothing is shared.
+            shared_images: Those images, named on hover: the count says a change
+                reaches further, and only the names say what it reaches.
         """
         self.reach.setText(summary)
         self.reach_shared.setText(shared_note)
         self.reach_shared.setVisible(bool(shared_note))
+        listed = list(shared_images[:MAX_LISTED_FILES])
+        if len(shared_images) > MAX_LISTED_FILES:
+            listed.append(f"... and {len(shared_images) - MAX_LISTED_FILES} more")
+        self.reach_shared.setToolTip(
+            "Also changed, through the label they share:\n" + "\n".join(listed)
+            if listed else self.reach.toolTip()
+        )
 
     def show_selection(self, description: str) -> None:
         """Say in words what the state buttons will move."""
