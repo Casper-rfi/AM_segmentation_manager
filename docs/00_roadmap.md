@@ -29,8 +29,10 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 
-- **Try the conflict resolver on a real merge** before branch `conflict-resolver` joins main. Its
-  keys have been exercised only through their handlers, an offscreen window never being activated.
+- **Try branch `gui-review` in the window before it joins main.** Its padlocks, scan bar, hover
+  card, breakdown table and chart bar have been checked by tests and offscreen renders only.
+- **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
+  handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
   taken 2026-09-11 over all 123 projects with 3,236/3,236 labels reachable. Close **one whole
   round** from there with a real training run in the middle: the parts have each been rehearsed,

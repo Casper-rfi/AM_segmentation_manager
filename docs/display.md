@@ -273,9 +273,9 @@ of one of these files, is held by `test_docs.py`.
   *Field | Here | Copy* and a value is chosen by clicking it, so two values are compared side by side
   rather than read out of a sentence (`test_clicking_a_value_chooses_it_and_clicking_it_again_undecides`).
 - **Who changes are recorded under is a standing line beside the mark, not a warning per action.**
-  Ten actions across all four tabs put a name into a log, and one more writes it into an export's
-  fork point: there is no single tab to say it on and far too many places to warn at. It is muted,
-  being a fact rather than a message.
+  Ten actions across all four tabs put a name into a log, and two exports write it into what they
+  leave behind — a copy's fork point, a training set's manifest: there is no single tab to say it
+  on and far too many places to warn at. It is muted, being a fact rather than a message.
 - **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
   holds reaches a write path, which is what makes it safe to keep these on one machine
   (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`). The window applies them
@@ -455,9 +455,9 @@ of one of these files, is held by `test_docs.py`.
   file dialog is Qt's own (`paths.build_path_dialog` sets `DontUseNativeDialog`; revealing a folder
   in the file manager stays native), Up and Down step through a combo box via `StepCombo`, and
   `common.fixed_width_font` names real monospace families per platform. That last is asserted on the
-  metrics (`"i"` and `"W"` advance equally) and never on `QFont.fixedPitch()` or
-  `QFontDatabase.systemFont(FixedFont)`, both of which report the family requested rather than the
-  one that resolved.
+  metrics, `"i"` and `"W"` advancing equally (`test_a_report_lines_up_in_a_fixed_width_font`), and
+  never on `QFont.fixedPitch()` or `QFontDatabase.systemFont(FixedFont)`, both of which report the
+  family requested rather than the one that resolved.
 - **A key pressed while a completer's popup is open does not reach the field's event filters.** The
   popup grabs the keyboard and gets the key; `QCompleter` then passes it on by calling
   `widget->event()`, which reaches the field's own handlers and skips every filter installed on it.

@@ -3330,6 +3330,21 @@ def test_a_failing_operation_is_reported_and_leaves_the_window_usable(
     assert window.operations_panel.convert_button.isEnabled()
 
 
+def test_a_report_lines_up_in_a_fixed_width_font(qt_app):
+    """A report pads its columns with spaces, which line up only where every
+    character advances as far as every other. Asked of the metrics, never of
+    fixedPitch(), which reports the family requested rather than the one found."""
+    from qtpy.QtGui import QFontMetricsF
+
+    from am_segmentation_manager.gui.widgets.report_dialog import ReportDialog
+
+    dialog = ReportDialog(None, "Inspect layout", ["headline"])
+    metrics = QFontMetricsF(dialog.view.font())
+
+    assert metrics.horizontalAdvance("i") == metrics.horizontalAdvance("W")
+    dialog.deleteLater()
+
+
 def test_a_report_dialog_shows_its_lines_and_asks_only_when_it_can_act(qt_app):
     """The dialog every operation reports through, on both of its two jobs."""
     from qtpy.QtWidgets import QDialogButtonBox
