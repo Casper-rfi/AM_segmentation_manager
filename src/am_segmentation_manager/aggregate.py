@@ -12,6 +12,7 @@ a visible row rather than a silent omission.
 from __future__ import annotations
 
 import logging
+import math
 import re
 from collections import Counter
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
@@ -73,13 +74,33 @@ def _present(value: object) -> Hashable:
     return value  # type: ignore[return-value]
 
 
-def _ranked(order: Sequence[Hashable]) -> Callable[[Hashable], tuple[int, str]]:
+def value_order(value: Hashable) -> tuple[int, float, str]:
+    """Return a sort key putting numbers in numeric order, then names, then :data:`MISSING`.
+
+    Takes a group or its text alike, a filter list holding strings: sorted as
+    text, a pixel size of 8.431 lands after 19.53 and 10 kV before 2 kV. The one
+    rule for every ordering of values, so a list and a table cannot disagree.
+    """
+    if value == MISSING:
+        return (2, 0.0, "")
+    if not isinstance(value, bool):
+        try:
+            number = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            pass
+        else:
+            if math.isfinite(number):
+                return (0, number, "")
+    return (1, 0.0, str(value))
+
+
+def _ranked(order: Sequence[Hashable]) -> Callable[[Hashable], tuple]:
     """Return a sort key placing *order*'s values first, in that order.
 
-    Anything not listed sorts after everything listed, by name.
+    Anything not listed sorts after everything listed, by :func:`value_order`.
     """
     rank = {value: index for index, value in enumerate(order)}
-    return lambda value: (rank.get(value, len(rank)), str(value))
+    return lambda value: (rank.get(value, len(rank)), value_order(value))
 
 
 def count_by(
@@ -91,8 +112,8 @@ def count_by(
 ) -> dict[Hashable, int]:
     """Return how many records fall into each group.
 
-    Ordered by count descending, then by the group name, so the largest group
-    is first and the order is stable between runs.
+    Ordered by count descending, then by :func:`value_order`, so the largest
+    group is first and the order is stable between runs.
 
     Args:
         order: Group names to keep in a declared order instead, largest-first
@@ -108,7 +129,9 @@ def count_by(
         group for record in records for group in groups_of(key, record, multi=multi)
     )
     if not order:
-        return dict(sorted(counts.items(), key=lambda item: (-item[1], str(item[0]))))
+        return dict(
+            sorted(counts.items(), key=lambda item: (-item[1], value_order(item[0])))
+        )
     ranked = _ranked(order)
     return dict(sorted(counts.items(), key=lambda item: ranked(item[0])))
 
@@ -137,7 +160,12 @@ def cross_tabulate(
         for row_group in groups_of(row, record, multi=row_multi)
         for column_group in groups_of(column, record, multi=column_multi)
     )
-    return dict(sorted(counts.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))))
+    return dict(
+        sorted(
+            counts.items(),
+            key=lambda item: (value_order(item[0][0]), value_order(item[0][1])),
+        )
+    )
 
 
 def totals(

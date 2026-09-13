@@ -29,6 +29,7 @@ from ..aggregate import (
     groups_of,
     project_lookup,
     resolve_breakdown,
+    value_order,
 )
 from ..config import SegmentationConfig, load_segmentation_config
 from ..filtering import matches_state
@@ -140,18 +141,6 @@ ANY_LABEL = "any"
 #: command line's default, so the same selection exported either way lands in
 #: the same filenames.
 DEFAULT_PREFIX = "dataset"
-
-
-def _sortable(value: str) -> tuple[int, float, str]:
-    """Return a sort key putting numbers in numeric order, names after them.
-
-    The values are strings because that is what a list widget holds, and
-    sorting a pixel size as one puts 8.431 after 19.53.
-    """
-    try:
-        return (0, float(value), "")
-    except ValueError:
-        return (1, 0.0, value)
 
 
 @dataclass(frozen=True)
@@ -1077,7 +1066,7 @@ class ExportController:
             for group in groups_of(key, record, multi=multi)
         }
         return sorted(
-            values | set(self.filters.choices.get(name, ())), key=_sortable
+            values | set(self.filters.choices.get(name, ())), key=value_order
         )
 
     def set_choice_filter(

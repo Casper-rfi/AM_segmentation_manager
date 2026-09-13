@@ -540,6 +540,46 @@ def test_a_cross_tabulated_axis_can_be_ordered_too():
     assert rows == ["< 0.01", "1 - 10"]
 
 
+def test_an_axis_of_numbers_runs_in_numeric_order_with_the_unrecorded_last():
+    """Sorted as text, 10 kV lands before 2 kV and "(not recorded)" first."""
+    table = {(voltage, "SEM"): 1 for voltage in (ag.MISSING, 1.8, 10.0, 2.0, 5.0)}
+
+    rows, _ = ag.totals(table)
+
+    assert rows == [1.8, 2.0, 5.0, 10.0, ag.MISSING]
+
+
+def test_a_value_and_its_text_sort_the_same_way():
+    """A filter list holds strings, the table holds the values themselves."""
+    values = [10.0, ag.MISSING, "intact", 2, 8.431, 19.53]
+
+    by_value = sorted(values, key=ag.value_order)
+    by_text = sorted((str(value) for value in values), key=ag.value_order)
+
+    assert by_value == [2, 8.431, 10.0, 19.53, "intact", ag.MISSING]
+    assert by_text == [str(value) for value in by_value]
+
+
+def test_a_count_mixing_numbers_and_statuses_does_not_raise():
+    """A crack count is a number where measured and a status string where not."""
+    assert sorted([3, "empty", 10, True, "nan"], key=ag.value_order) == [
+        3, 10, True, "empty", "nan",
+    ]
+
+
+def test_ties_in_count_fall_back_to_numeric_order():
+    records = [record(str(index)) for index in range(3)]
+    voltages = iter([10.0, 2.0, 5.0])
+
+    assert list(ag.count_by(records, lambda _: next(voltages))) == [2.0, 5.0, 10.0]
+
+
+def test_a_declared_order_still_wins_over_numeric_order():
+    rank = ag._ranked([10.0, 2.0])
+
+    assert sorted([2.0, 5.0, 10.0], key=rank) == [10.0, 2.0, 5.0]
+
+
 def test_only_the_header_breakdowns_are_marked_as_needing_metadata():
     """The CLI reads headers only when a chosen breakdown needs them, so this
     set decides whether a structural question stays a filesystem walk."""
