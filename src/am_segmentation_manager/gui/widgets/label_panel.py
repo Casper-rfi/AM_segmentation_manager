@@ -110,10 +110,14 @@ SPECK_RECOUNT_MS = 400
 #: classes are shown.
 #:
 #: The row above the tools, so the hand that reaches D and F reaches these
-#: without moving. Five because that is what the segmentation config declares;
-#: a longer config leaves the rest without a key rather than borrowing one.
+#: without moving. Six, one more than the segmentation config declares; a
+#: longer config leaves the rest without a key rather than borrowing one.
 #: Named here, beside the buttons they press, and bound by the window.
-CLASS_KEYS = ("Q", "W", "E", "R", "T")
+CLASS_KEYS = ("Q", "W", "E", "R", "T", "Y")
+
+#: The keys that lock or unlock one class: its paint key with Shift, so which
+#: padlock a key reaches is read off the key that paints that class.
+LOCK_KEYS = tuple(f"Shift+{key}" for key in CLASS_KEYS)
 
 #: The brush sizes the slider offers, in pixels across the widest part of the
 #: stroke: size 1 is a single pixel, size 3 is three pixels wide, and size n
@@ -625,12 +629,16 @@ class LabelPanel(QWidget):
             self.paint_buttons[class_index] = button
 
             lock = _padlock_button()
-            lock.setToolTip(
+            lock_hint = (
                 "Lock background, so no tool paints over it: a stroke then "
                 "changes only what is already drawn" if erasing
-                else f"Lock {name}, so no tool paints over it\n"
-                "Shortcut: A locks or unlocks every class but background"
+                else f"Lock {name}, so no tool paints over it"
             )
+            if position < len(LOCK_KEYS):
+                lock_hint += f"\nShortcut: {LOCK_KEYS[position]}"
+            if not erasing:
+                lock_hint += "\nA locks or unlocks every class but background"
+            lock.setToolTip(lock_hint)
             lock.toggled.connect(self._locks_changed)
             self.lock_buttons[class_index] = lock
 
@@ -887,6 +895,16 @@ class LabelPanel(QWidget):
     def step_brush(self, delta: int) -> None:
         """Grow or shrink the brush by one offered size, from the keyboard."""
         self.brush_slider.setValue(self.brush_slider.value() + delta)
+
+    def toggle_lock_at(self, position: int) -> None:
+        """Lock or unlock the class at *position* in the row, from the keyboard.
+
+        Background included: a key names one padlock, and that padlock is
+        background's as much as any class's.
+        """
+        if 0 <= position < len(self._classes):
+            button = self.lock_buttons[self._classes[position]]
+            button.setChecked(not button.isChecked())
 
     def toggle_all_locks(self, locked: bool | None = None) -> None:
         """Lock every class but background, or unlock them, from the keyboard.

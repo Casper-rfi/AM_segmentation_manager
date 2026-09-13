@@ -238,7 +238,8 @@ of one of these files, is held by `test_docs.py`.
   is placed last. A heading takes the colour and weight a `QGroupBox` title takes over its card
   (`test_a_heading_is_not_drawn_like_the_rows_under_it`).
 - **The diagram and the legend are drawn by whatever draws the real thing**, so neither can claim a
-  key or a mark the window does not have: `_keys_of` reads the bindings, and each module supplies
+  key or a mark the window does not have: `_keys_of` reads the bindings, a gesture names the keys it
+  holds (`test_a_key_held_for_a_gesture_is_lit_on_the_diagram`), and each module supplies
   its own legend with the timeline's sample *grabbed from a `FrameTimeline`*
   (`test_the_legend_shows_the_marks_rather_than_describing_them`). Two Qt facts have no test:
   `common.mark_image` must hold its `QByteArray` in a name, **`QBuffer(QByteArray())` segfaulting

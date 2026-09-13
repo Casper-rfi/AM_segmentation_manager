@@ -31,7 +31,7 @@ from qtpy.QtWidgets import (
 from .common import mark_image
 from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram
-from .label_panel import CLASS_KEYS
+from .label_panel import CLASS_KEYS, LOCK_KEYS
 from .metadata_panel import completeness_legend
 from .project_panel import status_legend
 from .theme import BORDER_LIGHT, HEADING
@@ -83,8 +83,22 @@ GROUP_ROW_MARK = "The mark beside each row"
 GROUP_STRIP_MARK = "The bar under the images"
 GROUP_HELP = "This list"
 
-#: Mouse gestures worth listing beside the keys, per tab, as
-#: ``(heading, what to do, what it does)``.
+@dataclass(frozen=True)
+class Gesture:
+    """One mouse gesture listed in F1, and the keys it holds down.
+
+    Attributes:
+        keys: Key names as the diagram spells them, lit beside the bound keys:
+            a key held for a gesture is a key somebody has to find too.
+    """
+
+    group: str
+    action: str
+    description: str
+    keys: tuple[str, ...] = ()
+
+
+#: Mouse gestures worth listing beside the keys, per tab.
 #:
 #: Not bindings: nothing registers these, the widgets read the modifiers
 #: themselves. They are here because F1 is the one place that answers "what can
@@ -92,33 +106,37 @@ GROUP_HELP = "This list"
 #: They carry a heading for the same reason the keys do -- picking frames out
 #: is one idea whether it is done with Esc or with Ctrl-click, and splitting it
 #: into a keys half and a mouse half hid that.
-TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
+TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
     TAB_CURATE: (
-        (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
-        (
+        Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
+        Gesture(
             GROUP_CHOOSE, "Ctrl-click a frame",
-            "Pick it out for a state change, or drop it again",
+            "Pick it out for a state change, or drop it again", ("Ctrl",),
         ),
-        (
+        Gesture(
             GROUP_CHOOSE, "Shift-click a frame",
             "Extend the picked run from the last frame you pointed at",
+            ("Shift",),
         ),
-        (GROUP_CHOOSE, "Ctrl or Shift + drag", "Sweep a run of frames"),
-        (
+        Gesture(
+            GROUP_CHOOSE, "Ctrl or Shift + drag", "Sweep a run of frames",
+            ("Ctrl", "Shift"),
+        ),
+        Gesture(
             GROUP_CHOOSE, "Tick a project or lamella",
             "Apply a state change to the whole of it",
         ),
-        (
+        Gesture(
             GROUP_ELSEWHERE, "Right-click a row or an image",
             "Copy its path, or open its folder",
         ),
-        (
+        Gesture(
             GROUP_ELSEWHERE, "Operations",
             "Act on the same selection; each previews before it applies",
         ),
     ),
     TAB_ADD_DATA: (
-        (
+        Gesture(
             GROUP_ELSEWHERE, "Right-click a project",
             "Copy its path, or open its folder",
         ),
@@ -128,18 +146,21 @@ TAB_GESTURES: dict[str, tuple[tuple[str, str, str], ...]] = {
         # three resize the brush, and a reader looking for how to do that
         # should not have to step over two other rows to find the third way.
         # The mouse rows stay together either way, this one leading them.
-        (GROUP_TOOLS, "Shift + scroll wheel", "Make the brush bigger or smaller"),
-        (GROUP_TOOLS, "Drag with the left button", "Paint with the brush"),
-        (
+        Gesture(
+            GROUP_TOOLS, "Shift + scroll wheel", "Make the brush bigger or smaller",
+            ("Shift",),
+        ),
+        Gesture(GROUP_TOOLS, "Drag with the left button", "Paint with the brush"),
+        Gesture(
             GROUP_TOOLS, "Click with the fill tool",
             "Flood the area of one class you clicked in",
         ),
-        (
+        Gesture(
             GROUP_VIEW, "Hold Space, or drag with the middle button",
-            "Pan instead of painting",
+            "Pan instead of painting", ("Space",),
         ),
-        (GROUP_VIEW, "Scroll wheel", "Zoom about the pointer"),
-        (GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
+        Gesture(GROUP_VIEW, "Scroll wheel", "Zoom about the pointer"),
+        Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
     ),
 }
 
@@ -172,6 +193,12 @@ def _table(rows) -> str:
         for action, description in rows
     )
     return f"<table>{body}</table>"
+
+
+def _diagram_keys(bindings: list, tab: str) -> set[str]:
+    """Return the keys the diagram lights for *tab*: bound, or held for a gesture."""
+    held = {key for gesture in TAB_GESTURES.get(tab, ()) for key in gesture.keys}
+    return _keys_of(bindings) | held
 
 
 def _keys_of(bindings: list) -> set[str]:
@@ -321,6 +348,18 @@ def bindings_for(window) -> list[Binding]:
             zip(CLASS_KEYS, window.label_panel.class_names())
         )
     ]
+    lock_keys = [
+        Binding(
+            key,
+            f"Lock or unlock {name}",
+            lambda position=position: window.label_panel.toggle_lock_at(position),
+            TAB_LABEL,
+            GROUP_CLASSES,
+        )
+        for position, (key, name) in enumerate(
+            zip(LOCK_KEYS, window.label_panel.class_names())
+        )
+    ]
     return [
         # -- curate --------------------------------------------------
         Binding("Right", "Next frame", lambda: window._step_frame(1), curate, GROUP_VIEW),
@@ -434,6 +473,7 @@ def bindings_for(window) -> list[Binding]:
             TAB_LABEL, GROUP_TOOLS,
         ),
         *paint_keys,
+        *lock_keys,
         Binding(
             "A", "Lock or unlock every class but background",
             window.label_panel.toggle_all_locks, TAB_LABEL, GROUP_CLASSES,
@@ -468,7 +508,7 @@ def bindings_for(window) -> list[Binding]:
 
 def _grouped_rows(
     bindings: list[Binding],
-    gestures: tuple[tuple[str, str, str], ...],
+    gestures: tuple[Gesture, ...],
     marks: tuple[tuple[str, str, str], ...] = (),
 ) -> dict[str, list[tuple[str, str]]]:
     """Return the rows of each heading, in the order the headings arise.
@@ -484,7 +524,11 @@ def _grouped_rows(
         grouped.setdefault(binding.group, []).append(
             (binding.key, binding.description)
         )
-    for group, action, description in (*gestures, *marks):
+    for gesture in gestures:
+        grouped.setdefault(gesture.group, []).append(
+            (gesture.action, gesture.description)
+        )
+    for group, action, description in marks:
         grouped.setdefault(group, []).append((action, description))
     if GROUP_HELP in grouped:
         grouped[GROUP_HELP] = grouped.pop(GROUP_HELP)
@@ -601,7 +645,7 @@ class Shortcuts:
             # here is a question a picture answers faster than a list, and what
             # each one does is the list's own job directly below.
             help_text = (
-                f"<p>{mark_image(keyboard_diagram(_keys_of(applicable)))}</p>"
+                f"<p>{mark_image(keyboard_diagram(_diagram_keys(applicable, tab)))}</p>"
                 + help_text
             )
         else:

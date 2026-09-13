@@ -1190,6 +1190,24 @@ def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):
         assert panel.paint_buttons[panel.paint_class].text() in binding.description
 
 
+def test_shift_and_a_class_key_lock_that_class_alone(window):
+    """The padlock a key reaches is read off the key that paints its class."""
+    from am_segmentation_manager.gui.widgets.label_panel import LOCK_KEYS
+
+    panel = window.label_panel
+    bound = {
+        binding.key: binding for binding in window._keys.bindings
+        if binding.tab == TAB_LABEL and binding.key in LOCK_KEYS
+    }
+
+    assert len(bound) == len(panel.class_names())
+    for position, class_index in enumerate(panel._classes):
+        bound[LOCK_KEYS[position]].action()
+        assert panel.canvas.protected == {class_index}
+        bound[LOCK_KEYS[position]].action()
+        assert panel.canvas.protected == frozenset()
+
+
 def test_one_key_locks_and_unlocks_every_class_but_background(window):
     panel = window.label_panel
 

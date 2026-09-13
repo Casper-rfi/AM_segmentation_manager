@@ -1191,8 +1191,8 @@ def test_every_gesture_is_described(window):
 
     for gestures in TAB_GESTURES.values():
         assert all(
-            group and action and description
-            for group, action, description in gestures
+            gesture.group and gesture.action and gesture.description
+            for gesture in gestures
         )
 
 
@@ -1225,7 +1225,7 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
     headings = _headings()
     assert {binding.group for binding in window._keys.bindings} <= headings
     for gestures in TAB_GESTURES.values():
-        assert {group for group, _action, _description in gestures} <= headings
+        assert {gesture.group for gesture in gestures} <= headings
 
 
 def test_the_three_ways_to_resize_the_brush_are_listed_together(window):
@@ -4799,6 +4799,16 @@ def test_a_chord_lights_its_modifiers_too(window):
 
     assert _keys_of([binding("Ctrl+Shift+Z")]) == {"Ctrl", "Shift", "Z"}
     assert _keys_of([binding("Left"), binding("Ctrl+S")]) == {"Left", "Ctrl", "S"}
+
+
+def test_a_key_held_for_a_gesture_is_lit_on_the_diagram(window):
+    """Space pans and Shift resizes the brush, and neither is a binding: the
+    diagram left both dark while the table beside it named them."""
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_LABEL, _diagram_keys
+
+    lit = _diagram_keys(window._keys.bindings, TAB_LABEL)
+
+    assert {"Space", "Shift"} <= lit
 
 
 def test_the_keyboard_picks_out_the_keys_it_is_given(qt_app):
