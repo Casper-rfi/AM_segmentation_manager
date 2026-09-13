@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ..config import load_segmentation_config
 from ..io.path import make_path_relative
+from ..layout import DEFAULT_PREDICTION_ORIGIN, PREDICTION_ORIGINS, other_prediction_origin
 from ..operations.csv import find_matching_label
 from ..operations.label_compression import compress_labels
 from ..operations.label_io import classify_labels
@@ -123,8 +124,11 @@ def add_arguments(sub) -> None:
             "kept unless --overwrite is given. Only images explicitly selected by the scope "
             "arguments are converted, because the labels this produces are "
             "pseudo-labels awaiting proofreading, not finished annotations. "
-            "Predictions are read from predictions/raw/, or from an undivided "
-            "predictions/ directory. The pipeline's post-processed "
+            "Predictions are read from predictions/am_seg/, which predict-labels "
+            "writes, and from the microscope's predictions/raw/ or an undivided "
+            "predictions/ directory. Where an image has both, --prefer chooses, "
+            "and the other is used where the chosen one is missing. The "
+            "pipeline's post-processed "
             "predictions/clean/ output is never converted: its intensity "
             "values no longer correspond to the segmentation classes."
         ),
@@ -133,6 +137,14 @@ def add_arguments(sub) -> None:
     convert_predictions.add_argument(
         "--dry-run", action="store_true",
         help="List the labels that would be written without writing any",
+    )
+    convert_predictions.add_argument(
+        "--prefer", choices=PREDICTION_ORIGINS, default=DEFAULT_PREDICTION_ORIGIN,
+        help=(
+            "Which prediction to convert where an image has both: am-seg's own "
+            "or the microscope's (default: %(default)s). An image with only "
+            "the other converts that, and the run says how many did"
+        ),
     )
     convert_predictions.add_argument(
         "--overwrite", action="store_true",
@@ -346,7 +358,12 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     if not records:
         logger.info("No matching images found to convert")
         return 2
-    plan = plan_conversions(records, overwrite=args.overwrite)
+    plan = plan_conversions(records, overwrite=args.overwrite, prefer=args.prefer)
+    if plan.count_fallbacks():
+        logger.info(
+            "%d image(s) have no %s prediction; converting the %s one",
+            plan.count_fallbacks(), args.prefer, other_prediction_origin(args.prefer),
+        )
     if args.dry_run:
         for item in plan.conversions:
             logger.info("%s %s", item.describe(), item.destination)
@@ -361,7 +378,8 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
         logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
         return 0
     converted = len(convert_record_predictions(
-        records, overwrite=args.overwrite, recorder=_recorder(args)
+        records, overwrite=args.overwrite, recorder=_recorder(args),
+        prefer=args.prefer,
     ))
     logger.info("Total converted: %d", converted)
     return 0

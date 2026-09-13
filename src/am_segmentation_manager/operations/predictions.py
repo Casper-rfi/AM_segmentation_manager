@@ -4,7 +4,9 @@ Converts a prediction image into a label image, resizing by nearest neighbour
 where the prediction and its image differ in shape; without the image-processing
 dependencies (tifffile, numpy, cv2) it copies the file and logs a warning.
 
-Only predictions the pipeline has not post-processed are eligible. An existing
+Only predictions the pipeline has not post-processed are eligible, and where an
+image has both this package's and the microscope's, the caller says which to
+take; the other stands in where it is missing. An existing
 label is replaced only when the caller asks for it, and a proofread one not even
 then, so nothing here can destroy manual annotation.
 """
@@ -21,8 +23,11 @@ from ..history import Recorder
 from ..io.atomic import write_atomically
 from ..io.image import read_array, to_2d
 from ..layout import (
+    DEFAULT_PREDICTION_ORIGIN,
     MODALITIES,
+    PredictionOrigin,
     is_convertible_prediction,
+    prediction_origin,
     prediction_precedence,
 )
 from ..models import ImageRecord
@@ -144,16 +149,24 @@ class PlannedConversion:
             path when there is one, so replacing it overwrites that file rather
             than writing a second label elsewhere.
         existing: What is at the destination now.
+        fallback: Whether the prediction is from the source not asked for,
+            the image having none from the one that was.
     """
 
     record: ImageRecord
     prediction: Path
     destination: Path
     existing: ExistingLabel = "none"
+    fallback: bool = False
+
+    @property
+    def origin(self) -> PredictionOrigin:
+        """Return which of the two sources the prediction came from."""
+        return prediction_origin(self.prediction)
 
     def describe(self) -> str:
-        """Return what this conversion would do to the destination."""
-        return EXISTING_DESCRIPTIONS[self.existing]
+        """Return what this conversion would do to the destination, and from what."""
+        return f"{EXISTING_DESCRIPTIONS[self.existing]}, from {self.origin}"
 
 
 #: Why a record produces no conversion. Reported rather than logged, because a
@@ -205,6 +218,12 @@ class ConversionPlan:
         """Return how many records were passed over for *reason*."""
         return sum(1 for item in self.skipped if item.reason == reason)
 
+    def count_fallbacks(self) -> int:
+        """Return how many conversions, run or held back, use the other source."""
+        return sum(
+            1 for item in (*self.conversions, *self.replaceable) if item.fallback
+        )
+
 
 @dataclass(frozen=True)
 class ConversionCounts:
@@ -221,6 +240,8 @@ class ConversionCounts:
         corrected: Images whose label is proofread, which nothing will replace.
         post_processed: Images whose only predictions are the unusable kind.
         no_prediction: Images the prediction pipeline has not reached.
+        fallback: Of the ready and labelled images, those with no prediction
+            from the preferred source, whose other one would be used.
     """
 
     total: int = 0
@@ -229,9 +250,14 @@ class ConversionCounts:
     corrected: int = 0
     post_processed: int = 0
     no_prediction: int = 0
+    fallback: int = 0
 
 
-def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
+def count_convertible(
+    records: Iterable[ImageRecord],
+    *,
+    prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
+) -> ConversionCounts:
     """Return how *records* divide up, without touching the filesystem."""
     counts: dict[str, int] = {}
     total = 0
@@ -239,7 +265,11 @@ def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
         if record.modality not in MODALITIES:
             continue
         total += 1
-        if not any(is_convertible_prediction(path) for path in record.predictions):
+        sources = {
+            prediction_origin(path)
+            for path in record.predictions if is_convertible_prediction(path)
+        }
+        if not sources:
             key = "post_processed" if record.predictions else "no_prediction"
         elif not record.labels:
             key = "ready"
@@ -248,6 +278,8 @@ def count_convertible(records: Iterable[ImageRecord]) -> ConversionCounts:
         else:
             key = "labelled"
         counts[key] = counts.get(key, 0) + 1
+        if key in ("ready", "labelled") and prefer not in sources:
+            counts["fallback"] = counts.get("fallback", 0) + 1
     return ConversionCounts(total=total, **counts)
 
 
@@ -271,13 +303,16 @@ def classify_destination(
 
 
 def plan_conversions(
-    records: Iterable[ImageRecord], *, overwrite: bool = False
+    records: Iterable[ImageRecord],
+    *,
+    overwrite: bool = False,
+    prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
 ) -> ConversionPlan:
     """Return the conversions that would run for *records*, and what they do not.
 
-    Sources are whatever :func:`~..layout.is_convertible_prediction` allows,
-    and where an image has more than one, :func:`~..layout.prediction_precedence`
-    chooses: a prediction this package made outranks the pipeline's. An existing
+    Sources are whatever :func:`~..layout.is_convertible_prediction` allows. An
+    image with predictions from both sources converts the *prefer* one; an image
+    with only the other converts that, marked as a fallback. An existing
     label is replaced only when *overwrite* is set, and a proofread one not even
     then. The whole set is resolved before any of it is written, and no
     destination appears twice -- conditions of one scene share a label file, and
@@ -296,7 +331,7 @@ def plan_conversions(
                 prediction for prediction in record.predictions
                 if is_convertible_prediction(prediction)
             ),
-            key=prediction_precedence,
+            key=lambda prediction: prediction_precedence(prediction, prefer),
         )
         if not convertible:
             # Distinguished so the report can say which of the two it is: one
@@ -314,7 +349,10 @@ def plan_conversions(
         existing = classify_destination(
             destination, corrected=current_state(record) == "corrected"
         )
-        conversion = PlannedConversion(record, convertible[0], destination, existing)
+        conversion = PlannedConversion(
+            record, convertible[0], destination, existing,
+            fallback=prediction_origin(convertible[0]) != prefer,
+        )
         if existing == "corrected":
             refused.append(conversion)
         elif existing == "none" or overwrite:
@@ -331,6 +369,7 @@ def convert_record_predictions(
     *,
     overwrite: bool = False,
     recorder: Recorder | None = None,
+    prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
 ) -> tuple[Path, ...]:
     """Convert predictions for explicitly selected image records.
 
@@ -342,13 +381,14 @@ def convert_record_predictions(
         records: The records to convert predictions for.
         overwrite: Replace an existing label that is not proofread.
         recorder: Where to record what was written, or None to record nothing.
+        prefer: The source to convert where an image has predictions from both.
 
     Returns:
         Where each label was written. The paths rather than a count, so a
         caller can name the new labels on the records that share them instead
         of re-reading the collection to find them; ``len`` gives the count.
     """
-    plan = plan_conversions(records, overwrite=overwrite)
+    plan = plan_conversions(records, overwrite=overwrite, prefer=prefer)
     archivist = None
     if recorder is not None:
 

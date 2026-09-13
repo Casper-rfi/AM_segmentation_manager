@@ -2291,7 +2291,7 @@ def test_converting_does_not_walk_the_collection_again(
     written = label_destination(record)
     monkeypatch.setattr(
         window.operations_controller, "convert_predictions",
-        lambda records, allow_overwrite=False, dry_run=False: OperationReport(
+        lambda records, allow_overwrite=False, dry_run=False, prefer="am-seg": OperationReport(
             "Wrote 1 label(s) from predictions.", (), 1,
             applied=not dry_run,
             written=() if dry_run else (written,),
@@ -3179,6 +3179,23 @@ def test_the_operations_box_says_whether_there_is_anything_to_convert(window):
     window.refresh()
 
     assert window.operations_panel.predictions.text()
+
+
+def test_choosing_where_predictions_come_from_recounts_the_line(window, monkeypatch):
+    """The line has to describe the conversion the button would now run."""
+    _tick_lamella(window)
+    window.refresh()
+    asked: list[str] = []
+    describe = window.operations_controller.describe_predictions
+    monkeypatch.setattr(
+        window.operations_controller, "describe_predictions",
+        lambda records, prefer: asked.append(prefer) or describe(records, prefer),
+    )
+
+    window.operations_panel.origin_control.buttons["microscope"].click()
+
+    assert asked == ["microscope"]
+    assert window.operations_panel.prediction_origin() == "microscope"
 
 
 def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monkeypatch):
@@ -4484,6 +4501,37 @@ def test_the_view_controls_are_one_block_on_the_smallest_screen_supported(
             f"the row wraps differently at {SMALLEST_SUPPORTED_SCREEN[0]} "
             f"than at 1920: {heights}"
         )
+    finally:
+        destroy(window)
+
+
+def test_the_opacity_and_min_max_sliders_are_the_same_length(qt_app, settings):
+    """Paired one above the other, they read as a pair only if they end together."""
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        window.resize(1512, 900)
+        window.show()
+        widths = {}
+        for tab, panel in (
+            (window.curate, window.image_panel), (window.label_panel, window.label_panel)
+        ):
+            window.tabs.setCurrentWidget(tab)
+            qt_app.processEvents()
+            window.grab()
+            widths[type(panel).__name__] = (
+                panel.alpha_slider.width(), panel.intensity_slider.width()
+            )
+
+        assert all(alpha == limits for alpha, limits in widths.values()), widths
     finally:
         destroy(window)
 

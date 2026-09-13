@@ -917,6 +917,20 @@ def test_the_series_control_opens_on_adaptive_polishing_alone(panel: ExportPanel
     assert panel.controller.filters.series == ("adaptive",)
 
 
+def test_the_series_switches_sit_above_the_dropdowns(panel: ExportPanel):
+    """Which series an export covers is asked before anything about those images."""
+    panel.resize(1200, 800)
+    panel.show()
+    _settle()
+    block = panel.fixed_filters
+
+    def top(widget) -> int:
+        return widget.mapTo(block, widget.rect().topLeft()).y()
+
+    series = min(top(box) for box in panel.series_boxes.values())
+    assert series < top(panel.modality) < top(panel.state) < top(panel.label_state)
+
+
 def test_every_series_has_a_box(panel: ExportPanel):
     assert set(panel.series_boxes) == set(SERIES)
 

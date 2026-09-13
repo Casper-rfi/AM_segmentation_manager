@@ -52,7 +52,7 @@ PLOTS_DIRECTORY: Final[str] = "plots"
 
 #: Subdirectories of a predictions directory holding different prediction sets.
 #: All are indexed; not all may become a label. See
-#: :func:`is_convertible_prediction` and :func:`prediction_precedence`.
+#: :func:`is_convertible_prediction` and :func:`prediction_origin`.
 PREDICTION_KINDS: Final[tuple[str, ...]] = ("am_seg", "raw", "clean")
 
 #: The prediction subdirectory this package writes, and the only one it may
@@ -811,20 +811,42 @@ def is_convertible_prediction(prediction_path: Path) -> bool:
     return not any(part.lower() == POST_PROCESSED_KIND for part in prediction_path.parts[:-1])
 
 
-def prediction_precedence(prediction_path: Path) -> int:
+#: Where a convertible prediction came from: this package's own model, or the
+#: microscope's segmentation pipeline -- its ``raw/`` output, or a predictions
+#: directory with no ``raw``/``clean`` split.
+PredictionOrigin = Literal["am-seg", "microscope"]
+
+PREDICTION_ORIGINS: Final[tuple[PredictionOrigin, ...]] = ("am-seg", "microscope")
+
+#: The source a conversion takes when an image has both. What the window opens
+#: on and what the command line uses unless told otherwise.
+DEFAULT_PREDICTION_ORIGIN: Final[PredictionOrigin] = "am-seg"
+
+
+def prediction_origin(prediction_path: Path) -> PredictionOrigin:
+    """Return which of :data:`PREDICTION_ORIGINS` wrote *prediction_path*."""
+    kinds = {part.lower() for part in prediction_path.parts[:-1]}
+    return "am-seg" if OWN_PREDICTION_KIND in kinds else "microscope"
+
+
+def other_prediction_origin(source: PredictionOrigin) -> PredictionOrigin:
+    """Return the source that is not *source*."""
+    return "microscope" if source == "am-seg" else "am-seg"
+
+
+def prediction_precedence(
+    prediction_path: Path, prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN
+) -> int:
     """Return how strongly a prediction claims to be the one converted.
 
-    Lower wins. A prediction this package made outranks the segmentation
-    pipeline's, because it was asked for deliberately and is therefore the more
-    current of the two; the pipeline's ``raw`` output is what the milling run
-    happened to leave behind. Stated as an ordering rather than left to the
-    order directories are listed in, since which file becomes a label is not a
-    thing to decide by accident.
+    Lower wins: the *prefer* source, then the other, then post-processed output,
+    which is never converted. Stated as an ordering rather than left to the order
+    directories are listed in, since which file becomes a label is not a thing
+    to decide by accident.
     """
-    kinds = {part.lower() for part in prediction_path.parts[:-1]}
-    if OWN_PREDICTION_KIND in kinds:
-        return 0
-    return 2 if POST_PROCESSED_KIND in kinds else 1
+    if not is_convertible_prediction(prediction_path):
+        return 2
+    return 0 if prediction_origin(prediction_path) == prefer else 1
 
 
 def candidate_predictions_directory_names(image_directory_name: str, modality: str) -> list[str]:

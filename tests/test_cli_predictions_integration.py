@@ -116,3 +116,18 @@ def test_cli_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert _convert(tmp_path, "FIB") == 0
 
     assert (stage / "fib_labels" / fib_image.name).exists()
+
+
+def test_cli_converts_the_prediction_source_asked_for(tmp_path: Path) -> None:
+    """am-seg's prediction by default, the microscope's with --prefer microscope."""
+    stage, _, fib_image = _build_project(tmp_path)
+    am_seg = stage / "predictions_fib" / "am_seg" / fib_image.name
+    am_seg.parent.mkdir(parents=True)
+    am_seg.write_bytes(b"am-seg prediction")
+    label = stage / "fib_labels" / fib_image.name
+
+    assert _convert(tmp_path, "FIB", "--prefer", "microscope") == 0
+    assert label.read_bytes() == b"image"
+
+    assert _convert(tmp_path, "FIB", "--overwrite") == 0
+    assert label.read_bytes() == b"am-seg prediction"

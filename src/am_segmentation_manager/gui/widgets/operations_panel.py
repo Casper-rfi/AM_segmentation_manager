@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...layout import DEFAULT_PREDICTION_ORIGIN, PredictionOrigin
 from ...operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
     MAX_SPECK_PIXELS,
@@ -35,6 +36,7 @@ from ...operations.label_measure import (
     PREDICTION_PIXEL_BLOCK,
 )
 from .common import caption_for, horizontal_rule
+from .controls import SegmentedControl
 from .paths import ALL_FILES_FILTER, choose_open_file
 from .theme import BADGE_STYLES
 
@@ -63,6 +65,8 @@ class OperationsPanel(QWidget):
     devices_requested = Signal()
     #: Emitted when the user asks to convert the selection's predictions.
     convert_requested = Signal()
+    #: Emitted with the prediction source chosen for converting.
+    origin_changed = Signal(str)
     #: Emitted with the largest component to report when the user asks which
     #: of the selection's labels hold specks.
     specks_requested = Signal(int)
@@ -141,6 +145,36 @@ class OperationsPanel(QWidget):
             lambda: self.predict_requested.emit(self.model_edit.text().strip())
         )
         column.addWidget(self.predict_button)
+
+        # Above Convert, as the model is above Predict: what a button acts with
+        # sits over it. Segments rather than a switch, this asking which of two
+        # rather than whether one is on; the preview says what each label used.
+        self.origin_control = SegmentedControl([
+            (
+                "am-seg", "am-seg",
+                "Convert the predictions Predict labels made.\n"
+                "An image without one uses the microscope's.",
+            ),
+            (
+                "microscope", "Microscope",
+                "Convert the predictions the microscope's pipeline wrote.\n"
+                "An image without one uses am-seg's.",
+            ),
+        ])
+        self.origin_control.set_current(DEFAULT_PREDICTION_ORIGIN)
+        self.origin_control.chosen.connect(self.origin_changed.emit)
+        origin_row = QHBoxLayout()
+        origin_row.addWidget(
+            caption_for(
+                "From",
+                self.origin_control,
+                "Which prediction Convert takes where an image has both. The "
+                "preview says which each label comes from.",
+            )
+        )
+        origin_row.addWidget(self.origin_control)
+        origin_row.addStretch(1)
+        column.addLayout(origin_row)
 
         self.convert_button = QPushButton("Convert predictions...")
         self.convert_button.setToolTip(
@@ -251,6 +285,10 @@ class OperationsPanel(QWidget):
             self._last_model_directory = path.parent
             self.model_edit.setText(str(path))
 
+    def prediction_origin(self) -> PredictionOrigin:
+        """Return the source Convert takes where an image has both."""
+        return self.origin_control.current() or DEFAULT_PREDICTION_ORIGIN
+
     def model(self) -> str:
         """Return the model path as typed or chosen."""
         return self.model_edit.text().strip()
@@ -349,6 +387,7 @@ class OperationsPanel(QWidget):
         for button in self.buttons:
             button.setEnabled(usable)
         self.device_box.setEnabled(usable)
+        self.origin_control.setEnabled(usable)
         self.model_edit.setEnabled(self._prediction_available and usable)
         if not self._prediction_available:
             self.predict_button.setEnabled(False)

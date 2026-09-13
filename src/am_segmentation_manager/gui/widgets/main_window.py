@@ -584,6 +584,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.devices_requested.connect(self._offer_devices)
         self.operations_panel.convert_requested.connect(self._convert_predictions)
+        self.operations_panel.origin_changed.connect(
+            lambda _source: self._refresh_prediction_summary()
+        )
         self.operations_panel.revert_requested.connect(self._revert)
         self.operations_panel.specks_requested.connect(self._find_specks)
 
@@ -1743,6 +1746,15 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             f"({lamella_position})  |  {frame.display_name}  |  {frame.stage}"
         )
 
+    def _refresh_prediction_summary(self) -> None:
+        """Say what converting the selection would find, from the source chosen."""
+        self.operations_panel.show_predictions(
+            self.operations_controller.describe_predictions(
+                self.controller.scoped_records(),
+                self.operations_panel.prediction_origin(),
+            )
+        )
+
     def _refresh_state_panel(self) -> None:
         self.state_panel.show_state(
             self.controller.target_state(),
@@ -1753,9 +1765,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.state_panel.show_reach(reach.summary(), reach.shared_note())
         self.state_panel.show_selection(self.controller.describe_selection())
         self.operations_panel.show_selection(self.controller.describe_selection())
-        self.operations_panel.show_predictions(
-            self.operations_controller.describe_predictions(self.controller.scoped_records())
-        )
+        self._refresh_prediction_summary()
         self.state_panel.set_target(self.controller.target)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
         # Asked of the series being shown rather than the one chosen: a lamella

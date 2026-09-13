@@ -312,7 +312,9 @@ def test_the_summary_counts_what_is_ready_without_reading_the_disk(tmp_path: Pat
     controller = OperationsController()
     stage = tmp_path / "stage"
 
-    summary = controller.describe_predictions([_record(stage), _record(stage)])
+    summary = controller.describe_predictions(
+        [_record(stage), _record(stage)], "microscope"
+    )
 
     assert summary == "2 of 2 image(s) ready to convert."
 
@@ -343,10 +345,64 @@ def test_a_replaceable_label_is_not_reported_as_nothing_to_convert(tmp_path: Pat
     stage = tmp_path / "stage"
 
     summary = controller.describe_predictions(
-        [_record(stage, "raw", stage / "sem_labels" / "img.tif")]
+        [_record(stage, "raw", stage / "sem_labels" / "img.tif")], "microscope"
     )
 
     assert summary == "Nothing new to convert. 1 with a replaceable label."
+
+
+def test_the_summary_counts_images_that_would_use_the_other_source(tmp_path: Path):
+    """Which predictions exist is asked before pressing, not found out after."""
+    controller = OperationsController()
+    stage = tmp_path / "stage"
+
+    summary = controller.describe_predictions(
+        [_record(stage, "raw"), _record(stage, "am_seg")]
+    )
+
+    assert summary == (
+        "2 of 2 image(s) ready to convert. "
+        "1 from microscope predictions, having no am-seg one."
+    )
+
+
+def _with_am_seg_prediction(stage: Path, image: Path) -> ImageRecord:
+    """Return a record holding both an am-seg and a microscope prediction."""
+    am_seg = stage / "predictions" / "am_seg" / "img.tif"
+    am_seg.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(str(am_seg), _sparse_label())
+    return ImageRecord(
+        image_path=image, modality="SEM",
+        predictions=[stage / "predictions" / "raw" / "img.tif", am_seg],
+        labels_directory=stage / "sem_labels",
+    )
+
+
+def test_the_preview_names_the_source_it_converts_from(controller, tmp_path: Path):
+    stage, image = _project_with_prediction(tmp_path)
+    record = _with_am_seg_prediction(stage, image)
+
+    chosen = controller.convert_predictions([record], dry_run=True, prefer="microscope")
+    default = controller.convert_predictions([record], dry_run=True)
+
+    assert chosen.headline == "Would write 1 label(s) from microscope predictions."
+    assert chosen.lines == (
+        "project/01-lamella/stage/sem_labels/img.tif: write, from microscope",
+    )
+    assert default.headline == "Would write 1 label(s) from am-seg predictions."
+
+
+def test_the_preview_says_how_many_images_use_the_other_source(controller, tmp_path: Path):
+    stage, image = _project_with_prediction(tmp_path)
+    record = ImageRecord(
+        image_path=image, modality="SEM",
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
+        labels_directory=stage / "sem_labels",
+    )
+
+    report = controller.convert_predictions([record], dry_run=True)
+
+    assert "1 image(s) have no am-seg prediction and use the microscope one." in report.lines
 
 
 def test_an_empty_selection_reports_nothing_at_all(tmp_path: Path):

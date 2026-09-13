@@ -1003,3 +1003,26 @@ def test_a_stage_name_keeps_what_repeats_and_drops_what_does_not(folder, expecte
 
 def test_a_timestamp_inside_a_name_leaves_no_gap_behind():
     assert stage_base_name("ref_2025-04-15-02-48-15AM_run") == "ref_run"
+
+
+def test_a_prediction_is_am_segs_only_under_am_seg():
+    """Everything else convertible came from the microscope's pipeline."""
+    from am_segmentation_manager.layout import prediction_origin
+
+    assert prediction_origin(Path("/a/predictions/am_seg/img.tif")) == "am-seg"
+    assert prediction_origin(Path("/a/predictions/raw/img.tif")) == "microscope"
+    assert prediction_origin(Path("/a/predictions/img.tif")) == "microscope"
+
+
+def test_the_preferred_source_ranks_first_and_post_processed_last():
+    """Which prediction becomes a label is asked for, never left to listing order."""
+    from am_segmentation_manager.layout import prediction_precedence
+
+    am_seg = Path("/a/predictions/am_seg/img.tif")
+    raw = Path("/a/predictions/raw/img.tif")
+    clean = Path("/a/predictions/clean/img.tif")
+
+    assert sorted([clean, raw, am_seg], key=prediction_precedence) == [am_seg, raw, clean]
+    assert sorted(
+        [clean, am_seg, raw], key=lambda path: prediction_precedence(path, "microscope")
+    ) == [raw, am_seg, clean]

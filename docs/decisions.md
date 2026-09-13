@@ -598,6 +598,12 @@ rather than appending to it.
   keeps. Predicting the other conditions would spend inference on noisier pseudo-labels and removes
   a hazard rather than managing one: conditions carry identical filenames into a shared predictions
   directory, so predicting all of them has each write replace the last.
+- **Which prediction becomes a label is asked for, and the preview says which was used.** An image
+  can hold am-seg's own and the microscope's; `prediction_precedence` takes the source chosen,
+  am-seg unless told otherwise, and the other only where it is missing. That fallback is counted
+  before the button is pressed and reported in the preview rather than asked about, the preview
+  being the one question a conversion already asks
+  (`test_the_preview_says_how_many_images_use_the_other_source`).
 - **Inference runs in a process of its own**, for the reasons `predict_process.py` gives, and **the
   window imports no torch at all**. Stopping is `SIGINT`, caught between whole images, a signal it
   could not handle stranding a half-written temporary. The child's log is forwarded so one file

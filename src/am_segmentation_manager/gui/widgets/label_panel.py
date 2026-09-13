@@ -51,6 +51,7 @@ from .common import (
     intensity_badge,
 )
 from .controls import (
+    SLIDER_WIDTH,
     ElidingLabel,
     FlowArea,
     FlowLayout,
@@ -396,7 +397,7 @@ class LabelPanel(QWidget):
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
-        self.alpha_slider.setFixedWidth(120)
+        self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
         self.alpha_slider.setToolTip("How strongly the label colour is drawn")
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)

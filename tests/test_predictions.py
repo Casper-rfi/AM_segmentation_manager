@@ -247,3 +247,58 @@ def test_an_interrupted_conversion_leaves_the_original_label_intact(
     assert label.read_bytes() == b"the original label"
     # And no temporary file is left behind next to it.
     assert sorted(path.name for path in tmp_path.iterdir()) == ["label.tif", "pred.tif"]
+
+
+def _record_with_both(tmp_path: Path) -> ImageRecord:
+    """Return a record with an am-seg prediction and a microscope one."""
+    record = _record_with_prediction(tmp_path, "raw")
+    am_seg = record.predictions[0].parent.parent / "am_seg" / "img.tif"
+    am_seg.parent.mkdir(parents=True, exist_ok=True)
+    am_seg.write_bytes(b"content")
+    record.predictions.append(am_seg)
+    return record
+
+
+def test_an_am_seg_prediction_is_converted_by_default(tmp_path: Path) -> None:
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    (conversion,) = plan_conversions([_record_with_both(tmp_path)]).conversions
+
+    assert conversion.origin == "am-seg"
+    assert conversion.fallback is False
+
+
+def test_the_microscope_prediction_is_converted_when_preferred(tmp_path: Path) -> None:
+    """Sometimes the pipeline's guess is the better one, and the caller says so."""
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    plan = plan_conversions([_record_with_both(tmp_path)], prefer="microscope")
+    (conversion,) = plan.conversions
+
+    assert conversion.prediction.parent.name == "raw"
+    assert conversion.fallback is False
+    assert plan.count_fallbacks() == 0
+
+
+def test_an_image_without_the_preferred_source_uses_the_other_and_says_so(
+    tmp_path: Path,
+) -> None:
+    """Falling back is allowed; doing it without a word is not."""
+    from am_segmentation_manager.operations.predictions import plan_conversions
+
+    plan = plan_conversions([_record_with_prediction(tmp_path, "raw")])
+    (conversion,) = plan.conversions
+
+    assert conversion.fallback is True
+    assert plan.count_fallbacks() == 1
+    assert conversion.describe() == "write, from microscope"
+
+
+def test_the_counts_name_images_that_would_use_the_other_source(tmp_path: Path) -> None:
+    from am_segmentation_manager.operations.predictions import count_convertible
+
+    both = _record_with_both(tmp_path / "a")
+    microscope_only = _record_with_prediction(tmp_path / "b", "raw")
+
+    assert count_convertible([both, microscope_only]).fallback == 1
+    assert count_convertible([both, microscope_only], prefer="microscope").fallback == 0

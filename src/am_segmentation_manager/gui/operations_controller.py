@@ -28,6 +28,12 @@ from ..discovery import (
     find_project_roots,
 )
 from ..history import Recorder
+from ..layout import (
+    DEFAULT_PREDICTION_ORIGIN,
+    PREDICTION_ORIGINS,
+    PredictionOrigin,
+    other_prediction_origin,
+)
 from ..metadata import AM_METADATA_FILENAME
 from ..models import ImageRecord
 from ..operations.copy_export import (
@@ -48,6 +54,7 @@ from ..operations.predict_process import ProcessOutcome, predict_out_of_process
 from ..operations.predictions import (
     SKIP_DESCRIPTIONS,
     ConversionPlan,
+    PlannedConversion,
     convert_record_predictions,
     count_convertible,
     plan_conversions,
@@ -128,6 +135,28 @@ def _speck_table(rows: Sequence[tuple[str, int, int]]) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def _origins_of(conversions: Iterable[PlannedConversion]) -> str:
+    """Return which predictions *conversions* are made from, counted by source."""
+    counts = {source: 0 for source in PREDICTION_ORIGINS}
+    for item in conversions:
+        counts[item.origin] += 1
+    used = [source for source in PREDICTION_ORIGINS if counts[source]]
+    if len(used) == 1:
+        return f"{used[0]} predictions"
+    return "predictions: " + ", ".join(f"{counts[source]} from {source}" for source in used)
+
+
+def _fallback_summary(plan: ConversionPlan, prefer: PredictionOrigin) -> tuple[str, ...]:
+    """Return the line saying how many images take the source not asked for."""
+    count = plan.count_fallbacks()
+    if not count:
+        return ()
+    return (
+        f"{count} image(s) have no {prefer} prediction and use the "
+        f"{other_prediction_origin(prefer)} one.",
+    )
+
+
 def _skip_summary(plan: ConversionPlan) -> tuple[str, ...]:
     """Return one line per reason records were passed over, largest first.
 
@@ -194,7 +223,11 @@ class OperationsController:
 
     # -- converting predictions -------------------------------------------
 
-    def describe_predictions(self, records: Iterable[ImageRecord]) -> str:
+    def describe_predictions(
+        self,
+        records: Iterable[ImageRecord],
+        prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
+    ) -> str:
         """Return the line saying what converting this selection would find.
 
         Shown beside the button rather than reached by pressing it: "is there
@@ -205,7 +238,7 @@ class OperationsController:
         actions -- run the prediction pipeline, re-run it without
         post-processing, or accept the label that is already there.
         """
-        counts = count_convertible(records)
+        counts = count_convertible(records, prefer=prefer)
         if not counts.total:
             return ""
         if counts.ready:
@@ -218,6 +251,11 @@ class OperationsController:
             leading = "Nothing to convert"
 
         detail = [
+            (
+                counts.fallback,
+                f"from {other_prediction_origin(prefer)} predictions, having no "
+                f"{prefer} one",
+            ),
             (counts.labelled, "with a replaceable label"),
             (counts.corrected, "proofread, never replaced"),
             (counts.post_processed, "with post-processed predictions only"),
@@ -246,8 +284,9 @@ class OperationsController:
         *,
         allow_overwrite: bool = False,
         dry_run: bool = False,
+        prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
     ) -> OperationReport:
-        """Turn each record's prediction into a label.
+        """Turn each record's prediction into a label, from the *prefer* source.
 
         An image that already has a label is held back until *allow_overwrite*
         is set, and one whose label is proofread is refused however it is set:
@@ -256,8 +295,12 @@ class OperationsController:
         appeared in between is still seen.
         """
         records = list(records)
-        plan = plan_conversions(records, overwrite=allow_overwrite)
-        context = self._refusal_summary(plan) + _skip_summary(plan)
+        plan = plan_conversions(records, overwrite=allow_overwrite, prefer=prefer)
+        context = (
+            _fallback_summary(plan, prefer)
+            + self._refusal_summary(plan)
+            + _skip_summary(plan)
+        )
 
         if plan.replaceable and not allow_overwrite:
             # Asked before applying, so the window can say how much is at stake
@@ -281,16 +324,18 @@ class OperationsController:
             return OperationReport("Nothing to convert.", context)
         if dry_run:
             return OperationReport(
-                f"Would write {len(plan.conversions)} label(s) from predictions.",
+                f"Would write {len(plan.conversions)} label(s) from "
+                f"{_origins_of(plan.conversions)}.",
                 lines + context,
                 len(plan.conversions),
             )
         created = convert_record_predictions(
             records, overwrite=allow_overwrite,
             recorder=writing_recorder(self.projects, self.recorder),
+            prefer=prefer,
         )
         return OperationReport(
-            f"Wrote {len(created)} label(s) from predictions.",
+            f"Wrote {len(created)} label(s) from {_origins_of(plan.conversions)}.",
             lines + context,
             len(created),
             applied=True,

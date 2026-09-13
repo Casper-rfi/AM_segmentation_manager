@@ -456,6 +456,33 @@ class ExportPanel(QWidget):
         fixed.setContentsMargins(0, 0, 0, 0)
         fixed.setSpacing(4)
 
+        # Switches rather than a dropdown: the three are independent, and an
+        # export covering two of them is a real request. The only filter that
+        # does not start on everything -- see export_controller.DEFAULT_SERIES.
+        # Two to a line, so none of them stands alone above the others.
+        self.series_boxes: dict[str, ToggleSwitch] = {}
+        for name in SERIES:
+            switch = ToggleSwitch(SERIES_LABELS[name])
+            switch.setChecked(name in DEFAULT_SERIES)
+            switch.toggled.connect(self._controls_changed)
+            self.series_boxes[name] = switch
+        switches = [self.series_boxes[name] for name in SERIES]
+        series_holder = keep_paired(tuple(switches[:2]), tuple(switches[2:]))
+        series_row = QHBoxLayout()
+        series_row.setContentsMargins(0, 0, 0, 0)
+        series_row.setSpacing(6)
+        series_hint = (
+            "What the images were taken for. Only Adaptive Polishing is "
+            "ticked to start with, so an export covers what it always did. "
+            "Narrows the breakdown and every export."
+        )
+        caption = caption_for("Series", series_holder, series_hint)
+        caption.setMinimumWidth(CAPTION_WIDTH)
+        series_row.addWidget(caption)
+        series_row.addWidget(series_holder)
+        series_row.addStretch(1)
+        fixed.addLayout(series_row)
+
         # A dropdown rather than a run of segments. Segments are the right
         # control for one of a small closed set, and this is one -- but three
         # of the four rows here are dropdowns, and a fourth kind of widget
@@ -494,33 +521,6 @@ class ExportPanel(QWidget):
             "different sets. Narrows the breakdown and every export.",
         ))
 
-        # Switches rather than a dropdown: the three are independent, and an
-        # export covering two of them is a real request. The only filter that
-        # does not start on everything -- see export_controller.DEFAULT_SERIES.
-        # Two to a line, so none of them stands alone above the others.
-        self.series_boxes: dict[str, ToggleSwitch] = {}
-        for name in SERIES:
-            switch = ToggleSwitch(SERIES_LABELS[name])
-            switch.setChecked(name in DEFAULT_SERIES)
-            switch.toggled.connect(self._controls_changed)
-            self.series_boxes[name] = switch
-        switches = [self.series_boxes[name] for name in SERIES]
-        series_holder = keep_paired(tuple(switches[:2]), tuple(switches[2:]))
-        series_row = QHBoxLayout()
-        series_row.setContentsMargins(0, 0, 0, 0)
-        series_row.setSpacing(6)
-        series_hint = (
-            "What the images were taken for. Only Adaptive Polishing is "
-            "ticked to start with, so an export covers what it always did. "
-            "Narrows the breakdown and every export."
-        )
-        caption = caption_for("Series", series_holder, series_hint)
-        caption.setMinimumWidth(CAPTION_WIDTH)
-        series_row.addWidget(caption)
-        series_row.addWidget(series_holder)
-        series_row.addStretch(1)
-        fixed.addLayout(series_row)
-
         self.conditions = ToggleSwitch("One image per label")
         self.conditions.setToolTip(
             "Several imaging conditions of one scene share one label. "
@@ -528,10 +528,9 @@ class ExportPanel(QWidget):
             "Narrows the breakdown and every export."
         )
         self.conditions.toggled.connect(self._controls_changed)
-        # Under the series but at the margin, where the captions are, rather
-        # than indented with the switches: it is not one of them, and lined up
-        # under "alignment" it read as a fourth series. The rule below says the
-        # fixed filters have ended and the ones you add begin.
+        # Last, at the margin where the captions are, and apart from the series
+        # switches: lined up under them it read as a fourth series. The rule
+        # below says the fixed filters have ended and the ones you add begin.
         conditions_row = QHBoxLayout()
         conditions_row.setContentsMargins(0, 0, 0, 0)
         conditions_row.setSpacing(6)

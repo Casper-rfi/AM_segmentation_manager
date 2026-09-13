@@ -97,7 +97,8 @@ of one of these files, is held by `test_docs.py`.
   **cannot be split across two lines of a flow layout** — loose buttons wrap apart, leaving one
   choice reading as two. The chosen segment is *filled* with the accent where a checked tool button
   elsewhere is merely tinted: those answer "is this on", this answers "which of these", and the two
-  must not look alike. The joining is object names
+  must not look alike. **So Convert's *From* is segments**, not a switch whose off is the other
+  source (`test_choosing_where_predictions_come_from_recounts_the_line`). The joining is object names
   (`segmentFirst`/`segmentMiddle`/`segmentLast`/`segmentOnly`) and rules in `theme.py`, chrome being
   decided there; **every name has to be spelled out in every rule**, Qt's stylesheets having no
   wildcard, and a name left out is a segment silently drawn as a plain button. `buttons` exposes the

@@ -661,9 +661,9 @@ RANGE_GROOVE = 4
 RANGE_FOCUS = 3.0
 
 
-#: How wide the control asks to be. Narrower than the two separate sliders and
-#: their caption were together, which the flow row it sits in needed.
-RANGE_WIDTH = 150
+#: How wide a view slider is. The range slider asks for it and a plain slider
+#: paired above one is fixed to it, so the two grid cells end together.
+SLIDER_WIDTH = 150
 
 
 class RangeSlider(QWidget):
@@ -892,7 +892,7 @@ class RangeSlider(QWidget):
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
         """Return the room the track, the handles and a focus ring need."""
         side = int(2 * (RANGE_HANDLE + RANGE_FOCUS))
-        return QSize(RANGE_WIDTH, side)
+        return QSize(SLIDER_WIDTH, side)
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
         """Return enough for both handles side by side and nothing more."""
