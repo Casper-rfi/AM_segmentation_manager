@@ -435,7 +435,7 @@ def bindings_for(window) -> list[Binding]:
         ),
         *paint_keys,
         Binding(
-            "A", "Lock or unlock every class",
+            "A", "Lock or unlock every class but background",
             window.label_panel.toggle_all_locks, TAB_LABEL, GROUP_CLASSES,
         ),
         Binding(

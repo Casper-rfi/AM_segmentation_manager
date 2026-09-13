@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from qtpy.QtCore import Qt, QTimer, Signal
+from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
@@ -88,6 +88,11 @@ UNSAVED_NOTE = "not yet written to disk"
 #: The swatch drawn on each class's paint button.
 SWATCH = 12
 
+#: The side of a class's padlock button, in logical pixels. It is reached for
+#: between strokes with the eyes still on the canvas, so it is a target sized for
+#: the pointer rather than for the icon it carries.
+PADLOCK = 28
+
 #: How wide the status line beside the view controls may get, in logical
 #: pixels. A cap rather than a share: it sits beside a row that wraps, so width
 #: given to it is width the controls wrap for want of. Measured against the
@@ -159,24 +164,16 @@ def _equalise(buttons) -> None:
         button.setMinimumWidth(widest)
 
 
-def _lock_button(caption: str, *, locked: bool = True) -> QToolButton:
-    """Return one cell of the lock row, built like the row above it.
+def _padlock_button() -> QToolButton:
+    """Return a class's padlock: checkable, open, and :data:`PADLOCK` square.
 
-    Same construction as an edit button -- icon beside text, expanding to its
-    column -- so the two rows line up as a table rather than as two bars that
-    happen to be stacked.
-
-    Args:
-        locked: Which padlock to start with. A class button starts unlocked and
-            its shackle is kept in step by :meth:`LabelPanel._locks_changed`;
-            the "All" button is not a state, so it keeps the closed padlock as
-            the glyph for locking.
+    Its shackle is kept in step with its state by :meth:`LabelPanel._locks_changed`.
     """
     button = QToolButton()
-    button.setText(caption)
-    button.setIcon(lock_icon(locked))
-    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-    button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    button.setCheckable(True)
+    button.setIcon(lock_icon(False))
+    button.setIconSize(QSize(ICON, ICON))
+    button.setFixedSize(PADLOCK, PADLOCK)
     return button
 
 
@@ -574,39 +571,36 @@ class LabelPanel(QWidget):
         return grid
 
     def _build_class_table(self) -> QGridLayout:
-        """Build the classes to edit with, above the same classes' locks.
+        """Build the classes to edit with, each beside the padlock protecting it.
 
-        One column per class, so a lock sits under the class it protects and
-        the two rows read as one table. Every cell is the same size: the
-        columns share the width equally and each button fills its own, so a
-        class with a long name does not make its lock a different shape from
-        its neighbour's. Background's column carries the lock-everything button
-        instead of a lock of its own: painting background is how a stroke
-        erases, so locking it would take the eraser away.
+        A class and its lock are one cell, so which lock is whose needs no
+        reading. The cells run in two rows, like the tools beside them, and
+        are all one width, so a class with a long name does not make its cell
+        a different shape from its neighbour's. **Background has a lock
+        too**: locked, a stroke changes only pixels another class already
+        holds, and painting background over an unlocked class still erases.
         """
         self.class_grid = grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(4)
+        grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(2)
+        columns = max(1, -(-len(self._classes) // 2))
 
         # "Edit" rather than "Paint": the row chooses what a stroke writes, and
         # one of its buttons erases -- which is not painting by any reading.
         grid.addWidget(
-            _row_header(edit_icon(), "Edit", "Which class the brush and the fill write"),
-            0, 0,
-        )
-        grid.addWidget(
             _row_header(
-                lock_icon(), "Lock",
-                "A locked class cannot be painted over by any tool",
+                edit_icon(), "Edit",
+                "Which class the brush and the fill write, and which no tool "
+                "may paint over",
             ),
-            1, 0,
+            0, 0, 2, 1,
         )
 
         self.paint_buttons: dict[int, QToolButton] = {}
         self.lock_buttons: dict[int, QToolButton] = {}
         paint_group = QButtonGroup(self)
-        for column, class_index in enumerate(self._classes, start=1):
+        for position, class_index in enumerate(self._classes):
             name = self.controller.config.name(class_index)
             erasing = class_index == BACKGROUND_CLASS
 
@@ -615,40 +609,44 @@ class LabelPanel(QWidget):
             button.setIcon(self._swatch(class_index))
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
             hint = (
                 "Paint background, which is how a stroke erases" if erasing
                 else f"Paint {name}"
             )
-            if column <= len(CLASS_KEYS):
-                hint += f"\nShortcut: {CLASS_KEYS[column - 1]}"
+            if position < len(CLASS_KEYS):
+                hint += f"\nShortcut: {CLASS_KEYS[position]}"
             button.setToolTip(hint)
             button.toggled.connect(
                 lambda checked, index=class_index: checked and self._class_chosen(index)
             )
             paint_group.addButton(button)
-            grid.addWidget(button, 0, column)
             self.paint_buttons[class_index] = button
 
-            # Equal shares, so every button in both rows is the same width
-            # whatever its class is called.
-            grid.setColumnStretch(column, 1)
-
-            if erasing:
-                self.lock_all_button = _lock_button("All")
-                self.lock_all_button.setToolTip(
-                    "Lock every class, or unlock them all\nShortcut: A"
-                )
-                self.lock_all_button.clicked.connect(lambda: self.toggle_all_locks())
-                grid.addWidget(self.lock_all_button, 1, column)
-                continue
-
-            lock = _lock_button(name, locked=False)
-            lock.setCheckable(True)
-            lock.setToolTip("A locked class cannot be painted over by any tool")
+            lock = _padlock_button()
+            lock.setToolTip(
+                "Lock background, so no tool paints over it: a stroke then "
+                "changes only what is already drawn" if erasing
+                else f"Lock {name}, so no tool paints over it\n"
+                "Shortcut: A locks or unlocks every class but background"
+            )
             lock.toggled.connect(self._locks_changed)
-            grid.addWidget(lock, 1, column)
             self.lock_buttons[class_index] = lock
+
+            cell = QWidget()
+            pair = QHBoxLayout(cell)
+            pair.setContentsMargins(0, 0, 0, 0)
+            pair.setSpacing(2)
+            pair.addWidget(button, stretch=1)
+            pair.addWidget(lock)
+            row, column = divmod(position, columns)
+            grid.addWidget(cell, row, column + 1)
+
+        # The width of the widest rather than an equal share of what is spare:
+        # the bar's trailing stretch takes all of that, so shares alone left a
+        # long class name making its cell the widest.
+        _equalise([lock.parentWidget() for lock in self.lock_buttons.values()])
 
         # Qt leaves nothing checked; the canvas starts on the first foreground
         # class. Choosing it here makes the bar say what the brush will actually
@@ -896,17 +894,21 @@ class LabelPanel(QWidget):
         self.brush_slider.setValue(self.brush_slider.value() + delta)
 
     def toggle_all_locks(self, locked: bool | None = None) -> None:
-        """Lock every class, or unlock every class, from the keyboard.
+        """Lock every class but background, or unlock them, from the keyboard.
 
         One key rather than two, because the question being asked is "protect
         what is already there while I work" and the answer is on or off. With
-        anything unlocked it locks the lot; only when everything is already
-        locked does it let go. Background has no lock: painting it is how a
-        stroke erases, so locking it would take the eraser away.
+        any of them unlocked it locks the lot; only when all are locked does it
+        let go. **Background's lock is left as it is**: locking it changes what a
+        stroke can reach at all, which is a choice of its own.
         """
+        foreground = [
+            button for index, button in self.lock_buttons.items()
+            if index != BACKGROUND_CLASS
+        ]
         if locked is None:
-            locked = not all(button.isChecked() for button in self.lock_buttons.values())
-        for button in self.lock_buttons.values():
+            locked = not all(button.isChecked() for button in foreground)
+        for button in foreground:
             button.setChecked(locked)
 
     def _locks_changed(self) -> None:

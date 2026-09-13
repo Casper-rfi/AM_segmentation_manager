@@ -1103,14 +1103,30 @@ def keys_of(window, tab):
     return {b.description: b.key for b in window._keys.bindings if b.tab == tab}
 
 
-def test_the_class_rows_read_as_one_table(window):
-    """Each class's edit button and its lock are the same size, so the two rows
-    line up as a table rather than as two bars that happen to be stacked."""
+def test_every_class_sits_beside_its_own_padlock(window):
+    """One cell each, so which lock protects which class needs no reading."""
     panel = window.label_panel
 
-    for class_index, edit in panel.paint_buttons.items():
-        lock = panel.lock_buttons.get(class_index, panel.lock_all_button)
-        assert edit.size() == lock.size(), f"class {class_index}"
+    assert set(panel.lock_buttons) == set(panel.paint_buttons)
+    for class_index, paint in panel.paint_buttons.items():
+        lock = panel.lock_buttons[class_index]
+        assert lock.parentWidget() is paint.parentWidget(), f"class {class_index}"
+        assert lock.height() == paint.height(), f"class {class_index}"
+
+
+def test_a_long_class_name_does_not_make_its_cell_wider(window):
+    """Background's caption says it erases, and its cell is no wider for it."""
+    cells = {lock.parentWidget() for lock in window.label_panel.lock_buttons.values()}
+
+    assert len({cell.width() for cell in cells}) == 1
+
+
+def test_a_padlock_is_big_enough_to_hit_beside_the_canvas(window):
+    from am_segmentation_manager.gui.widgets.label_panel import PADLOCK
+
+    assert PADLOCK >= 28
+    for class_index, lock in window.label_panel.lock_buttons.items():
+        assert lock.width() >= PADLOCK and lock.height() >= PADLOCK, class_index
 
 
 def test_the_edit_row_is_not_called_painting(window):
@@ -1174,14 +1190,25 @@ def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):
         assert panel.paint_buttons[panel.paint_class].text() in binding.description
 
 
-def test_one_key_locks_and_unlocks_every_class(window):
+def test_one_key_locks_and_unlocks_every_class_but_background(window):
     panel = window.label_panel
 
     panel.toggle_all_locks()
-    assert panel.canvas.protected == set(panel.lock_buttons)
+    assert panel.canvas.protected == set(panel.lock_buttons) - {BACKGROUND_CLASS}
 
     panel.toggle_all_locks()
     assert panel.canvas.protected == frozenset()
+
+
+def test_the_lock_key_leaves_background_s_own_lock_as_it_was(window):
+    """Locking background changes what a stroke can reach, a choice of its own."""
+    panel = window.label_panel
+    panel.lock_buttons[BACKGROUND_CLASS].setChecked(True)
+
+    panel.toggle_all_locks()
+    panel.toggle_all_locks()
+
+    assert panel.canvas.protected == {BACKGROUND_CLASS}
 
 
 def test_locking_everything_leaves_the_eraser_alone(window):
@@ -1268,6 +1295,27 @@ def test_a_locked_class_survives_a_stroke_across_it(canvas):
     drag(canvas, QPoint(80, 80), QPoint(120, 120))
 
     assert not (canvas._label_array == 2).any(), "the lock was ignored"
+
+
+def test_a_locked_background_keeps_a_stroke_to_what_is_already_drawn(canvas):
+    canvas._label_array[:, :40] = 1
+    canvas.set_protected({BACKGROUND_CLASS})
+    canvas.set_paint_value(2)
+
+    drag(canvas, QPoint(80, 80), QPoint(120, 120))
+
+    assert not (canvas._label_array[:, 40:] == 2).any(), "background was painted over"
+    assert (canvas._label_array[:, :40] == 2).any(), "the class already drawn was not"
+
+
+def test_a_locked_background_still_lets_a_stroke_erase(canvas):
+    canvas._label_array[:] = 1
+    canvas.set_protected({BACKGROUND_CLASS})
+    canvas.set_paint_value(BACKGROUND_CLASS)
+
+    drag(canvas, QPoint(80, 80), QPoint(120, 120))
+
+    assert (canvas._label_array == BACKGROUND_CLASS).any(), "the eraser was locked too"
 
 
 def test_nothing_is_painted_when_editing_is_off(canvas):
@@ -1562,18 +1610,6 @@ def test_choosing_a_class_sets_what_the_brush_writes(window):
     assert panel.canvas.paint_value == last
 
 
-def test_a_class_and_its_lock_share_a_column(window):
-    panel = window.label_panel
-    grid = panel.class_grid
-
-    for class_index, lock in panel.lock_buttons.items():
-        paint = panel.paint_buttons[class_index]
-        assert grid.indexOf(paint) >= 0 and grid.indexOf(lock) >= 0
-        assert grid.getItemPosition(grid.indexOf(paint))[1] == (
-            grid.getItemPosition(grid.indexOf(lock))[1]
-        ), "a lock sits under the class it protects"
-
-
 def test_the_paint_buttons_carry_the_class_colours(window):
     """They are the legend, so a separate one would repeat them."""
     panel = window.label_panel
@@ -1582,12 +1618,13 @@ def test_the_paint_buttons_carry_the_class_colours(window):
     assert not hasattr(panel, "legend")
 
 
-def test_background_has_no_lock_of_its_own(window):
+def test_background_can_be_locked_like_any_other_class(window):
     panel = window.label_panel
 
-    assert BACKGROUND_CLASS in panel.paint_buttons
-    assert BACKGROUND_CLASS not in panel.lock_buttons
-    assert panel.lock_all_button.text() == "All"
+    panel.lock_buttons[BACKGROUND_CLASS].setChecked(True)
+
+    assert BACKGROUND_CLASS in panel.canvas.protected
+    assert not hasattr(panel, "lock_all_button")
 
 
 def test_the_tools_carry_an_icon_each(window):

@@ -23,7 +23,7 @@ if HAS_QT:
     from qtpy.QtCore import QSize
     from qtpy.QtWidgets import QApplication
 
-    from am_segmentation_manager.config import SegmentationConfig
+    from am_segmentation_manager.config import BACKGROUND_CLASS, SegmentationConfig
     from am_segmentation_manager.gui.label_controller import LabelController
     from am_segmentation_manager.gui.widgets.label_panel import LabelPanel, lock_icon
 
@@ -83,13 +83,19 @@ def test_unlocking_opens_it_again(panel):
     assert _drawn(button.icon()) == _drawn(lock_icon(False))
 
 
-def test_locking_everything_from_the_keyboard_closes_every_shackle(panel):
+def test_locking_everything_from_the_keyboard_closes_every_shackle_but_background(panel):
     """A lock changed by the 'A' key must look like one changed by clicking."""
+    foreground = [
+        button for index, button in panel.lock_buttons.items()
+        if index != BACKGROUND_CLASS
+    ]
     panel.toggle_all_locks()
 
-    assert all(button.isChecked() for button in panel.lock_buttons.values())
-    for button in panel.lock_buttons.values():
+    assert all(button.isChecked() for button in foreground)
+    for button in foreground:
         assert _drawn(button.icon()) == _drawn(lock_icon(True))
+    background = panel.lock_buttons[BACKGROUND_CLASS]
+    assert _drawn(background.icon()) == _drawn(lock_icon(False))
 
     panel.toggle_all_locks()
 
