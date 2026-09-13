@@ -604,6 +604,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.metadata_panel.restore_requested.connect(self._restore_savepoint)
         self.export_panel.csv_check_requested.connect(self._check_csv)
         self.export_panel.measure_requested.connect(self._measure_labels)
+        self.export_panel.labels_requested.connect(self._read_labels_for_view)
 
         self.export_panel.files_export_requested.connect(self._copy_files)
         self.export_panel.merge_requested.connect(self._merge_copy)

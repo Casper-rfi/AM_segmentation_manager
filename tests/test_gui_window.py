@@ -887,6 +887,27 @@ def test_opening_export_reads_the_headers_and_not_the_labels(window, monkeypatch
     )
 
 
+def test_choosing_a_label_filter_reads_the_labels_behind_the_dialog(window, monkeypatch):
+    """Over a real collection the labels take the better part of a minute, and
+    read inside the redraw they froze the window with nothing saying why."""
+    submitted: list[str] = []
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: (
+            submitted.append(description), on_done(work())
+        ),
+    )
+    window.tabs.setCurrentWidget(window.export_panel)
+    submitted.clear()
+
+    window.export_panel.label_state.setCurrentText("has a label")
+    window.export_panel._controls_changed()
+
+    assert submitted and submitted[0].startswith("Reading")
+    assert window.export_controller.labels_pending() == 0
+    assert "Reading" not in window.export_panel.table.text()
+
+
 def test_returning_to_export_does_not_read_the_headers_again(window, monkeypatch):
     monkeypatch.setattr(
         window, "_run_operation",

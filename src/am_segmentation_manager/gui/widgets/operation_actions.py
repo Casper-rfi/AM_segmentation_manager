@@ -452,6 +452,16 @@ class OperationActions:
             lambda _read: (self.export_panel.refresh(), then()),
         )
 
+    def _read_labels_for_view(self) -> None:
+        """Read the labels the Export tab's filters or breakdown ask about.
+
+        Ignored while an operation is running: that one's callback refreshes
+        the tab, which asks again if anything is still unread.
+        """
+        if self._pending_operation is not None:
+            return
+        self._with_labels(lambda: None)
+
     def _export_training(self, directory: str) -> None:
         if not self.export_controller.selected_records():
             self._flash("Nothing matches these filters")

@@ -465,17 +465,30 @@ class ExportController:
         inside them: asking whether a label is blank opens it without
         measuring it.
         """
-        return len(self._selected_labels() - self._label_empty.keys())
+        return len(self._selected_labels(label_filter=False) - self._label_empty.keys())
+
+    def labels_pending(self, breakdowns: Sequence[str | None] = ()) -> int:
+        """Return how many labels must be opened before the view can be counted.
+
+        Nonzero only where the label filter or one of *breakdowns* asks what a
+        label holds, and some label has not been opened yet. Answered without
+        opening one, so the window can read them behind a dialog that counts
+        rather than stalling in the middle of a redraw.
+        """
+        asked = self.filters.label != ANY_LABEL or any(
+            name in NEEDS_LABEL_STATES for name in breakdowns
+        )
+        return self.unread_labels() if asked else 0
 
     def _unmeasured_labels(self) -> set[Path]:
         """Return the labels of the current selection not yet measured."""
         return self._selected_labels() - self._measured_labels
 
-    def _selected_labels(self) -> set[Path]:
+    def _selected_labels(self, *, label_filter: bool = True) -> set[Path]:
         """Return the distinct labels the current selection pairs with."""
         return {
             found
-            for record in self.selected_records()
+            for record in self.selected_records(label_filter=label_filter)
             if (found := find_matching_label(record)) is not None
         }
 
@@ -652,7 +665,7 @@ class ExportController:
         Returns:
             How many label files were read.
         """
-        records = self.selected_records()
+        records = self.selected_records(label_filter=False)
         paired = [(record, find_matching_label(record)) for record in records]
         labels = sorted({label for _, label in paired if label is not None})
         for done, label in enumerate(labels, start=1):
@@ -697,7 +710,9 @@ class ExportController:
             )
         return "; ".join(parts) if parts else "everything in the scan"
 
-    def selected_records(self, ignoring: str | None = None) -> list[ImageRecord]:
+    def selected_records(
+        self, ignoring: str | None = None, *, label_filter: bool = True
+    ) -> list[ImageRecord]:
         """Return the records passing the current filters.
 
         The dedup rule is applied here with the rest, not left to the export:
@@ -707,13 +722,17 @@ class ExportController:
             ignoring: A metadata filter to leave out, which is what lets that
                 filter offer the values still reachable rather than only the
                 ones it already keeps.
+            label_filter: Clear to leave the label filter out, which is the one
+                filter that opens files. What remains is found without opening
+                a label and holds every record the full set does -- the scene's
+                conditions share a label, so dedup keeps the same ones.
         """
         if self.filters.label not in LABEL_FILTERS:
             raise ValueError(f"Unknown label filter: {self.filters.label!r}")
         # None rather than the full set, so the default filter never opens a
         # label to decide it is keeping it anyway.
         wanted = (
-            None if self.filters.label == ANY_LABEL
+            None if self.filters.label == ANY_LABEL or not label_filter
             else LABEL_FILTERS[self.filters.label]
         )
         kept = [
@@ -770,7 +789,9 @@ class ExportController:
         What decides whether the counts below the first two are answerable.
         Nothing here opens one to find out: that is the cost this asks about.
         """
-        records = self.selected_records() if matched is None else matched
+        records = (
+            self.selected_records(label_filter=False) if matched is None else matched
+        )
         return all(
             (label := find_matching_label(record)) is None
             or label in self._label_empty
@@ -986,9 +1007,12 @@ class ExportController:
             self.load_metadata()
         states: dict[Path, str] = {}
         if any(name in NEEDS_LABEL_STATES for name in names):
+            # Over what the filters could still match rather than the whole
+            # scan: every counted record is among these, and a label outside
+            # them is one :meth:`labels_pending` never asked to have read.
             states = {
                 record.image_path: self.label_state(record)
-                for record in self._records
+                for record in self.selected_records(label_filter=False)
             }
         return [
             resolve_breakdown(

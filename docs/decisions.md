@@ -374,10 +374,13 @@ rather than appending to it.
   a button was found and pressed was a control that did nothing with no way to tell why.
 - **Opening a label is asked for, never assumed.** An order of magnitude dearer than a header, and
   it answers a different question: what is *in* the label. So the summary shows what a record knows
-  about itself and says plainly that the rest needs Measure labels. **Measured over what the
+  about itself and says plainly that the rest needs Measure labels. Choosing the label filter or a
+  label-state breakdown asks too, and the labels are read behind the counting dialog
+  (`test_choosing_a_label_filter_reads_the_labels_behind_the_dialog`). **Measured over what the
   filters match**, not the collection, so widening a filter asks again for what it brought in. One
   pass answers three questions at once, for the reason `_remember_label_states` gives;
-  `classify_label` is the shared rule and `_label_empty` the shared cache.
+  `classify_label` is the shared rule and `_label_empty` the shared cache — of whether a label is
+  blank, never of whether it was measured.
 - **What a measured number means is set beside the breakdown, not among the filters.** The crack
   threshold and the area bin resolution change how a measurement is *read*, not which images are in
   play. Changing the threshold re-measures at once rather than spending the Measure button again:

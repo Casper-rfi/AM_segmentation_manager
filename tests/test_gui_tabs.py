@@ -688,6 +688,39 @@ def test_opening_labels_for_the_label_filter_does_not_count_as_measuring(
     assert "no-label" not in exporter.breakdown("crack-count")
 
 
+def test_what_the_label_filter_needs_is_counted_without_opening_a_label(
+    exporter: ExportController, monkeypatch
+):
+    """The window reads them behind a dialog that counts; working out how many
+    there are must not be the stall that dialog exists to replace."""
+    monkeypatch.setattr(
+        ec, "is_label_file_empty",
+        lambda path: pytest.fail(f"opened {path} while only counting"),
+    )
+    assert exporter.labels_pending() == 0
+
+    exporter.filters.label = "has a label"
+
+    assert exporter.labels_pending() == 4
+    assert not exporter.labels_known()
+
+
+def test_a_breakdown_by_label_state_asks_for_the_labels_too(exporter: ExportController):
+    assert exporter.labels_pending(("modality", None)) == 0
+    assert exporter.labels_pending(("modality", "label")) == 4
+
+
+def test_nothing_is_pending_once_the_labels_are_read(exporter: ExportController):
+    exporter.filters.label = "has a label"
+    seen: list[tuple[int, int]] = []
+
+    exporter.warm_labels(lambda done, total: seen.append((done, total)))
+
+    assert seen[-1] == (4, 4)
+    assert exporter.labels_pending(("label",)) == 0
+    assert len(exporter.selected_records()) == 4
+
+
 def test_a_replaced_label_is_measured_again(exporter: ExportController):
     """A conversion replaces the file; its old measurement describes another."""
     exporter.load_measurements()

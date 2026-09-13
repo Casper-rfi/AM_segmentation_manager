@@ -76,6 +76,8 @@ logger = logging.getLogger(__name__)
 #: the same answer rather than two phrasings of it.
 NOTHING_SCANNED = "No data loaded. Choose a folder to scan, top left."
 NOTHING_MATCHES = "Nothing matches these filters"
+#: Said while the labels the view asks about are read behind the busy dialog.
+READING_LABELS = "Reading the labels these counts need..."
 
 #: Item data of the second dropdown's "(none)" row, meaning no
 #: cross-tabulation. Not ``None``, which is what a group heading carries.
@@ -422,6 +424,10 @@ class ExportPanel(QWidget):
     #: Emitted when the user asks for the labels to be measured. The window
     #: runs it, because it owns the worker thread and the busy dialog.
     measure_requested = Signal()
+    #: Emitted when the view cannot be counted until labels are opened -- the
+    #: label filter, or a breakdown by label state. The window reads them off
+    #: the interface thread and refreshes this panel when they are in.
+    labels_requested = Signal()
 
     def __init__(self, controller: ExportController) -> None:
         super().__init__()
@@ -1269,6 +1275,13 @@ class ExportPanel(QWidget):
             self.table.show_message(NOTHING_SCANNED)
             self.chart_view.show_message(NOTHING_SCANNED)
             self.split_counts.setText("")
+            return
+        if self.controller.labels_pending(
+            (self.breakdown.currentData(), self.cross.currentData())
+        ):
+            for view in (self.table, self.chart_view):
+                view.show_message(READING_LABELS)
+            self.labels_requested.emit()
             return
 
         preview = self.controller.preview()
