@@ -828,13 +828,26 @@ def test_the_scan_box_is_what_would_have_swallowed_the_frame_keys(window):
 def test_the_folder_is_chosen_in_the_tab_row_on_every_tab(window):
     """A scan serves all four tabs, and only Curate could show which folder it
     had read."""
-    bar = window.tabs.cornerWidget(Qt.TopLeftCorner)
+    bar = window.scan_bar
 
-    assert bar is window.scan_bar
+    assert window.tabs.cornerWidget(Qt.TopRightCorner).isAncestorOf(bar)
     assert not window.project_panel.isAncestorOf(bar)
     for index in range(window.tabs.count()):
         window.tabs.setCurrentIndex(index)
         assert not bar.isHidden(), window.tabs.tabText(index)
+
+
+def test_the_corner_reads_from_the_folder_to_the_mark(window):
+    """The folder nearest the tabs it serves, this machine's state beside it,
+    and whose window this is at the far end."""
+    corner = window._corner
+    order = [
+        corner.layout().indexOf(widget)
+        for widget in (window.scan_bar, corner.author, corner.product_name)
+    ]
+
+    assert window.tabs.cornerWidget(Qt.TopLeftCorner) is None
+    assert -1 not in order and order == sorted(order)
 
 
 def test_the_scan_box_is_never_reached_by_tab(window):

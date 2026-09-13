@@ -131,23 +131,22 @@ DEFAULT_SIZE = (1600, 950)
 #: rather than something wedged into the corner, as the shortcut list keeps.
 SCREEN_MARGIN = 40
 
-def _brand_mark(on_help, on_settings) -> QWidget:
-    """Return the mark, the product name and the two buttons, for the tab row.
+def _corner(scan_bar: QWidget, on_help, on_settings) -> QWidget:
+    """Return the tab row's corner: the folder, who is recording, and the mark.
+
+    **Three runs with a rule between each**, read from what is being worked on
+    to whose window this is. The folder first, nearest the tabs it serves; then
+    this machine's own state and the two buttons for what nothing else on
+    screen mentions, F2 and F1; then the mark and the product name at the far
+    end. Written as one run of muted text, the product name and the name
+    changes are recorded under read as a single phrase.
 
     A widget rather than a `QLabel`, a label showing either a pixmap or text
-    and this needing both. **The mark and the name are still not clickable**:
-    they say whose window this is and answer no question, so giving either
-    behaviour would only invite pressing. The buttons beside them are separate
-    controls that look like ones, and they are here because the two things
-    they open are the ones nothing else on screen mentions -- F1 and F2.
-
-    **Two runs, not one.** Left of the rule is who made this; right of it is
-    this machine's own state and the control that changes it. Written as one
-    run of muted text, the product name and the name changes are recorded
-    under read as a single phrase, and the reader had to work out where one
-    ended and the other began.
+    and this needing both. **The mark and the name are not clickable**: they
+    say whose window this is and answer no question.
 
     Args:
+        scan_bar: The path, Browse and Scan, which the window builds and owns.
         on_help: Called when the help button is pressed.
         on_settings: Called when the settings button is pressed.
     """
@@ -156,26 +155,19 @@ def _brand_mark(on_help, on_settings) -> QWidget:
     layout.setContentsMargins(0, 0, 10, 0)
     layout.setSpacing(6)
 
-    mark = QLabel()
-    mark.setPixmap(logo_pixmap(CORNER_LOGO))
-    layout.addWidget(mark)
+    def rule() -> None:
+        layout.addSpacing(4)
+        layout.addWidget(vertical_rule(CORNER_LOGO))
+        layout.addSpacing(4)
 
-    # The one piece of text here that is not muted: it is the product's name,
-    # and a brand that reads as a caption is not one.
-    name = QLabel(PRODUCT_NAME)
-    name.setStyleSheet(f"color: {HEADING}; font-weight: 600;")
-    layout.addWidget(name)
+    layout.addWidget(scan_bar)
+    rule()
 
-    layout.addSpacing(4)
-    layout.addWidget(vertical_rule(CORNER_LOGO))
-    layout.addSpacing(4)
-
-    # Beside the mark rather than in any one tab, and always rather than at
-    # the moment of a write: a name reaches every entry written from anywhere
-    # in the window, so there is no one tab to put it on and far too many
-    # actions to warn at. Muted, because it is a standing fact and not a
-    # message -- and next to the button that changes it, which is what answers
-    # "why is this here" for a reader who has just noticed it.
+    # Always rather than at the moment of a write: a name reaches every entry
+    # written from anywhere in the window, so there is no one tab to put it on
+    # and far too many actions to warn at. Muted, because it is a standing fact
+    # and not a message -- and next to the button that changes it, which is
+    # what answers "why is this here" for a reader who has just noticed it.
     author = QLabel()
     author.setObjectName("recordingAs")
     author.setStyleSheet(f"color: {MUTED};")
@@ -196,6 +188,18 @@ def _brand_mark(on_help, on_settings) -> QWidget:
     help_button.setToolTip("Show the keyboard shortcuts for this tab (F1)")
     help_button.clicked.connect(on_help)
     layout.addWidget(help_button)
+    rule()
+
+    mark = QLabel()
+    mark.setPixmap(logo_pixmap(CORNER_LOGO))
+    layout.addWidget(mark)
+
+    # The one piece of text here that is not muted: it is the product's name,
+    # and a brand that reads as a caption is not one.
+    name = QLabel(PRODUCT_NAME)
+    name.setStyleSheet(f"color: {HEADING}; font-weight: 600;")
+    layout.addWidget(name)
+
     row.product_name = name
     row.author = author
     row.settings_button = settings_button
@@ -443,15 +447,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # keyboard shortcuts, which do not exist until _add_shortcuts runs.
         self.tabs.setCurrentWidget(self.curate)
         self.tabs.currentChanged.connect(self._tab_changed)
-        # The mark, quietly, at the end of the tab row: the one place the
-        # window has spare that a reader already looks at. Only here and on the
-        # banner -- the orange and green in it are segmentation class colours
-        # everywhere else, so a third use would be read as data.
-        self._corner = _brand_mark(self.show_shortcuts, self.show_settings)
+        # In the tab row rather than in Curate: a scan serves every tab, and
+        # this is the one place all four of them show. The mark ends the row,
+        # and appears only here and on the banner -- the orange and green in it
+        # are segmentation class colours everywhere else, so a third use would
+        # be read as data.
+        self._corner = _corner(self.scan_bar, self.show_shortcuts, self.show_settings)
         self.tabs.setCornerWidget(self._corner, Qt.TopRightCorner)
-        # Opposite the mark rather than in Curate: a scan serves every tab,
-        # and this is the one place all four of them show.
-        self.tabs.setCornerWidget(self.scan_bar, Qt.TopLeftCorner)
         self.setCentralWidget(self.tabs)
         self._build_menus()
 

@@ -288,11 +288,12 @@ of one of these files, is held by `test_docs.py`.
   near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,
   as `FlowArea` does (`test_every_group_of_settings_gets_the_height_its_rows_need`).
 - **The folder is chosen in the tab row, not in a tab.** A scan serves all four, and only Curate
-  could show which folder was read; the left corner holds the path, Browse and Scan, and says on
-  hover what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
-- **The right corner is two runs with a rule between, not one line of text.** Left of it is whose
-  window this is, right of it what this machine is set to and the gear that changes it; written
-  alike they read as one phrase, so the product name alone is unmuted, asserted on the pixels
+  could show which folder was read; the corner holds the path, Browse and Scan, and says on hover
+  what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
+- **The corner is three runs with a rule between each, not one line of text**, read from the folder
+  to what this machine is set to and the gear that changes it, and on to the mark and product name
+  at the far right (`test_the_corner_reads_from_the_folder_to_the_mark`). Written alike the last two
+  read as one phrase, so the product name alone is unmuted, asserted on the pixels
   (`test_the_product_name_is_not_drawn_like_the_line_beside_it`). The gear and the **?** are the
   two things nothing else on screen mentions, F2 and F1
   (`test_the_settings_button_opens_what_f2_opens`).

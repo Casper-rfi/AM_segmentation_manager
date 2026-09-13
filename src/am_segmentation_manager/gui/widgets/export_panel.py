@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 
 #: Said wherever the pane has nothing to show, so the table and the chart give
 #: the same answer rather than two phrasings of it.
-NOTHING_SCANNED = "No data loaded. Choose a folder to scan, top left."
+NOTHING_SCANNED = "No data loaded. Choose a folder to scan, top right."
 NOTHING_MATCHES = "Nothing matches these filters"
 #: Said while the labels the view asks about are read behind the busy dialog.
 READING_LABELS = "Reading the labels these counts need..."
