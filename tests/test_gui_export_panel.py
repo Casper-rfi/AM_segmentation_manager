@@ -26,7 +26,6 @@ if HAS_QT:
         QCheckBox,
         QComboBox,
         QDoubleSpinBox,
-        QFrame,
         QLabel,
         QListWidget,
         QPushButton,
@@ -942,6 +941,71 @@ def test_a_breakdown_needing_measured_labels_is_not_written_unmeasured(qt_app, t
     assert not (tmp_path / "counts.csv").exists()
 
 
+def _long_row(qt_app, count: int = 20, ticked=("v3",)) -> FilterRow:
+    """A filter row over *count* values, as a pixel size's would be."""
+    row = FilterRow(ExportController())
+    row.show_values([f"v{index}" for index in range(count)], set(ticked), "pixel size")
+    row.show_filled()
+    return row
+
+
+def _visible(row: FilterRow) -> list[str]:
+    return [
+        row.values.item(index).text()
+        for index in range(row.values.count())
+        if not row.values.item(index).isHidden()
+    ]
+
+
+def test_a_long_filter_list_can_be_searched(qt_app):
+    row = _long_row(qt_app)
+
+    assert not row.search.isHidden()
+    row.search.setText("1")
+
+    assert _visible(row) == ["v1", *(f"v{index}" for index in range(10, 20))]
+    assert "hidden" in row.count.text()
+
+
+def test_a_short_filter_list_has_no_search(qt_app):
+    """A box over three values is clutter rather than help."""
+    from am_segmentation_manager.gui.widgets.export_panel import SEARCH_FROM
+
+    row = _long_row(qt_app, count=SEARCH_FROM)
+
+    assert row.search.isHidden()
+
+
+def test_ticking_all_while_searching_ticks_what_is_in_view_and_keeps_the_rest(qt_app):
+    """A value ticked and then hidden by a search is still a choice somebody made."""
+    row = _long_row(qt_app, ticked=("v3",))
+    row.search.setText("1")
+
+    row._tick_all(True)
+    row.search.setText("")
+
+    assert row.ticked_values() == ["v1", "v3", *(f"v{index}" for index in range(10, 20))]
+
+    row.search.setText("1")
+    row._tick_all(False)
+    row.search.setText("")
+    assert row.ticked_values() == ["v3"]
+
+
+def test_the_split_says_what_it_comes_out_as_beside_its_settings(qt_app, tmp_path):
+    """The summary line says it too, a column away from the share being set."""
+    panel = measurable(qt_app, tmp_path)
+    panel.refresh()
+    assert panel.split_counts.text() == "Measure labels to see how the pairs split"
+
+    panel.controller.load_measurements()
+    panel.train_share.setValue(100)
+
+    preview = panel.controller.preview()
+    assert preview.validation == 0
+    assert panel.split_counts.text() == f"{preview.train} train / 0 validation"
+
+
 # ---------------------------------------------------------------------------
 # Saying what a control does
 # ---------------------------------------------------------------------------
@@ -1081,26 +1145,19 @@ def test_the_series_control_is_not_also_offered_as_a_filter_row(panel: ExportPan
 def test_the_buttons_that_move_files_are_kept_off_the_csv_run(panel: ExportPanel):
     """They move images and labels, not a list of paths. Sat among the CSV
     buttons either read as a fifth one of those, which is how a copy of
-    gigabytes gets started by accident -- so both sit after a rule, and
-    everything before it writes or reads a list of paths."""
-    column = panel._export_box.layout()
-    ordered = [
-        column.itemAt(index).widget()
-        for index in range(column.count())
-        if column.itemAt(index).widget() is not None
-    ]
-    labelled = [
-        widget.text() for widget in ordered
-        if isinstance(widget, QPushButton) and widget.text().endswith("...")
+    gigabytes gets started by accident -- so they have a card of their own, and
+    everything in the other writes or reads a list of paths."""
+    csv_buttons = [
+        button.text() for button in panel.csv_box.findChildren(QPushButton)
+        if button.text().endswith("...")
     ]
 
     assert panel.files_button.text() == "Export images and labels..."
     assert panel.merge_button.text() == "Merge a copy back..."
-    moving = [panel.files_button.text(), panel.merge_button.text()]
-    assert labelled[-2:] == moving, "the two that move files come last, in order"
-    assert all(text.endswith("CSV...") for text in labelled[:-2])
-    # Under a rule, so the eye does not run the two groups together.
-    assert isinstance(ordered[ordered.index(panel.files_button) - 1], QFrame)
+    assert csv_buttons and all(text.endswith("CSV...") for text in csv_buttons)
+    for button in (panel.files_button, panel.merge_button):
+        assert panel.copy_box.isAncestorOf(button), button.text()
+        assert not panel.csv_box.isAncestorOf(button), button.text()
 
 # ---------------------------------------------------------------------------
 # The project filter, which has a control of its own

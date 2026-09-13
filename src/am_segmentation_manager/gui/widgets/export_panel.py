@@ -68,7 +68,7 @@ from .controls import (
 )
 from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import choose_directory, choose_open_file, choose_save_file
-from .theme import COMPACT_BUTTON
+from .theme import COMPACT_BUTTON, MUTED
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,31 @@ def _captioned(text: str, widget, tooltip: str) -> QHBoxLayout:
     return row
 
 
+#: How many values a filter list holds before it gets a search field. Past a
+#: screenful a value is found by typing part of it -- a pixel size runs to
+#: nineteen -- while a box over three values is clutter.
+SEARCH_FROM = 12
+
+
+def split_counts_text(preview) -> str:
+    """Return what the training split comes out as, for the line under its settings."""
+    if not preview.matched:
+        return "Nothing matches these filters"
+    if not preview.measured:
+        return "Measure labels to see how the pairs split"
+    if not preview.exportable:
+        return "Nothing here can be exported"
+    return f"{preview.train} train / {preview.validation} validation"
+
+
+def _card_caption(text: str) -> QLabel:
+    """Return the one muted line saying what a card's buttons have in common."""
+    caption = QLabel(text)
+    caption.setWordWrap(True)
+    caption.setStyleSheet(f"color: {MUTED};")
+    return caption
+
+
 class FilterRow(QWidget):
     """One filter: which property it is on, and which of its values are kept.
 
@@ -168,6 +193,10 @@ class FilterRow(QWidget):
         #: The combo cannot answer that -- by the time it reports a change it
         #: already holds the new one.
         self._property = NO_PROPERTY
+        #: What the caption calls the values, and whether the list is long
+        #: enough to be searched.
+        self._label = ""
+        self._searchable = False
 
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 4)
@@ -197,6 +226,17 @@ class FilterRow(QWidget):
         self.count = QLabel("")
         self.count.setVisible(False)
         column.addWidget(self.count)
+
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search values")
+        self.search.setClearButtonEnabled(True)
+        self.search.setToolTip(
+            "Show only the values containing this text. A value ticked and then "
+            "hidden stays ticked."
+        )
+        self.search.textChanged.connect(lambda _text: self._apply_search())
+        self.search.setVisible(False)
+        column.addWidget(self.search)
 
         self.values = CheckList()
         self.values.setMinimumHeight(FILTER_LIST_HEIGHT)
@@ -237,12 +277,20 @@ class FilterRow(QWidget):
         return self.values.ticked_values()
 
     def _tick_all(self, wanted: bool) -> None:
-        """Tick or clear every value this row offers.
+        """Tick or clear every value in view, leaving those a search hides alone.
 
         Reported once rather than per row: the list is what the caller asked
         about, and a signal per value would sweep the collection for each.
         """
-        self.values.show_ticks([wanted] * self.values.count())
+        ticked = set(self.values.ticked_rows())
+        for row in range(self.values.count()):
+            if self.values.item(row).isHidden():
+                continue
+            if wanted:
+                ticked.add(row)
+            else:
+                ticked.discard(row)
+        self.values.show_ticks([row in ticked for row in range(self.values.count())])
         self.changed.emit()
 
     def offer(self, groups, taken: set[str]) -> None:
@@ -310,19 +358,40 @@ class FilterRow(QWidget):
             )
         finally:
             self._filling = False
-        self.count.setText(ticked_caption(label, len(values), len(chosen)))
+        self._label = label
+        self._searchable = len(values) > SEARCH_FROM
+        if not self._searchable and self.search.text():
+            self.search.blockSignals(True)
+            self.search.clear()
+            self.search.blockSignals(False)
+        self.search.setVisible(self._searchable and not self.values.isHidden())
+        self._apply_search()
+
+    def _apply_search(self) -> None:
+        """Hide the values the search leaves out, and say how many that is."""
+        self.values.hide_rows_without(self.search.text())
+        hidden = sum(
+            1 for row in range(self.values.count()) if self.values.item(row).isHidden()
+        )
+        self.count.setText(
+            ticked_caption(
+                self._label, self.values.count(), len(self.values.ticked_rows()), hidden
+            )
+        )
 
     def show_empty(self) -> None:
         """Hide the list, for a row not on a property yet."""
         self.values.setVisible(False)
         self.buttons.setVisible(False)
         self.count.setVisible(False)
+        self.search.setVisible(False)
 
     def show_filled(self) -> None:
         """Show the list and the buttons acting on it."""
         self.values.setVisible(True)
         self.buttons.setVisible(True)
         self.count.setVisible(True)
+        self.search.setVisible(self._searchable)
 
     def untick(self) -> None:
         """Untick every value, without changing which property this is on."""
@@ -907,13 +976,24 @@ class ExportPanel(QWidget):
         return row
 
     def _build_actions(self) -> QWidget:
+        """Build the split, and the two kinds of writing below it.
+
+        Two cards rather than one column under a rule. The CSVs write or check
+        lists of paths; copying out and merging back move the images and labels
+        themselves, and reading either as a fifth kind of CSV is how a copy of
+        gigabytes gets started by accident.
+        """
         box = QGroupBox("Export")
         box.setMinimumWidth(240)
         column = QVBoxLayout(box)
 
         column.addWidget(self._build_split())
 
-        column.addSpacing(8)
+        self.csv_box = QGroupBox("Write CSVs")
+        csvs = QVBoxLayout(self.csv_box)
+        csvs.addWidget(
+            _card_caption("Lists of paths and metadata. The images stay where they are.")
+        )
         # The training export writes files it names itself, so it asks for a
         # directory; the other two write one file the user names.
         for label, signal, directory, tooltip in (
@@ -946,27 +1026,26 @@ class ExportPanel(QWidget):
             button.clicked.connect(
                 lambda _checked=False, s=signal, d=directory, t=label: self._choose(s, t, d)
             )
-            column.addWidget(button)
+            csvs.addWidget(button)
 
         # Beside the buttons that write the CSVs, because it answers the
         # question they raise later: a training CSV records paths, and a file
         # can be renamed, archived or lost between writing one and using it.
-        column.addSpacing(8)
+        csvs.addSpacing(6)
         self.check_button = QPushButton("Check exported CSV...")
         self.check_button.setToolTip(
             "Read a CSV written earlier and report which recorded paths no "
             "longer resolve. Changes nothing."
         )
         self.check_button.clicked.connect(self._check)
-        column.addWidget(self.check_button)
+        csvs.addWidget(self.check_button)
+        column.addWidget(self.csv_box)
 
-        # Under a rule and apart from the four above, which all write or read a
-        # list of paths. These two move the images and labels themselves, and
-        # reading either as a fifth kind of CSV is how a copy of gigabytes gets
-        # started by accident.
-        column.addSpacing(10)
-        column.addWidget(horizontal_rule())
-        column.addSpacing(10)
+        self.copy_box = QGroupBox("Copy out and merge back")
+        copies = QVBoxLayout(self.copy_box)
+        copies.addWidget(
+            _card_caption("Moves the images and labels themselves, gigabytes at a time.")
+        )
         self.files_button = QPushButton("Export images and labels...")
         self.files_button.setToolTip(
             "Copy the matching images, their labels and each project's "
@@ -978,7 +1057,7 @@ class ExportPanel(QWidget):
                 self.files_export_requested, self.files_button.text(), True
             )
         )
-        column.addWidget(self.files_button)
+        copies.addWidget(self.files_button)
 
         # Directly under the export it undoes: a copy goes out here and comes
         # back here, and putting the two together is what makes the round trip
@@ -990,7 +1069,8 @@ class ExportPanel(QWidget):
             "here are never written over unasked."
         )
         self.merge_button.clicked.connect(self._choose_copy)
-        column.addWidget(self.merge_button)
+        copies.addWidget(self.merge_button)
+        column.addWidget(self.copy_box)
 
         column.addStretch(1)
         return box
@@ -1054,6 +1134,13 @@ class ExportPanel(QWidget):
         )
         row.addWidget(self.prefix, stretch=1)
         grid.addLayout(row)
+
+        # What the settings above come out as, where they are set: the same
+        # counts as the summary line, which is a column away.
+        self.split_counts = QLabel("")
+        self.split_counts.setWordWrap(True)
+        self.split_counts.setStyleSheet(f"color: {MUTED};")
+        grid.addWidget(self.split_counts)
         return box
 
     def _seeding_toggled(self, seeded: bool) -> None:
@@ -1181,9 +1268,12 @@ class ExportPanel(QWidget):
             self.summary.setText(NOTHING_SCANNED)
             self.table.show_message(NOTHING_SCANNED)
             self.chart_view.show_message(NOTHING_SCANNED)
+            self.split_counts.setText("")
             return
 
-        self.summary.setText(self.controller.preview().summary())
+        preview = self.controller.preview()
+        self.summary.setText(preview.summary())
+        self.split_counts.setText(split_counts_text(preview))
         self._show_measure_state()
         try:
             self._show_breakdown()
