@@ -4751,3 +4751,31 @@ def test_every_bound_key_has_somewhere_to_be_drawn(window):
     drawable |= {"Up", "Down", "Left", "Right"}
 
     assert _keys_of(window._keys.bindings) <= drawable
+
+
+def test_starting_on_a_folder_shows_it_in_the_scan_box_and_scans_it(
+    qt_app, settings, project, monkeypatch
+):
+    """`am-seg gui <folder>` opens the window through app.build_window, which
+    no other test here goes through -- so a panel it names can move without
+    anything else noticing. The event loop is not started: nothing would end it."""
+    from am_segmentation_manager.gui import app as gui_app
+
+    monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
+    monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.theme.apply_theme", lambda application: None
+    )
+
+    _application, window = gui_app.build_window(project, settings=settings)
+    try:
+        assert window.scan_bar.path_edit.text() == str(project)
+
+        settle(
+            qt_app, lambda: window.controller.start_path is not None,
+            what="the scan queued on startup",
+        )
+
+        assert window.controller.project.name == "test-project"
+    finally:
+        destroy(window)

@@ -214,16 +214,25 @@ def _enable_high_dpi() -> None:
             QApplication.setAttribute(attribute, True)
 
 
-def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
-    """Open the curation window and run until it is closed.
+def build_window(
+    start_path: Path | None = None,
+    config_path: Path | None = None,
+    settings=None,
+):
+    """Build and show the curation window, queuing a scan of *start_path*.
+
+    Everything :func:`run` does short of running the event loop, so opening the
+    window can be tested without starting a loop nothing would end.
 
     Args:
-        start_path: Directory to scan on startup. The window opens without
-            scanning if this is None.
+        start_path: Directory to scan once the event loop runs. The window opens
+            without scanning if this is None.
         config_path: Segmentation config to use, overriding the usual search.
+        settings: Where the window keeps its own preferences; the user's
+            configuration area where None.
 
     Returns:
-        The Qt application's exit code.
+        ``(application, window)``.
 
     Raises:
         RuntimeError: If no Qt binding is installed.
@@ -253,7 +262,7 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
     application = QApplication.instance() or QApplication(sys.argv)
     apply_theme(application)
     _apply_icon(application)
-    window = CurationWindow(controller)
+    window = CurationWindow(controller, settings=settings)
     window.show()
     # Queued for the same reason the scan below is: show() only asks for a
     # window, and asking for the keyboard before there is one to give it to
@@ -262,12 +271,31 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
     QTimer.singleShot(0, window.bring_to_front)
 
     if start_path is not None:
-        window.project_panel.set_path(str(start_path))
+        window.scan_bar.set_path(str(start_path))
         # Held until the event loop is running. show() only asks for a paint;
-        # nothing is drawn until exec() below starts delivering events, so a
-        # scan started here ran against a window that had never appeared --
-        # seconds of blank grey with no way to tell it from a hang. Queued at
-        # zero delay, the window is on screen before the first file is read.
+        # nothing is drawn until exec() starts delivering events, so a scan
+        # started here ran against a window that had never appeared -- seconds
+        # of blank grey with no way to tell it from a hang. Queued at zero
+        # delay, the window is on screen before the first file is read.
         QTimer.singleShot(0, lambda: window.scan(str(start_path)))
 
+    return application, window
+
+
+def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
+    """Open the curation window and run until it is closed.
+
+    Args:
+        start_path: Directory to scan on startup. The window opens without
+            scanning if this is None.
+        config_path: Segmentation config to use, overriding the usual search.
+
+    Returns:
+        The Qt application's exit code.
+
+    Raises:
+        RuntimeError: If no Qt binding is installed.
+    """
+    # The window is held for as long as the loop runs: nothing else refers to it.
+    application, _window = build_window(start_path, config_path)
     return application.exec_() if hasattr(application, "exec_") else application.exec()

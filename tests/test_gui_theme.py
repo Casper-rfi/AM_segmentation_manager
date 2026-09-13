@@ -332,8 +332,8 @@ def test_the_startup_work_waits_for_the_window_to_appear(qt_app, tmp_path, monke
     order: list[str] = []
 
     class FakeWindow:
-        def __init__(self, controller):
-            self.project_panel = type("P", (), {"set_path": lambda self, p: None})()
+        def __init__(self, controller, settings=None):
+            self.scan_bar = type("S", (), {"set_path": lambda self, p: None})()
 
         def show(self):
             order.append("show")
