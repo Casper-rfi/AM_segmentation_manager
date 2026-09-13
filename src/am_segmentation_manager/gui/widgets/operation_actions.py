@@ -444,7 +444,7 @@ class OperationActions:
         if self.export_controller.labels_known():
             then()
             return
-        labels = self.export_controller.measurable_labels()
+        labels = self.export_controller.unread_labels()
         progressed = self.operations.worker.progressed
         self._run_operation(
             f"Reading {labels} label(s)",

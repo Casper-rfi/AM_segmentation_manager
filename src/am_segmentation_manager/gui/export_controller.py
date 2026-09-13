@@ -342,6 +342,10 @@ class ExportController:
         #: for one subject, so anything dropping an entry has to say which.
         self._label_states: dict[Path, str] = {}
         self._measurements: dict[Path, LabelMeasurement] = {}
+        #: The labels a measurement has covered, **keyed by the label**. Apart
+        #: from ``_label_empty``, which the label filter also fills: a label
+        #: opened to ask whether it is blank has not been measured.
+        self._measured_labels: set[Path] = set()
         self._measurements_loaded = False
         # Built by walking every record, and asked for once per filter list on
         # every refresh. Rebuilt only when the scan changes.
@@ -366,6 +370,7 @@ class ExportController:
         self._label_empty = {}
         self._label_states = {}
         self._measurements = {}
+        self._measured_labels = set()
         self._measurements_loaded = False
         self._lookup = project_lookup(self._projects)
         logger.debug("Export view holding %d record(s)", len(self._records))
@@ -402,6 +407,7 @@ class ExportController:
             1 for path in wanted
             if self._label_empty.pop(path, _ABSENT) is not _ABSENT
         )
+        self._measured_labels -= wanted
         for record in self._records:
             if any(label in wanted for label in record.labels):
                 self._label_states.pop(record.image_path, None)
@@ -452,13 +458,25 @@ class ExportController:
         """
         return len(self._unmeasured_labels())
 
+    def unread_labels(self) -> int:
+        """Return how many distinct labels of the selection nobody has opened.
+
+        Fewer than :meth:`measurable_labels` once the label filter has looked
+        inside them: asking whether a label is blank opens it without
+        measuring it.
+        """
+        return len(self._selected_labels() - self._label_empty.keys())
+
     def _unmeasured_labels(self) -> set[Path]:
-        """Return the labels of the current selection not yet read."""
+        """Return the labels of the current selection not yet measured."""
+        return self._selected_labels() - self._measured_labels
+
+    def _selected_labels(self) -> set[Path]:
+        """Return the distinct labels the current selection pairs with."""
         return {
             found
             for record in self.selected_records()
             if (found := find_matching_label(record)) is not None
-            and found not in self._label_empty
         }
 
     @property
@@ -533,14 +551,21 @@ class ExportController:
         """
 
         self.load_metadata()
+        records = self.selected_records()
         measured = measure_records(
-            self.selected_records(),
+            records,
             self.config,
             self._metadata,
             min_crack_area_um2=self._min_crack_area_um2,
             on_progress=on_progress,
         )
         self._measurements.update(measured)
+        # Every label the pass reached, including one it could not read: that
+        # is an answer too, and asking again would read it again.
+        self._measured_labels.update(
+            label for record in records
+            if (label := find_matching_label(record)) is not None
+        )
         self._remember_label_states(measured)
         self._measurements_loaded = True
         return len(self._measurements)

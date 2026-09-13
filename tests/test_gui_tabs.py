@@ -28,6 +28,7 @@ from am_segmentation_manager.metadata import (
     build_experiment_metadata,
 )
 from am_segmentation_manager.models import Project
+from am_segmentation_manager.operations.csv import find_matching_label
 from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
@@ -666,6 +667,39 @@ def test_measuring_reports_what_it_covered(exporter: ExportController):
     assert exporter.measurable_labels() == 4
     assert exporter.load_measurements() == 4
     assert exporter.measurements_loaded()
+
+
+def test_opening_labels_for_the_label_filter_does_not_count_as_measuring(
+    exporter: ExportController,
+):
+    """Regression: "has a label" opens every label to ask whether it is blank,
+    and the tab took that for a measurement -- the button went dim and every
+    image was counted under "no-label"."""
+    exporter.filters.label = "has a label"
+    exporter.preview()
+
+    assert exporter.unread_labels() == 0
+    assert not exporter.measurements_loaded()
+    assert exporter.measurable_labels() == 4
+
+    exporter.load_measurements()
+
+    assert exporter.measurements_loaded()
+    assert "no-label" not in exporter.breakdown("crack-count")
+
+
+def test_a_replaced_label_is_measured_again(exporter: ExportController):
+    """A conversion replaces the file; its old measurement describes another."""
+    exporter.load_measurements()
+    label = next(
+        found for record in exporter.records
+        if (found := find_matching_label(record)) is not None
+    )
+
+    exporter.forget_labels([label])
+
+    assert not exporter.measurements_loaded()
+    assert exporter.measurable_labels() == 1
 
 
 def test_a_second_scan_forgets_what_was_measured(exporter: ExportController, tmp_path):
