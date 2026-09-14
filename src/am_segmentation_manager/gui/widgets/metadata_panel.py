@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TypeAlias
 
 from qtpy.QtCore import QRectF, Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
@@ -178,6 +179,13 @@ def field_state(shown: str, saved: str, *, mixed: bool, outstanding: bool) -> st
     return "filled"
 
 
+class FieldDot(QLabel):
+    """The dot beside a field, remembering the state it was last drawn in."""
+
+    #: The state drawn, for anything asking which dot this is. Unset until first drawn.
+    state: str
+
+
 def _dot_hint(state: str, paths: tuple[Path, ...], outstanding: bool) -> str:
     """Return what a field's dot says on hover."""
     if state == "missing" and outstanding:
@@ -187,7 +195,11 @@ def _dot_hint(state: str, paths: tuple[Path, ...], outstanding: bool) -> str:
     return DOT_HINTS[state]
 
 
-def _notify_on_change(editor: QWidget, callback) -> None:
+#: Every kind of box a metadata field is edited in.
+Editor: TypeAlias = "ChipEditor | QComboBox | QPlainTextEdit | QLineEdit"
+
+
+def _notify_on_change(editor: Editor, callback) -> None:
     """Call *callback* whenever *editor*'s content changes, whichever kind it is."""
     if isinstance(editor, ChipEditor):
         editor.changed.connect(callback)
@@ -217,7 +229,7 @@ def _describe(changes: list) -> str:
     )
 
 
-def editor_text(editor: QWidget) -> str:
+def editor_text(editor: Editor) -> str:
     """Return what an editor is showing, whichever kind of editor it is.
 
     As one string even where the editor holds several values, because that is
@@ -235,7 +247,7 @@ def editor_text(editor: QWidget) -> str:
     return text.strip()
 
 
-def set_editor_text(editor: QWidget, value: str) -> None:
+def set_editor_text(editor: Editor, value: str) -> None:
     """Show *value* in an editor, whichever kind of editor it is."""
     if isinstance(editor, ChipEditor):
         editor.set_values(split_values(value))
@@ -247,7 +259,7 @@ def set_editor_text(editor: QWidget, value: str) -> None:
         editor.setText(value)
 
 
-def set_editor_suggestions(editor: QWidget, values: list[str]) -> None:
+def set_editor_suggestions(editor: Editor, values: list[str]) -> None:
     """Offer the values already in use, whichever kind of editor this is."""
     if isinstance(editor, ChipEditor):
         editor.set_suggestions(values)
@@ -284,7 +296,9 @@ def _suggestion_box() -> QComboBox:
     box = QComboBox()
     box.setEditable(True)
     box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-    box.lineEdit().setPlaceholderText("unset")
+    line = box.lineEdit()
+    assert line is not None, "an editable combo box has a line edit"
+    line.setPlaceholderText("unset")
     match_anywhere(box)
     return box
 
@@ -376,7 +390,9 @@ class MetadataPanel(QWidget):
             self.project_path_requested, self.project_reveal_requested,
             row_of=self.projects.project_of,
         )
-        box.layout().addWidget(self._build_collection_actions())
+        box_layout = box.layout()
+        assert box_layout is not None, "the box is laid out above"
+        box_layout.addWidget(self._build_collection_actions())
         return box
 
     def _build_collection_actions(self) -> QWidget:
@@ -557,8 +573,8 @@ class MetadataPanel(QWidget):
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(6)
         grid.setColumnStretch(1, 1)
-        self.editors: dict[str, QWidget] = {}
-        self.dots: dict[str, QLabel] = {}
+        self.editors: dict[str, Editor] = {}
+        self.dots: dict[str, FieldDot] = {}
         self.captions: dict[str, QLabel] = {}
         #: The heading over each section, in the order shown.
         self.section_headings: dict[str, QLabel] = {}
@@ -576,8 +592,9 @@ class MetadataPanel(QWidget):
                 row += 2
             fills = entry.multi or entry.prose
             if entry.multi:
-                editor: QWidget = ChipEditor(separator=VALUE_SEPARATOR)
-                editor.entry.setFixedWidth(FIELD_WIDTH)
+                chips = ChipEditor(separator=VALUE_SEPARATOR)
+                chips.entry.setFixedWidth(FIELD_WIDTH)
+                editor: Editor = chips
             elif entry.prose:
                 editor = _prose_box()
             elif entry.choices:
@@ -595,10 +612,12 @@ class MetadataPanel(QWidget):
             caption = QLabel(entry.label)
             for widget in (caption, editor):
                 widget.setToolTip(entry.guidance)
-            dot = QLabel()
+            dot = FieldDot()
             dot.setFixedSize(DOT, DOT)
             label = keep_together(dot, caption, spacing=6)
-            label.layout().setContentsMargins(0, CAPTION_DROP, 0, 0)
+            caption_row = label.layout()
+            assert caption_row is not None, "keep_together lays out what it holds"
+            caption_row.setContentsMargins(0, CAPTION_DROP, 0, 0)
             grid.addWidget(label, row, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             # A box of one line keeps its width; values and prose take the
             # rest of the row.
@@ -807,7 +826,6 @@ class MetadataPanel(QWidget):
                 editor_text(editor), saved, mixed=mixed, outstanding=outstanding
             )
             dot = self.dots[field]
-            #: The state drawn, for anything asking which dot this is.
             dot.state = state
             dot.setPixmap(_dot_pixmap(state))
             dot.setToolTip(_dot_hint(state, paths, outstanding))

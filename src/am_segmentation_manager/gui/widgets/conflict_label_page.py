@@ -212,6 +212,7 @@ class LabelConflictPage(QWidget):
             return
         node = self.resolution.conflict(key)
         row = node.row
+        assert row is not None, "a conflict key names a conflict, which carries its row"
         if follow_tree:
             self.tree.show_current(node)
         where = " — ".join(part for part in (row.project, row.lamella) if part)

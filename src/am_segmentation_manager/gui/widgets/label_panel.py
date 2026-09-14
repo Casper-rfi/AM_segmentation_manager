@@ -549,9 +549,12 @@ class LabelPanel(QWidget):
             button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
             button.setToolTip(f"{hint}\nShortcut: {key}")
-            button.toggled.connect(
-                lambda checked, t=tool: checked and self._tool_chosen(t)
-            )
+
+            def choose_tool(checked: bool, t: str = tool) -> None:
+                if checked:
+                    self._tool_chosen(t)
+
+            button.toggled.connect(choose_tool)
             group.addButton(button)
             self.tool_buttons[tool] = button
 
@@ -619,9 +622,12 @@ class LabelPanel(QWidget):
             if position < len(CLASS_KEYS):
                 hint += f"\nShortcut: {CLASS_KEYS[position]}"
             button.setToolTip(hint)
-            button.toggled.connect(
-                lambda checked, index=class_index: checked and self._class_chosen(index)
-            )
+
+            def choose_class(checked: bool, index: int = class_index) -> None:
+                if checked:
+                    self._class_chosen(index)
+
+            button.toggled.connect(choose_class)
             paint_group.addButton(button)
             self.paint_buttons[class_index] = button
 
@@ -1211,6 +1217,7 @@ class LabelPanel(QWidget):
             return
 
         display = prepared.display
+        assert display is not None, "a frame that did not fail holds its display"
         # The label is painted into as it is; only the picture under it is
         # rescaled, or a stroke would be recorded against something that is not
         # the file.

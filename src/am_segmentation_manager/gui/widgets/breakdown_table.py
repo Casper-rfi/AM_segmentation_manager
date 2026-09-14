@@ -189,6 +189,7 @@ class BreakdownTable(QWidget):
 
     def _fill(self, body: Sequence[tuple[Cell, ...]]) -> None:
         rows = self._rows
+        assert rows is not None, "rows are shown before they are filled"
         lines = [*body, rows.footer] if rows.footer else list(body)
         self.grid.clear()
         self.grid.setColumnCount(len(rows.headers))

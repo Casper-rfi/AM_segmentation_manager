@@ -531,6 +531,7 @@ class ImagePanel(QWidget):
             return
 
         display = frame_image.display
+        assert display is not None, "a frame that did not fail holds its display"
         # Once, for both panes: the two must not disagree about how the same
         # acquisition looks, and at neutral this hands back the cached array
         # itself rather than a copy of it.
@@ -572,6 +573,7 @@ class ImagePanel(QWidget):
             self._set_badges([(f"could not read plot: {frame_plot.error}", "error")])
             return
         stepping = frame_plot.plot
+        assert stepping is not None, "a plot that did not fail holds its array"
         # A figure of another size is another picture and is fitted; every
         # plot of one lamella is normally the same size, which is what makes
         # stepping leave the view alone.

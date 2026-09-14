@@ -284,8 +284,10 @@ class ShortcutHelp(QDialog):
         """
         self._text.adjustSize()
         wanted = self._text.sizeHint()
-        margins = self.layout().contentsMargins()
-        around = margins.top() + margins.bottom() + self.layout().spacing()
+        layout = self.layout()
+        assert layout is not None, "the dialog is laid out when it is built"
+        margins = layout.contentsMargins()
+        around = margins.top() + margins.bottom() + layout.spacing()
         tall = wanted.height() + around + self._buttons.sizeHint().height()
         wide = wanted.width() + margins.left() + margins.right()
 
@@ -333,11 +335,18 @@ def bindings_for(window) -> list[Binding]:
     elsewhere that can fall out of step with it.
     """
     curate = TAB_CURATE
+
+    def paint_class(position: int) -> Callable[[], None]:
+        return lambda: window.label_panel.select_class_at(position)
+
+    def toggle_lock(position: int) -> Callable[[], None]:
+        return lambda: window.label_panel.toggle_lock_at(position)
+
     paint_keys = [
         Binding(
             key,
             f"Paint {name}",
-            lambda position=position: window.label_panel.select_class_at(position),
+            paint_class(position),
             TAB_LABEL,
             GROUP_CLASSES,
         )
@@ -349,7 +358,7 @@ def bindings_for(window) -> list[Binding]:
         Binding(
             key,
             f"Lock or unlock {name}",
-            lambda position=position: window.label_panel.toggle_lock_at(position),
+            toggle_lock(position),
             TAB_LABEL,
             GROUP_CLASSES,
         )
@@ -697,5 +706,7 @@ class Shortcuts:
 
     def refill(self) -> None:
         """Fill the shortcut list with the keys of the tab in front."""
-        self.help.show_for(self._window.current_tab_name(), self.help_html())
+        help_list = self.help
+        assert help_list is not None, "both callers make the list first"
+        help_list.show_for(self._window.current_tab_name(), self.help_html())
 

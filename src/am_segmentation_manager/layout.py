@@ -137,7 +137,7 @@ LABELLED_SERIES: Final[tuple[Series, ...]] = tuple(
 LABELS_EXPECTED: Final[frozenset[Series]] = frozenset({"adaptive"})
 
 #: What to call each series where there is room to say it properly.
-SERIES_LABELS: Final[dict[Series, str]] = {
+SERIES_LABELS: Final[dict[str, str]] = {
     "adaptive": "Adaptive Polishing",
     "reference": "reference",
     "alignment": "alignment",
