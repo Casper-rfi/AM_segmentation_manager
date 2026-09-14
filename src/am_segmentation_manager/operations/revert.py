@@ -20,7 +20,7 @@ from ..history import Recorder, containing_project, events_for, read_log
 from ..models import ImageRecord
 from .archive import ArchivedVersion, label_versions, restore
 from .label_groups import build_groups
-from .savepoint import ARCHIVED, LOST
+from .savepoint import ARCHIVED, LOST, TargetState
 from .selection import current_state
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ class RevertPlan:
         """Return one line per label, saying what would happen to it."""
         lines = []
         for item in self.items:
-            if item.can_revert:
+            if item.can_revert and item.version is not None:
                 when = item.version.event.at if item.version.event else "unrecorded"
                 lines.append(f"{item.target}: back to the version from {when}")
             else:
@@ -233,6 +233,7 @@ def apply_revert(
     restored: list[Path] = []
     failed: list[tuple[Path, str]] = []
     for item in plan.revertible:
+        assert item.version is not None, "a revertible item has a version"
         try:
             restore(
                 item.version, item.label_path,
@@ -269,7 +270,7 @@ def plan_revert_to(records: Iterable[ImageRecord], savepoint) -> RevertPlan:
         savepoint: A :class:`~.savepoint.Savepoint`.
     """
 
-    named: dict[Path, dict[str, object]] = {}
+    named: dict[Path, dict[str, TargetState]] = {}
     for carried in savepoint.projects:
         named[carried.project.path.resolve()] = {
             state.target: state for state in carried.targets

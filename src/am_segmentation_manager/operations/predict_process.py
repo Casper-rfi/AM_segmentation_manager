@@ -18,6 +18,7 @@ import signal
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from ..models import ImageRecord
 from ..progress import Cancellation, OperationCancelled
@@ -82,7 +83,8 @@ class _QueueLog(logging.handlers.QueueHandler):
     """
 
     def enqueue(self, record) -> None:
-        self.queue.put(("log", record))
+        # A blocking put; the stubs type this queue as offering put_nowait alone.
+        cast(Any, self.queue).put(("log", record))
 
 
 def _forward_logs(queue) -> None:
@@ -112,7 +114,7 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
         source = PredictionSource(name=path.name, run_name=run_name_of(path))
         plan = plan_predictions(records, source, overwrite=False)
         destinations = tuple(str(item.destination) for item in plan.predictions)
-        common = {
+        common: dict[str, Any] = {
             "total": len(plan.predictions),
             "modality": plan.modality or "",
             "modalities": plan.modalities,
@@ -175,7 +177,8 @@ def predict_out_of_process(
     """
     records = list(records)
     method = context or "spawn"
-    ctx = multiprocessing.get_context(method)
+    # The stubs type a context chosen at run time as BaseContext, which has no Process.
+    ctx: Any = multiprocessing.get_context(method)
     queue = ctx.Queue()
     process = ctx.Process(
         target=_child, args=(records, str(weights), device, queue), daemon=True
@@ -272,7 +275,7 @@ def probe_devices(context: str | None = None) -> tuple[str, ...]:
     Returns:
         The devices, most capable first, or ``()`` if the child could not say.
     """
-    ctx = multiprocessing.get_context(context or "spawn")
+    ctx: Any = multiprocessing.get_context(context or "spawn")
     queue = ctx.Queue()
     process = ctx.Process(target=_probe, args=(queue,), daemon=True)
     process.start()

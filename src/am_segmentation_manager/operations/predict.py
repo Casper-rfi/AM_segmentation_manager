@@ -271,10 +271,10 @@ def run_predictions(
         image = to_2d(read_array(planned.record.image_path))
         mask = predict(image)
 
-        write_atomically(
-            planned.destination,
-            lambda temporary, mask=mask: save_label_image(mask, temporary, mask.dtype),
-        )
+        def write(temporary: Path, mask: np.ndarray = mask) -> None:
+            save_label_image(mask, temporary, mask.dtype)
+
+        write_atomically(planned.destination, write)
 
         directory = planned.destination.parent
         if directory not in provenance:

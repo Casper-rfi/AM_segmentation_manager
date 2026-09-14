@@ -124,7 +124,7 @@ class Savepoint:
     title: str = ""
     description: str = ""
     at: str = ""
-    by: str = ""
+    by: str | None = ""
     projects: tuple[ProjectSavepoint, ...] = ()
     covered_at_creation: int = 0
 
@@ -515,7 +515,8 @@ def _knew_the_moment(
     was really there predates a savepoint by a long way rather than a
     millisecond.
     """
-    joins, refused = [], []
+    joins: list[Project] = []
+    refused: list[Project] = []
     for project in projects:
         events = read_log(project.path).events
         (joins if events and events[0].at <= at else refused).append(project)

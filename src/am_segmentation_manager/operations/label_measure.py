@@ -776,10 +776,10 @@ def _warn_on_inconsistent_scale(
     about the data, not about this code.
     """
     sizes = {
-        metadata[record.image_path].pixel_size_nm
+        size
         for record in members
         if record.image_path in metadata
-        and metadata[record.image_path].pixel_size_nm is not None
+        and (size := metadata[record.image_path].pixel_size_nm) is not None
     }
     if len(sizes) > 1:
         logger.warning(

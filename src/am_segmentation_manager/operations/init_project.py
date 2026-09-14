@@ -14,6 +14,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..discovery import (
     contains_marked_project,
@@ -114,7 +115,8 @@ def read_defaults(path: Path) -> dict[str, str]:
         raise FileNotFoundError(f"Defaults file not found: {path}")
 
     document = read_yaml(path)
-    section = document.get("metadata") if isinstance(document.get("metadata"), Mapping) else document
+    block = document.get("metadata")
+    section: Mapping[str, Any] = block if isinstance(block, Mapping) else document
 
     unknown = sorted(set(section) - set(DESCRIPTIVE_FIELDS))
     if unknown:

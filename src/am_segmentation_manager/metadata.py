@@ -577,7 +577,7 @@ def build_experiment_metadata(
     experiment = experiment or {}
     am_metadata = am_metadata or {}
 
-    values: dict[str, object] = {}
+    values: dict[str, Any] = {}
     sources: dict[str, Path] = {}
     todo: set[str] = set()
 

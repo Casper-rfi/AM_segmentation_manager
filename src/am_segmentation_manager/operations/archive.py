@@ -231,7 +231,7 @@ def archive_replaced(
                 return None
         except ValueError:
             pass
-    return archivist.keep(destination, fields["digest"], bool(fields["empty"]))
+    return archivist.keep(destination, str(fields["digest"]), bool(fields["empty"]))
 
 
 # ---------------------------------------------------------------------------

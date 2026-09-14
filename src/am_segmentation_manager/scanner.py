@@ -957,6 +957,7 @@ class Scanner:
         """
         if image_set.series == "other":
             return None
+        assert image_set.modality is not None, "only an other set has no modality"
         if image_set.is_loose:
             directory, _ = resolve_loose_predictions_directory(
                 image_set.directory, image_set.series, image_set.modality, siblings

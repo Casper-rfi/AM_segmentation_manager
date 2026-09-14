@@ -10,6 +10,7 @@ heavyweight dependency and keeps colour handling testable without a GUI.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 
 RGB = tuple[int, int, int]
 
@@ -191,7 +192,7 @@ def parse_color(value: str | Sequence[int]) -> RGB:
     if isinstance(value, str):
         return _parse_color_string(value)
     if isinstance(value, Sequence):
-        return _parse_color_sequence(value)
+        return _parse_color_sequence(cast("Sequence[int]", value))
     raise ValueError(f"Unsupported colour value: {value!r}")
 
 

@@ -797,7 +797,12 @@ def _survey_image_set(
 ) -> ImageSetSurvey:
     """Survey one image set, appending any findings to *findings*."""
     images = image_files_of(image_set)
-    labels = image_files_by_name(image_set.labels_directory) if image_set.labels_exist else {}
+    labels_directory = image_set.labels_directory
+    labels = (
+        image_files_by_name(labels_directory)
+        if image_set.labels_exist and labels_directory is not None
+        else {}
+    )
 
     unlabelled = sorted(set(images) - set(labels))
     orphaned = sorted(set(labels) - set(images))
@@ -816,7 +821,7 @@ def _survey_image_set(
         # that need acting on; see layout.LABELS_EXPECTED. A set that *does*
         # have a label directory is reported on normally whatever its series,
         # so starting to label one needs no change here.
-        if image_set.series in LABELS_EXPECTED:
+        if image_set.series in LABELS_EXPECTED and labels_directory is not None:
             findings.append(
                 Finding(
                     severity="info",
@@ -824,7 +829,7 @@ def _survey_image_set(
                     path=image_set.directory,
                     message=(
                         f"No labels yet; they would be written to "
-                        f"{image_set.labels_directory.name}/"
+                        f"{labels_directory.name}/"
                     ),
                 )
             )
@@ -838,12 +843,12 @@ def _survey_image_set(
             )
         )
 
-    if orphaned:
+    if orphaned and labels_directory is not None:
         findings.append(
             Finding(
                 severity="warning",
                 category="labels-without-images",
-                path=image_set.labels_directory,
+                path=labels_directory,
                 message=(
                     f"{len(orphaned)} label(s) have no matching image in "
                     f"{image_set.directory.name}/"
@@ -851,12 +856,16 @@ def _survey_image_set(
             )
         )
 
-    if image_set.labels_are_legacy:
+    if (
+        image_set.labels_are_legacy
+        and labels_directory is not None
+        and image_set.modality is not None
+    ):
         findings.append(
             Finding(
                 severity="warning",
                 category="legacy-label-directory",
-                path=image_set.labels_directory,
+                path=labels_directory,
                 message=(
                     f"Pre-convention label directory name; the current convention is "
                     f"{shared_labels_directory_name(image_set.modality)}/"
@@ -864,12 +873,12 @@ def _survey_image_set(
             )
         )
 
-    if image_set.labels_are_shared:
+    if image_set.labels_are_shared and labels_directory is not None:
         findings.append(
             Finding(
                 severity="info",
                 category="shared-labels",
-                path=image_set.labels_directory,
+                path=labels_directory,
                 message=(
                     "Labels are shared with other image sets in this stage; a state "
                     "change to one will apply to all of them"
@@ -879,12 +888,12 @@ def _survey_image_set(
 
 
     empty_labels = _count_empty_labels(labels) if check_labels else None
-    if empty_labels:
+    if empty_labels and labels_directory is not None:
         findings.append(
             Finding(
                 severity="warning",
                 category="empty-labels",
-                path=image_set.labels_directory,
+                path=labels_directory,
                 message=(
                     f"{empty_labels} of {len(labels)} label(s) contain only background "
                     f"and are not annotations; the segmentation software writes one "

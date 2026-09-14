@@ -234,8 +234,8 @@ class HeaderField:
     """
 
     name: str
-    fibsem: tuple[tuple[str, ...], ...] = ()
-    fei: tuple[tuple[str, ...], ...] = ()
+    fibsem: tuple[tuple[str | int, ...], ...] = ()
+    fei: tuple[tuple[str | int, ...], ...] = ()
     scale: float | None = None
     search: tuple[str, ...] = ()
     beam_specific: bool = False
@@ -714,7 +714,7 @@ def _read_tags(path: Path) -> tuple[Mapping[str, Any] | None, str | None]:
     import tifffile
 
     with tifffile.TiffFile(str(path)) as handle:
-        page = handle.pages[0]
+        page = handle.pages.first
         fei = page.tags.get(FEI_TAG)
         if fei is not None and isinstance(fei.value, Mapping):
             return fei.value, "fei"

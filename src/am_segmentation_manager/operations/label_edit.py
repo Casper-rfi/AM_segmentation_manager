@@ -138,7 +138,7 @@ def paint(
         return None
 
     region = label[top : bottom + 1, left : right + 1]
-    stroke = np.zeros(region.shape, dtype=np.uint8)
+    stroke: np.ndarray = np.zeros(region.shape, dtype=np.uint8)
     shifted = [(x - left, y - top) for x, y in zip(xs, ys)]
 
     for start, end in zip(shifted, shifted[1:]):

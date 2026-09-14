@@ -232,12 +232,10 @@ def save_labels(
         )
         if archived is not None:
             kept.append(archived)
-        write_atomically(
-            item.destination,
-            lambda temporary, item=item: save_label_image(
-                item.label, temporary, item.label.dtype
-            ),
-        )
+        def write(temporary: Path, item: LabelToSave = item) -> None:
+            save_label_image(item.label, temporary, item.label.dtype)
+
+        write_atomically(item.destination, write)
         written.append(item.destination)
         if item.created:
             created.append(item.destination)

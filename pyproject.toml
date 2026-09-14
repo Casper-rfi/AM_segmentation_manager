@@ -192,8 +192,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 ignore_errors = true
 module = [
-    "am_segmentation_manager.aggregate",
-    "am_segmentation_manager.colors",
     "am_segmentation_manager.gui.app",
     "am_segmentation_manager.gui.conflict_resolution",
     "am_segmentation_manager.gui.controller",
@@ -240,24 +238,4 @@ module = [
     "am_segmentation_manager.gui.widgets.state_panel",
     "am_segmentation_manager.gui.widgets.versions_bar",
     "am_segmentation_manager.gui.worker",
-    "am_segmentation_manager.image_metadata",
-    "am_segmentation_manager.layout",
-    "am_segmentation_manager.metadata",
-    "am_segmentation_manager.operations.archive",
-    "am_segmentation_manager.operations.csv",
-    "am_segmentation_manager.operations.export_record",
-    "am_segmentation_manager.operations.init_project",
-    "am_segmentation_manager.operations.label_edit",
-    "am_segmentation_manager.operations.label_measure",
-    "am_segmentation_manager.operations.label_save",
-    "am_segmentation_manager.operations.merge",
-    "am_segmentation_manager.operations.predict",
-    "am_segmentation_manager.operations.predict_process",
-    "am_segmentation_manager.operations.revert",
-    "am_segmentation_manager.operations.savepoint",
-    "am_segmentation_manager.operations.training_manifest",
-    "am_segmentation_manager.overview",
-    "am_segmentation_manager.scanner",
-    "am_segmentation_manager.state",
-    "am_segmentation_manager.survey",
 ]

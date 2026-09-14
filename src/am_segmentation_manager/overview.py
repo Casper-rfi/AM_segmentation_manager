@@ -15,7 +15,7 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .image_metadata import ELECTRON, ION, ImageMetadata
 from .models import ImageRecord, Project
@@ -158,7 +158,10 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
     ):
         logger.debug("No usable geometry in the header of %s", path)
         return None
-    width, height, pixel_nm, x_um, y_um, z_um, r_deg, t_deg, scan_deg, beam = fields
+    # Each was checked for None above, which mypy cannot follow through the tuple.
+    width, height, pixel_nm, x_um, y_um, z_um, r_deg, t_deg, scan_deg, beam = cast(
+        "tuple[int, int, float, float, float, float, float, float, float, str]", fields
+    )
     if not pixel_nm or width <= 0 or height <= 0:
         logger.debug("Unusable geometry in the header of %s", path)
         return None
@@ -514,7 +517,9 @@ def _position_of(metadata: ImageMetadata, name: str) -> StagePosition | None:
     )
     if any(value is None for value in values):
         return None
-    x_um, y_um, z_um, r_deg, t_deg = (float(value) for value in values)
+    x_um, y_um, z_um, r_deg, t_deg = (
+        float(value) for value in cast("tuple[float, ...]", values)
+    )
     return StagePosition(
         x=x_um * 1e-6, y=y_um * 1e-6, z=z_um * 1e-6,
         rotation=math.radians(r_deg), tilt=math.radians(t_deg),

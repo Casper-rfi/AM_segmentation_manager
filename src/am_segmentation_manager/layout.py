@@ -246,6 +246,7 @@ class ImageSet:
         """
         if self.series == "other":
             return other_image_set_name(self.modality)
+        assert self.modality is not None, "only an other set has no modality"
         if self.is_loose:
             return loose_image_set_name(self.series, self.modality)
         return self.directory.name

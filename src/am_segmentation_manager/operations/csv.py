@@ -16,6 +16,7 @@ import random
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 from ..frames import group_by_acquisition
 from ..io.path import make_path_relative
@@ -26,6 +27,9 @@ from .label_io import is_label_file_empty
 from .training_manifest import manifest_path, write_training_manifest
 
 logger = logging.getLogger(__name__)
+
+#: An item being split, whatever its group is.
+T = TypeVar("T")
 
 #: Header of a training CSV covering one beam.
 SINGLE_COLUMNS = ("image", "label")
@@ -197,11 +201,11 @@ def build_training_rows(
 
 
 def split_grouped(
-    items: Sequence,
-    key: Callable[[object], str],
+    items: Sequence[T],
+    key: Callable[[T], str],
     train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
-) -> tuple[list, list]:
+) -> tuple[list[T], list[T]]:
     """Split *items* into training and validation, keeping a group together.
 
     The general form of :func:`split_pairs`: what a group *is* differs between

@@ -226,12 +226,13 @@ class MergePlan:
         """
         keys: dict[str, None] = {}
         for project in self.projects:
-            for item in (*project.labels, *project.states):
-                if item.outcome == CONFLICT:
-                    keys[label_key(project.key, item.target)] = None
-            for item in project.metadata:
-                if item.outcome == CONFLICT:
-                    keys[field_key(project.key, item.field)] = None
+            groups: tuple[LabelMerge | StateMerge, ...] = (*project.labels, *project.states)
+            for group in groups:
+                if group.outcome == CONFLICT:
+                    keys[label_key(project.key, group.target)] = None
+            for edit in project.metadata:
+                if edit.outcome == CONFLICT:
+                    keys[field_key(project.key, edit.field)] = None
         return tuple(keys)
 
     @property
@@ -280,23 +281,23 @@ class MergePlan:
         """Return one line per entry that would change or needs deciding."""
         lines = []
         for project in self.projects:
-            for item in project.labels:
-                if item.outcome in (TAKE_THEIRS, CONFLICT):
+            for label in project.labels:
+                if label.outcome in (TAKE_THEIRS, CONFLICT):
                     lines.append(
-                        f"{project.key}/{item.target}: label {item.outcome}"
-                        + (f" ({item.reason})" if item.reason else "")
+                        f"{project.key}/{label.target}: label {label.outcome}"
+                        + (f" ({label.reason})" if label.reason else "")
                     )
-            for item in project.states:
-                if item.outcome in (TAKE_THEIRS, CONFLICT):
+            for state in project.states:
+                if state.outcome in (TAKE_THEIRS, CONFLICT):
                     lines.append(
-                        f"{project.key}/{item.target}: state {item.outcome} "
-                        f"{item.ours} -> {item.theirs}"
+                        f"{project.key}/{state.target}: state {state.outcome} "
+                        f"{state.ours} -> {state.theirs}"
                     )
-            for item in project.metadata:
-                if item.outcome in (TAKE_THEIRS, CONFLICT):
+            for edit in project.metadata:
+                if edit.outcome in (TAKE_THEIRS, CONFLICT):
                     lines.append(
-                        f"{project.key}: {item.field} {item.outcome} "
-                        f"{item.ours!r} -> {item.theirs!r}"
+                        f"{project.key}: {edit.field} {edit.outcome} "
+                        f"{edit.ours!r} -> {edit.theirs!r}"
                     )
         return lines
 
@@ -579,7 +580,7 @@ def _plan_metadata(
 
     merged = []
     for name in sorted(set(ours_edits) | set(theirs_edits)):
-        mine, other = ours_edits.get(name), theirs_edits.get(name)
+        mine, other = ours_edits.get(name, []), theirs_edits.get(name, [])
         ancestor = (mine or other)[0].data.get("old")
         our_value = mine[-1].data.get("new") if mine else ancestor
         their_value = other[-1].data.get("new") if other else ancestor
@@ -790,13 +791,13 @@ def apply_merge(
 
     states = fields = entries = 0
     for project in plan.projects:
-        for item in project.states:
-            if item.outcome in _APPLIED and item.record is not None:
-                _take_state(item, recorder, allow_corrected=allow_corrected)
+        for state in project.states:
+            if state.outcome in _APPLIED and state.record is not None:
+                _take_state(state, state.record, recorder, allow_corrected=allow_corrected)
                 states += 1
-        for item in project.metadata:
-            if item.outcome in _APPLIED:
-                _take_field(project, item, recorder)
+        for edit in project.metadata:
+            if edit.outcome in _APPLIED:
+                _take_field(project, edit, recorder)
                 fields += 1
         entries += _add_entries(project)
 
@@ -819,6 +820,8 @@ def _label_to_save(item: LabelMerge, project: ProjectMerge):
     """
 
     try:
+        if item.their_path is None:
+            raise ValueError("the copy holds no label")
         pixels = read_array(item.their_path)
     except Exception as error:
         logger.warning("Not taking %s: %s", item.target, error)
@@ -843,7 +846,7 @@ def _label_to_save(item: LabelMerge, project: ProjectMerge):
 
 
 def _take_state(
-    item: StateMerge, recorder: Recorder, *, allow_corrected: bool = False
+    item: StateMerge, record: ImageRecord, recorder: Recorder, *, allow_corrected: bool = False
 ) -> None:
     """Declare the copy's state here, through the one operation that may.
 
@@ -851,7 +854,7 @@ def _take_state(
     """
 
     transition_records(
-        [item.record],
+        [record],
         item.theirs,
         allow_leaving_corrected=allow_corrected,
         recorder=recorder,

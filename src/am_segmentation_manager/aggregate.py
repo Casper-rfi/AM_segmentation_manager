@@ -18,6 +18,7 @@ from collections import Counter
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from .config import SegmentationConfig
 from .image_metadata import ImageMetadata
@@ -64,7 +65,7 @@ def groups_of(
     Whether a key returns one group or several is declared by
     ``Breakdown.multi``, never guessed from what it returned.
     """
-    return key(record) if multi else (key(record),)
+    return cast("tuple[Hashable, ...]", key(record)) if multi else (key(record),)
 
 
 def _present(value: object) -> Hashable:
@@ -375,7 +376,7 @@ def by_has_crack(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction:
     def key(record: ImageRecord) -> Hashable:
         measurement = measurements.get(record.image_path)
         status = measurement_status(measurement)
-        if status != MEASURED:
+        if status != MEASURED or measurement is None:
             return status
         return "cracked" if measurement.has_crack else "intact"
 
@@ -508,7 +509,7 @@ def by_class_area(class_index: int, edges: Sequence[float]):
         def key(record: ImageRecord) -> Hashable:
             measurement = measurements.get(record.image_path)
             status = measurement_status(measurement)
-            if status != MEASURED:
+            if status != MEASURED or measurement is None:
                 return status
             return _area_bin(
                 measurement.areas_um2.get(class_index, 0.0), edges, labels
@@ -525,7 +526,9 @@ def by_crack_count(measurements: Mapping[Path, LabelMeasurement]) -> KeyFunction
     def key(record: ImageRecord) -> Hashable:
         measurement = measurements.get(record.image_path)
         status = measurement_status(measurement)
-        return measurement.crack_count if status == MEASURED else status
+        if status != MEASURED or measurement is None:
+            return status
+        return measurement.crack_count
 
     return key
 

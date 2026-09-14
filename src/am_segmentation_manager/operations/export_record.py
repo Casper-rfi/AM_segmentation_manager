@@ -229,11 +229,12 @@ def _forks(block: Any, path: Path) -> dict[str, ProjectFork]:
             raise ValueError(f"{path}: {key!r} is not a project")
         if not isinstance(entry, dict):
             raise ValueError(f"{path}: {key} does not hold a mapping")
+        entries = entry.get("entries")
         forks[key] = ProjectFork(
             key=key,
             project_id=_optional_text(entry.get("project_id")),
             tip=_optional_text(entry.get("tip")),
-            entries=entry.get("entries") if isinstance(entry.get("entries"), int) else 0,
+            entries=entries if isinstance(entries, int) else 0,
         )
     return forks
 
