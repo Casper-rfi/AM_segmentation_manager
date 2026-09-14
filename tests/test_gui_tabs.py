@@ -14,6 +14,7 @@ import pytest
 from am_segmentation_manager import aggregate as ag
 from am_segmentation_manager.aggregate import MISSING
 from am_segmentation_manager.gui import export_controller as ec
+from am_segmentation_manager.gui import known_labels
 from am_segmentation_manager.gui.export_controller import ExportController
 from am_segmentation_manager.gui.metadata_controller import (
     SUGGESTION_LIMIT,
@@ -103,15 +104,15 @@ def test_a_replaced_label_is_read_again_rather_than_remembered(
     # would pass while two of them kept their answer.
     record = measured.selected_records()[0]
     label = find_matching_label(record)
-    assert label in measured._label_empty
+    assert measured.known_labels.knows(label)
     assert record.image_path in measured._measurements
 
     forgotten = measured.forget_labels([label])
 
     assert forgotten == 1
-    assert label not in measured._label_empty
+    assert not measured.known_labels.knows(label)
     assert record.image_path not in measured._measurements
-    assert record.image_path not in measured._label_states
+    assert record.image_path not in measured.known_labels._states
 
 
 def test_forgetting_one_label_forgets_every_image_that_shares_it(
@@ -694,7 +695,7 @@ def test_what_the_label_filter_needs_is_counted_without_opening_a_label(
     """The window reads them behind a dialog that counts; working out how many
     there are must not be the stall that dialog exists to replace."""
     monkeypatch.setattr(
-        ec, "is_label_file_empty",
+        known_labels, "is_label_file_empty",
         lambda path: pytest.fail(f"opened {path} while only counting"),
     )
     assert exporter.labels_pending() == 0
@@ -1201,7 +1202,7 @@ def _counting_reads(monkeypatch) -> list[Path]:
     from am_segmentation_manager.operations import label_measure
 
     opened: list[Path] = []
-    real_empty = ec.is_label_file_empty
+    real_empty = known_labels.is_label_file_empty
     real_count = label_measure._count_pixels
 
     def counted_empty(path):
@@ -1212,7 +1213,7 @@ def _counting_reads(monkeypatch) -> list[Path]:
         opened.append(path)
         return real_count(path, crack_class)
 
-    monkeypatch.setattr(ec, "is_label_file_empty", counted_empty)
+    monkeypatch.setattr(known_labels, "is_label_file_empty", counted_empty)
     monkeypatch.setattr(label_measure, "_count_pixels", counted_pixels)
     return opened
 

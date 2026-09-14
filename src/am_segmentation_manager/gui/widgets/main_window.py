@@ -321,9 +321,15 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # controller was built before the window and brought its own, so that
         # is the one the rest join rather than a sixth being made here.
         self._attribution = controller.attribution
-        self.export_controller = ExportController(config=controller.config)
+        # One answer to what each label holds, so a label one tab has read or
+        # written is known the same way by the others.
+        self.export_controller = ExportController(
+            config=controller.config, known_labels=controller.known_labels
+        )
         self.label_controller = LabelController(
-            config=controller.config, attribution=self._attribution
+            config=controller.config,
+            attribution=self._attribution,
+            known_labels=controller.known_labels,
         )
         self.metadata_controller = MetadataController(self._attribution)
         self.operations_controller = OperationsController(self._attribution)

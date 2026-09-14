@@ -42,6 +42,7 @@ from .cache import (
     LoadRequest,
 )
 from .grid_controller import GridController
+from .known_labels import KnownLabels
 from .selection import (
     LEVEL_CURRENT_FRAME,
     LEVEL_LAMELLAE,
@@ -388,6 +389,7 @@ class CurationController:
         config: SegmentationConfig | None = None,
         scan: ProjectScanner | None = None,
         attribution: Attribution | None = None,
+        known_labels: KnownLabels | None = None,
     ) -> None:
         """Create a controller.
 
@@ -401,6 +403,8 @@ class CurationController:
             attribution: Who changes are recorded as. The window hands the
                 same one to every controller; a controller on its own
                 resolves the author itself.
+            known_labels: What each label holds. The window hands this
+                controller's to its other views; one on its own keeps its own.
         """
         self.cache = cache if cache is not None else FrameCache()
         #: The project's grid overview and where its lamellae fall on it, held
@@ -432,12 +436,9 @@ class CurationController:
         self._hidden_lamellae = 0
         self._frames: list[LamellaFrame] = []
 
-        #: What each record's label turned out to be, keyed by image path, in
-        #: :mod:`.operations.label_io`'s vocabulary. Cached because reading a
-        #: label costs a few milliseconds and the timeline asks per frame;
-        #: cleared by :meth:`scan`, which is the user saying the filesystem has
-        #: moved on.
-        self._label_states: dict[Path, str] = {}
+        #: What each label holds, shared with the window's other views. Cleared
+        #: by :meth:`scan`, which is the user saying the filesystem has moved on.
+        self.known_labels = known_labels if known_labels is not None else KnownLabels()
 
         self._project_position = 0
         self._lamella_position = 0
@@ -508,7 +509,7 @@ class CurationController:
         self.start_path = Path(start_path)
         # Proofreading happens in another application while this one is open,
         # so a rescan must not answer from labels read before it.
-        self._label_states.clear()
+        self.known_labels.clear()
         self.index = self._scan(self.start_path, on_progress)
         self._projects = self.index.all_projects()
         logger.info("Found %d project(s) under %s", len(self._projects), self.start_path)
@@ -1174,23 +1175,11 @@ class CurationController:
             for modality in MODALITIES
         }
 
-    def record_label_state(self, record) -> str:
-        """Return what *record*'s label turned out to be, reading it once.
-
-        One of :mod:`.operations.label_io`'s four states. The timeline and the
-        guard on marking corrected both ask this, so they cannot disagree
-        about a label between them.
-        """
-        path = record.image_path
-        if path not in self._label_states:
-            self._label_states[path] = label_io.label_state(record)
-        return self._label_states[path]
-
     def _label_state(self, record) -> str | None:
         """Return one record's label state as the timeline draws it."""
         if record is None:
             return None
-        return LABEL_DISPLAY[self.record_label_state(record)]
+        return LABEL_DISPLAY[self.known_labels.state(record)]
 
     def set_target(self, target: EditTarget) -> None:
         """Choose whether state changes apply to SEM, FIB, or both."""
@@ -1293,7 +1282,7 @@ class CurationController:
         left without it would keep drawing as unlabelled.
 
         **Two memoised layers sit between a record and the screen, and both are
-        dropped here.** `record_label_state` opens a label once and remembers
+        dropped here.** :attr:`known_labels` opens a label once and remembers
         the answer, and the frame cache holds each frame as a composed image
         *and its label*, keyed by position rather than by what it was made
         from. A record named without clearing those keeps drawing exactly as it
@@ -1306,12 +1295,16 @@ class CurationController:
         wanted = {Path(path) for path in written}
         if not wanted:
             return 0
-        touched = 0
-        for project in self.projects:
-            for record in project.image_records:
-                if _add_written(record, wanted):
-                    self._label_states.pop(record.image_path, None)
-                    touched += 1
+        gained = [
+            record
+            for project in self.projects
+            for record in project.image_records
+            if _add_written(record, wanted)
+        ]
+        # A replaced label is forgotten as well as a new one: its record already
+        # named it, so only the path says that what it holds has changed.
+        self.known_labels.forget(labels=wanted, records=gained)
+        touched = len(gained)
         if touched:
             # Cleared whole rather than per frame: the cache is keyed by frame
             # position, so finding the entries made from these records means
@@ -1490,14 +1483,14 @@ class CurationController:
         shared label is marked corrected by any image of its scene.
 
         Reads each label at most once per scan, through
-        :meth:`record_label_state`, so the timeline has usually paid for it
+        :attr:`known_labels`, so the timeline has usually paid for it
         already.
         """
         candidates = records if records is not None else self.scoped_records()
         if not candidates:
             return LabelReadiness()
         return classify_labels(
-            self.expanded_records(candidates), self.record_label_state
+            self.expanded_records(candidates), self.known_labels.state
         )
 
     def reach(self) -> StateChangeReach:

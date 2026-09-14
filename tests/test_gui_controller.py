@@ -165,7 +165,7 @@ def test_naming_the_same_file_twice_does_not_list_it_twice():
 def test_a_written_label_changes_what_the_timeline_reports(tmp_path: Path):
     """The bug this exists for: naming the label on the record is not enough.
 
-    What the timeline draws comes from `record_label_state`, which memoises per
+    What the timeline draws comes from `known_labels`, which memoises per
     image so a label is opened once. Converting had that answer already cached
     from before the label existed, so the frame kept drawing as unlabelled
     until a rescan cleared it -- exactly what dropping the rescan was supposed
@@ -188,14 +188,14 @@ def test_a_written_label_changes_what_the_timeline_reports(tmp_path: Path):
 
     # Asked before the label exists, which is what the window does when it
     # draws the timeline on arriving at the lamella.
-    assert controller.record_label_state(record) == "missing"
+    assert controller.known_labels.state(record) == "missing"
 
     annotated = np.zeros((8, 8), dtype=np.uint8)
     annotated[2:5, 2:5] = 2
     tifffile.imwrite(str(labels_directory / "img.tif"), annotated)
     controller.attach_written([labels_directory / "img.tif"])
 
-    assert controller.record_label_state(record) == "annotated"
+    assert controller.known_labels.state(record) == "annotated"
 
 
 def test_naming_a_written_file_drops_what_was_prepared_from_the_old_one(tmp_path: Path):

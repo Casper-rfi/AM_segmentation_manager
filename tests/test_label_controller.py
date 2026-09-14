@@ -415,7 +415,7 @@ def test_the_timeline_reports_only_the_modality_on_screen(controller):
 def test_an_empty_label_is_reported_as_a_placeholder(controller):
     record = controller.record
     tifffile.imwrite(str(record.labels[0]), np.zeros((8, 8), dtype=np.uint8))
-    controller.forget_label_state(record)
+    controller.known_labels.forget(records=[record])
 
     assert controller.timeline_labels()["SEM"][0] == "empty"
 
@@ -424,24 +424,22 @@ def test_an_annotated_label_is_reported_as_present(controller):
     record = controller.record
     label = record.labels[0]
     tifffile.imwrite(str(label), np.full((8, 8), 2, dtype=np.uint8))
-    controller.forget_label_state(record)
+    controller.known_labels.forget(records=[record])
 
     assert controller.timeline_labels()["SEM"][0] == "present"
 
 
 def test_a_label_is_read_only_once(controller, monkeypatch):
     reads = []
-    import am_segmentation_manager.operations.label_io as label_io
+    import am_segmentation_manager.gui.known_labels as known_labels
 
-    original = label_io.label_state
+    original = known_labels.is_label_file_empty
 
-    def counted(record):
-        reads.append(record.image_path)
-        return original(record)
+    def counted(path):
+        reads.append(path)
+        return original(path)
 
-    monkeypatch.setattr(
-        "am_segmentation_manager.gui.label_controller.label_io.label_state", counted
-    )
+    monkeypatch.setattr(known_labels, "is_label_file_empty", counted)
     controller.timeline_labels()
     first = len(reads)
     controller.timeline_labels()
@@ -733,3 +731,24 @@ def test_switching_off_the_series_being_proofread_moves_to_one_shown(three_serie
     three_series.set_shown_series(("reference",))
 
     assert three_series.series == "reference"
+
+
+def test_forgetting_a_label_reaches_every_view_sharing_it(tmp_path: Path):
+    """A save forgets what it wrote for the Curate and Export views as well.
+
+    They hold the same :class:`KnownLabels`, so a timeline that read a label as
+    missing before it was drawn would otherwise go on saying so after the save.
+    """
+    from am_segmentation_manager.gui.known_labels import KnownLabels
+
+    build_dataset(tmp_path, acquisitions=2, labels="none", label_naming="convention")
+    shared = KnownLabels()
+    controller = LabelController(CONFIG, cache=stub_cache(), known_labels=shared)
+    controller.set_lamella(scan_lamella(tmp_path))
+    record = controller.record
+    assert shared.state(record) == "missing", "as another view asked before the save"
+
+    annotate(controller)
+    controller.save()
+
+    assert shared.state(record) == "annotated"

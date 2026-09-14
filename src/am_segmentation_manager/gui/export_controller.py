@@ -50,20 +50,15 @@ from ..operations.label_io import (
     MISSING,
     UNREADABLE,
     LabelReadiness,
-    classify_label,
     classify_labels,
-    is_label_file_empty,
 )
 from ..operations.label_measure import LabelMeasurement, measure_records, measurement_is_empty
 from ..operations.metadata_csv import export_image_metadata_csv
 from ..operations.selection import current_state
 from ..reporting import counts_as_rows, cross_tabulation_as_rows
+from .known_labels import KnownLabels
 
 logger = logging.getLogger(__name__)
-
-#: Tells "never read" apart from a cached ``None``, which is what an
-#: unreadable label records.
-_ABSENT = object()
 
 #: Workflow states offered as a filter, plus "any".
 STATES = ("all", "selected", "deselected", "corrected")
@@ -307,9 +302,15 @@ class ExportController:
     """Holds a scan, applies filters to it, and reports what would be exported."""
 
     def __init__(
-        self, start_path: Path | None = None, config: SegmentationConfig | None = None
+        self,
+        start_path: Path | None = None,
+        config: SegmentationConfig | None = None,
+        *,
+        known_labels: KnownLabels | None = None,
     ) -> None:
         self.start_path = start_path
+        #: What each label holds, shared with the window's other views.
+        self.known_labels = known_labels if known_labels is not None else KnownLabels()
         # Which class is a crack, and how small a component still counts as one.
         # Loaded here when nobody supplies it so the controller stands alone in
         # a test; the window hands over the one the overlays already use.
@@ -337,18 +338,12 @@ class ExportController:
         #: The headers the scan read, None where it found none; see
         #: :meth:`set_projects`.
         self._scan_headers: dict[Path, ImageMetadata | None] = {}
-        #: Whether each label holds anything, **keyed by the label** -- one
-        #: entry per file, conditions of a scene sharing it.
-        self._label_empty: dict[Path, bool | None] = {}
-        #: What each image's label turned out to be, **keyed by the image**,
-        #: as the two below are: that is what lets :mod:`..aggregate` close
-        #: over them the way it closes over the header mapping. Two key spaces
-        #: for one subject, so anything dropping an entry has to say which.
-        self._label_states: dict[Path, str] = {}
+        #: Each image's measurement, **keyed by the image**, which is what lets
+        #: :mod:`..aggregate` close over it the way it closes over the headers.
         self._measurements: dict[Path, LabelMeasurement] = {}
         #: The labels a measurement has covered, **keyed by the label**. Apart
-        #: from ``_label_empty``, which a label opened on its own to ask whether
-        #: it is blank also fills: that label has not been measured.
+        #: from what :attr:`known_labels` knows, which a label opened on its own
+        #: to ask whether it is blank also fills: that label has not been measured.
         self._measured_labels: set[Path] = set()
         self._measurements_loaded = False
         # Built by walking every record, and asked for once per filter list on
@@ -379,8 +374,7 @@ class ExportController:
         self._scan_headers = dict(headers or {})
         self._metadata = {}
         self._metadata_loaded = False
-        self._label_empty = {}
-        self._label_states = {}
+        self.known_labels.clear()
         self._measurements = {}
         self._measured_labels = set()
         self._measurements_loaded = False
@@ -393,14 +387,13 @@ class ExportController:
         A conversion replaces labels this view may already have opened,
         classified and measured, and the path is the key to all three -- so a
         replaced label would go on reporting the state and the area of the one
-        it replaced. That used to be reset by the scan after converting, which
-        handed the projects over again.
+        it replaced.
 
-        **The three are not keyed alike**, so *paths* cannot simply be popped
-        from each: ``_label_empty`` is keyed by the label, while
-        ``_label_states`` and ``_measurements`` are keyed by the *image*, which
-        is what lets :mod:`..aggregate` close over them exactly as it does the
-        header mapping. The images are found from what each record carries
+        **They are not keyed alike**, so *paths* cannot simply be popped from
+        each: what a label holds is kept by the label, in the shared
+        :attr:`known_labels`, while ``_measurements`` is keyed by the *image*,
+        which is what lets :mod:`..aggregate` close over it exactly as it does
+        the header mapping. The images are found from what each record carries
         rather than through ``find_matching_label``, which stats the disk once
         per record: this is on the path that exists to avoid reading the
         collection, and the file was just written, so whether it is there is
@@ -415,14 +408,10 @@ class ExportController:
         wanted = {Path(path) for path in paths}
         if not wanted:
             return 0
-        forgotten = sum(
-            1 for path in wanted
-            if self._label_empty.pop(path, _ABSENT) is not _ABSENT
-        )
+        forgotten = self.known_labels.forget(labels=wanted)
         self._measured_labels -= wanted
         for record in self._records:
             if any(label in wanted for label in record.labels):
-                self._label_states.pop(record.image_path, None)
                 self._measurements.pop(record.image_path, None)
         return forgotten
 
@@ -477,7 +466,10 @@ class ExportController:
         inside them: asking whether a label is blank opens it without
         measuring it.
         """
-        return len(self._selected_labels(label_filter=False) - self._label_empty.keys())
+        return sum(
+            1 for label in self._selected_labels(label_filter=False)
+            if not self.known_labels.knows(label)
+        )
 
     def labels_pending(self, breakdowns: Sequence[str | None] = ()) -> int:
         """Return how many labels must be opened before the view can be counted.
@@ -623,16 +615,17 @@ class ExportController:
         refuses, such as one of non-integer values.
         """
         for image_path, measurement in measured.items():
-            self._label_empty[measurement.path] = measurement_is_empty(measurement)
-            self._label_states[image_path] = classify_label(
-                measurement.path, self._label_empty[measurement.path]
+            self.known_labels.remember(
+                image_path, measurement.path, measurement_is_empty(measurement)
             )
         for record in records:
             if record.image_path in measured:
                 continue
             label = labels.get(record.image_path)
-            self._label_states[record.image_path] = classify_label(
-                label, self._is_empty_label(label) if label is not None else None
+            self.known_labels.remember(
+                record.image_path,
+                label,
+                self.known_labels.emptiness(label) if label is not None else None,
             )
 
     def load_metadata(self) -> int:
@@ -673,13 +666,7 @@ class ExportController:
         the same file: keeping two caches read every label in the collection
         twice.
         """
-        path = record.image_path
-        if path not in self._label_states:
-            label = find_matching_label(record)
-            self._label_states[path] = classify_label(
-                label, self._is_empty_label(label) if label is not None else None
-            )
-        return self._label_states[path]
+        return self.known_labels.state(record)
 
     def warm_labels(
         self, on_progress: Callable[[int, int], None] | None = None
@@ -803,16 +790,6 @@ class ExportController:
             kept = keep_one_condition_per_scene(kept)
         return kept
 
-    def _is_empty_label(self, path: Path) -> bool | None:
-        """Read a label's emptiness once, then remember it.
-
-        The preview refreshes on every filter change, and reading a label costs
-        milliseconds; without this the view would stutter on each keystroke.
-        """
-        if path not in self._label_empty:
-            self._label_empty[path] = is_label_file_empty(path)
-        return self._label_empty[path]
-
     def labels_known(self, matched: Sequence[ImageRecord] | None = None) -> bool:
         """Return whether every matched label has already been opened.
 
@@ -824,7 +801,7 @@ class ExportController:
         )
         return all(
             (label := find_matching_label(record)) is None
-            or label in self._label_empty
+            or self.known_labels.knows(label)
             for record in records
         )
 
@@ -843,7 +820,7 @@ class ExportController:
             if label is None:
                 missing += 1
                 continue
-            if self._is_empty_label(label) is True:
+            if self.known_labels.emptiness(label) is True:
                 empty += 1
                 continue
             annotated += 1
@@ -906,7 +883,7 @@ class ExportController:
             records,
             self.start_path or Path(),
             paired=self.paired,
-            is_empty=self._is_empty_label,
+            is_empty=self.known_labels.emptiness,
         )
 
     def export_training(
@@ -944,7 +921,7 @@ class ExportController:
             # "one image per label" is one of them.
             conditions="all",
             paired=self.paired,
-            is_empty=self._is_empty_label,
+            is_empty=self.known_labels.emptiness,
             overwrite=overwrite,
             scope=self.describe_filters(),
         )

@@ -44,6 +44,7 @@ from ..version_controller import VersionController
 from .common import (
     LABEL_BADGES,
     VIEW_ONLY_BADGE,
+    badge_markup,
     chip_icon,
     choice_count_badge,
     fill_choice_combo,
@@ -1260,12 +1261,4 @@ class LabelPanel(QWidget):
         is the whole reason these moved off one of their own.
         """
         self.badges.setVisible(bool(badges))
-        if not badges:
-            self.badges.setText("")
-            return
-        self.badges.setText(
-            "&nbsp;&nbsp;|&nbsp;&nbsp;".join(
-                f'<span style="{BADGE_STYLES[level]}">{text}</span>'
-                for text, level in badges
-            )
-        )
+        self.badges.setText(badge_markup(badges))

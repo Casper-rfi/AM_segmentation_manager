@@ -58,6 +58,13 @@ LABEL_BADGES = {
 VIEW_ONLY_BADGE = ("view only - labelling is not offered for this series", "info")
 
 
+def badge_markup(badges: Sequence[tuple[str, str]]) -> str:
+    """Return *badges*, each ``(text, level)``, as the rich text a label shows them in."""
+    return "&nbsp;&nbsp;|&nbsp;&nbsp;".join(
+        f'<span style="{theme.BADGE_STYLES[level]}">{text}</span>' for text, level in badges
+    )
+
+
 #: How many filenames a confirmation lists before summarising the rest. Shared
 #: because a bulk state change and a batch operation both list what they are
 #: about to touch, and two caps would have one dialog stop where the other did

@@ -38,6 +38,7 @@ from ..controller import DisplayMode
 from .common import (
     LABEL_BADGES,
     VIEW_ONLY_BADGE,
+    badge_markup,
     choice_count_badge,
     class_legend_html,
     fill_choice_combo,
@@ -732,10 +733,5 @@ class ImagePanel(QWidget):
         return badges
 
     def _set_badges(self, badges: list[tuple[str, str]]) -> None:
-        if not badges:
-            self.badges.setText("")
-            return
-        parts = [
-            f'<span style="{BADGE_STYLES[level]}">{text}</span>' for text, level in badges
-        ]
-        self.badges.setText("&nbsp;&nbsp;|&nbsp;&nbsp;".join(parts))
+        """Show what is worth saying about the frame's label."""
+        self.badges.setText(badge_markup(badges))

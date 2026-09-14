@@ -1,15 +1,11 @@
 """What the Label tab is looking at: one lamella, one modality, one frame.
 
-Holds the proofreading view's navigation, its own full-resolution frame cache
-and the edits waiting to be written, with no dependency on a GUI toolkit.
-Nothing here draws; this layer decides what is on screen and what a save would
-do with it.
-
-Two things separate it from the curation view. Frames are read at full
-resolution, because proofreading a boundary means seeing the pixels it runs
-through, so the cache holds a handful of frames rather than a lamella. And only
-the frames worth proofreading are visited -- a deselected image is one that was
-decided against, and stepping through it wastes the reviewer's attention.
+Holds the proofreading view's navigation, its own full-resolution frame cache and
+the edits waiting to be written, and draws nothing. Two things separate it from
+the curation view: frames are read at full resolution, proofreading a boundary
+meaning seeing the pixels it runs through, so the cache holds a handful of frames
+rather than a lamella; and only frames worth proofreading are visited, a
+deselected image being one that was decided against.
 """
 from __future__ import annotations
 
@@ -44,6 +40,7 @@ from ..operations.selection import RecordState, current_state, transition_record
 from .attribution import Attribution
 from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
 from .controller import DEFAULT_SERIES, LABEL_DISPLAY
+from .known_labels import KnownLabels
 from .label_session import LabelSession
 
 logger = logging.getLogger(__name__)
@@ -87,6 +84,7 @@ class LabelController:
         *,
         cache: FrameCache | None = None,
         attribution: Attribution | None = None,
+        known_labels: KnownLabels | None = None,
     ) -> None:
         """Create a controller drawing classes from *config*.
 
@@ -96,6 +94,8 @@ class LabelController:
                 class is this" the same way.
             cache: Where prepared frames are kept. Defaults to a small
                 full-resolution cache; tests pass one with a stub loader.
+            known_labels: What each label holds, shared with the curation
+                view. Defaults to one of its own.
         """
         #: Who changes are recorded as, shared with every other view.
         self.attribution = attribution if attribution is not None else Attribution()
@@ -149,7 +149,7 @@ class LabelController:
         #: the conditions of one acquisition share a label, so which one is
         #: being looked at never decides what an edit or a state change touches.
         self._variants: dict[str, str | None] = {}
-        self._label_states: dict[object, str] = {}
+        self.known_labels = known_labels if known_labels is not None else KnownLabels()
         self.session = LabelSession()
         self._keys: dict[Path, Path] = {}
 
@@ -191,7 +191,14 @@ class LabelController:
 
         self._lamella = lamella
         if not same:
-            self._label_states.clear()
+            # Arriving at a lamella reads its labels again, as its frames are:
+            # the proofreading may have been done in another program since.
+            if lamella is not None:
+                records = [record for stage in lamella.stages for record in stage.images]
+                self.known_labels.forget(
+                    labels=[label for record in records for label in record.labels],
+                    records=records,
+                )
             self._keys.clear()
             self._specks.clear()
             self._speck_counts.clear()
@@ -740,7 +747,10 @@ class LabelController:
         # own copy is what hid this until now.
         self.cache.relabel({item.destination: item.label for item in pending})
         self.session.discard()
-        self._label_states.clear()
+        # Forgotten for every view sharing the answers: the Curate timeline and
+        # the Export counts read these labels too.
+        written = {item.destination for item in pending}
+        self.known_labels.forget(labels=written, records=self.records_for(written))
         # The frames worth visiting are recomputed here rather than by the
         # rescan that used to follow a save: marking corrected moves the state
         # this reads, and a label written where there was none changes what a
@@ -870,26 +880,11 @@ class LabelController:
         record = self._frames[index].record(self._modality)
         return None if record is None else self.key_for(record)
 
-    def record_label_state(self, record) -> str:
-        """Return what *record*'s label is, reading the file at most once.
-
-        Cached for the controller's life, so stepping back and forth across a
-        lamella re-reads nothing.
-        """
-        path = record.image_path
-        if path not in self._label_states:
-            self._label_states[path] = label_io.label_state(record)
-        return self._label_states[path]
-
-    def forget_label_state(self, record) -> None:
-        """Drop what was known about *record*'s label, so it is read again."""
-        self._label_states.pop(record.image_path, None)
-
     def _label_state(self, record) -> str | None:
         """Return one record's label state as the timeline draws it."""
         if record is None:
             return None
-        return LABEL_DISPLAY[self.record_label_state(record)]
+        return LABEL_DISPLAY[self.known_labels.state(record)]
 
     def status_text(self) -> str:
         """Return the line describing where the reviewer is."""
