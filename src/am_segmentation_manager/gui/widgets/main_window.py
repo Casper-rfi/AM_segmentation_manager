@@ -18,7 +18,7 @@ from pathlib import Path
 
 from qtpy import API_NAME, QT_VERSION
 from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl, Signal
-from qtpy.QtGui import QCursor, QDesktopServices, QKeySequence
+from qtpy.QtGui import QAction, QCursor, QDesktopServices, QKeySequence
 from qtpy.QtWidgets import (
     QApplication,
     QDialog,
@@ -47,7 +47,9 @@ from .. import preferences
 from ..controller import (
     MODE_MODALITIES,
     CurationController,
+    DisplayMode,
     EditingDisabled,
+    EditTarget,
     ScanProgress,
 )
 from ..export_controller import ExportController
@@ -123,7 +125,28 @@ DEFAULT_SIZE = (1600, 950)
 #: rather than something wedged into the corner, as the shortcut list keeps.
 SCREEN_MARGIN = 40
 
-def _corner(scan_bar: QWidget, on_help, on_settings) -> QWidget:
+def _setting_text(settings: QSettings, key: str) -> str:
+    """Return the text stored under *key*, or an empty string where none is."""
+    value = settings.value(key, "", type=str)
+    return value if isinstance(value, str) else ""
+
+
+def _setting_bytes(settings: QSettings, key: str) -> QByteArray | None:
+    """Return the byte array stored under *key*, or None where none is."""
+    value = settings.value(key, None, type=QByteArray)
+    return value if isinstance(value, QByteArray) else None
+
+
+class CornerBar(QWidget):
+    """The tab row's corner, naming the widgets in it the window reaches back into."""
+
+    product_name: QLabel
+    author: QLabel
+    settings_button: QToolButton
+    help_button: QToolButton
+
+
+def _corner(scan_bar: QWidget, on_help, on_settings) -> CornerBar:
     """Return the tab row's corner: the folder, who is recording, and the mark.
 
     **Three runs with a rule between each**, read from what is being worked on
@@ -142,7 +165,7 @@ def _corner(scan_bar: QWidget, on_help, on_settings) -> QWidget:
         on_help: Called when the help button is pressed.
         on_settings: Called when the settings button is pressed.
     """
-    row = QWidget()
+    row = CornerBar()
     layout = QHBoxLayout(row)
     layout.setContentsMargins(0, 0, 10, 0)
     layout.setSpacing(6)
@@ -300,7 +323,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         )
         self.operations_panel.set_model(self._remembered_model(self._model_context))
         self.operations_panel.set_device(
-            self.settings.value(SETTING_DEVICE, "", type=str)
+            _setting_text(self.settings, SETTING_DEVICE)
         )
 
         # The other tabs get their own Qt-free controllers, and are handed the
@@ -373,7 +396,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         #: writing, and everything that writes rescans.
         self._archive_measured = False
 
-        remembered = self.settings.value(SETTING_SCAN_ROOT, "", type=str)
+        remembered = _setting_text(self.settings, SETTING_SCAN_ROOT)
         if remembered:
             self.scan_bar.set_path(remembered)
             self._show_folder_in_title(Path(remembered))
@@ -480,7 +503,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         menus = self.menuBar()
 
         self._menus = {}
-        self._menu_actions = {}
+        self._menu_actions: dict[str, QAction] = {}
         file_menu = self._menus["file"] = menus.addMenu("&File")
         self._add_action(
             file_menu, "Open folder...", self.scan_bar.browse,
@@ -739,13 +762,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
     def _restore_layout(self) -> None:
         """Put the window back the size and shape it was left in, on this screen."""
-        geometry = self.settings.value(SETTING_GEOMETRY, None, type=QByteArray)
+        geometry = _setting_bytes(self.settings, SETTING_GEOMETRY)
         if geometry:
             self.restoreGeometry(geometry)
         for name, splitter in self._splitters().items():
-            state = self.settings.value(
-                f"{SETTING_SPLITTER}/{name}", None, type=QByteArray
-            )
+            state = _setting_bytes(self.settings, f"{SETTING_SPLITTER}/{name}")
             if state:
                 splitter.restoreState(state)
         self.fit_to_screen()
@@ -810,8 +831,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         """
         key = self._model_key(context)
         if self.settings.contains(key):
-            return self.settings.value(key, "", type=str)
-        return self.settings.value(SETTING_LEGACY_MODEL, "", type=str)
+            return _setting_text(self.settings, key)
+        return _setting_text(self.settings, SETTING_LEGACY_MODEL)
 
     def _remember_model(self) -> None:
         """Store what is in the model box against the view it belongs to."""
@@ -1172,7 +1193,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._refresh_lamellae()
         self.refresh()
 
-    def _set_mode(self, mode: str, from_user: bool = False) -> None:
+    def _set_mode(self, mode: DisplayMode, from_user: bool = False) -> None:
         if from_user and mode not in self.controller.available_modes():
             return
         self.controller.set_mode(mode)
@@ -1192,7 +1213,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
     def _toggle_overlay(self) -> None:
         self.image_panel.overlay_check.toggle()
 
-    def _set_target(self, target: str) -> None:
+    def _set_target(self, target: EditTarget) -> None:
         self.controller.set_target(target)
         self._refresh_state_panel()
 

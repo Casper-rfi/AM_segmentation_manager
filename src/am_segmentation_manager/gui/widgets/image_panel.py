@@ -11,6 +11,7 @@ no labels at all, a file that would not read, or an approximate position.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
@@ -357,7 +358,7 @@ class ImagePanel(QWidget):
         if mode != "grid":
             self._offer_overviews(False)
 
-    def set_available_modes(self, modes: list[str]) -> None:
+    def set_available_modes(self, modes: Sequence[str]) -> None:
         """Disable the views this frame has nothing to show for, saying why."""
         for mode, button in self.mode_buttons.items():
             available = mode in modes
