@@ -5,7 +5,8 @@ One property is bars and two are a heatmap, whose *empty* cells are the finding.
 bespoke belongs in a script reading the exported CSV. Figures are built without
 ``pyplot``, so nothing registers globally, no backend is chosen, and a chart drawn
 over ssh never looks for a display. The window attaches its own canvas;
-:func:`plot_counts` and :func:`plot_cross_tabulation` write a file.
+:func:`plot_counts` and :func:`plot_cross_tabulation` write a file, refusing to
+replace one unless told to, as every export does.
 """
 from __future__ import annotations
 
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .aggregate import totals
+from .io.atomic import write_atomically
+from .io.tables import refuse_existing
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from matplotlib.axes import Axes
@@ -271,10 +274,22 @@ def heatmap_figure(
     return figure
 
 
-def _finish(figure: Figure, output: Path) -> Path:
-    """Write *figure* to *output*, in whichever format the suffix names."""
-    output.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(output, dpi=200)
+def _finish(figure: Figure, output: Path, *, overwrite: bool = False) -> Path:
+    """Write *figure* to *output* whole, in whichever format the suffix names.
+
+    Raises:
+        FileExistsError: If *output* exists, or appears while it is being
+            written, and *overwrite* is False.
+    """
+    refuse_existing([output], overwrite=overwrite)
+    landed = write_atomically(
+        output,
+        # The temporary keeps the suffix, which is what savefig reads the format from.
+        lambda temporary: figure.savefig(temporary, dpi=200),
+        commit_if=None if overwrite else (lambda _temporary: not output.exists()),
+    )
+    if not landed:
+        raise FileExistsError(f"{output} appeared while it was being written; nothing was written")
     logger.info("Wrote %s", output)
     return output
 
@@ -286,17 +301,22 @@ def plot_counts(
     *,
     xlabel: str = "",
     ordered: bool = False,
+    overwrite: bool = False,
 ) -> Path:
     """Draw a one-dimensional breakdown and write it to *output*.
 
     Args:
         output: File to write. The suffix chooses the format -- ``.png`` for a
             figure to look at, ``.svg`` for one to put in a paper.
+        overwrite: Replace *output* if it already exists.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
+        FileExistsError: If *output* exists and *overwrite* is False.
     """
-    return _finish(bar_figure(counts, title, xlabel=xlabel, ordered=ordered), output)
+    return _finish(
+        bar_figure(counts, title, xlabel=xlabel, ordered=ordered), output, overwrite=overwrite
+    )
 
 
 def plot_cross_tabulation(
@@ -307,11 +327,13 @@ def plot_cross_tabulation(
     *,
     row_order: Sequence[Hashable] = (),
     column_order: Sequence[Hashable] = (),
+    overwrite: bool = False,
 ) -> Path:
     """Draw a two-dimensional breakdown and write it to *output*.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
+        FileExistsError: If *output* exists and *overwrite* is False.
     """
     return _finish(
         heatmap_figure(
@@ -319,4 +341,5 @@ def plot_cross_tabulation(
             row_order=row_order, column_order=column_order,
         ),
         output,
+        overwrite=overwrite,
     )

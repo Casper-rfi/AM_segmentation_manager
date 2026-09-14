@@ -18,6 +18,7 @@ from .. import __version__
 from ..history import CONFIG_DISPLAY, USER_ENV_VAR, USER_FILENAME
 from . import adding, curating, quantifying, recording, restoring
 from .logs import DEFAULT_GUI_LOG, LOG_FILE_MAX_BYTES, open_log_file
+from .scope import report_refused
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,15 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 1
-    return handler(args)
+    try:
+        return handler(args)
+    except FileExistsError as error:
+        # An output that appeared after the command checked for it. Only a
+        # command offering --overwrite refuses one; from any other it is a fault.
+        if not hasattr(args, "overwrite"):
+            raise
+        report_refused(error)
+        return 2
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI runner

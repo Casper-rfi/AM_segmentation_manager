@@ -202,3 +202,64 @@ def test_the_missing_dependency_error_says_how_to_fix_it(monkeypatch):
     monkeypatch.setattr(plots, "has_plot_support", lambda: False)
     with pytest.raises(RuntimeError, match="pip install"):
         require_plot_support()
+
+
+# ---------------------------------------------------------------------------
+# An existing chart is somebody's
+# ---------------------------------------------------------------------------
+
+def test_an_existing_chart_is_refused_and_left_untouched(tmp_path: Path):
+    chart = tmp_path / "chart.png"
+    chart.write_bytes(b"a chart somebody kept")
+
+    with pytest.raises(FileExistsError):
+        plot_counts(COUNTS, "t", chart)
+    with pytest.raises(FileExistsError):
+        plot_cross_tabulation(TABLE, "a", "b", chart)
+
+    assert chart.read_bytes() == b"a chart somebody kept"
+
+
+def test_overwrite_replaces_an_existing_chart(tmp_path: Path):
+    chart = tmp_path / "chart.png"
+    chart.write_bytes(b"an old chart")
+
+    plot_counts(COUNTS, "t", chart, overwrite=True)
+
+    assert chart.read_bytes().startswith(b"\x89PNG")
+
+
+def test_a_chart_appearing_while_it_is_written_is_not_replaced(tmp_path: Path, monkeypatch):
+    """The up-front check and the rename are not one step, so the rename asks again."""
+    from matplotlib.figure import Figure
+
+    chart = tmp_path / "chart.png"
+    draw = Figure.savefig
+
+    def savefig(self, *args, **kwargs):
+        chart.write_bytes(b"written meanwhile")
+        return draw(self, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", savefig)
+
+    with pytest.raises(FileExistsError, match="appeared"):
+        plot_counts(COUNTS, "t", chart)
+
+    assert chart.read_bytes() == b"written meanwhile"
+    assert [path.name for path in tmp_path.iterdir()] == ["chart.png"], "no temporary left behind"
+
+
+def test_cli_refuses_an_existing_chart_before_counting(tmp_path: Path, capsys):
+    from conftest import build_dataset
+
+    build_dataset(tmp_path, acquisitions=2)
+    chart = tmp_path / "chart.png"
+    chart.write_bytes(b"a chart somebody kept")
+    command = ["stats", str(tmp_path), *SCOPE, "--by", "modality", "--plot", str(chart)]
+
+    assert main(command) == 2
+    assert "Images per modality" not in capsys.readouterr().out
+    assert chart.read_bytes() == b"a chart somebody kept"
+
+    assert main([*command, "--overwrite"]) == 0
+    assert chart.read_bytes().startswith(b"\x89PNG")

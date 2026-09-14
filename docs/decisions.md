@@ -444,11 +444,13 @@ rather than appending to it.
   what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
   checks are not its: free space is estimated first, and a destination inside the folder being
   copied from is refused, it being about to walk into its own output.
-- **An export replaces nothing unasked.** Every CSV it would write is checked before a header or
-  a label is opened, and one already there is refused unless `--overwrite` or the window's save
-  dialog said otherwise (`test_an_existing_validation_file_stops_the_export_before_anything_is_written`,
-  `test_cli_stats_refuses_to_replace_a_csv`): an export is something a person may have kept, and a
-  split replaced by accident is gone with the seed that made it. A training export also leaves a
+- **An export replaces nothing unasked.** Every CSV or chart it would write is checked before a
+  header or a label is opened, and one already there is refused unless `--overwrite` or the window's
+  save dialog said otherwise (`test_an_existing_validation_file_stops_the_export_before_anything_is_written`,
+  `test_cli_stats_refuses_to_replace_a_csv`, `test_cli_refuses_an_existing_chart_before_counting`);
+  one appearing mid-write is refused as the file lands, and the command line reports it the same
+  way (`test_cli_reports_an_output_that_appears_while_it_is_written`): an export is something a
+  person may have kept, and a split replaced by accident is gone with the seed that made it. A training export also leaves a
   manifest, written last so it names only files written whole
   (`test_the_manifest_counts_what_the_files_hold`).
 

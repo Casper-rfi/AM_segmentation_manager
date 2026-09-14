@@ -463,7 +463,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     # them here too would shadow them for the whole of main(), including
     # the parser construction above.
 
-    if _outputs_refused([args.output], args.overwrite):
+    if _outputs_refused([args.output, args.plot], args.overwrite):
         return 2
     records, start_path = _resolve_records(args)
     if not records:
@@ -556,10 +556,12 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             if len(keys) == 1:
                 plot_counts(
                     counts, f"Images per {chosen[0]}", Path(args.plot),
-                    xlabel=chosen[0],
+                    xlabel=chosen[0], overwrite=args.overwrite,
                 )
             else:
-                plot_cross_tabulation(table, chosen[0], chosen[1], Path(args.plot))
+                plot_cross_tabulation(
+                    table, chosen[0], chosen[1], Path(args.plot), overwrite=args.overwrite
+                )
         except RuntimeError as exc:
             # The counts have already been printed, so a missing optional
             # dependency should not lose them.

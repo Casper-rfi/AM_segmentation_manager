@@ -339,9 +339,14 @@ def _outputs_refused(outputs: Iterable[str | Path | None], overwrite: bool) -> b
     try:
         refuse_existing([Path(output) for output in outputs if output], overwrite=overwrite)
     except FileExistsError as error:
-        logger.error(
-            "Could not export: %s. Pass --overwrite to replace it, or choose another file",
-            error,
-        )
+        report_refused(error)
         return True
     return False
+
+
+def report_refused(error: FileExistsError) -> None:
+    """Say that an output was left in place rather than replaced, and how to replace it."""
+    logger.error(
+        "Could not export: %s. Pass --overwrite to replace it, or choose another file",
+        error,
+    )

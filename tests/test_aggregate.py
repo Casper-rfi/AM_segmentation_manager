@@ -1089,3 +1089,20 @@ def test_cli_metadata_exports_refuse_to_replace_a_csv(tmp_path: Path, command: l
 
     assert main([*arguments, "--overwrite"]) == 0
     assert output.read_text(encoding="utf-8") != "kept\n"
+
+
+def test_cli_reports_an_output_that_appears_while_it_is_written(tmp_path: Path, capsys, monkeypatch):
+    """Checked up front and again as the file lands; the second refusal is not a traceback."""
+    import am_segmentation_manager.cli.quantifying as quantifying
+    from am_segmentation_manager.cli import main
+
+    built(tmp_path)
+    output = tmp_path / "counts.csv"
+
+    def appears(path, *args, **kwargs):
+        raise FileExistsError(f"{path} appeared while it was being written; nothing was written")
+
+    monkeypatch.setattr(quantifying, "write_csv", appears)
+
+    assert main(["stats", str(tmp_path), *SCOPE, "--by", "modality", "-o", str(output)]) == 2
+    assert "Could not export" in capsys.readouterr().out
