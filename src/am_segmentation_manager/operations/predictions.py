@@ -1,14 +1,11 @@
 """Turning predictions into the pseudo-labels that are then proofread.
 
-Converts a prediction image into a label image, resizing by nearest neighbour
-where the prediction and its image differ in shape; without the image-processing
-dependencies (tifffile, numpy, cv2) it copies the file and logs a warning.
-
-Only predictions the pipeline has not post-processed are eligible, and where an
+A prediction becomes a label, resized by nearest neighbour where its shape
+differs from its image's, or copied with a warning without the image stack.
+Only predictions the pipeline has not post-processed are eligible; where an
 image has both this package's and the microscope's, the caller says which to
-take; the other stands in where it is missing. An existing
-label is replaced only when the caller asks for it, and a proofread one not even
-then, so nothing here can destroy manual annotation.
+take and the other stands in where it is missing. An existing label is replaced
+only when the caller asks, and a proofread one never.
 """
 from __future__ import annotations
 

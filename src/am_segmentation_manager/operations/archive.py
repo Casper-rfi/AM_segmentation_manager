@@ -1,20 +1,12 @@
 """Keeping the labels an operation replaces, so replacing one is reversible.
 
-A version goes to ``<project>/AM_archive/<path relative to the project>/`` under
-its own stem with the time and a short digest, as a **whole label file** -- never
-a difference against another version. A copy stays readable in any image viewer
-and cannot be lost by a broken chain, and at 143 KB against a 211 GB collection
-there is nothing to be saved by the alternative.
-
-**What is archived is decided by where the pixels came from, not by what state
-claims.** An untouched pseudo-label is machine output the model can make again;
-one somebody has edited is human work whatever its group is declared to be. The
-digest recorded when the machine wrote it is what tells those apart, so nothing
-here asks the state at all. Where no such record exists the provenance is
-unknown and the version is kept, that being the safe direction.
-
-Archiving happens only where a project keeps a history, which is the same rule
-recording follows: a project nothing has written to gains no files.
+A version goes to ``<project>/AM_archive/<path relative to the project>/`` as a
+**whole label file** named by its stem, the time and a short digest, so every
+copy stays readable on its own. **What is archived is decided by where the
+pixels came from, not by what state claims**: untouched machine output, which
+the log's digest identifies and the model can make again, is not kept; anything
+else is, unknown provenance being the safe direction. Archiving happens only
+where a project keeps a history, as recording does.
 """
 from __future__ import annotations
 

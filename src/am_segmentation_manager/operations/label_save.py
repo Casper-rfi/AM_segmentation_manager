@@ -1,13 +1,10 @@
 """Writing proofread labels back to disk.
 
-The whole batch is validated before any of it is written, so a save cannot stop
-partway leaving the reviewer unable to say which labels reached the disk. Each
-file is then written through a temporary and renamed into place, so an
-interrupted run leaves the label that was there untouched rather than truncated.
-
-Two things stop a write on their own. A label whose file has changed on disk
-since it was read would be overwritten blind, and a label whose group is
-declared corrected is proofread work, which nothing here touches without the
+The whole batch is validated before any of it is written, and each file goes
+through a temporary renamed into place, so a save neither stops partway nor
+leaves a truncated label. Two things stop a write on their own: a label whose
+file changed on disk since it was read, which would be overwritten blind, and
+one whose group is declared corrected, which nothing here touches without the
 reviewer saying so.
 """
 from __future__ import annotations

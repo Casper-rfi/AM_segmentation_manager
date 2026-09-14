@@ -1,28 +1,12 @@
 """Bringing a worked-on copy back into the collection it came from.
 
-A copy carries its projects' histories and an ``AM_export.yaml`` naming the
-entry each log ended at. **That entry proves where the copy came from; the
-common ancestor is the history the two logs share.** Everything here is a
-three-way comparison against that: what this collection has done since, what
-the copy has done since, and whether those can both be true.
-
-Taking the recorded tip as the ancestor instead would be right exactly once. A
-merge adds the copy's entries to this collection, so a copy that is worked on
-and brought back a second time shares more history than its fork point names --
-and comparing against the fork point would call every label taken the first time
-a conflict, each side having "changed" it since.
-
-**Nothing is trusted about current content.** Every label in scope is re-hashed
-on both sides rather than read out of a log, because anything can have edited a
-file without recording it -- the external segmentation software, a manual copy,
-a restore from backup -- and a merge that believed the log would keep the wrong
-version while reporting success.
-
-**A merge is additive and it never guesses.** A target the copy does not hold is
-not a deletion, a copy holding a fraction of a collection being the ordinary
-case; no image is ever moved; and a target both sides changed differently is a
-conflict a person resolves, never a timestamp or a rule about which tree
-wins. Both versions survive in the archive whichever way it goes.
+The copy's ``AM_export.yaml`` proves where it came from; **the common ancestor
+is the history the two logs share**, which a copy merged back before holds more
+of than its fork point names. **Every label is re-hashed on both sides**, never
+read from a log, since anything can edit a file without recording it. **A merge
+is additive and never guesses**: a target the copy lacks is not a deletion, no
+image moves, a target both sides changed differently is a conflict a person
+resolves, and both versions survive in the archive.
 """
 from __future__ import annotations
 
@@ -256,8 +240,7 @@ class MergePlan:
 
         A label taken from the copy replaces work somebody did by hand, and a
         state taken from it can drop a corrected claim. Neither happens without
-        being asked for by name -- the same rule ``revert`` follows, and the
-        one thing a merge did not used to check.
+        being asked for by name -- the same rule ``revert`` follows.
         """
         labels = tuple(
             item
@@ -864,9 +847,7 @@ def _take_state(
 ) -> None:
     """Declare the copy's state here, through the one operation that may.
 
-    Leaving corrected is permitted only where the caller said so. Granting it
-    whenever it happened to be needed made the guard describe the situation
-    rather than protect against it.
+    Leaving corrected is permitted only where the caller said so.
     """
 
     transition_records(
