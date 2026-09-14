@@ -658,9 +658,9 @@ class MetadataPanel(QWidget):
                 [summary.folder for summary in summaries],
                 [summary.own_name for summary in summaries],
                 icons=[_completeness_icon(summary) for summary in summaries],
-                tooltips=[
-                    f"{summary.label}\n{summary.describe()}" for summary in summaries
-                ],
+                # The count alone: the row already names the project, and the
+                # path is a right-click away.
+                tooltips=[summary.describe() for summary in summaries],
                 current=0 if summaries else None,
             )
         finally:
@@ -837,7 +837,7 @@ class MetadataPanel(QWidget):
             summaries = self.controller.project_summaries()
             self.projects.show_icons(
                 [_completeness_icon(summary) for summary in summaries],
-                [f"{summary.label}\n{summary.describe()}" for summary in summaries],
+                [summary.describe() for summary in summaries],
             )
             scope = self.controller.scope_title()
             self.fields_box.setTitle(f"Metadata: {scope}" if scope else "Metadata")

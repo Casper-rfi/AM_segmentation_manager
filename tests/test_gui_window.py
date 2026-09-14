@@ -4028,7 +4028,9 @@ def test_a_row_carries_its_own_name_and_not_the_folder_again(metadata_panel):
     item = metadata_panel.projects.project_item(0)
 
     assert "20260728_CB_AM_bitmap" not in item.text(0)
-    assert "20260728_CB_AM_bitmap" in item.toolTip(0)
+    assert item.toolTip(0) == f"3/{len(DESCRIPTIVE_FIELDS)} completed", (
+        "the row names the project, and right-click copies its path"
+    )
 
 
 def test_a_long_row_is_elided_rather_than_scrolled(metadata_panel):
@@ -4039,9 +4041,7 @@ def test_a_long_row_is_elided_rather_than_scrolled(metadata_panel):
 
     assert metadata_panel.projects.textElideMode() == Qt.ElideMiddle
     assert metadata_panel.projects.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
-    # The folder is a row of its own now, so the tooltip carries the whole
-    # relative path where the row carries only the name under it.
-    assert item.text(0) in item.toolTip(0)
+    assert item.text(0)
 
 
 def test_saving_metadata_starts_the_record_it_writes_into(metadata_panel):
