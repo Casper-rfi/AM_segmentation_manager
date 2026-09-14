@@ -18,6 +18,7 @@ from am_segmentation_manager.models import ImageRecord
 def pool(monkeypatch):
     """Send even the smallest batch to a pool of two, and take that pool down after."""
     parallel.shutdown_pool()
+    monkeypatch.setattr(parallel, "_pool_broken", False)
     monkeypatch.setattr(parallel, "MIN_POOL_ITEMS", 0)
     monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
     monkeypatch.setattr(parallel, "CHUNK_SIZE", 2)
@@ -121,6 +122,28 @@ def test_a_broken_pool_finishes_the_batch_here(monkeypatch, pool, caplog):
     with caplog.at_level(logging.WARNING):
         assert parallel.map_in_processes(abs, [-1, -2, -3]) == [1, 2, 3]
     assert "finishing 3 item(s) in this process" in caplog.text
+
+
+def test_a_pool_that_broke_is_not_started_again(monkeypatch, pool, caplog):
+    """What broke one pool -- a script without a ``__main__`` guard -- breaks the
+    next, so starting another for every batch only repeats the failure."""
+    started: list[int] = []
+
+    class Broken:
+        def map(self, *_args):
+            raise BrokenProcessPool("a worker was killed")
+
+    def start() -> Broken:
+        started.append(1)
+        return Broken()
+
+    monkeypatch.setattr(parallel, "_session_pool", start)
+
+    with caplog.at_level(logging.WARNING):
+        assert parallel.map_in_processes(abs, [-1, -2]) == [1, 2]
+        assert parallel.map_in_processes(abs, [-3, -4]) == [3, 4]
+    assert started == [1]
+    assert caplog.text.count("worker processes stopped") == 1
 
 
 def test_a_pool_breaking_part_way_finishes_only_what_is_left(monkeypatch, pool, caplog):

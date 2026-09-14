@@ -40,6 +40,11 @@ MIN_POOL_ITEMS = 256
 _pool: ProcessPoolExecutor | None = None
 _pool_lock = threading.Lock()
 
+#: Set the first time a pool breaks, after which every batch runs in this
+#: process: what broke one pool, such as a script without a ``__main__`` guard,
+#: breaks the next.
+_pool_broken = False
+
 
 def map_in_processes(
     function: Callable[[T], R],
@@ -54,12 +59,15 @@ def map_in_processes(
     Order is kept. *chunk_size* and *min_items* default to :data:`CHUNK_SIZE` and
     :data:`MIN_POOL_ITEMS`, which suit an input costing about what a header does.
     *on_progress* is called as ``on_progress(done, total)`` as results come back.
-    If the pool has broken -- a worker killed from outside -- what is left of the
-    batch is finished in this process with a warning rather than lost.
+    A script calling this needs the ``if __name__ == "__main__":`` guard that
+    spawning requires. If the pool breaks -- a worker killed from outside, or a
+    script without that guard -- what is left of the batch, and every batch
+    after it, runs in this process under one warning rather than being lost.
     """
+    global _pool_broken
     items = list(items)
     results: list[R] = []
-    if len(items) < (MIN_POOL_ITEMS if min_items is None else min_items):
+    if _pool_broken or len(items) < (MIN_POOL_ITEMS if min_items is None else min_items):
         _map_here(function, items, results, on_progress)
         return results
     size = CHUNK_SIZE if chunk_size is None else chunk_size
@@ -75,9 +83,11 @@ def map_in_processes(
                 on_progress(len(results), len(items))
     except BrokenProcessPool:
         logger.warning(
-            "The worker processes stopped; finishing %d item(s) in this process",
+            "The worker processes stopped; finishing %d item(s) in this process, "
+            "where every later batch runs too",
             len(items) - len(results),
         )
+        _pool_broken = True
         shutdown_pool()
         _map_here(function, items, results, on_progress)
     return results
@@ -97,7 +107,10 @@ def _map_here(
 
 
 def shutdown_pool() -> None:
-    """Stop the worker processes; the next batch large enough starts new ones."""
+    """Stop the worker processes; the next batch large enough starts new ones.
+
+    Unless the pool has broken, in which case none is started again.
+    """
     global _pool
     with _pool_lock:
         pool, _pool = _pool, None
