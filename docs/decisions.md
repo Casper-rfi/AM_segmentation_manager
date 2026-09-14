@@ -377,7 +377,9 @@ rather than appending to it.
   exits; `stats` keeps the whole-collection sweep and `quantify-labels` the per-lamella table.
 - **Opening the Export tab reads the headers and nothing else.** Under a millisecond an image,
   and it is what every acquisition filter and breakdown is made of. Offering them greyed out until
-  a button was found and pressed was a control that did nothing with no way to tell why.
+  a button was found and pressed was a control that did nothing with no way to tell why. **It reads
+  none the scan read**: every loose image is opened for its beam and time, and the `ProjectIndex`
+  keeps the rest (`test_the_export_tab_reads_only_headers_the_scan_did_not`).
 - **Opening a label is asked for, never assumed.** An order of magnitude dearer than a header, and
   it answers a different question: what is *in* the label. So the summary shows what a record knows
   about itself and says plainly that the rest needs Measure labels. Choosing the label filter or a

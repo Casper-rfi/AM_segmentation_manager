@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.image_metadata import ION, ImageMetadata
 from am_segmentation_manager.survey import survey_project
 
 
@@ -34,7 +35,7 @@ def resolved_beams(monkeypatch):
     """
     monkeypatch.setattr(
         "am_segmentation_manager.survey.header_reader",
-        lambda: (lambda path: ("FIB", None)),
+        lambda: (lambda path: ImageMetadata(beam_type=ION)),
     )
 
 
@@ -159,7 +160,7 @@ def test_an_image_matching_no_rule_is_reported(project: Path):
 def test_an_image_whose_beam_nothing_can_state_is_reported(project: Path, monkeypatch):
     monkeypatch.setattr(
         "am_segmentation_manager.survey.header_reader",
-        lambda: (lambda path: (None, None)),
+        lambda: (lambda path: None),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 

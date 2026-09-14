@@ -777,6 +777,29 @@ def test_headers_are_only_read_when_something_needs_them(exporter: ExportControl
     assert exporter.metadata_loaded()
 
 
+def test_the_export_tab_reads_only_headers_the_scan_did_not(
+    exporter: ExportController, monkeypatch
+):
+    """The scan has already opened every loose image, and reading those again was
+    most of the time the tab took to open. One it found no header in is not
+    opened again either."""
+    first, second, *rest = exporter.records
+    known = {first.image_path: ImageMetadata(beam_type=ION), second.image_path: None}
+    exporter.set_projects(exporter.projects, headers=known)
+    asked: list[Path] = []
+    monkeypatch.setattr(
+        ec, "read_records_metadata",
+        lambda records: asked.extend(record.image_path for record in records) or {},
+    )
+
+    assert exporter.headers_to_read() == len(rest)
+    exporter.load_metadata()
+
+    assert asked == [record.image_path for record in rest]
+    assert dict(exporter.metadata_map) == {first.image_path: known[first.image_path]}
+    assert exporter.headers_to_read() == 0
+
+
 def test_headers_are_not_re_read_when_none_could_be_parsed(exporter: ExportController):
     """Regression: "loaded but found nothing" looked the same as "not loaded",
     so a collection of unreadable headers was re-read on every filter change."""

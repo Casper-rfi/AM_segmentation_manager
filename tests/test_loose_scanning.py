@@ -14,6 +14,7 @@ import pytest
 
 from am_segmentation_manager import parallel
 from am_segmentation_manager.frames import group_by_acquisition
+from am_segmentation_manager.image_metadata import ION, ImageMetadata
 from am_segmentation_manager.operations.label_groups import group_identity, group_key
 from am_segmentation_manager.scanner import Scanner
 
@@ -192,7 +193,7 @@ def test_scanning_works_without_the_image_stack(project, monkeypatch):
 def test_a_beam_read_from_a_header_indexes_the_image(project, monkeypatch):
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", None)),
+        lambda: (lambda path: ImageMetadata(beam_type=ION)),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 
@@ -213,7 +214,7 @@ def test_only_loose_images_are_opened(project, monkeypatch):
     opened: list[str] = []
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: (opened.append(path.name), ("FIB", None))[1]),
+        lambda: (lambda path: (opened.append(path.name), ImageMetadata(beam_type=ION))[1]),
     )
 
     Scanner(project.parent).build_index()
@@ -237,7 +238,7 @@ def test_a_scan_hands_its_headers_over_together(project, monkeypatch):
     real = parallel.map_in_processes
 
     def read(path):
-        return ("FIB", None)
+        return ImageMetadata(beam_type=ION)
 
     def recording(function, items, **options):
         items = list(items)
@@ -279,12 +280,34 @@ def test_a_scan_in_worker_processes_indexes_what_one_here_does(project, monkeypa
     assert [p.image_records for p in pooled] == [p.image_records for p in here]
 
 
+def test_the_index_keeps_every_header_the_scan_read(project, monkeypatch):
+    """The scan opens each loose image for its beam and time; the rest of what it
+    read is kept, so the Export tab need not open those files again."""
+    monkeypatch.setattr(
+        "am_segmentation_manager.scanner.header_reader",
+        lambda: (lambda path: ImageMetadata(beam_type=ION, plasma_gas=path.name)),
+    )
+
+    headers = Scanner(project.parent).build_index().headers
+
+    assert {path.name: header.plasma_gas for path, header in headers.items()} == {
+        name: name
+        for name in (
+            "ref_Polishing_start_eb.tif",
+            "ref_Polishing_start_ib.tif",
+            "ref_alignment_ib.tif",
+            "Polishing_pre-task_10-55-29_eb.tif",
+            "Polishing_pre-task_10-55-29_ib.tif",
+        )
+    }
+
+
 def test_each_image_is_opened_once(project, monkeypatch):
     """The beam and the acquisition time come out of the same read."""
     opened: list[str] = []
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: (opened.append(path.name), ("FIB", None))[1]),
+        lambda: (lambda path: (opened.append(path.name), ImageMetadata(beam_type=ION))[1]),
     )
     touch(project / "01-ruling-ibex", "ref_PositionReady.tif")
 

@@ -895,7 +895,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         if not self.export_controller.records or self.export_controller.metadata_loaded():
             self.export_panel.refresh()
             return
-        images = len(self.export_controller.records)
+        images = self.export_controller.headers_to_read()
         self._run_operation(
             f"Reading {images} image header(s)",
             self.export_controller.load_metadata,
@@ -917,7 +917,12 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
     def _share_scan(self) -> None:
         """Hand the scanned projects to the other tabs."""
         projects = self.controller.projects
-        self.export_controller.set_projects(projects, self.controller.start_path)
+        index = self.controller.index
+        self.export_controller.set_projects(
+            projects,
+            self.controller.start_path,
+            index.headers if index is not None else None,
+        )
         self.metadata_controller.set_projects(projects)
         self.label_controller.set_projects(projects)
         self.operations_controller.set_start_path(self.controller.start_path)

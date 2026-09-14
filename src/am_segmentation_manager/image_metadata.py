@@ -9,8 +9,9 @@ one schema, and the older FEI vendor tag 34682, symmetric between beams with
 image path, built by the commands that need it, so a scan stays a filesystem
 walk rather than an image pass. :func:`header_reader` is the single exception, and a
 bounded one: a *loose* image's filename states neither its beam reliably nor
-when it was taken, so a scan opens those and only those. An Adaptive Polishing
-image is never opened.
+when it was taken, so a scan opens those and only those, and keeps what it read
+on :attr:`~.scanner.ProjectIndex.headers`. An Adaptive Polishing image is never
+opened.
 """
 from __future__ import annotations
 
@@ -915,25 +916,7 @@ def read_image_metadata(path: Path) -> ImageMetadata | None:
     return extract_metadata(document, dialect)
 
 
-#: What a scan needs from a loose image's header: which beam took it, where the
-#: filename does not say, and when -- which nothing else states reliably.
-LooseHeader = tuple[str | None, "datetime | None"]
-
-
-def read_loose_header(path: Path) -> LooseHeader:
-    """Return the beam and acquisition time an image's header states.
-
-    Both come from one read, because a scan wants both of a loose image and
-    opening the file twice for them would double the only part of a scan that
-    is not a filesystem walk.
-    """
-    metadata = read_image_metadata(path)
-    if metadata is None:
-        return None, None
-    return metadata.modality, metadata.acquired_at
-
-
-def header_reader() -> Callable[[Path], LooseHeader] | None:
+def header_reader() -> Callable[[Path], ImageMetadata | None] | None:
     """Return something that can read a loose image's header, or None.
 
     **The one thing that opens an image during a scan**, and only ever a *loose*
@@ -963,14 +946,14 @@ def header_reader() -> Callable[[Path], LooseHeader] | None:
             "extra to place them"
         )
         return None
-    return read_loose_header
+    return read_image_metadata
 
 
 def read_records_metadata(records: Iterable) -> dict[Path, ImageMetadata]:
     """Read metadata for many records, keyed by image path.
 
-    Returned as a mapping rather than attached to the records: metadata must
-    stay out of the scan, and a mapping keeps the cost where it was asked for.
+    Returned as a mapping rather than attached to the records, as the headers a
+    scan read are, so the cost stays where it was asked for.
     Records whose header could not be read are absent from the result. A batch
     large enough is read in worker processes, by :func:`~.parallel.map_in_processes`.
     """

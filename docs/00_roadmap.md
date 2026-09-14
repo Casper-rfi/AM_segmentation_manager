@@ -29,12 +29,9 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 
-- **Loading, agreed 2026-09-14.** The Export tab and the scanner read in `parallel.py`'s pool; next
-  the scanner hands the Export tab the headers it read, then the label filter's pass measures, so
-  an area breakdown opens no label twice.
-- **Try branch `gui-review` in the window before it joins main.** Its padlocks, corner, sliders,
-  Label bars, Add data layout, hover card, breakdown table and chart bar have been checked by
-  tests and offscreen renders only.
+- **Loading, agreed 2026-09-14.** The Export tab and the scanner read in `parallel.py`'s pool, and
+  the tab opens no header the scan read; next the label filter's pass measures, so an area
+  breakdown opens no label twice.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,

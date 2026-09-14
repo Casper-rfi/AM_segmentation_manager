@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.image_metadata import ION, ImageMetadata
 from am_segmentation_manager.layout import image_files_of
 from am_segmentation_manager.scanner import Scanner
 
@@ -58,7 +59,7 @@ def project(tmp_path: Path, monkeypatch) -> Path:
 
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
     return root
 
@@ -123,7 +124,7 @@ def test_the_original_beside_the_runs_wins_over_the_run_copies(
         times[directory / "reference_image.tif"] = TAKEN
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
 
     held = {r.image_path for r in Scanner(root.parent).build_index().find_by_name(
@@ -152,7 +153,7 @@ def test_a_run_reference_never_saved_outside_is_kept(tmp_path: Path, monkeypatch
     }
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
 
     held = {r.image_path for r in Scanner(root.parent).build_index().find_by_name(
@@ -184,7 +185,7 @@ def test_a_same_time_image_in_another_directory_does_not_drop_the_run_copy(
     }
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
 
     held = {r.image_path for r in Scanner(root.parent).build_index().find_by_name(
@@ -239,7 +240,7 @@ def test_an_image_with_no_acquisition_time_is_never_treated_as_a_copy(
     """Nothing establishes that two files are the same picture without one."""
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", None)),
+        lambda: (lambda path: ImageMetadata(beam_type=ION)),
     )
 
     assert len(paths_of(project, "reference_image.tif")) == 2
@@ -288,7 +289,7 @@ def across_lamellae(tmp_path: Path, monkeypatch) -> Path:
 
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
     return root
 
@@ -328,7 +329,7 @@ def test_one_second_shared_by_two_lamellae_needs_the_filename_too(
 
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
     assert len(records(root)) == 2
 
@@ -353,7 +354,7 @@ def test_a_lamella_of_nothing_but_copies_keeps_them(tmp_path: Path, monkeypatch)
 
     monkeypatch.setattr(
         "am_segmentation_manager.scanner.header_reader",
-        lambda: (lambda path: ("FIB", times.get(path))),
+        lambda: (lambda path: ImageMetadata(beam_type=ION, acquired_at=times.get(path))),
     )
 
     kept = paths_of(root, "ref_SetupLamella.tif")

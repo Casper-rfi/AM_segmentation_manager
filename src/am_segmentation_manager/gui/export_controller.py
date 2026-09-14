@@ -333,6 +333,9 @@ class ExportController:
         # filter change, since "loaded but found nothing" and "not loaded yet"
         # look identical from the mapping alone.
         self._metadata_loaded = False
+        #: The headers the scan read, None where it found none; see
+        #: :meth:`set_projects`.
+        self._scan_headers: dict[Path, ImageMetadata | None] = {}
         #: Whether each label holds anything, **keyed by the label** -- one
         #: entry per file, conditions of a scene sharing it.
         self._label_empty: dict[Path, bool | None] = {}
@@ -353,11 +356,18 @@ class ExportController:
 
     # -- loading -----------------------------------------------------------
 
-    def set_projects(self, projects: Sequence[Project], start_path: Path | None = None) -> None:
+    def set_projects(
+        self,
+        projects: Sequence[Project],
+        start_path: Path | None = None,
+        headers: Mapping[Path, ImageMetadata | None] | None = None,
+    ) -> None:
         """Take the projects from an existing scan, rather than scanning again.
 
         The curation window has already scanned; a second scan for the export
-        view would double the slowest thing the application does.
+        view would double the slowest thing the application does. *headers* are
+        what that scan read, :attr:`~..scanner.ProjectIndex.headers`, which
+        :meth:`load_metadata` does not read again.
         """
         self._projects = list(projects)
         if start_path is not None:
@@ -365,6 +375,7 @@ class ExportController:
         self._records = [
             record for project in self._projects for record in project.image_records
         ]
+        self._scan_headers = dict(headers or {})
         self._metadata = {}
         self._metadata_loaded = False
         self._label_empty = {}
@@ -607,16 +618,31 @@ class ExportController:
                     self._label_states[record.image_path] = classify_label(None, None)
 
     def load_metadata(self) -> int:
-        """Read every record's header, once per scan.
+        """Read every record's header once per scan, opening none the scan read.
 
         Returns:
             How many headers yielded metadata. Fewer than the record count
             simply means some files carry none.
         """
         if not self._metadata_loaded:
-            self._metadata = read_records_metadata(self._records)
+            self._metadata = {
+                record.image_path: header
+                for record in self._records
+                if (header := self._scan_headers.get(record.image_path)) is not None
+            }
+            self._metadata.update(read_records_metadata(self._records_without_headers()))
             self._metadata_loaded = True
         return len(self._metadata)
+
+    def headers_to_read(self) -> int:
+        """Return how many headers :meth:`load_metadata` would still open."""
+        return 0 if self._metadata_loaded else len(self._records_without_headers())
+
+    def _records_without_headers(self) -> list[ImageRecord]:
+        """Return the records whose header the scan did not read."""
+        return [
+            record for record in self._records if record.image_path not in self._scan_headers
+        ]
 
     # -- filtering ---------------------------------------------------------
 

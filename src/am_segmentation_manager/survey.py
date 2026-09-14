@@ -569,7 +569,11 @@ def _survey_stage(
     loose = build_loose_image_sets(
         stage_path,
         in_alignment_run=in_alignment_run,
-        resolve_modality=(lambda path: reader(path)[0]) if reader is not None else None,
+        resolve_modality=(
+            (lambda path: header.modality if (header := reader(path)) is not None else None)
+            if reader is not None
+            else None
+        ),
     )
 
     # The rule this checks is "a directory holding image directories is a

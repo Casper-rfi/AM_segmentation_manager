@@ -7,8 +7,8 @@ record resolves to, and what workflow state it is declared in.
 
 **Only a scan opens an image**, and only a loose one, whose filename may say
 neither which beam took it nor when. That is the only part of a scan that is not
-a filesystem walk, so it is memoised and counted; everything above works on the
-:class:`ProjectIndex` rather than walking the tree again.
+a filesystem walk, so it is memoised, counted and kept on the index; everything
+above works on the :class:`ProjectIndex` rather than walking the tree again.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from .discovery import (
     find_project_roots,
     group_stages_by_lamella,
 )
-from .image_metadata import LooseHeader, header_reader
+from .image_metadata import ImageMetadata, header_reader
 from .io.path import make_path_relative
 from .io.yaml import read_yaml
 from .layout import (
@@ -85,6 +85,10 @@ class ProjectIndex:
     def __init__(self, start_path: Path | None = None) -> None:
         self.start_path = start_path
         self.projects: dict[str, Project] = {}
+        #: Every header the scan opened, keyed by image path, None where it
+        #: found none. The scan wants only the beam and the time; keeping the
+        #: rest is what spares anything else opening those files again.
+        self.headers: dict[Path, ImageMetadata | None] = {}
 
     def add(self, project: Project) -> None:
         """Add a project, keyed by its identity.
@@ -165,7 +169,7 @@ class Scanner:
         # wanted at different moments -- the beam while image sets are built,
         # the time while records are made -- and opening the file twice would
         # double the only part of a scan that is not a filesystem walk.
-        self._headers: dict[Path, LooseHeader] = {}
+        self._headers: dict[Path, ImageMetadata | None] = {}
         self._read_header = header_reader()
         #: How many headers this scan opened and what they cost, reported at
         #: the end of :meth:`build_index`. The only part of a scan that is not
@@ -173,24 +177,26 @@ class Scanner:
         self._header_reads = 0
         self._header_seconds = 0.0
 
-    def _header(self, image_path: Path) -> LooseHeader:
-        """Return a loose image's beam and acquisition time, reading once."""
-        cached = self._headers.get(image_path)
-        if cached is None:
+    def _header(self, image_path: Path) -> ImageMetadata | None:
+        """Return a loose image's header, reading it once; None if it holds none."""
+        if image_path not in self._headers:
             start = time.perf_counter()
-            cached = (
-                self._read_header(image_path)
-                if self._read_header is not None
-                else (None, None)
+            self._headers[image_path] = (
+                self._read_header(image_path) if self._read_header is not None else None
             )
             self._header_seconds += time.perf_counter() - start
             self._header_reads += 1
-            self._headers[image_path] = cached
-        return cached
+        return self._headers[image_path]
 
     def _resolve_modality(self, image_path: Path) -> str | None:
         """Return the beam an image's header states, for a name that does not."""
-        return self._header(image_path)[0]
+        header = self._header(image_path)
+        return header.modality if header is not None else None
+
+    def _acquired_at(self, image_path: Path) -> datetime | None:
+        """Return when a loose image was taken, as its header states."""
+        header = self._header(image_path)
+        return header.acquired_at if header is not None else None
 
     def _unread_headers(self, discovered: list[DiscoveredStage]) -> list[Path]:
         """Return the loose images of *discovered* whose header is not yet read.
@@ -331,6 +337,7 @@ class Scanner:
             "Read %d image header(s): %.2fs",
             self._header_reads, self._header_seconds,
         )
+        index.headers = self._headers
         return index
 
     def _build_project(
@@ -835,7 +842,7 @@ class Scanner:
                     modality=image_set.modality,
                     variant=image_set.variant,
                     series=image_set.series,
-                    acquired_at=self._header(image_path)[1] if image_set.is_loose else None,
+                    acquired_at=self._acquired_at(image_path) if image_set.is_loose else None,
                     labels_directory=labels_directory,
                     predictions_directory=predictions_directory,
                     label_shared=image_set.labels_are_shared,
