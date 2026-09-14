@@ -13,11 +13,12 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..history import AM_HISTORY_FILENAME, KINDS, Event, containing_project, events_for, read_log
 from ..io.path import make_path_relative
+from ..models import Project
 from ..operations.export_record import read_export_record
 from ..operations.init_history import apply_baseline, plan_baseline
 from ..operations.savepoint import (
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 TITLE = "Record what changes, and read it back"
 
 
-def add_arguments(sub) -> None:
+def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the commands that start and read the record."""
     # -- init-history -------------------------------------------------------
     init_history_cmd = sub.add_parser(
@@ -337,7 +338,7 @@ def _cmd_savepoints(args: argparse.Namespace) -> int:
     return 0
 
 
-def _report_silent_projects(projects) -> None:
+def _report_silent_projects(projects: Sequence[Project]) -> None:
     """Say which projects keep no log, and so are in no savepoint.
 
     The one place that asks what the record covers is the place to learn that

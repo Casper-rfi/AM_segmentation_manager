@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..aggregate import (
@@ -72,7 +72,7 @@ logger = logging.getLogger(__name__)
 TITLE = "Quantify it, and export"
 
 
-def add_arguments(sub) -> None:
+def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the commands that quantify and export."""
 
 
@@ -507,7 +507,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             multi=entry.multi,
         ):
             print(line)
-        rows = counts_as_rows(counts)
+        rows: Sequence[Sequence[object]] = counts_as_rows(counts)
         header = [chosen[0], "images"]
     else:
         table = cross_tabulate(

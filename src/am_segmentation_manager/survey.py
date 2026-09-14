@@ -37,6 +37,7 @@ from .layout import (
     LABELS_EXPECTED,
     SERIES,
     ImageSet,
+    Series,
     build_image_sets,
     build_loose_image_sets,
     directory_cache,
@@ -238,7 +239,7 @@ class ProjectSurvey:
         return sum(entry.label_count for entry in self.image_sets)
 
     @property
-    def images_by_series(self) -> dict[str, int]:
+    def images_by_series(self) -> dict[Series, int]:
         """Return how many images each series holds, in declared order.
 
         Only series actually present, so a project of Adaptive Polishing

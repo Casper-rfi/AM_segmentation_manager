@@ -24,10 +24,16 @@ from ..operations.label_measure import (
     PREDICTION_PIXEL_BLOCK,
     records_with_specks,
 )
-from ..operations.predict import PredictionSource, plan_predictions, run_predictions
+from ..operations.predict import (
+    PlannedPrediction,
+    PredictionSource,
+    plan_predictions,
+    run_predictions,
+)
 from ..operations.predictions import convert_record_predictions, plan_conversions
 from ..operations.selection import StaleState, apply_plan, plan_transition
 from ..reporting import format_speck_report
+from ..state import RecordState
 from .scope import (
     _add_scope_arguments,
     _format_duration,
@@ -44,7 +50,7 @@ logger = logging.getLogger(__name__)
 TITLE = "Curate it, and prepare labels"
 
 
-def add_arguments(sub) -> None:
+def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the commands that curate data and prepare labels."""
 
 
@@ -330,7 +336,7 @@ def _cmd_predict(args: argparse.Namespace) -> int:
     total = len(plan.predictions)
     started = time.monotonic()
 
-    def report(index: int, item) -> None:
+    def report(index: int, item: PlannedPrediction) -> None:
         elapsed = time.monotonic() - started
         logger.info(
             "[%d/%d] %s (%.2fs each, %s remaining)",
@@ -394,9 +400,10 @@ def _cmd_state(args: argparse.Namespace) -> int:
         logger.info("No matching images found to %s", args.command)
         return 2
 
-    state = {"deselect": "deselected", "select": "selected", "correct": "corrected"}[
-        args.command
-    ]
+    states: dict[str, RecordState] = {
+        "deselect": "deselected", "select": "selected", "correct": "corrected"
+    }
+    state = states[args.command]
     try:
         plan = plan_transition(
             records, state, allow_leaving_corrected=args.confirm_corrected

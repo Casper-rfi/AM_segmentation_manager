@@ -14,13 +14,17 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .layout import SERIES, extract_image_number, normalise_task_name
-from .models import ImageRecord
+from .models import ImageRecord, Lamella, Project, Stage
 from .operations.selection import current_state
 from .scanner import ProjectIndex
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .image_metadata import ImageMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +85,7 @@ def parse_selector_values(values: list[str] | None) -> tuple[set[int], set[str]]
 # Scope matchers
 # ---------------------------------------------------------------------------
 
-def matches_project(project, selectors: list[str] | None) -> bool:
+def matches_project(project: Project, selectors: list[str] | None) -> bool:
     """Return whether *project* matches the user-supplied selectors.
 
     Matches by relative path, project name, or zero-padded scan-order number.
@@ -93,7 +97,7 @@ def matches_project(project, selectors: list[str] | None) -> bool:
     if "all" in name_values:
         return True
     identifiers = {project.name}
-    if getattr(project, "relative_path", None):
+    if project.relative_path:
         identifiers.add(project.relative_path)
     if identifiers & name_values:
         return True
@@ -101,33 +105,33 @@ def matches_project(project, selectors: list[str] | None) -> bool:
     return project_number is not None and int(project_number) in numeric_values
 
 
-def matches_lamella(lamella, selectors: list[str] | None) -> bool:
+def matches_lamella(lamella: Lamella, selectors: list[str] | None) -> bool:
     """Return whether *lamella* matches the user-supplied selectors."""
-    numeric_values, name_values = parse_selector_values(selectors)
-    if not numeric_values and not name_values:
-        return True
-    if "all" in name_values or lamella.name in name_values:
-        return True
-    lamella_number = parse_scope_number(lamella.number)
-    if lamella_number is not None and int(lamella_number) in numeric_values:
-        return True
-    return False
+    return _matches_name_or_number(lamella.name, lamella.number, selectors)
 
 
-def matches_stage(stage, selectors: list[str] | None) -> bool:
+def matches_stage(stage: Stage, selectors: list[str] | None) -> bool:
     """Return whether *stage* matches the user-supplied selectors."""
+    return _matches_name_or_number(stage.name, stage.number, selectors)
+
+
+def _matches_name_or_number(
+    name: str, number: str | None, selectors: list[str] | None
+) -> bool:
+    """Return whether a folder named *name*, numbered *number*, matches *selectors*.
+
+    No selector at all matches everything, as does ``"all"``.
+    """
     numeric_values, name_values = parse_selector_values(selectors)
     if not numeric_values and not name_values:
         return True
-    if "all" in name_values or stage.name in name_values:
+    if "all" in name_values or name in name_values:
         return True
-    stage_number = parse_scope_number(stage.number)
-    if stage_number is not None and int(stage_number) in numeric_values:
-        return True
-    return False
+    padded = parse_scope_number(number)
+    return padded is not None and int(padded) in numeric_values
 
 
-def matches_image(record, selectors: list[str] | None) -> bool:
+def matches_image(record: ImageRecord, selectors: list[str] | None) -> bool:
     """Return whether *record* matches image selectors (number or filename)."""
     numeric_values, name_values = parse_selector_values(selectors)
     if not numeric_values and not name_values:
@@ -142,7 +146,7 @@ def matches_image(record, selectors: list[str] | None) -> bool:
     return False
 
 
-def record_matches_paths(record, supplied_paths: list[str] | None) -> bool:
+def record_matches_paths(record: ImageRecord, supplied_paths: list[str] | None) -> bool:
     """Return whether *record* matches any of the supplied filesystem paths."""
     if not supplied_paths:
         return True
@@ -347,7 +351,7 @@ def filter_property(name: str) -> str:
     return f"{' '.join(words[:-1])} ({unit})"
 
 
-def _matches_value(actual, wanted: str) -> bool:
+def _matches_value(actual: str | float | None, wanted: str) -> bool:
     """Compare a metadata value to a requested one, tolerantly.
 
     Numbers are compared numerically where both sides parse, so ``30000``
@@ -362,7 +366,9 @@ def _matches_value(actual, wanted: str) -> bool:
         return str(actual).strip().lower() == wanted.strip().lower()
 
 
-def matches_metadata(metadata, selectors: dict[str, list[str]] | None) -> bool:
+def matches_metadata(
+    metadata: ImageMetadata | None, selectors: dict[str, list[str]] | None
+) -> bool:
     """Return whether one image's metadata satisfies every filter.
 
     Filters combine with AND across properties and OR within one, so
@@ -386,10 +392,10 @@ def matches_metadata(metadata, selectors: dict[str, list[str]] | None) -> bool:
 
 
 def filter_by_metadata(
-    records: list,
-    metadata: dict,
+    records: list[ImageRecord],
+    metadata: Mapping[Path, ImageMetadata],
     selectors: dict[str, list[str]] | None,
-) -> list:
+) -> list[ImageRecord]:
     """Return the records whose metadata satisfies *selectors*.
 
     Args:

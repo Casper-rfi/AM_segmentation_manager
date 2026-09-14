@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 TITLE = "Put work back, and reclaim the space"
 
 
-def add_arguments(sub) -> None:
+def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the commands that put work back and manage the archive."""
     # -- merge --------------------------------------------------------------
     merge_cmd = sub.add_parser(

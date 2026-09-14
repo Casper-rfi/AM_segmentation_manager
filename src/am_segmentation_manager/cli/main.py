@@ -47,7 +47,7 @@ class GroupedHelp(argparse.HelpFormatter):
     writing the list into the epilog -- prints every command twice.
     """
 
-    def _format_action(self, action) -> str:
+    def _format_action(self, action: argparse.Action) -> str:
         """Insert a heading before the first command of each group."""
         if not isinstance(action, argparse._SubParsersAction):
             return super()._format_action(action)

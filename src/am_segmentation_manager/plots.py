@@ -19,8 +19,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Hashable, Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .aggregate import totals
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +83,7 @@ def require_plot_support() -> None:
         raise RuntimeError(f"Plotting requires matplotlib. {INSTALL_HINT}")
 
 
-def _new_figure(width: float, height: float):
+def _new_figure(width: float, height: float) -> tuple[Figure, Axes]:
     """Return a figure and its axes, built without pyplot."""
     from matplotlib.figure import Figure
 
@@ -92,7 +97,7 @@ def bar_figure(
     *,
     xlabel: str = "",
     ordered: bool = False,
-):
+) -> Figure:
     """Draw a one-dimensional breakdown as horizontal bars.
 
     Horizontal because the groups are named things and the names are long:
@@ -150,7 +155,7 @@ def bar_figure(
     return figure
 
 
-def _add_running_share(axes, values: Sequence[int], total: int) -> None:
+def _add_running_share(axes: Axes, values: Sequence[int], total: int) -> None:
     """Draw the cumulative share over bars already sorted largest first.
 
     The diversity question directly: where the line reaches 90% is how many
@@ -181,7 +186,7 @@ def heatmap_figure(
     row_order: Sequence[Hashable] = (),
     column_order: Sequence[Hashable] = (),
     shading: str = "count",
-):
+) -> Figure:
     """Draw a two-dimensional breakdown as a grid of counts.
 
     Args:
@@ -273,7 +278,7 @@ def heatmap_figure(
     return figure
 
 
-def _finish(figure, output: Path) -> Path:
+def _finish(figure: Figure, output: Path) -> Path:
     """Write *figure* to *output*, in whichever format the suffix names."""
     output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output, dpi=200)

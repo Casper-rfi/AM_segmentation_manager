@@ -235,7 +235,7 @@ class MergePlan:
         return tuple(keys)
 
     @property
-    def corrected(self) -> tuple[object, ...]:
+    def corrected(self) -> tuple[LabelMerge | StateMerge, ...]:
         """Return everything here that would write over, or unmark, proofread work.
 
         A label taken from the copy replaces work somebody did by hand, and a

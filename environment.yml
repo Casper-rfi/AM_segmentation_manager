@@ -17,6 +17,9 @@ dependencies:
   # `ruff check` should report nothing, so anything it does report is worth
   # acting on.
   - ruff
+  # Type checking. Configured in pyproject.toml under [tool.mypy]; `mypy` run
+  # from the repository root should report nothing.
+  - mypy
   # Image processing. These are conda builds and are what the optional [all]
   # extra installs from PyPI, so in THIS environment do not also run
   # `pip install -e '.[all]'`: conda's `opencv` and pip's `opencv-python` both

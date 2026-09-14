@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 TITLE = "Add data to the collection"
 
 
-def add_arguments(sub) -> None:
+def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the commands that add data and describe it."""
 
 

@@ -42,9 +42,10 @@ latter declared in `gui/preferences.py` and reaching no write path.
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
   obligation this package carries whatever licence it takes), no CI, no `CHANGELOG.md`, no
-  `[project.urls]`, and the version pinned at `0.0.0`. `mypy` is not configured and `ruff` does not check types, so the
-  annotations are unverified. The suite passed under German and Japanese locales on 2026-09-11; run
-  it so again before any release, for the reasons in [`display.md`](display.md) § Testing the window. And
+  `[project.urls]`, and the version pinned at `0.0.0`. `mypy` checks the annotations, except in the
+  modules `pyproject.toml` still lists as not yet passing. The suite passed under German and
+  Japanese locales on 2026-09-11; run it so again before any release, for the reasons in
+  [`display.md`](display.md) § Testing the window. And
   [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which
   is what makes never writing to it a rule about a real place rather than a principle: decide then
   whether a reader outside this machine needs the paths or only the rule.

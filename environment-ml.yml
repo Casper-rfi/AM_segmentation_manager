@@ -11,6 +11,7 @@ dependencies:
   # working here, not only in the main environment.
   - pytest
   - ruff
+  - mypy
   #
   # Everything else comes from pip, via the [ml] extra in pyproject.toml.
   # This environment is deliberately pip-first, where the main one is

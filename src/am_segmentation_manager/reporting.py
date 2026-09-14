@@ -13,14 +13,26 @@ rather than a block of text.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .aggregate import totals
+from .aggregate import LamellaQuantification, totals
 from .io.path import make_path_relative
 from .layout import MODALITIES, SERIES_LABELS
+from .models import Lamella, Project
 from .operations.selection import current_state
-from .survey import SEVERITY_ORDER, CollectionSurvey, Finding, ProjectSurvey
+from .survey import (
+    SEVERITY_ORDER,
+    CollectionSurvey,
+    Finding,
+    ImageSetSurvey,
+    ProjectSurvey,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .config import SegmentationConfig
+    from .operations.label_measure import Speck
 
 logger = logging.getLogger(__name__)
 
@@ -51,33 +63,26 @@ def _summary_categories() -> tuple[str, ...]:
     )
 
 
-def record_state(record) -> str:
-    """Return a record's declared workflow state.
-
-    A label takes its group's state rather than having one of its own, which
-    is what makes the image and label counts agree.
-    """
-    return current_state(record)
-
-
-def summarize_lamella(lamella) -> dict[str, dict[str, int]]:
+def summarize_lamella(lamella: Lamella) -> dict[str, dict[str, int]]:
     """Count images and labels in each mutually exclusive workflow state.
 
     Returns a dict keyed by category name (``"SEM images"``, ``"FIB images"``,
     ``"SEM labels"``, ``"FIB labels"``) where each value is a counter dict
-    with keys from :data:`_STATUS_ORDER`.
+    with keys from :data:`_STATUS_ORDER`. A label counts under its group's
+    state, which is what makes the image and label counts agree.
     """
     summary = {name: _new_counts() for name in _summary_categories()}
     for stage in lamella.stages:
         for record in stage.images:
             if record.modality not in MODALITIES:
                 continue
+            state = current_state(record)
             image_counts = summary[f"{record.modality} images"]
-            image_counts[record_state(record)] += 1
+            image_counts[state] += 1
             image_counts["all"] += 1
             label_counts = summary[f"{record.modality} labels"]
-            for label in record.labels:
-                label_counts[record_state(record)] += 1
+            for _label in record.labels:
+                label_counts[state] += 1
                 label_counts["all"] += 1
     return summary
 
@@ -93,7 +98,7 @@ def _count_text(counts: dict[str, int]) -> str:
     return "/".join(str(counts[status]) for status in _STATUS_ORDER)
 
 
-def print_project_summary(project) -> None:
+def print_project_summary(project: Project) -> None:
     """Print a compact, aligned scan summary for a single project.
 
     Output is emitted through the module logger at INFO level so it can
@@ -226,7 +231,7 @@ def _format_project(project: ProjectSurvey, root: Path, detail: bool) -> list[st
     return lines
 
 
-def _format_image_set(entry) -> str:
+def _format_image_set(entry: ImageSetSurvey) -> str:
     """Return a one-line description of an image set and its labels."""
     image_set = entry.image_set
     if image_set.labels_directory is None:
@@ -420,7 +425,12 @@ def write_table_csv(output: Path, header: Sequence[str], rows: Sequence[Sequence
 
 
 def format_speck_report(
-    found: dict, root: Path, config, *, at_most: int, labels_read: int
+    found: Mapping[Path, Sequence[Speck]],
+    root: Path,
+    config: SegmentationConfig,
+    *,
+    at_most: int,
+    labels_read: int,
 ) -> list[str]:
     """Return the small-component sweep as lines, one per label that has any.
 
@@ -464,7 +474,10 @@ def format_speck_report(
 
 
 def format_label_quantification(
-    summaries: list, config, *, detail: bool = True
+    summaries: Sequence[LamellaQuantification],
+    config: SegmentationConfig,
+    *,
+    detail: bool = True,
 ) -> list[str]:
     """Return the label-quantification report as lines.
 
@@ -528,7 +541,7 @@ def format_label_quantification(
     return lines
 
 
-def _total_areas(summaries: list) -> dict[int, float]:
+def _total_areas(summaries: Sequence[LamellaQuantification]) -> dict[int, float]:
     """Sum each class's area across every lamella."""
     totals: dict[int, float] = {}
     for summary in summaries:
@@ -537,7 +550,7 @@ def _total_areas(summaries: list) -> dict[int, float]:
     return totals
 
 
-def _quantification_table(summaries: list) -> list[str]:
+def _quantification_table(summaries: Sequence[LamellaQuantification]) -> list[str]:
     """Return one aligned row per lamella."""
     name_width = max(
         [len(f"{summary.project}/{summary.lamella}") for summary in summaries] + [8]

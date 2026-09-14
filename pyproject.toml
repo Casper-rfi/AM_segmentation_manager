@@ -174,3 +174,90 @@ ignore = ["E501"]
 # Re-export surfaces: names are imported to be part of the public API.
 "src/am_segmentation_manager/__init__.py" = ["F401"]
 "src/am_segmentation_manager/operations/__init__.py" = ["F401"]
+
+[tool.mypy]
+# `mypy` from the repository root checks the package and should report nothing.
+files = ["src/am_segmentation_manager"]
+python_version = "3.11"
+# Not ours to type: the verbatim copy of AM_training's module, as for ruff.
+exclude = ['src/am_segmentation_manager/ml/preprocessing\.py$']
+# tifffile, cv2, qtpy and torch ship no annotations, and torch is absent from
+# the main environment; their calls are unchecked rather than reported.
+ignore_missing_imports = true
+
+# Modules that do not pass yet, their errors silenced so every other module is
+# held to passing. A ratchet: take a module off once mypy passes on it, and
+# never add one. Most of the GUI entries are mixins using attributes of the
+# window they are mixed into, which mypy cannot see.
+[[tool.mypy.overrides]]
+ignore_errors = true
+module = [
+    "am_segmentation_manager.aggregate",
+    "am_segmentation_manager.colors",
+    "am_segmentation_manager.gui.app",
+    "am_segmentation_manager.gui.conflict_resolution",
+    "am_segmentation_manager.gui.controller",
+    "am_segmentation_manager.gui.grid_controller",
+    "am_segmentation_manager.gui.label_controller",
+    "am_segmentation_manager.gui.loader",
+    "am_segmentation_manager.gui.metadata_controller",
+    "am_segmentation_manager.gui.preferences",
+    "am_segmentation_manager.gui.selection",
+    "am_segmentation_manager.gui.widgets.branding",
+    "am_segmentation_manager.gui.widgets.breakdown_table",
+    "am_segmentation_manager.gui.widgets.busy_dialog",
+    "am_segmentation_manager.gui.widgets.chart_view",
+    "am_segmentation_manager.gui.widgets.common",
+    "am_segmentation_manager.gui.widgets.conflict_field_page",
+    "am_segmentation_manager.gui.widgets.conflict_label_page",
+    "am_segmentation_manager.gui.widgets.conflict_tree",
+    "am_segmentation_manager.gui.widgets.conflict_viewer",
+    "am_segmentation_manager.gui.widgets.controls",
+    "am_segmentation_manager.gui.widgets.export_panel",
+    "am_segmentation_manager.gui.widgets.frame_strip",
+    "am_segmentation_manager.gui.widgets.grid_view",
+    "am_segmentation_manager.gui.widgets.icons",
+    "am_segmentation_manager.gui.widgets.image_panel",
+    "am_segmentation_manager.gui.widgets.image_view",
+    "am_segmentation_manager.gui.widgets.keyboard",
+    "am_segmentation_manager.gui.widgets.label_canvas",
+    "am_segmentation_manager.gui.widgets.label_panel",
+    "am_segmentation_manager.gui.widgets.label_tab",
+    "am_segmentation_manager.gui.widgets.lists",
+    "am_segmentation_manager.gui.widgets.main_window",
+    "am_segmentation_manager.gui.widgets.metadata_panel",
+    "am_segmentation_manager.gui.widgets.operation_actions",
+    "am_segmentation_manager.gui.widgets.operation_runner",
+    "am_segmentation_manager.gui.widgets.operations_panel",
+    "am_segmentation_manager.gui.widgets.paths",
+    "am_segmentation_manager.gui.widgets.project_dialog",
+    "am_segmentation_manager.gui.widgets.project_panel",
+    "am_segmentation_manager.gui.widgets.save_dialog",
+    "am_segmentation_manager.gui.widgets.scan_banner",
+    "am_segmentation_manager.gui.widgets.scan_bar",
+    "am_segmentation_manager.gui.widgets.settings_dialog",
+    "am_segmentation_manager.gui.widgets.shortcuts",
+    "am_segmentation_manager.gui.widgets.state_panel",
+    "am_segmentation_manager.gui.widgets.versions_bar",
+    "am_segmentation_manager.gui.worker",
+    "am_segmentation_manager.image_metadata",
+    "am_segmentation_manager.layout",
+    "am_segmentation_manager.metadata",
+    "am_segmentation_manager.operations.archive",
+    "am_segmentation_manager.operations.csv",
+    "am_segmentation_manager.operations.export_record",
+    "am_segmentation_manager.operations.init_project",
+    "am_segmentation_manager.operations.label_edit",
+    "am_segmentation_manager.operations.label_measure",
+    "am_segmentation_manager.operations.label_save",
+    "am_segmentation_manager.operations.merge",
+    "am_segmentation_manager.operations.predict",
+    "am_segmentation_manager.operations.predict_process",
+    "am_segmentation_manager.operations.revert",
+    "am_segmentation_manager.operations.savepoint",
+    "am_segmentation_manager.operations.training_manifest",
+    "am_segmentation_manager.overview",
+    "am_segmentation_manager.scanner",
+    "am_segmentation_manager.state",
+    "am_segmentation_manager.survey",
+]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..filtering import (
@@ -19,6 +20,7 @@ from ..filtering import (
 )
 from ..history import Recorder
 from ..layout import LABELLED_SERIES
+from ..models import Project
 from ..operations.init_history import writing_recorder
 from ..operations.selection import record_from_image_path
 from ..scanner import Scanner
@@ -43,7 +45,7 @@ DEFAULT_SERIES: str = "adaptive"
 REPORTING_SERIES: str = "all"
 
 
-def _series_argument_type(choices: tuple[str, ...]):
+def _series_argument_type(choices: tuple[str, ...]) -> Callable[[str], str]:
     """Return the parser for one ``--series`` value, accepting only *choices*.
 
     **A command that cannot act on a series does not offer it**, rather than
@@ -294,7 +296,7 @@ _SCOPE_SELECTORS: tuple[str, ...] = (
 
 def _describe_scope(args: argparse.Namespace) -> str:
     """Return what the export was asked for, in the words the caller used."""
-    parts = []
+    parts: list[str] = []
     for name in _SCOPE_SELECTORS:
         value = getattr(args, name, None)
         if not value:
@@ -314,7 +316,7 @@ def _recorder(args: argparse.Namespace) -> Recorder:
     return Recorder.for_run(getattr(args, "user", None))
 
 
-def _writing_recorder(args: argparse.Namespace, projects) -> Recorder:
+def _writing_recorder(args: argparse.Namespace, projects: Sequence[Project]) -> Recorder:
     """Return the recorder for a command that writes, per :func:`writing_recorder`."""
     recorder = _recorder(args)
     return writing_recorder(projects, recorder) if projects else recorder

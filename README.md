@@ -229,9 +229,11 @@ Getting help
 Contributing
 ------------
 
-Run the tests from the project root:
+Run the tests and check the type hints from the project root; both should
+report nothing wrong:
 
     pytest -q
+    mypy
 
 The core is four layers, and higher layers depend on lower ones, never the
 reverse:

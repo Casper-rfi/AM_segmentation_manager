@@ -6,18 +6,8 @@ from pathlib import Path
 from am_segmentation_manager.models import ImageRecord, Lamella, Project, Stage
 from am_segmentation_manager.reporting import (
     print_project_summary,
-    record_state,
     summarize_lamella,
 )
-
-
-def test_record_state():
-    def record(**kwargs):
-        return ImageRecord(image_path=Path("/stage/sem/img.tif"), **kwargs)
-
-    assert record_state(record()) == "selected"
-    assert record_state(record(state="deselected")) == "deselected"
-    assert record_state(record(state="corrected")) == "corrected"
 
 
 def test_summarize_lamella():

@@ -24,6 +24,7 @@ from ..layout import (
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     import numpy as np
+    from numpy.typing import DTypeLike
 
     from ..models import ImageRecord
 
@@ -148,7 +149,7 @@ def label_state(record: ImageRecord) -> str:
     return classify_label(label, is_label_file_empty(label) if label else None)
 
 
-def label_fields(array) -> dict[str, object]:
+def label_fields(array: np.ndarray) -> dict[str, object]:
     """Return what a history entry records about a label's contents.
 
     Gathered in one place so every entry describing a label describes it the
@@ -165,7 +166,7 @@ def label_fields(array) -> dict[str, object]:
     }
 
 
-def changed_fraction(before, after) -> float | None:
+def changed_fraction(before: np.ndarray, after: np.ndarray) -> float | None:
     """Return the share of pixels differing between two versions of a label.
 
     Computed while both are in memory, because it cannot be had cheaply
@@ -214,7 +215,10 @@ def label_digest(path: Path | None) -> str | None:
 
 
 def replacement_fields(
-    destination: Path, previous, written, archived: str | None
+    destination: Path,
+    previous: np.ndarray | None,
+    written: np.ndarray,
+    archived: str | None,
 ) -> dict[str, object]:
     """Return what a history entry records about the version a write replaced.
 
@@ -353,7 +357,7 @@ def has_compression_support() -> bool:
         return False
 
 
-def save_label_image(mask, output_path: Path, original_dtype) -> None:
+def save_label_image(mask: np.ndarray, output_path: Path, original_dtype: DTypeLike) -> None:
     """Write a discrete-label mask to *output_path* in a compact encoding.
 
     Label masks hold a small number of discrete values (e.g. 0-4), which
