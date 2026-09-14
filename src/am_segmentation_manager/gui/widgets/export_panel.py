@@ -80,6 +80,10 @@ NOTHING_MATCHES = "Nothing matches these filters"
 #: Said while the labels the view asks about are read behind the busy dialog.
 READING_LABELS = "Reading the labels these counts need..."
 
+#: How far the table and the chart sit in from the card's edge and the
+#: controls above them, in logical pixels.
+VIEW_MARGIN = 6
+
 #: Item data of the second dropdown's "(none)" row, meaning no
 #: cross-tabulation. Not ``None``, which is what a group heading carries.
 NO_CROSS = ""
@@ -904,6 +908,9 @@ class ExportPanel(QWidget):
         # same numbers, and half a chart beside half a table reads worse than
         # either whole.
         self.views = QStackedWidget()
+        # A few pixels in from the controls above and the card's edge, so the
+        # table's outline does not run along either.
+        self.views.setContentsMargins(VIEW_MARGIN, VIEW_MARGIN, 0, 0)
         self.views.addWidget(self.table)
         self.views.addWidget(self.chart_view)
         column.addWidget(self.views, stretch=1)

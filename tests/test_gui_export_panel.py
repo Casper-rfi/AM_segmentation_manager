@@ -1439,3 +1439,10 @@ def test_a_filter_row_offers_tick_all_and_none(panel):
 
     buttons[0].click()
     assert sorted(row.ticked_values()) == ["Aquilos 2", "Helios 5"]
+
+
+def test_the_table_sits_in_from_the_edge_and_the_controls_above(panel: ExportPanel):
+    """An outline running along the card's edge read as part of the card."""
+    margins = panel.views.contentsMargins()
+
+    assert margins.left() > 0 and margins.top() > 0
