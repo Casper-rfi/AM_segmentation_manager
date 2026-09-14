@@ -21,6 +21,7 @@ from am_segmentation_manager.config import (
 from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.operations import label_measure
 from am_segmentation_manager.operations.label_measure import (
+    apply_crack_threshold,
     clear_cache,
     find_specks,
     label_pixel_size_nm,
@@ -251,6 +252,53 @@ def test_threshold_can_be_overridden(tmp_path: Path, config: SegmentationConfig)
 
     assert measured.crack_count == 2
     assert measured.min_crack_area_um2 == pytest.approx(0.01)
+
+
+def test_a_new_threshold_needs_no_second_read(
+    tmp_path: Path, config: SegmentationConfig, monkeypatch
+):
+    array = label_with_squares(squares=((10, 10, 20), (80, 80, 2)))
+    path = write_label(tmp_path / "l.tif", array)
+    metadata = ImageMetadata(image_width=100, pixel_size_nm=100.0)
+    at_default = measure_label(path, metadata, config)
+    measured_at_new = measure_label(
+        path, metadata, config, min_crack_area_um2=0.01, use_cache=False
+    )
+
+    def refuse(*_args):
+        raise AssertionError("a label was opened")
+
+    monkeypatch.setattr(label_measure, "_count_pixels", refuse)
+
+    assert apply_crack_threshold(at_default, 0.01) == measured_at_new
+
+
+def test_a_new_threshold_leaves_an_unscaled_label_uncounted(
+    tmp_path: Path, config: SegmentationConfig
+):
+    """The threshold is physical, so without a pixel size there is nothing to apply it to."""
+    path = write_label(tmp_path / "l.tif", label_with_squares())
+    unscaled = measure_label(path, None, config)
+
+    applied = apply_crack_threshold(unscaled, 0.01)
+
+    assert applied.crack_count is None
+    assert applied.min_crack_area_um2 == pytest.approx(0.01)
+
+
+def test_a_new_threshold_counts_nothing_without_a_crack_class(tmp_path: Path):
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), CRACK_CLASS: (1, 0, 0)},
+        class_labels={0: "background", CRACK_CLASS: "pore"},
+        crack_class=None,
+    )
+    path = write_label(tmp_path / "l.tif", label_with_squares())
+    metadata = ImageMetadata(image_width=100, pixel_size_nm=100.0)
+
+    applied = apply_crack_threshold(measure_label(path, metadata, config), 0.01)
+
+    assert applied.crack_count is None
+    assert applied.crack_areas_um2 == ()
 
 
 def test_empty_label_is_measured_as_zero_cracks(tmp_path: Path, config: SegmentationConfig):

@@ -52,7 +52,12 @@ from ..operations.label_io import (
     LabelReadiness,
     classify_labels,
 )
-from ..operations.label_measure import LabelMeasurement, measure_records, measurement_is_empty
+from ..operations.label_measure import (
+    LabelMeasurement,
+    apply_crack_threshold,
+    measure_records,
+    measurement_is_empty,
+)
 from ..operations.metadata_csv import export_image_metadata_csv
 from ..operations.selection import current_state
 from ..reporting import counts_as_rows, cross_tabulation_as_rows
@@ -345,7 +350,6 @@ class ExportController:
         #: from what :attr:`known_labels` knows, which a label opened on its own
         #: to ask whether it is blank also fills: that label has not been measured.
         self._measured_labels: set[Path] = set()
-        self._measurements_loaded = False
         # Built by walking every record, and asked for once per filter list on
         # every refresh. Rebuilt only when the scan changes.
         self._lookup: dict[Path, Project] = {}
@@ -377,7 +381,6 @@ class ExportController:
         self.known_labels.clear()
         self._measurements = {}
         self._measured_labels = set()
-        self._measurements_loaded = False
         self._lookup = project_lookup(self._projects)
         logger.debug("Export view holding %d record(s)", len(self._records))
 
@@ -504,10 +507,10 @@ class ExportController:
     def set_crack_threshold(self, value: float) -> None:
         """Set the smallest component counted as a crack, in um^2.
 
-        Re-measures immediately when the labels have already been read, rather
-        than spending the button again: the threshold is applied to component
-        areas that :func:`read_label_pixels` has already cached *without* it, so
-        a new one costs arithmetic rather than a second pass over the archive.
+        Applied at once to every measurement held, those the filters hide
+        included, and opening no label: each measurement carries the component
+        pixel counts the threshold is applied to. A label not yet measured still
+        waits for :meth:`load_measurements`.
 
         Raises:
             ValueError: If *value* is negative.
@@ -517,9 +520,15 @@ class ExportController:
         if value == self._min_crack_area_um2:
             return
         self._min_crack_area_um2 = float(value)
-        if self._measurements_loaded:
-            self._measurements_loaded = False
-            self.load_measurements()
+        # Keyed by identity while the old mapping keeps every old object alive:
+        # records sharing a label must go on sharing one measurement.
+        applied: dict[int, LabelMeasurement] = {}
+        self._measurements = {
+            image_path: applied.setdefault(
+                id(measurement), apply_crack_threshold(measurement, self._min_crack_area_um2)
+            )
+            for image_path, measurement in self._measurements.items()
+        }
 
     @property
     def area_bins_per_decade(self) -> int:
@@ -553,8 +562,8 @@ class ExportController:
 
         The headers are read first and kept. Measuring needs them anyway, for
         the scale; reading them into the mapping rather than letting
-        ``measure_records`` read and discard its own is what makes a later
-        change of threshold free.
+        ``measure_records`` read and discard its own is what lets a label a
+        widened filter brings in be measured without reading a header again.
 
         Args:
             on_progress: Called as ``on_progress(done, total)`` in label files
@@ -596,7 +605,6 @@ class ExportController:
         # is an answer too, and asking again would read it again.
         self._measured_labels.update(labels.values())
         self._remember_label_states(records, labels, measured)
-        self._measurements_loaded = True
         return len(set(labels.values()))
 
     def _remember_label_states(

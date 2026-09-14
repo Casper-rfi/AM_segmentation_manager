@@ -10,7 +10,7 @@ sharing its image's size.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -38,6 +38,7 @@ __all__ = [
     "PREDICTION_PIXEL_BLOCK",
     "LabelMeasurement",
     "LabelPixels",
+    "apply_crack_threshold",
     "clear_cache",
     "label_pixel_size_nm",
     "measure_label",
@@ -633,22 +634,11 @@ def _measurement_of(
             min_crack_area_um2=threshold,
         )
 
-    # (nm)^2 to um^2 is a factor of 1e-6, applied once here rather than at each
-    # use of the result.
-    area_per_pixel_um2 = (pixel_size * pixel_size) * 1e-6
+    area_per_pixel_um2 = _area_per_pixel_um2(pixel_size)
     areas = {
         index: count * area_per_pixel_um2 for index, count in counts.class_pixels.items()
     }
-
-    crack_count: int | None = None
-    crack_areas: tuple[float, ...] = ()
-    if counts.crack_class is not None:
-        crack_areas = tuple(
-            area
-            for area in (size * area_per_pixel_um2 for size in counts.component_pixels)
-            if area >= threshold
-        )
-        crack_count = len(crack_areas)
+    crack_count, crack_areas = _cracks_at(counts, pixel_size, threshold)
 
     return LabelMeasurement(
         path=path,
@@ -659,6 +649,51 @@ def _measurement_of(
         crack_areas_um2=crack_areas,
         min_crack_area_um2=threshold,
     )
+
+
+def apply_crack_threshold(
+    measurement: LabelMeasurement, min_crack_area_um2: float
+) -> LabelMeasurement:
+    """Return *measurement* with its cracks counted at a different threshold.
+
+    Opens no file: the component pixel counts and the pixel size a measurement
+    carries are all a threshold is applied to.
+    """
+    threshold = float(min_crack_area_um2)
+    if measurement.pixel_size_nm is None:
+        return replace(measurement, min_crack_area_um2=threshold)
+    crack_count, crack_areas = _cracks_at(
+        measurement.pixels, measurement.pixel_size_nm, threshold
+    )
+    return replace(
+        measurement,
+        crack_count=crack_count,
+        crack_areas_um2=crack_areas,
+        min_crack_area_um2=threshold,
+    )
+
+
+def _area_per_pixel_um2(pixel_size_nm: float) -> float:
+    """Return the area of one label pixel in um^2, (nm)^2 being 1e-6 um^2."""
+    return (pixel_size_nm * pixel_size_nm) * 1e-6
+
+
+def _cracks_at(
+    counts: LabelPixels, pixel_size_nm: float, threshold: float
+) -> tuple[int | None, tuple[float, ...]]:
+    """Return the crack count and the qualifying areas, largest first, at *threshold*.
+
+    The count is ``None`` where no crack class was configured, which is not zero cracks.
+    """
+    if counts.crack_class is None:
+        return None, ()
+    area_per_pixel_um2 = _area_per_pixel_um2(pixel_size_nm)
+    crack_areas = tuple(
+        area
+        for area in (size * area_per_pixel_um2 for size in counts.component_pixels)
+        if area >= threshold
+    )
+    return len(crack_areas), crack_areas
 
 
 # ---------------------------------------------------------------------------

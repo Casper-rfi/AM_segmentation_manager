@@ -402,9 +402,9 @@ rather than appending to it.
   blank, never of whether it was measured.
 - **What a measured number means is set beside the breakdown, not among the filters.** The crack
   threshold and the area bin resolution change how a measurement is *read*, not which images are in
-  play. Changing the threshold re-measures at once rather than spending the Measure button again:
-  `read_label_pixels` caches component pixel counts *without* the threshold, so a new one costs
-  arithmetic rather than a second pass.
+  play. Changing the threshold re-applies it at once to every label measured, those the filters hide
+  included, and opens none: a `LabelMeasurement` carries its component pixel counts, so a new one
+  costs arithmetic (`test_a_new_threshold_reaches_labels_the_filters_hide`).
 - **A filter is added, not permanently shown**, for the reason `FilterRow` gives. A row carries
   the property it is on, and a property already in one row is not offered in another, which stops
   two rows disagreeing. **A few properties are counted by but never filtered on** — those running

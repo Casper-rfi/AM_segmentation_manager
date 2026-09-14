@@ -603,6 +603,68 @@ def test_setting_the_same_threshold_again_does_nothing(exporter: ExportControlle
     assert exporter.measurements_loaded() == before
 
 
+def _only_project(controller: ExportController, name: str) -> list[str]:
+    """Return the project filter's values naming the project *name*."""
+    return [
+        value for value in controller.choice_values(ec.PROJECT_FILTER)
+        if value.startswith(f"{name}/")
+    ]
+
+
+def test_a_new_threshold_reaches_labels_the_filters_hide(tmp_path: Path):
+    """Applied only to what is on screen, a threshold would leave the rest
+    counted at the old one, and widening the filter again would mix the two in
+    one count."""
+    cv2 = pytest.importorskip("cv2")
+    controller = _measured_with_one_small_crack(tmp_path, cv2, ("alpha", "beta"))
+    controller.set_crack_threshold(0.01)
+    controller.set_choice_filter(ec.PROJECT_FILTER, _only_project(controller, "alpha"))
+
+    controller.set_crack_threshold(0.1)
+    controller.set_choice_filter(ec.PROJECT_FILTER, [])
+
+    assert controller.breakdown("has-crack") == {"intact": 2}
+
+
+def test_a_new_threshold_opens_no_label_the_filters_brought_in(
+    tmp_path: Path, monkeypatch
+):
+    """Measuring is the one thing this tab has to be asked for, so the labels a
+    widened filter brings in wait for the button rather than being read by a
+    spin box."""
+    cv2 = pytest.importorskip("cv2")
+    controller = _measured_with_one_small_crack(
+        tmp_path, cv2, ("alpha", "beta"), measure=False
+    )
+    controller.set_choice_filter(ec.PROJECT_FILTER, _only_project(controller, "alpha"))
+    controller.load_measurements()
+    controller.set_choice_filter(ec.PROJECT_FILTER, [])
+    opened = _counting_reads(monkeypatch)
+
+    controller.set_crack_threshold(0.01)
+
+    assert opened == []
+    assert controller.measurable_labels() == 1
+
+
+def test_conditions_sharing_a_label_share_its_measurement_at_a_new_threshold(
+    tmp_path: Path,
+):
+    """A total counts a label's cracks once because every condition sharing the
+    label holds the same measurement."""
+    pytest.importorskip("cv2")
+    build_dataset(tmp_path, acquisitions=1, labels="annotated", sem_variants=("SEM_8_fi_1",))
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
+    distinct = len({id(measured) for measured in controller._measurements.values()})
+    assert distinct < len(controller._measurements)
+
+    controller.set_crack_threshold(controller.min_crack_area_um2 + 1.0)
+
+    assert len({id(measured) for measured in controller._measurements.values()}) == distinct
+
+
 def test_a_negative_crack_threshold_is_rejected(exporter: ExportController):
     with pytest.raises(ValueError, match="cannot be negative"):
         exporter.set_crack_threshold(-1.0)
@@ -628,8 +690,13 @@ def test_recutting_the_scale_measures_nothing_again(exporter: ExportController):
     assert exporter.measurements_loaded()
 
 
-def _measured_with_one_small_crack(tmp_path: Path, cv2) -> ExportController:
-    """A scan of one image whose label holds a single small crack component."""
+def _measured_with_one_small_crack(
+    tmp_path: Path, cv2, projects: tuple[str, ...] = (), *, measure: bool = True
+) -> ExportController:
+    """A scan of one image per project whose label holds a single small crack component.
+
+    With no *projects*, one project is built directly under *tmp_path*.
+    """
     import numpy as np
     import tifffile
 
@@ -638,14 +705,17 @@ def _measured_with_one_small_crack(tmp_path: Path, cv2) -> ExportController:
     from am_segmentation_manager.operations.label_measure import clear_cache
 
     clear_cache()
-    build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="annotated")
-    label = next(tmp_path.rglob("*_labels/*.tif"), None) or next(
-        tmp_path.rglob("labels/*.tif")
-    )
+    for name in projects:
+        build_dataset(
+            tmp_path / name, name=name, acquisitions=1, modalities=("SEM",), labels="annotated"
+        )
+    if not projects:
+        build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="annotated")
     array = np.zeros((64, 64), dtype=np.uint8)
     array[10:30, 10:30] = 2      # the lamella
     array[40:42, 40:42] = 3      # a 4-pixel speck of crack/hole
-    tifffile.imwrite(str(label), array)
+    for label in {*tmp_path.rglob("*_labels/*.tif"), *tmp_path.rglob("labels/*.tif")}:
+        tifffile.imwrite(str(label), array)
 
     config = SegmentationConfig(
         class_colors={0: (0, 0, 0), 2: (0, 1, 0), 3: (1, 0, 0)},
@@ -660,7 +730,8 @@ def _measured_with_one_small_crack(tmp_path: Path, cv2) -> ExportController:
         for record in controller.records
     }
     controller._metadata_loaded = True
-    controller.load_measurements()
+    if measure:
+        controller.load_measurements()
     return controller
 
 
