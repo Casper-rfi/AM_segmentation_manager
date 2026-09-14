@@ -378,7 +378,7 @@ def _cmd_archive(args: argparse.Namespace) -> int:
         print(f"{target}  ({len(kept)} version(s), {format_bytes(total_size(kept))})")
         for version in kept:
             when = version.event.at if version.event else "not recorded"
-            who = version.event.by if version.event else "unknown"
+            who = (version.event.by if version.event else None) or "unknown"
             print(f"    {version.path.name}  {when}  {who}")
 
     print(

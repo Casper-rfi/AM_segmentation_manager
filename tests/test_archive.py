@@ -522,6 +522,22 @@ def test_the_archive_command_reports_what_is_kept(tmp_path: Path, recorder, caps
     assert "sem_labels/i.tif" in printed and "1 version(s)" in printed
 
 
+def test_the_archive_command_names_no_author_nobody_stated(tmp_path: Path, capsys):
+    """An entry with no stated author is the ordinary shape, and ``None`` is not a name."""
+    from am_segmentation_manager.cli import main
+
+    logged(tmp_path)
+    destination = tmp_path / "sem_labels" / "i.tif"
+    write_label(destination, label())
+    save(destination, label(3), Recorder())
+
+    assert main(["archive", str(tmp_path)]) == 0
+
+    printed = capsys.readouterr().out
+    assert "None" not in printed
+    assert "unknown" in printed
+
+
 def test_the_prune_command_previews_by_default(tmp_path: Path, recorder, capsys):
     from am_segmentation_manager.cli import main
 
