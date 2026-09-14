@@ -64,6 +64,22 @@ def test_order_is_kept_across_chunks(pool):
     assert parallel.map_in_processes(abs, range(-9, 0)) == list(range(9, 0, -1))
 
 
+def test_progress_is_reported_as_results_come_back(pool):
+    seen: list[tuple[int, int]] = []
+
+    parallel.map_in_processes(abs, range(-5, 0), on_progress=lambda *step: seen.append(step))
+
+    assert seen == [(2, 5), (4, 5), (5, 5)]
+
+
+def test_a_batch_read_here_reports_every_item(monkeypatch):
+    seen: list[tuple[int, int]] = []
+
+    parallel.map_in_processes(abs, [-1, -2], on_progress=lambda *step: seen.append(step))
+
+    assert seen == [(1, 2), (2, 2)]
+
+
 def test_a_small_batch_starts_no_pool(tmp_path: Path):
     parallel.shutdown_pool()
 
@@ -104,4 +120,24 @@ def test_a_broken_pool_finishes_the_batch_here(monkeypatch, pool, caplog):
 
     with caplog.at_level(logging.WARNING):
         assert parallel.map_in_processes(abs, [-1, -2, -3]) == [1, 2, 3]
+    assert "finishing 3 item(s) in this process" in caplog.text
+
+
+def test_a_pool_breaking_part_way_finishes_only_what_is_left(monkeypatch, pool, caplog):
+    done_here: list[int] = []
+
+    class BreaksAfterOneChunk:
+        def map(self, function, functions, chunks):
+            yield function(functions[0], chunks[0])
+            raise BrokenProcessPool("a worker was killed")
+
+    def record(item: int) -> int:
+        done_here.append(item)
+        return abs(item)
+
+    monkeypatch.setattr(parallel, "_session_pool", BreaksAfterOneChunk)
+
+    with caplog.at_level(logging.WARNING):
+        assert parallel.map_in_processes(record, [-1, -2, -3, -4, -5]) == [1, 2, 3, 4, 5]
+    assert done_here == [-1, -2, -3, -4, -5]
     assert "finishing 3 item(s) in this process" in caplog.text

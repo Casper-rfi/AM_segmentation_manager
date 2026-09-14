@@ -1197,15 +1197,23 @@ def test_a_path_is_not_invented_for_a_row_that_is_not_there():
 # afterwards opens a label again.
 
 def _counting_reads(monkeypatch) -> list[Path]:
-    """Record every label file opened, in order."""
+    """Record every label file opened, in order, to ask what is in it or measure it."""
+    from am_segmentation_manager.operations import label_measure
+
     opened: list[Path] = []
-    real = ec.is_label_file_empty
+    real_empty = ec.is_label_file_empty
+    real_count = label_measure._count_pixels
 
-    def counted(path):
+    def counted_empty(path):
         opened.append(path)
-        return real(path)
+        return real_empty(path)
 
-    monkeypatch.setattr(ec, "is_label_file_empty", counted)
+    def counted_pixels(path, crack_class):
+        opened.append(path)
+        return real_count(path, crack_class)
+
+    monkeypatch.setattr(ec, "is_label_file_empty", counted_empty)
+    monkeypatch.setattr(label_measure, "_count_pixels", counted_pixels)
     return opened
 
 
@@ -1280,6 +1288,28 @@ def test_measuring_answers_what_is_in_a_label_without_a_second_read(
 
     assert opened == []
     assert controller.measurements_loaded()
+
+def test_reading_the_labels_for_the_label_filter_measures_them(
+    tmp_path: Path, monkeypatch,
+):
+    """Counting a label's pixels is the read that says whether there are any, so
+    an area breakdown or a new crack threshold after the label filter opens no
+    label again."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, acquisitions=3, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.filters.label = "has a label"
+    controller.warm_labels()
+    opened = _counting_reads(monkeypatch)
+
+    assert controller.measurements_loaded()
+    assert controller.measurable_labels() == 0
+    assert "no-label" not in controller.breakdown("area-lamella")
+    controller.set_crack_threshold(controller.min_crack_area_um2 + 1.0)
+
+    assert opened == []
+
 
 def test_a_rescan_makes_the_labels_cold_again(tmp_path: Path):
     """They are read from disk, and a rescan is what follows something that

@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import BACKGROUND_CLASS, SegmentationConfig
 from ..image_metadata import read_records_metadata
 from ..io.image import has_image_stack_support, read_array, to_2d
+from ..parallel import map_in_processes
 from .csv import find_matching_label
 from .label_groups import group_key, primary_record
 
@@ -49,6 +51,7 @@ __all__ = [
     "measurement_status",
     "records_with_specks",
     "read_label_pixels",
+    "read_many_label_pixels",
 ]
 
 #: Pixel counts already computed, keyed by the file's identity *and* the
@@ -266,6 +269,58 @@ def read_label_pixels(
     counted = _count_pixels(path, crack_class)
     if counted is not None and key is not None:
         _CACHE[key] = counted
+    return counted
+
+
+#: Fewer labels than this are counted in this process. One takes about 37 ms to
+#: read and count, so sixteen cost about twice what starting the worker
+#: processes does.
+LABEL_POOL_FILES = 16
+
+
+def read_many_label_pixels(
+    paths: Iterable[Path],
+    crack_class: int | None = None,
+    *,
+    use_cache: bool = True,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> dict[Path, LabelPixels | None]:
+    """Count many label files, in worker processes where there are enough.
+
+    :func:`read_label_pixels` for a batch, answering from and filling the same
+    cache, and returning ``None`` for a label on the same terms.
+
+    Args:
+        on_progress: Called as ``on_progress(done, total)`` over the files
+            actually read; one the cache answers is not counted.
+    """
+    paths = list(dict.fromkeys(paths))
+    if not has_image_stack_support():
+        logger.debug("Cannot measure %d label(s): tifffile/numpy/cv2 not installed", len(paths))
+        return dict.fromkeys(paths)
+
+    counted: dict[Path, LabelPixels | None] = {}
+    keys: dict[Path, tuple[Path, int, int, int | None] | None] = {}
+    for path in paths:
+        key = _cache_key(path, crack_class) if use_cache else None
+        cached = _CACHE.get(key) if key is not None else None
+        if cached is not None:
+            counted[path] = cached
+        else:
+            keys[path] = key
+
+    unread = list(keys)
+    results = map_in_processes(
+        partial(_count_pixels, crack_class=crack_class),
+        unread,
+        chunk_size=1,
+        min_items=LABEL_POOL_FILES,
+        on_progress=on_progress,
+    )
+    for path, result in zip(unread, results):
+        counted[path] = result
+        if result is not None and (key := keys[path]) is not None:
+            _CACHE[key] = result
     return counted
 
 
@@ -553,13 +608,23 @@ def measure_label(
     Returns:
         The measurement, or ``None`` when the label itself could not be read.
     """
-    threshold = (
-        config.min_crack_area_um2 if min_crack_area_um2 is None else float(min_crack_area_um2)
-    )
     counts = read_label_pixels(path, config.crack_class, use_cache=use_cache)
     if counts is None:
         return None
+    return _measurement_of(path, counts, metadata, config, min_crack_area_um2)
 
+
+def _measurement_of(
+    path: Path,
+    counts: LabelPixels,
+    metadata: ImageMetadata | None,
+    config: SegmentationConfig,
+    min_crack_area_um2: float | None,
+) -> LabelMeasurement:
+    """Return what the pixel counts of the label at *path* amount to in physical units."""
+    threshold = (
+        config.min_crack_area_um2 if min_crack_area_um2 is None else float(min_crack_area_um2)
+    )
     pixel_size = label_pixel_size_nm(metadata, counts.width)
     if pixel_size is None:
         logger.debug("No pixel size for %s; reporting counts without areas", path)
@@ -656,9 +721,9 @@ def measure_records(
             here for the images that need it when not supplied.
         min_crack_area_um2: Overrides the configured threshold.
         use_cache: Whether to consult and populate the module cache.
-        on_progress: Called as ``on_progress(done, total)`` after each label
-            group. Counted in groups, not records, because the conditions of
-            one scene share a label and are measured once.
+        on_progress: Called as ``on_progress(done, total)`` over the label
+            files read. Counted in files, not records, because the conditions
+            of one scene share a label and are measured once.
 
     Returns:
         Image path to the measurement of that image's label.
@@ -677,28 +742,26 @@ def measure_records(
         primaries = [primary_record(members) for members in groups.values()]
         metadata = read_records_metadata(primaries)
 
-    measurements: dict[Path, LabelMeasurement] = {}
-    for done, members in enumerate(groups.values(), start=1):
-        if on_progress is not None:
-            # Before the work rather than after it, because a group with no
-            # label is skipped below and a counter that stepped only on the
-            # ones with work in them would stall on a stretch without any.
-            on_progress(done, len(groups))
-        primary = primary_record(members)
-        label = find_matching_label(primary)
-        if label is None:
-            continue
+    labels = {
+        key: find_matching_label(primary_record(members)) for key, members in groups.items()
+    }
+    counts = read_many_label_pixels(
+        (label for label in labels.values() if label is not None),
+        config.crack_class,
+        use_cache=use_cache,
+        on_progress=on_progress,
+    )
 
-        _warn_on_inconsistent_scale(members, metadata)
-        measured = measure_label(
-            label,
-            metadata.get(primary.image_path),
-            config,
-            min_crack_area_um2=min_crack_area_um2,
-            use_cache=use_cache,
-        )
-        if measured is None:
+    measurements: dict[Path, LabelMeasurement] = {}
+    for key, members in groups.items():
+        label = labels[key]
+        if label is None or (pixels := counts.get(label)) is None:
             continue
+        primary = primary_record(members)
+        _warn_on_inconsistent_scale(members, metadata)
+        measured = _measurement_of(
+            label, pixels, metadata.get(primary.image_path), config, min_crack_area_um2
+        )
         for record in members:
             measurements[record.image_path] = measured
 

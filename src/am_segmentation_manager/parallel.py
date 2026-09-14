@@ -47,34 +47,53 @@ def map_in_processes(
     *,
     chunk_size: int | None = None,
     min_items: int | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[R]:
     """Return ``[function(item) for item in items]``, computed in worker processes.
 
     Order is kept. *chunk_size* and *min_items* default to :data:`CHUNK_SIZE` and
     :data:`MIN_POOL_ITEMS`, which suit an input costing about what a header does.
-    If the pool has broken -- a worker killed from outside -- the batch is
-    finished in this process with a warning rather than lost.
+    *on_progress* is called as ``on_progress(done, total)`` as results come back.
+    If the pool has broken -- a worker killed from outside -- what is left of the
+    batch is finished in this process with a warning rather than lost.
     """
     items = list(items)
+    results: list[R] = []
     if len(items) < (MIN_POOL_ITEMS if min_items is None else min_items):
-        return [function(item) for item in items]
+        _map_here(function, items, results, on_progress)
+        return results
     size = CHUNK_SIZE if chunk_size is None else chunk_size
     chunks = [items[start:start + size] for start in range(0, len(items), size)]
     try:
-        outcomes = list(_session_pool().map(_run_chunk, [function] * len(chunks), chunks))
+        for chunk_results, records in _session_pool().map(
+            _run_chunk, [function] * len(chunks), chunks
+        ):
+            for record in records:
+                _log_again(record)
+            results.extend(chunk_results)
+            if on_progress is not None:
+                on_progress(len(results), len(items))
     except BrokenProcessPool:
         logger.warning(
-            "The worker processes stopped; finishing %d item(s) in this process", len(items)
+            "The worker processes stopped; finishing %d item(s) in this process",
+            len(items) - len(results),
         )
         shutdown_pool()
-        return [function(item) for item in items]
-
-    results: list[R] = []
-    for chunk_results, records in outcomes:
-        for record in records:
-            _log_again(record)
-        results.extend(chunk_results)
+        _map_here(function, items, results, on_progress)
     return results
+
+
+def _map_here(
+    function: Callable[[T], R],
+    items: list[T],
+    results: list[R],
+    on_progress: Callable[[int, int], None] | None,
+) -> None:
+    """Extend *results* with *function* applied here to the items it lacks."""
+    for item in items[len(results):]:
+        results.append(function(item))
+        if on_progress is not None:
+            on_progress(len(results), len(items))
 
 
 def shutdown_pool() -> None:

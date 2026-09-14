@@ -12,18 +12,21 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager import parallel
 from am_segmentation_manager.config import (
     DEFAULT_MIN_CRACK_AREA_UM2,
     SegmentationConfig,
     load_segmentation_config,
 )
 from am_segmentation_manager.image_metadata import ImageMetadata
+from am_segmentation_manager.operations import label_measure
 from am_segmentation_manager.operations.label_measure import (
     clear_cache,
     find_specks,
     label_pixel_size_nm,
     measure_label,
     read_label_pixels,
+    read_many_label_pixels,
     records_with_specks,
 )
 from am_segmentation_manager.scanner import Scanner
@@ -442,3 +445,51 @@ def test_a_record_with_no_label_is_absent(tmp_path: Path):
     ]
 
     assert records_with_specks(records) == {}
+
+
+# ---------------------------------------------------------------------------
+# Counting many labels at once
+# ---------------------------------------------------------------------------
+
+def test_labels_counted_in_worker_processes_match_those_counted_here(
+    tmp_path: Path, monkeypatch
+):
+    paths = [
+        write_label(tmp_path / f"l{index}.tif", label_with_squares(squares=((index, 5, 4 + index),)))
+        for index in range(3)
+    ]
+    corrupt = tmp_path / "corrupt.tif"
+    corrupt.write_bytes(b"not a tiff")
+    expected = {
+        path: read_label_pixels(path, CRACK_CLASS, use_cache=False) for path in [*paths, corrupt]
+    }
+    parallel.shutdown_pool()
+    monkeypatch.setattr(label_measure, "LABEL_POOL_FILES", 0)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    seen: list[tuple[int, int]] = []
+    try:
+        counted = read_many_label_pixels(
+            [*paths, corrupt], CRACK_CLASS, on_progress=lambda *step: seen.append(step)
+        )
+        assert parallel._pool is not None
+    finally:
+        parallel.shutdown_pool()
+
+    assert counted == expected
+    assert seen[-1] == (4, 4)
+
+
+def test_labels_counted_together_fill_the_cache_one_is_read_from(
+    tmp_path: Path, monkeypatch
+):
+    """Which is what lets a breakdown after the label filter open nothing."""
+    path = write_label(tmp_path / "l.tif", label_with_squares())
+    read_many_label_pixels([path], CRACK_CLASS)
+    monkeypatch.setattr(
+        label_measure, "_count_pixels", lambda *args: pytest.fail("read the label again")
+    )
+    seen: list[tuple[int, int]] = []
+
+    assert read_label_pixels(path, CRACK_CLASS).component_pixels == (400,)
+    assert read_many_label_pixels([path], CRACK_CLASS, on_progress=lambda *step: seen.append(step))
+    assert seen == [], "a label the cache answers is not counted as read"

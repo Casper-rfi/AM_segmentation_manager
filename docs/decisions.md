@@ -384,7 +384,9 @@ rather than appending to it.
   it answers a different question: what is *in* the label. So the summary shows what a record knows
   about itself and says plainly that the rest needs Measure labels. Choosing the label filter or a
   label-state breakdown asks too, and the labels are read behind the counting dialog
-  (`test_choosing_a_label_filter_reads_the_labels_behind_the_dialog`). **Measured over what the
+  (`test_choosing_a_label_filter_reads_the_labels_behind_the_dialog`) **and measured while open**,
+  the pixels being counted in the read that says whether there are any, so no breakdown opens them
+  again (`test_reading_the_labels_for_the_label_filter_measures_them`). **Measured over what the
   filters match**, not the collection, so widening a filter asks again for what it brought in. One
   pass answers three questions at once, for the reason `_remember_label_states` gives;
   `classify_label` is the shared rule and `_label_empty` the shared cache — of whether a label is

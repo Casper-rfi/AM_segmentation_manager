@@ -346,8 +346,8 @@ class ExportController:
         self._label_states: dict[Path, str] = {}
         self._measurements: dict[Path, LabelMeasurement] = {}
         #: The labels a measurement has covered, **keyed by the label**. Apart
-        #: from ``_label_empty``, which the label filter also fills: a label
-        #: opened to ask whether it is blank has not been measured.
+        #: from ``_label_empty``, which a label opened on its own to ask whether
+        #: it is blank also fills: that label has not been measured.
         self._measured_labels: set[Path] = set()
         self._measurements_loaded = False
         # Built by walking every record, and asked for once per filter list on
@@ -552,7 +552,7 @@ class ExportController:
     def load_measurements(
         self, on_progress: Callable[[int, int], None] | None = None
     ) -> int:
-        """Measure every label, once per scan.
+        """Measure every label the filters match, once per scan.
 
         Tens of milliseconds per label against under a millisecond for a header,
         which is why nothing calls this implicitly: it is the one thing in this
@@ -564,18 +564,28 @@ class ExportController:
         change of threshold free.
 
         Args:
-            on_progress: Called as ``on_progress(done, total)`` while measuring,
-                counted in label groups. Reading the headers first is not
-                counted: it is under a millisecond an image against tens of
-                milliseconds a label, so a counter covering both would sit at
-                zero and then move.
+            on_progress: Called as ``on_progress(done, total)`` in label files
+                read. Reading the headers first is not counted: it is under a
+                millisecond an image against tens of milliseconds a label, so a
+                counter covering both would sit at zero and then move.
 
         Returns:
             How many images have a measured label.
         """
+        self._measure(self.selected_records(), on_progress)
+        return len(self._measurements)
 
+    def _measure(
+        self,
+        records: Sequence[ImageRecord],
+        on_progress: Callable[[int, int], None] | None,
+    ) -> int:
+        """Measure the labels of *records*, remembering what each one holds.
+
+        Returns:
+            How many distinct label files the records pair with.
+        """
         self.load_metadata()
-        records = self.selected_records()
         measured = measure_records(
             records,
             self.config,
@@ -584,38 +594,45 @@ class ExportController:
             on_progress=on_progress,
         )
         self._measurements.update(measured)
+        labels = {
+            record.image_path: label
+            for record in records
+            if (label := find_matching_label(record)) is not None
+        }
         # Every label the pass reached, including one it could not read: that
         # is an answer too, and asking again would read it again.
-        self._measured_labels.update(
-            label for record in records
-            if (label := find_matching_label(record)) is not None
-        )
-        self._remember_label_states(measured)
+        self._measured_labels.update(labels.values())
+        self._remember_label_states(records, labels, measured)
         self._measurements_loaded = True
-        return len(self._measurements)
+        return len(set(labels.values()))
 
-    def _remember_label_states(self, measured: Mapping[Path, LabelMeasurement]) -> None:
-        """Record what each measured label holds, without opening it again.
+    def _remember_label_states(
+        self,
+        records: Sequence[ImageRecord],
+        labels: Mapping[Path, Path],
+        measured: Mapping[Path, LabelMeasurement],
+    ) -> None:
+        """Record what each record's label holds, opening no measured label again.
 
         Measuring reads the pixels, and whether there is anything in them is
         the same read -- so the exportable count, the label filter and the
-        label-state breakdown are all answered by the one pass the user asked
-        for rather than by a second one they did not.
+        label-state breakdown are all answered by the one pass rather than by
+        a second. A label the measurement could not read is asked of
+        :func:`is_label_file_empty` instead, which accepts masks measuring
+        refuses, such as one of non-integer values.
         """
-
         for image_path, measurement in measured.items():
             self._label_empty[measurement.path] = measurement_is_empty(measurement)
             self._label_states[image_path] = classify_label(
                 measurement.path, self._label_empty[measurement.path]
             )
-        # An image whose label is missing is absent from the measurements, and
-        # that is an answer too: there is nothing to open and nothing to wait
-        # for. Recorded here so it is not asked again image by image.
-        for record in self.selected_records():
-            if record.image_path not in self._label_states:
-                label = find_matching_label(record)
-                if label is None:
-                    self._label_states[record.image_path] = classify_label(None, None)
+        for record in records:
+            if record.image_path in measured:
+                continue
+            label = labels.get(record.image_path)
+            self._label_states[record.image_path] = classify_label(
+                label, self._is_empty_label(label) if label is not None else None
+            )
 
     def load_metadata(self) -> int:
         """Read every record's header once per scan, opening none the scan read.
@@ -669,8 +686,7 @@ class ExportController:
         """Open every label once, filling the caches the whole tab counts from.
 
         The tab cannot show a single number without knowing what is inside each
-        label -- a blank label is not an annotation -- and over a real
-        collection that is half a minute of reading. Done here, in one pass
+        label -- a blank label is not an annotation. Done here, in one pass
         that can report progress and be run off the interface thread, rather
         than inside the first refresh, where it stopped the window dead with
         nothing on screen to say why.
@@ -679,33 +695,20 @@ class ExportController:
         conditions of one scene share one and cost one read between them, and
         over what the filters match rather than the whole collection -- reading
         an archive to write an export chosen from one project of it is work
-        nobody asked for.
+        nobody asked for. The label filter itself is left out, being what this
+        answers.
 
-        Cheaper than :meth:`load_measurements`, which opens the same files and
-        also counts what is in them; this only asks whether anything is. What
-        an export needs, in other words, and not what a breakdown does.
+        **Each label is measured while it is open**: counting its pixels is the
+        read that says whether there are any, so a breakdown by area or crack
+        chosen afterwards opens no label again.
 
         Args:
             on_progress: Called as ``on_progress(done, total)`` in label files.
 
         Returns:
-            How many label files were read.
+            How many label files the selection pairs with.
         """
-        records = self.selected_records(label_filter=False)
-        paired = [(record, find_matching_label(record)) for record in records]
-        labels = sorted({label for _, label in paired if label is not None})
-        for done, label in enumerate(labels, start=1):
-            self._is_empty_label(label)
-            if on_progress is not None:
-                on_progress(done, len(labels))
-        for record, label in paired:
-            self._label_states.setdefault(
-                record.image_path,
-                classify_label(
-                    label, self._label_empty[label] if label is not None else None
-                ),
-            )
-        return len(labels)
+        return self._measure(self.selected_records(label_filter=False), on_progress)
 
     def describe_filters(self) -> str:
         """Return what the filters narrow to, as one line of the tab's own words.
