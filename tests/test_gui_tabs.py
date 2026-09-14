@@ -955,7 +955,7 @@ def test_the_view_refreshes_after_a_write(metadata: MetadataController):
     assert metadata.values()["sample"] == "HeLa"
     # Two: the sample just set, plus lamella_type derived from the project's
     # experiment.yaml method.
-    assert f"2 of {len(DESCRIPTIVE_FIELDS)}" in metadata.summary()
+    assert metadata.project_summaries()[0].filled == 2
 
 
 def test_planning_writes_nothing(metadata: MetadataController):
@@ -1112,10 +1112,12 @@ def test_a_placeholder_counts_as_missing(metadata: MetadataController):
     assert "user" not in summary.missing
 
 
-def test_a_summary_names_the_fields_still_wanted():
+def test_a_summary_counts_the_fields_filled_of_all_of_them():
     controller = at("AutoLamella-2026-07-28-13-57")
+    summary = controller.project_summaries()[0]
 
-    assert "missing: description" in controller.project_summaries()[0].describe()
+    assert "description" in summary.missing
+    assert summary.describe() == f"0/{len(DESCRIPTIVE_FIELDS)} completed"
 
 
 def _acceptable(entry) -> str:
@@ -1138,7 +1140,7 @@ def test_a_complete_project_is_reported_as_complete(metadata: MetadataController
     summary = metadata.project_summaries()[0]
     assert summary.is_complete is True
     assert summary.filled == summary.total
-    assert "missing" not in summary.describe()
+    assert summary.describe() == f"{summary.total}/{summary.total} completed"
 
 
 def test_every_project_gets_a_row_not_only_the_selected_one():
@@ -1508,10 +1510,10 @@ def test_a_placeholder_in_one_project_is_outstanding_for_the_folder(session):
     assert "sample" in session.outstanding()
 
 
-def test_a_folder_is_summarised_by_count_rather_than_read_out(session):
+def test_a_folder_is_titled_by_count_rather_than_read_out(session):
     session.select_folder("20250428_AM")
 
-    assert session.summary() == "20250428_AM: 3 projects, 0 fully described"
+    assert session.scope_title() == "20250428_AM (3 projects)"
 
 
 def test_describing_one_project_again_narrows_the_scope_back(session):

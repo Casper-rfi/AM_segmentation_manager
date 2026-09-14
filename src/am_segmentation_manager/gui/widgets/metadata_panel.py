@@ -1,9 +1,10 @@
 """The Add data tab: see a project's descriptive metadata, and edit it.
 
-Each field's value is shown beside the file that supplied it -- a value that
-looks wrong is explained by which of the two YAML files it came from, and
-nothing else surfaces that. The project list marks how much of each project is
-described, so what is left to do is visible without opening every one.
+A dot beside each field says whether it is filled in, and whether a change to
+it is still only in the window; hovering it names the YAML file the value came
+from, which is what explains a value that looks wrong. The project list marks
+how much of each project is described, so what is left to do is visible
+without opening every one.
 
 Editing is locked until switched on, matching the curation view, and a
 suggestion reaches a file only when the user saves.
@@ -13,8 +14,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QIcon, QPainter, QPixmap
+from qtpy.QtCore import QRectF, Qt, Signal
+from qtpy.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -32,7 +33,6 @@ from qtpy.QtWidgets import (
 from ...metadata import split_values
 from ..metadata_controller import (
     FIELDS,
-    MIXED_MARKER,
     SUGGESTED_FIELDS,
     TODO_MARKER,
     VALUE_SEPARATOR,
@@ -41,12 +41,12 @@ from ..metadata_controller import (
     ProjectSummary,
 )
 from .common import MAX_LISTED_FILES, chip_icon, match_anywhere
-from .controls import ChipEditor, GripSplitter, ToggleSwitch
+from .controls import ChipEditor, GripSplitter, ToggleSwitch, keep_together
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .lists import project_box
 from .paths import add_path_menu
 from .theme import (
-    BADGE_STYLES,
+    ACCENT,
     MUTED,
     SWATCH_HEIGHT,
     SWATCH_OUTLINE,
@@ -91,6 +91,96 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
         # reporting it.
         painter.end()
     return chip_icon(pixmap)
+
+
+#: Side of the dot beside each field, in logical pixels.
+DOT = 12
+
+#: What each field dot says on hover, before anything particular to the field.
+DOT_HINTS = {
+    "filled": "Filled in",
+    "missing": "Not filled in yet",
+    "mixed": (
+        "These projects do not agree on this field. Leave it and none of them "
+        "is written; type a value and every one of them is."
+    ),
+    "edited": "Changed here and not saved yet",
+}
+
+
+def _dot_pixmap(state: str) -> QPixmap:
+    """Return the dot beside a field in *state*, one of :data:`DOT_HINTS`.
+
+    Shape says what the field holds -- solid, a ring, half -- and colour whether
+    that is saved: the list's teal and amber for a filled field and a missing
+    one, the accent for a change still only in the window. Two channels, so
+    neither rests on telling colours apart.
+    """
+    pixmap = QPixmap(DOT, DOT)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.Antialiasing)
+        disc = QRectF(1.5, 1.5, DOT - 3, DOT - 3)
+        if state == "missing":
+            pen = QPen(MISMATCH)
+            pen.setWidthF(2.0)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(disc.adjusted(0.5, 0.5, -0.5, -0.5))
+        elif state == "mixed":
+            grey = QColor(MUTED)
+            pen = QPen(grey)
+            pen.setWidthF(1.5)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(disc)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(grey)
+            painter.drawPie(disc, 90 * 16, 180 * 16)
+        else:
+            colour = QColor(ACCENT) if state == "edited" else STATE_COLOURS["corrected"]
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(colour)
+            painter.drawEllipse(disc)
+    finally:
+        painter.end()
+    return pixmap
+
+
+def field_state(shown: str, saved: str, *, mixed: bool, outstanding: bool) -> str:
+    """Return which dot a field gets, from what its box shows and what is saved.
+
+    A change comes first: whatever the saved value was, the box no longer
+    shows it. A field the projects disagree on is mixed while left alone, and
+    a placeholder resolves to no value, so it is missing like an empty field.
+    """
+    if shown != saved:
+        return "edited"
+    if mixed:
+        return "mixed"
+    if outstanding or not saved:
+        return "missing"
+    return "filled"
+
+
+def _dot_hint(state: str, paths: tuple[Path, ...], outstanding: bool) -> str:
+    """Return what a field's dot says on hover."""
+    if state == "missing" and outstanding:
+        return "Still a placeholder; nobody has filled this in"
+    if state == "filled":
+        return f"{DOT_HINTS[state]}\n{source_tooltip(paths)}"
+    return DOT_HINTS[state]
+
+
+def _notify_on_change(editor: QWidget, callback) -> None:
+    """Call *callback* whenever *editor*'s content changes, whichever kind it is."""
+    if isinstance(editor, ChipEditor):
+        editor.changed.connect(callback)
+    elif isinstance(editor, QComboBox):
+        editor.currentTextChanged.connect(lambda _text: callback())
+    else:
+        editor.textChanged.connect(lambda *_args: callback())
 
 
 def _describe(changes: list) -> str:
@@ -201,6 +291,10 @@ class MetadataPanel(QWidget):
         self.controller = controller
         self._loading = False
         self.root: Path | None = None
+        #: Each field as last read: its saved value, the file behind it in each
+        #: project, and whether it is a placeholder or mixed. What the dots are
+        #: compared against as the boxes change.
+        self._resolved: dict[str, tuple[str, tuple[Path, ...], bool, bool]] = {}
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -403,12 +497,10 @@ class MetadataPanel(QWidget):
         self.restore_button.setEnabled(has_root and self.controller.editing_enabled)
 
     def _build_fields(self) -> QWidget:
-        box = QGroupBox("Metadata")
+        # Titled with what is being described, so a folder of a dozen projects
+        # is named before anything is typed into it.
+        self.fields_box = box = QGroupBox("Metadata")
         column = QVBoxLayout(box)
-
-        self.summary = QLabel("No project selected")
-        self.summary.setWordWrap(True)
-        column.addWidget(self.summary)
 
         # Above the fields rather than under them: it decides whether any of
         # them can be typed in, and a switch below a form is found last.
@@ -422,7 +514,7 @@ class MetadataPanel(QWidget):
 
         form = QFormLayout()
         self.editors: dict[str, QWidget] = {}
-        self.notes: dict[str, QLabel] = {}
+        self.dots: dict[str, QLabel] = {}
         self.captions: dict[str, QLabel] = {}
         # Which editor a field gets is the field table's to say: a vocabulary
         # is picked from, a value that repeats across projects is offered back,
@@ -440,20 +532,16 @@ class MetadataPanel(QWidget):
                 editor = QLineEdit()
                 editor.setPlaceholderText("unset")
 
-            note = QLabel("")
             caption = QLabel(entry.label)
             for widget in (caption, editor):
                 widget.setToolTip(entry.guidance)
-
-            row = QHBoxLayout()
-            row.addWidget(editor, stretch=1)
-            row.addWidget(note)
-            holder = QWidget()
-            holder.setLayout(row)
-            form.addRow(caption, holder)
+            dot = QLabel()
+            dot.setFixedSize(DOT, DOT)
+            form.addRow(keep_together(dot, caption, spacing=6), editor)
             self.editors[entry.name] = editor
-            self.notes[entry.name] = note
+            self.dots[entry.name] = dot
             self.captions[entry.name] = caption
+            _notify_on_change(editor, self._show_states)
         column.addLayout(form)
 
         buttons = QHBoxLayout()
@@ -616,60 +704,28 @@ class MetadataPanel(QWidget):
         )
         return answer == QMessageBox.Yes
 
-    def _show_note(
-        self,
-        field: str,
-        source: str,
-        outstanding: bool,
-        *,
-        mixed: bool = False,
-        paths: tuple[Path, ...] = (),
-    ) -> None:
-        """Annotate one field with where its value came from, or that it is due.
-
-        Provenance and a placeholder never coincide -- a field still holding one
-        resolves to no value and so has no source -- but they are not the same
-        kind of remark, and drawing an outstanding field in the dimmest colour
-        on the panel put the state that matters most where it was hardest to
-        see.
-
-        *mixed* comes first of the three. It is the one that says the box is not
-        showing a value at all, and it is the authoritative statement: the
-        marker in the box is editable text that could in principle have been
-        typed, where this is derived from the projects in scope.
-
-        Args:
-            paths: The file behind the value in each project in scope.
-        """
-        note = self.notes[field]
-        if mixed:
-            note.setText(f"[{MIXED_MARKER.strip('()')}]")
-            note.setStyleSheet(BADGE_STYLES["info"])
-            note.setToolTip(
-                "These projects do not agree on this field. Leave it and none "
-                "of them is written; type a value and every one of them is."
+    def _show_states(self) -> None:
+        """Put each field's dot in step with what its box shows now."""
+        if self._loading:
+            return
+        for field, editor in self.editors.items():
+            saved, paths, outstanding, mixed = self._resolved.get(
+                field, ("", (), False, False)
             )
-        elif outstanding:
-            note.setText(f"[{TODO_MARKER}]")
-            note.setStyleSheet(BADGE_STYLES["warning"])
-            note.setToolTip("Still a placeholder; nobody has filled this in")
-        elif source:
-            # Plain words in the muted colour rather than a bracketed badge:
-            # where a value came from is a quiet fact, and the badges are kept
-            # for the two states that ask for something.
-            note.setText(f"from {source}")
-            note.setStyleSheet(BADGE_STYLES["info"])
-            note.setToolTip(source_tooltip(paths))
-        else:
-            note.setText("")
-            note.setToolTip("")
+            state = field_state(
+                editor_text(editor), saved, mixed=mixed, outstanding=outstanding
+            )
+            dot = self.dots[field]
+            #: The state drawn, for anything asking which dot this is.
+            dot.state = state
+            dot.setPixmap(_dot_pixmap(state))
+            dot.setToolTip(_dot_hint(state, paths, outstanding))
 
     def refresh(self) -> None:
         """Redraw the fields from the controller."""
         self._loading = True
         try:
             values = self.controller.values()
-            sources = self.controller.sources()
             paths = self.controller.source_paths()
             outstanding = set(self.controller.outstanding())
             mixed = set(self.controller.mixed_fields())
@@ -680,12 +736,8 @@ class MetadataPanel(QWidget):
                     # offered on the next without rescanning.
                     set_editor_suggestions(editor, self.controller.suggestions(field))
                 set_editor_text(editor, value)
-                self._show_note(
-                    field,
-                    sources.get(field, ""),
-                    field in outstanding,
-                    mixed=field in mixed,
-                    paths=paths.get(field, ()),
+                self._resolved[field] = (
+                    value, paths.get(field, ()), field in outstanding, field in mixed
                 )
             # Saving is exactly when a project stops being incomplete, so the
             # marks in the list must not be left describing the state before
@@ -696,9 +748,21 @@ class MetadataPanel(QWidget):
                 [_completeness_icon(summary) for summary in summaries],
                 [f"{summary.label}\n{summary.describe()}" for summary in summaries],
             )
-            self.summary.setText(self.controller.summary())
+            scope = self.controller.scope_title()
+            self.fields_box.setTitle(f"Metadata: {scope}" if scope else "Metadata")
         finally:
             self._loading = False
+        self._show_states()
+
+
+def field_dot_legend() -> list[tuple[QPixmap, str]]:
+    """Return what the dot beside each field means, drawn by :func:`_dot_pixmap`."""
+    return [
+        (_dot_pixmap("filled"), "Filled in; hover it for the file the value came from"),
+        (_dot_pixmap("missing"), "Not filled in yet, or still a placeholder"),
+        (_dot_pixmap("mixed"), "The projects in this folder do not agree on it"),
+        (_dot_pixmap("edited"), "Changed here and not saved yet"),
+    ]
 
 
 def completeness_legend() -> list[tuple[QPixmap, str]]:

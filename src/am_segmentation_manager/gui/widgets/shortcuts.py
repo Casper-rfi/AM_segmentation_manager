@@ -32,7 +32,7 @@ from .common import mark_image
 from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram
 from .label_panel import CLASS_KEYS, LOCK_KEYS
-from .metadata_panel import completeness_legend
+from .metadata_panel import completeness_legend, field_dot_legend
 from .project_panel import status_legend
 from .theme import BORDER_LIGHT, HEADING
 
@@ -76,10 +76,11 @@ GROUP_CLASSES = "Choose a class"
 GROUP_SPECKS = "Find specks"
 GROUP_EDITS = "Save and undo"
 GROUP_ELSEWHERE = "Elsewhere in the window"
-#: The two legend headings. Separate rather than one "what the marks mean",
+#: The legend headings. Separate rather than one "what the marks mean",
 #: because a reader arrives asking about a particular mark and the heading is
-#: what tells them which half to read.
+#: what tells them which part to read.
 GROUP_ROW_MARK = "The mark beside each row"
+GROUP_FIELD_MARK = "The dot beside each field"
 GROUP_STRIP_MARK = "The bar under the images"
 GROUP_HELP = "This list"
 
@@ -557,7 +558,10 @@ def _tab_marks(tab: str) -> tuple[tuple[str, str, str], ...]:
             (GROUP_STRIP_MARK, timeline_legend(LABEL_BAND)),
         ]
     elif tab == TAB_ADD_DATA:
-        rows = [(GROUP_ROW_MARK, completeness_legend())]
+        rows = [
+            (GROUP_ROW_MARK, completeness_legend()),
+            (GROUP_FIELD_MARK, field_dot_legend()),
+        ]
     return tuple(
         (group, mark_image(sample), meaning)
         for group, legend in rows

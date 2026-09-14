@@ -170,7 +170,7 @@ of one of these files, is held by `test_docs.py`.
   for the reason `MetadataController.select_folder` gives. The scope is a list and one project is a
   list of one, so both are one code path. A field they differ on resolves to `MIXED_MARKER`,
   which goes *in the box*: what to write is decided by comparing the box against the resolved value,
-  so an untouched field matches and is never written. The badge beside it is authoritative, being
+  so an untouched field matches and is never written. The dot beside it is authoritative, being
   derived where the marker is text somebody could have typed; a field is outstanding if *any*
   project still holds a placeholder. A folder is a batch, planned whole before any of it is written
   by the rule in [`decisions.md`](decisions.md) § Workflow state. Writing a value needs no asking;

@@ -963,7 +963,7 @@ def test_the_add_data_tab_opens_before_anything_is_scanned(qt_app, settings):
     try:
         fresh.tabs.setCurrentWidget(fresh.metadata_panel)
 
-        assert fresh.metadata_panel.summary.text() == "No project selected"
+        assert fresh.metadata_panel.fields_box.title() == "Metadata"
     finally:
         destroy(fresh)
 
@@ -3281,9 +3281,9 @@ def test_what_acts_on_every_label_is_held_apart_from_what_reads_the_folder(windo
 def test_the_editing_switch_comes_before_the_fields_it_unlocks(window):
     """It decides whether any field can be typed in, and was found last."""
     panel = window.metadata_panel
-    column = panel.summary.parentWidget().layout()
+    column = panel.enable.parentWidget().layout()
 
-    assert column.indexOf(panel.enable) == column.indexOf(panel.summary) + 1
+    assert column.indexOf(panel.enable) == 0
 
 
 def test_the_operations_box_says_what_it_would_act_on(window):
@@ -3718,14 +3718,14 @@ def test_a_field_holding_several_says_so_without_being_hovered(metadata_panel):
         assert says_so == entry.multi, entry.name
 
 
-def test_a_value_is_annotated_with_the_file_it_came_from(metadata_panel):
-    """In quiet words rather than a bracketed badge, the badges being kept for
-    the states that ask for something; the whole path is on hover."""
-    assert metadata_panel.notes["sample"].text() == "from AM_metadata.yaml"
-    assert metadata_panel.notes["organisation"].text() == "from experiment.yaml"
-    assert metadata_panel.notes["sample"].styleSheet() == BADGE_STYLES["info"]
-    tip = metadata_panel.notes["sample"].toolTip()
-    assert tip.startswith("From /") and tip.endswith("AM_metadata.yaml")
+def test_a_value_says_on_hover_which_file_it_came_from(metadata_panel):
+    """On the dot rather than in words beside the box, which cost every row the
+    width its chips need; the whole path is there."""
+    sample = metadata_panel.dots["sample"].toolTip()
+    organisation = metadata_panel.dots["organisation"].toolTip()
+
+    assert "From /" in sample and sample.endswith("AM_metadata.yaml")
+    assert organisation.endswith("experiment.yaml")
 
 
 def test_a_folder_names_the_file_in_every_project_it_covers():
@@ -3769,12 +3769,30 @@ def test_stepping_moves_to_the_next_project_and_stops_at_the_ends(metadata_panel
 def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
     """A placeholder is the state that most needs seeing; it used to be drawn
     in the dimmest colour on the panel, in the same grey as provenance."""
+    from am_segmentation_manager.gui.widgets.metadata_panel import _dot_pixmap
+
     metadata_panel.projects.setCurrentItem(metadata_panel.projects.project_item(1))
 
-    note = metadata_panel.notes["sample"]
-    assert note.text() == "[TODO]"
-    assert note.styleSheet() == BADGE_STYLES["warning"]
+    dot = metadata_panel.dots["sample"]
+    assert dot.state == "missing"
+    assert "placeholder" in dot.toolTip()
+    assert dot.pixmap().toImage() == _dot_pixmap("missing").toImage()
+    assert dot.pixmap().toImage() != _dot_pixmap("filled").toImage()
     assert editor_text(metadata_panel.editors["sample"]) == ""
+
+
+def test_an_edited_field_is_marked_until_it_is_saved(metadata_panel):
+    """Saving is a separate press, so a change still only in the window has to
+    look different from one that reached the file."""
+    metadata_panel.enable.setChecked(True)
+    set_editor_text(metadata_panel.editors["description"], "A lamella series")
+
+    assert metadata_panel.dots["description"].state == "edited"
+    assert metadata_panel.dots["sample"].state == "filled"
+
+    metadata_panel._save()
+
+    assert metadata_panel.dots["description"].state == "filled"
 
 
 def test_repeating_fields_offer_the_values_already_in_use(metadata_panel):
@@ -3880,12 +3898,9 @@ def test_the_list_says_which_projects_still_need_describing(metadata_panel):
     outstanding = metadata_panel.projects.project_item(1)
 
     total = len(DESCRIPTIVE_FIELDS)
-    assert f"3 of {total} fields set" in described.toolTip(0)
-    assert "missing: description, project, " in described.toolTip(0)
-    assert "grid_type, " in described.toolTip(0)
+    assert f"3/{total} completed" in described.toolTip(0)
     # Only the organisation, from experiment.yaml: its sample is a placeholder.
-    assert f"1 of {total} fields set" in outstanding.toolTip(0)
-    assert "sample" in outstanding.toolTip(0)
+    assert f"1/{total} completed" in outstanding.toolTip(0)
     assert not described.icon(0).isNull()
 
 
@@ -3987,14 +4002,14 @@ def test_saving_updates_the_mark_in_the_list(metadata_panel):
     """Saving is exactly when a project stops being incomplete, so leaving the
     list describing the state before it is how a user learns to distrust it."""
     total = len(DESCRIPTIVE_FIELDS)
-    assert f"3 of {total} fields set" in (
+    assert f"3/{total} completed" in (
         metadata_panel.projects.project_item(0).toolTip(0)
     )
     metadata_panel.enable.setChecked(True)
     set_editor_text(metadata_panel.editors["description"], "A lamella series")
     metadata_panel._save()
 
-    assert f"4 of {total} fields set" in (
+    assert f"4/{total} completed" in (
         metadata_panel.projects.project_item(0).toolTip(0)
     )
 
@@ -4260,6 +4275,18 @@ def test_the_legend_says_what_the_tab_actually_draws(window):
     assert "Picked out for a state change" not in label
 
 
+def test_the_field_dots_are_explained_by_the_dots_themselves(window):
+    from am_segmentation_manager.gui.widgets.shortcuts import (
+        GROUP_FIELD_MARK,
+        TAB_ADD_DATA,
+    )
+
+    help_text = window._keys.help_html(TAB_ADD_DATA)
+
+    assert GROUP_FIELD_MARK in help_text
+    assert "Changed here and not saved yet" in help_text
+
+
 def test_a_tab_with_no_marks_gets_no_legend(window):
     """Export draws neither a chip nor the bar, and a heading with nothing
     under it is a question raised and not answered."""
@@ -4374,7 +4401,7 @@ def test_a_field_the_projects_disagree_on_shows_mixed(metadata_panel):
     _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
 
     assert editor_text(metadata_panel.editors["sample"]) == MIXED_MARKER
-    assert metadata_panel.notes["sample"].text() == "[mixed]"
+    assert metadata_panel.dots["sample"].state == "mixed"
 
 
 def test_a_mixed_field_left_alone_is_not_written(metadata_panel):
@@ -4400,13 +4427,13 @@ def test_typing_over_mixed_writes_it_to_every_project(metadata_panel):
         assert "HeLa" in (project.path / "AM_metadata.yaml").read_text()
 
 
-def test_the_summary_counts_the_folder_rather_than_reading_it_out(metadata_panel):
+def test_the_title_counts_the_folder_rather_than_reading_it_out(metadata_panel):
     """A dozen project names do not fit and would not help."""
     _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
     metadata_panel.refresh()
 
-    assert metadata_panel.summary.text() == (
-        "20260728_CB_AM_bitmap: 2 projects, 0 fully described"
+    assert metadata_panel.fields_box.title() == (
+        "Metadata: 20260728_CB_AM_bitmap (2 projects)"
     )
 
 

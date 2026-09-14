@@ -103,11 +103,8 @@ class ProjectSummary:
         return not self.missing
 
     def describe(self) -> str:
-        """Return a one-line account of what is filled in and what is not."""
-        counted = f"{self.filled} of {self.total} fields set"
-        if self.is_complete:
-            return counted
-        return f"{counted} -- missing: {', '.join(self.missing)}"
+        """Return how many of its fields a project has filled, as ``6/12 completed``."""
+        return f"{self.filled}/{self.total} completed"
 
 
 #: What a field shows when the projects being described do not agree on it.
@@ -248,7 +245,7 @@ class MetadataController:
     def mixed_fields(self) -> tuple[str, ...]:
         """Return the fields the projects in scope disagree on.
 
-        Asked for separately from :meth:`values` so the panel can badge them:
+        Asked for separately from :meth:`values` so the panel can mark them:
         the marker in the box is editable text and a value typed as that text
         would be indistinguishable, where this is derived and cannot be typed.
         """
@@ -375,24 +372,17 @@ class MetadataController:
         """
         return [self._summarise(project) for project in self._projects]
 
-    def summary(self) -> str:
-        """Return a one-line description of what is being described, and how far.
+    def scope_title(self) -> str:
+        """Return what is being described, for the heading over the fields.
 
-        For a folder the projects are counted rather than read out: a dozen
-        names do not fit and would not help, where how many are still short of
-        a field is the reason to be looking at the folder at all.
+        Empty with nothing in scope. A folder is counted rather than read out:
+        a dozen project names do not fit and would not help.
         """
         if not self._scope:
-            return "No project selected"
+            return ""
         if self._scope_folder is None:
-            project = self._scope[0]
-            return f"{project.display_name}: {self._summarise(project).describe()}"
-        summaries = [self._summarise(project) for project in self._scope]
-        complete = sum(1 for summary in summaries if summary.is_complete)
-        return (
-            f"{self._scope_folder}: {len(summaries)} projects, "
-            f"{complete} fully described"
-        )
+            return self._scope[0].display_name
+        return f"{self._scope_folder} ({len(self._scope)} projects)"
 
     @staticmethod
     def _summarise(project: Project) -> ProjectSummary:
