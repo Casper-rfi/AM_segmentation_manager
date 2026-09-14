@@ -267,6 +267,16 @@ def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
     return records, start_path, index.all_projects()
 
 
+def _projects_in_scope(projects: Sequence[Project], start_path: Path) -> list[Project]:
+    """Return the projects :func:`_resolve_scope` found, scanning only where it found none.
+
+    It finds none where explicit image paths were given, and a scan of the
+    collection being the slowest thing the package does, a command takes the
+    projects from its scope rather than scanning *start_path* a second time.
+    """
+    return list(projects) or Scanner(start_path).build_index().all_projects()
+
+
 def _series_selectors(args: argparse.Namespace) -> list[str]:
     """Return the series to match, falling back to the command's default.
 

@@ -46,7 +46,7 @@ from ..operations.savepoint import (
 )
 from ..reporting import format_bytes
 from ..scanner import Scanner
-from .scope import _add_scope_arguments, _recorder, _resolve_records
+from .scope import _add_scope_arguments, _projects_in_scope, _recorder, _resolve_scope
 
 logger = logging.getLogger(__name__)
 
@@ -299,7 +299,7 @@ def _resolutions(chosen: list[str]) -> dict[str, str]:
 
 def _cmd_revert(args: argparse.Namespace) -> int:
     """Handle ``am-seg revert``."""
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.info("No matching images found")
         return 2
@@ -307,8 +307,7 @@ def _cmd_revert(args: argparse.Namespace) -> int:
 
     try:
         if args.to:
-            projects = Scanner(start_path).build_index().all_projects()
-            point = find_savepoint(projects, args.to)
+            point = find_savepoint(_projects_in_scope(projects, start_path), args.to)
             plan = plan_revert_to(records, point)
             logger.info(
                 "%s: %d project(s) here, %d of %d label(s) reachable",

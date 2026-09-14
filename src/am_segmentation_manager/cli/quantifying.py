@@ -64,6 +64,7 @@ from .scope import (
     _describe_scope,
     _metadata_selectors,
     _outputs_refused,
+    _projects_in_scope,
     _resolve_records,
     _resolve_scope,
 )
@@ -418,7 +419,7 @@ def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
 
     if _outputs_refused([args.output], args.overwrite):
         return 2
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.warning("No images matched")
         return 0
@@ -434,11 +435,11 @@ def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
             logger.warning("No images matched the metadata filters")
             return 0
 
-    projects = project_lookup(Scanner(start_path).build_index().all_projects())
+    lookup = project_lookup(_projects_in_scope(projects, start_path))
     try:
         export_image_metadata_csv(
             records, start_path, Path(args.output),
-            include_headers=not args.no_headers, projects=projects,
+            include_headers=not args.no_headers, projects=lookup,
             # The same rule the training export and the window apply.
             paired=args.modality == "all",
             overwrite=args.overwrite,
@@ -465,7 +466,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
 
     if _outputs_refused([args.output, args.plot], args.overwrite):
         return 2
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.warning("No images matched")
         return 0
@@ -510,7 +511,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             record.image_path: label_state(record) for record in records
         }
 
-    lookup = project_lookup(Scanner(start_path).build_index().all_projects())
+    lookup = project_lookup(_projects_in_scope(projects, start_path))
     try:
         keys = [
             resolve_breakdown(
@@ -579,7 +580,7 @@ def _cmd_quantify_labels(args: argparse.Namespace) -> int:
 
     if _outputs_refused([args.output, args.lamella_output], args.overwrite):
         return 2
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.warning("No images matched")
         return 0
@@ -619,7 +620,7 @@ def _cmd_quantify_labels(args: argparse.Namespace) -> int:
         logger.warning("None of the matched images has a label to measure")
         return 0
 
-    lookup = project_lookup(Scanner(start_path).build_index().all_projects())
+    lookup = project_lookup(_projects_in_scope(projects, start_path))
     summaries = summarise_lamellae(records, measurements, lookup)
     for line in format_label_quantification(
         summaries, config, detail=not args.no_detail
