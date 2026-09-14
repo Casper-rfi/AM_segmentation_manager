@@ -40,6 +40,10 @@ Makefile
 !.claude/skills/
 !.claude/settings.json
 
+# Plans Claude Code writes in plan mode (plansDirectory in .claude/settings.json).
+# Working notes for one piece of work, kept out of the history.
+plans/
+
 # --- Python Build & Distribution Artifacts ---
 build/
 dist/
