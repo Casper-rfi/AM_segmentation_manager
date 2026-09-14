@@ -44,14 +44,14 @@ class BusyDialog(QDialog):
         super().__init__(parent)
         self._stoppable = stoppable
         self.setWindowTitle(description)
-        self.setWindowModality(Qt.ApplicationModal)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
         # No close button: this dialog goes away when the work does, and a
         # cross that dismissed it would leave the operation running behind a
         # window that said it had stopped.
         self.setWindowFlags(
-            (self.windowFlags() | Qt.CustomizeWindowHint)
-            & ~Qt.WindowCloseButtonHint
-            & ~Qt.WindowContextHelpButtonHint
+            (self.windowFlags() | Qt.WindowType.CustomizeWindowHint)
+            & ~Qt.WindowType.WindowCloseButtonHint
+            & ~Qt.WindowType.WindowContextHelpButtonHint
         )
 
         layout = QVBoxLayout(self)
@@ -67,7 +67,7 @@ class BusyDialog(QDialog):
 
         if stoppable:
             self.buttons = QDialogButtonBox()
-            stop = self.buttons.addButton("Stop", QDialogButtonBox.RejectRole)
+            stop = self.buttons.addButton("Stop", QDialogButtonBox.ButtonRole.RejectRole)
             stop.setToolTip(
                 "Stop after the file being written. What is already done is "
                 "kept."

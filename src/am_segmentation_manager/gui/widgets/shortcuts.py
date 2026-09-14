@@ -261,7 +261,7 @@ class ShortcutHelp(QDialog):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         self._text = QLabel()
-        self._text.setTextFormat(Qt.RichText)
+        self._text.setTextFormat(Qt.TextFormat.RichText)
         # Two tabs run past 800 pixels now the legend is in the list, so it
         # scrolls rather than being cut short: every row answers a question
         # somebody has had. A dialog merely sized past the screen is worse than
@@ -269,9 +269,9 @@ class ShortcutHelp(QDialog):
         self._scroll = QScrollArea()
         self._scroll.setWidget(self._text)
         self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         layout.addWidget(self._scroll)
-        self._buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         self._buttons.rejected.connect(self.close)
         layout.addWidget(self._buttons)
 
@@ -599,9 +599,9 @@ class Shortcuts:
             activated=binding.action,
         )
         if binding.scope is not None:
-            shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         elif binding.anywhere:
-            shortcut.setContext(Qt.ApplicationShortcut)
+            shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         return shortcut
 
     def apply_tab(self, tab: str) -> None:

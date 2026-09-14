@@ -663,3 +663,13 @@ def test_the_command_says_which_projects_cannot_join(collection, recorder, capsy
     said = said.out + said.err
     assert "arrived_later" in said
     assert "cannot join" in said and "begins after this savepoint" in said
+
+
+def test_a_savepoint_nobody_is_recorded_as_taking_says_so():
+    """An entry written without an author leaves ``by`` empty, which is not a name."""
+    from am_segmentation_manager.operations.savepoint import Savepoint
+
+    line = Savepoint(id="sp-1", title="round 1", at="2026-09-14T10:00:00", by=None).describe()
+
+    assert "None" not in line
+    assert "unknown" in line

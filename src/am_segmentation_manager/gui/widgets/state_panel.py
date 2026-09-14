@@ -286,5 +286,5 @@ def _swatch(state: str) -> QIcon:
     timeline readable without a separate key.
     """
     pixmap = QPixmap(SWATCH_SIZE, SWATCH_SIZE)
-    pixmap.fill(STATE_COLOURS.get(state, Qt.transparent))
+    pixmap.fill(STATE_COLOURS.get(state, Qt.GlobalColor.transparent))
     return QIcon(pixmap)

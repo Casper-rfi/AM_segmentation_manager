@@ -22,14 +22,14 @@ from .theme import ACCENT, BORDER_LIGHT, HEADING, MUTED, WINDOW
 #: shortcut events as well as the key ones, or F1 would still open the list
 #: over a window mid-scan.
 BLOCKED_EVENTS = frozenset({
-    QEvent.MouseButtonPress,
-    QEvent.MouseButtonRelease,
-    QEvent.MouseButtonDblClick,
-    QEvent.KeyPress,
-    QEvent.KeyRelease,
-    QEvent.Wheel,
-    QEvent.Shortcut,
-    QEvent.ShortcutOverride,
+    QEvent.Type.MouseButtonPress,
+    QEvent.Type.MouseButtonRelease,
+    QEvent.Type.MouseButtonDblClick,
+    QEvent.Type.KeyPress,
+    QEvent.Type.KeyRelease,
+    QEvent.Type.Wheel,
+    QEvent.Type.Shortcut,
+    QEvent.Type.ShortcutOverride,
 })
 
 #: The mark's side, in logical pixels. Large enough to be the thing the eye
@@ -139,7 +139,7 @@ class ScanBanner(QWidget):
         swallowed by :meth:`eventFilter`.
         """
         self.repaint()
-        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
 
     # -- what it looks like ------------------------------------------------
 
@@ -158,7 +158,7 @@ class ScanBanner(QWidget):
         """Draw the mark, the name, what is happening, and how far it has got."""
         painter = QPainter(self)
         try:
-            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.fillRect(self.rect(), QColor(WINDOW))
             self._paint_stack(painter)
         finally:
@@ -194,7 +194,7 @@ class ScanBanner(QWidget):
         """Draw one centred line at *top*, returning where the next one starts."""
         height = painter.fontMetrics().height()
         painter.drawText(
-            QRect(0, top, self.width(), height), Qt.AlignHCenter | Qt.AlignTop, text
+            QRect(0, top, self.width(), height), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, text
         )
         return top + height
 
@@ -207,7 +207,7 @@ class ScanBanner(QWidget):
         """
         if self._total <= 0:
             return
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         track = QRect(centre - BAR_WIDTH // 2, top, BAR_WIDTH, BAR_HEIGHT)
         painter.setBrush(QColor(BORDER_LIGHT))
         painter.drawRoundedRect(track, BAR_RADIUS, BAR_RADIUS)

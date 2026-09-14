@@ -131,6 +131,10 @@ cache limit, a memory budget. If a comment restates the code, delete it.
 **`docs/` describes the software now, not how it got here.** Correct a document rather
 than appending a correction to it, and delete a plan when the work it led to lands.
 
+**Do not use Claude Code memory** (it is switched off in `.claude/settings.json`). A
+decision or plan that must outlast a session is written where it can be read: a plan in
+`plans/`, which git ignores, until its work lands; a decision in `docs/`.
+
 **A fact belongs in exactly one place**, and `docs/` holds four files. Adding a fifth is
 a decision, not a default.
 

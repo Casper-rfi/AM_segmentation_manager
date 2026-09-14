@@ -73,11 +73,11 @@ class ToggleSwitch(QCheckBox):
         """
         painter = QPainter(self)
         try:
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             track = self._track()
             radius = track.height() / 2
 
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(self._track_colour()))
             painter.drawRoundedRect(track, radius, radius)
 
@@ -88,16 +88,16 @@ class ToggleSwitch(QCheckBox):
                 pen = QPen(QColor(theme.ACCENT))
                 pen.setWidthF(1.5)
                 painter.setPen(pen)
-                painter.setBrush(Qt.NoBrush)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawRoundedRect(ring, ring.height() / 2, ring.height() / 2)
 
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(theme.SWITCH_KNOB))
             painter.drawEllipse(self._knob(track))
 
             painter.setPen(QColor(self._text_colour()))
             painter.drawText(
-                self._caption(), Qt.AlignLeft | Qt.AlignVCenter, self.text()
+                self._caption(), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.text()
             )
         finally:
             painter.end()
@@ -197,10 +197,10 @@ class _GripHandle(QSplitterHandle):
         cursor has said already by the time anyone is close enough to see it.
         """
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor(theme.WINDOW))
 
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(theme.ACCENT if self._pointed_at else theme.GRIP))
         painter.drawRoundedRect(
             self._grip(), theme.GRIP_THICKNESS / 2, theme.GRIP_THICKNESS / 2
@@ -213,7 +213,7 @@ class _GripHandle(QSplitterHandle):
         handle is the upright bar and the grip runs down it.
         """
         thickness, length = theme.GRIP_THICKNESS, theme.GRIP_LENGTH
-        if self.orientation() == Qt.Horizontal:
+        if self.orientation() == Qt.Orientation.Horizontal:
             width, height = thickness, length
         else:
             width, height = length, thickness
@@ -238,7 +238,7 @@ class ElidingLabel(QLabel):
     def __init__(self, text: str = "") -> None:
         super().__init__()
         self._full = ""
-        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.setText(text)
 
     def setText(self, text: str) -> None:  # noqa: N802 - Qt naming
@@ -257,7 +257,7 @@ class ElidingLabel(QLabel):
 
     def _elide(self) -> None:
         super().setText(
-            self.fontMetrics().elidedText(self._full, Qt.ElideMiddle, self.width())
+            self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideMiddle, self.width())
         )
 
 
@@ -277,8 +277,8 @@ class StepCombo(QComboBox):
     """
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt's spelling
-        if event.key() in (Qt.Key_Up, Qt.Key_Down) and not event.modifiers():
-            self.step(1 if event.key() == Qt.Key_Down else -1)
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and not event.modifiers():
+            self.step(1 if event.key() == Qt.Key.Key_Down else -1)
             event.accept()
             return
         super().keyPressEvent(event)
@@ -289,7 +289,7 @@ class StepCombo(QComboBox):
         Stops at the ends rather than wrapping: a list that jumps from the
         last row back to the first loses your place in a long one.
         """
-        wanted = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        wanted = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         index = self.currentIndex() + delta
         while 0 <= index < self.count():
             # Asked of the model rather than the item, so this works whatever
@@ -341,7 +341,7 @@ def keep_paired(top, bottom, *, spacing: int = 4, align=None) -> QWidget:
     grid.setVerticalSpacing(2)
     for row, widgets in enumerate((top, bottom)):
         for column, widget in enumerate(widgets):
-            grid.addWidget(widget, row, column, align.get((row, column), Qt.Alignment()))
+            grid.addWidget(widget, row, column, align.get((row, column), Qt.AlignmentFlag(0)))
     return holder
 
 
@@ -374,7 +374,7 @@ class FlowLayout(QLayout):
         would mean knowing where the wrap will be, which is the width's answer
         rather than this one's.
         """
-        self.addItem(QSpacerItem(size, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+        self.addItem(QSpacerItem(size, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
 
     def count(self) -> int:
         return len(self._items)
@@ -555,7 +555,7 @@ class ChipEditor(QWidget):
 
         self.entry = QComboBox()
         self.entry.setEditable(True)
-        self.entry.setInsertPolicy(QComboBox.NoInsert)
+        self.entry.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.entry.lineEdit().setPlaceholderText(placeholder)
         match_anywhere(self.entry)
         # Three ways in, and the third is the one that matters: Return, picking
@@ -569,12 +569,12 @@ class ChipEditor(QWidget):
         self.entry.activated.connect(lambda _index: self._commit_entry())
         # Left as well as top: while there are no values the chips are hidden,
         # and a box aligned only by its top is centred in the room they leave.
-        row.addWidget(self.entry, 0, Qt.AlignLeft | Qt.AlignTop)
+        row.addWidget(self.entry, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
         self._chips = FlowArea()
         self._chip_layout = FlowLayout()
         self._chips.setLayout(self._chip_layout)
-        row.addWidget(self._chips, 1, Qt.AlignTop)
+        row.addWidget(self._chips, 1, Qt.AlignmentFlag.AlignTop)
 
     # -- what it holds -----------------------------------------------------
 
@@ -638,7 +638,7 @@ class ChipEditor(QWidget):
             chip = QPushButton(f"{value}  ✕")
             chip.setStyleSheet(theme.VALUE_CHIP_STYLE)
             chip.setToolTip(f"Remove {value}")
-            chip.setCursor(Qt.PointingHandCursor)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
             chip.clicked.connect(lambda _checked=False, v=value: self._remove(v))
             self._chip_layout.addWidget(chip)
             # Adding a widget to a layout reparents it, and reparenting hides
@@ -708,7 +708,7 @@ def _paint_track(
     """Draw a slider's groove, filled in the accent between two points along it."""
     groove = QRectF(left, middle - RANGE_GROOVE / 2, right - left, RANGE_GROOVE)
     radius = RANGE_GROOVE / 2
-    painter.setPen(Qt.NoPen)
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(theme.BORDER))
     painter.drawRoundedRect(groove, radius, radius)
     painter.setBrush(QColor(theme.ACCENT))
@@ -722,7 +722,7 @@ def _paint_knob(painter: QPainter, x: float, middle: float, *, ringed: bool) -> 
     """Draw one round handle, ringed in the accent when it is the one the keys move."""
     centre = QPointF(x, middle)
     if ringed:
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(theme.ACCENT))
         painter.drawEllipse(centre, RANGE_HANDLE + RANGE_FOCUS, RANGE_HANDLE + RANGE_FOCUS)
     pen = QPen(QColor(theme.BORDER))
@@ -742,8 +742,8 @@ class ValueSlider(QSlider):
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(Qt.Horizontal, parent)
-        self.setCursor(Qt.PointingHandCursor)
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._dragging = False
 
     def _x_of(self, value: int) -> float:
@@ -752,7 +752,7 @@ class ValueSlider(QSlider):
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Put the handle under the pointer and take hold of it."""
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
         self._dragging = True
@@ -787,7 +787,7 @@ class ValueSlider(QSlider):
         """Draw the groove, filled up to the handle, and the handle."""
         painter = QPainter(self)
         try:
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             left, right = _track_span(self.width())
             middle = self.height() / 2
             x = self._x_of(self.value())
@@ -850,8 +850,8 @@ class RangeSlider(QWidget):
         #: Which handle the pointer took hold of, and which the keys move.
         self._active = "low"
         self._dragging = False
-        self.setFocusPolicy(Qt.StrongFocus)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     # -- the values --------------------------------------------------------
 
@@ -905,7 +905,7 @@ class RangeSlider(QWidget):
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Take hold of whichever handle is nearer the press."""
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
         x = _event_x(event)
@@ -954,7 +954,7 @@ class RangeSlider(QWidget):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Step the active handle, where the window has not claimed the key."""
-        step = {Qt.Key_Left: -1, Qt.Key_Right: 1}.get(event.key())
+        step = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1}.get(event.key())
         if step is None:
             super().keyPressEvent(event)
             return
@@ -982,7 +982,7 @@ class RangeSlider(QWidget):
         """Draw the groove, the span between the handles, and the handles."""
         painter = QPainter(self)
         try:
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             left, right = self._span()
             middle = self.height() / 2
             low_x, high_x = self._x_of(self._low), self._x_of(self._high)
@@ -1070,7 +1070,7 @@ class SegmentedControl(QWidget):
             button.setText(caption)
             button.setCheckable(True)
             button.setToolTip(hint)
-            button.setCursor(Qt.PointingHandCursor)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.toggled.connect(
                 lambda checked, k=key: checked and self.chosen.emit(k)
             )

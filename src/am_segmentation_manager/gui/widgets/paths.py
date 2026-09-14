@@ -55,11 +55,11 @@ def build_path_dialog(
             file cannot be written with no extension.
     """
     dialog = QFileDialog(parent, caption)
-    dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
     dialog.setFileMode(mode)
-    dialog.setAcceptMode(QFileDialog.AcceptSave if save else QFileDialog.AcceptOpen)
-    if mode == QFileDialog.Directory:
-        dialog.setOption(QFileDialog.ShowDirsOnly, True)
+    dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave if save else QFileDialog.AcceptMode.AcceptOpen)
+    if mode == QFileDialog.FileMode.Directory:
+        dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
     if filters:
         dialog.setNameFilters(list(filters))
     if default_suffix:
@@ -87,7 +87,7 @@ def choose_open_file(
         build_path_dialog(
             parent,
             caption,
-            mode=QFileDialog.ExistingFile,
+            mode=QFileDialog.FileMode.ExistingFile,
             directory=directory,
             filters=filters,
         )
@@ -106,7 +106,7 @@ def choose_save_file(
         build_path_dialog(
             parent,
             caption,
-            mode=QFileDialog.AnyFile,
+            mode=QFileDialog.FileMode.AnyFile,
             save=True,
             directory=directory,
             filters=filters,
@@ -121,7 +121,7 @@ def choose_directory(
     """Ask for a directory."""
     return _chosen(
         build_path_dialog(
-            parent, caption, mode=QFileDialog.Directory, directory=directory
+            parent, caption, mode=QFileDialog.FileMode.Directory, directory=directory
         )
     )
 
@@ -142,7 +142,7 @@ def add_path_menu(
             Returning None offers no menu, which is what a tree's folder rows
             need: a folder is not a project and has no path to copy.
     """
-    widget.setContextMenuPolicy(Qt.CustomContextMenu)
+    widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     resolve = row_of if row_of is not None else widget.row
 
     def show_menu(point) -> None:

@@ -133,7 +133,7 @@ class ProjectPanel(QWidget):
             self.lamella_path_requested, self.lamella_reveal_requested,
         )
 
-        self.lists = GripSplitter(Qt.Vertical)
+        self.lists = GripSplitter(Qt.Orientation.Vertical)
         self.lists.addWidget(self.project_box)
         self.lists.addWidget(self.lamella_box)
         self.lists.setSizes([200, 300])
@@ -432,7 +432,7 @@ def _status_icon(status: CurationStatus, series: Sequence[str] = SERIES) -> QIco
     changed would be claiming work nobody intends to do.
     """
     pixmap = QPixmap(swatch_width(len(series)), SWATCH_HEIGHT)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
         for column, name in enumerate(series):

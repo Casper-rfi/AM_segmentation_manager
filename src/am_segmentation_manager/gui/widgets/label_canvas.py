@@ -107,7 +107,7 @@ def label_to_qimage(label: np.ndarray, colour_table: list[int]) -> QImage:
         label = np.clip(label, 0, COLOUR_TABLE_SIZE - 1).astype(np.uint8)
     label = np.ascontiguousarray(label)
     height, width = label.shape[:2]
-    image = QImage(label.data, width, height, width, QImage.Format_Indexed8)
+    image = QImage(label.data, width, height, width, QImage.Format.Format_Indexed8)
     image.setColorTable(colour_table)
     return image.copy()
 
@@ -163,12 +163,12 @@ class LabelCanvas(ImageView):
 
         self._brush_item = QGraphicsEllipseItem()
         self._brush_item.setZValue(BRUSH_Z)
-        pen = QPen(Qt.white)
+        pen = QPen(Qt.GlobalColor.white)
         # Cosmetic, so the outline stays one pixel wide at any zoom rather than
         # growing into a band that hides the edge being painted.
         pen.setCosmetic(True)
         self._brush_item.setPen(pen)
-        self._brush_item.setBrush(QBrush(Qt.NoBrush))
+        self._brush_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self._brush_item.setVisible(False)
         self.scene().addItem(self._brush_item)
 
@@ -176,7 +176,7 @@ class LabelCanvas(ImageView):
         self._speck_items: list[QGraphicsEllipseItem] = []
 
         self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         # Started and stopped by _apply_tool_cursor, which already runs on
         # every state that decides whether there is an outline at all.
@@ -262,9 +262,9 @@ class LabelCanvas(ImageView):
                 -SPECK_RING, -SPECK_RING, 2 * SPECK_RING, 2 * SPECK_RING
             )
             ring.setPen(pen)
-            ring.setBrush(QBrush(Qt.NoBrush))
+            ring.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             ring.setZValue(SPECK_Z)
-            ring.setFlag(QGraphicsEllipseItem.ItemIgnoresTransformations, True)
+            ring.setFlag(QGraphicsEllipseItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
             # The middle of the pixel, not its corner.
             ring.setPos(speck.x + 0.5, speck.y + 0.5)
             self.scene().addItem(ring)
@@ -346,9 +346,9 @@ class LabelCanvas(ImageView):
             self._pointer_poll.stop()
         if not self.editable or self._space_held:
             # The left button pans in both cases, so the hand is the truth.
-            viewport.setCursor(Qt.OpenHandCursor)
+            viewport.setCursor(Qt.CursorShape.OpenHandCursor)
         elif self._tool == TOOL_FILL:
-            viewport.setCursor(Qt.CrossCursor)
+            viewport.setCursor(Qt.CursorShape.CrossCursor)
         else:
             viewport.unsetCursor()
 
@@ -391,7 +391,7 @@ class LabelCanvas(ImageView):
         """Give the left button to the brush, or to panning."""
         painting = self.editable and not self._space_held
         self.setDragMode(
-            QGraphicsView.NoDrag if painting else QGraphicsView.ScrollHandDrag
+            QGraphicsView.DragMode.NoDrag if painting else QGraphicsView.DragMode.ScrollHandDrag
         )
 
     @property
@@ -438,7 +438,7 @@ class LabelCanvas(ImageView):
         tool button clicked a moment ago would otherwise still hold the
         keyboard and swallow them.
         """
-        self.setFocus(Qt.MouseFocusReason)
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
         self._move_brush_cursor(event_position(event))
         super().enterEvent(event)
 
@@ -491,12 +491,12 @@ class LabelCanvas(ImageView):
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Start a stroke, or start panning."""
-        if event.button() == Qt.MiddleButton:
+        if event.button() == Qt.MouseButton.MiddleButton:
             self._pan_from = event_position(event)
-            self.viewport().setCursor(Qt.ClosedHandCursor)
+            self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
             event.accept()
             return
-        if event.button() == Qt.LeftButton and self.editable and not self._space_held:
+        if event.button() == Qt.MouseButton.LeftButton and self.editable and not self._space_held:
             point = self._label_point(event_position(event))
             if self._tool == TOOL_FILL:
                 self._fill(point)
@@ -523,12 +523,12 @@ class LabelCanvas(ImageView):
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Finish a stroke or a pan, reporting the stroke as one edit."""
-        if event.button() == Qt.MiddleButton and self._pan_from is not None:
+        if event.button() == Qt.MouseButton.MiddleButton and self._pan_from is not None:
             self._pan_from = None
             self._apply_tool_cursor()
             event.accept()
             return
-        if event.button() == Qt.LeftButton and self._stroke is not None:
+        if event.button() == Qt.MouseButton.LeftButton and self._stroke is not None:
             self._end_stroke()
             event.accept()
             return
@@ -546,9 +546,9 @@ class LabelCanvas(ImageView):
         if not self._space_held:
             return
         if self.viewport().cursor().shape() not in (
-            Qt.OpenHandCursor, Qt.ClosedHandCursor
+            Qt.CursorShape.OpenHandCursor, Qt.CursorShape.ClosedHandCursor
         ):
-            self.viewport().setCursor(Qt.OpenHandCursor)
+            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
 
     def _pan_by(self, position) -> None:
         """Scroll by how far the pointer moved since the last report."""
@@ -645,7 +645,7 @@ class LabelCanvas(ImageView):
         delta arrives on the x axis there and on the y axis everywhere else.
         Reading both is what makes this work on either.
         """
-        if event.modifiers() & Qt.ShiftModifier:
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
             delta = event.angleDelta()
             step = delta.y() or delta.x()
             if step:
@@ -660,7 +660,7 @@ class LabelCanvas(ImageView):
             self.compare_held.emit(True)
             event.accept()
             return
-        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
             self._cancel_stroke()
             self._apply_drag_mode()
@@ -675,7 +675,7 @@ class LabelCanvas(ImageView):
             self.compare_held.emit(False)
             event.accept()
             return
-        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._release_space()
             event.accept()
             return

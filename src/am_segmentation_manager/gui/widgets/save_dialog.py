@@ -56,9 +56,9 @@ class SaveLabelsDialog(QDialog):
         said = QHBoxLayout()
         icon = QLabel()
         icon.setPixmap(
-            self.style().standardIcon(QStyle.SP_MessageBoxQuestion).pixmap(40, 40)
+            self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion).pixmap(40, 40)
         )
-        icon.setAlignment(Qt.AlignTop)
+        icon.setAlignment(Qt.AlignmentFlag.AlignTop)
         said.addWidget(icon)
         said.addSpacing(8)
 

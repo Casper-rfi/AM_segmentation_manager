@@ -116,7 +116,7 @@ class BreakdownTable(QWidget):
 
         self.caption = QLabel("")
         self.caption.setWordWrap(True)
-        self.caption.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.caption.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         column.addWidget(self.caption)
 
         self.note = QLabel("")
@@ -126,8 +126,8 @@ class BreakdownTable(QWidget):
         column.addWidget(self.note)
 
         self.grid = QTableWidget(0, 0)
-        self.grid.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.grid.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.grid.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.grid.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.grid.verticalHeader().setVisible(False)
         header = self.grid.horizontalHeader()
         # The cells' own font, bold. macOS gives a header a smaller system font
@@ -135,7 +135,7 @@ class BreakdownTable(QWidget):
         heading = QFont(self.grid.font())
         heading.setBold(True)
         header.setFont(heading)
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionsClickable(True)
         header.setToolTip("Click a heading to sort by it, and again to reverse")
         header.sectionClicked.connect(self._sort_by)
@@ -199,7 +199,7 @@ class BreakdownTable(QWidget):
             for column, cell in enumerate(cells):
                 item = QTableWidgetItem(cell.text)
                 if column:
-                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 if is_footer:
                     font = item.font()
                     font.setBold(True)
@@ -215,7 +215,7 @@ class BreakdownTable(QWidget):
         header = self.grid.horizontalHeader()
         header.setSortIndicatorShown(True)
         header.setSortIndicator(
-            column, Qt.DescendingOrder if descending else Qt.AscendingOrder
+            column, Qt.SortOrder.DescendingOrder if descending else Qt.SortOrder.AscendingOrder
         )
         self._fill(sorted_body(self._rows.body, column, descending))
 

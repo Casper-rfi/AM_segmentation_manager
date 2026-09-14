@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 #: Where a project row keeps the number the controller knows it by. A tree row
 #: is not a row number -- the folders take positions too -- so the number
 #: travels on the item rather than being counted off the widget.
-PROJECT_INDEX = Qt.UserRole + 1
+PROJECT_INDEX = Qt.ItemDataRole.UserRole + 1
 
 
 #: How far a project is indented under its folder. Enough to read as beneath it
@@ -214,8 +214,8 @@ class ProjectTree(QTreeWidget):
         # session folder at the front and the minute at the back. Eliding needs
         # the horizontal scrollbar gone, or the view scrolls rather than elides
         # -- the same pairing the lists use.
-        self.setTextElideMode(Qt.ElideMiddle)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Narrower than Qt's default, which spends most of a 270px panel on
         # saying that a project is one level down.
         self.setIndentation(TREE_INDENT)
@@ -268,9 +268,9 @@ class ProjectTree(QTreeWidget):
                 if self._checkable:
                     item.setCheckState(
                         0,
-                        Qt.Checked
+                        Qt.CheckState.Checked
                         if row < len(ticked) and ticked[row]
-                        else Qt.Unchecked,
+                        else Qt.CheckState.Unchecked,
                     )
                 if icons is not None and row < len(icons):
                     item.setIcon(0, icons[row])
@@ -325,9 +325,9 @@ class ProjectTree(QTreeWidget):
         cannot act on them.
         """
         if self._checkable:
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
         else:
-            item.setFlags(item.flags() & ~Qt.ItemIsUserCheckable)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
 
     def _parent_for(
         self, folder: str, parents: dict[str, QTreeWidgetItem]
@@ -347,8 +347,8 @@ class ProjectTree(QTreeWidget):
                 # Tri-state and Qt keeps the folder in step with its projects,
                 # in both directions, without this class knowing how to count
                 # them.
-                item.setFlags(item.flags() | Qt.ItemIsAutoTristate)
-                item.setCheckState(0, Qt.Unchecked)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsAutoTristate)
+                item.setCheckState(0, Qt.CheckState.Unchecked)
             self.addTopLevelItem(item)
             parents[folder] = item
         return parents[folder]
@@ -419,7 +419,7 @@ class ProjectTree(QTreeWidget):
         return [
             self.project_of(item)
             for item in self.project_items()
-            if item.checkState(0) == Qt.Checked
+            if item.checkState(0) == Qt.CheckState.Checked
         ]
 
     # -- changing ----------------------------------------------------------
@@ -433,9 +433,9 @@ class ProjectTree(QTreeWidget):
                 index = self.project_of(item)
                 item.setCheckState(
                     0,
-                    Qt.Checked
+                    Qt.CheckState.Checked
                     if index < len(ticked) and ticked[index]
-                    else Qt.Unchecked,
+                    else Qt.CheckState.Unchecked,
                 )
         finally:
             self.blockSignals(False)
@@ -488,7 +488,7 @@ class ProjectTree(QTreeWidget):
         index = self.project_of(item)
         if index is None:
             return
-        self.row_ticked.emit(index, item.checkState(0) == Qt.Checked)
+        self.row_ticked.emit(index, item.checkState(0) == Qt.CheckState.Checked)
 
     def _current_changed(self, current, _previous) -> None:
         """Report a move, saying whether it landed on a project or a folder."""
@@ -558,11 +558,11 @@ class CheckList(QListWidget):
             self.clear()
             for row, value in enumerate(values):
                 item = QListWidgetItem(value)
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(
-                    Qt.Checked
+                    Qt.CheckState.Checked
                     if row < len(ticked) and ticked[row]
-                    else Qt.Unchecked
+                    else Qt.CheckState.Unchecked
                 )
                 if icons is not None and row < len(icons):
                     item.setIcon(icons[row])
@@ -585,9 +585,9 @@ class CheckList(QListWidget):
         try:
             for row in range(self.count()):
                 self.item(row).setCheckState(
-                    Qt.Checked
+                    Qt.CheckState.Checked
                     if row < len(ticked) and ticked[row]
-                    else Qt.Unchecked
+                    else Qt.CheckState.Unchecked
                 )
         finally:
             self._filling = False
@@ -596,7 +596,7 @@ class CheckList(QListWidget):
         """Return the positions of the ticked rows."""
         return [
             row for row in range(self.count())
-            if self.item(row).checkState() == Qt.Checked
+            if self.item(row).checkState() == Qt.CheckState.Checked
         ]
 
     def ticked_values(self) -> list[str]:
@@ -620,4 +620,4 @@ class CheckList(QListWidget):
         """Report a tick, ignoring the ones this widget makes itself."""
         if self._filling:
             return
-        self.row_ticked.emit(self.row(item), item.checkState() == Qt.Checked)
+        self.row_ticked.emit(self.row(item), item.checkState() == Qt.CheckState.Checked)

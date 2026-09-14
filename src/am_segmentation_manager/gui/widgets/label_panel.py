@@ -294,7 +294,7 @@ class LabelPanel(QWidget):
         # take that space and toggle itself instead.
         for widget in self.findChildren(QWidget):
             if widget is not self.canvas:
-                widget.setFocusPolicy(Qt.NoFocus)
+                widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     # -- construction ------------------------------------------------------
 
@@ -347,7 +347,7 @@ class LabelPanel(QWidget):
         # top left, where image software keeps the actions reached for most.
         controls.addWidget(keep_paired(
             (self.modality_control, self.fit_button), (self._build_actions(),),
-            align={(0, 1): Qt.AlignLeft, (1, 0): Qt.AlignLeft},
+            align={(0, 1): Qt.AlignmentFlag.AlignLeft, (1, 0): Qt.AlignmentFlag.AlignLeft},
         ))
 
         # Beside the beam buttons and before the variant, in the same order and
@@ -487,7 +487,7 @@ class LabelPanel(QWidget):
         # while the controls below wrap for want of it.
         self.status = ElidingLabel()
         self.status.setStyleSheet(BADGE_STYLES["info"])
-        self.status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.status.setMaximumWidth(STATUS_MAX_WIDTH)
         row.addWidget(self.status, stretch=1)
         return row
@@ -518,7 +518,7 @@ class LabelPanel(QWidget):
         # the tools that edit it -- and in the width this row has spare, rather
         # than each holding a row of the canvas's height for one short line.
         self.badges = QLabel("")
-        self.badges.setTextFormat(Qt.RichText)
+        self.badges.setTextFormat(Qt.TextFormat.RichText)
         self.badges.setWordWrap(True)
         self.badges.setMaximumWidth(STATUS_MAX_WIDTH)
         self.badges.setVisible(False)
@@ -545,7 +545,7 @@ class LabelPanel(QWidget):
             button.setIcon(icon)
             button.setIconSize(QSize(MARK, MARK))
             _larger_text(button)
-            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
             button.setToolTip(f"{hint}\nShortcut: {key}")
@@ -608,8 +608,8 @@ class LabelPanel(QWidget):
             button.setIcon(self._swatch(class_index))
             button.setIconSize(QSize(MARK, MARK))
             _larger_text(button)
-            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
             hint = (
@@ -680,7 +680,7 @@ class LabelPanel(QWidget):
     def _swatch(self, class_index: int):
         """Return a colour chip for one class, a square centred in a mark."""
         pixmap = QPixmap(MARK, MARK)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         red, green, blue = self.controller.config.rgb(class_index)
         inset = (MARK - SWATCH) // 2
         painter = QPainter(pixmap)
@@ -703,7 +703,7 @@ class LabelPanel(QWidget):
 
         self.frame_label = QLabel("0 / 0")
         self.frame_label.setMinimumWidth(70)
-        self.frame_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.frame_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.frame_label.setToolTip("Position among the frames to proofread")
         row.addWidget(self.frame_label)
         return row
@@ -965,7 +965,7 @@ class LabelPanel(QWidget):
 
     def focus_canvas(self) -> None:
         """Give the canvas the keyboard, so space pans without a click first."""
-        self.canvas.setFocus(Qt.OtherFocusReason)
+        self.canvas.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def canvas_fit(self) -> None:
         """Scale the image to the pane."""

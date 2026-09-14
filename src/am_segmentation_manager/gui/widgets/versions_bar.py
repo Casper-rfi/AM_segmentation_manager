@@ -34,7 +34,7 @@ DIFFERENCE_CLASS: int = 255
 #: already shows and hides the label in this tab and in Curate. B for "before",
 #: under the hand not holding the stylus.
 COMPARE_KEY: str = "B"
-COMPARE_KEY_CODE = Qt.Key_B
+COMPARE_KEY_CODE = Qt.Key.Key_B
 
 
 class VersionsBar(QWidget):
@@ -102,7 +102,7 @@ class VersionsBar(QWidget):
         row.addWidget(self.restore_button)
 
         for widget in self.findChildren(QWidget):
-            widget.setFocusPolicy(Qt.NoFocus)
+            widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.set_rows(())
         self.setVisible(False)
 
@@ -119,7 +119,7 @@ class VersionsBar(QWidget):
                     "The record names this version, but its pixels are not "
                     "here: they were kept in a copy that did not bring its "
                     "archive along. It can be neither shown nor put back.",
-                    Qt.ToolTipRole,
+                    Qt.ItemDataRole.ToolTipRole,
                 )
         self.chooser.setCurrentIndex(0 if rows else -1)
         self.chooser.blockSignals(blocked)

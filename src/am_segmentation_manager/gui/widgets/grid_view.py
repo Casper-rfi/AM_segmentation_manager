@@ -96,11 +96,11 @@ class GridView(ImageView):
             QRectF(-radius, -radius, radius * 2, radius * 2)
         )
         ring.setPen(QPen(colour, CURRENT_MARK_WIDTH if current else MARK_WIDTH))
-        ring.setBrush(QBrush(Qt.NoBrush))
+        ring.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         ring.setPos(x, y)
         # The ring keeps its size as the picture is zoomed: it points at a
         # square rather than covering one, and a ring that grew would.
-        ring.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+        ring.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
         ring.setZValue(MARK_Z)
         self.scene().addItem(ring)
         self._marks.append(ring)
@@ -136,10 +136,10 @@ class GridView(ImageView):
                 bounds.height() + LABEL_PADDING * 2,
             )
         )
-        chip.setPen(QPen(Qt.NoPen))
+        chip.setPen(QPen(Qt.PenStyle.NoPen))
         chip.setBrush(QBrush(colour))
         chip.setPos(x, y)
-        chip.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+        chip.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
         chip.setZValue(MARK_Z)
         self.scene().addItem(chip)
         self._marks.append(chip)

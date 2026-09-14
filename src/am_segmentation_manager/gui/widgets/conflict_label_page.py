@@ -52,8 +52,8 @@ KEYS: tuple[tuple[str, str, str], ...] = (
 
 #: The keys the tree hands on rather than using to move or search.
 PASSED_KEYS: tuple[int, ...] = (
-    Qt.Key_K, Qt.Key_T, Qt.Key_Backspace,
-    Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
+    Qt.Key.Key_K, Qt.Key.Key_T, Qt.Key.Key_Backspace,
+    Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
     COMPARE_KEY_CODE,
 )
 
@@ -85,7 +85,7 @@ class LabelConflictPage(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.panes = GripSplitter(Qt.Horizontal)
+        self.panes = GripSplitter(Qt.Orientation.Horizontal)
         self.panes.addWidget(self._build_tree())
         self.panes.addWidget(self._build_viewer(config, advance))
         self.panes.setSizes([380, 820])
@@ -137,9 +137,9 @@ class LabelConflictPage(QWidget):
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
         self.heading = QLabel("")
-        self.heading.setTextFormat(Qt.RichText)
+        self.heading.setTextFormat(Qt.TextFormat.RichText)
         self.heading.setWordWrap(True)
-        self.heading.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.heading.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         column.addWidget(self.heading)
         self.details = QLabel("")
         self.details.setWordWrap(True)

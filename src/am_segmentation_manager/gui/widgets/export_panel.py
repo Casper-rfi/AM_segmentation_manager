@@ -246,8 +246,8 @@ class FilterRow(QWidget):
         # so these rows are long and differ at the *end*. A list with a
         # horizontal scrollbar scrolls rather than eliding, which leaves a
         # column of identical-looking prefixes.
-        self.values.setTextElideMode(Qt.ElideMiddle)
-        self.values.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.values.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.values.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.values.setToolTip(
             "Keep only images with the ticked values. Tick none to keep them "
             "all. Narrows the breakdown and every export."
@@ -474,7 +474,7 @@ class ExportPanel(QWidget):
         # The projects and the filters under them divide the left column: which
         # of the two wants the room depends on what is being looked for, thirty
         # sessions to scroll or four filters each with a long list.
-        self.filters = GripSplitter(Qt.Vertical)
+        self.filters = GripSplitter(Qt.Orientation.Vertical)
         self.filters.addWidget(self.projects_box)
         self.filters.addWidget(self._filters_box)
         self.filters.setSizes([260, 420])
@@ -485,7 +485,7 @@ class ExportPanel(QWidget):
         left_column.addWidget(self._build_series())
         left_column.addWidget(self.filters, stretch=1)
 
-        self.columns = GripSplitter(Qt.Horizontal)
+        self.columns = GripSplitter(Qt.Orientation.Horizontal)
         self.columns.addWidget(left)
         self.columns.addWidget(self._breakdown_box)
         self.columns.addWidget(self._export_box)
@@ -622,7 +622,7 @@ class ExportPanel(QWidget):
         # what it holds.
         self.filter_scroller = QScrollArea()
         self.filter_scroller.setWidgetResizable(True)
-        self.filter_scroller.setFrameShape(QScrollArea.NoFrame)
+        self.filter_scroller.setFrameShape(QScrollArea.Shape.NoFrame)
         self.filter_scroller.setWidget(self.filter_box)
 
         column.addWidget(self.fixed_filters)
@@ -836,7 +836,7 @@ class ExportPanel(QWidget):
 
         self.summary = QLabel("No data loaded")
         self.summary.setWordWrap(True)
-        self.summary.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         column.addWidget(self.summary)
 
         groups = self.controller.available_breakdowns()

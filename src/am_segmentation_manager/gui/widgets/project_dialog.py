@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 #: Marks a row that stands for a directory rather than a heading. Headings are
 #: rows too, so that one list can carry both groups without a second widget.
-ROW_PATH = Qt.UserRole
-ROW_KIND = Qt.UserRole + 1
+ROW_PATH = Qt.ItemDataRole.UserRole
+ROW_KIND = Qt.ItemDataRole.UserRole + 1
 
 
 class AddProjectsDialog(QDialog):
@@ -109,11 +109,11 @@ class AddProjectsDialog(QDialog):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Write metadata files")
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Write metadata files")
         # Cancel is the default, as in every dialog here that writes: Return
         # should not be able to create projects by accident.
-        buttons.button(QDialogButtonBox.Cancel).setDefault(True)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -156,7 +156,7 @@ class AddProjectsDialog(QDialog):
         font = item.font()
         font.setBold(True)
         item.setFont(font)
-        item.setFlags(Qt.NoItemFlags)
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
         item.setData(ROW_KIND, "heading")
         self.rows.addItem(item)
 
@@ -175,8 +175,8 @@ class AddProjectsDialog(QDialog):
         self, path: Path, heading: str, detail: str, *, ticked: bool, kind: str
     ) -> QListWidgetItem:
         item = QListWidgetItem(f"{heading}\n      {detail}")
-        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-        item.setCheckState(Qt.Checked if ticked else Qt.Unchecked)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked)
         item.setData(ROW_PATH, str(path))
         item.setData(ROW_KIND, kind)
         return item
@@ -249,7 +249,7 @@ class AddProjectsDialog(QDialog):
         self.descend_button.setEnabled(
             item is not None and item.data(ROW_KIND) == "candidate"
         )
-        self.buttons.button(QDialogButtonBox.Ok).setEnabled(bool(self.chosen()))
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(self.chosen()))
 
     # -- what was decided --------------------------------------------------
 
@@ -259,5 +259,5 @@ class AddProjectsDialog(QDialog):
             Path(item.data(ROW_PATH))
             for row in range(self.rows.count())
             if (item := self.rows.item(row)).data(ROW_KIND) != "heading"
-            and item.checkState() == Qt.Checked
+            and item.checkState() == Qt.CheckState.Checked
         ]

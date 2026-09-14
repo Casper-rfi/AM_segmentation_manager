@@ -138,7 +138,7 @@ class ImagePanel(QWidget):
         layout.setContentsMargins(2, 4, 2, 2)
         layout.setSpacing(3)
 
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_path_menu)
 
         # -- view controls -------------------------------------------------
@@ -184,7 +184,7 @@ class ImagePanel(QWidget):
         # above it and reads as one more of them.
         controls.addWidget(keep_paired(
             (self.mode_control,), (self.fit_button,),
-            align={(1, 0): Qt.AlignLeft},
+            align={(1, 0): Qt.AlignmentFlag.AlignLeft},
         ))
 
         controls.addSpacing(GROUP_GAP)
@@ -298,12 +298,12 @@ class ImagePanel(QWidget):
         # floor under the whole tab, and the splitter takes that width from the
         # lamella list. The caption runs to a project path and a file name.
         self.badges = QLabel("")
-        self.badges.setTextFormat(Qt.RichText)
+        self.badges.setTextFormat(Qt.TextFormat.RichText)
         self.badges.setWordWrap(True)
         layout.addWidget(self.badges)
 
         self.legend = QLabel("")
-        self.legend.setTextFormat(Qt.RichText)
+        self.legend.setTextFormat(Qt.TextFormat.RichText)
         self._build_legend()
         layout.addWidget(self.legend)
 

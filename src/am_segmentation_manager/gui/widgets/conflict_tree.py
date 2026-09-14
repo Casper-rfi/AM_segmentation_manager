@@ -39,7 +39,7 @@ HEADER_HINTS: dict[int, str] = {
 
 #: Where a row keeps the number of the node it shows. A row is not a position
 #: -- headings take positions too -- so the number travels on the item.
-NODE_INDEX = Qt.UserRole + 1
+NODE_INDEX = Qt.ItemDataRole.UserRole + 1
 
 #: How large a mark is drawn, in logical pixels.
 MARK_SIZE = 14
@@ -71,12 +71,12 @@ class ConflictTree(QTreeWidget):
             self.headerItem().setToolTip(column, hint)
         header = self.header()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in SIDE_COLUMNS.values():
-            header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         self.setIndentation(TREE_INDENT)
-        self.setTextElideMode(Qt.ElideMiddle)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setIconSize(QSize(MARK_SIZE, MARK_SIZE))
         self.itemClicked.connect(self._clicked)
         self.currentItemChanged.connect(self._current_changed)
@@ -207,16 +207,16 @@ def mark_icon(coverage: str) -> QIcon:
     seeing a colour.
     """
     pixmap = QPixmap(MARK_SIZE, MARK_SIZE)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     colour = QColor(ACCENT)
     painter.setPen(QPen(colour, 1.5))
-    painter.setBrush(QBrush(colour) if coverage == ALL else Qt.NoBrush)
+    painter.setBrush(QBrush(colour) if coverage == ALL else Qt.BrushStyle.NoBrush)
     ring = QRectF(1.5, 1.5, MARK_SIZE - 3.0, MARK_SIZE - 3.0)
     painter.drawEllipse(ring)
     if coverage == SOME:
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(colour))
         painter.drawEllipse(QPointF(ring.center()), 2.5, 2.5)
     painter.end()

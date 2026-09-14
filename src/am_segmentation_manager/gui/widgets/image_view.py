@@ -85,10 +85,10 @@ def to_qimage(array: np.ndarray) -> QImage:
     array = np.ascontiguousarray(array)
     if array.ndim == 2:
         height, width = array.shape
-        image = QImage(array.data, width, height, width, QImage.Format_Grayscale8)
+        image = QImage(array.data, width, height, width, QImage.Format.Format_Grayscale8)
     elif array.ndim == 3 and array.shape[2] == 3:
         height, width, _ = array.shape
-        image = QImage(array.data, width, height, 3 * width, QImage.Format_RGB888)
+        image = QImage(array.data, width, height, 3 * width, QImage.Format.Format_RGB888)
     else:
         raise ValueError(f"Cannot display an array of shape {array.shape}")
     return image.copy()
@@ -117,7 +117,7 @@ class ImageView(QGraphicsView):
         # is hidden, so what is left on screen still says where the frame ends;
         # see :data:`~...display.HIDDEN_IMAGE_GREY`.
         self._backdrop = QGraphicsRectItem()
-        self._backdrop.setPen(QPen(Qt.NoPen))
+        self._backdrop.setPen(QPen(Qt.PenStyle.NoPen))
         self._backdrop.setBrush(QColor(*HIDDEN_IMAGE_GREY))
         self._backdrop.setZValue(BACKDROP_Z)
         self._backdrop.setVisible(False)
@@ -126,12 +126,12 @@ class ImageView(QGraphicsView):
         self._scene.addItem(self._item)
         self.setScene(self._scene)
 
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         # No scrollbars: the pane is driven by dragging and the wheel, and the
         # scrollable area is deliberately larger than the image (SCENE_MARGIN),
         # so bars would be permanently visible and permanently not full.
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # NoAnchor, and the wheel anchors itself: see zoom_by. Qt's own
         # AnchorUnderMouse anchors on the scene point recorded by the last
         # mouse event this view handled, which is not where the pointer is
@@ -142,10 +142,10 @@ class ImageView(QGraphicsView):
         # the recorded point until some later move happens to fall through.
         # Either way the next wheel zoom pulls the image towards a pixel the
         # pointer left some time ago.
-        self.setTransformationAnchor(QGraphicsView.NoAnchor)
-        self.setRenderHints(QPainter.SmoothPixmapTransform)
-        self.setBackgroundBrush(Qt.black)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
+        self.setRenderHints(QPainter.RenderHint.SmoothPixmapTransform)
+        self.setBackgroundBrush(Qt.GlobalColor.black)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._shape: tuple[int, int] | None = None
         self._image_shown = True
         #: Where the view is looking, as a fraction of the picture, held across
@@ -264,7 +264,7 @@ class ImageView(QGraphicsView):
         point of looking that closely.
         """
         self._item.setTransformationMode(
-            Qt.SmoothTransformation if smooth else Qt.FastTransformation
+            Qt.TransformationMode.SmoothTransformation if smooth else Qt.TransformationMode.FastTransformation
         )
 
     def set_image_shown(self, shown: bool) -> None:
@@ -300,7 +300,7 @@ class ImageView(QGraphicsView):
         """Scale so the whole image is visible."""
         self._anchor = None
         if not self._item.pixmap().isNull():
-            self.fitInView(self._item, Qt.KeepAspectRatio)
+            self.fitInView(self._item, Qt.AspectRatioMode.KeepAspectRatio)
             self.zoomed.emit()
 
     def zoom_fully_out(self) -> None:
@@ -323,7 +323,7 @@ class ImageView(QGraphicsView):
                 -margin * rect.width(), -margin * rect.height(),
                 margin * rect.width(), margin * rect.height(),
             ),
-            Qt.KeepAspectRatio,
+            Qt.AspectRatioMode.KeepAspectRatio,
         )
         self.zoomed.emit()
 
@@ -417,7 +417,7 @@ class LinkedImageViews(QWidget):
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(2)
             label = QLabel(caption)
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             column.addWidget(label)
             column.addWidget(view)
             row.addLayout(column)

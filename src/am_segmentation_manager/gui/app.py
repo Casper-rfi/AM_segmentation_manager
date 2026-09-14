@@ -116,12 +116,12 @@ def _show(summary: str, detail: str) -> None:
 
     try:
         box = QMessageBox(QApplication.activeWindow())
-        box.setIcon(QMessageBox.Critical)
+        box.setIcon(QMessageBox.Icon.Critical)
         box.setWindowTitle(FAILURE_TITLE)
         box.setText(summary)
         box.setInformativeText(FAILURE_ADVICE)
         box.setDetailedText(detail)
-        box.setStandardButtons(QMessageBox.Close)
+        box.setStandardButtons(QMessageBox.StandardButton.Close)
         box.exec_() if hasattr(box, "exec_") else box.exec()
     except Exception:  # noqa: BLE001 - a failure reporting a failure
         logger.exception("Could not show the failure dialog")

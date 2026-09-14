@@ -214,8 +214,8 @@ class FrameTimeline(QWidget):
             + len(ROW_MODALITIES) * (ROW_HEIGHT + LABEL_LINE_HEIGHT + LABEL_LINE_GAP)
             + ROW_GAP
         )
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         # The hover card instead of a tooltip, which could say what the strip
         # is but not what the frame under the pointer holds.
         self.setMouseTracking(True)
@@ -490,15 +490,15 @@ class FrameTimeline(QWidget):
         ``ControlModifier`` is Cmd on macOS, which is what a Mac user expects
         for "add this one to what I already picked".
         """
-        if modifiers & Qt.ShiftModifier:
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
             return "extend"
-        if modifiers & Qt.ControlModifier:
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
             return "toggle"
         return "seek"
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         self._hide_card()
-        if not self._count or event.button() != Qt.LeftButton:
+        if not self._count or event.button() != Qt.MouseButton.LeftButton:
             return
         frame = self._frame_at(event.pos().x())
         gesture = self._picking(event.modifiers())
@@ -520,7 +520,7 @@ class FrameTimeline(QWidget):
         if not self._count:
             return
         frame = self._frame_at(event.pos().x())
-        if not event.buttons() & Qt.LeftButton:
+        if not event.buttons() & Qt.MouseButton.LeftButton:
             self._show_card(frame)
             return
         self._hide_card()
@@ -701,9 +701,9 @@ class TimelineCard(QFrame):
     """
 
     def __init__(self, parent: QWidget, band: str) -> None:
-        super().__init__(parent, Qt.ToolTip)
+        super().__init__(parent, Qt.WindowType.ToolTip)
         self.setObjectName(TIMELINE_CARD)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         column = QVBoxLayout(self)
         column.setContentsMargins(8, 6, 8, 8)
         column.setSpacing(8)

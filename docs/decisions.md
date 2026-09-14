@@ -577,13 +577,13 @@ rather than appending to it.
   never built through `pyplot` is `plots.py`'s own docstring.
 - **Every `cv2` hazard is a provider conflict**, which is why `environment.yml` pins `nodefaults` —
   a mixed conda-forge/Anaconda environment paired Anaconda's OpenCV with conda-forge's protobuf so
-  that `cv2` would not load at all. **The second environment is pip-first for the same reason**:
-  albumentations, which the vendored preprocessing imports, requires `opencv-python-headless`, a
-  third provider no ordering of install commands avoids, so `environment-ml.yml` takes only python,
-  pip and the test tools from conda and the whole stack from the `[ml]` extra. That also lets the torch build be
-  chosen per machine (`AM_SEG_TORCH_INDEX_URL`). **It is a superset, not a peer**: the curation
-  environment is the *lighter* of the two, and splitting them the other way forces an environment
-  switch mid-workflow.
+  that `cv2` would not load at all. The curation environment takes conda's *headless* OpenCV and
+  PyPI's PySide6, whose stubs mypy reads: OpenCV's Qt build would link a second Qt into the window.
+  **The second environment is pip-first**: albumentations requires `opencv-python-headless`, a third
+  provider no ordering of install commands avoids, so `environment-ml.yml` takes only python, pip
+  and the test tools from conda and the stack from the `[ml]` extra, its torch build chosen per
+  machine (`AM_SEG_TORCH_INDEX_URL`). **It is a superset, not a peer**: the curation environment is
+  the *lighter* of the two, and splitting them the other way forces a switch mid-workflow.
 
 ## Inference
 

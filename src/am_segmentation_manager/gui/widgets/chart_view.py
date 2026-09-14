@@ -118,7 +118,7 @@ class ChartView(QWidget):
         self._layout.addLayout(bar)
 
         self.message = QLabel()
-        self.message.setAlignment(Qt.AlignCenter)
+        self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.message.setWordWrap(True)
         self._layout.addWidget(self.message, stretch=1)
         self._set_actions_enabled(False)

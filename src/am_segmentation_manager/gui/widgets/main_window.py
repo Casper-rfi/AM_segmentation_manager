@@ -423,7 +423,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         right_column.addWidget(self.state_panel, stretch=1)
         right_column.addWidget(self.operations_panel)
 
-        self.curate = GripSplitter(Qt.Horizontal)
+        self.curate = GripSplitter(Qt.Orientation.Horizontal)
         self.curate.addWidget(self.project_panel)
         self.curate.addWidget(centre)
         self.curate.addWidget(right)
@@ -451,7 +451,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # are segmentation class colours everywhere else, so a third use would
         # be read as data.
         self._corner = _corner(self.scan_bar, self.show_shortcuts, self.show_settings)
-        self.tabs.setCornerWidget(self._corner, Qt.TopRightCorner)
+        self.tabs.setCornerWidget(self._corner, Qt.Corner.TopRightCorner)
         self.setCentralWidget(self.tabs)
         self._build_menus()
 
@@ -484,17 +484,17 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         file_menu = self._menus["file"] = menus.addMenu("&File")
         self._add_action(
             file_menu, "Open folder...", self.scan_bar.browse,
-            QKeySequence.Open,
+            QKeySequence.StandardKey.Open,
         )
         self._add_action(
-            file_menu, "Rescan", self.rescan, QKeySequence.Refresh,
+            file_menu, "Rescan", self.rescan, QKeySequence.StandardKey.Refresh,
         )
         file_menu.addSeparator()
         self._add_action(
             file_menu, "Settings...", self.show_settings, QKeySequence("F2")
         )
         file_menu.addSeparator()
-        self._add_action(file_menu, "Quit", self.close, QKeySequence.Quit)
+        self._add_action(file_menu, "Quit", self.close, QKeySequence.StandardKey.Quit)
 
         help_menu = self._menus["help"] = menus.addMenu("&Help")
         # No shortcut on this one, deliberately: F1 is already an application
@@ -533,7 +533,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         self.frame_label = QLabel("0 / 0")
         self.frame_label.setMinimumWidth(70)
-        self.frame_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.frame_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.frame_label.setToolTip("Frame position within this lamella")
         row.addWidget(self.frame_label)
 
@@ -653,7 +653,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         about.setWindowTitle(f"About {PRODUCT_NAME}")
         about.setIconPixmap(logo_pixmap(ABOUT_LOGO))
         about.setText("<br>".join(lines))
-        about.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        about.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         about.exec_()
 
     # -- being the window in front -----------------------------------------
@@ -695,7 +695,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         fact, and it is the first thing to establish about any report that the
         keyboard or the pointer stopped working.
         """
-        if event.type() == QEvent.ActivationChange:
+        if event.type() == QEvent.Type.ActivationChange:
             logger.debug(
                 "Window %s", "activated" if self.isActiveWindow() else "deactivated"
             )
@@ -1076,7 +1076,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.project_panel.announce(announcement)
         if phase:
             self.banner.begin(phase)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             read(self.banner.set_progress)
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
@@ -1372,9 +1372,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         answer = QMessageBox.warning(
             self, "Change many images?", message,
-            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.StandardButton.Yes
 
     def _confirm_unannotated(self) -> bool:
         """Ask before calling images corrected when their label holds nothing.
@@ -1389,7 +1389,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         is to be able to go and fix them, and image filenames repeat across
         lamellae.
         """
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             # Reads each label once per scan; the timeline has usually paid for
             # the lamella on screen already.
@@ -1413,10 +1413,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             f"{readiness.summary()}. Corrected means the label was proofread, "
             f"and a training export skips an image whose label holds "
             f"nothing:\n\n{shown}\n\nMark them corrected anyway?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.StandardButton.Yes
 
     def _confirm_corrected(self, state: str) -> bool:
         """Ask before moving proofread data out of the corrected state.
@@ -1440,10 +1440,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             "Move corrected data?",
             f"{len(names)} of these files are in the corrected state, which "
             f"holds manually proofread work:\n\n{shown}\n\nMove them to '{state}'?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.StandardButton.Yes
 
     def _report_failure(self, exc: Exception) -> None:
         logger.warning("State change refused: %s", exc)
@@ -1803,7 +1803,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         with it.
         """
         dialog = SettingsDialog(self, preferences.read(self.settings))
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         wanted = dialog.author
         try:
@@ -1837,7 +1837,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # is what goes, the name starting where it is most worth reading.
         self._corner.author.setText(
             self._corner.author.fontMetrics().elidedText(
-                line, Qt.ElideRight, AUTHOR_WIDTH
+                line, Qt.TextElideMode.ElideRight, AUTHOR_WIDTH
             )
         )
         self._corner.author.setToolTip(

@@ -41,7 +41,7 @@ class ScanBar(QWidget):
         self.path_edit.setFixedWidth(SCAN_FIELD_WIDTH)
         # Clicked into, never tabbed into: a focused line edit claims Left and
         # Right, which step through frames on the tabs beside it.
-        self.path_edit.setFocusPolicy(Qt.ClickFocus)
+        self.path_edit.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.path_edit.returnPressed.connect(self._scan_typed)
         row.addWidget(self.path_edit)
 

@@ -63,7 +63,7 @@ class FieldConflictPage(QWidget):
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
-        self.panes = GripSplitter(Qt.Horizontal)
+        self.panes = GripSplitter(Qt.Orientation.Horizontal)
         self.panes.addWidget(self._build_tree())
         self.panes.addWidget(self._build_table())
         self.panes.setSizes([380, 820])
@@ -112,14 +112,14 @@ class FieldConflictPage(QWidget):
             "What the copy holds. Click one to take it."
         )
         self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setWordWrap(True)
         self.table.setIconSize(QSize(MARK_SIZE, MARK_SIZE))
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(FIELD_COLUMN, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(FIELD_COLUMN, QHeaderView.ResizeMode.ResizeToContents)
         for side_column in SIDE_COLUMNS.values():
-            header.setSectionResizeMode(side_column, QHeaderView.Stretch)
+            header.setSectionResizeMode(side_column, QHeaderView.ResizeMode.Stretch)
         # A long description wraps, and how many lines it wraps to depends on
         # how wide its column is now.
         header.sectionResized.connect(lambda *_: self.table.resizeRowsToContents())
@@ -165,7 +165,7 @@ class FieldConflictPage(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
             heading = QTableWidgetItem(project)
-            heading.setFlags(Qt.ItemIsEnabled)
+            heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
             heading.setBackground(QBrush(QColor(ALTERNATE)))
             font = heading.font()
             font.setBold(True)
@@ -183,7 +183,7 @@ class FieldConflictPage(QWidget):
         row = self.table.rowCount()
         self.table.insertRow(row)
         name = QTableWidgetItem(conflict.caption)
-        name.setFlags(Qt.ItemIsEnabled)
+        name.setFlags(Qt.ItemFlag.ItemIsEnabled)
         name.setToolTip(conflict.row.metadata_field)
         self.table.setItem(row, FIELD_COLUMN, name)
         for side, column in SIDE_COLUMNS.items():
@@ -191,7 +191,7 @@ class FieldConflictPage(QWidget):
                 conflict.row.our_value if side == OURS else conflict.row.their_value
             )
             item = QTableWidgetItem(UNSET if value is None else value)
-            item.setFlags(Qt.ItemIsEnabled)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             if value is None:
                 font = item.font()
                 font.setItalic(True)

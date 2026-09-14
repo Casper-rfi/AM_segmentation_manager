@@ -64,5 +64,5 @@ def logo_pixmap(size: int) -> QPixmap:
         logger.warning("Could not read the logo at %s", ICON_PATH)
         return QPixmap()
     return pixmap.scaled(
-        size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+        size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
     )

@@ -39,8 +39,9 @@ eval "$(conda shell.bash hook)"
 conda activate "$ENV_NAME"
 
 echo "Installing the package in editable mode..."
-# --no-deps deliberately: every dependency comes from conda above, and letting
-# pip resolve them here is what installs a second, conflicting opencv.
+# --no-deps deliberately: every dependency comes from environment.yml above --
+# conda's, plus the PySide6 it takes from PyPI -- and letting pip resolve them
+# here is what installs a second, conflicting opencv.
 pip install -e . --no-deps
 
 echo

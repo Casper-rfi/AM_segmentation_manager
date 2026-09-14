@@ -101,8 +101,8 @@ def chip_icon(pixmap: QPixmap) -> QIcon:
     generate.
     """
     icon = QIcon()
-    for mode in (QIcon.Normal, QIcon.Selected, QIcon.Active, QIcon.Disabled):
-        for state in (QIcon.On, QIcon.Off):
+    for mode in (QIcon.Mode.Normal, QIcon.Mode.Selected, QIcon.Mode.Active, QIcon.Mode.Disabled):
+        for state in (QIcon.State.On, QIcon.State.Off):
             icon.addPixmap(pixmap, mode, state)
     return icon
 
@@ -122,7 +122,7 @@ def mark_image(pixmap: QPixmap) -> str:
     """
     data = QByteArray()
     buffer = QBuffer(data)
-    buffer.open(QBuffer.WriteOnly)
+    buffer.open(QBuffer.OpenModeFlag.WriteOnly)
     try:
         pixmap.save(buffer, "PNG")
     finally:
@@ -151,7 +151,7 @@ def fixed_width_font() -> QFont:
     """
     font = QFont()
     font.setFamilies(list(_FIXED_WIDTH_FAMILIES))
-    font.setStyleHint(QFont.Monospace)
+    font.setStyleHint(QFont.StyleHint.Monospace)
     font.setFixedPitch(True)
     return font
 
@@ -166,8 +166,8 @@ def horizontal_rule() -> QFrame:
     the light one cannot be seen at all.
     """
     rule = QFrame()
-    rule.setFrameShape(QFrame.HLine)
-    rule.setFrameShadow(QFrame.Plain)
+    rule.setFrameShape(QFrame.Shape.HLine)
+    rule.setFrameShadow(QFrame.Shadow.Plain)
     rule.setFixedHeight(1)
     rule.setStyleSheet(f"background: {theme.BORDER}; border: none;")
     return rule
@@ -182,8 +182,8 @@ def vertical_rule(height: int) -> QFrame:
     full height reading as a border rather than as a separator.
     """
     rule = QFrame()
-    rule.setFrameShape(QFrame.VLine)
-    rule.setFrameShadow(QFrame.Plain)
+    rule.setFrameShape(QFrame.Shape.VLine)
+    rule.setFrameShadow(QFrame.Shadow.Plain)
     rule.setFixedWidth(1)
     rule.setFixedHeight(height)
     rule.setStyleSheet(f"background: {theme.BORDER}; border: none;")
@@ -249,9 +249,9 @@ def match_anywhere(box: QComboBox) -> None:
     apart by their middles, not by how they start.
     """
     completer = box.completer()
-    completer.setCaseSensitivity(Qt.CaseInsensitive)
-    completer.setFilterMode(Qt.MatchContains)
-    completer.setCompletionMode(QCompleter.PopupCompletion)
+    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+    completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
 
     taking = _CompleteOnTab(box)
     line = box.lineEdit()
@@ -278,7 +278,7 @@ class _CompleteOnTab(QObject):
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt naming
         """Take the suggestion on Tab, and let every other key through."""
-        if event.type() != QEvent.KeyPress or event.key() != Qt.Key_Tab:
+        if event.type() != QEvent.Type.KeyPress or event.key() != Qt.Key.Key_Tab:
             return False
         completer = self._box.completer()
         if completer is None or not completer.popup().isVisible():
@@ -366,7 +366,7 @@ def choice_count_badge(combo: QComboBox) -> QLabel:
     """
     badge = QLabel("")
     badge.setObjectName(theme.CHOICE_COUNT)
-    badge.setAlignment(Qt.AlignCenter)
+    badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
     badge.setFixedHeight(16)
     badge.setMinimumWidth(16)
     policy = badge.sizePolicy()
@@ -400,21 +400,21 @@ def fill_grouped_combo(
     if first is not None:
         name, label = first
         item = QStandardItem(label)
-        item.setData(name, Qt.UserRole)
+        item.setData(name, Qt.ItemDataRole.UserRole)
         model.appendRow(item)
     for heading, rows in groups:
         item = QStandardItem(heading)
         # NoItemFlags rather than clearing ItemIsSelectable alone: a heading
         # must also be skipped when stepping through the list with the arrow
         # keys, and Qt skips disabled rows for free.
-        item.setFlags(Qt.NoItemFlags)
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
         font = item.font()
         font.setBold(True)
         item.setFont(font)
         model.appendRow(item)
         for name, label in rows:
             row = QStandardItem(label)
-            row.setData(name, Qt.UserRole)
+            row.setData(name, Qt.ItemDataRole.UserRole)
             model.appendRow(row)
     combo.setModel(model)
 

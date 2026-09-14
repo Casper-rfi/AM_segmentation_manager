@@ -29,14 +29,21 @@ dependencies:
   - numpy
   - tifffile
   - imagecodecs
-  - opencv
+  # The headless build: conda-forge's default OpenCV links conda's own Qt, and
+  # the window's PySide6 (below) brings another, so the default build would put
+  # two Qt libraries in one process. Nothing here uses OpenCV's own windows.
+  - opencv=*=headless*
   # Charts: the window's Chart button and `am-seg stats --plot`. Not optional
   # in practice any more -- it is in the pip `gui` and `all` extras too -- but
   # the package still runs and declines to chart without it.
   - matplotlib
   # curation window (`am-seg gui`). qtpy is only an adapter and does nothing on
-  # its own: it needs a binding underneath, which is what pyside6 provides --
+  # its own: it needs a binding underneath, which is what PySide6 provides --
   # the one this package is tested against. Do not add a second binding
   # alongside it; two Qt bindings in one process crash at import.
   - qtpy
-  - pyside6
+  - pip:
+      # From PyPI rather than conda-forge: only the PyPI build ships the type
+      # stubs mypy needs to check the window, the same build the inference
+      # environment has.
+      - PySide6

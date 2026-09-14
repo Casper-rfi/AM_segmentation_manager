@@ -21,7 +21,7 @@ ICON = 16
 def _tool_pixmap(size: int = ICON) -> QPixmap:
     """Return a transparent square *size* pixels across to draw a tool icon on."""
     pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     return pixmap
 
 
@@ -44,9 +44,9 @@ def brush_icon(size: int = ICON):
     pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         _drawn_at(painter, size)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(TEXT))
         painter.drawEllipse(3, 3, ICON - 6, ICON - 6)
     finally:
@@ -66,9 +66,9 @@ def fill_icon(size: int = ICON):
     pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         _drawn_at(painter, size)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(TEXT))
         # A round bottom with a pointed top, drawn as two overlapping shapes of
         # one colour rather than as a single path: an arc joined to a curve
@@ -94,12 +94,12 @@ def lock_icon(locked: bool = True, size: int = ICON):
     pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         _drawn_at(painter, size)
         pen = QPen(QColor(TEXT))
         pen.setWidthF(1.6)
         painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         # Closed: the shackle sits over the body. Open: it is lifted and turned
         # aside, which is the shape a padlock actually makes.
         left = 4.6 if locked else 7.0
@@ -108,7 +108,7 @@ def lock_icon(locked: bool = True, size: int = ICON):
         painter.drawLine(
             QPointF(left + 6.8, 5.8), QPointF(left + 6.8, 8.4 if locked else 6.6)
         )
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(TEXT))
         painter.drawRoundedRect(QRectF(3.0, 8.0, 10.0, 6.6), 1.4, 1.4)
     finally:
@@ -128,9 +128,9 @@ def save_icon(size: int = ICON):
     pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         _drawn_at(painter, size)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(TEXT))
         # The body, its lower right corner cut as a real one is.
         painter.drawPolygon(
@@ -141,7 +141,7 @@ def save_icon(size: int = ICON):
         )
         # Punched out rather than drawn over, so the two read as openings in
         # the body and the shape is a disk rather than a square with marks on.
-        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
         painter.drawRect(QRectF(5.6, 3.0, 4.4, 3.2))
         painter.drawRect(QRectF(4.6, 8.6, 6.8, 3.4))
     finally:
@@ -197,19 +197,19 @@ def _history_icon(forwards: bool, size: int = ICON):
     pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         _drawn_at(painter, size)
         if forwards:
             painter.translate(ICON, 0)
             painter.scale(-1.0, 1.0)
         pen = QPen(QColor(TEXT))
         pen.setWidthF(1.7)
-        pen.setCapStyle(Qt.FlatCap)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         # The top half of an ellipse: over the top and down both sides.
         painter.drawArc(QRectF(3.4, 4.6, 9.6, 9.0), 0, 180 * 16)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(TEXT))
         # On the left leg, pointing down: where the stroke is going.
         painter.drawPolygon(

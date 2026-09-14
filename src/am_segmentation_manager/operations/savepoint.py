@@ -158,7 +158,7 @@ class Savepoint:
         if self.covered_at_creation and self.covered_at_creation != self.found:
             note += f", {self.covered_at_creation} at creation"
         return (
-            f"{self.title or self.id}  {self.at[:10]}  {self.by}  "
+            f"{self.title or self.id}  {self.at[:10]}  {self.by or 'unknown'}  "
             f"{note}  {self.reachable}/{self.targets} labels reachable"
         )
 

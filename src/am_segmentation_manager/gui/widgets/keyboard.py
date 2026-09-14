@@ -85,10 +85,10 @@ def keyboard_diagram(pressed: set[str]) -> QPixmap:
     height = len(KEY_ROWS) * (KEY_SIZE + KEY_GAP) - KEY_GAP
 
     pixmap = QPixmap(width, height)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         font = painter.font()
         font.setPointSizeF(max(7.0, font.pointSizeF() - 2))
         painter.setFont(font)
@@ -141,6 +141,6 @@ def _paint_key(painter: QPainter, x: int, y: int, name: str, used: bool) -> None
     painter.setPen(QColor(theme.ACCENT_TEXT if used else theme.MUTED))
     painter.drawText(
         QRectF(x, y, _key_width(name), KEY_SIZE),
-        Qt.AlignCenter,
+        Qt.AlignmentFlag.AlignCenter,
         KEY_CAPTIONS.get(name, name),
     )

@@ -80,7 +80,7 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
     attention -- so a colour means the same thing in both lists.
     """
     pixmap = QPixmap(COMPLETENESS_WIDTH, SWATCH_HEIGHT)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
         share = summary.filled / summary.total if summary.total else 0.0
@@ -131,30 +131,30 @@ def _dot_pixmap(state: str) -> QPixmap:
     neither rests on telling colours apart.
     """
     pixmap = QPixmap(DOT, DOT)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         disc = QRectF(1.5, 1.5, DOT - 3, DOT - 3)
         if state == "missing":
             pen = QPen(MISMATCH)
             pen.setWidthF(2.0)
             painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawEllipse(disc.adjusted(0.5, 0.5, -0.5, -0.5))
         elif state == "mixed":
             grey = QColor(MUTED)
             pen = QPen(grey)
             pen.setWidthF(1.5)
             painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawEllipse(disc)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(grey)
             painter.drawPie(disc, 90 * 16, 180 * 16)
         else:
             colour = QColor(ACCENT) if state == "edited" else STATE_COLOURS["corrected"]
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(colour)
             painter.drawEllipse(disc)
     finally:
@@ -265,9 +265,9 @@ def _prose_box() -> QPlainTextEdit:
     """
     box = QPlainTextEdit()
     box.setPlaceholderText("unset")
-    box.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-    box.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-    box.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    box.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+    box.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    box.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     box.setTabChangesFocus(True)
     margin = 2 * round(box.document().documentMargin()) + 10
     box.setFixedHeight(box.fontMetrics().lineSpacing() * PROSE_LINES + margin)
@@ -283,7 +283,7 @@ def _suggestion_box() -> QComboBox:
     """
     box = QComboBox()
     box.setEditable(True)
-    box.setInsertPolicy(QComboBox.NoInsert)
+    box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
     box.lineEdit().setPlaceholderText("unset")
     match_anywhere(box)
     return box
@@ -340,7 +340,7 @@ class MetadataPanel(QWidget):
         # In a splitter because the rows carry relative paths, which are long
         # and are the point: most projects in one folder share their metadata,
         # so the folder a row names is what tells you what to type.
-        self.panes = GripSplitter(Qt.Horizontal)
+        self.panes = GripSplitter(Qt.Orientation.Horizontal)
         self.panes.addWidget(self._build_projects())
         self.panes.addWidget(self._build_fields())
         self.panes.setSizes([460, 900])
@@ -599,11 +599,11 @@ class MetadataPanel(QWidget):
             dot.setFixedSize(DOT, DOT)
             label = keep_together(dot, caption, spacing=6)
             label.layout().setContentsMargins(0, CAPTION_DROP, 0, 0)
-            grid.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignTop)
+            grid.addWidget(label, row, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             # A box of one line keeps its width; values and prose take the
             # rest of the row.
             grid.addWidget(
-                editor, row, 1, Qt.AlignTop if fills else Qt.AlignLeft | Qt.AlignTop
+                editor, row, 1, Qt.AlignmentFlag.AlignTop if fills else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
             )
             row += 1
             self.editors[entry.name] = editor
@@ -620,7 +620,7 @@ class MetadataPanel(QWidget):
         fields_column.addStretch(1)
         self.fields_scroller = QScrollArea()
         self.fields_scroller.setWidgetResizable(True)
-        self.fields_scroller.setFrameShape(QScrollArea.NoFrame)
+        self.fields_scroller.setFrameShape(QScrollArea.Shape.NoFrame)
         self.fields_scroller.setWidget(fields)
         column.addWidget(self.fields_scroller, stretch=1)
 
@@ -642,7 +642,7 @@ class MetadataPanel(QWidget):
 
         self.status = QLabel("")
         self.status.setWordWrap(True)
-        self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         column.addWidget(self.status)
 
         self._set_editing(False)
@@ -790,10 +790,10 @@ class MetadataPanel(QWidget):
             f"{self.controller.scope_folder}?\n\n"
             "Their values in AM_metadata.yaml are deleted. Anything "
             "experiment.yaml supplies applies again.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.StandardButton.Yes
 
     def _show_states(self) -> None:
         """Put each field's dot in step with what its box shows now."""
