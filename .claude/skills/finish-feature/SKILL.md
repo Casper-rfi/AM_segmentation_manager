@@ -67,14 +67,19 @@ which in the commit message. **Never to make room for something you are adding.*
 `docs/` is over the ceiling and none of those reasons applies, stop and ask the
 scientist — that is a decision, not a tidying job.
 
-## 6. Run the suite
+## 6. Run the suite and the type check
 
 ```bash
 python -m pytest -q
+python -m mypy
 ```
 
 In `am_segmentation_manager` or `am_segmentation_manager_ml`. If the run refuses, it
 names the interpreter to use instead.
+
+`mypy` must report nothing. The modules it does not check yet are listed under
+`[[tool.mypy.overrides]]` in `pyproject.toml`: if the work made one of them pass, take it
+off the list. Never add a module to make an error go away.
 
 `test_docs.py` and `test_cli_help.py` catch a renamed test, an unresolvable symbol, a
 broken cross-reference and an uncatalogued command. They do not catch an entry that
