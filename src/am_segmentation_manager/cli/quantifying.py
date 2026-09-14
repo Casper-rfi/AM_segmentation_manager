@@ -40,6 +40,7 @@ from ..operations.csv_check import check_csv_paths, summarize_results, write_pru
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
 from ..operations.metadata_csv import (
+    UnreadableMetadataError,
     export_image_metadata_csv,
     export_label_measurements_csv,
     export_lamella_quantification_csv,
@@ -402,9 +403,13 @@ def _cmd_export_projects_csv(args: argparse.Namespace) -> int:
     projects = Scanner(start_path).build_index().all_projects()
     if not projects:
         logger.warning("No projects found under %s", start_path)
-    export_project_metadata_csv(
-        projects, start_path, Path(args.output), overwrite=args.overwrite
-    )
+    try:
+        export_project_metadata_csv(
+            projects, start_path, Path(args.output), overwrite=args.overwrite
+        )
+    except UnreadableMetadataError as error:
+        logger.error("Could not export: %s", error)
+        return 2
     return 0
 
 
@@ -430,13 +435,17 @@ def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
             return 0
 
     projects = project_lookup(Scanner(start_path).build_index().all_projects())
-    export_image_metadata_csv(
-        records, start_path, Path(args.output),
-        include_headers=not args.no_headers, projects=projects,
-        # The same rule the training export and the window apply.
-        paired=args.modality == "all",
-        overwrite=args.overwrite,
-    )
+    try:
+        export_image_metadata_csv(
+            records, start_path, Path(args.output),
+            include_headers=not args.no_headers, projects=projects,
+            # The same rule the training export and the window apply.
+            paired=args.modality == "all",
+            overwrite=args.overwrite,
+        )
+    except UnreadableMetadataError as error:
+        logger.error("Could not export: %s", error)
+        return 2
     if args.modality == "all":
         logger.info(
             "Both modalities selected: writing one row per acquisition, "

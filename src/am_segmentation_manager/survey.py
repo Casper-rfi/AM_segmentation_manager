@@ -31,7 +31,7 @@ from .discovery import (
 )
 from .image_metadata import header_reader
 from .io.path import make_path_relative
-from .io.yaml import read_yaml
+from .io.yaml import read_yaml_or_problem
 from .layout import (
     IMAGE_EXTENSIONS,
     LABELS_EXPECTED,
@@ -411,15 +411,26 @@ def survey_project(
             )
         )
 
-    experiment = read_yaml(project_root / EXPERIMENT_FILENAME)
-    am_metadata = read_yaml(project_root / AM_METADATA_FILENAME)
+    experiment_path = project_root / EXPERIMENT_FILENAME
+    am_metadata_path = project_root / AM_METADATA_FILENAME
+    experiment, experiment_problem = read_yaml_or_problem(experiment_path)
+    am_metadata, am_metadata_problem = read_yaml_or_problem(am_metadata_path)
     metadata = build_experiment_metadata(
         experiment,
         am_metadata,
-        experiment_path=project_root / EXPERIMENT_FILENAME,
-        am_metadata_path=project_root / AM_METADATA_FILENAME,
+        experiment_path=experiment_path,
+        am_metadata_path=am_metadata_path,
     )
-    findings.extend(_metadata_findings(project_root, metadata))
+    unreadable = [
+        (path, problem)
+        for path, problem in (
+            (experiment_path, experiment_problem), (am_metadata_path, am_metadata_problem)
+        )
+        if problem is not None
+    ]
+    findings.extend(_unreadable_yaml_findings(unreadable))
+    if not unreadable:
+        findings.extend(_metadata_findings(project_root, metadata))
 
     survey = ProjectSurvey(
         path=project_root,
@@ -441,6 +452,26 @@ def survey_project(
         lamellae=tuple(lamellae),
         findings=tuple(findings),
     )
+
+
+def _unreadable_yaml_findings(unreadable: Iterable[tuple[Path, str]]) -> list[Finding]:
+    """Report each project file that is there but would not read.
+
+    The scan indexes the project without that file, so what the metadata lacks
+    cannot be told from what was never filled in, and no checklist is reported.
+    """
+    return [
+        Finding(
+            severity="error",
+            category="unreadable-yaml",
+            path=path,
+            message=(
+                f"{problem}. The project is indexed without this file's metadata, and "
+                f"the metadata exports refuse it until the file is fixed"
+            ),
+        )
+        for path, problem in unreadable
+    ]
 
 
 def _unindexed_findings(project_root: Path, survey: ProjectSurvey) -> list[Finding]:

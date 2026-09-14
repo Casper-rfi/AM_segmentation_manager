@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..io.yaml import read_yaml
+from ..io.yaml import read_yaml_or_problem
 from ..metadata import EXPERIMENT_FILENAME
 from ..models import Project
 from ..overview import (
@@ -207,7 +207,9 @@ def _positions(project: Project) -> list[StagePosition]:
     Headers are read only for the lamellae ``experiment.yaml`` records nothing
     for -- few in an Autolamella project, every one in a dataset predating it.
     """
-    recorded = read_positions(read_yaml(project.path / EXPERIMENT_FILENAME))
+    # A file that would not read was reported by the scan; its lamellae are
+    # placed from their headers instead.
+    recorded = read_positions(read_yaml_or_problem(project.path / EXPERIMENT_FILENAME)[0])
     named = {position.name for position in recorded}
     unrecorded = {
         lamella.name: [

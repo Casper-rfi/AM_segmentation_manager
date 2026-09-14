@@ -194,6 +194,9 @@ class Project:
             for Autolamella keys that are not modelled
         experiment_metadata: the typed view of the descriptive metadata
         lamellae: list of Lamella objects
+        metadata_problems: one message for each of experiment.yaml and
+            AM_metadata.yaml that is there but would not read; both metadata
+            views above then lack that file's values
     """
 
     name: str
@@ -203,6 +206,7 @@ class Project:
     experiment_metadata: ExperimentMetadata | None = None
     lamellae: list[Lamella] = field(default_factory=list)
     number: str | None = None
+    metadata_problems: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:

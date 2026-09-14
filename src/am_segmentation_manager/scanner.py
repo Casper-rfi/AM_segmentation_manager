@@ -26,7 +26,7 @@ from .discovery import (
 )
 from .image_metadata import ImageMetadata, header_reader
 from .io.path import make_path_relative
-from .io.yaml import read_yaml
+from .io.yaml import read_yaml_or_problem
 from .layout import (
     PREDICTION_KINDS,
     STAGE_SUMMARY_PLOTS,
@@ -247,8 +247,10 @@ class Scanner:
             yield from pending
             pending, unread = [], []
 
-    def _read_experiments(self, roots: list[Path]) -> dict[Path, dict]:
-        """Return each project's parsed ``experiment.yaml``, keyed by its root.
+    def _read_experiments(
+        self, roots: list[Path]
+    ) -> dict[Path, tuple[dict, str | None]]:
+        """Return each project's parsed ``experiment.yaml`` and what would not read, by root.
 
         Parsed together, in worker processes once there are enough of them:
         PyYAML's parser is C, but building the Python objects is not, and a
@@ -259,7 +261,7 @@ class Scanner:
         ]
         with timed(logger, f"Reading {len(paths)} experiment file(s)"):
             documents = parallel.map_in_processes(
-                read_yaml, paths, chunk_size=1, min_items=EXPERIMENT_POOL_FILES
+                read_yaml_or_problem, paths, chunk_size=1, min_items=EXPERIMENT_POOL_FILES
             )
         return {path.parent: document for path, document in zip(paths, documents)}
 
@@ -318,11 +320,15 @@ class Scanner:
                 self._discovered_with_headers(roots), start=1
             ):
                 with timed(logger, f"  {project_root.name}", level=logging.DEBUG):
+                    experiment_meta, experiment_problem = experiments.get(
+                        project_root, ({}, None)
+                    )
                     project = self._build_project(
                         project_root,
                         project_index,
-                        experiments.get(project_root, {}),
+                        experiment_meta,
                         discovered,
+                        experiment_problem=experiment_problem,
                     )
                 index.add(project)
                 if on_progress is not None:
@@ -343,11 +349,26 @@ class Scanner:
         project_index: int,
         experiment_meta: dict,
         discovered: list[DiscoveredStage],
+        *,
+        experiment_problem: str | None = None,
     ) -> Project:
-        """Build one project's model from its parsed experiment and its stages."""
+        """Build one project's model from its parsed experiment and its stages.
+
+        A metadata file that would not read counts as empty and is kept on the
+        project as a problem, so one malformed file never stops a scan.
+        """
         experiment_path = project_root / self.EXPERIMENT_FILENAME
         am_meta_path = project_root / self.AM_METADATA_FILENAME
-        am_meta = read_yaml(am_meta_path) if am_meta_path.exists() else {}
+        am_meta, am_meta_problem = read_yaml_or_problem(am_meta_path)
+        problems = tuple(
+            problem for problem in (experiment_problem, am_meta_problem) if problem is not None
+        )
+        for problem in problems:
+            logger.warning(
+                "%s. Indexing the project without that file's metadata; the metadata "
+                "exports refuse it until the file is fixed",
+                problem,
+            )
         merged_meta = merge_metadata(experiment_meta, am_meta)
 
         metadata_name = merged_meta.get("name")
@@ -365,6 +386,7 @@ class Scanner:
                 experiment_path=experiment_path if experiment_path.exists() else None,
                 am_metadata_path=am_meta_path if am_meta_path.exists() else None,
             ),
+            metadata_problems=problems,
         )
         # Project numbers are scan-order identifiers, independent of the
         # project folder name, so users can select projects as 001, 002…

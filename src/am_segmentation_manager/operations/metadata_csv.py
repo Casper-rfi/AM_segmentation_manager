@@ -231,6 +231,27 @@ def paired_columns() -> list[str]:
     return columns + list(PROJECT_COLUMNS)
 
 
+class UnreadableMetadataError(ValueError):
+    """A project being exported has a metadata file the scan could not read."""
+
+
+def refuse_unreadable_metadata(projects: Iterable[Project]) -> None:
+    """Raise if the scan could not read a metadata file of any of *projects*.
+
+    That file's fields would be written blank, which reads as not yet filled in.
+
+    Raises:
+        UnreadableMetadataError: Naming every such file.
+    """
+    problems = list(
+        dict.fromkeys(problem for project in projects for problem in project.metadata_problems)
+    )
+    if problems:
+        raise UnreadableMetadataError(
+            f"{'; '.join(problems)}. Fix the file and rescan; nothing was written"
+        )
+
+
 def export_image_metadata_csv(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -264,9 +285,15 @@ def export_image_metadata_csv(
     Raises:
         FileExistsError: If *output* exists and *overwrite* is False, before any
             header is read.
+        UnreadableMetadataError: If the scan could not read a metadata file of
+            a project these images belong to, before any header is read.
     """
     refuse_existing([output], overwrite=overwrite)
     records = list(records)
+    if projects is not None:
+        refuse_unreadable_metadata(
+            projects[record.image_path] for record in records if record.image_path in projects
+        )
     metadata = read_records_metadata(records) if include_headers else {}
     if paired:
         rows = paired_image_rows(records, start_path, metadata, projects)
@@ -332,8 +359,12 @@ def export_project_metadata_csv(
 
     Raises:
         FileExistsError: If *output* exists and *overwrite* is False.
+        UnreadableMetadataError: If the scan could not read a metadata file of
+            any of *projects*.
     """
     refuse_existing([output], overwrite=overwrite)
+    projects = list(projects)
+    refuse_unreadable_metadata(projects)
     rows = project_rows(projects, start_path)
     columns = [
         PROJECT_IDENTITY_COLUMN, "name", "path", "lamellae", "stages",

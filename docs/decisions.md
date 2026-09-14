@@ -62,6 +62,11 @@ rather than appending to it.
   two shapes in general, so `project_placement_problem` is the single guard both interfaces ask, the
   search and the levelling are separate calls, and a person confirms. What a proposal *would become*
   is the useful column: lamella names reading like dataset names tell a reader the level is wrong.
+- **A marker that will not read as YAML never stops a scan, and never exports as blank.** The
+  project is indexed without that file and keeps the message on `Project.metadata_problems`;
+  `inspect-layout` reports an `unreadable-yaml` error, and both metadata exports refuse the project,
+  since a blank field reads as one not yet filled in
+  (`test_the_metadata_exports_refuse_a_project_with_an_unreadable_file`). Nothing rewrites the file.
 - **Identity is the path relative to the scan root, never the name** — for a project, and for a
   lamella within its project. Two projects can have identical names, `created_at` and recorded
   paths, so keying by name silently drops one, and two lamellae sharing a petname merge. A lamella

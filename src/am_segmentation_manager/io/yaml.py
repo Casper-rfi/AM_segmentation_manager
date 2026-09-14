@@ -1,6 +1,7 @@
 """Reading and writing the YAML files the package keeps.
 
-A missing file reads as an empty mapping, most of these files being optional.
+A missing file reads as an empty mapping, most of these files being optional;
+one there that will not read as a mapping raises :class:`UnreadableYAMLError`.
 **A write lands whole or not at all**, through :func:`.atomic.write_atomically`,
 so an interrupted run leaves the previous file rather than a truncated one.
 PyYAML's C loader is used where it was built against libyaml: Autolamella's
@@ -36,14 +37,20 @@ def _loader():
         return yaml.SafeLoader
 
 
+class UnreadableYAMLError(RuntimeError):
+    """A YAML file is there but does not parse, or does not hold a mapping."""
+
+
 def read_yaml(path: Path) -> dict[str, Any]:
     """Read a YAML file and return its contents as a dictionary.
 
     A missing file reads as an empty mapping, since most of the files this
     package reads are optional.
 
-    Raises RuntimeError with a helpful message if PyYAML is not installed or
-    the file cannot be parsed.
+    Raises:
+        UnreadableYAMLError: If the file does not parse or its top level is not
+            a mapping.
+        RuntimeError: If PyYAML is not installed.
     """
     import yaml
 
@@ -56,12 +63,26 @@ def read_yaml(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as fh:
             data = yaml.load(fh, Loader=loader) or {}
     except Exception as exc:
-        raise RuntimeError(f"Failed to parse YAML file {path}: {exc}") from exc
+        raise UnreadableYAMLError(f"Failed to parse YAML file {path}: {exc}") from exc
 
     if not isinstance(data, dict):
-        raise RuntimeError(f"Expected a mapping at the top level of {path}, found {type(data).__name__}")
+        raise UnreadableYAMLError(
+            f"Expected a mapping at the top level of {path}, found {type(data).__name__}"
+        )
     logger.debug("Read YAML from %s: %s keys", path, len(data))
     return data
+
+
+def read_yaml_or_problem(path: Path) -> tuple[dict[str, Any], str | None]:
+    """Read a YAML file as :func:`read_yaml` does, returning what is wrong rather than raising.
+
+    Returns:
+        The mapping, empty where the file will not read, and the problem or None.
+    """
+    try:
+        return read_yaml(path), None
+    except UnreadableYAMLError as error:
+        return {}, str(error)
 
 
 def write_yaml(
