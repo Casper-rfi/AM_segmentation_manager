@@ -752,3 +752,28 @@ def test_forgetting_a_label_reaches_every_view_sharing_it(tmp_path: Path):
     controller.save()
 
     assert shared.state(record) == "annotated"
+
+
+def test_a_save_leaves_no_measurement_of_the_label_it_replaced(tmp_path: Path):
+    """The Export tab keys measurements by image, which the shared label states do
+    not reach, so the window hands it what a save wrote -- as done here."""
+    pytest.importorskip("tifffile")
+    from am_segmentation_manager.gui.export_controller import ExportController
+    from am_segmentation_manager.gui.known_labels import KnownLabels
+
+    build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    shared = KnownLabels()
+    exporter = ExportController(known_labels=shared)
+    exporter.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
+    exporter.load_measurements()
+    assert exporter.measurable_labels() == 0, "every label measured before the edit"
+
+    controller = LabelController(CONFIG, cache=stub_cache(), known_labels=shared)
+    controller.set_lamella(scan_lamella(tmp_path))
+    edited = controller.current_key
+    annotate(controller)
+    saved = controller.save()
+    exporter.forget_labels(saved.written)
+
+    assert saved.written == (edited,)
+    assert exporter.measurable_labels() == 1, "the saved label waits to be measured again"

@@ -10,10 +10,14 @@ window because each of these reaches both tabs.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
 
 from .save_dialog import SAVE_TITLE, SaveLabelsDialog
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ..label_controller import SavedLabels
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +211,7 @@ class LabelTab:
             f"{count} {modality}" for modality, count in sorted(counts.items())
         ) + "."
 
-    def _labels_saved(self, headline: str) -> None:
+    def _labels_saved(self, saved: SavedLabels) -> None:
         """Record what a save did and bring the window back in step.
 
         Refreshed rather than rescanned. A save is the one write whose whole
@@ -217,10 +221,16 @@ class LabelTab:
         collection again to learn what is already known cost twenty seconds of
         the action taken most often, and threw away the prepared frames of the
         lamella being proofread on the way.
+
+        The Export tab's measurements are keyed by image, which the label
+        states the save already forgot do not reach, so it is handed what was
+        written as it is after any other operation.
         """
+        headline = saved.headline
         self.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
         logger.info("%s: %s", SAVE_TITLE, headline)
         self._flash(headline, 4000)
+        self.export_controller.forget_labels(saved.written)
         self.refresh(reload_lists=True)
         self.label_panel.refresh()
 

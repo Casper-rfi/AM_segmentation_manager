@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import SegmentationConfig
@@ -67,6 +68,14 @@ PROOFREADABLE: tuple[RecordState, ...] = ("selected", "corrected")
 def load_full_resolution(image_path, label_path) -> object:
     """Read an acquisition and its label without reducing either."""
     return prepare_display_image(image_path, label_path, max_edge=FULL_RESOLUTION)
+
+
+@dataclass(frozen=True)
+class SavedLabels:
+    """What a save did: a line for the window's log, and every label it wrote."""
+
+    headline: str
+    written: tuple[Path, ...]
 
 
 class LabelController:
@@ -701,7 +710,9 @@ class LabelController:
         """
         return self.records_for(self.session.reviewed_keys())
 
-    def save(self, *, mark_corrected: bool = False, allow_corrected: bool = False) -> str:
+    def save(
+        self, *, mark_corrected: bool = False, allow_corrected: bool = False
+    ) -> SavedLabels:
         """Write every edited label, and optionally mark the reviewed set corrected.
 
         Leaves the view in step with what was written, so nothing has to scan
@@ -715,7 +726,8 @@ class LabelController:
                 proofread.
 
         Returns:
-            A line describing what was done, for the window's log.
+            A line describing what was done, and every label written, which a
+            view holding measurements of its own has to forget.
 
         Raises:
             StaleLabels: If a label's file changed after it was opened.
@@ -757,7 +769,9 @@ class LabelController:
         # frame's line reports. Both are known here, so nothing has to re-read
         # the collection to find them out.
         self._refresh_positions(keep_frame=self.frame_index)
-        return headline
+        return SavedLabels(
+            headline=headline, written=tuple(item.destination for item in pending)
+        )
 
     def _attach_created_labels(self, created: Iterable[Path]) -> None:
         """Name each newly written label on the records proofread through it.

@@ -239,7 +239,8 @@ rather than appending to it.
   named without clearing them draws as it did before the file existed
   (`test_a_written_label_changes_what_the_timeline_reports`). `attach_written` and
   `ExportController.forget_labels` drop them together, and a save on the Label tab forgets what it
-  wrote for every view (`test_forgetting_a_label_reaches_every_view_sharing_it`); the frame cache
+  wrote for every view (`test_forgetting_a_label_reaches_every_view_sharing_it`), its measurements
+  included (`test_a_save_leaves_no_measurement_of_the_label_it_replaced`); the frame cache
   goes whole, being keyed by position rather than by what made it, and a label and its measurement
   are **not keyed alike** (`test_a_replaced_label_is_read_again_rather_than_remembered`). A scan
   still finds what changed the files from outside, which is what *Scan* is for.

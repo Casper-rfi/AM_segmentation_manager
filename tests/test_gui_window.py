@@ -5023,3 +5023,19 @@ def test_starting_on_a_folder_shows_it_in_the_scan_box_and_scans_it(
         assert window.controller.project.name == "test-project"
     finally:
         destroy(window)
+
+
+def test_the_window_hands_what_a_save_wrote_to_the_export_tab(window, monkeypatch):
+    """Its measurements are keyed by image, so forgetting the label states is not enough."""
+    from am_segmentation_manager.gui.label_controller import SavedLabels
+
+    forgotten: list[tuple[Path, ...]] = []
+    monkeypatch.setattr(
+        window.export_controller, "forget_labels",
+        lambda paths: forgotten.append(tuple(paths)) or 0,
+    )
+    label = Path("sem_labels") / "image.tif"
+
+    window._labels_saved(SavedLabels(headline="wrote 1 label", written=(label,)))
+
+    assert forgotten == [(label,)]
