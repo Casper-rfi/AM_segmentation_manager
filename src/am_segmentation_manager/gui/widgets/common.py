@@ -29,6 +29,7 @@ from qtpy.QtGui import (
     QStandardItemModel,
 )
 from qtpy.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QCompleter,
     QFrame,
@@ -127,7 +128,7 @@ def mark_image(pixmap: QPixmap) -> str:
         pixmap.save(buffer, "PNG")
     finally:
         buffer.close()
-    encoded = base64.b64encode(bytes(data)).decode("ascii")
+    encoded = base64.b64encode(data.data()).decode("ascii")
     return f'<img src="data:image/png;base64,{encoded}">'
 
 
@@ -249,6 +250,7 @@ def match_anywhere(box: QComboBox) -> None:
     apart by their middles, not by how they start.
     """
     completer = box.completer()
+    assert completer is not None, "an editable combo box has a completer"
     completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
     completer.setFilterMode(Qt.MatchFlag.MatchContains)
     completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -260,7 +262,9 @@ def match_anywhere(box: QComboBox) -> None:
     # Creates the popup if it does not exist yet, which is what makes it
     # filterable now rather than on first use. It outlives the suggestions
     # being replaced, so it is installed on once.
-    completer.popup().installEventFilter(taking)
+    popup = completer.popup()
+    assert popup is not None, "asking for the popup creates it"
+    popup.installEventFilter(taking)
 
 
 class _CompleteOnTab(QObject):
@@ -281,30 +285,31 @@ class _CompleteOnTab(QObject):
         if event.type() != QEvent.Type.KeyPress or event.key() != Qt.Key.Key_Tab:
             return False
         completer = self._box.completer()
-        if completer is None or not completer.popup().isVisible():
+        popup = completer.popup() if completer is not None else None
+        if completer is None or popup is None or not popup.isVisible():
             return False
-        chosen = self._offered(completer)
+        chosen = self._offered(completer, popup)
         if not chosen:
             return False
-        completer.popup().hide()
+        popup.hide()
         self._box.setCurrentText(chosen)
         # Hidden again after setting the text: writing to the field is an edit
         # like any other, so the completer answers it by offering the value it
         # has just been given.
-        completer.popup().hide()
+        popup.hide()
         line = self._box.lineEdit()
         if line is not None:
             line.setCursorPosition(len(chosen))
         return True
 
     @staticmethod
-    def _offered(completer: QCompleter) -> str:
+    def _offered(completer: QCompleter, popup: QAbstractItemView) -> str:
         """Return the row the popup is on, or the first it would offer.
 
         A popup that has just appeared has no current row until someone arrows
         into it, and that is exactly when Tab is pressed.
         """
-        index = completer.popup().currentIndex()
+        index = popup.currentIndex()
         if index.isValid():
             return str(index.data())
         return completer.currentCompletion()
@@ -374,7 +379,7 @@ def choice_count_badge(combo: QComboBox) -> QLabel:
     badge.setSizePolicy(policy)
     badge.setToolTip("How many there are to choose between")
     badge.setVisible(False)
-    combo.count_badge = badge
+    setattr(combo, "count_badge", badge)  # read back by fill_choice_combo with getattr
     return badge
 
 

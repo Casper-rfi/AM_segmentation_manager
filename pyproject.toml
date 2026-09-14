@@ -192,8 +192,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 ignore_errors = true
 module = [
-    "am_segmentation_manager.gui.widgets.common",
-    "am_segmentation_manager.gui.widgets.conflict_field_page",
     "am_segmentation_manager.gui.widgets.lists",
     "am_segmentation_manager.gui.widgets.main_window",
 ]

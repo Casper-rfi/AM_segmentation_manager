@@ -105,12 +105,13 @@ class FieldConflictPage(QWidget):
 
         self.table = QTableWidget(0, len(HEADERS))
         self.table.setHorizontalHeaderLabels(list(HEADERS))
-        self.table.horizontalHeaderItem(SIDE_COLUMNS[OURS]).setToolTip(
-            "What this collection holds now. Click one to keep it."
-        )
-        self.table.horizontalHeaderItem(len(HEADERS) - 1).setToolTip(
-            "What the copy holds. Click one to take it."
-        )
+        for column_index, hint in (
+            (SIDE_COLUMNS[OURS], "What this collection holds now. Click one to keep it."),
+            (len(HEADERS) - 1, "What the copy holds. Click one to take it."),
+        ):
+            header_item = self.table.horizontalHeaderItem(column_index)
+            assert header_item is not None, "the header labels made the header items"
+            header_item.setToolTip(hint)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -138,9 +139,9 @@ class FieldConflictPage(QWidget):
         count = len(node.keys)
         self.heading.setText(f"{node.caption}: {count} field(s) in conflict")
         if field is not None:
-            self.table.scrollToItem(
-                self.table.item(self._rows_by_key[field.keys[0]], FIELD_COLUMN)
-            )
+            field_item = self.table.item(self._rows_by_key[field.keys[0]], FIELD_COLUMN)
+            assert field_item is not None, "_fill gave every listed field its row"
+            self.table.scrollToItem(field_item)
 
     def row_of(self, key: str) -> int:
         """Return the table row showing the conflict *key*.
@@ -154,7 +155,9 @@ class FieldConflictPage(QWidget):
         """List *node*'s field conflicts, each project headed by its own row."""
         by_project: dict[str, list[str]] = {}
         for key in node.keys:
-            project = self.resolution.conflict(key).row.project
+            conflict_row = self.resolution.conflict(key).row
+            assert conflict_row is not None, "a conflict key names a node carrying its row"
+            project = conflict_row.project
             by_project.setdefault(project, []).append(key)
 
         self.table.clearSpans()
@@ -180,15 +183,17 @@ class FieldConflictPage(QWidget):
     def _add_field(self, key: str) -> None:
         """Add one field's row: its name, then what each side holds."""
         conflict = self.resolution.conflict(key)
+        conflict_row = conflict.row
+        assert conflict_row is not None, "a conflict key names a node carrying its row"
         row = self.table.rowCount()
         self.table.insertRow(row)
         name = QTableWidgetItem(conflict.caption)
         name.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        name.setToolTip(conflict.row.metadata_field)
+        name.setToolTip(conflict_row.metadata_field)
         self.table.setItem(row, FIELD_COLUMN, name)
         for side, column in SIDE_COLUMNS.items():
             value = (
-                conflict.row.our_value if side == OURS else conflict.row.their_value
+                conflict_row.our_value if side == OURS else conflict_row.their_value
             )
             item = QTableWidgetItem(UNSET if value is None else value)
             item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -207,6 +212,7 @@ class FieldConflictPage(QWidget):
             chosen = self.resolution.side(key)
             for side, column in SIDE_COLUMNS.items():
                 item = self.table.item(row, column)
+                assert item is not None, "_add_field filled every side of its row"
                 picked = side == chosen
                 item.setIcon(mark_icon(ALL if picked else NONE))
                 item.setBackground(QBrush(QColor(SELECTED)) if picked else QBrush())
