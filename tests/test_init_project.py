@@ -388,3 +388,23 @@ def test_init_project_refuses_a_gathering_folder_by_name(tmp_path: Path, capsys)
 
     assert not (gathered / "AM_metadata.yaml").exists()
     assert "gathers several" in capsys.readouterr().out
+
+
+def test_a_file_written_while_the_template_is_made_is_not_overwritten(
+    tmp_path: Path, monkeypatch
+):
+    import am_segmentation_manager.operations.init_project as init_module
+
+    project = _make_project(tmp_path, "project")
+    destination = project / "AM_metadata.yaml"
+    real = init_module.render_template
+
+    def rendered_while_somebody_writes(project_root, *args, **kwargs):
+        destination.write_text("metadata:\n  sample: typed by hand\n", encoding="utf-8")
+        return real(project_root, *args, **kwargs)
+
+    monkeypatch.setattr(init_module, "render_template", rendered_while_somebody_writes)
+    result = init_project(project)
+
+    assert destination.read_text(encoding="utf-8") == "metadata:\n  sample: typed by hand\n"
+    assert result.skipped_existing and not result.written

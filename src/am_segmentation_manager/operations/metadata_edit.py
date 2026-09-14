@@ -4,9 +4,10 @@ Creating that file is :mod:`~am_segmentation_manager.operations.init_project`'s
 job; this module changes one that exists.
 
 Only ``AM_metadata.yaml`` is ever written -- ``experiment.yaml`` belongs to
-Autolamella. It is edited in place line by line rather than reparsed and dumped,
-which preserves its comments, key order and any keys this package does not
-model. Nothing is written until the whole batch validates.
+Autolamella. It is edited line by line rather than reparsed and dumped, which
+preserves its comments, key order and any keys this package does not model, and
+replaced whole, so an interrupted write leaves it as it was. Nothing is written
+until the whole batch validates.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..history import Recorder
+from ..io.atomic import write_atomically
 from ..io.yaml import read_yaml
 from ..metadata import (
     AM_METADATA_FILENAME,
@@ -351,7 +353,7 @@ def update_project_metadata(
     """Update a project's ``AM_metadata.yaml``.
 
     The file is created from the standard template if it does not exist, so
-    that the guidance comments come with it; otherwise it is edited in place,
+    that the guidance comments come with it; otherwise it is edited line by line,
     preserving comments, key order and any keys this package does not model.
 
     ``experiment.yaml`` is never written.
@@ -383,14 +385,14 @@ def update_project_metadata(
             field: value for field, value in values.items()
             if value is not None and value != TODO_MARKER
         }
-        text = render_template(project_root, filled)
         # The template writes TODO for anything not supplied, which is what an
         # explicit TODO asks for anyway.
-        destination.write_text(text, encoding="utf-8")
+        text = render_template(project_root, filled)
     else:
-        destination.write_text(
-            _edit_lines(destination.read_text(encoding="utf-8"), values), encoding="utf-8"
-        )
+        text = _edit_lines(destination.read_text(encoding="utf-8"), values)
+    # Replaced whole: the file holds comments and values a person typed, and an
+    # interrupted write must leave them rather than half of an edit.
+    write_atomically(destination, lambda temporary: temporary.write_text(text, encoding="utf-8"))
 
     logger.info(
         "Updated %s: %s", destination, "; ".join(c.describe() for c in change.changes)

@@ -276,7 +276,7 @@ def test_the_command_previews_by_default(converted, recorder, capsys):
 
     assert main(
         [
-            "revert", str(converted.parents[2]), "--project", "all",
+            "revert", str(converted.parents[1]), "--project", "all",
             "--lamella", "all", "--stage", "all", "--image", "all",
             "--modality", "all",
         ]

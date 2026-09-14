@@ -188,7 +188,8 @@ rather than appending to it.
   the plan read *before the first is written*, so the answer is "nothing happened" rather than "some
   of it happened"; each write then checks again for itself. That is what lets `plan_transition` and
   `apply_plan` be separate — previewed decisions, fresh safety check.
-- **Every label write goes through `io/atomic.py`, including compression.** It restores the
+- **Every label write goes through `io/atomic.py`, including compression, and so does every YAML
+  file and `AM_metadata.yaml` edit.** It restores the
   destination's own permissions before the rename, because `mkstemp` creates owner-only — a
   recompressed label kept `0o600` becomes unreadable to everyone but its author, which on a shared
   archive is the same as losing it (`test_a_committed_file_keeps_the_destination_permissions`).

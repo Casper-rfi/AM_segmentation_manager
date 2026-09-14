@@ -231,16 +231,17 @@ def test_a_write_returns_a_state_that_can_be_written_again(tmp_path: Path):
 
 def test_a_failed_write_leaves_the_previous_file_intact(tmp_path: Path, monkeypatch):
     """The rename is what makes a write whole or absent."""
-    from am_segmentation_manager import state as state_module
-
     result = written(tmp_path, {"labels/a.tif": "corrected"})
     before = state_file_path(tmp_path).read_text(encoding="utf-8")
+    real = Path.write_text
 
-    def explode(*args, **kwargs):
+    def half(self, data, *args, **kwargs):
+        real(self, data[: len(data) // 2], *args, **kwargs)
         raise OSError("disk full")
 
-    monkeypatch.setattr(state_module, "write_atomically", explode)
+    monkeypatch.setattr(Path, "write_text", half)
     with pytest.raises(OSError):
         write_state(result, {"labels/a.tif": "deselected"})
 
+    monkeypatch.undo()
     assert state_file_path(tmp_path).read_text(encoding="utf-8") == before

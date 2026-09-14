@@ -23,8 +23,7 @@ from typing import Any, Final
 
 from .. import __version__
 from ..history import declared_project_id, read_log, resolve_author
-from ..io.atomic import write_atomically
-from ..io.yaml import read_yaml
+from ..io.yaml import read_yaml, write_yaml
 from ..models import Project
 
 logger = logging.getLogger(__name__)
@@ -161,8 +160,6 @@ def build_export_record(
 
 def write_export_record(destination: Path, record: ExportRecord) -> Path:
     """Write *record* at the root of the copy, and return where it went."""
-    import yaml
-
     body = {
         "version": FILE_VERSION,
         "am_seg_version": record.am_seg_version,
@@ -181,8 +178,7 @@ def write_export_record(destination: Path, record: ExportRecord) -> Path:
         },
     }
     path = export_record_path(destination)
-    text = _HEADER + yaml.safe_dump(body, sort_keys=False, allow_unicode=True)
-    write_atomically(path, lambda temporary: temporary.write_text(text, encoding="utf-8"))
+    write_yaml(path, body, header=_HEADER)
     logger.debug("Wrote the fork point to %s", path)
     return path
 

@@ -16,7 +16,7 @@ from typing import Final
 
 from .. import __version__
 from ..history import resolve_author
-from ..io.atomic import write_atomically
+from ..io.yaml import write_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,6 @@ def write_training_manifest(
         files: Each CSV by its role, None for one this export did not write.
         user: The name to record, resolved as a history entry's author is.
     """
-    import yaml
-
     by, _ = resolve_author(user)
     body = {
         "version": FILE_VERSION,
@@ -76,7 +74,6 @@ def write_training_manifest(
         "include_empty_labels": include_empty_labels,
         "counts": dict(counts),
     }
-    text = _HEADER + yaml.safe_dump(body, sort_keys=False, allow_unicode=True)
-    write_atomically(path, lambda temporary: temporary.write_text(text, encoding="utf-8"))
+    write_yaml(path, body, header=_HEADER)
     logger.info("Wrote the manifest to %s", path)
     return path

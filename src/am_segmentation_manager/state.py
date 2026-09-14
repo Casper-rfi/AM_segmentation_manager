@@ -21,8 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal, get_args
 
-from .io.atomic import fingerprint_of, write_atomically
+from .io.atomic import fingerprint_of
 from .io.path import checked_relative_key
+from .io.yaml import write_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +183,12 @@ def write_state(previous: StageState, states: Mapping[str, str]) -> StageState:
 
     declared = _checked_states(dict(states), path, path.parent)
     kept = {key: value for key, value in declared.items() if value != DEFAULT_STATE}
-    text = _render(kept)
-    write_atomically(path, lambda temporary: temporary.write_text(text, encoding="utf-8"))
+    # Sorted, so two runs producing the same states produce the same file.
+    write_yaml(
+        path,
+        {_VERSION_KEY: FILE_VERSION, _STATE_KEY: dict(sorted(kept.items()))},
+        header=_HEADER,
+    )
     logger.debug("Wrote %s declared states to %s", len(kept), path)
     return StageState(path=path, states=kept, fingerprint=fingerprint_of(path))
 
@@ -275,25 +280,3 @@ def _checked_key(key: str, stage_directory: Path) -> str:
         return checked_relative_key(key, stage_directory)
     except ValueError as error:
         raise StateFileError(str(error)) from error
-
-
-# ---------------------------------------------------------------------------
-# Writing
-# ---------------------------------------------------------------------------
-
-def _render(states: Mapping[str, RecordState]) -> str:
-    """Return the text of a state file declaring *states*.
-
-    The body is dumped rather than formatted by hand, so a filename holding a
-    colon is quoted correctly; the keys are sorted so that two runs producing
-    the same states produce the same file.
-    """
-    import yaml
-
-    body = yaml.safe_dump(
-        {_STATE_KEY: dict(sorted(states.items()))},
-        sort_keys=True,
-        allow_unicode=True,
-        default_flow_style=False,
-    )
-    return f"{_HEADER}{_VERSION_KEY}: {FILE_VERSION}\n{body}"

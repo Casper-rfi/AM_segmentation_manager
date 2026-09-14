@@ -20,6 +20,7 @@ from ..discovery import (
     describe_dataset_candidate,
     project_markers,
 )
+from ..io.atomic import write_atomically
 from ..io.yaml import read_yaml
 from ..metadata import (
     AM_METADATA_FILENAME,
@@ -198,7 +199,8 @@ def init_project(
     """Write an ``AM_metadata.yaml`` template into one project.
 
     An existing file is left untouched, and reported: it holds values a person
-    typed, and regenerating it would discard them.
+    typed, and regenerating it would discard them. That includes one appearing
+    while the template is being written, which is checked again before it lands.
 
     Args:
         project_root: The project directory to write into.
@@ -218,9 +220,15 @@ def init_project(
     todo = tuple(name for name in DESCRIPTIVE_FIELDS if name not in values)
 
     if not dry_run:
-        destination.write_text(
-            render_template(project_root, values, derived=tuple(derived)), encoding="utf-8"
+        text = render_template(project_root, values, derived=tuple(derived))
+        landed = write_atomically(
+            destination,
+            lambda temporary: temporary.write_text(text, encoding="utf-8"),
+            commit_if=lambda _temporary: not destination.exists(),
         )
+        if not landed:
+            logger.info("Leaving existing %s unchanged", destination)
+            return InitResult(path=destination, written=False, skipped_existing=True)
         logger.info("Wrote %s", destination)
 
     return InitResult(

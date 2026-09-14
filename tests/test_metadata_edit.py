@@ -502,3 +502,19 @@ def test_a_field_with_no_comment_to_return_to_is_appended(tmp_path: Path):
     result = _edit_lines(text, {"sample_medium": "TEST"})
 
     assert result.splitlines()[-1] == "  sample_medium: TEST"
+
+
+def test_an_edit_that_fails_part_way_leaves_the_file_as_it_was(project: Path, monkeypatch):
+    before = (project / "AM_metadata.yaml").read_text(encoding="utf-8")
+    real = Path.write_text
+
+    def half(self, data, *args, **kwargs):
+        real(self, data[: len(data) // 2], *args, **kwargs)
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(Path, "write_text", half)
+    with pytest.raises(OSError):
+        update_project_metadata(project, {"description": "Lamellae of yeast"})
+
+    monkeypatch.undo()
+    assert (project / "AM_metadata.yaml").read_text(encoding="utf-8") == before

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from ..io.atomic import write_atomically
 from ..io.image import read_array, to_2d
-from ..io.yaml import read_yaml
+from ..io.yaml import read_yaml, write_yaml
 from ..layout import (
     MODALITIES,
     OWN_PREDICTION_KIND,
@@ -163,19 +163,11 @@ def read_provenance(directory: Path) -> dict[str, Any]:
 
 
 def write_provenance(directory: Path, entries: Mapping[str, Any]) -> None:
-    """Record how each prediction in *directory* was made.
-
-    Written whole on every update, and by rename, so an interrupted run leaves
-    the previous record intact rather than a truncated one.
-    """
-    import yaml
-
-    write_atomically(
+    """Record how each prediction in *directory* was made, rewriting the record whole."""
+    write_yaml(
         directory / PREDICTION_PROVENANCE_FILENAME,
-        lambda temporary: temporary.write_text(
-            yaml.safe_dump({"predictions": dict(entries)}, sort_keys=True),
-            encoding="utf-8",
-        ),
+        {"predictions": dict(entries)},
+        sort_keys=True,
     )
 
 

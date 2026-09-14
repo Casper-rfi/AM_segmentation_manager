@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 from .discovery import PROJECT_MARKERS, project_markers
 from .io.image import to_2d
 from .io.path import checked_relative_key
-from .io.yaml import read_yaml
+from .io.yaml import read_yaml, write_yaml
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -405,17 +405,14 @@ def set_author(name: str) -> Path:
         ValueError: If *name* is empty once trimmed.
         OSError: If the file cannot be written.
     """
-    import yaml
-
     flattened = _checked_author(name)
     if not name.strip():
         raise ValueError("A name cannot be blank")
-    CONFIG_DIRECTORY.mkdir(parents=True, exist_ok=True)
     path = CONFIG_DIRECTORY / USER_FILENAME
-    path.write_text(
-        "# Who am-seg records changes under, on this machine.\n"
-        + yaml.safe_dump({"user": flattened}, allow_unicode=True),
-        encoding="utf-8",
+    write_yaml(
+        path,
+        {"user": flattened},
+        header="# Who am-seg records changes under, on this machine.\n",
     )
     logger.info("Recording changes as %s", flattened)
     return path

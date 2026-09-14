@@ -23,7 +23,7 @@ __all__ = ["file_mode_for", "fingerprint_of", "write_atomically"]
 
 def write_atomically(
     destination: Path,
-    write: Callable[[Path], None],
+    write: Callable[[Path], object],
     *,
     commit_if: Callable[[Path], bool] | None = None,
 ) -> bool:
