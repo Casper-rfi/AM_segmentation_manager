@@ -25,7 +25,11 @@ if HAS_QT:
 
     from am_segmentation_manager.config import BACKGROUND_CLASS, SegmentationConfig
     from am_segmentation_manager.gui.label_controller import LabelController
-    from am_segmentation_manager.gui.widgets.label_panel import LabelPanel, lock_icon
+    from am_segmentation_manager.gui.widgets.label_panel import (
+        PADLOCK_ICON,
+        LabelPanel,
+        lock_icon,
+    )
 
 #: The size the shackle is compared at. The icons are drawn at one size, so
 #: this only has to be that size.
@@ -54,13 +58,13 @@ def _drawn(icon) -> bytes:
 
 def test_the_two_padlocks_are_different_pictures(qt_app):
     """Everything below rests on this, so it is asserted rather than assumed."""
-    assert _drawn(lock_icon(True)) != _drawn(lock_icon(False))
+    assert _drawn(lock_icon(True, PADLOCK_ICON)) != _drawn(lock_icon(False, PADLOCK_ICON))
 
 
 def test_a_class_starts_unlocked_and_says_so(panel):
     for index, button in panel.lock_buttons.items():
         assert not button.isChecked()
-        assert _drawn(button.icon()) == _drawn(lock_icon(False)), index
+        assert _drawn(button.icon()) == _drawn(lock_icon(False, PADLOCK_ICON)), index
 
 
 def test_locking_a_class_closes_its_shackle_and_no_other(panel):
@@ -68,10 +72,10 @@ def test_locking_a_class_closes_its_shackle_and_no_other(panel):
 
     button.setChecked(True)
 
-    assert _drawn(button.icon()) == _drawn(lock_icon(True))
+    assert _drawn(button.icon()) == _drawn(lock_icon(True, PADLOCK_ICON))
     for other, others_button in panel.lock_buttons.items():
         if other != index:
-            assert _drawn(others_button.icon()) == _drawn(lock_icon(False)), other
+            assert _drawn(others_button.icon()) == _drawn(lock_icon(False, PADLOCK_ICON)), other
 
 
 def test_unlocking_opens_it_again(panel):
@@ -80,7 +84,7 @@ def test_unlocking_opens_it_again(panel):
 
     button.setChecked(False)
 
-    assert _drawn(button.icon()) == _drawn(lock_icon(False))
+    assert _drawn(button.icon()) == _drawn(lock_icon(False, PADLOCK_ICON))
 
 
 def test_locking_everything_from_the_keyboard_closes_every_shackle_but_background(panel):
@@ -93,14 +97,14 @@ def test_locking_everything_from_the_keyboard_closes_every_shackle_but_backgroun
 
     assert all(button.isChecked() for button in foreground)
     for button in foreground:
-        assert _drawn(button.icon()) == _drawn(lock_icon(True))
+        assert _drawn(button.icon()) == _drawn(lock_icon(True, PADLOCK_ICON))
     background = panel.lock_buttons[BACKGROUND_CLASS]
-    assert _drawn(background.icon()) == _drawn(lock_icon(False))
+    assert _drawn(background.icon()) == _drawn(lock_icon(False, PADLOCK_ICON))
 
     panel.toggle_all_locks()
 
     for button in panel.lock_buttons.values():
-        assert _drawn(button.icon()) == _drawn(lock_icon(False))
+        assert _drawn(button.icon()) == _drawn(lock_icon(False, PADLOCK_ICON))
 
 
 def test_the_shackle_agrees_with_what_the_canvas_protects(panel):
@@ -109,4 +113,4 @@ def test_the_shackle_agrees_with_what_the_canvas_protects(panel):
     button.setChecked(True)
 
     assert index in panel.canvas.protected
-    assert _drawn(button.icon()) == _drawn(lock_icon(True))
+    assert _drawn(button.icon()) == _drawn(lock_icon(True, PADLOCK_ICON))

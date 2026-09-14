@@ -77,47 +77,20 @@ def fill_icon():
     return chip_icon(pixmap)
 
 
-def edit_icon():
-    """Return the edit row's icon: a pencil, angled as one is held.
-
-    Drawn like the tool icons and to the same weight, so the four marks on this
-    bar read as one set. A pencil rather than a brush: the row it heads chooses
-    *what* is written, where the brush and the fill choose how.
-    """
-    pixmap = _tool_pixmap()
-    painter = QPainter(pixmap)
-    try:
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(TEXT))
-        # The body, then the tip: a quadrilateral running corner to corner and
-        # a triangle closing it, rather than one polygon, so the tip stays a
-        # clean point at sixteen pixels instead of a notch.
-        painter.drawPolygon(
-            QPolygonF([
-                QPointF(11.4, 1.6), QPointF(14.4, 4.6),
-                QPointF(6.6, 12.4), QPointF(3.6, 9.4),
-            ])
-        )
-        painter.drawPolygon(
-            QPolygonF([QPointF(2.6, 13.4), QPointF(5.8, 13.2), QPointF(2.8, 10.2)])
-        )
-    finally:
-        painter.end()
-    return chip_icon(pixmap)
-
-
-def lock_icon(locked: bool = True):
-    """Return the lock row's icon: a padlock, its shackle open or closed.
+def lock_icon(locked: bool = True, size: int = ICON):
+    """Return a padlock, its shackle open or closed, *size* pixels square.
 
     The shackle is the whole of the difference between the two states, so it is
     drawn as a stroke rather than filled -- at sixteen pixels a filled arch and
-    an open one are the same blob.
+    an open one are the same blob. Drawn at *size* rather than scaled up after,
+    so a larger padlock is as sharp as the others.
     """
-    pixmap = _tool_pixmap()
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.scale(size / ICON, size / ICON)
         pen = QPen(QColor(TEXT))
         pen.setWidthF(1.6)
         painter.setPen(pen)

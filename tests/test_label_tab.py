@@ -1129,14 +1129,63 @@ def test_a_padlock_is_big_enough_to_hit_beside_the_canvas(window):
         assert lock.width() >= PADLOCK and lock.height() >= PADLOCK, class_index
 
 
-def test_the_edit_row_is_not_called_painting(window):
-    """One of its buttons erases, which is not painting by any reading."""
+def test_a_class_button_is_its_name_alone(window):
+    """The row is compact enough for one line; what painting background does
+    is on its tooltip rather than in its caption."""
     from qtpy.QtWidgets import QLabel
 
-    captions = {label.text() for label in window.label_panel.findChildren(QLabel)}
+    panel = window.label_panel
+    captions = {label.text() for label in panel.findChildren(QLabel)}
 
-    assert "Edit" in captions
-    assert "Paint" not in captions
+    assert not {"Edit", "Paint"} & captions
+    assert panel.paint_buttons[BACKGROUND_CLASS].text() == "background"
+    assert "erases" in panel.paint_buttons[BACKGROUND_CLASS].toolTip()
+
+
+def test_the_tools_and_the_classes_are_one_row_that_wraps(window):
+    from am_segmentation_manager.gui.widgets.controls import FlowArea
+
+    panel = window.label_panel
+
+    assert isinstance(panel.tools, FlowArea)
+    assert panel.tools.layout().minimumSize().width() == 0
+    for button in (*panel.tool_buttons.values(), *panel.paint_buttons.values()):
+        assert panel.tools.isAncestorOf(button)
+
+
+def test_undo_redo_and_save_are_marks_under_the_beam_buttons(window):
+    """Where image software keeps them; the tooltip carries the name."""
+    panel = window.label_panel
+    holder = panel.modality_control.parentWidget()
+
+    for button, word in (
+        (panel.undo_button, "Undo"), (panel.redo_button, "Redo"), (panel.save_button, "Save"),
+    ):
+        assert holder.isAncestorOf(button)
+        assert button.text() == ""
+        assert word in button.toolTip()
+
+
+def test_the_padlock_is_drawn_larger_than_the_other_marks(window):
+    """Asserted on the pixels: the icon size was set once before and the
+    button's padding still drew the padlock ten pixels wide."""
+    from qtpy.QtGui import QColor
+
+    from am_segmentation_manager.gui.widgets.label_panel import ICON
+    from am_segmentation_manager.gui.widgets.theme import TEXT
+
+    window.resize(1512, 900)
+    window.show()
+    window.tabs.setCurrentWidget(window.label_panel)
+    lock = next(iter(window.label_panel.lock_buttons.values()))
+    image = lock.grab().toImage()
+    ink = QColor(TEXT).rgb()
+    columns = [
+        x for x in range(image.width())
+        if any(image.pixel(x, y) == ink for y in range(image.height()))
+    ]
+
+    assert columns and columns[-1] - columns[0] + 1 > ICON * 0.7
 
 
 def test_nothing_to_say_about_the_label_takes_no_room(window):
@@ -1575,6 +1624,7 @@ def test_the_window_says_edits_are_unsaved(window):
     paint_on(window)
 
     assert "not yet written to disk" in window.label_panel.pending_label.text()
+    assert window.label_panel.save_button.property("pending") is True
 
 
 def test_an_edit_survives_stepping_away_and_back(window):
@@ -1602,12 +1652,6 @@ def test_the_timeline_marks_the_frames_with_unsaved_edits(window):
     paint_on(window)
 
     assert window.label_controller.edited_positions() == {0}
-
-
-def test_the_class_row_offers_background_as_an_eraser(window):
-    names = window.label_panel.class_names()
-
-    assert any("erase" in name for name in names)
 
 
 def test_the_class_row_starts_on_what_the_brush_writes(window):

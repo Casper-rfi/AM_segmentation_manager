@@ -16,7 +16,6 @@ from qtpy.QtGui import QColor, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
     QComboBox,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -59,12 +58,12 @@ from .controls import (
     ToggleSwitch,
     ValueSlider,
     keep_paired,
+    keep_together,
 )
 from .frame_strip import LABEL_BAND, FrameTimeline
 from .icons import (
     ICON,
     brush_icon,
-    edit_icon,
     fill_icon,
     lock_icon,
     redo_icon,
@@ -76,7 +75,7 @@ from .label_canvas import (
     TOOL_FILL,
     LabelCanvas,
 )
-from .theme import BADGE_STYLES, GROUP_GAP
+from .theme import BADGE_STYLES, GROUP_GAP, PADLOCK_BUTTON
 from .versions_bar import DIFFERENCE_CLASS, VersionsBar
 
 logger = logging.getLogger(__name__)
@@ -92,6 +91,11 @@ SWATCH = 12
 #: between strokes with the eyes still on the canvas, so it is a target sized for
 #: the pointer rather than for the icon it carries.
 PADLOCK = 28
+
+#: The side of the padlock drawn on that button. Larger than the other marks on
+#: the bar: the open and the closed shackle are told apart at a glance or not
+#: at all.
+PADLOCK_ICON = 22
 
 #: How wide the status line beside the view controls may get, in logical
 #: pixels. A cap rather than a share: it sits beside a row that wraps, so width
@@ -140,25 +144,14 @@ BRUSH_WIDTHS = (
 
 
 
-def _row_header(icon, caption: str, hint: str) -> QWidget:
-    """Return a grid row's heading: a drawn mark beside its name.
-
-    A widget rather than a QLabel, because a QLabel shows either a pixmap or
-    text and this needs both -- and the mark is what ties the row to the tool
-    buttons beside it, which are drawn the same way.
-    """
-    holder = QWidget()
-    row = QHBoxLayout(holder)
-    row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(4)
-    mark = QLabel()
-    mark.setPixmap(icon.pixmap(ICON, ICON))
-    text = QLabel(caption)
-    for widget in (holder, mark, text):
-        widget.setToolTip(hint)
-    row.addWidget(mark)
-    row.addWidget(text)
-    return holder
+def _action_button(icon, hint: str, action) -> QToolButton:
+    """Return a button that is its mark alone, the tooltip naming what it does."""
+    button = QToolButton()
+    button.setIcon(icon)
+    button.setIconSize(QSize(ICON, ICON))
+    button.setToolTip(hint)
+    button.clicked.connect(lambda _checked=False: action())
+    return button
 
 
 def _equalise(buttons) -> None:
@@ -174,9 +167,10 @@ def _padlock_button() -> QToolButton:
     Its shackle is kept in step with its state by :meth:`LabelPanel._locks_changed`.
     """
     button = QToolButton()
+    button.setObjectName(PADLOCK_BUTTON)
     button.setCheckable(True)
-    button.setIcon(lock_icon(False))
-    button.setIconSize(QSize(ICON, ICON))
+    button.setIcon(lock_icon(False, PADLOCK_ICON))
+    button.setIconSize(QSize(PADLOCK_ICON, PADLOCK_ICON))
     button.setFixedSize(PADLOCK, PADLOCK)
     return button
 
@@ -333,13 +327,11 @@ class LabelPanel(QWidget):
         self.fit_button = QPushButton("Fit")
         self.fit_button.setToolTip("Scale the image to the pane\nShortcut: 0")
         self.fit_button.clicked.connect(self.canvas_fit)
-        # Which view, and then fit that view to the pane: the only two controls
-        # here that act on the pane itself rather than on what is drawn in it.
-        # Left in its own width, or a lone button stretches to the segments
-        # above it and reads as one more of them.
+        # Which view and fitting it to the pane, over undo, redo and save: the
+        # top left, where image software keeps the actions reached for most.
         controls.addWidget(keep_paired(
-            (self.modality_control,), (self.fit_button,),
-            align={(1, 0): Qt.AlignLeft},
+            (self.modality_control, self.fit_button), (self._build_actions(),),
+            align={(0, 1): Qt.AlignLeft, (1, 0): Qt.AlignLeft},
         ))
 
         # Beside the beam buttons and before the variant, in the same order and
@@ -485,21 +477,26 @@ class LabelPanel(QWidget):
         return row
 
     def _build_tools(self) -> QHBoxLayout:
-        """Build the bottom bar: the tools, the classes, and what to do next.
+        """Build the bottom bar: the tools, then the classes, in one row that wraps.
 
-        Columns of two rows rather than one long row, because the controls pair
-        up: the brush with its size, a class with its lock, an edit with the
-        save that writes it. The paint buttons carry the class colours, which is
-        what makes a separate legend unnecessary -- the button you press to
-        paint a class is also the thing that tells you what colour it is.
+        The paint buttons carry the class colours, which is what makes a
+        separate legend unnecessary -- the button you press to paint a class is
+        also the thing that tells you what colour it is. A flow, so a narrow
+        pane wraps the row rather than widening the window.
         """
-        tools = QHBoxLayout()
-        tools.addLayout(self._build_tool_buttons())
-        tools.addSpacing(20)
-        tools.addLayout(self._build_class_table())
-        tools.addSpacing(20)
-        tools.addLayout(self._build_actions())
-        tools.addStretch()
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        self.tools = FlowArea()
+        flow = FlowLayout(spacing=6)
+        self.tools.setLayout(flow)
+        brush, fill, size = self._build_tool_buttons()
+        flow.addWidget(keep_together(brush, fill))
+        flow.addWidget(size)
+        flow.addSpacing(GROUP_GAP)
+        for cell in self._build_class_cells():
+            flow.addWidget(cell)
+        row.addWidget(self.tools, stretch=1)
 
         # Both say something about the label being edited, so they belong with
         # the tools that edit it -- and in the width this row has spare, rather
@@ -507,41 +504,37 @@ class LabelPanel(QWidget):
         self.badges = QLabel("")
         self.badges.setTextFormat(Qt.RichText)
         self.badges.setWordWrap(True)
+        self.badges.setMaximumWidth(STATUS_MAX_WIDTH)
         self.badges.setVisible(False)
-        tools.addWidget(self.badges)
+        row.addWidget(self.badges)
 
         self.pending_label = QLabel("")
         self.pending_label.setStyleSheet(BADGE_STYLES["warning"])
-        tools.addWidget(self.pending_label)
-        return tools
+        row.addWidget(self.pending_label)
+        return row
 
-    def _build_tool_buttons(self) -> QGridLayout:
-        """Build the two tools, stacked, with the brush size beside the brush."""
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(2)
-
+    def _build_tool_buttons(self) -> tuple[QToolButton, QToolButton, QWidget]:
+        """Build the brush and the fill, and the size that belongs to the brush."""
         self.tool_buttons: dict[str, QToolButton] = {}
         group = QButtonGroup(self)
-        for row, (tool, caption, key, hint, icon) in enumerate((
+        for tool, caption, key, hint, icon in (
             (TOOL_BRUSH, "Brush", "D", "Draw where you drag", brush_icon()),
             (
                 TOOL_FILL, "Fill", "F",
                 "Flood the area of one class you click in", fill_icon(),
             ),
-        )):
+        ):
             button = QToolButton()
             button.setText(caption)
             button.setIcon(icon)
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
             button.setToolTip(f"{hint}\nShortcut: {key}")
             button.toggled.connect(
                 lambda checked, t=tool: checked and self._tool_chosen(t)
             )
             group.addButton(button)
-            grid.addWidget(button, row, 0)
             self.tool_buttons[tool] = button
 
         self.brush_slider = ValueSlider()
@@ -558,10 +551,6 @@ class LabelPanel(QWidget):
         self.brush_value = QLabel("")
         self.brush_value.setMinimumWidth(38)
         self.brush_value.setToolTip(self.brush_slider.toolTip())
-        # In the brush's own row: the size is the brush's, and means nothing to
-        # the fill.
-        grid.addWidget(self.brush_slider, 0, 1)
-        grid.addWidget(self.brush_value, 0, 2)
         self._brush_resized(self.brush_slider.value())
 
         # The two are a pair and read as one: the shorter caption is widened
@@ -572,44 +561,32 @@ class LabelPanel(QWidget):
         brush_button.blockSignals(True)
         brush_button.setChecked(True)
         brush_button.blockSignals(False)
-        return grid
-
-    def _build_class_table(self) -> QGridLayout:
-        """Build the classes to edit with, each beside the padlock protecting it.
-
-        A class and its lock are one cell, so which lock is whose needs no
-        reading. The cells run in two rows, like the tools beside them, and
-        are all one width, so a class with a long name does not make its cell
-        a different shape from its neighbour's. **Background has a lock
-        too**: locked, a stroke changes only pixels another class already
-        holds, and painting background over an unlocked class still erases.
-        """
-        self.class_grid = grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(2)
-        columns = max(1, -(-len(self._classes) // 2))
-
-        # "Edit" rather than "Paint": the row chooses what a stroke writes, and
-        # one of its buttons erases -- which is not painting by any reading.
-        grid.addWidget(
-            _row_header(
-                edit_icon(), "Edit",
-                "Which class the brush and the fill write, and which no tool "
-                "may paint over",
-            ),
-            0, 0, 2, 1,
+        return (
+            brush_button,
+            self.tool_buttons[TOOL_FILL],
+            keep_together(self.brush_slider, self.brush_value),
         )
 
+    def _build_class_cells(self) -> list[QWidget]:
+        """Build a cell per class: its paint button beside the padlock protecting it.
+
+        A class and its lock are one cell, so which lock is whose needs no
+        reading, and every cell is one width, so a class with a long name does
+        not make its cell a different shape from its neighbour's. **Background
+        has a lock too**: locked, a stroke changes only pixels another class
+        already holds, and painting background over an unlocked class still
+        erases -- which its tooltip says, its caption being its name alone.
+        """
         self.paint_buttons: dict[int, QToolButton] = {}
         self.lock_buttons: dict[int, QToolButton] = {}
         paint_group = QButtonGroup(self)
+        cells: list[QWidget] = []
         for position, class_index in enumerate(self._classes):
             name = self.controller.config.name(class_index)
             erasing = class_index == BACKGROUND_CLASS
 
             button = QToolButton()
-            button.setText(f"{name} (erase)" if erasing else name)
+            button.setText(name)
             button.setIcon(self._swatch(class_index))
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -648,51 +625,37 @@ class LabelPanel(QWidget):
             pair.setSpacing(2)
             pair.addWidget(button, stretch=1)
             pair.addWidget(lock)
-            row, column = divmod(position, columns)
-            grid.addWidget(cell, row, column + 1)
+            cells.append(cell)
 
-        # The width of the widest rather than an equal share of what is spare:
-        # the bar's trailing stretch takes all of that, so shares alone left a
-        # long class name making its cell the widest.
-        _equalise([lock.parentWidget() for lock in self.lock_buttons.values()])
+        _equalise(cells)
 
         # Qt leaves nothing checked; the canvas starts on the first foreground
         # class. Choosing it here makes the bar say what the brush will actually
-        # write -- a bar reading "erase" while the brush paints GIS is one that
-        # costs somebody an image.
+        # write -- a bar reading "background" while the brush paints GIS is one
+        # that costs somebody an image.
         self._select_class(self.canvas.paint_value)
-        return grid
+        return cells
 
-    def _build_actions(self) -> QGridLayout:
-        """Build undo and redo, above the save they lead to.
+    def _build_actions(self) -> QWidget:
+        """Build undo, redo and save as marks alone, in one row.
 
-        Marked like the tools beside them, and drawn the same way: these three
-        are the buttons a reviewer reaches for without reading, so what each
-        one is has to be legible before its caption is.
+        Under the beam buttons, where image software keeps them. They are
+        reached for without reading, so the mark is the whole of the button and
+        the tooltip carries the name and the key.
         """
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(4)
-        grid.setVerticalSpacing(2)
-
-        self.undo_button = QPushButton(undo_icon(), "Undo")
-        self.undo_button.setToolTip("Undo the last stroke on this label\nShortcut: Ctrl+Z")
-        self.undo_button.clicked.connect(self.undo)
-        grid.addWidget(self.undo_button, 0, 0)
-
-        self.redo_button = QPushButton(redo_icon(), "Redo")
-        self.redo_button.setToolTip("Redo the last undone stroke\nShortcut: Ctrl+Shift+Z")
-        self.redo_button.clicked.connect(self.redo)
-        grid.addWidget(self.redo_button, 0, 1)
-
-        self.save_button = QPushButton(save_icon(), "Save labels...")
-        self.save_button.setToolTip(
-            "Write every label edited in this lamella, and choose whether to "
-            "mark them corrected\nShortcut: Ctrl+S"
+        self.undo_button = _action_button(
+            undo_icon(), "Undo the last stroke on this label\nShortcut: Ctrl+Z", self.undo
         )
-        self.save_button.clicked.connect(self.save_requested.emit)
-        grid.addWidget(self.save_button, 1, 0, 1, 2)
-        return grid
+        self.redo_button = _action_button(
+            redo_icon(), "Redo the last undone stroke\nShortcut: Ctrl+Shift+Z", self.redo
+        )
+        self.save_button = _action_button(
+            save_icon(),
+            "Save labels: write every label edited in this lamella, and choose "
+            "whether to mark them corrected\nShortcut: Ctrl+S",
+            self.save_requested.emit,
+        )
+        return keep_together(self.undo_button, self.redo_button, self.save_button, spacing=2)
 
     def _swatch(self, class_index: int):
         """Return a colour chip for one class."""
@@ -936,7 +899,7 @@ class LabelPanel(QWidget):
             index for index, button in self.lock_buttons.items() if button.isChecked()
         }
         for index, button in self.lock_buttons.items():
-            button.setIcon(lock_icon(index in locked))
+            button.setIcon(lock_icon(index in locked, PADLOCK_ICON))
         self.canvas.set_protected(locked)
 
     def _stroke_finished(self, patch) -> None:
@@ -1122,6 +1085,12 @@ class LabelPanel(QWidget):
         self.redo_button.setEnabled(session.can_redo)
         pending = self.controller.pending_count()
         self.save_button.setEnabled(bool(pending))
+        # Marked while anything waits, its caption being gone; re-polished, a
+        # stylesheet reading a property only when a widget is polished.
+        if self.save_button.property("pending") != bool(pending):
+            self.save_button.setProperty("pending", bool(pending))
+            self.save_button.style().unpolish(self.save_button)
+            self.save_button.style().polish(self.save_button)
         self.pending_label.setText(
             f"{pending} label{'s' if pending != 1 else ''} waiting - {UNSAVED_NOTE}"
             if pending else ""

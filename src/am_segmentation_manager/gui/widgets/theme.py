@@ -88,6 +88,11 @@ VALUE_CHIP_STYLE = (
 #: ``setObjectName``; see the rule of the same name below.
 COMPACT_BUTTON = "compactButton"
 
+#: Object name of a class's padlock button. The tool-button padding leaves ten
+#: pixels of a 28-pixel button for its mark, and the padlock is drawn larger
+#: than that on purpose; see `label_panel.PADLOCK_ICON`.
+PADLOCK_BUTTON = "padlockButton"
+
 #: Object name of the timeline's hover card, so the stylesheet can draw it as it
 #: draws a tooltip.
 TIMELINE_CARD = "timelineCard"
@@ -301,6 +306,10 @@ def stylesheet() -> str:
        one, so being able to see the answer across the room is worth a rule. */
     QToolButton:checked {{ background: {SELECTED}; border-color: {ACCENT}; }}
     QToolButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
+    /* Save while edits are held only in this window. Its caption is gone, so
+       the button itself says there is something to write. */
+    QToolButton[pending="true"] {{ background: {SELECTED}; border-color: {ACCENT}; }}
+    QToolButton#{PADLOCK_BUTTON} {{ padding: 1px; }}
 
     /* A run of segments is one control: they share their borders, the inner
        corners are square, and the chosen one is filled rather than tinted --
