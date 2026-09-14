@@ -192,14 +192,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 ignore_errors = true
 module = [
-    "am_segmentation_manager.gui.app",
-    "am_segmentation_manager.gui.conflict_resolution",
-    "am_segmentation_manager.gui.controller",
-    "am_segmentation_manager.gui.grid_controller",
-    "am_segmentation_manager.gui.label_controller",
-    "am_segmentation_manager.gui.metadata_controller",
-    "am_segmentation_manager.gui.preferences",
-    "am_segmentation_manager.gui.selection",
     "am_segmentation_manager.gui.widgets.breakdown_table",
     "am_segmentation_manager.gui.widgets.chart_view",
     "am_segmentation_manager.gui.widgets.common",

@@ -275,7 +275,7 @@ def _caption(path: Path, metadata: ImageMetadata | None) -> str:
 
     when = metadata.acquired_at if metadata is not None else None
     stamp = f"{when:%Y-%m-%d %H:%M}" if when is not None else path.stem
-    if when is not None and metadata.acquired_at_timezone:
+    if when is not None and metadata is not None and metadata.acquired_at_timezone:
         stamp = f"{stamp} {metadata.acquired_at_timezone}"
     parts = [stamp]
     if metadata is not None and metadata.beam_type is not None:

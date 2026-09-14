@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import SegmentationConfig
-from ..display import prepare_display_image
+from ..display import DisplayImage, prepare_display_image
 from ..frames import (
     LamellaFrame,
     build_lamella_frames,
@@ -25,7 +25,7 @@ from ..frames import (
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
 from ..layout import LABELLED_SERIES, MODALITIES, SERIES
-from ..models import Lamella, Project, projects_holding
+from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.csv import find_matching_label
 from ..operations.init_history import writing_recorder
@@ -65,7 +65,7 @@ DEFAULT_RADIUS = 1
 PROOFREADABLE: tuple[RecordState, ...] = ("selected", "corrected")
 
 
-def load_full_resolution(image_path, label_path) -> object:
+def load_full_resolution(image_path: Path, label_path: Path | None) -> DisplayImage:
     """Read an acquisition and its label without reducing either."""
     return prepare_display_image(image_path, label_path, max_edge=FULL_RESOLUTION)
 
@@ -804,8 +804,7 @@ class LabelController:
         """
         return {
             self._modality: [
-                current_state(self._frames[index].record(self._modality))
-                for index in self._positions
+                current_state(self._record_at(index)) for index in self._positions
             ]
         }
 
@@ -831,7 +830,7 @@ class LabelController:
             return {}
         return {
             self._modality: [
-                self._speck_counts.get(self._key_at(index))
+                None if (key := self._key_at(index)) is None else self._speck_counts.get(key)
                 for index in self._positions
             ]
         }
@@ -893,6 +892,12 @@ class LabelController:
         """Return the label key of the frame at *index* in the current view."""
         record = self._frames[index].record(self._modality)
         return None if record is None else self.key_for(record)
+
+    def _record_at(self, index: int) -> ImageRecord:
+        """Return the current modality's record of the proofreadable frame at *index*."""
+        record = self._frames[index].record(self._modality)
+        assert record is not None, "a proofreadable frame has an image of its modality"
+        return record
 
     def _label_state(self, record) -> str | None:
         """Return one record's label state as the timeline draws it."""

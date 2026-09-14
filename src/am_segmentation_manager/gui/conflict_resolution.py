@@ -221,7 +221,9 @@ class ConflictResolution:
         holders = (
             self._field_holders if self._rows[key].is_field else self._label_holders
         )
-        index = holders.index(self._conflicts[key].parent) + offset
+        parent = self._conflicts[key].parent
+        assert parent is not None, "a conflict always sits under a row"
+        index = holders.index(parent) + offset
         if not 0 <= index < len(holders):
             return None
         return _conflicts_under(holders[index])[0]

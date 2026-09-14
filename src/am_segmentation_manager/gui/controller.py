@@ -14,7 +14,7 @@ import logging
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import (
@@ -63,9 +63,9 @@ DisplayMode = Literal["sem", "fib", "plot", "grid"]
 EditTarget = Literal["SEM", "FIB", "both"]
 
 #: The state of a frame whose two acquisitions disagree.
-MIXED = "mixed"
+MIXED: Final = "mixed"
 
-MODE_MODALITIES: dict[DisplayMode, str] = {"sem": "SEM", "fib": "FIB"}
+MODE_MODALITIES: dict[DisplayMode, Literal["SEM", "FIB"]] = {"sem": "SEM", "fib": "FIB"}
 
 #: The same pairing read the other way, for asking which view shows a beam.
 MODALITY_MODES: dict[str, DisplayMode] = {
@@ -411,9 +411,13 @@ class CurationController:
         #: :meth:`_settle_grid`, which every path that changes project reaches.
         self.grid = GridController()
         self.config = config if config is not None else load_segmentation_config()
-        self._scan: ProjectScanner = scan or (
-            lambda path, on_progress=None: Scanner(path).build_index(on_progress)
-        )
+
+        def scan_collection(
+            path: Path, on_progress: ScanProgress | None = None
+        ) -> ProjectIndex:
+            return Scanner(path).build_index(on_progress)
+
+        self._scan: ProjectScanner = scan or scan_collection
 
         self.start_path: Path | None = None
         self.index: ProjectIndex | None = None

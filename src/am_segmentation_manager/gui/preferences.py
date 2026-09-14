@@ -257,6 +257,7 @@ def _coerce(entry: Preference, stored: Any) -> int | bool:
             "Ignoring %s=%r in the settings: not a whole number", entry.key, stored
         )
         return entry.fallback
+    assert entry.low is not None and entry.high is not None, f"{entry.key} has no range"
     clamped = max(entry.low, min(entry.high, number))
     if clamped != number:
         logger.warning(

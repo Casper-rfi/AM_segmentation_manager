@@ -206,7 +206,11 @@ def _enable_high_dpi() -> None:
     from qtpy.QtCore import Qt
     from qtpy.QtWidgets import QApplication
 
-    if not QT_VERSION.startswith("5") or QApplication.instance() is not None:
+    if (
+        QT_VERSION is None
+        or not QT_VERSION.startswith("5")
+        or QApplication.instance() is not None
+    ):
         return
     for name in ("AA_EnableHighDpiScaling", "AA_UseHighDpiPixmaps"):
         attribute = getattr(Qt, name, None)

@@ -125,20 +125,24 @@ class Selection:
             ValueError: If more than one level is non-empty, which would be a
                 selection showing one thing and acting on another.
         """
-        chosen = {
-            LEVEL_PROJECTS: set(projects),
-            LEVEL_LAMELLAE: set(lamellae),
-            LEVEL_FRAMES: set(frames),
-        }
-        filled = [name for name, values in chosen.items() if values]
+        project_keys, lamella_keys, positions = set(projects), set(lamellae), set(frames)
+        filled = [
+            name
+            for name, values in (
+                (LEVEL_PROJECTS, project_keys),
+                (LEVEL_LAMELLAE, lamella_keys),
+                (LEVEL_FRAMES, positions),
+            )
+            if values
+        ]
         if len(filled) > 1:
             raise ValueError(
                 f"A selection rests on one level at a time, not {' and '.join(filled)}"
             )
-        self.projects = chosen[LEVEL_PROJECTS]
-        self.lamellae = chosen[LEVEL_LAMELLAE]
+        self.projects = project_keys
+        self.lamellae = lamella_keys
         self.clear_frames()
-        self.frames = chosen[LEVEL_FRAMES]
+        self.frames = positions
 
     # -- checking projects and lamellae ------------------------------------
 

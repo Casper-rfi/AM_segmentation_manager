@@ -283,12 +283,15 @@ class MetadataController:
         One path for one project, one for each project under a folder -- all
         with the file name :meth:`sources` required them to agree on.
         """
-        return {
-            field: tuple(
-                project.experiment_metadata.sources[field] for project in self._scope
-            )
-            for field in self.sources()
-        }
+        paths: dict[str, tuple[Path, ...]] = {}
+        for field in self.sources():
+            found: list[Path] = []
+            for project in self._scope:
+                metadata = project.experiment_metadata
+                assert metadata is not None, "sources() names only a field every project sources"
+                found.append(metadata.sources[field])
+            paths[field] = tuple(found)
+        return paths
 
     def _named_by_all(self, field: str) -> bool:
         """Return whether every project in scope names a source for *field*.
