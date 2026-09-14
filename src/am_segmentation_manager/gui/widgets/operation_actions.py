@@ -14,8 +14,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt  # type: ignore[attr-defined]  # a conda PySide6 ships no stubs
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ...operations.metadata_csv import export_project_metadata_csv
@@ -29,16 +30,25 @@ from .project_dialog import AddProjectsDialog
 from .revert_dialog import RevertDialog
 from .savepoint_dialog import SavepointDialog
 
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .window_protocol import MixinBase as _Window
+else:
+    _Window = object
+
 logger = logging.getLogger(__name__)
 
 
 
-class OperationActions:
+class OperationActions(_Window):
     """Every batch action the window offers, one method each.
 
     Mixed into the window beside :class:`~.operation_runner.OperationRunner`,
     whose ``_operate`` and ``_run_operation`` each of these calls.
     """
+
+    #: The devices the machine offers, once asked; whether the archive was measured.
+    _devices: tuple[str, ...] | None
+    _archive_measured: bool
 
     def _predict(self, model: str) -> None:
         """Predict the selection with the model named in the panel.
@@ -97,7 +107,7 @@ class OperationActions:
             return
 
         self.project_panel.announce("Asking which devices are available...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self._devices = probe_devices()
         finally:
@@ -169,7 +179,7 @@ class OperationActions:
             f"{len(records)} image(s) in {self.controller.selection.describe()}",
             self.history_controller.savepoints_here(projects),
         )
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         undoing, savepoint = dialog.undoing, dialog.savepoint
         self._operate(
@@ -248,7 +258,7 @@ class OperationActions:
             savepoints,
             operations=False,
         )
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         savepoint = dialog.savepoint
         self._operate(
@@ -306,7 +316,7 @@ class OperationActions:
             return
 
         dialog = SavepointDialog(self, len(projects))
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         title, note, gap = dialog.title, dialog.description, dialog.closing_gap
         self._operate(
@@ -446,10 +456,15 @@ class OperationActions:
             return
         labels = self.export_controller.unread_labels()
         progressed = self.operations.worker.progressed
+
+        def read(_labels: int) -> None:
+            self.export_panel.refresh()
+            then()
+
         self._run_operation(
             f"Reading {labels} label(s)",
             lambda: self.export_controller.warm_labels(progressed.emit),
-            lambda _read: (self.export_panel.refresh(), then()),
+            read,
         )
 
     def _read_labels_for_view(self) -> None:
@@ -458,7 +473,7 @@ class OperationActions:
         Ignored while an operation is running: that one's callback refreshes
         the tab, which asks again if anything is still unread.
         """
-        if self._pending_operation is not None:
+        if self._operation_running():
             return
         self._with_labels(lambda: None)
 
@@ -498,10 +513,10 @@ class OperationActions:
             self,
             "Replace the earlier training files?",
             f"{existing}.\n\nReplace them with this export?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.StandardButton.Yes
 
     def _confirm_dropping_corrected(self) -> bool:
         """Ask before writing a training set that silently omits proofread work.
@@ -530,10 +545,10 @@ class OperationActions:
             f"These images are marked corrected, but hold no annotation to "
             f"pair them with, so the export will leave them out "
             f"({readiness.summary()}):\n\n{shown}\n\nWrite the files anyway?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.StandardButton.Yes
 
     def _copy_files(self, directory: str) -> None:
         """Copy the matching images, labels and project files into *directory*.
@@ -603,7 +618,7 @@ class OperationActions:
                     preferences.read(self.settings)["advance_after_deciding"]
                 ),
             )
-            if dialog.exec_() != QDialog.Accepted:
+            if dialog.exec_() != QDialog.DialogCode.Accepted:
                 return False
             decided.update(dialog.resolutions)
             return True

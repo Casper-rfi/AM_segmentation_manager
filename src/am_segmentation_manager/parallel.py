@@ -25,12 +25,11 @@ T = TypeVar("T")
 R = TypeVar("R")
 
 #: How many worker processes the pool holds, leaving two cores for the window and
-#: the disk. Reading headers on an 8-core M1, 6 workers took 0.087 ms an image, 8
-#: took 0.111 and 4 took 0.136.
+#: the disk: more workers than that read headers more slowly, not faster.
 POOL_WORKERS = max(1, (os.cpu_count() or 1) - 2)
 
-#: Inputs sent to a worker at a time. Chunks of 16 spent the gain on messaging,
-#: taking twice as long an input as chunks of 64; 256 were no faster.
+#: Inputs sent to a worker at a time. Smaller chunks spend the gain on messaging;
+#: larger ones are no faster.
 CHUNK_SIZE = 64
 
 #: Below this many inputs the work runs in this process, finishing before a pool

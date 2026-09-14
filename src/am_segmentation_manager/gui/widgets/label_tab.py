@@ -18,6 +18,9 @@ from .save_dialog import SAVE_TITLE, SaveLabelsDialog
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..label_controller import SavedLabels
+    from .window_protocol import MixinBase as _Window
+else:
+    _Window = object
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ logger = logging.getLogger(__name__)
 RESTORE_TITLE = "Restore an earlier version"
 
 
-class LabelTab:
+class LabelTab(_Window):
     """Choosing what the Label tab looks at, and writing what it changed."""
 
     def _point_label_tab(self) -> None:
@@ -74,10 +77,10 @@ class LabelTab:
             f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
             f"{'have' if pending != 1 else 'has'} not been saved.\n\n"
             "Save them with Ctrl+S first, or discard them to continue.",
-            QMessageBox.Discard | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
-        if answer != QMessageBox.Discard:
+        if answer != QMessageBox.StandardButton.Discard:
             return False
         self.label_controller.discard_edits()
         return True
@@ -116,7 +119,7 @@ class LabelTab:
                 "the corrected version."
                 if corrected else ""
             ),
-        ) != QMessageBox.Yes:
+        ) != QMessageBox.StandardButton.Yes:
             return
 
         try:
@@ -193,7 +196,7 @@ class LabelTab:
         dialog = SaveLabelsDialog(
             self, "\n\n".join(lines), note, offer_corrected=editing
         )
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
             return None
         return dialog.mark_corrected
 

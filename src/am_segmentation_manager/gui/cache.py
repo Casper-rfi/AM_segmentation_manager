@@ -40,9 +40,10 @@ V = TypeVar("V")
 DEFAULT_IMAGE_LIMIT = 120
 
 #: Starting number of prepared plots to keep, before one has been read. Large
-#: enough to hold a whole lamella: a plot takes ~200 ms to decode, which no
-#: amount of prefetching can hide from someone holding down an arrow key, so the
-#: only way to navigate plots smoothly is to have the lamella already in memory.
+#: enough to hold a whole lamella: a plot decodes more slowly than an arrow key
+#: repeats, which no amount of prefetching can hide from someone holding it
+#: down, so the only way to navigate plots smoothly is to have the lamella
+#: already in memory.
 #: Replaced by :func:`_plot_limit_for_bytes` once a plot has been read and its
 #: real cost is known.
 DEFAULT_PLOT_LIMIT = 64
@@ -54,9 +55,9 @@ DEFAULT_RADIUS = 3
 #: for them costs nothing when they are not being looked at. How far ahead is
 #: :attr:`FrameCache.plot_radius`, which is as far as the cache can keep.
 #:
-#: A plot is ~180 ms to read however it is asked for -- a PNG has to be
-#: decompressed whole, so the reduced-decode flags buy nothing -- which is
-#: slower than a held-down arrow key. Nothing can be read fast enough to keep
+#: A plot is as slow to read however it is asked for -- a PNG has to be
+#: decompressed whole, so the reduced-decode flags buy nothing -- and slower
+#: than a held-down arrow key. Nothing can be read fast enough to keep
 #: up, so every plot has to be there already. That is what bounds these entries
 #: to the pane rather than to the file.
 
@@ -491,7 +492,7 @@ class FrameCache:
         Separate from :meth:`plot` because the two answer different questions.
         Stepping through a lamella needs every plot small enough to be held;
         stopping on one and looking into it needs that one whole. Reading is
-        the same ~180 ms either way, so this is asked for only where it will be
+        as slow either way, so this is asked for only where it will be
         looked at.
         """
         frame = self._frame(frame_index)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
 
@@ -18,6 +19,11 @@ from ...progress import Cancellation
 from ..report import OperationReport
 from .busy_dialog import BusyDialog
 from .report_dialog import ReportDialog
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .window_protocol import MixinBase as _Window
+else:
+    _Window = object
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +37,15 @@ BLOCKED_ACTIONS: dict[str, str] = {
 }
 
 
-class OperationRunner:
+class OperationRunner(_Window):
     """The window's half of running an operation off the interface thread.
 
-    Expects the window to provide ``request_operation``, ``operations_panel``,
-    ``state_panel``, ``controller``, ``export_controller``, ``refresh`` and
-    ``rescan``, and to hold ``_busy`` and ``_pending_operation``.
+    What it uses of the window is declared in :mod:`.window_protocol`.
     """
+
+    #: The dialog of the operation running now, and what waits on it finishing.
+    _busy: BusyDialog | None
+    _pending_operation: tuple | None
 
     def _run_operation(
         self, description: str, work, on_done, *, cancellation: Cancellation | None = None
@@ -87,6 +95,10 @@ class OperationRunner:
         pending = self._take_pending_operation()
         description = pending[0] if pending else "Operation failed"
         QMessageBox.critical(self, description, str(error))
+
+    def _operation_running(self) -> bool:
+        """Return whether an operation has been started and not yet handed back."""
+        return self._pending_operation is not None
 
     def _take_pending_operation(self) -> tuple | None:
         """Close the busy dialog and return what was waiting on it, once.
@@ -197,7 +209,7 @@ class OperationRunner:
 
     def _confirm_report(self, title: str, report: OperationReport, action: str) -> bool:
         """Show a report and ask whether to go ahead."""
-        return ReportDialog(self, title, report.text(), action).exec() == QDialog.Accepted
+        return ReportDialog(self, title, report.text(), action).exec() == QDialog.DialogCode.Accepted
 
     def _show_report(self, title: str, report: OperationReport) -> None:
         """Show a report with nothing to accept."""

@@ -63,9 +63,8 @@ logger = logging.getLogger(__name__)
 #: have to guess the argument order.
 ProgressCallback = Callable[[int, int], None]
 
-#: Fewer experiment files than this are parsed in this process. One averages
-#: 200 KB and 35 ms to parse, so sixteen cost about twice what starting the
-#: worker processes does.
+#: Fewer experiment files than this are parsed in this process, parsing them
+#: costing less than starting the worker processes would.
 EXPERIMENT_POOL_FILES = 16
 
 

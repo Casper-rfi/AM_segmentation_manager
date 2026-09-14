@@ -268,9 +268,8 @@ def read_label_pixels(
     return counted
 
 
-#: Fewer labels than this are counted in this process. One takes about 37 ms to
-#: read and count, so sixteen cost about twice what starting the worker
-#: processes does.
+#: Fewer labels than this are counted in this process, counting them costing
+#: less than starting the worker processes would.
 LABEL_POOL_FILES = 16
 
 
