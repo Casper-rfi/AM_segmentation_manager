@@ -49,8 +49,8 @@ REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
 #: move only by a deliberate edit: an unbacked entry may be added only by
 #: fixing another, and a test pointer may not be traded for a weaker one.
 #: Neither ever forces a deletion -- a backed entry is free at any length.
-MAX_UNBACKED_ENTRIES = 38
-MIN_TEST_BACKED_ENTRIES = 72
+MAX_UNBACKED_ENTRIES = 37
+MIN_TEST_BACKED_ENTRIES = 74
 
 
 def _documents() -> list[Path]:

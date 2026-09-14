@@ -402,7 +402,7 @@ rather than appending to it.
 - **Series is the one filter that does not open on everything.** Every other control starts wide
   and narrows towards an export; this one starts on Adaptive Polishing unless the settings say
   otherwise, a tab *silently* counting the rest disagreeing with `create-training-csv`. A dedicated control rather than a derived
-  filter row, and checkboxes rather than a dropdown, an export covering two series being a real
+  filter row, and switches rather than a dropdown, an export covering two series being a real
   request. The metadata CSV names the series of every row, and `task` beside it: a row not saying
   which it came from cannot be read.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
@@ -520,11 +520,6 @@ rather than appending to it.
   for the reason `merge.py` opens with. A merge verifies before it compares — path, declared id, and
   the tip looked for here — since a copy of a copy carries a plausible file naming an ancestor that
   was never here.
-- **A version list is read, not opened.** Each row carries who, when, what produced it and
-  `changed_fraction`, so nine rows saying 0.1% and one saying 34% name the one that matters; it is
-  computed when a version is kept and cannot be had cheaply after. **And listing them may not be
-  linear in the collection**, running at every arrow key — degrading gradually enough to be blamed
-  on the images. Hence `versions_of`'s scandir by prefix and `VersionController`'s cached log.
 - **Undoing a conversion is a batch operation**, so trying a newer model over proofread labels is a
   decision rather than a commitment: `revert` reads each label's history for the version the run
   replaced, **leaves alone** a label edited since, and refuses the whole batch where a group is
@@ -542,12 +537,6 @@ rather than appending to it.
 
 ## Environment
 
-- **A save refuses a label whose file changed since it was opened.** Proofreading holds a
-  lamella's edits in memory until the reviewer saves, leaving minutes to hours in which a second
-  window, the command line or another reviewer on a shared archive can rewrite a label file. So
-  the size and modification time are recorded on open and compared before writing, and a mismatch
-  stops the entire batch rather than the one file: which version is wanted is not a question this
-  package can answer.
 - **Run the suite from the repository root, in `am_segmentation_manager` or
   `am_segmentation_manager_ml`.** Two ways to get this wrong, only one of which announces itself.
   Run `pytest` from *outside* the repository and there is no `pyproject.toml` above the working
@@ -581,11 +570,6 @@ rather than appending to it.
   chosen per machine (`AM_SEG_TORCH_INDEX_URL`). **It is a superset, not a peer**: the curation
   environment is the *lighter* of the two, and splitting them the other way forces an environment
   switch mid-workflow.
-- **Nothing outside `ml/` may import torch.** The subpackage is the boundary, and
-  `ml/environment.py` answers "is inference possible here" without importing it, as `io/image.py`
-  does for the image stack. **`ml/preprocessing.py` is a verbatim copy of AM_training's module**,
-  excluded from ruff: reformatting it destroys the only cheap answer to "is this still the
-  preprocessing the model was trained with" — `diff`.
 
 ## Inference
 
@@ -613,10 +597,6 @@ rather than appending to it.
   before the button is pressed and reported in the preview rather than asked about, the preview
   being the one question a conversion already asks
   (`test_the_preview_says_how_many_images_use_the_other_source`).
-- **Inference runs in a process of its own**, for the reasons `predict_process.py` gives, and **the
-  window imports no torch at all**. Stopping is `SIGINT`, caught between whole images, a signal it
-  could not handle stranding a half-written temporary. The child's log is forwarded so one file
-  holds the whole run.
 - **Whether to offer the predict button is decided by locating torch, not importing it.** An
   import costs seconds at every window start, including for someone who never predicts, so
   `ml_stack_present` uses `find_spec`; a missing or broken stack is reported by the child, which has

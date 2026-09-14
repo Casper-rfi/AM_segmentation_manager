@@ -113,7 +113,8 @@ of one of these files, is held by `test_docs.py`.
   (`test_a_caption_is_never_a_flow_item_of_its_own`). `controls.keep_together` holds a caption to
   its control and `keep_paired` stacks two into an aligned grid, which also halves the width a row
   of them needs (`test_the_view_controls_are_one_block_on_the_smallest_screen_supported`). What
-  pairs answers one question of two things — series over variant, the two Show switches.
+  pairs answers one question of two things — series over variant, the two Show switches — except on
+  Label, where undo, redo and save sit under the beam buttons because image software keeps them there.
 - **A row is ticked; a control on its own is switched.** `controls.ToggleSwitch` draws the second and
   is a **subclass of `QCheckBox`** (`test_it_is_a_check_box`), so only `paintEvent` differs. It
   paints everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the
@@ -274,7 +275,7 @@ of one of these files, is held by `test_docs.py`.
   (`test_the_keys_act_on_the_conflict_on_screen_never_a_heading`). A field conflict is a row of
   *Field | Here | Copy* and a value is chosen by clicking it, so two values are compared side by side
   rather than read out of a sentence (`test_clicking_a_value_chooses_it_and_clicking_it_again_undecides`).
-- **Who changes are recorded under is a standing line beside the mark, not a warning per action.**
+- **Who changes are recorded under is a standing line in the corner, not a warning per action.**
   Ten actions across all four tabs put a name into a log, and two exports write it into what they
   leave behind — a copy's fork point, a training set's manifest: there is no single tab to say it
   on and far too many places to warn at. It is muted, being a fact rather than a message.
