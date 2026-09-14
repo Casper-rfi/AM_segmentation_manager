@@ -48,8 +48,9 @@ rather than appending to it.
   `scripts/share_variant_labels.py` renames the data instead.
 - **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
-  variant may not be named `labels`, `deselected`, `corrected` or `predictions`: those collide with
-  the label naming rule, so `layout.py` validates it and `inspect-layout` reports a violation.
+  variant may not be named `labels`, `predictions`, `plots`, `deselected` or `corrected`: each is
+  another directory's role, so `layout.py` refuses it (`test_reserved_variants_are_rejected`) and
+  `inspect-layout` reports the directory as matching no role.
 - **A project is a directory containing `experiment.yaml` or `AM_metadata.yaml`, and which
   directory that is gets decided by a person.** `init-project` writes the latter rather than
   fabricating the former: `experiment.yaml` is Autolamella's file, and writing one misrepresents
@@ -435,9 +436,6 @@ rather than appending to it.
   what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
   checks are not its: free space is estimated first, and a destination inside the folder being
   copied from is refused, it being about to walk into its own output.
-- **`check-training-csv` reads the header rather than assuming it.** Any column called `image` or
-  `label`, or ending in `_image` or `_label`, holds a path, so one command checks either shape above
-  and files written before both. A blank cell records nothing, so it cannot have gone missing.
 - **A training export replaces nothing unasked, and leaves a manifest of what it was made from.**
   Every file it would write is checked before a label is opened
   (`test_an_existing_validation_file_stops_the_export_before_anything_is_written`): a split
@@ -511,7 +509,6 @@ rather than appending to it.
 - **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
   same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
   log: the wrong ancestor discards work while reporting success.
-- **A merge compares digests re-read from both trees, never the logs**, per `merge.py`.
 - **A label and its workflow state are one decision.** Both resolve under the key
   `<project>/<target>`, so taking the copy's pixels takes its state with them. Deliberate: holding
   their label under a `corrected` claim made here would assert that somebody proofread pixels nobody
@@ -525,10 +522,6 @@ rather than appending to it.
   (`test_the_narrowest_scope_decides_whatever_order_they_come_in`), so the merge still reads one
   decision per conflict — and **one stops the whole merge**. A scope holding no conflict is refused
   rather than ignored, or a mistyped path would decide nothing without saying so.
-- **The fork point proves where a copy came from; the ancestor is the history the two logs share**,
-  for the reason `merge.py` opens with. A merge verifies before it compares — path, declared id, and
-  the tip looked for here — since a copy of a copy carries a plausible file naming an ancestor that
-  was never here.
 - **Undoing a conversion is a batch operation**, so trying a newer model over proofread labels is a
   decision rather than a commitment: `revert` reads each label's history for the version the run
   replaced, **leaves alone** a label edited since, and refuses the whole batch where a group is
