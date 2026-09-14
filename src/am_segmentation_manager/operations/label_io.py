@@ -16,13 +16,15 @@ from typing import TYPE_CHECKING
 
 from ..display import is_empty_label
 from ..history import pixel_digest
-from ..io.image import has_image_stack_support, to_2d
+from ..io.image import has_image_stack_support, read_array, to_2d
 from ..layout import (
     resolve_labels_directory,
     subdirectories_by_name,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    import numpy as np
+
     from ..models import ImageRecord
 
 logger = logging.getLogger(__name__)
@@ -54,8 +56,11 @@ __all__ = [
     "has_compression_support",
     "is_label_file_empty",
     "label_destination",
+    "label_digest",
     "label_fields",
     "label_state",
+    "read_label",
+    "replacement_fields",
     "save_label_image",
 ]
 
@@ -179,6 +184,60 @@ def changed_fraction(before, after) -> float | None:
     if not first.size:
         return 0.0
     return round(float((first != second).mean()), 6)
+
+
+def read_label(path: Path) -> np.ndarray | None:
+    """Return the pixels of the label at *path*, or None where it will not open.
+
+    Logged rather than raised: one damaged label costs an entry its description,
+    never the batch it is part of.
+    """
+    try:
+        return read_array(path)
+    except Exception as error:  # noqa: BLE001 - one unreadable label must not stop a batch
+        logger.warning("Could not read label %s: %s", path, error)
+        return None
+
+
+def label_digest(path: Path | None) -> str | None:
+    """Return the pixel digest of the label at *path*, or None where it has none to give."""
+    if path is None or not path.is_file():
+        return None
+    pixels = read_label(path)
+    if pixels is None:
+        return None
+    try:
+        return str(label_fields(pixels)["digest"])
+    except ValueError as error:
+        logger.warning("Could not describe label %s: %s", path, error)
+        return None
+
+
+def replacement_fields(
+    destination: Path, previous, written, archived: str | None
+) -> dict[str, object]:
+    """Return what a history entry records about the version a write replaced.
+
+    Args:
+        destination: The label written, named in any warning.
+        previous: The pixels replaced, or None where nothing was.
+        written: The pixels that replaced them.
+        archived: Where the replaced version was kept, or None.
+
+    Returns:
+        ``parent_digest``, ``changed_fraction`` and ``archived_as``, each only
+        where it can be said; empty for a label written where none was.
+    """
+    fields: dict[str, object] = {}
+    if previous is not None:
+        try:
+            fields["parent_digest"] = label_fields(previous)["digest"]
+            fields["changed_fraction"] = changed_fraction(previous, written)
+        except ValueError as error:
+            logger.warning("Could not describe what %s replaced: %s", destination, error)
+    if archived is not None:
+        fields["archived_as"] = archived
+    return fields
 
 
 def classify_label(label: Path | None, empty: bool | None) -> str:

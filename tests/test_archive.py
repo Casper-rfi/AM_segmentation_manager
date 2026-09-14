@@ -20,11 +20,18 @@ from am_segmentation_manager.layout import ARCHIVE_DIRECTORY
 from am_segmentation_manager.operations.archive import (
     Archivist,
     apply_prune,
+    archive_replaced,
     archive_root,
     archived_versions,
     plan_prune,
     restore,
     versions_of,
+)
+from am_segmentation_manager.operations.label_io import (
+    label_digest,
+    label_fields,
+    read_label,
+    replacement_fields,
 )
 from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
 from conftest import build_dataset, start_history
@@ -599,4 +606,89 @@ def _survey_categories(root: Path):
         (finding.category, str(finding.path))
         for project in survey.projects
         for finding in project.findings
+    )
+
+
+# ---------------------------------------------------------------------------
+# The bookkeeping every write replacing a label shares
+# ---------------------------------------------------------------------------
+
+class _KeepingEverything:
+    """An archivist that keeps whatever it is offered, and remembers what."""
+
+    def __init__(self) -> None:
+        self.kept: list[str] = []
+
+    def keep(self, label_path: Path, previous_digest: str, empty: bool) -> str:
+        self.kept.append(previous_digest)
+        return "AM_archive/kept.tif"
+
+
+def test_a_replacement_holding_the_same_pixels_is_not_archived(tmp_path: Path):
+    archivist = _KeepingEverything()
+
+    archived = archive_replaced(
+        archivist, tmp_path / "label.tif", label(2), replacement=label(2)
+    )
+
+    assert archived is None
+    assert archivist.kept == []
+
+
+def test_a_write_naming_no_replacement_archives_even_unchanged_pixels(tmp_path: Path):
+    archivist = _KeepingEverything()
+
+    archived = archive_replaced(archivist, tmp_path / "label.tif", label(2))
+
+    assert archived == "AM_archive/kept.tif"
+    assert archivist.kept == [label_fields(label(2))["digest"]]
+
+
+def test_nothing_replaced_archives_nothing(tmp_path: Path):
+    archivist = _KeepingEverything()
+
+    assert archive_replaced(archivist, tmp_path / "label.tif", None) is None
+    assert archive_replaced(None, tmp_path / "label.tif", label(2)) is None
+    assert archivist.kept == []
+
+
+def test_a_replacement_is_described_by_what_it_replaced(tmp_path: Path):
+    before, after = label(2), label(3)
+
+    fields = replacement_fields(tmp_path / "label.tif", before, after, "AM_archive/v.tif")
+
+    assert fields == {
+        "parent_digest": label_fields(before)["digest"],
+        "changed_fraction": pytest.approx(16 / 256),
+        "archived_as": "AM_archive/v.tif",
+    }
+
+
+def test_a_label_written_where_none_was_describes_no_parent(tmp_path: Path):
+    assert replacement_fields(tmp_path / "label.tif", None, label(2), None) == {}
+
+
+def test_a_resized_replacement_names_its_parent_but_no_changed_fraction(tmp_path: Path):
+    fields = replacement_fields(
+        tmp_path / "label.tif", label(2, shape=(8, 8)), label(2), None
+    )
+
+    assert fields["parent_digest"] == label_fields(label(2, shape=(8, 8)))["digest"]
+    assert fields["changed_fraction"] is None
+
+
+def test_a_label_that_will_not_open_reads_as_nothing(tmp_path: Path, caplog):
+    damaged = tmp_path / "label.tif"
+    damaged.write_bytes(b"not a tiff")
+
+    assert read_label(damaged) is None
+    assert label_digest(damaged) is None
+    assert "Could not read label" in caplog.text
+
+
+def test_a_missing_label_has_no_digest(tmp_path: Path):
+    assert label_digest(None) is None
+    assert label_digest(tmp_path / "absent.tif") is None
+    assert label_digest(write_label(tmp_path / "label.tif", label(2))) == (
+        label_fields(label(2))["digest"]
     )

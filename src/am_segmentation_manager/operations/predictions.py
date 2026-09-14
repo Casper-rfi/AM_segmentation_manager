@@ -21,7 +21,7 @@ from typing import Final, Literal
 
 from ..history import Recorder
 from ..io.atomic import write_atomically
-from ..io.image import read_array, to_2d
+from ..io.image import to_2d
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
     MODALITIES,
@@ -31,13 +31,14 @@ from ..layout import (
     prediction_precedence,
 )
 from ..models import ImageRecord
-from .archive import Archivist
+from .archive import Archivist, archive_replaced
 from .label_io import (
-    changed_fraction,
     has_image_stack_support,
     is_label_file_empty,
     label_destination,
     label_fields,
+    read_label,
+    replacement_fields,
     save_label_image,
 )
 from .predict import read_provenance
@@ -401,11 +402,11 @@ def convert_record_predictions(
                 conversion.existing, conversion.destination, conversion.prediction,
             )
         previous = (
-            _pixels_of(conversion.destination)
+            read_label(conversion.destination)
             if recorder is not None and conversion.existing != "none"
             else None
         )
-        archived = _archive_previous(archivist, conversion.destination, previous)
+        archived = archive_replaced(archivist, conversion.destination, previous)
         prediction_to_label(
             conversion.prediction,
             conversion.destination,
@@ -414,35 +415,6 @@ def convert_record_predictions(
         if recorder is not None:
             _record_conversion(recorder, conversion, previous, archived)
     return tuple(conversion.destination for conversion in plan.conversions)
-
-
-def _pixels_of(path: Path):
-    """Return what a label holds, or None where it will not open."""
-    try:
-
-        return read_array(path)
-    except Exception as error:
-        logger.warning("Could not read %s before replacing it: %s", path, error)
-        return None
-
-
-def _archive_previous(archivist, destination: Path, previous) -> str | None:
-    """Keep the label a conversion is about to replace, if it earns keeping.
-
-    A conversion is the case the archive exists for: a machine guess going over
-    something a person may have drawn, so the version is kept even where the
-    pixels are unchanged. An ordinary save skips that case -- see
-    ``label_save._archive_previous``, which is otherwise this function.
-    """
-    if archivist is None or previous is None:
-        return None
-
-    try:
-        fields = label_fields(previous)
-    except ValueError as error:
-        logger.warning("Could not describe %s before replacing it: %s", destination, error)
-        return None
-    return archivist.keep(destination, fields["digest"], bool(fields["empty"]))
 
 
 def _record_conversion(
@@ -458,7 +430,7 @@ def _record_conversion(
     wrote rather than this package has none, and says so.
     """
 
-    written = _pixels_of(conversion.destination)
+    written = read_label(conversion.destination)
     if written is None:
         return
     try:
@@ -469,16 +441,9 @@ def _record_conversion(
 
     fields["prediction_kind"] = conversion.prediction.parent.name
     fields["model"] = _recorded_model(conversion.prediction)
-    if previous is not None:
-        try:
-            fields["parent_digest"] = label_fields(previous)["digest"]
-            fields["changed_fraction"] = changed_fraction(previous, written)
-        except ValueError as error:
-            logger.warning(
-                "Could not describe what %s replaced: %s", conversion.destination, error
-            )
-    if archived is not None:
-        fields["archived_as"] = archived
+    fields.update(
+        replacement_fields(conversion.destination, previous, written, archived)
+    )
     recorder.record(conversion.destination, "label-converted", **fields)
 
 

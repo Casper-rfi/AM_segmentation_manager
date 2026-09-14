@@ -19,9 +19,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import fingerprint_of, write_atomically
-from ..io.image import read_array
-from .archive import Archivist
-from .label_io import changed_fraction, label_fields, save_label_image
+from .archive import Archivist, archive_replaced
+from .label_io import label_fields, read_label, replacement_fields, save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -231,7 +230,9 @@ def save_labels(
     kept: list[str] = []
     for item in (*plan.writes, *plan.corrected):
         previous = _previous_pixels(item) if recorder is not None else None
-        archived = _archive_previous(archivist, item, previous)
+        archived = archive_replaced(
+            archivist, item.destination, previous, replacement=item.label
+        )
         if archived is not None:
             kept.append(archived)
         write_atomically(
@@ -250,51 +251,15 @@ def save_labels(
     return SaveReport(tuple(written), tuple(created), tuple(kept))
 
 
-def _previous_pixels(item: LabelToSave):
-    """Return the pixels *item* is about to replace, or None.
+def _previous_pixels(item: LabelToSave) -> np.ndarray | None:
+    """Return the pixels *item* is about to replace, or None where it replaces nothing.
 
     A label that will not open is not a reason to refuse the save: the entry
     then says what was written without claiming what it grew out of.
     """
     if item.created or not item.destination.is_file():
         return None
-    try:
-
-        return read_array(item.destination)
-    except Exception as error:
-        logger.warning(
-            "Could not read %s before replacing it: %s", item.destination, error
-        )
-        return None
-
-
-def _archive_previous(archivist, item: LabelToSave, previous) -> str | None:
-    """Keep the version *item* is about to replace, if it earns keeping.
-
-    Nothing to do where there was no previous version, or where it holds the
-    same pixels: a re-encoding is not a change, and a copy of it records only
-    that somebody pressed save. A conversion keeps the version either way --
-    see ``predictions._archive_previous``, which is deliberately not this
-    function, the unchanged-pixels case being the difference between them.
-    """
-    if archivist is None or previous is None:
-        return None
-    try:
-        fields = label_fields(previous)
-    except ValueError as error:
-        logger.warning("Could not describe %s before replacing it: %s", item.destination, error)
-        return None
-    if fields["digest"] == _digest_of(item.label):
-        return None
-    return archivist.keep(item.destination, fields["digest"], bool(fields["empty"]))
-
-
-def _digest_of(array) -> str | None:
-    """Return an array's pixel digest, or None where it has none to give."""
-    try:
-        return label_fields(array)["digest"]
-    except ValueError:
-        return None
+    return read_label(item.destination)
 
 
 def _record_save(
@@ -306,14 +271,7 @@ def _record_save(
     except ValueError as error:
         logger.warning("Not recording %s: %s", item.destination, error)
         return
-    if previous is not None:
-        try:
-            fields["parent_digest"] = label_fields(previous)["digest"]
-            fields["changed_fraction"] = changed_fraction(previous, item.label)
-        except ValueError as error:
-            logger.warning("Could not describe what %s replaced: %s", item.destination, error)
-    if archived is not None:
-        fields["archived_as"] = archived
+    fields.update(replacement_fields(item.destination, previous, item.label, archived))
 
     if item.provenance is None:
         recorder.record(item.destination, "label-saved", **fields)

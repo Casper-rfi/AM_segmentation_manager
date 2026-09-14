@@ -52,7 +52,7 @@ from .export_record import (
     read_export_record,
 )
 from .label_groups import build_groups
-from .label_io import label_fields
+from .label_io import label_digest
 from .label_save import LabelToSave, WriteProvenance, save_labels
 from .metadata_edit import update_project_metadata
 from .selection import current_state, transition_records
@@ -672,23 +672,11 @@ def _groups_of(project: Project) -> dict[str, _Group]:
         groups[target] = _Group(
             target=target,
             label_path=group.label_path,
-            digest=_digest_of(group.label_path, label_fields),
+            digest=label_digest(group.label_path),
             state=current_state(group.records[0]),
             record=group.records[0],
         )
     return groups
-
-
-def _digest_of(path: Path | None, label_fields) -> str | None:
-    """Return what a label holds now, or None where it has nothing to say."""
-    if path is None or not path.is_file():
-        return None
-    try:
-
-        return str(label_fields(read_array(path))["digest"])
-    except Exception as error:
-        logger.warning("Could not read %s: %s", path, error)
-        return None
 
 
 def _projects_by_key(projects: Sequence[Project]) -> dict[str, Project]:

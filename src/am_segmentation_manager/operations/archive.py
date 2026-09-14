@@ -39,6 +39,7 @@ __all__ = [
     "ArchivedVersion",
     "Archivist",
     "PrunePlan",
+    "archive_replaced",
     "archive_root",
     "archived_versions",
     "keep_version",
@@ -207,6 +208,38 @@ class Archivist:
         if root not in self._logs:
             self._logs[root] = read_log(root)
         return self._logs[root]
+
+
+def archive_replaced(
+    archivist: Archivist | None, destination: Path, previous, *, replacement=None
+) -> str | None:
+    """Keep the version a write is about to replace at *destination*, if it earns keeping.
+
+    Args:
+        archivist: The run's archivist, or None where nothing is recorded.
+        previous: The pixels there now, or None where nothing is being replaced.
+        replacement: The pixels about to be written. Where given and identical
+            to *previous* nothing is kept, a re-encoding not being a change. A
+            conversion passes none: a machine guess going over a label keeps
+            what it replaces whatever the pixels.
+
+    Returns:
+        The archived path relative to the project root, or None.
+    """
+    if archivist is None or previous is None:
+        return None
+    try:
+        fields = label_fields(previous)
+    except ValueError as error:
+        logger.warning("Could not describe %s before replacing it: %s", destination, error)
+        return None
+    if replacement is not None:
+        try:
+            if label_fields(replacement)["digest"] == fields["digest"]:
+                return None
+        except ValueError:
+            pass
+    return archivist.keep(destination, fields["digest"], bool(fields["empty"]))
 
 
 # ---------------------------------------------------------------------------
