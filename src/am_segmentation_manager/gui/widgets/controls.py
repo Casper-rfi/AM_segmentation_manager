@@ -42,7 +42,6 @@ from qtpy.QtWidgets import (
     QSplitter,
     QSplitterHandle,
     QToolButton,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -535,7 +534,9 @@ class ChipEditor(QWidget):
     whole point, and a separator typed by hand is a separator got wrong.
 
     Values are read and written as a list; nothing outside this class needs to
-    know what separates them on screen.
+    know what separates them on screen. **One row**: the box, then the values
+    beside it, wrapping only once they overflow -- so a field holding one value
+    is as tall as a field holding none.
     """
 
     #: Emitted whenever the values change through the widget. Not emitted by
@@ -548,14 +549,9 @@ class ChipEditor(QWidget):
         self._separator = separator.strip()
         self._values: list[str] = []
 
-        column = QVBoxLayout(self)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(3)
-
-        self._chips = FlowArea()
-        self._chip_layout = FlowLayout()
-        self._chips.setLayout(self._chip_layout)
-        column.addWidget(self._chips)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
 
         self.entry = QComboBox()
         self.entry.setEditable(True)
@@ -571,7 +567,14 @@ class ChipEditor(QWidget):
         # fires as the list is refilled.
         self.entry.lineEdit().editingFinished.connect(self._commit_entry)
         self.entry.activated.connect(lambda _index: self._commit_entry())
-        column.addWidget(self.entry)
+        # Left as well as top: while there are no values the chips are hidden,
+        # and a box aligned only by its top is centred in the room they leave.
+        row.addWidget(self.entry, 0, Qt.AlignLeft | Qt.AlignTop)
+
+        self._chips = FlowArea()
+        self._chip_layout = FlowLayout()
+        self._chips.setLayout(self._chip_layout)
+        row.addWidget(self._chips, 1, Qt.AlignTop)
 
     # -- what it holds -----------------------------------------------------
 

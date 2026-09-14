@@ -18,14 +18,15 @@ from qtpy.QtCore import QRectF, Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from qtpy.QtWidgets import (
     QComboBox,
-    QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -40,7 +41,7 @@ from ..metadata_controller import (
     MetadataValidationError,
     ProjectSummary,
 )
-from .common import MAX_LISTED_FILES, chip_icon, match_anywhere
+from .common import MAX_LISTED_FILES, chip_icon, horizontal_rule, match_anywhere
 from .controls import ChipEditor, GripSplitter, ToggleSwitch, keep_together
 from .frame_strip import MISMATCH, STATE_COLOURS
 from .lists import project_box
@@ -48,6 +49,7 @@ from .paths import add_path_menu
 from .theme import (
     ACCENT,
     MUTED,
+    SECTION_HEADING,
     SWATCH_HEIGHT,
     SWATCH_OUTLINE,
     SWATCH_WIDTH,
@@ -95,6 +97,18 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
 
 #: Side of the dot beside each field, in logical pixels.
 DOT = 12
+
+#: How wide every single-line box on the tab is, in logical pixels. One width,
+#: so the column of boxes reads as a column; enough for a grid type written out,
+#: and a third of the pane, leaving the rest of the row for a field's values.
+FIELD_WIDTH = 260
+
+#: How many lines a prose field shows before it scrolls.
+PROSE_LINES = 4
+
+#: How far a caption sits below the top of its row, so it is level with the
+#: text in a one-line box beside it rather than with the box's top edge.
+CAPTION_DROP = 5
 
 #: What each field dot says on hover, before anything particular to the field.
 DOT_HINTS = {
@@ -213,6 +227,10 @@ def editor_text(editor: QWidget) -> str:
     """
     if isinstance(editor, ChipEditor):
         return VALUE_SEPARATOR.join(editor.values())
+    if isinstance(editor, QPlainTextEdit):
+        # One line: a value is written to YAML and to a CSV cell, and a line
+        # break typed into a wrapping box is layout rather than content.
+        return " ".join(editor.toPlainText().split("\n")).strip()
     text = editor.currentText() if isinstance(editor, QComboBox) else editor.text()
     return text.strip()
 
@@ -223,6 +241,8 @@ def set_editor_text(editor: QWidget, value: str) -> None:
         editor.set_values(split_values(value))
     elif isinstance(editor, QComboBox):
         editor.setCurrentText(value)
+    elif isinstance(editor, QPlainTextEdit):
+        editor.setPlainText(value)
     else:
         editor.setText(value)
 
@@ -234,6 +254,24 @@ def set_editor_suggestions(editor: QWidget, values: list[str]) -> None:
     elif isinstance(editor, QComboBox):
         editor.clear()
         editor.addItems(["", *values])
+
+
+def _prose_box() -> QPlainTextEdit:
+    """Return a box for a value written as a sentence or two.
+
+    It wraps, and scrolls once full rather than growing: held to
+    :data:`PROSE_LINES` lines, so a long description does not push every field
+    under it down the tab.
+    """
+    box = QPlainTextEdit()
+    box.setPlaceholderText("unset")
+    box.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+    box.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    box.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    box.setTabChangesFocus(True)
+    margin = 2 * round(box.document().documentMargin()) + 10
+    box.setFixedHeight(box.fontMetrics().lineSpacing() * PROSE_LINES + margin)
+    return box
 
 
 def _suggestion_box() -> QComboBox:
@@ -512,16 +550,36 @@ class MetadataPanel(QWidget):
         self.enable.toggled.connect(self._set_editing)
         column.addWidget(self.enable)
 
-        form = QFormLayout()
+        # One grid for every section, so the captions and the boxes line up
+        # down the whole tab rather than within each heading.
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+        grid.setColumnStretch(1, 1)
         self.editors: dict[str, QWidget] = {}
         self.dots: dict[str, QLabel] = {}
         self.captions: dict[str, QLabel] = {}
+        #: The heading over each section, in the order shown.
+        self.section_headings: dict[str, QLabel] = {}
+        row = 0
         # Which editor a field gets is the field table's to say: a vocabulary
         # is picked from, a value that repeats across projects is offered back,
-        # and anything else is typed.
+        # prose wraps, and anything else is typed.
         for entry in FIELDS:
+            if entry.section not in self.section_headings:
+                heading = QLabel(entry.section)
+                heading.setObjectName(SECTION_HEADING)
+                self.section_headings[entry.section] = heading
+                grid.addWidget(heading, row, 0, 1, 2)
+                grid.addWidget(horizontal_rule(), row + 1, 0, 1, 2)
+                row += 2
+            fills = entry.multi or entry.prose
             if entry.multi:
                 editor: QWidget = ChipEditor(separator=VALUE_SEPARATOR)
+                editor.entry.setFixedWidth(FIELD_WIDTH)
+            elif entry.prose:
+                editor = _prose_box()
             elif entry.choices:
                 editor = QComboBox()
                 editor.setEditable(False)
@@ -531,26 +589,54 @@ class MetadataPanel(QWidget):
             else:
                 editor = QLineEdit()
                 editor.setPlaceholderText("unset")
+            if not fills:
+                editor.setFixedWidth(FIELD_WIDTH)
 
             caption = QLabel(entry.label)
             for widget in (caption, editor):
                 widget.setToolTip(entry.guidance)
             dot = QLabel()
             dot.setFixedSize(DOT, DOT)
-            form.addRow(keep_together(dot, caption, spacing=6), editor)
+            label = keep_together(dot, caption, spacing=6)
+            label.layout().setContentsMargins(0, CAPTION_DROP, 0, 0)
+            grid.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignTop)
+            # A box of one line keeps its width; values and prose take the
+            # rest of the row.
+            grid.addWidget(
+                editor, row, 1, Qt.AlignTop if fills else Qt.AlignLeft | Qt.AlignTop
+            )
+            row += 1
             self.editors[entry.name] = editor
             self.dots[entry.name] = dot
             self.captions[entry.name] = caption
             _notify_on_change(editor, self._show_states)
-        column.addLayout(form)
+
+        # Scrolled, so the fields cannot force the window taller than the
+        # screen; the buttons stay under them rather than scrolling away.
+        fields = QWidget()
+        fields_column = QVBoxLayout(fields)
+        fields_column.setContentsMargins(0, 0, 0, 0)
+        fields_column.addLayout(grid)
+        fields_column.addStretch(1)
+        self.fields_scroller = QScrollArea()
+        self.fields_scroller.setWidgetResizable(True)
+        self.fields_scroller.setFrameShape(QScrollArea.NoFrame)
+        self.fields_scroller.setWidget(fields)
+        column.addWidget(self.fields_scroller, stretch=1)
 
         buttons = QHBoxLayout()
         self.preview_button = QPushButton("Preview changes")
         self.preview_button.clicked.connect(self._preview)
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self._save)
+        self.discard_button = QPushButton("Discard changes")
+        self.discard_button.setToolTip(
+            "Put every field back to what is saved. Nothing is written."
+        )
+        self.discard_button.clicked.connect(self._discard)
         buttons.addWidget(self.preview_button)
         buttons.addWidget(self.save_button)
+        buttons.addWidget(self.discard_button)
         buttons.addStretch(1)
         column.addLayout(buttons)
 
@@ -558,7 +644,6 @@ class MetadataPanel(QWidget):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         column.addWidget(self.status)
-        column.addStretch(1)
 
         self._set_editing(False)
         return box
@@ -620,7 +705,13 @@ class MetadataPanel(QWidget):
         for editor in self.editors.values():
             editor.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
+        self.discard_button.setEnabled(enabled)
         self._update_collection_buttons()
+
+    def _discard(self) -> None:
+        """Put every field back to what is saved, writing nothing."""
+        self.refresh()
+        self.status.setText("Changes discarded")
 
     def _edits(self) -> dict[str, str | None]:
         """Return the fields whose editor differs from the resolved value.

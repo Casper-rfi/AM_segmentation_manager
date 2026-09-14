@@ -248,8 +248,9 @@ rather than appending to it.
   is qualified wherever written; the metadata field keeps the plain name. Neither is derived from
   the other, which is why Add data offers no button to copy one across.
 - **A descriptive field is a row in `metadata.FIELDS`**, as a header value is a row in
-  `image_metadata.FIELDS`: adding a field is one row rather than an edit in six modules, and adding
-  a header *dialect* is a column rather than an extraction block per field. **Nothing names a
+  `image_metadata.FIELDS`: adding a field is one row, its heading and place on Add data included,
+  rather than an edit in six modules, and adding a header *dialect* is a column rather than an
+  extraction block per field. **Nothing names a
   particular field to find out what it is**, pinned from both sides by
   `test_a_field_that_can_be_counted_by_gets_a_breakdown_of_its_own` and
   `test_a_vocabulary_is_rejected_by_name_rather_than_by_a_named_field`. `defaults` are the usual

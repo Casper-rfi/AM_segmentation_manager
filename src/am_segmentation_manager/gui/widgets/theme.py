@@ -91,6 +91,9 @@ COMPACT_BUTTON = "compactButton"
 #: Object name of the count beside a view dropdown holding several entries.
 CHOICE_COUNT = "choiceCount"
 
+#: Object name of a heading over a group of fields inside one card.
+SECTION_HEADING = "sectionHeading"
+
 #: Object name of a class's padlock button. The tool-button padding leaves ten
 #: pixels of a 28-pixel button for its mark, and the padlock is drawn larger
 #: than that on purpose; see `label_panel.PADLOCK_ICON`.
@@ -267,6 +270,9 @@ def stylesheet() -> str:
         padding: 0px 5px;
         font-weight: 600;
     }}
+    /* A heading inside a card: the card title's colour and weight, one step
+       down by standing inside it rather than on its border. */
+    QLabel#{SECTION_HEADING} {{ color: {HEADING}; font-weight: bold; padding-top: 6px; }}
     QListWidget::item, QTreeWidget::item {{ padding: 3px 2px; border-radius: 3px; }}
     QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected {{
         background: {HOVER};

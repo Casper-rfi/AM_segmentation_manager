@@ -222,6 +222,26 @@ def test_every_field_is_an_attribute_of_the_resolved_metadata():
         assert hasattr(ExperimentMetadata(), entry.name), entry.name
 
 
+def test_the_fields_run_in_the_order_the_add_data_tab_shows_them():
+    """A section's fields are consecutive rows, so one order serves the tab,
+    a template and the per-project CSV alike."""
+    from am_segmentation_manager.metadata import (
+        GENERAL,
+        LAMELLA_PREPARATION,
+        SAMPLE_PREPARATION,
+    )
+
+    sections = [GENERAL, SAMPLE_PREPARATION, LAMELLA_PREPARATION]
+
+    assert [entry.name for entry in FIELDS] == [
+        "description", "organisation", "project", "user",
+        "sample", "sample_state", "sample_medium", "grid_type", "grid_id",
+        "freezing_method", "gis_deposition_time_s", "lamella_type",
+    ]
+    order = [sections.index(entry.section) for entry in FIELDS]
+    assert order == sorted(order)
+
+
 def test_the_table_is_where_the_fields_and_their_guidance_come_from():
     from am_segmentation_manager.metadata import DESCRIPTIVE_FIELDS, FIELD_COMMENTS
 

@@ -3781,6 +3781,69 @@ def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
     assert editor_text(metadata_panel.editors["sample"]) == ""
 
 
+def test_the_fields_sit_under_their_section_headings(metadata_panel):
+    """General, then how the sample was prepared, then the lamella: the order
+    somebody describing an experiment works through it."""
+    from qtpy.QtWidgets import QApplication
+
+    metadata_panel.resize(1200, 1400)
+    metadata_panel.show()
+    QApplication.processEvents()
+    headings = metadata_panel.section_headings
+
+    def top(widget) -> int:
+        return widget.mapTo(metadata_panel, widget.rect().topLeft()).y()
+
+    assert list(headings) == ["General", "Sample preparation", "Lamella preparation"]
+    names = list(headings)
+    for entry in FIELDS:
+        here = names.index(entry.section)
+        field = top(metadata_panel.editors[entry.name])
+        assert top(headings[entry.section]) < field, entry.name
+        assert all(field < top(headings[later]) for later in names[here + 1:]), entry.name
+
+
+def test_every_single_line_box_is_one_width(metadata_panel):
+    """A column of boxes reads as one only if they end together."""
+    from qtpy.QtWidgets import QComboBox, QLineEdit
+
+    from am_segmentation_manager.gui.widgets.metadata_panel import FIELD_WIDTH
+
+    boxes = [
+        editor.entry if isinstance(editor, ChipEditor) else editor
+        for editor in metadata_panel.editors.values()
+        if isinstance(editor, (ChipEditor, QComboBox, QLineEdit))
+    ]
+
+    assert len(boxes) == len(FIELDS) - 1
+    assert {box.width() for box in boxes} == {FIELD_WIDTH}
+
+
+def test_the_description_wraps_and_is_saved_as_one_line(metadata_panel):
+    from qtpy.QtWidgets import QPlainTextEdit
+
+    box = metadata_panel.editors["description"]
+    box.setPlainText("A lamella\nseries")
+
+    assert box.lineWrapMode() == QPlainTextEdit.WidgetWidth
+    assert box.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded
+    assert box.height() > 2 * metadata_panel.editors["grid_id"].sizeHint().height()
+    assert editor_text(box) == "A lamella series"
+
+
+def test_discarding_puts_every_field_back_and_writes_nothing(metadata_panel):
+    project = metadata_panel.controller.scope[0]
+    before = (project.path / "AM_metadata.yaml").read_text()
+    metadata_panel.enable.setChecked(True)
+    set_editor_text(metadata_panel.editors["description"], "A lamella series")
+
+    metadata_panel.discard_button.click()
+
+    assert editor_text(metadata_panel.editors["description"]) == ""
+    assert metadata_panel.dots["description"].state == "missing"
+    assert (project.path / "AM_metadata.yaml").read_text() == before
+
+
 def test_an_edited_field_is_marked_until_it_is_saved(metadata_panel):
     """Saving is a separate press, so a change still only in the window has to
     look different from one that reached the file."""
@@ -3801,7 +3864,7 @@ def test_repeating_fields_offer_the_values_already_in_use(metadata_panel):
     assert box.isEditable()
     # A blank first entry, so "unset" stays reachable from the list.
     assert [box.itemText(row) for row in range(box.count())] == ["", "HeLa"]
-    assert metadata_panel.editors["description"].__class__.__name__ == "QLineEdit"
+    assert metadata_panel.editors["description"].__class__.__name__ == "QPlainTextEdit"
 
 
 def test_a_single_valued_field_keeps_its_one_box(metadata_panel):
@@ -4163,6 +4226,33 @@ def test_chips_come_back_after_a_project_that_had_none(qt_app):
 
         assert (editor._chips.height() > 0) == bool(values), values
         assert editor.values() == values
+
+
+def test_a_value_sits_beside_the_box_rather_than_on_a_row_of_its_own(qt_app):
+    """A row per field whether or not it holds anything, so fields with values
+    and fields without them are the same height."""
+    editor = ChipEditor()
+    editor.resize(600, 80)
+    editor.show()
+    editor.set_values(["RFI"])
+    qt_app.processEvents()
+    chip = editor._chip_layout.itemAt(0).widget()
+    corner = chip.mapTo(editor, chip.rect().topLeft())
+
+    assert corner.x() >= editor.entry.width()
+    assert corner.y() < editor.entry.height()
+
+
+def test_a_box_with_no_values_beside_it_stays_at_the_left(qt_app):
+    """Regression: with the chips hidden, a box aligned only by its top was
+    centred in the room they left, out of line with every other box."""
+    editor = ChipEditor()
+    editor.resize(600, 40)
+    editor.show()
+    editor.set_values([])
+    qt_app.processEvents()
+
+    assert editor.entry.x() == 0
 
 
 def test_a_chip_area_takes_no_minimum_width(qt_app):

@@ -29,8 +29,9 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 
-- **Try branch `gui-review` in the window before it joins main.** Its padlocks, scan bar, hover
-  card, breakdown table and chart bar have been checked by tests and offscreen renders only.
+- **Try branch `gui-review` in the window before it joins main.** Its padlocks, corner, sliders,
+  Label bars, Add data layout, hover card, breakdown table and chart bar have been checked by
+  tests and offscreen renders only.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,

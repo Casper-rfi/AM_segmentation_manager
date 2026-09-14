@@ -183,6 +183,12 @@ class ExperimentMetadata:
         return self.variants.get(variant, variant)
 
 
+#: The headings the Add data tab gathers the fields under, in the order shown.
+GENERAL = "General"
+SAMPLE_PREPARATION = "Sample preparation"
+LAMELLA_PREPARATION = "Lamella preparation"
+
+
 @dataclass(frozen=True)
 class ProjectField:
     """One descriptive field, and how each part of the package treats it.
@@ -216,6 +222,10 @@ class ProjectField:
             is shared, so getting it wrong would be invisible in the output.
         breakdown_label: What this field is called when records are counted by
             it, or None for a field nothing can usefully be grouped by.
+        section: The heading it sits under on the Add data tab. A section's
+            fields are consecutive rows, so the table's order is the tab's.
+        prose: Whether the value is a sentence or two rather than a name, and
+            so edited in a box that wraps.
     """
 
     name: str
@@ -228,6 +238,8 @@ class ProjectField:
     suggested: bool = False
     defaultable: bool = True
     breakdown_label: str | None = None
+    section: str = GENERAL
+    prose: bool = False
 
     @property
     def breakdown_name(self) -> str:
@@ -247,7 +259,8 @@ class ProjectField:
         return f"{self.comment}. Holds several -- add them one at a time"
 
 
-#: The descriptive fields, in the order they are written to a template.
+#: The descriptive fields, in the order they are written to a template and
+#: shown on the Add data tab, a section's fields together.
 #:
 #: **Adding a field is a row here.** The name, the guidance, the editor it gets,
 #: whether it can be defaulted and whether records can be counted by it are all
@@ -258,6 +271,8 @@ FIELDS: tuple[ProjectField, ...] = (
         "Description",
         "What this experiment was for",
         defaultable=False,
+        section=GENERAL,
+        prose=True,
     ),
     ProjectField(
         "organisation",
@@ -266,6 +281,7 @@ FIELDS: tuple[ProjectField, ...] = (
         multi=True,
         suggested=True,
         breakdown_label="organisation",
+        section=GENERAL,
     ),
     ProjectField(
         "project",
@@ -274,6 +290,7 @@ FIELDS: tuple[ProjectField, ...] = (
         multi=True,
         suggested=True,
         breakdown_label="project",
+        section=GENERAL,
     ),
     ProjectField(
         "user",
@@ -282,6 +299,7 @@ FIELDS: tuple[ProjectField, ...] = (
         multi=True,
         suggested=True,
         breakdown_label="user",
+        section=GENERAL,
     ),
     ProjectField(
         "sample",
@@ -291,6 +309,7 @@ FIELDS: tuple[ProjectField, ...] = (
         suggested=True,
         defaultable=False,
         breakdown_label="sample",
+        section=SAMPLE_PREPARATION,
     ),
     ProjectField(
         "sample_state",
@@ -300,6 +319,7 @@ FIELDS: tuple[ProjectField, ...] = (
         suggested=True,
         defaultable=False,
         breakdown_label="sample state",
+        section=SAMPLE_PREPARATION,
     ),
     ProjectField(
         "sample_medium",
@@ -309,22 +329,7 @@ FIELDS: tuple[ProjectField, ...] = (
         suggested=True,
         defaultable=False,
         breakdown_label="sample medium",
-    ),
-    ProjectField(
-        "freezing_method",
-        "Freezing method",
-        "How the sample was vitrified",
-        defaults=FREEZING_METHODS,
-        suggested=True,
-        breakdown_label="freezing method",
-    ),
-    ProjectField(
-        "grid_id",
-        "Grid ID",
-        "Identifier of the physical grid this was prepared on",
-        suggested=True,
-        defaultable=False,
-        breakdown_label="grid ID",
+        section=SAMPLE_PREPARATION,
     ),
     ProjectField(
         "grid_type",
@@ -333,6 +338,25 @@ FIELDS: tuple[ProjectField, ...] = (
         suggested=True,
         defaultable=False,
         breakdown_label="grid type",
+        section=SAMPLE_PREPARATION,
+    ),
+    ProjectField(
+        "grid_id",
+        "Grid ID",
+        "Identifier of the physical grid this was prepared on",
+        suggested=True,
+        defaultable=False,
+        breakdown_label="grid ID",
+        section=SAMPLE_PREPARATION,
+    ),
+    ProjectField(
+        "freezing_method",
+        "Freezing method",
+        "How the sample was vitrified",
+        defaults=FREEZING_METHODS,
+        suggested=True,
+        breakdown_label="freezing method",
+        section=SAMPLE_PREPARATION,
     ),
     ProjectField(
         "gis_deposition_time_s",
@@ -342,6 +366,7 @@ FIELDS: tuple[ProjectField, ...] = (
         "Seconds of GIS deposition, as a number",
         kind=NUMBER,
         breakdown_label="GIS deposition time (s)",
+        section=LAMELLA_PREPARATION,
     ),
     ProjectField(
         "lamella_type",
@@ -349,6 +374,7 @@ FIELDS: tuple[ProjectField, ...] = (
         f"One of: {', '.join(LAMELLA_TYPES)}",
         choices=LAMELLA_TYPES,
         breakdown_label="lamella preparation type",
+        section=LAMELLA_PREPARATION,
     ),
 )
 
