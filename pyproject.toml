@@ -193,21 +193,13 @@ ignore_missing_imports = true
 ignore_errors = true
 module = [
     "am_segmentation_manager.gui.widgets.breakdown_table",
-    "am_segmentation_manager.gui.widgets.chart_view",
     "am_segmentation_manager.gui.widgets.common",
     "am_segmentation_manager.gui.widgets.conflict_field_page",
     "am_segmentation_manager.gui.widgets.conflict_label_page",
-    "am_segmentation_manager.gui.widgets.conflict_viewer",
-    "am_segmentation_manager.gui.widgets.controls",
-    "am_segmentation_manager.gui.widgets.export_panel",
-    "am_segmentation_manager.gui.widgets.frame_strip",
     "am_segmentation_manager.gui.widgets.image_panel",
     "am_segmentation_manager.gui.widgets.label_panel",
     "am_segmentation_manager.gui.widgets.lists",
     "am_segmentation_manager.gui.widgets.main_window",
     "am_segmentation_manager.gui.widgets.metadata_panel",
-    "am_segmentation_manager.gui.widgets.operations_panel",
-    "am_segmentation_manager.gui.widgets.scan_banner",
-    "am_segmentation_manager.gui.widgets.settings_dialog",
     "am_segmentation_manager.gui.widgets.shortcuts",
 ]

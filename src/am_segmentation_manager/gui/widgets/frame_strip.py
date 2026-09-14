@@ -465,6 +465,7 @@ class FrameTimeline(QWidget):
         either side of the screen.
         """
         card = self._card
+        assert card is not None, "the card is made before it is placed"
         width = self._frame_width()
         above = self.mapToGlobal(QPoint(int(index * width + width / 2), 0))
         x = above.x() - card.width() // 2

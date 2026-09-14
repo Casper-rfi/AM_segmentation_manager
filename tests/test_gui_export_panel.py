@@ -736,6 +736,20 @@ def test_switching_to_the_chart_draws_it_in_the_pane(qt_app, tmp_path):
 
 
 @needs_plots
+def test_copying_the_chart_puts_its_image_on_the_clipboard(qt_app, tmp_path):
+    """The binding checks the arguments turning the PNG into a QImage only when
+    it is called, and a failure inside a slot is printed rather than raised."""
+    panel = measurable(qt_app, tmp_path)
+    panel.refresh()
+    panel.as_chart.setChecked(True)
+    QApplication.clipboard().clear()
+
+    panel.chart_view.copy_button.click()
+
+    assert not QApplication.clipboard().image().isNull()
+
+
+@needs_plots
 def test_the_chart_pane_follows_a_filter(qt_app, tmp_path):
     """Same rule as the table: one tab, one set. A chart left showing the
     previous filter would be two collections on screen at once."""

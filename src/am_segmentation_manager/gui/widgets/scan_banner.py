@@ -79,7 +79,9 @@ class ScanBanner(QWidget):
         self._phase = phase
         self._done = 0
         self._total = 0
-        self.setGeometry(self.parentWidget().rect())
+        parent = self.parentWidget()
+        assert parent is not None, "the banner covers the widget it was made on"
+        self.setGeometry(parent.rect())
         self.show()
         self.raise_()
         application = QApplication.instance()

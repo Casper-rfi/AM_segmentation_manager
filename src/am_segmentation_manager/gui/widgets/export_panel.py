@@ -569,7 +569,7 @@ class ExportPanel(QWidget):
         ))
 
         self.label_state = StepCombo()
-        self.label_state.addItems(LABEL_FILTERS)
+        self.label_state.addItems(list(LABEL_FILTERS))
         self.label_state.setCurrentText(ANY_LABEL)
         self.label_state.currentTextChanged.connect(self._controls_changed)
         fixed.addLayout(_captioned(

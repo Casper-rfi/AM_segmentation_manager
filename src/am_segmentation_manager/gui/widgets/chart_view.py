@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import logging
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QImage
@@ -27,6 +28,10 @@ from qtpy.QtWidgets import (
 
 from .controls import SegmentedControl
 from .paths import choose_save_file
+
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+    from matplotlib.figure import Figure
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +53,9 @@ SHADING_SEGMENTS = (
 )
 
 
-def canvas_for(figure, parent: QWidget | None = None):
+def canvas_for(
+    figure: Figure, parent: QWidget | None = None
+) -> tuple[FigureCanvasQTAgg, NavigationToolbar2QT]:
     """Return a Qt canvas drawing *figure*, and the hidden toolbar that drives it.
 
     Imported here rather than at module level: the backend pulls in Qt through
@@ -78,10 +85,10 @@ class ChartView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._build: Callable[[str], object] | None = None
-        self._figure = None
-        self._canvas = None
-        self._toolbar = None
+        self._build: Callable[[str], Figure] | None = None
+        self._figure: Figure | None = None
+        self._canvas: FigureCanvasQTAgg | None = None
+        self._toolbar: NavigationToolbar2QT | None = None
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -152,7 +159,7 @@ class ChartView(QWidget):
         self._set_actions_enabled(False)
 
     def show_chart(
-        self, build: Callable[[str], object], *, shadeable: bool = False
+        self, build: Callable[[str], Figure], *, shadeable: bool = False
     ) -> None:
         """Draw the figure *build* returns.
 
@@ -241,4 +248,5 @@ class ChartView(QWidget):
             return
         buffer = io.BytesIO()
         self._figure.savefig(buffer, format="png", dpi=FIGURE_DPI)
-        QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue(), "PNG"))
+        # No format argument: PySide6 refuses one passed as bytes, the type its stubs declare.
+        QApplication.clipboard().setImage(QImage.fromData(buffer.getvalue()))

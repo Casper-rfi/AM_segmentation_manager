@@ -129,15 +129,17 @@ class ConflictView(QWidget):
         self.badge.setText(
             "Showing the copy's label" if self._showing_theirs else ""
         )
-        if label is None and image is None:
-            self.view.clear()
-            return
         if label is None:
-            self.view.set_array(np.ascontiguousarray(np.stack((image,) * 3, axis=-1)))
+            if image is None:
+                self.view.clear()
+            else:
+                self.view.set_array(np.ascontiguousarray(np.stack((image,) * 3, axis=-1)))
             return
         label = to_2d(label)
         if self.differences.isChecked() and self._comparable():
-            other = to_2d(self._ours if self._showing_theirs else self._theirs)
+            shown_against = self._ours if self._showing_theirs else self._theirs
+            assert shown_against is not None, "_comparable() holds both labels"
+            other = to_2d(shown_against)
             label = np.where(label != other, DIFFERENCE_CLASS, label)
         if image is None or image.shape[:2] != label.shape[:2]:
             # No acquisition, or one the label does not match: the label is

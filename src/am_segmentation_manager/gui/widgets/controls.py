@@ -556,7 +556,9 @@ class ChipEditor(QWidget):
         self.entry = QComboBox()
         self.entry.setEditable(True)
         self.entry.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.entry.lineEdit().setPlaceholderText(placeholder)
+        line = self.entry.lineEdit()
+        assert line is not None, "an editable combo box has a line edit"
+        line.setPlaceholderText(placeholder)
         match_anywhere(self.entry)
         # Three ways in, and the third is the one that matters: Return, picking
         # a value already in use, and simply leaving the box. Without that last
@@ -565,7 +567,7 @@ class ChipEditor(QWidget):
         # `editingFinished` covers Return and focus alike; `activated` fires
         # only on a choice the user made, where `currentIndexChanged` also
         # fires as the list is refilled.
-        self.entry.lineEdit().editingFinished.connect(self._commit_entry)
+        line.editingFinished.connect(self._commit_entry)
         self.entry.activated.connect(lambda _index: self._commit_entry())
         # Left as well as top: while there are no values the chips are hidden,
         # and a box aligned only by its top is centred in the room they leave.

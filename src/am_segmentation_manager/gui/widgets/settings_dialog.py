@@ -109,7 +109,7 @@ class SettingsDialog(QDialog):
         held = dict(values or {entry.key: entry.fallback for entry in preferences.PREFERENCES})
         #: The control for each preference, so :attr:`values` can read them
         #: back without a second table saying which widget went where.
-        self._editors: dict[str, object] = {}
+        self._editors: dict[str, ToggleSwitch | QSpinBox] = {}
         for title, entries in preferences.groups():
             layout.addWidget(self._build_group(title, entries, held))
 
@@ -140,12 +140,15 @@ class SettingsDialog(QDialog):
         return box
 
     @staticmethod
-    def _build_editor(entry, value):
+    def _build_editor(
+        entry: preferences.Preference, value: int | bool
+    ) -> ToggleSwitch | QSpinBox:
         """Return the control for one preference, filled with *value*."""
         if entry.is_flag:
             switch = ToggleSwitch(entry.label)
             switch.setChecked(bool(value))
             return switch
+        assert entry.low is not None and entry.high is not None, f"{entry.key} has no range"
         box = QSpinBox()
         box.setRange(entry.low, entry.high)
         box.setSuffix(entry.suffix)
@@ -162,7 +165,6 @@ class SettingsDialog(QDialog):
     def values(self) -> dict[str, int | bool]:
         """Return every preference as the dialog now holds it."""
         return {
-            key: (editor.isChecked() if preferences.BY_KEY[key].is_flag
-                  else editor.value())
+            key: editor.isChecked() if isinstance(editor, ToggleSwitch) else editor.value()
             for key, editor in self._editors.items()
         }

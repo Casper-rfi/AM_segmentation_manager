@@ -23,7 +23,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...layout import DEFAULT_PREDICTION_ORIGIN, PredictionOrigin
+from ...layout import DEFAULT_PREDICTION_ORIGIN, PREDICTION_ORIGINS, PredictionOrigin
 from ...operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
     MAX_SPECK_PIXELS,
@@ -282,7 +282,11 @@ class OperationsPanel(QWidget):
 
     def prediction_origin(self) -> PredictionOrigin:
         """Return the source Convert takes where an image has both."""
-        return self.origin_control.current() or DEFAULT_PREDICTION_ORIGIN
+        chosen = self.origin_control.current()
+        for origin in PREDICTION_ORIGINS:
+            if chosen == origin:
+                return origin
+        return DEFAULT_PREDICTION_ORIGIN
 
     def model(self) -> str:
         """Return the model path as typed or chosen."""
