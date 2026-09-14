@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from .io.image import image_stack_problems, require_image_stack
+from .parallel import map_in_processes
+from .progress import timed
 
 logger = logging.getLogger(__name__)
 
@@ -970,13 +972,15 @@ def read_records_metadata(records: Iterable) -> dict[Path, ImageMetadata]:
 
     Returned as a mapping rather than attached to the records: metadata must
     stay out of the scan, and a mapping keeps the cost where it was asked for.
-    Records whose header could not be read are absent from the result.
+    Records whose header could not be read are absent from the result. A batch
+    large enough is read in worker processes, by :func:`~.parallel.map_in_processes`.
     """
-    result: dict[Path, ImageMetadata] = {}
-    for record in records:
-        metadata = read_image_metadata(record.image_path)
-        if metadata is not None:
-            result[record.image_path] = metadata
+    paths = [record.image_path for record in records]
+    with timed(logger, f"Reading {len(paths)} image header(s)"):
+        headers = map_in_processes(read_image_metadata, paths)
+    result = {
+        path: metadata for path, metadata in zip(paths, headers) if metadata is not None
+    }
     logger.info("Read metadata for %d image(s)", len(result))
     return result
 

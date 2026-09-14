@@ -543,7 +543,7 @@ class ExportController:
     ) -> int:
         """Measure every label, once per scan.
 
-        Tens of milliseconds per label against half a millisecond for a header,
+        Tens of milliseconds per label against under a millisecond for a header,
         which is why nothing calls this implicitly: it is the one thing in this
         tab that has to be asked for.
 
@@ -555,7 +555,7 @@ class ExportController:
         Args:
             on_progress: Called as ``on_progress(done, total)`` while measuring,
                 counted in label groups. Reading the headers first is not
-                counted: it is half a millisecond an image against tens of
+                counted: it is under a millisecond an image against tens of
                 milliseconds a label, so a counter covering both would sit at
                 zero and then move.
 

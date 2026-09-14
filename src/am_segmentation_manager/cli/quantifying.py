@@ -86,7 +86,7 @@ def add_arguments(sub) -> None:
             "twice for a cross-tabulation, which is usually the question worth "
             "asking: not how many Arctis images there are, but how many "
             "corrected FIB images at 30 kV are on each instrument. Read-only. "
-            "Breakdowns marked [header] read each image's header, about half a "
+            "Breakdowns marked [header] read each image's header, under a "
             "millisecond per image; [opens labels] reads every label to see "
             "whether it holds anything, tens of milliseconds each; [measures "
             "labels] also labels its connected components. Every count here is a "

@@ -29,6 +29,9 @@ latter declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 
+- **Loading, agreed 2026-09-14.** The Export tab reads headers in `parallel.py`'s pool; next the
+  scanner reads its loose headers and `experiment.yaml` there too, then hands the Export tab the
+  headers it read, then the label filter's pass measures, so an area breakdown opens no label twice.
 - **Try branch `gui-review` in the window before it joins main.** Its padlocks, corner, sliders,
   Label bars, Add data layout, hover card, breakdown table and chart bar have been checked by
   tests and offscreen renders only.

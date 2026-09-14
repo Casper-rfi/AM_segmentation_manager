@@ -883,8 +883,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
     def _open_export(self) -> None:
         """Read the image headers before the tab first draws, and nothing else.
 
-        Half a millisecond an image -- a second or two over a real collection --
-        and it is what the acquisition filters and breakdowns are made of, so
+        A few seconds over a real collection, read in worker processes, and it
+        is what the acquisition filters and breakdowns are made of, so
         paying for it on arrival is what lets them simply work rather than sit
         there unusable with no way to tell why.
 

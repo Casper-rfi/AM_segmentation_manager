@@ -16,6 +16,11 @@ rather than appending to it.
   (`test_module_does_not_import_a_gui_toolkit`). Only `loader` and `worker` are excepted.
 - **No dataframe.** `collections.Counter` does everything `aggregate.py` needs in a few lines with
   no dependency, over thousands of records rather than millions.
+- **A batch of reads that holds the GIL goes to worker processes, not threads.** Parsing a header
+  is mostly Python: eight threads read one in 0.36 ms, six processes in 0.09. `parallel.py` keeps
+  one pool for the session, started by *spawn* so a worker inherits nothing the window imported
+  (`test_a_worker_imports_nothing_the_window_did`), and logs again what a worker logged, or a
+  batch's warnings would never reach `gui.log` (`test_a_worker_warning_reaches_this_process`).
 
 ## Filesystem and identity
 

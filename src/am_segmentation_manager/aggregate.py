@@ -779,15 +779,15 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "crack-count": Breakdown("measurement", by_crack_count, "number of cracks"),
 }
 
-#: Which breakdowns need per-image headers read. Reading them costs about half
-#: a millisecond each, so a command asking only for structural breakdowns
+#: Which breakdowns need per-image headers read. Reading them costs under a
+#: millisecond each, so a command asking only for structural breakdowns
 #: should not pay for it.
 NEEDS_METADATA = frozenset(
     name for name, entry in BREAKDOWNS.items() if entry.kind == "metadata"
 )
 
 #: Which breakdowns need every label read and its components labelled. That is
-#: tens of milliseconds per label rather than half a millisecond, so it is
+#: tens of milliseconds per label rather than under one, so it is
 #: worth keeping separate from NEEDS_METADATA: a command should pay for this
 #: only when asked a question that needs it. These also need the headers, for
 #: the scale.

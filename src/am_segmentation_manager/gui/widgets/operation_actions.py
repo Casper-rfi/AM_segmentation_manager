@@ -415,7 +415,7 @@ class OperationActions:
 
         The first thing in the Export tab slow enough to need the worker: it
         opens each label and labels its components, tens of milliseconds each
-        against half a millisecond for a header. Long enough that the dialog
+        against under a millisecond for a header. Long enough that the dialog
         has to say it is advancing rather than only that it is busy.
         """
         labels = self.export_controller.measurable_labels()

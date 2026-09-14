@@ -245,7 +245,7 @@ def export_image_metadata_csv(
         records: The images to export, already filtered.
         start_path: Base directory paths are written relative to.
         output: File to write.
-        include_headers: Read each image's TIFF header. Costs about half a
+        include_headers: Read each image's TIFF header. Costs under a
             millisecond per image; turn it off for a purely structural listing.
         projects: Image path to project, from
             :func:`~am_segmentation_manager.aggregate.project_lookup`.
