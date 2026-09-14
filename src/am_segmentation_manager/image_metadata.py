@@ -937,8 +937,7 @@ def header_reader() -> Callable[[Path], LooseHeader] | None:
     """Return something that can read a loose image's header, or None.
 
     **The one thing that opens an image during a scan**, and only ever a *loose*
-    image -- 5,237 of the 13,221 in the reference collection, costing about a
-    second. An Adaptive Polishing image is never opened: its filename carries
+    image. An Adaptive Polishing image is never opened: its filename carries
     both the beam and the acquisition number that orders it.
 
     A loose image has neither reliably. 44% carry no timestamp in the filename

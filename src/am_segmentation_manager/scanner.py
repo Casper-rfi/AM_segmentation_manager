@@ -16,11 +16,11 @@ import logging
 import re
 import time
 from collections.abc import Callable, Iterator, Mapping
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+from . import parallel
 from .discovery import (
     DiscoveredStage,
     discover_stages,
@@ -66,15 +66,10 @@ logger = logging.getLogger(__name__)
 #: have to guess the argument order.
 ProgressCallback = Callable[[int, int], None]
 
-#: How many image headers are read at once.
-#:
-#: Half of a header read is the file being opened and read, which waits on the
-#: disk and lets another thread run; the other half is parsing the tags, which
-#: does not. That second half is the ceiling, not the thread count: on a warm
-#: local volume 4 workers cost 6.74s, 8 cost 6.38s and 16 cost 6.47s. Where the
-#: files are on a network or cloud-synced volume the waiting half is much the
-#: larger one and this has more to give.
-HEADER_WORKERS = 8
+#: Fewer experiment files than this are parsed in this process. One averages
+#: 200 KB and 35 ms to parse, so sixteen cost about twice what starting the
+#: worker processes does.
+EXPERIMENT_POOL_FILES = 16
 
 
 class ProjectIndex:
@@ -197,37 +192,73 @@ class Scanner:
         """Return the beam an image's header states, for a name that does not."""
         return self._header(image_path)[0]
 
-    def _prefetch_headers(self, discovered: DiscoveredStage) -> None:
-        """Read a stage's loose headers together, before anything asks for one.
-
-        The reads are the one part of a scan that is not a filesystem walk, and
-        on the reference collection they are more of it than the walk is:
-        23,603 headers against 37,569 images. Each is a file opened, a seek and
-        a small read, so they wait on the disk rather than on the interpreter
-        and a pool of threads gets through them several at a time. Nothing here
-        changes what is read or in what order it is answered -- :meth:`_header`
-        still memoises, and a path this misses is simply read when asked for.
+    def _unread_headers(self, discovered: list[DiscoveredStage]) -> list[Path]:
+        """Return the loose images of *discovered* whose header is not yet read.
 
         The predicate is :func:`~..layout.build_loose_image_sets`'s own, so a
-        file it will not look at is not opened for it -- which now includes the
+        file it will not look at is not opened for it -- which includes the
         names no rule recognises, the header being the only thing that can put
         one of those in an ``other`` set of a stated beam.
         """
         if self._read_header is None:
-            return
-        wanted = [
+            return []
+        return [
             path
-            for path in image_files(discovered.path)
+            for stage in discovered
+            for path in image_files(stage.path)
             if path not in self._headers and not is_ignored_image_name(path.name)
         ]
-        if len(wanted) < 2:
+
+    def _read_headers(self, paths: list[Path]) -> None:
+        """Read the headers of *paths* together, before anything asks for one.
+
+        Nothing here changes what is read or what it answers -- :meth:`_header`
+        still memoises, and a path this misses is simply read when asked for.
+        """
+        if not paths or self._read_header is None:
             return
         start = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=HEADER_WORKERS) as pool:
-            for path, header in zip(wanted, pool.map(self._read_header, wanted)):
-                self._headers[path] = header
+        self._headers.update(zip(paths, parallel.map_in_processes(self._read_header, paths)))
         self._header_seconds += time.perf_counter() - start
-        self._header_reads += len(wanted)
+        self._header_reads += len(paths)
+
+    def _discovered_with_headers(
+        self, roots: list[Path]
+    ) -> Iterator[tuple[Path, list[DiscoveredStage]]]:
+        """Yield each project's stages once the headers of its loose images are read.
+
+        Projects are discovered ahead of being built until their unread headers
+        make a batch worth sending to worker processes: read a stage at a time,
+        most batches would be too small and be read one after another here.
+        Projects are still built, and reported, one at a time.
+        """
+        pending: list[tuple[Path, list[DiscoveredStage]]] = []
+        unread: list[Path] = []
+        for position, project_root in enumerate(roots, start=1):
+            discovered = list(discover_stages(project_root))
+            pending.append((project_root, discovered))
+            unread.extend(self._unread_headers(discovered))
+            if len(unread) < parallel.MIN_POOL_ITEMS and position < len(roots):
+                continue
+            self._read_headers(unread)
+            yield from pending
+            pending, unread = [], []
+
+    def _read_experiments(self, roots: list[Path]) -> dict[Path, dict]:
+        """Return each project's parsed ``experiment.yaml``, keyed by its root.
+
+        Parsed together, in worker processes once there are enough of them:
+        PyYAML's parser is C, but building the Python objects is not, and a
+        large experiment holds hundreds of thousands of them.
+        """
+        paths = [
+            path for root in roots if (path := root / self.EXPERIMENT_FILENAME).exists()
+        ]
+        with timed(logger, f"Reading {len(paths)} experiment file(s)"):
+            documents = parallel.map_in_processes(
+                read_yaml, paths, chunk_size=1, min_items=EXPERIMENT_POOL_FILES
+            )
+        return {path.parent: document for path, document in zip(paths, documents)}
 
     def find_project_roots(self) -> list[Path]:
         """Return the project roots under start_path.
@@ -279,9 +310,17 @@ class Scanner:
             roots = sorted(self.find_project_roots())
             if on_progress is not None:
                 on_progress(0, len(roots))
-            for project_index, project_root in enumerate(roots, start=1):
+            experiments = self._read_experiments(roots)
+            for project_index, (project_root, discovered) in enumerate(
+                self._discovered_with_headers(roots), start=1
+            ):
                 with timed(logger, f"  {project_root.name}", level=logging.DEBUG):
-                    project = self._build_project(project_root, project_index)
+                    project = self._build_project(
+                        project_root,
+                        project_index,
+                        experiments.get(project_root, {}),
+                        discovered,
+                    )
                 index.add(project)
                 if on_progress is not None:
                     on_progress(project_index, len(roots))
@@ -294,11 +333,16 @@ class Scanner:
         )
         return index
 
-    def _build_project(self, project_root: Path, project_index: int) -> Project:
-        """Build one project's model from its directory."""
+    def _build_project(
+        self,
+        project_root: Path,
+        project_index: int,
+        experiment_meta: dict,
+        discovered: list[DiscoveredStage],
+    ) -> Project:
+        """Build one project's model from its parsed experiment and its stages."""
         experiment_path = project_root / self.EXPERIMENT_FILENAME
         am_meta_path = project_root / self.AM_METADATA_FILENAME
-        experiment_meta = read_yaml(experiment_path) if experiment_path.exists() else {}
         am_meta = read_yaml(am_meta_path) if am_meta_path.exists() else {}
         merged_meta = merge_metadata(experiment_meta, am_meta)
 
@@ -322,13 +366,13 @@ class Scanner:
         # project folder name, so users can select projects as 001, 002…
         project.number = f"{project_index:03d}"
         project.lamellae = self._build_lamellae(
-            project_root, project_name, read_vocabularies(experiment_meta)
+            discovered, project_name, read_vocabularies(experiment_meta)
         )
         return project
 
     def _build_lamellae(
         self,
-        project_root: Path,
+        discovered_stages: list[DiscoveredStage],
         project_name: str,
         vocabularies: dict[str, TaskVocabulary],
     ) -> list[Lamella]:
@@ -344,7 +388,7 @@ class Scanner:
         dataset predating ``experiment.yaml`` -- gets :data:`~..tasks.NO_TASKS`
         and its images carry no task.
         """
-        grouped = group_stages_by_lamella(discover_stages(project_root))
+        grouped = group_stages_by_lamella(discovered_stages)
 
         lamellae: list[Lamella] = []
         for lamella_path in sorted(grouped):
@@ -598,7 +642,6 @@ class Scanner:
         tree itself rather than reading this.
         """
         sets = list(build_image_sets(discovered.path))
-        self._prefetch_headers(discovered)
         loose = build_loose_image_sets(
             discovered.path,
             in_alignment_run=discovered.in_alignment_run,

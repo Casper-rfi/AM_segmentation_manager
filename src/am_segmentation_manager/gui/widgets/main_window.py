@@ -1053,7 +1053,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
     ) -> bool:
         """Run *read* behind the scan banner and redraw; return whether it worked.
 
-        The read holds the interface thread for as long as it takes -- fifteen
+        The read holds the interface thread for as long as it takes -- several
         seconds on a large collection -- so nothing else can paint, answer or
         report while it runs. The banner covers the window for the whole of it
         and is repainted from inside the read, which is the only thing still

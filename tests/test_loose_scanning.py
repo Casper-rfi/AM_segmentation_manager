@@ -7,10 +7,12 @@ directory that cannot be recovered from a loose image's path.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager import parallel
 from am_segmentation_manager.frames import group_by_acquisition
 from am_segmentation_manager.operations.label_groups import group_identity, group_key
 from am_segmentation_manager.scanner import Scanner
@@ -225,32 +227,56 @@ def test_only_loose_images_are_opened(project, monkeypatch):
     }
 
 
-def test_the_headers_of_a_stage_are_read_together(project, monkeypatch):
-    """The reads are the one part of a scan that is not a filesystem walk, and
-    on the reference collection more of it than the walk is. Half of each waits
-    on the disk, so they overlap; a change that quietly serialised them again
-    would cost seconds per scan with nothing to show it."""
-    import threading
-    import time
-
-    threads: set[int] = set()
+def test_a_scan_hands_its_headers_over_together(project, monkeypatch):
+    """The reads are the one part of a scan that is not a filesystem walk. Handed
+    over a stage at a time, most batches are too small for the worker processes
+    and are read one after another here, so a scan gathers them across stages
+    and projects first."""
+    shutil.copytree(project, project.parent / "AutoLamella-2026-07-29-09-00")
+    batches: list[list[str]] = []
+    real = parallel.map_in_processes
 
     def read(path):
-        threads.add(threading.get_ident())
-        # A real read waits on the disk, which is the whole reason these
-        # overlap. An instant one lets a single worker drain the queue before
-        # the pool has reason to start a second, which is a property of the
-        # fake and not of the scanner.
-        time.sleep(0.02)
         return ("FIB", None)
 
-    monkeypatch.setattr(
-        "am_segmentation_manager.scanner.header_reader", lambda: read
-    )
+    def recording(function, items, **options):
+        items = list(items)
+        if function is read:
+            batches.append(sorted(path.name for path in items))
+        return real(function, items, **options)
+
+    monkeypatch.setattr("am_segmentation_manager.scanner.header_reader", lambda: read)
+    monkeypatch.setattr(parallel, "map_in_processes", recording)
 
     Scanner(project.parent).build_index()
 
-    assert len(threads) > 1, "the headers of one stage were read one at a time"
+    loose = [
+        "Polishing_pre-task_10-55-29_eb.tif",
+        "Polishing_pre-task_10-55-29_ib.tif",
+        "ref_Polishing_start_eb.tif",
+        "ref_Polishing_start_ib.tif",
+        "ref_alignment_ib.tif",
+    ]
+    assert batches == [sorted(loose * 2)]
+
+
+def test_a_scan_in_worker_processes_indexes_what_one_here_does(project, monkeypatch):
+    """Headers and experiment files read in the pool are the same answers."""
+    shutil.copytree(project, project.parent / "AutoLamella-2026-07-29-09-00")
+    here = Scanner(project.parent).build_index().all_projects()
+
+    parallel.shutdown_pool()
+    monkeypatch.setattr(parallel, "MIN_POOL_ITEMS", 0)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    monkeypatch.setattr("am_segmentation_manager.scanner.EXPERIMENT_POOL_FILES", 0)
+    try:
+        pooled = Scanner(project.parent).build_index().all_projects()
+        assert parallel._pool is not None
+    finally:
+        parallel.shutdown_pool()
+
+    assert [p.metadata for p in pooled] == [p.metadata for p in here]
+    assert [p.image_records for p in pooled] == [p.image_records for p in here]
 
 
 def test_each_image_is_opened_once(project, monkeypatch):

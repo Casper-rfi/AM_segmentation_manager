@@ -3,10 +3,10 @@
 Supports the layers rather than being one: a read that is mostly Python holds the
 GIL, so threads wait on one another and processes do not. The pool starts on first
 use with the *spawn* method, a fresh interpreter inheriting nothing Qt has touched,
-and lasts until this one exits. **A function sent here is module-level, imports
-nothing from ``gui/`` or ``ml/``, and answers a bad input rather than raising**: a
-worker's exception fails the whole map. What a worker logs at WARNING or above is
-logged again here.
+and lasts until this one exits. **A function sent here is module-level and imports
+nothing from ``gui/`` or ``ml/``**; what it raises for one input is raised by the
+whole map, as it would be here. What a worker logs at WARNING or above is logged
+again here.
 """
 from __future__ import annotations
 
@@ -41,16 +41,25 @@ _pool: ProcessPoolExecutor | None = None
 _pool_lock = threading.Lock()
 
 
-def map_in_processes(function: Callable[[T], R], items: Iterable[T]) -> list[R]:
+def map_in_processes(
+    function: Callable[[T], R],
+    items: Iterable[T],
+    *,
+    chunk_size: int | None = None,
+    min_items: int | None = None,
+) -> list[R]:
     """Return ``[function(item) for item in items]``, computed in worker processes.
 
-    Order is kept. If the pool has broken -- a worker killed from outside -- the
-    batch is finished in this process with a warning rather than lost.
+    Order is kept. *chunk_size* and *min_items* default to :data:`CHUNK_SIZE` and
+    :data:`MIN_POOL_ITEMS`, which suit an input costing about what a header does.
+    If the pool has broken -- a worker killed from outside -- the batch is
+    finished in this process with a warning rather than lost.
     """
     items = list(items)
-    if len(items) < MIN_POOL_ITEMS:
+    if len(items) < (MIN_POOL_ITEMS if min_items is None else min_items):
         return [function(item) for item in items]
-    chunks = [items[start:start + CHUNK_SIZE] for start in range(0, len(items), CHUNK_SIZE)]
+    size = CHUNK_SIZE if chunk_size is None else chunk_size
+    chunks = [items[start:start + size] for start in range(0, len(items), size)]
     try:
         outcomes = list(_session_pool().map(_run_chunk, [function] * len(chunks), chunks))
     except BrokenProcessPool:

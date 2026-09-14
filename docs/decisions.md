@@ -119,10 +119,10 @@ rather than appending to it.
 - **Indexing opens an image only in the scanner, and only a loose one**, for the beam its filename
   may not state and the time it never does — one memoised read. Discovery opens nothing: it asks
   `holds_loose_images`, which reads filenames. **It is the largest single cost of a scan**, most
-  images in this collection being loose, so a stage's headers are read together in a pool of
-  threads — on `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look
-  at. Half of a read waits on the disk and overlaps; the other half parses tags under the GIL and is
-  the ceiling, which is why more threads stop helping at eight.
+  images in this collection being loose, so their headers go to worker processes in batches
+  gathered across projects (`test_a_scan_hands_its_headers_over_together`) — on
+  `build_loose_image_sets`'s own predicate, so nothing is opened that it would not look at. Read a
+  stage at a time, most batches were too small to be worth sending to a worker.
 - **One record per acquisition, where a lamella holds the same picture several times.**
   Autolamella duplicates the image an alignment aligns *against* in two ways, and
   `_copied_image_paths` sets out the two rules that see them and which copy is kept.

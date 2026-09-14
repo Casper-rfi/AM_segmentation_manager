@@ -3,9 +3,9 @@
 Wraps PyYAML for the rest of the package so the import and I/O error handling are
 localised. Call :func:`read_yaml`.
 
-Autolamella's ``experiment.yaml`` reaches hundreds of kilobytes and the scanner
-reads one per project, so parsing dominates scan time. PyYAML's C loader is used
-where it was built against libyaml, falling back to the pure Python loader.
+Autolamella's ``experiment.yaml`` reaches a megabyte and the scanner reads one per
+project. PyYAML's C loader is used where it was built against libyaml, falling
+back to the pure Python loader; either way the objects are built in Python.
 """
 from __future__ import annotations
 
