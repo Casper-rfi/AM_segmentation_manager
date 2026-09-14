@@ -23,24 +23,34 @@ from .theme import TEXT
 ICON = 16
 
 
-def _tool_pixmap() -> QPixmap:
-    """Return a transparent square to draw a tool icon on."""
-    pixmap = QPixmap(ICON, ICON)
+def _tool_pixmap(size: int = ICON) -> QPixmap:
+    """Return a transparent square *size* pixels across to draw a tool icon on."""
+    pixmap = QPixmap(size, size)
     pixmap.fill(Qt.transparent)
     return pixmap
 
 
-def brush_icon():
+def _drawn_at(painter: QPainter, size: int) -> None:
+    """Scale *painter* so a mark laid out on the sixteen-pixel grid fills *size*.
+
+    Drawn at the size wanted rather than scaled up afterwards, so a larger
+    mark is as sharp as the others.
+    """
+    painter.scale(size / ICON, size / ICON)
+
+
+def brush_icon(size: int = ICON):
     """Return the brush's icon: the disc it paints.
 
     Drawn rather than shipped, so the window carries no image files. A disc
     because that is literally what the brush lays down -- the icon and the
     tool are the same shape.
     """
-    pixmap = _tool_pixmap()
+    pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.Antialiasing)
+        _drawn_at(painter, size)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(TEXT))
         painter.drawEllipse(3, 3, ICON - 6, ICON - 6)
@@ -51,17 +61,18 @@ def brush_icon():
     return chip_icon(pixmap)
 
 
-def fill_icon():
+def fill_icon(size: int = ICON):
     """Return the fill's icon: a drop, for the area one click floods.
 
     A drop rather than the usual bucket: a bucket needs a body, a handle and a
     pouring lip, and at sixteen pixels those merge into a blob. The pair reads
     as what each tool does -- the brush lays down a disc, the fill pours.
     """
-    pixmap = _tool_pixmap()
+    pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.Antialiasing)
+        _drawn_at(painter, size)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(TEXT))
         # A round bottom with a pointed top, drawn as two overlapping shapes of
@@ -85,12 +96,11 @@ def lock_icon(locked: bool = True, size: int = ICON):
     an open one are the same blob. Drawn at *size* rather than scaled up after,
     so a larger padlock is as sharp as the others.
     """
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.transparent)
+    pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.scale(size / ICON, size / ICON)
+        _drawn_at(painter, size)
         pen = QPen(QColor(TEXT))
         pen.setWidthF(1.6)
         painter.setPen(pen)
@@ -111,7 +121,7 @@ def lock_icon(locked: bool = True, size: int = ICON):
     return chip_icon(pixmap)
 
 
-def save_icon():
+def save_icon(size: int = ICON):
     """Return the save button's icon: a disk, its shutter and label punched out.
 
     The one mark on this bar that stands for writing to the filesystem rather
@@ -120,10 +130,11 @@ def save_icon():
     Both openings are inset from the body's edges -- reaching them cuts the
     body into two columns joined by a band, which draws an H.
     """
-    pixmap = _tool_pixmap()
+    pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.Antialiasing)
+        _drawn_at(painter, size)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(TEXT))
         # The body, its lower right corner cut as a real one is.
@@ -180,7 +191,7 @@ def settings_icon():
     return chip_icon(pixmap)
 
 
-def _history_icon(forwards: bool):
+def _history_icon(forwards: bool, size: int = ICON):
     """Return an arrow curving over and back on itself, pointing left or right.
 
     One drawing for undo and redo, mirrored about the centre line: they are one
@@ -188,10 +199,11 @@ def _history_icon(forwards: bool):
     quite match. The head sits at the end of the arc and points across it, an
     arc and a head that overlap being a blob at sixteen pixels.
     """
-    pixmap = _tool_pixmap()
+    pixmap = _tool_pixmap(size)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.Antialiasing)
+        _drawn_at(painter, size)
         if forwards:
             painter.translate(ICON, 0)
             painter.scale(-1.0, 1.0)
@@ -213,11 +225,11 @@ def _history_icon(forwards: bool):
     return chip_icon(pixmap)
 
 
-def undo_icon():
+def undo_icon(size: int = ICON):
     """Return the undo button's icon: an arrow curving back the way it came."""
-    return _history_icon(forwards=False)
+    return _history_icon(forwards=False, size=size)
 
 
-def redo_icon():
+def redo_icon(size: int = ICON):
     """Return the redo button's icon: the undo arrow, mirrored."""
-    return _history_icon(forwards=True)
+    return _history_icon(forwards=True, size=size)

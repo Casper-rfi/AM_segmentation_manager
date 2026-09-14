@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 
 from qtpy.QtCore import QSize, Qt, QTimer, Signal
-from qtpy.QtGui import QColor, QPixmap
+from qtpy.QtGui import QColor, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -63,7 +63,6 @@ from .controls import (
 )
 from .frame_strip import LABEL_BAND, FrameTimeline
 from .icons import (
-    ICON,
     brush_icon,
     fill_icon,
     lock_icon,
@@ -85,18 +84,25 @@ logger = logging.getLogger(__name__)
 #: window is one closing it would throw away.
 UNSAVED_NOTE = "not yet written to disk"
 
-#: The swatch drawn on each class's paint button.
-SWATCH = 12
+#: The side every mark on the proofreading bars is drawn at -- the tools, the
+#: class swatches, the padlocks, undo, redo and save -- so none reads as more
+#: important than its neighbour. Two pixels more than the sixteen they are laid
+#: out on.
+MARK = 18
+
+#: The colour square inside a paint button's mark. Short of :data:`MARK`, a
+#: solid square carrying more ink than a line drawing the same size.
+SWATCH = 14
+
+#: The size undo, redo and save keep, in logical pixels: what they took with a
+#: sixteen-pixel mark, held so the larger one does not grow the row.
+ACTION_BUTTON = (37, 27)
 
 #: The side of a class's padlock button, in logical pixels. It is reached for
 #: between strokes with the eyes still on the canvas, so it is a target sized for
 #: the pointer rather than for the icon it carries.
 PADLOCK = 28
 
-#: The side of the padlock drawn on that button. Larger than the other marks on
-#: the bar: the open and the closed shackle are told apart at a glance or not
-#: at all.
-PADLOCK_ICON = 22
 
 #: How wide the status line beside the view controls may get, in logical
 #: pixels. A cap rather than a share: it sits beside a row that wraps, so width
@@ -149,10 +155,18 @@ def _action_button(icon, hint: str, action) -> QToolButton:
     """Return a button that is its mark alone, the tooltip naming what it does."""
     button = QToolButton()
     button.setIcon(icon)
-    button.setIconSize(QSize(ICON, ICON))
+    button.setIconSize(QSize(MARK, MARK))
+    button.setFixedSize(*ACTION_BUTTON)
     button.setToolTip(hint)
     button.clicked.connect(lambda _checked=False: action())
     return button
+
+
+def _larger_text(button: QToolButton) -> None:
+    """Set *button*'s caption a point larger, level with the mark beside it."""
+    font = button.font()
+    font.setPointSizeF(font.pointSizeF() + 1)
+    button.setFont(font)
 
 
 def _equalise(buttons) -> None:
@@ -170,8 +184,8 @@ def _padlock_button() -> QToolButton:
     button = QToolButton()
     button.setObjectName(PADLOCK_BUTTON)
     button.setCheckable(True)
-    button.setIcon(lock_icon(False, PADLOCK_ICON))
-    button.setIconSize(QSize(PADLOCK_ICON, PADLOCK_ICON))
+    button.setIcon(lock_icon(False, MARK))
+    button.setIconSize(QSize(MARK, MARK))
     button.setFixedSize(PADLOCK, PADLOCK)
     return button
 
@@ -519,15 +533,17 @@ class LabelPanel(QWidget):
         self.tool_buttons: dict[str, QToolButton] = {}
         group = QButtonGroup(self)
         for tool, caption, key, hint, icon in (
-            (TOOL_BRUSH, "Brush", "D", "Draw where you drag", brush_icon()),
+            (TOOL_BRUSH, "Brush", "D", "Draw where you drag", brush_icon(MARK)),
             (
                 TOOL_FILL, "Fill", "F",
-                "Flood the area of one class you click in", fill_icon(),
+                "Flood the area of one class you click in", fill_icon(MARK),
             ),
         ):
             button = QToolButton()
             button.setText(caption)
             button.setIcon(icon)
+            button.setIconSize(QSize(MARK, MARK))
+            _larger_text(button)
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
             button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
@@ -589,6 +605,8 @@ class LabelPanel(QWidget):
             button = QToolButton()
             button.setText(name)
             button.setIcon(self._swatch(class_index))
+            button.setIconSize(QSize(MARK, MARK))
+            _larger_text(button)
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.setFixedHeight(PADLOCK)
@@ -645,13 +663,13 @@ class LabelPanel(QWidget):
         the tooltip carries the name and the key.
         """
         self.undo_button = _action_button(
-            undo_icon(), "Undo the last stroke on this label\nShortcut: Ctrl+Z", self.undo
+            undo_icon(MARK), "Undo the last stroke on this label\nShortcut: Ctrl+Z", self.undo
         )
         self.redo_button = _action_button(
-            redo_icon(), "Redo the last undone stroke\nShortcut: Ctrl+Shift+Z", self.redo
+            redo_icon(MARK), "Redo the last undone stroke\nShortcut: Ctrl+Shift+Z", self.redo
         )
         self.save_button = _action_button(
-            save_icon(),
+            save_icon(MARK),
             "Save labels: write every label edited in this lamella, and choose "
             "whether to mark them corrected\nShortcut: Ctrl+S",
             self.save_requested.emit,
@@ -659,10 +677,17 @@ class LabelPanel(QWidget):
         return keep_together(self.undo_button, self.redo_button, self.save_button, spacing=2)
 
     def _swatch(self, class_index: int):
-        """Return a colour chip for one class."""
-        pixmap = QPixmap(SWATCH, SWATCH)
+        """Return a colour chip for one class, a square centred in a mark."""
+        pixmap = QPixmap(MARK, MARK)
+        pixmap.fill(Qt.transparent)
         red, green, blue = self.controller.config.rgb(class_index)
-        pixmap.fill(QColor(red, green, blue))
+        inset = (MARK - SWATCH) // 2
+        painter = QPainter(pixmap)
+        try:
+            painter.fillRect(inset, inset, SWATCH, SWATCH, QColor(red, green, blue))
+        finally:
+            # A painter outliving its pixmap crashes the process.
+            painter.end()
         return chip_icon(pixmap)
 
     def _build_timeline(self) -> QHBoxLayout:
@@ -900,7 +925,7 @@ class LabelPanel(QWidget):
             index for index, button in self.lock_buttons.items() if button.isChecked()
         }
         for index, button in self.lock_buttons.items():
-            button.setIcon(lock_icon(index in locked, PADLOCK_ICON))
+            button.setIcon(lock_icon(index in locked, MARK))
         self.canvas.set_protected(locked)
 
     def _stroke_finished(self, patch) -> None:

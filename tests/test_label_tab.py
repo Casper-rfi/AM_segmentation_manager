@@ -553,7 +553,7 @@ def test_the_canvas_zooms_one_step_out_past_fit(window):
 
 def _drawn(icon) -> bytes:
     """Return an icon's pixels, a drawn mark being testable no other way."""
-    from am_segmentation_manager.gui.widgets.label_panel import ICON
+    from am_segmentation_manager.gui.widgets.icons import ICON
 
     return icon.pixmap(ICON, ICON).toImage().constBits().tobytes()
 
@@ -562,6 +562,7 @@ def test_the_action_buttons_carry_their_own_marks(window):
     """These three are reached for without reading, so each needs a mark --
     and each a different one, or the marks say nothing."""
     from am_segmentation_manager.gui.widgets.label_panel import (
+        MARK,
         redo_icon,
         save_icon,
         undo_icon,
@@ -569,9 +570,9 @@ def test_the_action_buttons_carry_their_own_marks(window):
 
     panel = window.label_panel
     for button, icon in (
-        (panel.save_button, save_icon()),
-        (panel.undo_button, undo_icon()),
-        (panel.redo_button, redo_icon()),
+        (panel.save_button, save_icon(MARK)),
+        (panel.undo_button, undo_icon(MARK)),
+        (panel.redo_button, redo_icon(MARK)),
     ):
         assert not button.icon().isNull()
         assert _drawn(button.icon()) == _drawn(icon)
@@ -583,7 +584,7 @@ def test_the_action_buttons_carry_their_own_marks(window):
 def test_a_drawn_mark_puts_ink_on_the_pixmap(qt_app):
     """A painter that draws nothing still returns an icon; only the pixels
     say whether there is a picture on it."""
-    from am_segmentation_manager.gui.widgets.label_panel import (
+    from am_segmentation_manager.gui.widgets.icons import (
         ICON,
         redo_icon,
         save_icon,
@@ -1166,12 +1167,34 @@ def test_undo_redo_and_save_are_marks_under_the_beam_buttons(window):
         assert word in button.toolTip()
 
 
-def test_the_padlock_is_drawn_larger_than_the_other_marks(window):
+def test_every_mark_on_the_bars_is_drawn_one_size(window):
+    """Balanced: a padlock larger than the tools beside it read as the more
+    important control, and the tools' captions smaller than their marks."""
+    from qtpy.QtCore import QSize
+
+    from am_segmentation_manager.gui.widgets.label_panel import ACTION_BUTTON, MARK
+
+    panel = window.label_panel
+    marked = [
+        panel.undo_button, panel.redo_button, panel.save_button,
+        *panel.tool_buttons.values(), *panel.paint_buttons.values(),
+        *panel.lock_buttons.values(),
+    ]
+
+    assert {button.iconSize() for button in marked} == {QSize(MARK, MARK)}
+    for button in (panel.undo_button, panel.redo_button, panel.save_button):
+        assert (button.width(), button.height()) == ACTION_BUTTON
+    plain = panel.fit_button.font().pointSizeF()
+    for button in (*panel.tool_buttons.values(), *panel.paint_buttons.values()):
+        assert button.font().pointSizeF() == plain + 1
+
+
+def test_the_padlock_is_not_shrunk_by_its_button(window):
     """Asserted on the pixels: the icon size was set once before and the
     button's padding still drew the padlock ten pixels wide."""
     from qtpy.QtGui import QColor
 
-    from am_segmentation_manager.gui.widgets.label_panel import ICON
+    from am_segmentation_manager.gui.widgets.icons import ICON
     from am_segmentation_manager.gui.widgets.theme import TEXT
 
     window.resize(1512, 900)
@@ -1185,7 +1208,7 @@ def test_the_padlock_is_drawn_larger_than_the_other_marks(window):
         if any(image.pixel(x, y) == ink for y in range(image.height()))
     ]
 
-    assert columns and columns[-1] - columns[0] + 1 > ICON * 0.7
+    assert columns and columns[-1] - columns[0] + 1 > ICON * 0.6
 
 
 def test_nothing_to_say_about_the_label_takes_no_room(window):

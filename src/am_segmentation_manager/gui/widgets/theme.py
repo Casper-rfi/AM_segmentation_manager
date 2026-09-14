@@ -96,7 +96,7 @@ SECTION_HEADING = "sectionHeading"
 
 #: Object name of a class's padlock button. The tool-button padding leaves ten
 #: pixels of a 28-pixel button for its mark, and the padlock is drawn larger
-#: than that on purpose; see `label_panel.PADLOCK_ICON`.
+#: than that on purpose; see `label_panel.MARK`.
 PADLOCK_BUTTON = "padlockButton"
 
 #: Object name of the timeline's hover card, so the stylesheet can draw it as it
