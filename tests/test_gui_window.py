@@ -4664,6 +4664,16 @@ def test_the_view_controls_are_one_block_on_the_smallest_screen_supported(
         destroy(window)
 
 
+def test_a_view_that_cannot_be_chosen_says_why(window):
+    panel = window.image_panel
+
+    panel.set_available_modes(["sem"])
+    assert panel.mode_buttons["grid"].toolTip() == "No grid overview for this project"
+
+    panel.set_available_modes(["sem", "grid"])
+    assert "Shortcut: 4" in panel.mode_buttons["grid"].toolTip()
+
+
 def test_every_view_slider_is_drawn_one_way(window):
     """Opacity beside Min / Max read as two kinds of control while Fusion drew
     one of them."""

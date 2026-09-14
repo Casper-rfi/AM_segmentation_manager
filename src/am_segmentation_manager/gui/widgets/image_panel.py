@@ -38,6 +38,7 @@ from ..controller import DisplayMode
 from .common import (
     LABEL_BADGES,
     VIEW_ONLY_BADGE,
+    choice_count_badge,
     class_legend_html,
     fill_choice_combo,
     intensity_badge,
@@ -77,6 +78,13 @@ VARIANT_HINT = (
     "state change follows the label, so images sharing a label always "
     "change together whichever one you are looking at."
 )
+#: What a view that cannot be chosen says on hover, instead of what it shows.
+UNAVAILABLE_VIEWS = {
+    "sem": "No SEM image of this frame",
+    "fib": "No FIB image of this frame",
+    "plot": "No plot for this frame",
+    "grid": "No grid overview for this project",
+}
 OVERVIEW_HINT = (
     "Which of the project's grid overviews to show. The earliest that can "
     "place the lamellae opens; a later one may show them milled or coated."
@@ -153,6 +161,10 @@ class ImagePanel(QWidget):
         self.mode_control.chosen.connect(self.mode_changed.emit)
         #: The segments, so a caller can enable and disable them one at a time.
         self.mode_buttons = self.mode_control.buttons
+        #: What each says while it can be chosen, put back when it can again.
+        self._mode_hints = {
+            mode: button.toolTip() for mode, button in self.mode_buttons.items()
+        }
         self.mode_buttons["sem"].setChecked(True)
 
         # -- series --------------------------------------------------------
@@ -177,7 +189,7 @@ class ImagePanel(QWidget):
         controls.addSpacing(GROUP_GAP)
         self.series_label = QLabel("Series")
         self.series_combo = QComboBox()
-        self.series_combo.setMinimumWidth(140)
+        self.series_combo.setMinimumWidth(110)
         self.series_combo.setToolTip(
             "Which images the timeline is made of. Autolamella writes "
             "reference and alignment images as well as the Adaptive Polishing "
@@ -198,8 +210,8 @@ class ImagePanel(QWidget):
         # Which images the timeline is made of, above which file of one is
         # drawn: the narrower question under the wider one.
         controls.addWidget(keep_paired(
-            (self.series_label, self.series_combo),
-            (self.variant_label, self.variant_combo),
+            (self.series_label, self.series_combo, choice_count_badge(self.series_combo)),
+            (self.variant_label, self.variant_combo, choice_count_badge(self.variant_combo)),
         ))
 
         controls.addSpacing(GROUP_GAP)
@@ -345,9 +357,13 @@ class ImagePanel(QWidget):
             self._offer_overviews(False)
 
     def set_available_modes(self, modes: list[str]) -> None:
-        """Disable the views this frame has nothing to show for."""
+        """Disable the views this frame has nothing to show for, saying why."""
         for mode, button in self.mode_buttons.items():
-            button.setEnabled(mode in modes)
+            available = mode in modes
+            button.setEnabled(available)
+            button.setToolTip(
+                self._mode_hints[mode] if available else UNAVAILABLE_VIEWS[mode]
+            )
 
     # -- imaging conditions ------------------------------------------------
 

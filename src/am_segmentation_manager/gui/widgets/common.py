@@ -319,6 +319,10 @@ def fill_choice_combo(
             takes from ``itemData`` and never has to map back from a caption.
         current: The value to show. A value not among *entries* falls to the
             first, so a caller need not check.
+
+    A combo given a count by :func:`choice_count_badge` has it kept in step:
+    shown with the number of entries where there are several, hidden where
+    there is nothing to choose.
     """
     entries = list(entries)
     held = [(combo.itemText(i), combo.itemData(i)) for i in range(combo.count())]
@@ -334,6 +338,37 @@ def fill_choice_combo(
     # still says what is on screen, and the row beside it does not move as the
     # reviewer steps onto a lamella that has only one.
     combo.setEnabled(len(entries) > 1)
+    single = len(entries) <= 1
+    if combo.property("single") != single:
+        # Re-polished, a stylesheet reading a property only when polished.
+        combo.setProperty("single", single)
+        combo.style().unpolish(combo)
+        combo.style().polish(combo)
+    badge = getattr(combo, "count_badge", None)
+    if badge is not None:
+        badge.setText(str(len(entries)))
+        badge.setVisible(not single)
+
+
+def choice_count_badge(combo: QComboBox) -> QLabel:
+    """Return the round count shown beside *combo* while it offers several entries.
+
+    Kept in step by :func:`fill_choice_combo`. Its room is held while hidden,
+    so the controls beside it do not move as a lamella with one condition gives
+    way to one with three.
+    """
+    badge = QLabel("")
+    badge.setObjectName(theme.CHOICE_COUNT)
+    badge.setAlignment(Qt.AlignCenter)
+    badge.setFixedHeight(16)
+    badge.setMinimumWidth(16)
+    policy = badge.sizePolicy()
+    policy.setRetainSizeWhenHidden(True)
+    badge.setSizePolicy(policy)
+    badge.setToolTip("How many there are to choose between")
+    badge.setVisible(False)
+    combo.count_badge = badge
+    return badge
 
 
 def fill_grouped_combo(

@@ -88,6 +88,9 @@ VALUE_CHIP_STYLE = (
 #: ``setObjectName``; see the rule of the same name below.
 COMPACT_BUTTON = "compactButton"
 
+#: Object name of the count beside a view dropdown holding several entries.
+CHOICE_COUNT = "choiceCount"
+
 #: Object name of a class's padlock button. The tool-button padding leaves ten
 #: pixels of a 28-pixel button for its mark, and the padlock is drawn larger
 #: than that on purpose; see `label_panel.PADLOCK_ICON`.
@@ -248,6 +251,22 @@ def stylesheet() -> str:
         color: {TEXT};
         background: {WINDOW};
     }}
+    /* A view dropdown with one entry has nothing to choose, so it is drawn as
+       the text of what is on screen, without a box or an arrow; one with
+       several carries its count beside it. See `common.fill_choice_combo`. */
+    QComboBox[single="true"]:disabled {{
+        border-color: transparent;
+        background: transparent;
+    }}
+    QComboBox[single="true"]::drop-down {{ width: 0px; border: none; }}
+    QComboBox[single="true"]::down-arrow {{ image: none; }}
+    QLabel#{CHOICE_COUNT} {{
+        background: {ACCENT};
+        color: {ACCENT_TEXT};
+        border-radius: 8px;
+        padding: 0px 5px;
+        font-weight: 600;
+    }}
     QListWidget::item, QTreeWidget::item {{ padding: 3px 2px; border-radius: 3px; }}
     QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected {{
         background: {HOVER};
@@ -349,6 +368,7 @@ def stylesheet() -> str:
     QToolButton#segmentMiddle:disabled, QToolButton#segmentLast:disabled {{
         color: {DISABLED_TEXT};
         background: {WINDOW};
+        border-style: dashed;
     }}
 
     QTabWidget::pane {{

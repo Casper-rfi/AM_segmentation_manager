@@ -45,6 +45,7 @@ from .common import (
     LABEL_BADGES,
     VIEW_ONLY_BADGE,
     chip_icon,
+    choice_count_badge,
     fill_choice_combo,
     intensity_badge,
 )
@@ -340,7 +341,7 @@ class LabelPanel(QWidget):
         # drawn. Annotating a lamella means annotating one series of it.
         self.series_label = QLabel("Series")
         self.series_combo = QComboBox()
-        self.series_combo.setMinimumWidth(140)
+        self.series_combo.setMinimumWidth(110)
         self.series_combo.setToolTip(
             "Which series to proofread. Each is its own list of frames, "
             "reviewed one at a time."
@@ -363,8 +364,8 @@ class LabelPanel(QWidget):
         # Which images the timeline is made of, above which file of one is
         # drawn: the narrower question under the wider one.
         controls.addWidget(keep_paired(
-            (self.series_label, self.series_combo),
-            (self.variant_label, self.variant_combo),
+            (self.series_label, self.series_combo, choice_count_badge(self.series_combo)),
+            (self.variant_label, self.variant_combo, choice_count_badge(self.variant_combo)),
         ))
 
         controls.addSpacing(GROUP_GAP)

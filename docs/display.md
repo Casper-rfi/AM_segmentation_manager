@@ -404,8 +404,8 @@ of one of these files, is held by `test_docs.py`.
   rebuilds its frame stack — the position and the ticks go with it, a frame index meaning anything
   only within one timeline. **What was chosen and what a lamella can show are two things**:
   `resolve_series` falls back to a series the lamella holds without touching the choice, or a
-  lamella showing an empty timeline has, the control being hidden for holding one entry, no way
-  back. **The beam follows the same rule** in `_settle_mode`, asked of the whole stack rather than
+  lamella showing an empty timeline has no way back. A dropdown of one entry is drawn as text and
+  one of several carries its count (`test_a_dropdown_with_one_entry_reads_as_text`). **The beam follows the same rule** in `_settle_mode`, asked of the whole stack rather than
   the frame on screen; both settle in `_rebuild_frames`. **Which series are covered at all is a
   second choice**, the *Series shown* switches: a lamella holding only series switched off leaves
   the list, counted in its title, and reaches no change

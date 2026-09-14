@@ -126,6 +126,34 @@ def test_a_locked_field_still_draws_its_value_darkly(themed):
     assert _darkest(editor) < 80
 
 
+def test_a_dropdown_with_one_entry_reads_as_text(themed):
+    """Greyed alone, a view dropdown with nothing to choose looked all but
+    identical to one with several; asserted on the pixels of its edge."""
+    from qtpy.QtWidgets import QComboBox
+
+    from am_segmentation_manager.gui.widgets.common import (
+        choice_count_badge,
+        fill_choice_combo,
+    )
+
+    single, several = QComboBox(), QComboBox()
+    for combo, entries in (
+        (single, [("base", None)]),
+        (several, [("base", None), ("8_fi_1", "8_fi_1"), ("8_fi_16", "8_fi_16")]),
+    ):
+        choice_count_badge(combo)
+        combo.resize(160, 26)
+        fill_choice_combo(combo, entries, None)
+
+    def edge(combo) -> QColor:
+        return QColor(combo.grab().toImage().pixel(0, 13))
+
+    assert edge(several) == QColor(theme.BORDER)
+    assert edge(single) != QColor(theme.BORDER)
+    assert single.count_badge.isHidden()
+    assert not several.count_badge.isHidden() and several.count_badge.text() == "3"
+
+
 def test_a_locked_field_still_reads_as_locked(themed):
     """Readable is not the same as editable-looking: the background dulls."""
     editor = QLineEdit("value")
