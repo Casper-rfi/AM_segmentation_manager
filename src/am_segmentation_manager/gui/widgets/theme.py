@@ -182,22 +182,22 @@ def build_palette() -> QPalette:
     settled there rather than here.
     """
     palette = QPalette()
-    palette.setColor(QPalette.Window, QColor(WINDOW))
-    palette.setColor(QPalette.WindowText, QColor(TEXT))
-    palette.setColor(QPalette.Base, QColor(BASE))
-    palette.setColor(QPalette.AlternateBase, QColor(ALTERNATE))
-    palette.setColor(QPalette.Text, QColor(TEXT))
-    palette.setColor(QPalette.Button, QColor(BASE))
-    palette.setColor(QPalette.ButtonText, QColor(TEXT))
-    palette.setColor(QPalette.ToolTipBase, QColor(BASE))
-    palette.setColor(QPalette.ToolTipText, QColor(TEXT))
-    palette.setColor(QPalette.Highlight, QColor(ACCENT))
-    palette.setColor(QPalette.HighlightedText, QColor(ACCENT_TEXT))
-    palette.setColor(QPalette.Link, QColor(ACCENT))
+    palette.setColor(QPalette.ColorRole.Window, QColor(WINDOW))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Base, QColor(BASE))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(ALTERNATE))
+    palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Button, QColor(BASE))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(BASE))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(ACCENT))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(ACCENT_TEXT))
+    palette.setColor(QPalette.ColorRole.Link, QColor(ACCENT))
     if hasattr(QPalette, "PlaceholderText"):  # Qt 5.12+
-        palette.setColor(QPalette.PlaceholderText, QColor(MUTED))
-    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText):
-        palette.setColor(QPalette.Disabled, role, QColor(DISABLED_TEXT))
+        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(MUTED))
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(DISABLED_TEXT))
     return palette
 
 

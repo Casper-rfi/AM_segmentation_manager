@@ -78,10 +78,10 @@ class ConflictDialog(QDialog):
         layout.addWidget(self.status)
 
         buttons = QDialogButtonBox()
-        self.back = buttons.addButton("Back", QDialogButtonBox.ActionRole)
-        self.next = buttons.addButton("Next", QDialogButtonBox.ActionRole)
-        self.merge = buttons.addButton("Merge", QDialogButtonBox.AcceptRole)
-        cancel = buttons.addButton(QDialogButtonBox.Cancel)
+        self.back = buttons.addButton("Back", QDialogButtonBox.ButtonRole.ActionRole)
+        self.next = buttons.addButton("Next", QDialogButtonBox.ButtonRole.ActionRole)
+        self.merge = buttons.addButton("Merge", QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         # Qt makes the first accepting button the default and draws it in the
         # accent. Cancel takes it, as before every other write: Return must
         # not be able to merge -- and it asks before losing any decision.
@@ -145,8 +145,8 @@ class ConflictDialog(QDialog):
             "Discard these decisions?",
             f"{decided} conflict(s) have been decided. Close without merging, "
             f"and lose those decisions?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        ) != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
             return
         super().reject()

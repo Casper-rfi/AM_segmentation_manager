@@ -69,11 +69,11 @@ class SavepointDialog(QDialog):
         )
         layout.addWidget(self.close_gap)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Preview")
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Preview")
         # Cancel is the default, as in every dialog that precedes a write:
         # Return must not be able to start one.
-        buttons.button(QDialogButtonBox.Cancel).setDefault(True)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -84,7 +84,7 @@ class SavepointDialog(QDialog):
 
     def _retest(self) -> None:
         """Offer the preview only once there is a name to give it."""
-        self.buttons.button(QDialogButtonBox.Ok).setEnabled(
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
             bool(self.title_edit.text().strip())
         )
 

@@ -101,10 +101,10 @@ class RevertDialog(QDialog):
         reach.setWordWrap(True)
         layout.addWidget(reach)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Preview")
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Preview")
         # Cancel is the default, as in every dialog that precedes a write.
-        buttons.button(QDialogButtonBox.Cancel).setDefault(True)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

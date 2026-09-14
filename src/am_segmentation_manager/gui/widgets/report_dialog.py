@@ -52,18 +52,18 @@ class ReportDialog(QDialog):
         # Paths line up only in a fixed-width font, and a report is read by
         # scanning down the column where the paths differ.
         self.view.setFont(fixed_width_font())
-        self.view.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.view.setPlainText("\n".join(lines))
         layout.addWidget(self.view)
 
         if action_label:
-            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttons.button(QDialogButtonBox.Ok).setText(action_label)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setText(action_label)
             # Cancel is the default: these dialogs open in front of a keyboard
             # gesture, and Return should not be able to apply one by accident.
-            buttons.button(QDialogButtonBox.Cancel).setDefault(True)
+            buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         else:
-            buttons = QDialogButtonBox(QDialogButtonBox.Close)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
