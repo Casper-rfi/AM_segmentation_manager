@@ -437,11 +437,13 @@ rather than appending to it.
   what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
   checks are not its: free space is estimated first, and a destination inside the folder being
   copied from is refused, it being about to walk into its own output.
-- **A training export replaces nothing unasked, and leaves a manifest of what it was made from.**
-  Every file it would write is checked before a label is opened
-  (`test_an_existing_validation_file_stops_the_export_before_anything_is_written`): a split
-  replaced by accident is gone with the seed that made it. The manifest is written last, so it
-  names only files written whole (`test_the_manifest_counts_what_the_files_hold`).
+- **An export replaces nothing unasked.** Every CSV it would write is checked before a header or
+  a label is opened, and one already there is refused unless `--overwrite` or the window's save
+  dialog said otherwise (`test_an_existing_validation_file_stops_the_export_before_anything_is_written`,
+  `test_cli_stats_refuses_to_replace_a_csv`): an export is something a person may have kept, and a
+  split replaced by accident is gone with the seed that made it. A training export also leaves a
+  manifest, written last so it names only files written whole
+  (`test_the_manifest_counts_what_the_files_hold`).
 
 ## History
 

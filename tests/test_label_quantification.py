@@ -423,3 +423,23 @@ def test_command_threshold_override(tmp_path: Path, capsys):
     assert quantify(tmp_path, "--min-crack-area", "10") == 0
 
     assert "0 of 1 lamellae have a crack" in capsys.readouterr().out
+
+
+def test_the_command_refuses_to_replace_an_export_before_measuring(
+    tmp_path: Path, monkeypatch
+):
+    """Measuring reads every label, so a refusal has to come before it, not after."""
+    import am_segmentation_manager.cli.quantifying as quantifying
+
+    build_project(tmp_path)
+    per_image, per_lamella = tmp_path / "images.csv", tmp_path / "lamellae.csv"
+    per_lamella.write_text("kept\n", encoding="utf-8")
+
+    def measured(*args, **kwargs):
+        raise AssertionError("labels were measured for an export that was refused")
+
+    monkeypatch.setattr(quantifying, "measure_records", measured)
+
+    assert quantify(tmp_path, "-o", str(per_image), "--lamella-output", str(per_lamella)) == 2
+    assert per_lamella.read_text(encoding="utf-8") == "kept\n"
+    assert not per_image.exists()

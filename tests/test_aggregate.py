@@ -1052,3 +1052,40 @@ def test_a_single_valued_table_says_nothing_extra():
 
     assert len(lines) == 2
     assert "counted under each" not in "".join(lines)
+
+
+def test_cli_stats_refuses_to_replace_a_csv(tmp_path: Path):
+    from am_segmentation_manager.cli import main
+
+    built(tmp_path)
+    output = tmp_path / "counts.csv"
+    output.write_text("kept\n", encoding="utf-8")
+    command = ["stats", str(tmp_path), *SCOPE, "--by", "modality", "-o", str(output)]
+
+    assert main(command) == 2
+    assert output.read_text(encoding="utf-8") == "kept\n"
+
+    assert main([*command, "--overwrite"]) == 0
+    assert output.read_text(encoding="utf-8").startswith("modality,images")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["export-projects-csv"],
+        ["export-metadata-csv", *SCOPE, "--no-headers"],
+    ],
+)
+def test_cli_metadata_exports_refuse_to_replace_a_csv(tmp_path: Path, command: list[str]):
+    from am_segmentation_manager.cli import main
+
+    built(tmp_path)
+    output = tmp_path / "export.csv"
+    output.write_text("kept\n", encoding="utf-8")
+    arguments = [command[0], str(tmp_path), *command[1:], "-o", str(output)]
+
+    assert main(arguments) == 2
+    assert output.read_text(encoding="utf-8") == "kept\n"
+
+    assert main([*arguments, "--overwrite"]) == 0
+    assert output.read_text(encoding="utf-8") != "kept\n"

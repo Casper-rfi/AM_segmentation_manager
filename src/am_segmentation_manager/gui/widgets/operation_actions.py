@@ -623,7 +623,8 @@ class OperationActions:
             self._flash("Nothing matches these filters")
             return
         try:
-            self.export_controller.export_image_metadata(Path(path))
+            # The save dialog has already asked before naming a file that exists.
+            self.export_controller.export_image_metadata(Path(path), overwrite=True)
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
             return
@@ -633,8 +634,10 @@ class OperationActions:
         """Write the counts behind the chart, as am-seg stats --output writes them."""
         panel = self.export_panel
         try:
+            # The save dialog has already asked before naming a file that exists.
             self.export_controller.export_breakdown_csv(
-                Path(path), panel.breakdown.currentData(), panel.cross.currentData() or None
+                Path(path), panel.breakdown.currentData(), panel.cross.currentData() or None,
+                overwrite=True,
             )
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
@@ -644,10 +647,12 @@ class OperationActions:
     def _export_project_metadata(self, path: str) -> None:
 
         try:
+            # The save dialog has already asked before naming a file that exists.
             export_project_metadata_csv(
                 self.export_controller.projects,
                 self.controller.start_path or Path(path).parent,
                 Path(path),
+                overwrite=True,
             )
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))

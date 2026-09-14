@@ -412,18 +412,6 @@ def cross_tabulation_as_rows(table: dict) -> list[tuple[str, str, int]]:
     return [(str(row), str(column), count) for (row, column), count in table.items()]
 
 
-def write_table_csv(output: Path, header: Sequence[str], rows: Sequence[Sequence]) -> Path:
-    """Write *rows* under *header* as CSV -- what ``am-seg stats --output`` writes."""
-    import csv
-
-    with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(header)
-        writer.writerows(rows)
-    logger.info("Wrote %d row(s) to %s", len(rows), output)
-    return output
-
-
 def format_speck_report(
     found: Mapping[Path, Sequence[Speck]],
     root: Path,

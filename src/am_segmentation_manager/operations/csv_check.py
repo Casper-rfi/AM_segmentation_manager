@@ -3,8 +3,7 @@
 A recorded path cannot go stale through curation any more -- workflow state is
 declared in a file and nothing moves -- so a path that does not resolve means
 the file is genuinely gone: deleted, renamed, or on a drive that is not
-mounted. A row is therefore either ``ok`` or ``missing``, and the repair this
-module used to perform has nothing left to repair.
+mounted. A row is therefore either ``ok`` or ``missing``.
 
 Pruning is still worth having. A CSV holds a particular train/validation split,
 and losing a few images is not a reason to regenerate the whole thing.
@@ -17,6 +16,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from ..io.tables import write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,7 @@ def summarize_results(results: list[RowCheck], start_path: Path) -> tuple[list[s
 
 
 def write_pruned_csv(
-    results: list[RowCheck], output_path: Path
+    results: list[RowCheck], output_path: Path, *, overwrite: bool = False
 ) -> tuple[Path, int]:
     """Write *results* to *output_path*, without the rows that no longer resolve.
 
@@ -165,6 +166,9 @@ def write_pruned_csv(
 
     Returns:
         The path written, and how many rows were dropped.
+
+    Raises:
+        FileExistsError: If *output_path* exists and *overwrite* is False.
     """
     kept = [result for result in results if result.ok]
     dropped = len(results) - len(kept)
@@ -172,13 +176,11 @@ def write_pruned_csv(
     # one of the same shape.
     columns = list(results[0].columns) if results else ["image", "label"]
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(columns)
-        writer.writerows(
-            tuple(result.columns[name].recorded_value for name in columns)
-            for result in kept
-        )
+    write_csv(
+        output_path,
+        columns,
+        (tuple(result.columns[name].recorded_value for name in columns) for result in kept),
+        overwrite=overwrite,
+    )
     logger.info("Wrote %d row(s) to %s, dropping %d", len(kept), output_path, dropped)
     return output_path, dropped

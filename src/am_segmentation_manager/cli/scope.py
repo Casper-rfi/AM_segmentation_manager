@@ -1,15 +1,15 @@
 """The argument vocabulary every command group shares.
 
-Where to look, which series and beam, which projects and lamellae, and the
-metadata filters -- declared once so two commands cannot offer the same flag
-under different names or defaults, and resolved once so they cannot read it
-differently either.
+Where to look, which series and beam, which projects and lamellae, the
+metadata filters, and whether an output may be replaced -- declared once so two
+commands cannot offer the same flag under different names or defaults, and
+resolved once so they cannot read it differently either.
 """
 from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from ..filtering import (
@@ -19,6 +19,7 @@ from ..filtering import (
     iter_matching_records,
 )
 from ..history import Recorder
+from ..io.tables import refuse_existing
 from ..layout import LABELLED_SERIES
 from ..models import Project
 from ..operations.init_history import writing_recorder
@@ -320,3 +321,27 @@ def _writing_recorder(args: argparse.Namespace, projects: Sequence[Project]) -> 
     """Return the recorder for a command that writes, per :func:`writing_recorder`."""
     recorder = _recorder(args)
     return writing_recorder(projects, recorder) if projects else recorder
+
+
+def _add_overwrite_argument(parser: argparse.ArgumentParser) -> None:
+    """Offer ``--overwrite`` on a command writing files a person may already have."""
+    parser.add_argument(
+        "--overwrite", action="store_true",
+        help=(
+            "Replace an output file that already exists. Without it, a run that "
+            "would replace one stops before reading anything and writes nothing"
+        ),
+    )
+
+
+def _outputs_refused(outputs: Iterable[str | Path | None], overwrite: bool) -> bool:
+    """Return whether an output is already there and may not be replaced, saying so."""
+    try:
+        refuse_existing([Path(output) for output in outputs if output], overwrite=overwrite)
+    except FileExistsError as error:
+        logger.error(
+            "Could not export: %s. Pass --overwrite to replace it, or choose another file",
+            error,
+        )
+        return True
+    return False

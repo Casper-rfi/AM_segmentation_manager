@@ -34,6 +34,7 @@ from ..aggregate import (
 from ..config import SegmentationConfig, load_segmentation_config
 from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
+from ..io.tables import write_csv
 from ..models import ImageRecord, Project
 from ..operations.csv import (
     DEFAULT_TRAIN_RATIO,
@@ -56,7 +57,7 @@ from ..operations.label_io import (
 from ..operations.label_measure import LabelMeasurement, measure_records, measurement_is_empty
 from ..operations.metadata_csv import export_image_metadata_csv
 from ..operations.selection import current_state
-from ..reporting import counts_as_rows, cross_tabulation_as_rows, write_table_csv
+from ..reporting import counts_as_rows, cross_tabulation_as_rows
 
 logger = logging.getLogger(__name__)
 
@@ -948,7 +949,7 @@ class ExportController:
             scope=self.describe_filters(),
         )
 
-    def export_image_metadata(self, output: Path) -> Path:
+    def export_image_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
         """Write the per-image metadata for the current selection.
 
         Paired when both modalities are in play, matching the training export:
@@ -956,6 +957,9 @@ class ExportController:
         beam. Choosing a single modality gives one row per image file, which is
         what a repository deposition wants -- and two such exports append,
         since they carry the same columns.
+
+        Raises:
+            FileExistsError: If *output* exists and *overwrite* is False.
         """
 
         return export_image_metadata_csv(
@@ -964,6 +968,7 @@ class ExportController:
             output,
             projects=project_lookup(self._projects),
             paired=self.paired,
+            overwrite=overwrite,
         )
 
     def preview(self) -> ExportPreview:
@@ -1081,13 +1086,14 @@ class ExportController:
         )
 
     def export_breakdown_csv(
-        self, output: Path, name: str, other: str | None = None
+        self, output: Path, name: str, other: str | None = None, *, overwrite: bool = False
     ) -> Path:
         """Write the breakdown on screen as CSV, as ``am-seg stats --output`` does.
 
         Raises:
             ValueError: If a property it counts by needs the labels measured and
                 they are not -- which would write every image under "no-label".
+            FileExistsError: If *output* exists and *overwrite* is False.
         """
         unmeasured = [
             chosen for chosen in (name, other)
@@ -1097,14 +1103,15 @@ class ExportController:
             raise ValueError(
                 f"Counting by {' and '.join(unmeasured)} needs the labels measured first"
             )
+        rows: Sequence[Sequence[object]]
         if other:
-            return write_table_csv(
-                output, [name, other, "images"],
-                cross_tabulation_as_rows(self.cross_tabulation(name, other)),
-            )
-        return write_table_csv(
-            output, [name, "images"], counts_as_rows(self.breakdown(name))
-        )
+            header = [name, other, "images"]
+            rows = cross_tabulation_as_rows(self.cross_tabulation(name, other))
+        else:
+            header = [name, "images"]
+            rows = counts_as_rows(self.breakdown(name))
+        write_csv(output, header, rows, overwrite=overwrite)
+        return output
 
     def filterable_breakdowns(self) -> list[tuple[str, str]]:
         """Return the ``(name, label)`` of every breakdown offered as a filter.

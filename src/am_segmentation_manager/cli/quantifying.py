@@ -27,6 +27,7 @@ from ..config import load_segmentation_config
 from ..filtering import filter_by_metadata
 from ..image_metadata import read_records_metadata
 from ..io.path import make_path_relative
+from ..io.tables import write_csv
 from ..layout import SERIES
 from ..operations.copy_export import (
     DestinationInsideSource,
@@ -52,15 +53,16 @@ from ..reporting import (
     format_counts,
     format_cross_tabulation,
     format_label_quantification,
-    write_table_csv,
 )
 from ..scanner import Scanner
 from .scope import (
     REPORTING_SERIES,
     _add_metadata_filters,
+    _add_overwrite_argument,
     _add_scope_arguments,
     _describe_scope,
     _metadata_selectors,
+    _outputs_refused,
     _resolve_records,
     _resolve_scope,
 )
@@ -128,6 +130,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "extra"
         ),
     )
+    _add_overwrite_argument(stats_cmd)
 
     # -- quantify-labels -----------------------------------------------------
     quantify = sub.add_parser(
@@ -184,6 +187,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "--no-detail", action="store_true",
         help="Print only the totals, not the per-lamella table",
     )
+    _add_overwrite_argument(quantify)
 
     # -- metadata exports ----------------------------------------------------
     export_metadata = sub.add_parser(
@@ -213,6 +217,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "Faster for a purely structural listing"
         ),
     )
+    _add_overwrite_argument(export_metadata)
 
     export_projects = sub.add_parser(
         "export-projects-csv",
@@ -225,6 +230,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     export_projects.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
     export_projects.add_argument("-o", "--output", required=True, help="CSV file to write")
+    _add_overwrite_argument(export_projects)
 
     # -- export-files --------------------------------------------------------
     export_files = sub.add_parser(
@@ -379,6 +385,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "--in-place", action="store_true",
         help="Overwrite the original CSV instead of writing a new file; requires --prune",
     )
+    _add_overwrite_argument(check_training_csv)
 
 
 
@@ -389,17 +396,23 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
 def _cmd_export_projects_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg export-projects-csv``."""
 
+    if _outputs_refused([args.output], args.overwrite):
+        return 2
     start_path = Path(args.start_path)
     projects = Scanner(start_path).build_index().all_projects()
     if not projects:
         logger.warning("No projects found under %s", start_path)
-    export_project_metadata_csv(projects, start_path, Path(args.output))
+    export_project_metadata_csv(
+        projects, start_path, Path(args.output), overwrite=args.overwrite
+    )
     return 0
 
 
 def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg export-metadata-csv``."""
 
+    if _outputs_refused([args.output], args.overwrite):
+        return 2
     records, start_path = _resolve_records(args)
     if not records:
         logger.warning("No images matched")
@@ -422,6 +435,7 @@ def _cmd_export_metadata_csv(args: argparse.Namespace) -> int:
         include_headers=not args.no_headers, projects=projects,
         # The same rule the training export and the window apply.
         paired=args.modality == "all",
+        overwrite=args.overwrite,
     )
     if args.modality == "all":
         logger.info(
@@ -440,6 +454,8 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     # them here too would shadow them for the whole of main(), including
     # the parser construction above.
 
+    if _outputs_refused([args.output], args.overwrite):
+        return 2
     records, start_path = _resolve_records(args)
     if not records:
         logger.warning("No images matched")
@@ -542,13 +558,16 @@ def _cmd_stats(args: argparse.Namespace) -> int:
             return 2
 
     if args.output:
-        write_table_csv(Path(args.output), header, rows)
+        write_csv(Path(args.output), header, rows, overwrite=args.overwrite)
+        logger.info("Wrote %d row(s) to %s", len(rows), args.output)
     return 0
 
 
 def _cmd_quantify_labels(args: argparse.Namespace) -> int:
     """Handle ``am-seg quantify-labels``."""
 
+    if _outputs_refused([args.output, args.lamella_output], args.overwrite):
+        return 2
     records, start_path = _resolve_records(args)
     if not records:
         logger.warning("No images matched")
@@ -598,11 +617,12 @@ def _cmd_quantify_labels(args: argparse.Namespace) -> int:
 
     if args.output:
         export_label_measurements_csv(
-            records, measurements, config, start_path, Path(args.output), lookup
+            records, measurements, config, start_path, Path(args.output), lookup,
+            overwrite=args.overwrite,
         )
     if args.lamella_output:
         export_lamella_quantification_csv(
-            summaries, config, Path(args.lamella_output)
+            summaries, config, Path(args.lamella_output), overwrite=args.overwrite
         )
     return 0
 
@@ -759,22 +779,28 @@ def _cmd_check_training_csv(args: argparse.Namespace) -> int:
 
     start_path = Path(args.start_path)
     csv_path = Path(args.csv_path)
+    # --in-place names the file it replaces, which is asking to replace it.
+    overwrite = args.overwrite or args.in_place
+    output_path: Path | None = None
+    if args.prune:
+        if args.in_place:
+            output_path = csv_path
+        elif args.output:
+            output_path = Path(args.output)
+        else:
+            output_path = csv_path.with_name(f"{csv_path.stem}_checked{csv_path.suffix}")
+        if _outputs_refused([output_path], overwrite):
+            return 2
+
     results = check_csv_paths(csv_path, start_path)
     lines, problem_count = summarize_results(results, start_path)
     for line in lines:
         logger.info(line)
 
-    if not args.prune:
+    if output_path is None:
         return 0 if problem_count == 0 else 1
 
-    if args.in_place:
-        output_path = csv_path
-    elif args.output:
-        output_path = Path(args.output)
-    else:
-        output_path = csv_path.with_name(f"{csv_path.stem}_checked{csv_path.suffix}")
-
-    written_path, dropped = write_pruned_csv(results, output_path)
+    written_path, dropped = write_pruned_csv(results, output_path, overwrite=overwrite)
     logger.info("Wrote %s, dropping %d row(s)", written_path, dropped)
     return 0
 

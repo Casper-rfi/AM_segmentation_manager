@@ -237,3 +237,32 @@ def test_pruning_a_paired_csv_writes_a_paired_csv(tmp_path: Path):
     assert lines[0] == "sem_image,sem_label,fib_image,fib_label"
     assert dropped == 1
     assert len(lines) == 2
+
+
+def test_pruning_refuses_to_replace_an_earlier_output(tmp_path: Path):
+    stage = tmp_path / "proj" / "L1" / "stage1"
+    csv_path = tmp_path / "dataset.csv"
+    _write_csv(csv_path, [_pair(stage, "img1.tif")])
+    output = tmp_path / "dataset_checked.csv"
+    output.write_text("kept\n", encoding="utf-8")
+    command = ["check-training-csv", str(csv_path), "--start-path", str(tmp_path), "--prune"]
+
+    assert main(command) == 2
+    assert output.read_text(encoding="utf-8") == "kept\n"
+
+    assert main([*command, "--overwrite"]) == 0
+    assert output.read_text(encoding="utf-8") != "kept\n"
+
+
+def test_pruning_in_place_replaces_the_file_it_names(tmp_path: Path):
+    stage = tmp_path / "proj" / "L1" / "stage1"
+    csv_path = tmp_path / "dataset.csv"
+    _write_csv(csv_path, [_pair(stage, "img1.tif"), _pair(stage, "img2.tif", label=False)])
+
+    assert main([
+        "check-training-csv", str(csv_path), "--start-path", str(tmp_path),
+        "--prune", "--in-place",
+    ]) == 0
+
+    with csv_path.open(encoding="utf-8") as fh:
+        assert len(list(csv.DictReader(fh))) == 1

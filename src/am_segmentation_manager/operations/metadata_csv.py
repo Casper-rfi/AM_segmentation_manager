@@ -4,11 +4,11 @@ Three exports for three questions: what is in this archive and under what
 conditions was it taken; what these experiments are and which still need
 metadata filling in; and what the labels actually contain.
 
-Written with the standard library's :mod:`csv` -- the scale is thousands of rows.
+Each file is written through :mod:`..io.tables`, so one already there is refused
+unless the caller says to replace it.
 """
 from __future__ import annotations
 
-import csv
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import fields as dataclass_fields
@@ -18,6 +18,7 @@ from ..config import SegmentationConfig
 from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.path import make_path_relative
+from ..io.tables import refuse_existing, write_csv
 from ..metadata import DESCRIPTIVE_FIELDS, format_field_value
 from ..models import ImageRecord, Project
 from .csv import find_matching_label
@@ -238,6 +239,7 @@ def export_image_metadata_csv(
     include_headers: bool = True,
     projects: Mapping[Path, Project] | None = None,
     paired: bool = False,
+    overwrite: bool = False,
 ) -> Path:
     """Write the acquisition and project metadata of the images given.
 
@@ -254,10 +256,16 @@ def export_image_metadata_csv(
             modalities produces, matching the training export's shape. A file
             with one row per image file -- which a repository deposition
             usually wants -- is what choosing a single modality gives.
+        overwrite: Replace *output* if it already exists.
 
     Returns:
         The path written.
+
+    Raises:
+        FileExistsError: If *output* exists and *overwrite* is False, before any
+            header is read.
     """
+    refuse_existing([output], overwrite=overwrite)
     records = list(records)
     metadata = read_records_metadata(records) if include_headers else {}
     if paired:
@@ -267,12 +275,7 @@ def export_image_metadata_csv(
         rows = image_rows(records, start_path, metadata, projects)
         columns = [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS]
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
-
+    write_csv(output, columns, rows, overwrite=overwrite)
     logger.info("Wrote %d row(s) to %s", len(rows), output)
     if include_headers and len(metadata) < len(records):
         logger.warning(
@@ -322,10 +325,15 @@ def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str
 
 
 def export_project_metadata_csv(
-    projects: Iterable[Project], start_path: Path, output: Path
+    projects: Iterable[Project], start_path: Path, output: Path, *, overwrite: bool = False
 ) -> Path:
     """Write one row per project: its metadata, where each value came from, and
-    what it holds."""
+    what it holds.
+
+    Raises:
+        FileExistsError: If *output* exists and *overwrite* is False.
+    """
+    refuse_existing([output], overwrite=overwrite)
     rows = project_rows(projects, start_path)
     columns = [
         PROJECT_IDENTITY_COLUMN, "name", "path", "lamellae", "stages",
@@ -337,12 +345,7 @@ def export_project_metadata_csv(
         columns.extend([name, f"{name}_source"])
     columns.append("todo_fields")
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
-
+    write_csv(output, columns, rows, overwrite=overwrite)
     logger.info("Wrote %d project row(s) to %s", len(rows), output)
     return output
 
@@ -454,6 +457,8 @@ def export_label_measurements_csv(
     start_path: Path,
     output: Path,
     projects: Mapping[Path, Project] | None = None,
+    *,
+    overwrite: bool = False,
 ) -> Path:
     """Write one row per measured image, with what its label contains.
 
@@ -470,10 +475,15 @@ def export_label_measurements_csv(
         output: File to write.
         projects: Image path to project, from
             :func:`~am_segmentation_manager.aggregate.project_lookup`.
+        overwrite: Replace *output* if it already exists.
 
     Returns:
         The path written.
+
+    Raises:
+        FileExistsError: If *output* exists and *overwrite* is False.
     """
+    refuse_existing([output], overwrite=overwrite)
     records = list(records)
     # Only images that have a label. On the reference collection a full-archive
     # run selects 2670 images and 238 labels, so writing a row per image would
@@ -488,12 +498,7 @@ def export_label_measurements_csv(
         *MEASUREMENT_COLUMNS,
     ]
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
-
+    write_csv(output, columns, rows, overwrite=overwrite)
     logger.info("Wrote %d measurement row(s) to %s", len(rows), output)
     if len(measured) < len(records):
         logger.info(
@@ -504,9 +509,18 @@ def export_label_measurements_csv(
 
 
 def export_lamella_quantification_csv(
-    summaries: Iterable, config: SegmentationConfig, output: Path
+    summaries: Iterable,
+    config: SegmentationConfig,
+    output: Path,
+    *,
+    overwrite: bool = False,
 ) -> Path:
-    """Write one row per lamella, at the level the question is asked at."""
+    """Write one row per lamella, at the level the question is asked at.
+
+    Raises:
+        FileExistsError: If *output* exists and *overwrite* is False.
+    """
+    refuse_existing([output], overwrite=overwrite)
     summaries = list(summaries)
     classes = config.classes_to_measure
     columns = [
@@ -537,11 +551,6 @@ def export_lamella_quantification_csv(
             row[area_column(config, class_index)] = "" if area is None else f"{area:.6g}"
         rows.append(row)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
-
+    write_csv(output, columns, rows, overwrite=overwrite)
     logger.info("Wrote %d lamella row(s) to %s", len(rows), output)
     return output

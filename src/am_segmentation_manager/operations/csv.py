@@ -11,7 +11,6 @@ acquisition in a paired one. ``docs/decisions.md`` § Counting and export says w
 """
 from __future__ import annotations
 
-import csv
 import logging
 import random
 from collections.abc import Callable, Iterable, Sequence
@@ -20,6 +19,7 @@ from pathlib import Path
 
 from ..frames import group_by_acquisition
 from ..io.path import make_path_relative
+from ..io.tables import write_csv
 from ..models import ImageRecord
 from .label_groups import condition_sort_key
 from .label_io import is_label_file_empty
@@ -416,10 +416,7 @@ def export_training_csv(
     columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
 
     def _write_csv(path: Path, written: list[TrainingRow]) -> Path:
-        with path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(columns)
-            writer.writerows(row.values for row in written)
+        write_csv(path, columns, (row.values for row in written), overwrite=overwrite)
         logger.info("Wrote %d row(s) to %s", len(written), path)
         return path
 
