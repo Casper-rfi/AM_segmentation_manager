@@ -356,11 +356,27 @@ class ProjectTree(QTreeWidget):
     def _opened(self) -> set[str]:
         """Return the folders the reader had opened."""
         return {
-            self.topLevelItem(row).text(0)
-            for row in range(self.topLevelItemCount())
-            if self.topLevelItem(row).childCount()
-            and self.topLevelItem(row).isExpanded()
+            top.text(0) for top in self._top_items() if top.childCount() and top.isExpanded()
         }
+
+    def _top_items(self) -> list[QTreeWidgetItem]:
+        """Return the rows at the top of the tree, in order."""
+        items = []
+        for row in range(self.topLevelItemCount()):
+            top = self.topLevelItem(row)
+            assert top is not None, "a row below the count exists"
+            items.append(top)
+        return items
+
+    @staticmethod
+    def _children(item: QTreeWidgetItem) -> list[QTreeWidgetItem]:
+        """Return the rows directly under *item*, in order."""
+        children = []
+        for row in range(item.childCount()):
+            child = item.child(row)
+            assert child is not None, "a row below the count exists"
+            children.append(child)
+        return children
 
     def _make_folder_current(
         self, folder: str, parents: dict[str, QTreeWidgetItem]
@@ -382,8 +398,9 @@ class ProjectTree(QTreeWidget):
         item = self.project_item(index)
         if item is None:
             return
-        if item.parent() is not None:
-            item.parent().setExpanded(True)
+        parent = item.parent()
+        if parent is not None:
+            parent.setExpanded(True)
         self.setCurrentItem(item)
 
     # -- reading -----------------------------------------------------------
@@ -407,19 +424,19 @@ class ProjectTree(QTreeWidget):
         the context menu, stepping, a test -- asks here rather than counting.
         """
         items = []
-        for row in range(self.topLevelItemCount()):
-            top = self.topLevelItem(row)
+        for top in self._top_items():
             if self.project_of(top) is not None:
                 items.append(top)
-            items.extend(top.child(child) for child in range(top.childCount()))
+            items.extend(self._children(top))
         return items
 
     def ticked_rows(self) -> list[int]:
         """Return the numbers of the ticked projects."""
         return [
-            self.project_of(item)
+            index
             for item in self.project_items()
             if item.checkState(0) == Qt.CheckState.Checked
+            and (index := self.project_of(item)) is not None
         ]
 
     # -- changing ----------------------------------------------------------
@@ -431,6 +448,7 @@ class ProjectTree(QTreeWidget):
         try:
             for item in self.project_items():
                 index = self.project_of(item)
+                assert index is not None, "project_items holds only project rows"
                 item.setCheckState(
                     0,
                     Qt.CheckState.Checked
@@ -457,14 +475,12 @@ class ProjectTree(QTreeWidget):
         if wanted and self._before_filter is None:
             self._before_filter = self._opened()
 
-        for row in range(self.topLevelItemCount()):
-            top = self.topLevelItem(row)
+        for top in self._top_items():
             if self.project_of(top) is not None:
                 top.setHidden(bool(wanted) and wanted not in top.text(0).lower())
                 continue
             shown = 0
-            for child in range(top.childCount()):
-                item = top.child(child)
+            for item in self._children(top):
                 hidden = bool(wanted) and wanted not in item.text(0).lower()
                 item.setHidden(hidden)
                 shown += not hidden
@@ -473,8 +489,7 @@ class ProjectTree(QTreeWidget):
                 top.setExpanded(True)
 
         if not wanted and self._before_filter is not None:
-            for row in range(self.topLevelItemCount()):
-                top = self.topLevelItem(row)
+            for top in self._top_items():
                 if top.childCount():
                     top.setExpanded(top.text(0) in self._before_filter)
             self._before_filter = None

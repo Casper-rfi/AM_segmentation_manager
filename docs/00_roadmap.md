@@ -42,8 +42,8 @@ latter declared in `gui/preferences.py` and reaching no write path.
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
   obligation this package carries whatever licence it takes), no CI, no `CHANGELOG.md`, no
-  `[project.urls]`, and the version pinned at `0.0.0`. `mypy` checks the annotations, except in the
-  modules `pyproject.toml` still lists as not yet passing. The suite passed under German and
+  `[project.urls]`, and the version pinned at `0.0.0`. `mypy` checks every module's annotations
+  and reports nothing. The suite passed under German and
   Japanese locales on 2026-09-11; run it so again before any release, for the reasons in
   [`display.md`](display.md) § Testing the window. And
   [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which

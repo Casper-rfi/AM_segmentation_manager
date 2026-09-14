@@ -181,16 +181,7 @@ files = ["src/am_segmentation_manager"]
 python_version = "3.11"
 # Not ours to type: the verbatim copy of AM_training's module, as for ruff.
 exclude = ['src/am_segmentation_manager/ml/preprocessing\.py$']
-# tifffile, cv2, qtpy and torch ship no annotations, and torch is absent from
-# the main environment; their calls are unchecked rather than reported.
+# PyYAML and segmentation_models_pytorch ship no annotations, and torch and
+# segmentation_models_pytorch are absent from the main environment; calls into
+# them are unchecked rather than reported.
 ignore_missing_imports = true
-
-# Modules that do not pass yet, their errors silenced so every other module is
-# held to passing. A ratchet: take a module off once mypy passes on it, and
-# never add one. Most of the GUI entries are mixins using attributes of the
-# window they are mixed into, which mypy cannot see.
-[[tool.mypy.overrides]]
-ignore_errors = true
-module = [
-    "am_segmentation_manager.gui.widgets.lists",
-]
