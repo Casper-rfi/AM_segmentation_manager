@@ -1,14 +1,10 @@
 """Naming a state of the collection, before anything is written.
 
-A savepoint marks a round of model improvement, which is a thing somebody
-decides they have finished rather than something the software can notice. So
-this collects the two things only they can supply -- what to call the round and
-why -- and the one choice that costs disk, and then hands over to the ordinary
-preview.
-
-The name is required and nothing suggests one: a savepoint found by its title
-months later is worth the sentence it takes to write, and a generated name
-would be one more timestamp in a collection already full of them.
+A savepoint marks a round of model improvement, which somebody decides they have
+finished, so this collects what only they can supply -- the round's name and why
+-- and the one choice that costs disk, then hands over to the ordinary preview.
+The name is required and nothing suggests one: a savepoint is found by its title
+months later.
 """
 from __future__ import annotations
 

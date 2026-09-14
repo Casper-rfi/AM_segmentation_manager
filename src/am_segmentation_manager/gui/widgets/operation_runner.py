@@ -1,17 +1,11 @@
 """Running one batch operation: preview it, confirm it, then apply it.
 
-Every operation the window offers goes through here, so there is one busy
-dialog, one progress contract and one place that decides what a blocked report
-is asked about. The work itself runs on `gui/worker.py`'s thread and must touch
-nothing belonging to the window.
-
-**Preview and apply are two runs of the same function**, never one run whose
-result is replayed: a preview held across a dialog describes a filesystem the
-user has had time to change.
-
-A mixin rather than an object the window holds: the run is the window's own --
-it opens the dialogs, it owns the worker signals, and it is what comes back
-into step afterwards. See `docs/display.md`.
+Every operation the window offers goes through here: one busy dialog, one
+progress contract, one place deciding what a blocked report asks. The work runs on
+``gui/worker.py``'s thread and touches nothing of the window's. **Preview and
+apply are two runs of the same function**, never one replayed, a preview held
+across a dialog describing a filesystem the user has had time to change. A mixin,
+because the run is the window's own; see ``docs/display.md``.
 """
 from __future__ import annotations
 

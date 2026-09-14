@@ -1,16 +1,10 @@
 """Reversible edits to a label array.
 
-The drawing tools proofreading needs -- brush, flood fill, class locking and
-undo -- as operations on numpy arrays, so they can be exercised without a
-display. Arrays are modified in place, and every edit returns the
-:class:`EditPatch` that reverses it.
-
-An edit that would change nothing returns None rather than an empty patch: a
-click that misses, or one that repaints a class onto itself, is not something to
-undo. Class values are categorical, so nothing here interpolates or averages,
-and no operation changes a label's dtype.
-
-Points are ``(x, y)`` -- column then row -- matching both OpenCV and Qt.
+Brush, flood fill, class locking and undo as operations on numpy arrays, testable
+without a display. Arrays are modified in place and every edit returns the
+:class:`EditPatch` that reverses it, or None for one that would change nothing.
+Class values are categorical, so nothing interpolates and no operation changes a
+label's dtype. Points are ``(x, y)`` -- column then row -- as in OpenCV and Qt.
 """
 from __future__ import annotations
 

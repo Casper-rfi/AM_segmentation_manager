@@ -1,20 +1,13 @@
 """Locating projects, lamellae and stages on disk.
 
-Answers "where are the things" using the conventions in
-:mod:`am_segmentation_manager.layout`, for the two consumers that traverse a
-dataset tree -- the scanner and the survey -- which must agree about what counts
-as a project and where its stages are.
-
-A stage holds images either as directories or loose among its files, and only
-the first kind ends the search: see :func:`find_stage_directories`, whose
-invariant the layout rests on. Older datasets collapse levels; the missing ones
-are *synthesised*, the parent standing in, which :class:`DiscoveredStage`
-records. An unreadable directory yields nothing rather than raising.
-
-A directory with no marker is *proposed* as a project, never concluded to be
-one: which level of an unmarked tree is the project is a fact about the
-acquisition, so :class:`DatasetCandidate` describes a proposal for a person to
-confirm.
+Answers "where are the things", using :mod:`am_segmentation_manager.layout`'s
+conventions, for the scanner and the survey, which must agree about both. A stage
+holding image *directories* ends the search and one holding loose images does
+not -- the invariant :func:`find_stage_directories` keeps. Collapsed levels are
+synthesised, the parent standing in, as :class:`DiscoveredStage` records; an
+unreadable directory yields nothing rather than raising. A directory with no
+marker is only *proposed* as a project, as a :class:`DatasetCandidate` a person
+confirms.
 """
 from __future__ import annotations
 

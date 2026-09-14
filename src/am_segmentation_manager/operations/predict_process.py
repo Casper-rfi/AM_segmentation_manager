@@ -1,21 +1,12 @@
 """Running a prediction in a process of its own.
 
-Inference inside the window's own process crashed it: repeatedly, in a
-different place each time, always in an allocator or destructor on the
-interface thread shortly after a run finished, and never once in a hundred-odd
-command-line runs doing the same work on the same machine. What the two differ
-in is the thread inference runs on and the Qt event loop around it, and neither
-is something this package can change from inside.
-
-So it does not try. A child process holds torch, loads the model and writes the
-predictions; the window holds none of it and cannot be corrupted by it. Nothing
-is lost when that child dies, however it dies -- each prediction is written by
-rename and its provenance flushed before the next begins, so what finished is
-on disk and the next run resumes from it. That property already existed for the
-Stop button, and is what makes this cheap.
-
-The child is started with the *spawn* method: a fresh interpreter that inherits
-no imports, so nothing Qt has touched is carried into it.
+**Inference never runs in the window's process**: there it crashes the interface
+thread in an allocator or destructor after a run, where the command line doing the
+same work does not. So a child process holds torch, loads the model and writes the
+predictions, and the window holds none of it. Nothing is lost when the child dies:
+each prediction lands by rename with its provenance flushed before the next
+begins, so the next run resumes. The child is started by *spawn*, inheriting
+nothing Qt has touched.
 """
 from __future__ import annotations
 
@@ -273,8 +264,8 @@ def _probe(queue) -> None:
 def probe_devices(context: str | None = None) -> tuple[str, ...]:
     """Return the torch devices available, asked of a separate process.
 
-    The window no longer imports torch at all -- that is what this module is
-    for -- so it cannot answer this itself, and the answer differs per machine:
+    The window never imports torch -- that is what this module is for -- so
+    it cannot answer this itself, and the answer differs per machine:
     several CUDA devices on a workstation, an MPS one on a Mac. Costs one
     interpreter start and one torch import, so callers ask once and keep it.
 

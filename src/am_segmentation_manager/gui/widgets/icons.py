@@ -1,15 +1,10 @@
 """The window's drawn icons: the Label tab's tools, and the settings gear.
 
-Every one is a few QPainter calls on a transparent square, so the window
-carries no image files and each icon takes the theme's colour rather than a
-baked-in one. **Each icon is the shape of the thing it does** -- the brush is
-the disc it lays down, the lock is a lock -- which is what lets the row of
-tools be read without labels.
-
-Only chrome lives here. An icon that says something about the *data* -- a
-project's curation status, a field's completeness -- belongs beside the panel
-that knows what it means and beside the legend explaining it, which
-`docs/display.md` requires be drawn by the same code.
+Each is a few QPainter calls on a transparent square, so the window carries no
+image files and every icon takes the theme's colour. **Each icon is the shape of
+the thing it does** -- the brush is the disc it lays down -- so the tools read
+without labels. Only chrome lives here: an icon saying something about the *data*
+belongs beside the panel and legend that explain it, drawn by the same code.
 """
 from __future__ import annotations
 

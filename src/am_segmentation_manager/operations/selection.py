@@ -1,22 +1,12 @@
 """Workflow state changes for selected, deselected and corrected records.
 
-State is declared in a stage's ``AM_state.yaml``, so changing it means editing
-that file rather than moving anything. Three rules govern every function here.
-
-**Validate the whole batch, then act.** Everything is located, checked and
-resolved into per-stage writes before the first one happens, and every stage
-file is re-checked against what the plan read immediately before writing. A
-collection curated in two places at once therefore fails with nothing written
-rather than half of it.
-
-**A corrected group is never left without confirmation**: an operation that
-would take one out of the corrected state refuses unless the caller passes
-``allow_leaving_corrected``.
-
-**A stage that has not been migrated is refused.** Declaring one group's state
-there would leave every other group unlisted, and unlisted reads as selected --
-promoting deselected images into a training set. Such a stage keeps its folders
-until ``scripts/migrate_state.py`` transcribes them.
+State is declared in a stage's ``AM_state.yaml``, so a change edits that file and
+moves nothing. **Validate the whole batch, then act**: every stage file is resolved
+and re-checked against what the plan read before the first write, so two places
+curating at once fail with nothing written. **A corrected group is never left
+without** ``allow_leaving_corrected``. **An unmigrated stage is refused**, its
+unlisted groups reading as selected, until ``scripts/migrate_state.py`` transcribes
+its folders.
 """
 from __future__ import annotations
 

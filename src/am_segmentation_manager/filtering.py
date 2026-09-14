@@ -1,14 +1,10 @@
 """Choosing a subset of an index, by where a record is and by what it is.
 
-The selectors a caller supplies -- names, numbers, ranges like ``2-5`` --
+The selectors a caller supplies -- names, numbers, ranges like ``2-5`` -- are
 answered against projects, lamellae, stages and images, then against what an
-image header records.
-
-**Two stages, and in that order.** The structural selectors are string
-comparisons; the metadata ones need a header that somebody had to open. Running
-them second means headers are read only for what survives, so the cost of a
-query stays proportional to what it asks about rather than to the size of the
-archive. Nothing here opens one itself: a caller passes in what it read.
+image header records. **Structural selectors run first**: they compare strings,
+so headers are read only for what survives, and a caller passes in what it read
+-- nothing here opens one.
 """
 from __future__ import annotations
 

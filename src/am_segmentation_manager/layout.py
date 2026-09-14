@@ -1,20 +1,13 @@
 """Filesystem naming conventions for Autolamella and legacy datasets.
 
-The single source of truth for what directories and image files are called;
-resolve names here rather than embedding string literals. Image directories are
-``<modality>`` or ``<modality>_<variant>``, the variant opaque and never parsed.
-Label directories are ``<image-directory>_labels`` beside them, resolved
-most-specific-first, then the shared ``<modality>_labels``, then legacy names.
-Images Autolamella leaves loose in a lamella or task directory instead carry
-their series and their beam in the filename, which :func:`classify_loose_image`
-reads. Workflow state is declared in :mod:`~am_segmentation_manager.state` and
-nothing here reads it; the ``deselected/`` and ``corrected/`` names stay
-reserved so an unmigrated dataset is never read as selected.
-
-Except for the two image-set builders and the helpers at the end of the module,
-nothing here touches the filesystem. Those helpers list a directory through one
-function, so :func:`directory_cache` can hold the listings for the length of a
-traversal that reads each directory several times.
+The single source of truth for what directories and image files are called. Image
+directories are ``<modality>`` or ``<modality>_<variant>``, the variant never
+parsed; label directories are ``<image-directory>_labels`` beside them, then the
+shared ``<modality>_labels``, then legacy names. Loose images carry their series
+and beam in the filename, read by :func:`classify_loose_image`. Nothing here reads
+workflow state, but ``deselected/`` and ``corrected/`` stay reserved so an
+unmigrated dataset is never read as selected. Only the image-set builders and the
+helpers at the end touch the filesystem, through :func:`directory_cache`'s listings.
 """
 from __future__ import annotations
 

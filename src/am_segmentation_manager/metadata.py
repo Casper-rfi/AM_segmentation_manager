@@ -1,16 +1,10 @@
 """Typed project metadata, resolved from the two YAML files.
 
-Metadata comes from ``experiment.yaml``, written by Autolamella, and
-``AM_metadata.yaml``, written by this package or by hand, which overrides it.
-Values resolve **per key**, so a project can override one field without
-restating the rest.
-
-Nothing is inherited from parent directories: a directory can hold projects
-prepared on different samples, so resolving a field from a parent would
-attribute the wrong sample to a project invisibly.
-
-Which fields exist, and how each is edited, defaulted and counted by, is
-declared once in :data:`FIELDS`.
+``experiment.yaml`` is Autolamella's and ``AM_metadata.yaml`` this package's or a
+person's, which overrides it **per key**, so one field can be overridden without
+restating the rest. Nothing is inherited from parent directories, which can hold
+projects on different samples. Which fields exist, and how each is edited,
+defaulted and counted by, is declared once in :data:`FIELDS`.
 """
 from __future__ import annotations
 

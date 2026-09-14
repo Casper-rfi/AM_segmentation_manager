@@ -1,15 +1,10 @@
 """The Export tab: choose a subset, see what it holds, write it out.
 
-The reason this is in the window rather than only on the command line: choosing
-a training set is iterative. You filter, look at what survives, and adjust. The
-live count in the middle is the whole point -- the empty-label rule drops images
-silently on the command line, reported only in the log, and seeing what it drops
-is what makes the composition of an export visible before it is written.
-
-**Three boxes, three jobs.** Filters decides which images are in play, Breakdown
-counts them, Export writes files. Nothing on the right narrows anything: a
-control that shrank the export without shrinking the table would leave two
-numbers on screen describing different collections.
+Choosing a training set is iterative -- filter, look at what survives, adjust --
+so the live count is the point: it shows what the empty-label rule drops before
+anything is written. **Three boxes, three jobs**: Filters decides which images are
+in play, Breakdown counts them, Export writes files. Nothing on the right narrows
+anything, or two numbers on screen would describe different collections.
 """
 from __future__ import annotations
 

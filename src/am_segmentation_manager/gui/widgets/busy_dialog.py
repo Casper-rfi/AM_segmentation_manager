@@ -1,17 +1,10 @@
 """The modal panel a long operation runs behind.
 
-Deliberately not `QProgressDialog`. That class calls
-``QCoreApplication::processEvents()`` from inside ``setValue()`` whenever it is
-modal -- which it has to be here, since the whole point is that nothing else
-can be touched while files are being written. Processing events there re-enters
-the event loop from inside a queued-signal handler, so the worker's *finished*
-can be delivered in the middle of a progress update: the dialog is closed and
-its last reference dropped while one of its own methods is still on the stack.
-It shows as the window freezing on the final item, where the two are most
-likely to race.
-
-Nothing here processes events. Progress is a plain widget update, and the
-dialog closes exactly when the window closes it.
+**Nothing here processes events.** ``QProgressDialog`` calls ``processEvents()``
+from ``setValue()`` when modal, which re-enters the event loop inside a
+queued-signal handler: the worker's *finished* can then close the dialog while one
+of its own methods is still on the stack. So progress is a plain widget update,
+and the dialog closes exactly when the window closes it.
 """
 from __future__ import annotations
 

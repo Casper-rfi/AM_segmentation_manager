@@ -1,14 +1,10 @@
 """The keys, the list that explains them, and which tab each belongs to.
 
-A key is live only while its tab is showing, so this switches them on and off
-as tabs change. The bindings are a table read top to bottom: **the order below
-is the order F1 reads in**, headings appearing in the order the bindings first
-name them, so grouping the list is a matter of moving a line rather than of
-keeping a second table of headings in step with it.
-
-The table names the window's own methods, so this knows the window while the
-window knows only that it has keys. Why the list looks and behaves as it does
-is `docs/display.md` under Controls.
+A key is live only while its tab shows. The bindings are a table read top to
+bottom: **the order below is the order F1 reads in**, headings appearing where the
+bindings first name them, so regrouping is moving a line. The table names the
+window's own methods, so this knows the window while the window knows only that it
+has keys; ``docs/display.md`` under Controls says why the list looks as it does.
 """
 from __future__ import annotations
 

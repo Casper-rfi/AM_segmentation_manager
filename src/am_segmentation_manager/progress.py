@@ -1,18 +1,11 @@
 """Reporting how far a long operation has got, and asking it to stop.
 
-Every operation here until now was fast enough to run to completion behind a
-busy cursor. Inference is not: a run over a project is upwards of an hour, so it
-has to say where it is and be stoppable. Both are expressed without Qt, so the
-operations layer and the controllers stay testable without a display.
-
-Cancellation is cooperative and lands between whole units of work, never inside
-one. That is what makes it safe rather than merely responsive: a prediction is
-written atomically and recorded before the next begins, so a stopped run leaves
-finished work and an accurate account of it.
-
-:func:`timed` answers the other question about a long operation -- how long its
-parts actually take -- so that a decision to make one faster is taken against
-measurements rather than against a guess about which part is slow.
+Expressed without Qt, so the operations layer and the controllers test without a
+display. Cancellation is cooperative and lands between whole units of work, never
+inside one: a prediction is written atomically and recorded before the next
+begins, so a stopped run leaves finished work and an accurate account of it.
+:func:`timed` says how long an operation's parts take, so making one faster is
+decided against measurements.
 """
 from __future__ import annotations
 

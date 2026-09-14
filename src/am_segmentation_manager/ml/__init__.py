@@ -1,15 +1,10 @@
 """Optional inference support: turning images into predictions with a model.
 
-Everything under here needs torch, which the rest of the package does not, so
-this subpackage is the boundary: no module outside it may import torch, and
-nothing here is imported unless a prediction is actually being made.
-:mod:`.environment` reports what is missing instead of failing on import, the
-way :mod:`..io.image` does for the image stack.
-
-``preprocessing.py`` is a verbatim copy of the AM_training module of the same
-name. Keeping it byte-identical is the point -- it can be diffed against
-upstream -- so nothing here edits it, and code that needs different behaviour
-wraps it rather than changing it.
+Everything under here needs torch, which nothing outside it may import, and
+nothing here is imported unless a prediction is being made; :mod:`.environment`
+reports what is missing rather than failing on import. ``preprocessing.py`` is a
+verbatim copy of AM_training's module, kept byte-identical so it can be diffed
+against upstream: code needing different behaviour wraps it.
 """
 from __future__ import annotations
 

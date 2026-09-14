@@ -1,17 +1,10 @@
 """Charts of the breakdowns :mod:`am_segmentation_manager.aggregate` counts.
 
-Two shapes, chosen by the question rather than by the user: one property is
-bars, two are a heatmap. The heatmap is the one worth having -- a grouped bar
-chart is unreadable past about four columns, and on a grid the *empty* cells
-are the finding, being the combinations nothing has been acquired for.
-
-**A deliberately small module, and it should stay small.** It draws the
-breakdowns already computed. Anything bespoke belongs in a short script reading
-the exported CSV, which is why that export exists.
-
-Figures are built directly rather than through ``pyplot``, so nothing is
-registered in a global list, no backend is chosen, and a command drawing a
-chart over ssh never looks for a display. The window attaches its own canvas;
+One property is bars and two are a heatmap, whose *empty* cells are the finding.
+**A deliberately small module**: it draws breakdowns already computed, and anything
+bespoke belongs in a script reading the exported CSV. Figures are built without
+``pyplot``, so nothing registers globally, no backend is chosen, and a chart drawn
+over ssh never looks for a display. The window attaches its own canvas;
 :func:`plot_counts` and :func:`plot_cross_tabulation` write a file.
 """
 from __future__ import annotations

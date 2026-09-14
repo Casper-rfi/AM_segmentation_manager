@@ -1,14 +1,10 @@
 """Parse, dispatch, return an exit code.
 
-The work every command does lives in ``operations/`` and above; what is here is
-the assembly. **The groups are registered in workflow order**, and ``--help``
-lists them under a heading each, so the step a command belongs to is stated
-rather than left to be inferred from what it sits next to.
-
-A group module declares its heading, its subparsers and its handlers together.
-So a command missing from one of the three is a mistake one file wide, and the
-help, the parser and the dispatch table cannot disagree about what exists or
-about where it belongs.
+The work every command does lives in ``operations/`` and above; this is the
+assembly. **Groups are registered in workflow order** and ``--help`` lists each
+under its heading. A group module declares its heading, subparsers and handlers
+together, so the help, the parser and the dispatch table cannot disagree about
+what exists or where it belongs.
 """
 from __future__ import annotations
 

@@ -1,26 +1,13 @@
 """Writing the first history a project has, for the data already on disk.
 
-The first write to a project brings it in through :func:`writing_recorder`, and
-``init-history`` brings a whole collection in at once: a ``log-created`` entry
-naming the project, then one ``baseline`` entry per label group that has a
-label or a state other than selected.
-
-**A baseline observes; it does not claim.** When each label was annotated is not
-recoverable -- the collection has been copied, so no timestamp on disk means
-anything -- so an entry records when it was *seen*, marked ``baseline-scan``,
-and nothing here should be read as saying when the work was done.
-
-**Who** is a different matter, because a name reaches a deposition where a
-timestamp does not. By default a baseline is credited to the name whoever runs
-it has stated, or to none -- right for a collection they annotated themselves
-and wrong for one that arrived annotated. So the annotator can be named, and is then recorded as
-``declared`` -- somebody stating a name on another person's behalf, which this
-package cannot verify. Starting the log stays attributed to whoever did it.
-
-Re-running adds only what is missing, so a project gains baselines for labels
-that arrived since the last run. A group already baselined is left alone even
-if its label has changed since: a second baseline would quietly paper over a
-change that belongs in the record as a change.
+The first write to a project brings it in through :func:`writing_recorder`;
+``init-history`` brings a collection in at once, one ``log-created`` entry per
+project and one ``baseline`` per group with a label or a state other than selected.
+**A baseline observes; it does not claim**: it records when a label was *seen*,
+never when it was annotated. It is credited to the stated name or none, or to a
+named annotator recorded as ``declared``. Re-running adds only what is missing,
+and a group already baselined is left alone even if its label has changed since,
+a change belonging in the record as a change.
 """
 from __future__ import annotations
 

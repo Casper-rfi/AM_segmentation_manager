@@ -1,29 +1,13 @@
 """The panel shown over the window while the collection is being read.
 
-A scan holds the interface thread, so for as long as it runs the window cannot
-answer, repaint or say anything -- and on a large collection that is fifteen
-seconds of an empty project list above two black panes, which reads as a hang
-rather than as work. This says what is happening and how far it has got.
-
-**A repaint is not enough to be seen.** It reaches a backing store, and the
-frame is only put on the screen when the main thread next returns to the run
-loop -- which a blocking scan never does. Painted and never presented, the
-banner was drawn 125 times during one scan of the reference collection while
-the window showed the desktop behind it, the run loop never once serviced. So
-each update is followed by one pass of the event loop.
-
-**Which means input has to be stopped, and it is stopped by this widget rather
-than by asking the loop nicely.** ``ExcludeUserInputEvents`` does not hold: a
-press already posted is delivered through it. So the banner filters the
-application while it is up and swallows every press, key and wheel, which is
-what makes turning the loop safe where `busy_dialog.py` says it is not --
-nothing anybody does can re-enter the scan or reach the controls being covered.
-What is still delivered is a repaint, a timer, or a frame the loader finished,
-against an index the scan has not yet replaced.
-
-An overlay parented to the window rather than a dialog: a modal dialog needs
-the event loop to appear at all, and the event loop is exactly what is not
-running.
+A scan holds the interface thread, so this says what is happening and how far it
+has got. **Each update turns the event loop once**, a repaint reaching the screen
+only when the main thread returns to the loop, which a blocking scan never does.
+**So input is stopped by this widget**: ``ExcludeUserInputEvents`` delivers a press
+already posted, so the banner filters the application and swallows every press,
+key and wheel while it is up -- what makes turning the loop safe where
+``busy_dialog.py`` says it is not. An overlay rather than a dialog, a modal dialog
+needing the event loop to appear at all.
 """
 from __future__ import annotations
 

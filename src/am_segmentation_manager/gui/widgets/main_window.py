@@ -1,20 +1,12 @@
 """The window: four tabs, the controllers behind them, and what joins them.
 
-*Add data*, *Curate*, *Label* and *Export*. Each has a controller holding no Qt,
-and this module holds none of its own decisions -- it asks a controller what to
-show, and tells it what the user did. The controllers are built and owned here,
-which is also where a signal from one tab reaches the work another does.
-
-**What is left here is the window itself**: building it, remembering it, the
-Curate tab, and joining the four. Three blocks that were about one subject each
-are mixed in beside it -- :mod:`.operation_runner`, :mod:`.operation_actions`
-and :mod:`.label_tab` -- and the keys are :mod:`.shortcuts`, which the window
-holds rather than inherits. Mixins because each is the window acting, reaching
-the same panels and controllers; a mixin says which subject a method belongs to
-without pretending it is a separate object.
-
-Why the window looks and behaves as it does, and every Qt trap in it, is
-``docs/display.md``.
+*Add data*, *Curate*, *Label* and *Export* each have a controller holding no Qt;
+this module holds no decisions of its own, asking a controller what to show and
+telling it what the user did. It builds and owns the controllers, the Curate tab
+and the window itself. Three subjects are mixins beside it --
+:mod:`.operation_runner`, :mod:`.operation_actions` and :mod:`.label_tab` -- and
+the keys are :mod:`.shortcuts`, held rather than inherited. Why the window looks
+and behaves as it does, and every Qt trap in it, is ``docs/display.md``.
 """
 from __future__ import annotations
 

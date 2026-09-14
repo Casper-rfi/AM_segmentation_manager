@@ -1,16 +1,11 @@
 """Images that share a label, and the state they share with it.
 
-Several imaging conditions of one scene share a single segmentation, which makes
-the label -- not the image -- the unit of proofreading. A :class:`LabelGroup` is
-one label file and every image referencing it; a private label forms a group of
-one, keeping this a single code path.
-
-A group is identified by where its label lives *or would live*, so images
-sharing a label directory are one group before any label exists -- keying on the
-image instead would split them, then merge them the moment a label appeared.
-Groups are built from the filesystem rather than a scanned index, so a command
-given one file path expands correctly. The state itself is declared, not read
-from here.
+Several imaging conditions of one scene share one segmentation, so the label, not
+the image, is the unit of proofreading: a :class:`LabelGroup` is one label file and
+every image referencing it, a private label forming a group of one. A group is
+identified by where its label lives *or would live*, so images are one group
+before any label exists. Groups are built from the filesystem rather than an index,
+so a command given one path expands correctly; the state is declared, not read here.
 """
 from __future__ import annotations
 

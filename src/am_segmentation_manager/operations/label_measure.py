@@ -1,15 +1,11 @@
 """Measuring what a label contains.
 
-Areas are reported in um^2, because a pixel count is not comparable between
-images at different magnifications and comparing across the archive is the
-point. The exception is :func:`find_specks`, which counts in pixels: a
-component of one or four pixels is suspect because of how it was made, not
-because of how large it is on the sample.
-
-**Labels carry no header.** The scale comes from the corresponding image's
-metadata, rescaled by the label's own pixel dimensions -- see
-:func:`label_pixel_size_nm` -- because a label converted from a prediction need
-not share its image's dimensions.
+Areas are reported in um^2, a pixel count not being comparable across
+magnifications; :func:`find_specks` alone counts pixels, a tiny component being
+suspect because of how it was made. **Labels carry no header**: the scale comes
+from the image's metadata, rescaled by the label's own dimensions in
+:func:`label_pixel_size_nm`, a label converted from a prediction not necessarily
+sharing its image's size.
 """
 from __future__ import annotations
 

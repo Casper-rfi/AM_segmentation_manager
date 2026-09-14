@@ -1,22 +1,12 @@
 """Naming a state of the data, so a round of work can be compared and undone.
 
-Proofreading produces a gradient: hundreds of small saves, none of them a point
-anybody would name. The structure over the top of it is the round --- proofread
-and curate, train, predict, convert, proofread again --- and **a savepoint marks
-one**. That is what makes it worth having: rounds are rare, so what a savepoint
-pins costs little, and they are the boundaries a person already thinks in.
-
-**A savepoint is a set of per-project entries sharing one id.** There is no such
-thing as "the collection": the scanner can be pointed at a subset, data can be
-split off and added. So a collection-wide savepoint is one ``checkpoint`` entry
-in each project in scope, and coverage is answered by looking rather than by a
-list somebody stored --- a stored list is wrong the moment a project joins.
-
-**It promises nothing about pixels; it reports what it can reach.** The state it
-names is what the *record* knew, and a version it names is recoverable only
-while the archive holds it. Which of them are still reachable is a question
-asked of the log, cheaply, whenever somebody wants the answer --- at creation,
-in a listing, and before anything acts on one.
+Proofreading is hundreds of small saves; the round over them -- proofread, train,
+predict, convert, proofread again -- is what **a savepoint marks**. **A savepoint
+is a set of per-project entries sharing one id**, there being no "collection" to
+store: coverage is answered by looking, not by a stored list. **It promises nothing
+about pixels; it reports what it can reach** -- the state the record knew, each
+version recoverable only while the archive holds it, asked of the log whenever
+somebody wants the answer.
 """
 from __future__ import annotations
 

@@ -1,17 +1,11 @@
 """The declared workflow state of a stage's label groups.
 
-``AM_state.yaml`` sits in each directory holding image and label directories and
-names the groups that are not selected. An entry is keyed by its group's label
-path relative to that file -- whether or not the label exists yet -- so the
-several imaging conditions of one acquisition share one entry and cannot
-disagree about their state.
-
-Only groups outside the default are listed: no entry means ``selected``, which
-is what lets images added to a stage arrive selected with nothing to reconcile.
-A file is hand-editable, so nothing read from one is trusted: a key must be a
-relative path inside the stage, a value must name a state, and a duplicated key
-is an error rather than a silent last-wins. A write refuses a file that changed
-since it was read.
+``AM_state.yaml`` in each directory holding image and label directories names the
+groups that are not selected, keyed by the group's label path relative to it, so an
+acquisition's conditions share one entry. No entry means ``selected``, so images
+added to a stage arrive selected. The file is hand-editable and nothing read from
+it is trusted: a key must be a path inside the stage, a value a state, and a
+duplicated key is an error. A write refuses a file that changed since it was read.
 """
 from __future__ import annotations
 

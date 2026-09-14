@@ -1,14 +1,11 @@
 """Turning a directory tree into the index the rest of the package reads.
 
-The one traversal: :mod:`~am_segmentation_manager.discovery` says where things
-are and :mod:`~am_segmentation_manager.layout` what they are called, and this
-decides what they mean -- which images form a set, which label and predictions a
-record resolves to, and what workflow state it is declared in.
-
-**Only a scan opens an image**, and only a loose one, whose filename may say
-neither which beam took it nor when. That is the only part of a scan that is not
-a filesystem walk, so it is memoised, counted and kept on the index; everything
-above works on the :class:`ProjectIndex` rather than walking the tree again.
+The one traversal: :mod:`~am_segmentation_manager.discovery` says where things are
+and :mod:`~am_segmentation_manager.layout` what they are called, and this decides
+what they mean -- which images form a set, which label and predictions a record
+resolves to, what state it is declared in. **Only a scan opens an image**, and only
+a loose one, whose name may not say which beam or when; that read is memoised and
+kept on the :class:`ProjectIndex`, which everything above works on.
 """
 from __future__ import annotations
 

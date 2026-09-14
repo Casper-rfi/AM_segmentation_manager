@@ -1,19 +1,11 @@
 """Where the Adaptive Milling mark lives, and how to put it on screen.
 
-One module so the window, the application icon and the scan banner cannot
-disagree about which file the mark is or how it is scaled. A missing asset is
-never an error: a source checkout without it must still open the window, so
-every caller here gets an empty pixmap and draws nothing.
-
-The mark exists twice, and which one a caller wants follows from where it is
-drawn. Against the window's own background it is the free-form mark; as the
-application icon on macOS it is the same mark set in the system's container,
-because the Dock draws no container of its own.
-
-The mark is the *only* place this package uses its orange and green. Both are
-already spoken for as segmentation class colours, and the timeline draws its
-states beside that legend, so a second meaning for either would be read as
-data; see `docs/display.md`.
+One module, so the window, the application icon and the scan banner agree about
+which file the mark is and how it is scaled. A missing asset is never an error: a
+caller gets an empty pixmap and draws nothing. The mark is free-form against the
+window's own background and set in the system's container as the macOS icon, the
+Dock drawing none of its own. **It is the only place orange and green appear**,
+both being segmentation class colours; see ``docs/display.md``.
 """
 from __future__ import annotations
 

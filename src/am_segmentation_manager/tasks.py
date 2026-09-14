@@ -1,15 +1,11 @@
 """The vocabulary of milling task names one lamella can use.
 
-Autolamella's task names come from the protocol somebody wrote, so they are
-arbitrary strings rather than a closed set this package could enumerate. Each
-lamella's entry in ``experiment.yaml`` lists its own, and matching a directory
-or filename against *that* list is what makes an arbitrary name safe to read
-and what splits a composite like ``Rough-Milling-Rough-2``.
-
-**Tasks only.** A milling stage rolls up into the task that ran it, so
-``Fine 1`` and ``Rough 2`` are aliases of their task rather than a second axis.
-Names are compared through :func:`~.layout.normalise_task_name`, which is what
-makes ``mill_polishing``, ``MillPolishing`` and ``Mill Polishing`` one task.
+Task names come from the protocol somebody wrote, so each lamella's own list in
+``experiment.yaml`` is what directory and file names are matched against -- what
+makes an arbitrary name safe to read and splits ``Rough-Milling-Rough-2``. **Tasks
+only**: a milling stage such as ``Rough 2`` is an alias of its task. Names compare
+through :func:`~.layout.normalise_task_name`, making ``mill_polishing`` and
+``Mill Polishing`` one task.
 """
 from __future__ import annotations
 

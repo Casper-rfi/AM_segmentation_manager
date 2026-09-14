@@ -1,17 +1,12 @@
 """Choosing which directories become projects.
 
-The one place in the window where a person, not the code, decides what a
-project is. Autolamella writes ``experiment.yaml`` and needs none of this; the
-datasets that predate it have no marker, and which of their directories is
-"the project" is a fact about the acquisition rather than about the tree. The
-search is reliable and the levelling is not, so this proposes and confirms
-rather than writing on its own.
-
-Two lists, because the two decisions differ. Projects already indexed need only
-the descriptive file, and are ticked by default. Unindexed directories are
-proposals: each says what it would become, one that gathers several datasets is
-left unticked with the reason shown, and *Look inside* replaces it with the
-directories one level down.
+The one place in the window where a person, not the code, decides what a project
+is: which directory of an unmarked dataset is the project is a fact about the
+acquisition, so this proposes and a person confirms. Two lists for two decisions:
+projects already indexed need only the descriptive file and start ticked;
+unindexed directories are proposals, each saying what it would become, one
+gathering several datasets left unticked with the reason, and *Look inside*
+replacing it with the directories below.
 """
 from __future__ import annotations
 

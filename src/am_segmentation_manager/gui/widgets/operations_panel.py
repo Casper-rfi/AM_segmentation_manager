@@ -1,15 +1,10 @@
 """The operations that act on whatever is ticked, under the state controls.
 
-These are here rather than only on the command line because their input is the
-selection on screen: the same ticks that decide what a state change moves decide
-what gets predicted or converted. Running one from a terminal means naming that
-selection again in filters, which is the part the window has already done. An
-operation with no reason to be narrowed does not belong here at all; compressing
-labels is on the Add data tab, over the whole collection.
-
-Each button that writes previews first and applies only after the preview is
-accepted, so nothing here is a single click away from changing files. The one
-that only reads has no preview: what it would find is what it costs to find.
+Their input is the selection on screen: the ticks that decide what a state change
+moves decide what is predicted or converted, so an operation with no reason to be
+narrowed does not belong here -- compressing labels is on the Add data tab. Each
+button that writes previews first and applies only once that is accepted; the one
+that only reads has no preview, what it would find being what it costs to find.
 """
 from __future__ import annotations
 
@@ -378,10 +373,9 @@ class OperationsPanel(QWidget):
     def _apply_lock(self) -> None:
         """Enable each control only where every reason allows it.
 
-        One place rather than each setter undoing the others: re-enabling
-        everything after an operation used to offer the Predict button on a
-        machine with no inference stack, whether it is installed being asked
-        once and never again.
+        One place rather than each setter undoing the others, so re-enabling
+        after an operation cannot offer the Predict button on a machine with no
+        inference stack, whether it is installed being asked only once.
         """
         usable = self._series_is_editable and not self._busy
         for button in self.buttons:

@@ -1,14 +1,11 @@
 """The window's side of the Label tab: which lamella, and saving what was drawn.
 
-Proofreading follows the lamella being curated rather than having a list of its
-own, so moving between lamellae is a window question and lives here; so does
-saving, which is the one action that writes a person's own work and therefore
-asks before it discards anything.
-
-The drawing, the tools and the versions bar are :mod:`.label_panel`; what is on
-screen and what a save would do with it are
-:mod:`am_segmentation_manager.gui.label_controller`. A mixin on the window,
-because every one of these reaches both tabs.
+Proofreading follows the lamella being curated rather than keeping a list of its
+own, so moving between lamellae is the window's question; so is saving, the one
+action that writes a person's own work and so asks before discarding anything.
+The drawing is :mod:`.label_panel` and what a save would do is
+:mod:`am_segmentation_manager.gui.label_controller`; this is a mixin on the
+window because each of these reaches both tabs.
 """
 from __future__ import annotations
 

@@ -1,14 +1,11 @@
 """Label edits made in the window and not yet written to disk.
 
-Proofreading is done a lamella at a time, so the session holds every label
-touched since the last save, not just the one on screen. Only the label being
-worked on is held as an array; the rest are PNG-encoded in memory, which costs
-around 14 kB for a label that is 6 MB decoded and keeps a whole lamella of
-pending work well under a megabyte.
-
-Nothing here touches the filesystem. A label is identified by the path it will
-be written to, which is what makes several imaging conditions of one scene share
-one pending edit, as they share one label.
+The session holds every label touched since the last save, a lamella being
+proofread at a time. Only the label being worked on is held as an array; the rest
+are PNG-encoded in memory, keeping a lamella of pending work under a megabyte.
+Nothing here touches the filesystem. A label is identified by the path it will be
+written to, so the imaging conditions of one scene share one pending edit, as they
+share one label.
 """
 from __future__ import annotations
 

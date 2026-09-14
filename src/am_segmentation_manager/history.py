@@ -1,16 +1,11 @@
 """The append-only record of what changed in a project, and who changed it.
 
-``AM_history.jsonl`` sits at each project root, one JSON object per line,
-appended and never rewritten. An entry names its target by the path relative to
-that root -- for a label, the same group key the state file uses -- so the
-several imaging conditions of one acquisition share one history.
-
-The log is a record, never the authority on what a file currently holds: a
-reader that disagrees with the filesystem reports the difference rather than
-trusting either. Because nothing is ever rewritten, a line this version does
-not understand is kept and reported instead of refused, and a damaged line
-costs its own contents rather than the file's. Resolving who the author is
-lives here too, being the one thing every entry needs.
+``AM_history.jsonl`` sits at each project root, one JSON object per line, appended
+and never rewritten. An entry names its target relative to that root -- for a
+label, the group key the state file uses -- so an acquisition's imaging conditions
+share one history. The log is a record, never the authority on what a file holds.
+A line this version cannot read is kept and reported, not refused, and a damaged
+line costs only itself. Resolving the author lives here, every entry needing one.
 """
 from __future__ import annotations
 

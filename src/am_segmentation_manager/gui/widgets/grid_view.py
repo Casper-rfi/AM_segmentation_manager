@@ -1,15 +1,11 @@
 """The pane showing a project's grid overview with its lamellae marked.
 
-An :class:`.ImageView` with marks laid over it. The marks are placed in the
-picture's own pixel coordinates and told to ignore the view's transform, so
-zooming into the grid magnifies the picture and leaves a mark the size it was:
-a ring that grew with the zoom would cover the square it points at.
-
-**One accent and no second colour.** Every mark is the window's accent, the one
-the rest of the window already uses for selection; the lamella being looked at
-is drawn heavier and carries its name. Orange and green are segmentation class
-colours -- ``docs/display.md`` says why a third meaning for either reads as
-data -- so neither may mark a position.
+An :class:`.ImageView` with marks placed in the picture's own pixel coordinates
+and told to ignore the view's transform, so zooming magnifies the picture and
+leaves each mark its size. **One accent and no second colour**: every mark is the
+window's accent and the lamella being looked at is drawn heavier with its name;
+orange and green are class colours, which ``docs/display.md`` says may not mark a
+position.
 """
 from __future__ import annotations
 

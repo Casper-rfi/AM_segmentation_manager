@@ -1,17 +1,11 @@
 """The proofreading canvas: an acquisition, its label, and the tools to change it.
 
 The image and the label are two stacked graphics items rather than one composed
-array. That is what makes the opacity control free -- it is the label item's own
-opacity, not a re-blend of every pixel -- and it is what lets the label layer be
-redrawn without touching the image. The curation view composes instead, which is
-the right choice there: it shows a reduced frame and never changes one.
-
-The label is drawn as an 8-bit indexed image whose colour table carries the
-alpha, so the background class is transparent without a fourth channel: a
-full-resolution label costs one byte a pixel here rather than four.
-
-The canvas draws into an array it does not own. Whoever supplies that array owns
-what happens to the edit; this widget reports each stroke and holds nothing.
+array, so opacity is the label item's own and the label redraws without touching
+the image. The label is an 8-bit indexed image whose colour table carries the
+alpha, so the background is transparent at one byte a pixel. The canvas draws
+into an array it does not own: whoever supplies it owns the edit, and this widget
+reports each stroke and holds nothing.
 """
 from __future__ import annotations
 

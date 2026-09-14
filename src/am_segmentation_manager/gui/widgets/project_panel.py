@@ -1,18 +1,11 @@
 """Left panel: choosing what to review, and what to change.
 
-Holds the switches saying which series the lists cover, the projects a scan
-found, and the lamellae of the selected project; which folder is scanned is
-chosen in the tab row, by :mod:`.scan_bar`. Which *rows* a change covers is chosen
-here; which modality, and which state, are chosen beside the buttons that act.
-
-The lists do two jobs at once: the *current* row is what is being looked at,
-the *checked* rows are what a state change applies to, and the chip beside them
-reports curation progress. Three separate questions, three separate marks --
-see `docs/decisions.md` § Workflow state.
-
-Only one of the two lists carries ticks at a time, and the ticked lamellae are
-the selected project's own -- so everything a change will touch is a tick
-visible on screen.
+The switches for which series the lists cover, the projects a scan found, and the
+selected project's lamellae; the folder is chosen by :mod:`.scan_bar`, and the
+modality and state beside the buttons that act. In the lists the *current* row is
+what is looked at, the *checked* rows what a state change applies to, and the chip
+reports curation progress -- see ``docs/decisions.md`` § Workflow state. Only one
+list carries ticks at a time, so everything a change will touch is visible.
 """
 from __future__ import annotations
 
@@ -463,10 +456,9 @@ def _paint_cell(
 ) -> None:
     """Paint one series-and-beam cell as a flat tile of one colour.
 
-    One colour rather than a part-filled one. A part-finished cell used to be
-    split between the two progress colours, which at this size showed two pixels
-    of each; anything divided inside seven pixels is a smudge whatever it is
-    made of, so the middle step is a colour instead of a boundary.
+    One colour rather than a part-filled one: anything divided inside seven
+    pixels is a smudge whatever it is made of, so the middle step is a colour
+    instead of a boundary.
     """
     painter.fillRect(
         left, top, SWATCH_CELL, SWATCH_CELL, _cell_colour(status, expected=expected)

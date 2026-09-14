@@ -1,14 +1,10 @@
 """Naming what a revert puts the selection back to.
 
-Three ways of saying it -- before the last conversion, before the last merge,
-or the state a savepoint named -- and one operation behind all of them. They
-are one control rather than three buttons because they differ only in which
-recorded version each label goes back to; a window that split them by which
-argument was passed would be harder to learn than the command it replaces.
-
-The savepoint row is offered only where savepoints exist, and carries what each
-one still reaches: a round nothing can be recovered from is one to know about
-before choosing it, not after.
+Before the last conversion, before the last merge, or the state a savepoint named:
+one control, because the three differ only in which recorded version each label
+goes back to. The savepoint row is offered only where savepoints exist and says
+what each still reaches, a round nothing can be recovered from being one to know
+about before choosing it.
 """
 from __future__ import annotations
 

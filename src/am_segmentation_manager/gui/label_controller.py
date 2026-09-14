@@ -743,16 +743,16 @@ class LabelController:
 
         # Before the session is discarded, and before anything redraws: a
         # prepared frame holds the pixels its label had when it was read, so
-        # one just written would go on drawing what it replaced. The session's
-        # own copy is what hid this until now.
+        # one just written would go on drawing what it replaced; the session's
+        # own copy hides that until the session is discarded.
         self.cache.relabel({item.destination: item.label for item in pending})
         self.session.discard()
         # Forgotten for every view sharing the answers: the Curate timeline and
         # the Export counts read these labels too.
         written = {item.destination for item in pending}
         self.known_labels.forget(labels=written, records=self.records_for(written))
-        # The frames worth visiting are recomputed here rather than by the
-        # rescan that used to follow a save: marking corrected moves the state
+        # The frames worth visiting are recomputed here rather than by a
+        # rescan: marking corrected moves the state
         # this reads, and a label written where there was none changes what a
         # frame's line reports. Both are known here, so nothing has to re-read
         # the collection to find them out.

@@ -1,23 +1,13 @@
 """The versions of the label on screen, and comparing against one.
 
-What the proofreading view needs to answer three questions about a label: what
-it used to hold, how far each version is from the one before it, and whether a
-new model's guess is better than what is there now. Holds no Qt, so the listing,
-the comparison and the restore are all testable without a display.
-
-**A version is anything that is a version of this segmentation.** A label kept
-when something replaced it is one; a prediction sitting beside the image is
-another, and comparing against one answers "is this model better" without
-writing anything at all. The two differ only in what may be done with them --
-a kept version can be put back, a prediction has to be converted.
-
-**A row is legible without opening anything.** Each carries who, when and what
-produced it, and a kept version carries the share of pixels that changed, which
-was computed when it was kept and cannot be had cheaply afterwards.
-
-Everything here runs when the frame changes, so nothing here may be linear in
-the collection: the archive is read one label's directory at a time and the log
-is cached against its own fingerprint.
+Answers what a label held before, how far each version is from the one before it,
+and whether a model's guess beats what is there, with no Qt. **A version is
+anything that is a version of this segmentation**: a label kept when something
+replaced it can be put back, a prediction beside the image has to be converted.
+**A row is legible without opening anything** -- who, when, what produced it, and
+for a kept version the share of pixels changed. Everything runs when the frame
+changes, so nothing may be linear in the collection: the archive is read one
+label's directory at a time and the log is cached against its fingerprint.
 """
 from __future__ import annotations
 

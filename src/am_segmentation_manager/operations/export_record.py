@@ -1,17 +1,11 @@
 """The fork point an export writes, so a merge back is not a guess.
 
-``AM_export.yaml`` sits at the root of a copy and names, per project, the last
-history entry that project held when the copy was taken. That is the common
-ancestor a three-way merge needs: with it, a merge can tell "only the copy
-changed this" from "both did" without inferring anything.
-
-**The tip is an entry id, and a merge verifies it.** A copy that has itself been
-exported from, or been reorganised, still carries a plausible-looking file; an
-id that is not in the main collection's log means the fork point does not
-describe these two trees, and refusing is the only safe answer. Naming the
-count as well as the id lets a mismatch say which way the two have drifted.
-
-Nothing here reads or writes a label. It records what was true of the logs.
+``AM_export.yaml`` at a copy's root names, per project, the last history entry it
+held when copied: the common ancestor a three-way merge needs. **The tip is an
+entry id, and a merge verifies it**: one missing from the collection's log means
+the fork point does not describe these two trees, and the merge is refused. The
+entry count lets a mismatch say which way the two have drifted. Nothing here reads
+or writes a label.
 """
 from __future__ import annotations
 

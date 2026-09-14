@@ -1,17 +1,10 @@
 """The strip listing the versions of the label being proofread.
 
-Sits under the proofreading canvas and is **closed unless somebody opens it**.
-Comparing is wanted a few times a year against a view read every day, and a
-control that is usually irrelevant makes every frame harder to read. Whoever
-owns the strip decides whether it shows; it never decides for itself.
-
-It offers the three things worth doing with a version -- read the list, look at
-it, and put it back -- and a prediction is a version like any other, except
-that it is converted rather than restored.
-
-The comparison is drawn on the *same* canvas rather than beside it. Segmentation
-is compared by flicking between two pictures in one place, not across a gap that
-halves the resolution of both; holding the compare key does exactly that.
+Sits under the proofreading canvas and is **closed unless somebody opens it**, and
+whoever owns it decides whether it shows. It offers what is worth doing with a
+version -- read the list, look at it, put it back -- a prediction being a version
+converted rather than restored. A comparison is drawn on the *same* canvas,
+segmentation being compared by flicking between two pictures in one place.
 """
 from __future__ import annotations
 

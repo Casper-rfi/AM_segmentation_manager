@@ -1,19 +1,12 @@
 """Putting a selection of labels back to what they held before an operation.
 
-The counterpart to trying a new model over labels somebody has already
-proofread: convert a project's predictions, look at a few, decide the model is
-not good enough, and put the whole project back in one command rather than a
-label at a time.
-
-**Only what an operation replaced can be put back**, so this reads the history
-for the version each label held before the run being undone, and finds it in
-the archive. A label whose earlier version was never kept, or whose pixels are
-not here, is reported and left alone -- there is nothing to put back, and
-guessing at one is the failure this whole feature exists to prevent.
-
-Every write goes through :func:`~.archive.restore` and so through the ordinary
-save, which archives what it replaces on the way past. Undoing a revert is
-therefore another revert.
+Convert a project's predictions, find the model not good enough, and put the whole
+project back in one command. **Only what an operation replaced can be put back**:
+the history names the version each label held before the run, and the archive holds
+it. A label whose version was never kept, or whose pixels are not here, is reported
+and left alone, guessing at one being the failure this exists to prevent. Every
+write is the ordinary save, which archives what it replaces, so undoing a revert is
+another revert.
 """
 from __future__ import annotations
 

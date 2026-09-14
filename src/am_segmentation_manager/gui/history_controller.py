@@ -1,16 +1,12 @@
 """Savepoints, merges, reverts and the archive, as the window offers them.
 
-The four things the record makes possible: naming a moment the collection can
-be put back to, bringing home a copy worked on elsewhere, putting back the label
-a conversion replaced, and reporting or reclaiming the kept versions the other
-three draw on. Each previews, is confirmed, then applies -- the same shape
-:mod:`.operations_controller` uses, and the same
-:class:`~am_segmentation_manager.gui.report.OperationReport` back.
-
-Split from that module because these read and write the log while the others do
-not, and because a merge collects a decision per conflict, which nothing else
-does. Qt-free: paths are reported against the scan root, an absolute path eight
-directories deep being unreadable in a dialog.
+What the record makes possible: naming a moment to put the collection back to,
+bringing home a copy worked on elsewhere, putting back what a conversion
+replaced, and reporting or reclaiming kept versions. Each previews, is confirmed,
+then applies, returning an :class:`~am_segmentation_manager.gui.report.OperationReport`
+as :mod:`.operations_controller` does; kept apart because only these read and
+write the log, and a merge collects a decision per conflict. Holds no Qt; paths
+are reported against the scan root.
 """
 from __future__ import annotations
 

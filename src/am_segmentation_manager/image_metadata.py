@@ -1,17 +1,11 @@
 """Acquisition metadata read from image headers.
 
-Two dialects are read: the fibsem JSON in TIFF tag 270, where SEM and FIB share
-one schema, and the older FEI vendor tag 34682, symmetric between beams with
-``Beam.Beam`` naming which fired. Where each value lives is declared once, in
-:data:`FIELDS`.
-
-**A missing value is None, never a default.** Metadata is a mapping keyed by
-image path, built by the commands that need it, so a scan stays a filesystem
-walk rather than an image pass. :func:`header_reader` is the single exception, and a
-bounded one: a *loose* image's filename states neither its beam reliably nor
-when it was taken, so a scan opens those and only those, and keeps what it read
-on :attr:`~.scanner.ProjectIndex.headers`. An Adaptive Polishing image is never
-opened.
+Two dialects: fibsem JSON in TIFF tag 270, and the FEI vendor tag 34682 with
+``Beam.Beam`` naming which beam fired; where each value lives is :data:`FIELDS`.
+**A missing value is None, never a default.** Metadata is a mapping keyed by image
+path, built by the commands that need it; :func:`header_reader` is the one bounded
+exception, a scan opening *loose* images alone for the beam and time their names
+may not state and keeping them on :attr:`~.scanner.ProjectIndex.headers`.
 """
 from __future__ import annotations
 

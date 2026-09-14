@@ -1,14 +1,11 @@
 """Turning what a scan found into lines somebody can read.
 
-Project summaries, the layout survey, the count and cross-tabulation tables,
-the speck report and the label measurements. It formats what other layers
-counted: nothing here scans, filters or measures.
-
-**A ``format_*`` function returns lines and prints nothing**, so what it says
-can be asserted on without capturing output; the ``print_*`` wrappers are the
-only things here that reach a terminal, and they emit through the module
-logger. The window reads the same functions, which is why they return lines
-rather than a block of text.
+Project summaries, the layout survey, count and cross-tabulation tables, the speck
+report and label measurements, formatted from what other layers counted: nothing
+here scans, filters or measures. **A ``format_*`` function returns lines and prints
+nothing**, so what it says is asserted without capturing output and the window
+reads the same lines; the ``print_*`` wrappers alone reach the terminal, through
+the module logger.
 """
 from __future__ import annotations
 

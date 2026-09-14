@@ -1,14 +1,10 @@
 """Producing predictions for selected images with a trained model.
 
-Nothing here imports torch. The model arrives as a callable and a
-:class:`PredictionSource` describing it, so planning, resumption, provenance and
-the writes are all testable without the inference stack; :mod:`..ml.model` is
-what supplies them, and the CLI wires the two together.
-
-One prediction is made per label group, from the group's primary image, because
-a prediction exists to become a label and a group has one label. Predictions are
-written only to the directory this package owns, so a run can replace what it
-produced and can never touch the segmentation pipeline's output.
+Nothing here imports torch: the model arrives as a callable and a
+:class:`PredictionSource`, so planning, resumption, provenance and writing test
+without the inference stack, :mod:`..ml.model` supplying them. One prediction is
+made per label group, from its primary image, and predictions are written only to
+the directory this package owns, so a run never touches the pipeline's output.
 """
 from __future__ import annotations
 

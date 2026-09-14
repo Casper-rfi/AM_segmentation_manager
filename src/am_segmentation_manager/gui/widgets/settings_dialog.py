@@ -1,18 +1,11 @@
 """What this window remembers about the person using it, rather than the data.
 
-One dialog, opened with F2 or from the gear beside the mark, for the settings
-that belong to this machine and not to any collection. Two kinds sit in it: the
-name changes are recorded under, which lives in the user's home directory
-because who is at the keyboard is a property of the machine; and the values a
-control opens on, which `gui/preferences.py` declares and the window's own
-settings hold.
-
-**Nothing here is asked for.** A name is stated or it is not, and a collection
-where nobody stated one deposits no names at all -- so the field opens empty
-and clearing it is a supported answer rather than an omission.
-
-The fields below the name are built from :data:`~...preferences.PREFERENCES`
-rather than written out, so adding a preference is a row there.
+One dialog (F2, or the gear beside the mark) for settings belonging to this
+machine: the name changes are recorded under, kept in the home directory, and the
+values a control opens on, declared by ``gui/preferences.py``. **Nothing here is
+asked for**: the name field opens empty and clearing it is a supported answer. The
+fields below it are built from :data:`~...preferences.PREFERENCES`, so adding a
+preference is a row there.
 """
 from __future__ import annotations
 

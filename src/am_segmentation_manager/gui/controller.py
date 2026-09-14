@@ -264,10 +264,9 @@ def lamella_status(lamella: Lamella) -> CurationStatus:
 def project_status(project: Project) -> CurationStatus:
     """Return how far curation has progressed across *project*, per series and beam.
 
-    Taken from the project's records rather than combined from its lamellae.
-    Combining lost which series each answer was about, which is the whole of
-    what made the old one wrong; and the weakest-wins rule it used is what a
-    cell already does across the images inside it.
+    Taken from the project's records rather than combined from its lamellae,
+    which would lose which series each answer was about; a cell already applies
+    the weakest-wins rule across the images inside it.
     """
     return CurationStatus(status_cells(project.image_records))
 
@@ -1286,8 +1285,7 @@ class CurationController:
         the answer, and the frame cache holds each frame as a composed image
         *and its label*, keyed by position rather than by what it was made
         from. A record named without clearing those keeps drawing exactly as it
-        did before the file was written -- which is the whole of what a scan
-        used to put right.
+        did before the file was written.
 
         Returns:
             How many records gained a path. Zero is normal for a preview.
@@ -1309,8 +1307,7 @@ class CurationController:
             # Cleared whole rather than per frame: the cache is keyed by frame
             # position, so finding the entries made from these records means
             # walking the frames anyway, and what it costs is re-reading one
-            # lamella lazily -- which is what the rescan this replaces did
-            # before it also walked the collection.
+            # lamella lazily.
             self.cache.clear()
         logger.info(
             "Named %d written file(s) on %d record(s) without rescanning",

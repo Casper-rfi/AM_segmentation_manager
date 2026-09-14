@@ -1,19 +1,12 @@
 """Copying a selection of images and labels out into a folder of its own.
 
-What ``am-seg export-files`` and the Export tab's *Export images and labels* do:
-take the images a selection matches, the label of each, and the few files that
-describe the projects they came from, and write them into a new directory under
-the same relative paths they had. The copy is therefore a smaller collection of
-the same shape -- ``am-seg`` scans it, and the state files come with it, so
-proofreading can continue in the copy. A finished copy is also given the fork
-point that lets it be merged back, which is the export's last step and not a
-separate act somebody has to remember.
-
-**Nothing here overwrites anything.** The whole set of destinations is resolved
-and classified before a byte is written: a destination that already holds the
-same file is skipped, so an interrupted export resumes, and one holding
-something different refuses the entire run. Each file is copied by rename, so a
-run that stops leaves whole files and an accurate account of them.
+The images a selection matches, each one's label and the files describing their
+projects are written under the same relative paths, so the copy is a smaller
+collection of the same shape that ``am-seg`` scans and proofreading continues in.
+A finished copy is given the fork point a merge back needs. **Nothing is
+overwritten**: every destination is classified before a byte is written, one
+holding the same file is skipped so an interrupted export resumes, and one holding
+something else refuses the run. Each file lands by rename.
 """
 from __future__ import annotations
 

@@ -1,18 +1,12 @@
 """The batch operations the window offers, in one shape.
 
-Predicting, converting predictions into labels, recompressing labels, copying a
-selection out, naming new projects and checking a CSV each return a different
-result type. Each is offered the same way -- preview what it would do, confirm,
-then apply -- so this turns them all into one
-:class:`~am_segmentation_manager.gui.report.OperationReport` and the window gets
-one dialog rather than one per operation.
-
-What the record makes possible -- savepoints, merges, reverts and the archive --
-is :mod:`.history_controller`, which answers the same shape and is split off
-because only it reads and writes the log.
-
-Qt-free, like the other controllers here. Paths are reported relative to the
-scan root: an absolute path eight directories deep is unreadable in a dialog.
+Predicting, converting predictions, recompressing labels, copying a selection
+out, naming new projects and checking a CSV each return their own result; each
+is previewed, confirmed, then applied, and this turns every result into one
+:class:`~am_segmentation_manager.gui.report.OperationReport` so the window has
+one dialog. Savepoints, merges, reverts and the archive are
+:mod:`.history_controller`, which reads and writes the log. Holds no Qt; paths
+are reported relative to the scan root.
 """
 from __future__ import annotations
 

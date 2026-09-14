@@ -1,19 +1,12 @@
 """Placing a project's lamellae on the grid overview they were milled from.
 
-An overview is an image named as one or as wide as one, at the project root or
-where fibsemOS's grid tasks write it; a lamella is where ``experiment.yaml``
-records it or, failing that, where its own images were taken. The overview's
-header states where the stage was and how large a pixel is, which is enough to
-say where each lamella falls in it.
-
-Reads what :mod:`~am_segmentation_manager.image_metadata` parsed and what
-:mod:`~am_segmentation_manager.scanner` indexed, headers through a reader its
-caller passes; it walks no directory of its own. **The position is approximate** -- see
-:func:`reproject`, which says what the projection ignores -- so anything
-showing one says so rather than implying a measurement.
-
-The projection is derived from fibsemOS; :func:`reproject` names the function
-and version it came from, and ``THIRD_PARTY_NOTICES.md`` carries the licence.
+An overview is found by name or shape at the project root or where fibsemOS's grid
+tasks write it; a lamella's position is what ``experiment.yaml`` records, else
+where its images were taken. The overview's header gives the stage position and
+pixel size, enough to place each lamella. Works on what the scanner indexed and a
+header reader its caller passes, walking no directory. **The position is
+approximate** -- :func:`reproject` says what it ignores and which fibsemOS function
+it derives from, and ``THIRD_PARTY_NOTICES.md`` carries the licence.
 """
 from __future__ import annotations
 

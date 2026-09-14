@@ -1,16 +1,11 @@
 """What a control opens on, and where those answers are kept.
 
-**A default decides the value a control starts at. It never decides what an
-operation does.** The command line and every write path keep the packaged
-constants, so nothing set here can change what a run produces -- only what
-somebody is shown before they change it. That is what makes these safe to keep
-on one machine: they travel with the person, not with the data.
-
-Qt-free, like the controllers. The table and the resolving live here and the
-store is passed in, so a preference can be read in a test with a dictionary
-and without a display. **A preference is a row in :data:`PREFERENCES`**, as a
-descriptive field is a row in `metadata.FIELDS`: adding one is a row here and
-a line where the control is built, rather than an edit in five modules.
+**A default decides the value a control starts at, never what an operation
+does**: the command line and every write path keep the packaged constants, so
+nothing set here changes what a run produces, and a preference travels with the
+person rather than the data. Holds no Qt -- the store is passed in, so a test
+reads one with a dictionary. **A preference is a row in :data:`PREFERENCES`**,
+as a descriptive field is a row in ``metadata.FIELDS``.
 """
 from __future__ import annotations
 
