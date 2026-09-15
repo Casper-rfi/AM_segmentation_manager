@@ -90,8 +90,8 @@ of one of these files, is held by `test_docs.py`.
   padding clips a one-character button blank, which `COMPACT_BUTTON` exempts.
 - **A group of controls is a card, and its title outweighs the captions inside it.** One rule
   reaches every box on every tab, and **the weight goes on `QGroupBox`, never on
-  `QGroupBox::title`** — `test_a_group_title_is_heavier_than_the_captions_inside_it` says why, and
-  the rule itself says why the card has no background of its own.
+  `QGroupBox::title`** — `test_a_group_title_is_heavier_than_the_captions_inside_it` says why. Its
+  fill sits between window and field (`test_a_card_sits_between_the_window_and_the_fields_in_it`).
 - **One of a small closed set is a run of segments, not a row of dots.** `controls.SegmentedControl`
   is one widget holding checkable `QToolButton`s in an exclusive group, which also means the run
   **cannot be split across two lines of a flow layout** — loose buttons wrap apart, leaving one

@@ -21,6 +21,9 @@ from ...layout import MODALITIES, SERIES
 #: everything.
 WINDOW = "#e7e2d9"
 BASE = "#fffdf9"
+#: The fill of a group of controls: lighter than :data:`WINDOW`, so a group reads
+#: as one thing, and darker than :data:`BASE`, so a field inside it still does.
+CARD = "#f6f3ee"
 ALTERNATE = "#efeae2"
 
 TEXT = "#211d18"
@@ -223,19 +226,27 @@ def stylesheet() -> str:
     return f"""
     /* A group of controls is a card: a title that reads as a heading, and a
        boundary you can see. Both are what say where one cluster of controls
-       ends and the next begins, on every tab at once. No background of its
-       own -- the inputs inside are white, and a white card behind them would
-       take away the one thing separating "you can type here" from the panel. */
+       ends and the next begins, on every tab at once. Its fill sits between the
+       window and a field: as white as the fields inside it, it would take away
+       the one thing separating "you can type here" from the panel. */
     /* The weight goes on the box, not on ``::title``: Qt ignores font
        properties set on a subcontrol, so the obvious rule is silently no rule
        at all. It reaches the title without reaching the controls inside, the
        stylesheet font not descending the way a CSS one would. */
     QGroupBox {{
+        background: {CARD};
         border: 1px solid {BORDER};
         border-radius: 6px;
         margin-top: 10px;
         padding: 10px 6px 6px 6px;
         font-weight: bold;
+    }}
+    /* A scroll area paints its viewport in the window colour, which inside a
+       card is a darker block round the fields. The viewport and the widget it
+       holds are let through to the card instead. */
+    QGroupBox QScrollArea, QGroupBox QScrollArea > QWidget#qt_scrollarea_viewport,
+    QGroupBox QScrollArea > QWidget > QWidget {{
+        background: transparent;
     }}
     QGroupBox::title {{
         subcontrol-origin: margin;
@@ -286,7 +297,12 @@ def stylesheet() -> str:
     /* A heading inside a card: the card title's colour and weight, one step
        down by standing inside it rather than on its border. */
     QLabel#{SECTION_HEADING} {{ color: {HEADING}; font-weight: bold; padding-top: 6px; }}
-    QListWidget::item, QTreeWidget::item {{ padding: 3px 2px; border-radius: 3px; }}
+    /* Every row reserves the edge the chosen row marks in the accent, so
+       choosing a row does not move its tick and text out of line. */
+    QListWidget::item, QTreeWidget::item {{
+        padding: 3px 2px;
+        border-left: 3px solid transparent;
+    }}
     QListWidget::item:hover:!selected, QTreeWidget::item:hover:!selected {{
         background: {HOVER};
     }}
@@ -295,10 +311,10 @@ def stylesheet() -> str:
        background -- the selected row simply goes blank. Both states are set
        here because an inactive window uses its own. */
     QListWidget::item:selected, QTreeWidget::item:selected {{
-        background: {SELECTED}; color: {TEXT};
+        background: {SELECTED}; color: {TEXT}; border-left-color: {ACCENT};
     }}
     QListWidget::item:selected:!active, QTreeWidget::item:selected:!active {{
-        background: {SELECTED}; color: {TEXT};
+        background: {SELECTED}; color: {TEXT}; border-left-color: {ACCENT};
     }}
 
     QPushButton {{

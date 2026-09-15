@@ -37,11 +37,11 @@ STATE_COLOURS = {
     "deselected": QColor("#6b6b6b"),
     "selected": QColor("#4c78c8"),
     "corrected": QColor("#1a7f6e"),
-    None: QColor("#2b2b2b"),
+    None: QColor("#2e2a25"),
 }
 
-BACKGROUND = QColor("#232323")
-TICK = QColor("#1a1a1a")
+BACKGROUND = QColor("#26221e")
+TICK = QColor("#1c1915")
 CURSOR = QColor("#f5f5f5")
 
 #: Warning amber: something wants attention rather than reporting a state.

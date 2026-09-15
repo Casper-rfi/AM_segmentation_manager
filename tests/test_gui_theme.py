@@ -79,7 +79,7 @@ def _contrast(foreground: str, background: str) -> float:
 
 
 @pytest.mark.parametrize("text", ["TEXT", "HEADING", "MUTED"])
-@pytest.mark.parametrize("surface", ["WINDOW", "BASE", "ALTERNATE", "HOVER", "SELECTED"])
+@pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE", "ALTERNATE", "HOVER", "SELECTED"])
 def test_every_text_colour_is_readable_on_every_surface(text, surface):
     """A palette change is the moment a caption quietly drops below legibility."""
     assert _contrast(getattr(theme, text), getattr(theme, surface)) >= 4.5
@@ -89,6 +89,83 @@ def test_every_text_colour_is_readable_on_every_surface(text, surface):
 def test_white_text_is_readable_on_the_accent(fill):
     """A chosen segment and a dialog's default button put their caption on it."""
     assert _contrast(theme.ACCENT_TEXT, getattr(theme, fill)) >= 4.5
+
+
+def test_a_card_sits_between_the_window_and_the_fields_in_it(themed):
+    """Three grounds: the window, a group of controls on it, and a field inside
+    that group, each lighter than the last so each reads as its own layer."""
+    from qtpy.QtCore import QPoint
+    from qtpy.QtWidgets import QGroupBox, QVBoxLayout
+
+    window = QWidget()
+    window.resize(300, 200)
+    outer = QVBoxLayout(window)
+    outer.setContentsMargins(20, 20, 20, 20)
+    card = QGroupBox("Card")
+    inner = QVBoxLayout(card)
+    edit = QLineEdit()
+    inner.addWidget(edit)
+    inner.addStretch(1)
+    outer.addWidget(card)
+    window.show()
+    themed.processEvents()
+    image = window.grab().toImage()
+
+    field = edit.mapTo(window, QPoint(edit.width() // 2, edit.height() // 2))
+    group = card.mapTo(window, QPoint(card.width() // 2, card.height() - 10))
+    assert image.pixelColor(5, 5) == QColor(theme.WINDOW)
+    assert image.pixelColor(group) == QColor(theme.CARD)
+    assert image.pixelColor(field) == QColor(theme.BASE)
+    window.close()
+
+
+def test_a_scroll_area_inside_a_card_shows_the_card_behind_it(themed):
+    """A scroll area paints its viewport in the window colour, which drew a
+    darker block round the fields of the Add data and Export tabs."""
+    from qtpy.QtCore import QPoint
+    from qtpy.QtWidgets import QGroupBox, QLabel, QScrollArea, QVBoxLayout
+
+    card = QGroupBox("Fields")
+    card.resize(300, 200)
+    scroller = QScrollArea()
+    scroller.setWidgetResizable(True)
+    scroller.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroller.setWidget(QLabel("value"))
+    QVBoxLayout(card).addWidget(scroller)
+    card.show()
+    themed.processEvents()
+    image = card.grab().toImage()
+
+    inside = scroller.mapTo(card, QPoint(scroller.width() - 20, scroller.height() - 10))
+    assert image.pixelColor(inside) == QColor(theme.CARD)
+    card.close()
+
+
+def test_choosing_a_row_marks_its_edge_without_moving_it(themed):
+    """Every row reserves the edge the chosen one marks, so the chosen row's
+    text stays in line with the rows around it."""
+    widget = QListWidget()
+    widget.addItems(["same", "same"])
+    widget.resize(200, 80)
+    widget.setCurrentRow(0)
+    widget.show()
+    themed.processEvents()
+    image = widget.viewport().grab().toImage()
+    chosen = widget.visualItemRect(widget.item(0))
+    other = widget.visualItemRect(widget.item(1))
+
+    def leftmost_ink(rect) -> int:
+        return min(
+            x
+            for x in range(rect.left() + 4, rect.right())
+            for y in range(rect.top(), rect.bottom())
+            if QColor(image.pixel(x, y)).lightness() < 100
+        )
+
+    assert image.pixelColor(chosen.left() + 1, chosen.center().y()) == QColor(theme.ACCENT)
+    assert image.pixelColor(other.left() + 1, other.center().y()) != QColor(theme.ACCENT)
+    assert leftmost_ink(chosen) == leftmost_ink(other)
+    widget.close()
 
 
 def test_a_chosen_class_is_ringed_in_ink_not_the_accent(themed):
