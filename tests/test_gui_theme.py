@@ -65,6 +65,26 @@ def test_the_window_is_not_left_on_the_platform_grey(themed):
     assert themed.palette().color(QPalette.Base).name() == theme.BASE
 
 
+def _contrast(foreground: str, background: str) -> float:
+    """Return the WCAG contrast ratio between two hex colours."""
+    def luminance(colour: str) -> float:
+        channels = []
+        for value in QColor(colour).getRgbF()[:3]:
+            channels.append(value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4)
+        red, green, blue = channels
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+    lighter, darker = sorted((luminance(foreground), luminance(background)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+@pytest.mark.parametrize("text", ["TEXT", "HEADING", "MUTED"])
+@pytest.mark.parametrize("surface", ["WINDOW", "BASE", "ALTERNATE", "HOVER", "SELECTED"])
+def test_every_text_colour_is_readable_on_every_surface(text, surface):
+    """A palette change is the moment a caption quietly drops below legibility."""
+    assert _contrast(getattr(theme, text), getattr(theme, surface)) >= 4.5
+
+
 def test_the_style_is_the_same_one_everywhere(themed):
     """PyQt5 here and PySide6 on the user's machine, so the style is chosen
     rather than inherited from the platform.

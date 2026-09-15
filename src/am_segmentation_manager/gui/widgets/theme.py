@@ -16,26 +16,29 @@ from qtpy.QtGui import QColor, QPalette
 from ...layout import MODALITIES, SERIES
 
 #: The surface a panel sits on, and the surface a value sits in. Inputs and
-#: lists are white against an off-white window, which is what separates "you can
-#: type here" from "this is background" without drawing a box around everything.
-WINDOW = "#f4f5f7"
-BASE = "#ffffff"
-ALTERNATE = "#eef0f3"
+#: lists are near-white against a warm paper window, which is what separates
+#: "you can type here" from "this is background" without drawing a box around
+#: everything.
+WINDOW = "#e7e2d9"
+BASE = "#fffdf9"
+ALTERNATE = "#efeae2"
 
-TEXT = "#1d1f23"
+TEXT = "#211d18"
 #: Secondary text: placeholders, provenance notes, a caption beside a control.
-MUTED = "#6b7280"
+#: The lightest text that must still be read, so it holds 4.5:1 against every
+#: surface text sits on (`test_every_text_colour_is_readable_on_every_surface`).
+MUTED = "#6b6258"
 #: The title of a group of controls. Between :data:`MUTED` and :data:`TEXT`, and
 #: set bold below: a heading quieter than the captions under it reads as the
 #: least important thing in its own box, which is what a group title must not be.
-HEADING = "#474e5c"
-DISABLED_TEXT = "#a3a8b0"
+HEADING = "#4f473d"
+DISABLED_TEXT = "#aaa197"
 
-BORDER = "#d6d9df"
+BORDER = "#d8d0c3"
 #: Separators that should be felt rather than seen -- the rule under a heading.
-BORDER_LIGHT = "#e6e8ec"
-HOVER = "#eaeef6"
-PRESSED = "#e2e6ee"
+BORDER_LIGHT = "#e6dfd4"
+HOVER = "#efe6da"
+PRESSED = "#e6dccf"
 
 #: One accent, used for selection, focus and hover. A second would have to mean
 #: something, and everything that means something is already spoken for by the
@@ -51,7 +54,10 @@ ACCENT_STRONG = "#2258c4"
 #: one separator that is meant to be *seen*: a division nobody can tell is
 #: draggable is a division nobody drags. Under the pointer it takes the accent,
 #: like every other control that reacts to being pointed at.
-GRIP = "#b0b6c0"
+GRIP = "#b8ae9f"
+
+#: A scroll bar's handle at rest. Under the pointer it takes :data:`MUTED`.
+SCROLL_HANDLE = "#c9bfb1"
 
 #: The row being looked at, in a list whose rows also carry a checkbox and a
 #: status chip. A tint rather than a solid accent fill: Qt draws the check
@@ -119,7 +125,7 @@ SWATCH_OUTLINE = QColor("#1a1a1a")
 #:
 #: The track is *filled* when off rather than outlined. A switch that is off is
 #: still a control, and an outline at this size reads as an empty field.
-SWITCH_OFF = "#c2c8d2"
+SWITCH_OFF = "#cbc2b5"
 SWITCH_KNOB = "#ffffff"
 SWITCH_WIDTH = 34
 SWITCH_HEIGHT = 18
@@ -407,7 +413,7 @@ def stylesheet() -> str:
 
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
     QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 0; }}
-    QScrollBar::handle {{ background: #c3c8d0; border-radius: 5px; }}
+    QScrollBar::handle {{ background: {SCROLL_HANDLE}; border-radius: 5px; }}
     QScrollBar::handle:vertical {{ min-height: 24px; }}
     QScrollBar::handle:horizontal {{ min-width: 24px; }}
     QScrollBar::handle:hover {{ background: {MUTED}; }}
