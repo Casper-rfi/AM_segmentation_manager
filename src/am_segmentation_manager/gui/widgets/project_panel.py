@@ -398,8 +398,8 @@ class ProjectPanel(QWidget):
 #: timeline's two hues only confirm it. `docs/display.md` § Controls says why,
 #: and the F1 list says it to the reader.
 CELL_COLOURS = {
-    "empty": QColor("#e2dace"),
-    "unlabelled": QColor("#bdb4a6"),
+    "empty": QColor("#e0ded9"),
+    "unlabelled": QColor("#b7b4ae"),
     "not started": QColor("#9dbcea"),
     "in progress": QColor("#4c9c8b"),
     "done": QColor("#12604f"),

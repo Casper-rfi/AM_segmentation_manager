@@ -15,7 +15,6 @@ from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QButtonGroup,
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -52,6 +51,7 @@ from .common import (
 )
 from .controls import (
     SLIDER_WIDTH,
+    ElidingCombo,
     ElidingLabel,
     FlowArea,
     FlowLayout,
@@ -355,7 +355,7 @@ class LabelPanel(QWidget):
         # frames there are to review, the variant only which file of one is
         # drawn. Annotating a lamella means annotating one series of it.
         self.series_label = QLabel("Series")
-        self.series_combo = QComboBox()
+        self.series_combo = ElidingCombo()
         self.series_combo.setMinimumWidth(110)
         self.series_combo.setToolTip(
             "Which series to proofread. Each is its own list of frames, "
@@ -368,7 +368,7 @@ class LabelPanel(QWidget):
         # A dropdown rather than buttons, as in the curation view: variant names
         # run long, and most projects have none to choose between.
         self.variant_label = QLabel("Variant")
-        self.variant_combo = QComboBox()
+        self.variant_combo = ElidingCombo()
         self.variant_combo.setMinimumWidth(110)
         self.variant_combo.setToolTip(
             "Which imaging condition of this acquisition to proofread on.\n"

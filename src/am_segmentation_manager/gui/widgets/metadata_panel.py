@@ -48,12 +48,14 @@ from .frame_strip import MISMATCH, STATE_COLOURS
 from .lists import project_box
 from .paths import add_path_menu
 from .theme import (
+    BORDER_LIGHT,
     MUTED,
     SECTION_HEADING,
     SWATCH_HEIGHT,
     SWATCH_OUTLINE,
     SWATCH_WIDTH,
     TEXT,
+    WARNING,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,9 +78,9 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
     the message, so there is no second vocabulary to learn, and it separates a
     project with one field left from one with five.
 
-    The two colours are the ones the curate list already uses for the same two
-    ideas -- the corrected teal for finished, the mismatch amber for needing
-    attention -- so a colour means the same thing in both lists.
+    The two colours are the ones the curate list's chip uses for the same two
+    ideas -- teal for finished, blue for not yet started -- so a colour means
+    the same thing in both lists.
     """
     pixmap = QPixmap(COMPLETENESS_WIDTH, SWATCH_HEIGHT)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -86,6 +88,7 @@ def _completeness_icon(summary: ProjectSummary) -> QIcon:
     try:
         share = summary.filled / summary.total if summary.total else 0.0
         colour = STATE_COLOURS["corrected"] if summary.is_complete else MISMATCH
+        painter.fillRect(0, 0, COMPLETENESS_WIDTH, SWATCH_HEIGHT, QColor(BORDER_LIGHT))
         painter.fillRect(0, 0, round(COMPLETENESS_WIDTH * share), SWATCH_HEIGHT, colour)
         painter.setPen(SWATCH_OUTLINE)
         painter.drawRect(0, 0, COMPLETENESS_WIDTH - 1, SWATCH_HEIGHT - 1)
@@ -127,7 +130,7 @@ def _dot_pixmap(state: str) -> QPixmap:
     """Return the dot beside a field in *state*, one of :data:`DOT_HINTS`.
 
     Shape says what the field holds -- solid, a ring, half -- and colour whether
-    that is saved: the list's teal and amber for a filled field and a missing
+    that is saved: the list's teal and blue for a filled field and a missing
     one, ink for a change still only in the window. Two channels, so
     neither rests on telling colours apart.
     """
@@ -440,7 +443,7 @@ class MetadataPanel(QWidget):
         # before any of this has been done, and the one the list cannot show.
         self.unindexed = QLabel("")
         self.unindexed.setWordWrap(True)
-        self.unindexed.setStyleSheet(f"color: {MISMATCH.name()};")
+        self.unindexed.setStyleSheet(f"color: {WARNING};")
         data.addWidget(self.unindexed, 1, 0, 1, 2)
         column.addWidget(self.data_box)
 

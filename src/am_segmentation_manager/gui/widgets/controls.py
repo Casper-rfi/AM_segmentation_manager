@@ -41,6 +41,9 @@ from qtpy.QtWidgets import (
     QSpacerItem,
     QSplitter,
     QSplitterHandle,
+    QStyle,
+    QStyleOptionComboBox,
+    QStylePainter,
     QToolButton,
     QWidget,
 )
@@ -49,6 +52,24 @@ from . import theme
 from .common import match_anywhere
 
 logger = logging.getLogger(__name__)
+
+
+#: The ways focus arrives when the keyboard brought it.
+_KEYBOARD_FOCUS = frozenset({
+    Qt.FocusReason.TabFocusReason,
+    Qt.FocusReason.BacktabFocusReason,
+    Qt.FocusReason.ShortcutFocusReason,
+})
+
+
+def _from_keyboard(event) -> bool:
+    """Return whether a focus event gave focus by Tab, Shift+Tab or a shortcut.
+
+    A control painting its own focus ring draws it only then: Qt also gives focus
+    when a tab opens and when a control is clicked, and a ring for either marks a
+    control nobody reached by keyboard.
+    """
+    return event.reason() in _KEYBOARD_FOCUS
 
 
 class ToggleSwitch(QCheckBox):
@@ -64,6 +85,17 @@ class ToggleSwitch(QCheckBox):
     switched: see :class:`CheckList`, where the tick means something a switch
     cannot say.
     """
+
+    #: Whether focus arrived by keyboard; see :func:`_from_keyboard`.
+    _keyboard_focus = False
+
+    def focusInEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._keyboard_focus = _from_keyboard(event)
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._keyboard_focus = False
+        super().focusOutEvent(event)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Draw the track, the knob on it, and the caption beside it.
@@ -81,7 +113,7 @@ class ToggleSwitch(QCheckBox):
             painter.setBrush(QColor(self._track_colour()))
             painter.drawRoundedRect(track, radius, radius)
 
-            if self.hasFocus():
+            if self.hasFocus() and self._keyboard_focus:
                 # A control reachable by keyboard has to show where the
                 # keyboard is; nothing else here would say so.
                 ring = track.adjusted(-2.5, -2.5, 2.5, 2.5)
@@ -260,6 +292,33 @@ class ElidingLabel(QLabel):
             self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideMiddle, self.width())
         )
 
+
+class ElidingCombo(QComboBox):
+    """A combo box that shortens the entry it shows to fit, rather than cutting it off.
+
+    Qt clips the shown entry at the edge of its field, which took the end off a
+    series name with nothing to say it had; this ends it with an ellipsis. The open
+    list still shows every entry whole.
+    """
+
+    def shown_text(self) -> str:
+        """Return the current entry as it fits the field it is drawn in."""
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        field = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, option, QStyle.SubControl.SC_ComboBoxEditField, self
+        )
+        return self.fontMetrics().elidedText(
+            option.currentText, Qt.TextElideMode.ElideRight, max(field.width(), 0)
+        )
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        painter = QStylePainter(self)
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        option.currentText = self.shown_text()
+        painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, option)
+        painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, option)
 
 class StepCombo(QComboBox):
     """A combo box whose Up and Down keys always move through the list.
@@ -748,6 +807,17 @@ class ValueSlider(QSlider):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._dragging = False
 
+    #: Whether focus arrived by keyboard; see :func:`_from_keyboard`.
+    _keyboard_focus = False
+
+    def focusInEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._keyboard_focus = _from_keyboard(event)
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._keyboard_focus = False
+        super().focusOutEvent(event)
+
     def _x_of(self, value: int) -> float:
         """Return where *value* sits along the track."""
         return _x_along(value, self.minimum(), self.maximum(), self.width())
@@ -794,7 +864,7 @@ class ValueSlider(QSlider):
             middle = self.height() / 2
             x = self._x_of(self.value())
             _paint_track(painter, left, right, middle, left, x)
-            _paint_knob(painter, x, middle, ringed=self.hasFocus())
+            _paint_knob(painter, x, middle, ringed=self.hasFocus() and self._keyboard_focus)
         finally:
             painter.end()
 
@@ -826,6 +896,17 @@ class RangeSlider(QWidget):
 
     #: Emitted with the low and high limits whenever either moves.
     range_changed = Signal(int, int)
+
+    #: Whether focus arrived by keyboard; see :func:`_from_keyboard`.
+    _keyboard_focus = False
+
+    def focusInEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._keyboard_focus = _from_keyboard(event)
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self._keyboard_focus = False
+        super().focusOutEvent(event)
 
     def __init__(
         self,
@@ -992,7 +1073,7 @@ class RangeSlider(QWidget):
             for name, x in (("low", low_x), ("high", high_x)):
                 _paint_knob(
                     painter, x, middle,
-                    ringed=name == self._active and self.hasFocus(),
+                    ringed=name == self._active and self.hasFocus() and self._keyboard_focus,
                 )
         finally:
             painter.end()

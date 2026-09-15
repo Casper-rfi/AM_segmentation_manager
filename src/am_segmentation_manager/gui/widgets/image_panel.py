@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
-    QComboBox,
     QLabel,
     QMenu,
     QPushButton,
@@ -47,6 +46,7 @@ from .common import (
 )
 from .controls import (
     SLIDER_WIDTH,
+    ElidingCombo,
     ElidingLabel,
     FlowArea,
     FlowLayout,
@@ -190,7 +190,7 @@ class ImagePanel(QWidget):
 
         controls.addSpacing(GROUP_GAP)
         self.series_label = QLabel("Series")
-        self.series_combo = QComboBox()
+        self.series_combo = ElidingCombo()
         self.series_combo.setMinimumWidth(110)
         self.series_combo.setToolTip(
             "Which images the timeline is made of. Autolamella writes "
@@ -204,7 +204,7 @@ class ImagePanel(QWidget):
         # A dropdown rather than buttons: variant names run long
         # (``8_fi_16``) and a stage can hold five of them.
         self.variant_label = QLabel("Variant")
-        self.variant_combo = QComboBox()
+        self.variant_combo = ElidingCombo()
         self.variant_combo.setMinimumWidth(110)
         self.variant_combo.setToolTip(VARIANT_HINT)
         self.variant_label.setToolTip(self.variant_combo.toolTip())

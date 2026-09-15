@@ -182,7 +182,7 @@ def test_the_segments_not_chosen_stay_readable(themed):
     control = _laid_out(SegmentedControl(SEGMENTS))
     control.set_current("sem")
 
-    assert _fill(control.buttons["fib"]) == QColor(theme.BASE)
+    assert _fill(control.buttons["fib"]) == QColor(theme.BUTTON)
 
 
 def test_a_disabled_segment_is_still_drawn(themed):
@@ -190,4 +190,4 @@ def test_a_disabled_segment_is_still_drawn(themed):
     control = _laid_out(SegmentedControl(SEGMENTS))
     control.buttons["plot"].setEnabled(False)
 
-    assert _fill(control.buttons["plot"]) == QColor(theme.WINDOW)
+    assert _fill(control.buttons["plot"]) == QColor(theme.BUTTON)

@@ -85,10 +85,91 @@ def test_every_text_colour_is_readable_on_every_surface(text, surface):
     assert _contrast(getattr(theme, text), getattr(theme, surface)) >= 4.5
 
 
-@pytest.mark.parametrize("fill", ["ACCENT", "ACCENT_STRONG"])
-def test_white_text_is_readable_on_the_accent(fill):
-    """A chosen segment and a dialog's default button put their caption on it."""
-    assert _contrast(theme.ACCENT_TEXT, getattr(theme, fill)) >= 4.5
+def test_text_on_the_accent_is_readable():
+    """A chosen segment, a count badge and a dialog's default button write on it."""
+    assert _contrast(theme.ACCENT_TEXT, theme.ACCENT) >= 4.5
+
+
+def test_accent_coloured_text_is_readable():
+    assert _contrast(theme.ACCENT_STRONG, theme.BASE) >= 4.5
+
+
+@pytest.mark.parametrize("name", ["ARROW_DOWN", "ARROW_UP"])
+def test_the_arrow_images_are_drawn_in_the_muted_text_colour(name):
+    """The colour is written into the file, where a palette change cannot reach it."""
+    image = Path(getattr(theme, name))
+
+    assert image.exists()
+    assert f'fill="{theme.MUTED}"' in image.read_text(encoding="utf-8")
+
+
+def test_a_mark_still_to_do_is_not_the_accent():
+    """An amber ring beside the orange accent read as the same colour."""
+    from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
+
+    assert abs(MISMATCH.hueF() * 360 - QColor(theme.ACCENT).hueF() * 360) >= 60
+
+
+@pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE"])
+def test_warning_text_is_readable(surface):
+    assert _contrast(theme.WARNING, getattr(theme, surface)) >= 4.5
+
+
+@pytest.mark.parametrize("surface", ["CARD", "BASE"])
+def test_a_mark_needing_attention_stands_out_from_its_ground(surface):
+    """The ring beside a missing field and the completeness bar's fill."""
+    from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
+
+    assert _contrast(MISMATCH.name(), getattr(theme, surface)) >= 3.0
+
+
+def test_a_table_heading_sits_on_the_grey_ground(themed):
+    """The one widget left on Qt's own look, with a dark grid and a flat heading."""
+    from qtpy.QtWidgets import QTableWidget
+
+    table = QTableWidget(1, 2)
+    table.setHorizontalHeaderLabels(["modality", "images"])
+    table.resize(300, 120)
+    table.show()
+    themed.processEvents()
+    header = table.horizontalHeader()
+    image = header.grab().toImage()
+
+    assert image.pixelColor(3, header.height() // 2) == QColor(theme.ALTERNATE)
+    table.close()
+
+
+def test_a_segment_caption_is_bold(themed):
+    """Qt ignores a font set for the chosen state alone, so every segment is bold."""
+    from am_segmentation_manager.gui.widgets.controls import SegmentedControl
+
+    control = SegmentedControl([("sem", "SEM", ""), ("fib", "FIB", "")])
+    control.show()
+    themed.processEvents()
+
+    assert all(button.font().bold() for button in control.buttons.values())
+    control.close()
+
+
+def test_the_tool_button_font_is_levelled_after_the_stylesheet():
+    """macOS gives a tool button a font three points smaller than the rest, and
+    applying a stylesheet puts it back, so levelling it first draws every run of
+    segments in small print. Only the order shows it: offscreen there is no
+    smaller font to put back, so no picture here can fail."""
+    calls: list[tuple[str, tuple]] = []
+
+    class Recorder:
+        def __getattr__(self, name):
+            def record(*args):
+                calls.append((name, args))
+                return "the application font" if name == "font" else None
+            return record
+
+    theme.apply_theme(Recorder())
+    names = [name for name, _ in calls]
+
+    levelled = calls.index(("setFont", ("the application font", "QToolButton")))
+    assert levelled > names.index("setStyleSheet")
 
 
 def test_a_card_sits_between_the_window_and_the_fields_in_it(themed):

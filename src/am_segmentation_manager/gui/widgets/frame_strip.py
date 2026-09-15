@@ -37,20 +37,22 @@ STATE_COLOURS = {
     "deselected": QColor("#6b6b6b"),
     "selected": QColor("#4c78c8"),
     "corrected": QColor("#1a7f6e"),
-    None: QColor("#2e2a25"),
+    None: QColor("#2c2b29"),
 }
 
-BACKGROUND = QColor("#26221e")
-TICK = QColor("#1c1915")
+BACKGROUND = QColor("#242322")
+TICK = QColor("#1b1a19")
 CURSOR = QColor("#f5f5f5")
 
-#: Warning amber: something wants attention rather than reporting a state.
-#: Deliberately not a workflow colour, so it cannot be read as a fourth one.
+#: Something still to do rather than a state: a field not filled in, a project
+#: still short of fields. Blue, as the curate list's chip draws a series not yet
+#: started, and far from the orange accent
+#: (`test_a_mark_still_to_do_is_not_the_accent`).
 #:
-#: **Nothing on this timeline is painted with it.** It is here because it sits
-#: with the colours that carry meaning rather than with the chrome, and the Add
-#: data tab's completeness bar uses it for a project still short of fields.
-MISMATCH = QColor("#d08c00")
+#: **Nothing on this timeline is painted with it**, so it is never read beside
+#: the selected state's blue. It is here because it sits with the colours that
+#: carry meaning rather than with the chrome; the Add data tab draws it.
+MISMATCH = QColor("#5a7db5")
 
 #: Whether each modality's label exists, and whether it holds an annotation.
 #:

@@ -123,8 +123,12 @@ include = ["am_segmentation_manager*"]
 # and wherever the window draws it against its own background. The .ico is not
 # loaded by the GUI and is kept for building a Windows shortcut. The .svg is
 # the artwork the .icns is built from and is wanted only by a rebuild, so it is
-# committed beside them and deliberately left out of the install.
-am_segmentation_manager = ["data/*.yaml", "data/*.png", "data/*.ico", "data/*.icns"]
+# committed beside them and deliberately left out of the install. The arrow
+# images are the exception among the SVGs: the stylesheet draws dropdown and
+# spin box arrows from them, so they are named here and ship.
+am_segmentation_manager = [
+    "data/*.yaml", "data/*.png", "data/*.ico", "data/*.icns", "data/arrow_*.svg",
+]
 
 [tool.pytest.ini_options]
 # Put src/ on the import path, so the tests run against the source tree without

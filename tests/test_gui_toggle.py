@@ -170,3 +170,33 @@ def test_a_row_of_a_list_is_still_ticked(qt_app):
     assert not isinstance(listing, ToggleSwitch)
     assert listing.item(0).checkState() == Qt.Checked
     assert listing.item(1).checkState() == Qt.Unchecked
+
+
+def test_the_ring_is_drawn_only_for_focus_the_keyboard_brought(qt_app):
+    """Qt gives a control focus when its tab opens and when it is clicked, and a
+    ring for either marked a switch nobody had reached by keyboard."""
+    from qtpy.QtCore import Qt
+    from qtpy.QtWidgets import QLineEdit, QVBoxLayout, QWidget
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    elsewhere = QLineEdit()
+    switch = ToggleSwitch("Adaptive Polishing")
+    layout.addWidget(elsewhere)
+    layout.addWidget(switch)
+    host.show()
+    host.activateWindow()
+    elsewhere.setFocus()
+    qt_app.processEvents()
+    without_ring = switch.grab().toImage()
+
+    switch.setFocus(Qt.FocusReason.MouseFocusReason)
+    qt_app.processEvents()
+    assert switch.hasFocus()
+    assert switch.grab().toImage() == without_ring
+
+    elsewhere.setFocus()
+    switch.setFocus(Qt.FocusReason.TabFocusReason)
+    qt_app.processEvents()
+    assert switch.grab().toImage() != without_ring
+    host.close()

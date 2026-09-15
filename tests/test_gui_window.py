@@ -3781,9 +3781,9 @@ def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
     assert editor_text(metadata_panel.editors["sample"]) == ""
 
 
-def test_a_change_not_yet_saved_is_not_drawn_in_the_missing_amber(qt_app):
-    """The accent is orange, close to the amber ring of a missing field, so an
-    edited field's dot is ink: colour stays a second channel beside shape."""
+def test_a_change_not_yet_saved_is_drawn_apart_from_a_missing_field(qt_app):
+    """An edited field's dot is ink, neither the accent nor the colour of a
+    missing field's ring, so colour stays a second channel beside shape."""
     from qtpy.QtGui import QColor
 
     from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
@@ -5054,3 +5054,19 @@ def test_the_window_hands_what_a_save_wrote_to_the_export_tab(window, monkeypatc
     window._labels_saved(SavedLabels(headline="wrote 1 label", written=(label,)))
 
     assert forgotten == [(label,)]
+
+
+def test_a_series_name_too_long_for_its_box_ends_in_an_ellipsis(qt_app):
+    """Qt clipped the shown entry, which read "Adaptive Polishir" with nothing to
+    say the end was missing."""
+    from am_segmentation_manager.gui.widgets.controls import ElidingCombo
+
+    combo = ElidingCombo()
+    combo.addItem("Adaptive Polishing")
+    combo.resize(300, 26)
+    assert combo.shown_text() == "Adaptive Polishing"
+
+    combo.resize(70, 26)
+    shown = combo.shown_text()
+    assert shown.endswith("…")
+    assert "Adaptive Polishing".startswith(shown[:-1])
