@@ -2341,3 +2341,12 @@ def test_the_help_lists_both_tools(window):
 
     assert "Brush tool" in help_text
     assert "Fill tool" in help_text
+
+
+def test_every_class_button_is_named_for_the_ink_ring(window):
+    """The stylesheet rings a chosen class in ink only on buttons carrying the name."""
+    from am_segmentation_manager.gui.widgets.theme import CLASS_BUTTON
+
+    buttons = window.label_panel.paint_buttons.values()
+    assert buttons
+    assert all(button.objectName() == CLASS_BUTTON for button in buttons)

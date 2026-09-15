@@ -3781,6 +3781,21 @@ def test_an_outstanding_field_is_marked_rather_than_dimmed(metadata_panel):
     assert editor_text(metadata_panel.editors["sample"]) == ""
 
 
+def test_a_change_not_yet_saved_is_not_drawn_in_the_missing_amber(qt_app):
+    """The accent is orange, close to the amber ring of a missing field, so an
+    edited field's dot is ink: colour stays a second channel beside shape."""
+    from qtpy.QtGui import QColor
+
+    from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
+    from am_segmentation_manager.gui.widgets.metadata_panel import DOT, _dot_pixmap
+    from am_segmentation_manager.gui.widgets.theme import ACCENT, TEXT
+
+    centre = _dot_pixmap("edited").toImage().pixelColor(DOT // 2, DOT // 2)
+
+    assert centre == QColor(TEXT)
+    assert centre not in (QColor(ACCENT), MISMATCH)
+
+
 def test_the_fields_sit_under_their_section_headings(metadata_panel):
     """General, then how the sample was prepared, then the lamella: the order
     somebody describing an experiment works through it."""

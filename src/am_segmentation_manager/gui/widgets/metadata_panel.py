@@ -48,12 +48,12 @@ from .frame_strip import MISMATCH, STATE_COLOURS
 from .lists import project_box
 from .paths import add_path_menu
 from .theme import (
-    ACCENT,
     MUTED,
     SECTION_HEADING,
     SWATCH_HEIGHT,
     SWATCH_OUTLINE,
     SWATCH_WIDTH,
+    TEXT,
 )
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ def _dot_pixmap(state: str) -> QPixmap:
 
     Shape says what the field holds -- solid, a ring, half -- and colour whether
     that is saved: the list's teal and amber for a filled field and a missing
-    one, the accent for a change still only in the window. Two channels, so
+    one, ink for a change still only in the window. Two channels, so
     neither rests on telling colours apart.
     """
     pixmap = QPixmap(DOT, DOT)
@@ -154,7 +154,7 @@ def _dot_pixmap(state: str) -> QPixmap:
             painter.setBrush(grey)
             painter.drawPie(disc, 90 * 16, 180 * 16)
         else:
-            colour = QColor(ACCENT) if state == "edited" else STATE_COLOURS["corrected"]
+            colour = QColor(TEXT) if state == "edited" else STATE_COLOURS["corrected"]
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(colour)
             painter.drawEllipse(disc)

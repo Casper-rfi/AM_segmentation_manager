@@ -42,13 +42,15 @@ PRESSED = "#e6dccf"
 
 #: One accent, used for selection, focus and hover. A second would have to mean
 #: something, and everything that means something is already spoken for by the
-#: workflow colours.
-ACCENT = "#2f6feb"
+#: workflow colours. It is orange, which is also a class colour, so it stays on
+#: controls and off anything drawn beside a label or the legend; white text on it
+#: holds 4.5:1 (`test_white_text_is_readable_on_the_accent`).
+ACCENT = "#b35c12"
 ACCENT_TEXT = "#ffffff"
 #: The same accent under the pointer or the finger. Not a second colour: a
 #: darker cut of the one above, so a filled button can react without the window
 #: gaining a hue that would have to mean something.
-ACCENT_STRONG = "#2258c4"
+ACCENT_STRONG = "#964a0b"
 
 #: The grip on a splitter handle. Darker than :data:`BORDER`, because it is the
 #: one separator that is meant to be *seen*: a division nobody can tell is
@@ -64,7 +66,7 @@ SCROLL_HANDLE = "#c9bfb1"
 #: indicator in its own colours, so a saturated row left the tick at low
 #: contrast on exactly the row the user is on. A chip is not outlined, so every
 #: fill it uses has to hold against this tint as well as against white.
-SELECTED = "#dbe6fb"
+SELECTED = "#f3e4d4"
 
 #: Text colours for a short annotation beside a value.
 WARNING = "#b26a00"
@@ -104,6 +106,11 @@ SECTION_HEADING = "sectionHeading"
 #: pixels of a 28-pixel button for its mark, and the padlock is drawn larger
 #: than that on purpose; see `label_panel.MARK`.
 PADLOCK_BUTTON = "padlockButton"
+
+#: Object name of a class button on the Label tab. Chosen, it is ringed in
+#: :data:`TEXT` rather than the accent, which would merge into an orange class's
+#: swatch and hide which class a stroke will write.
+CLASS_BUTTON = "classButton"
 
 #: Object name of the timeline's hover card, so the stylesheet can draw it as it
 #: draws a tooltip.
@@ -341,6 +348,7 @@ def stylesheet() -> str:
        the button itself says there is something to write. */
     QToolButton[pending="true"] {{ background: {SELECTED}; border-color: {ACCENT}; }}
     QToolButton#{PADLOCK_BUTTON} {{ padding: 1px; }}
+    QToolButton#{CLASS_BUTTON}:checked {{ border-color: {TEXT}; }}
 
     /* A run of segments is one control: they share their borders, the inner
        corners are square, and the chosen one is filled rather than tinted --
@@ -392,10 +400,13 @@ def stylesheet() -> str:
        that is on screen whatever is being done. They are sized and weighted to
        say so: a tab the eye passes over is a stage of the workflow nobody
        finds. The folder shape is kept -- it is what joins the tab to the pane
-       below it, and an underline would leave the pane belonging to nothing. */
+       below it, and an underline would leave the pane belonging to nothing. The
+       chosen one carries the accent along its top edge; every tab reserves that
+       edge, so choosing one does not move its caption. */
     QTabBar::tab {{
         background: transparent;
         border: 1px solid transparent;
+        border-top: 3px solid transparent;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
         padding: 8px 22px;
@@ -405,6 +416,7 @@ def stylesheet() -> str:
     QTabBar::tab:selected {{
         background: {BASE};
         border-color: {BORDER};
+        border-top-color: {ACCENT};
         border-bottom-color: {BASE};
         color: {TEXT};
         font-weight: bold;

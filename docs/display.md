@@ -37,9 +37,9 @@ of one of these files, is held by `test_docs.py`.
   swallows every press, key, wheel and shortcut itself — that guarantee, held by the widget rather
   than asked of the loop, is what makes turning the loop safe where `busy_dialog.py` says it is not.
   The filter comes off in the same `finally`, one left on being a window nobody can type into.
-- **The mark is the only place the orange and green appear.** Both are segmentation class colours
-  and the timeline draws its states beside that legend, so a third meaning for either reads as
-  data — which is why the banner's bar is the ordinary accent and nothing else is tinted.
+- **The accent is orange, a class colour, so it stays on the controls.** Nothing on the timeline
+  or beside a label takes it, and a chosen class is ringed in ink rather than in orange, which
+  would merge into its swatch (`test_a_chosen_class_is_ringed_in_ink_not_the_accent`).
   `branding.py` holds both paths to it and the one spelling of the product name; a checkout
   without the asset draws nothing rather than failing. **macOS draws no container for a Dock icon**,
   so the icon there carries one: a superellipse over 824/1024 of the canvas, measured off the
@@ -433,8 +433,8 @@ of one of these files, is held by `test_docs.py`.
   curates that neither `experiment.yaml` nor its images position is named as such
   (`test_a_lamella_the_experiment_never_positioned_is_told_so`). A mark keeps its size as the
   picture is zoomed (`ItemIgnoresTransformations`) and its name sits on a filled chip, `grid_view`
-  saying why of both. **One accent and no second colour**: orange and green are segmentation class
-  colours.
+  saying why of both. **Both take the accent**: an overview carries no label for its orange to be
+  read as, and it shows against light and dark grey alike.
 - **The chart carries its own bar, never matplotlib's toolbar.** That toolbar's *Subplots* and
   *Customize* change a figure bound for a paper with nothing recording it, so the bar offers reset,
   pan, zoom, save and copy, pan and zoom still driven by a hidden toolbar

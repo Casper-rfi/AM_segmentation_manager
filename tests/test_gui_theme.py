@@ -85,6 +85,54 @@ def test_every_text_colour_is_readable_on_every_surface(text, surface):
     assert _contrast(getattr(theme, text), getattr(theme, surface)) >= 4.5
 
 
+@pytest.mark.parametrize("fill", ["ACCENT", "ACCENT_STRONG"])
+def test_white_text_is_readable_on_the_accent(fill):
+    """A chosen segment and a dialog's default button put their caption on it."""
+    assert _contrast(theme.ACCENT_TEXT, getattr(theme, fill)) >= 4.5
+
+
+def test_a_chosen_class_is_ringed_in_ink_not_the_accent(themed):
+    """The accent is orange, and so is a class: an orange ring round an orange
+    swatch hides which class a stroke will write."""
+    from qtpy.QtWidgets import QToolButton
+
+    button = QToolButton()
+    button.setObjectName(theme.CLASS_BUTTON)
+    button.setText("GIS")
+    button.setCheckable(True)
+    button.setChecked(True)
+    button.resize(120, 28)
+    image = button.grab().toImage()
+
+    edge = image.pixelColor(0, image.height() // 2)
+    assert edge == QColor(theme.TEXT)
+    assert edge != QColor(theme.ACCENT)
+
+
+def test_the_chosen_tab_is_marked_along_its_top_edge(themed):
+    """The tabs are the one control on screen whatever is being done."""
+    from qtpy.QtWidgets import QTabWidget
+
+    tabs = QTabWidget()
+    tabs.addTab(QWidget(), "Curate")
+    tabs.addTab(QWidget(), "Label")
+    tabs.resize(400, 200)
+    tabs.show()
+    bar = tabs.tabBar()
+    image = bar.grab().toImage()
+
+    def has_stripe(index: int) -> bool:
+        rect = bar.tabRect(index)
+        return any(
+            image.pixelColor(rect.center().x(), y) == QColor(theme.ACCENT)
+            for y in range(rect.top(), rect.top() + 4)
+        )
+
+    assert has_stripe(0)
+    assert not has_stripe(1)
+    tabs.close()
+
+
 def test_the_style_is_the_same_one_everywhere(themed):
     """PyQt5 here and PySide6 on the user's machine, so the style is chosen
     rather than inherited from the platform.

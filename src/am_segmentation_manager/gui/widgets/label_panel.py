@@ -76,7 +76,7 @@ from .label_canvas import (
     TOOL_FILL,
     LabelCanvas,
 )
-from .theme import BADGE_STYLES, GROUP_GAP, PADLOCK_BUTTON
+from .theme import BADGE_STYLES, CLASS_BUTTON, GROUP_GAP, PADLOCK_BUTTON
 from .versions_bar import DIFFERENCE_CLASS, VersionsBar
 
 logger = logging.getLogger(__name__)
@@ -608,6 +608,7 @@ class LabelPanel(QWidget):
 
             button = QToolButton()
             button.setText(name)
+            button.setObjectName(CLASS_BUTTON)
             button.setIcon(self._swatch(class_index))
             button.setIconSize(QSize(MARK, MARK))
             _larger_text(button)
