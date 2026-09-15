@@ -2,10 +2,9 @@
 
 An :class:`.ImageView` with marks placed in the picture's own pixel coordinates
 and told to ignore the view's transform, so zooming magnifies the picture and
-leaves each mark its size. **One accent and no second colour**: every mark is the
-window's accent and the lamella being looked at is drawn heavier with its name;
-orange and green are class colours, which ``docs/display.md`` says may not mark a
-position.
+leaves each mark its size. Every mark is the window's accent, and the lamella
+being looked at is drawn heavier with its name above every ring; an overview
+carries no label for the orange to be read as a class.
 """
 from __future__ import annotations
 
@@ -43,6 +42,10 @@ LABEL_PADDING: float = 3.0
 #: Drawn over the picture. Above :data:`~.image_view.BACKDROP_Z` and the pixmap,
 #: which sit at the default zero.
 MARK_Z: float = 10.0
+
+#: The current lamella's name, above every ring: a neighbour's ring added after
+#: the name at the same height is drawn over it.
+LABEL_Z: float = MARK_Z + 1
 
 
 class GridView(ImageView):
@@ -140,7 +143,7 @@ class GridView(ImageView):
         chip.setBrush(QBrush(colour))
         chip.setPos(x, y)
         chip.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
-        chip.setZValue(MARK_Z)
+        chip.setZValue(LABEL_Z)
         self.scene().addItem(chip)
         self._marks.append(chip)
 

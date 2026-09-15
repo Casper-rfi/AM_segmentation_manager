@@ -796,3 +796,27 @@ def test_the_grid_view_survives_stepping_between_lamellae(qt_app, grid_project: 
             assert window.controller.mode == "grid", window.controller.lamella.name
     finally:
         destroy(window)
+
+
+def test_the_current_lamellas_name_is_drawn_above_every_ring(qt_app):
+    """A neighbour's ring added after the name, at the same height, was drawn
+    over it."""
+    from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsRectItem
+
+    from am_segmentation_manager.gui.widgets.grid_view import GridView
+    from am_segmentation_manager.overview import LamellaMarker
+
+    view = GridView()
+    view.set_markers(
+        (
+            LamellaMarker("05-casual-corgi", 0.5, 0.5, True),
+            LamellaMarker("06-next-door", 0.5, 0.45, True),
+        ),
+        "05-casual-corgi",
+        (400, 400),
+    )
+
+    rings = [item for item in view._marks if isinstance(item, QGraphicsEllipseItem)]
+    names = [item for item in view._marks if isinstance(item, QGraphicsRectItem)]
+    assert len(rings) == 2 and len(names) == 1
+    assert all(names[0].zValue() > ring.zValue() for ring in rings)
