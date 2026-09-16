@@ -238,15 +238,20 @@ def qt_app():
 
     Imported here rather than at the top, so the suite still collects where Qt
     is not installed; the GUI tests skip themselves there. On Windows it draws
-    in :data:`WINDOWS_UI_FONT`, as a desktop there would.
+    in :data:`WINDOWS_UI_FONT`, as a desktop there would. It carries the theme
+    from the start, as ``am-seg gui`` does, so what a layout test measures is
+    what a user sees rather than whatever an earlier test left applied.
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from qtpy.QtGui import QFont
     from qtpy.QtWidgets import QApplication
 
+    from am_segmentation_manager.gui.widgets.theme import apply_theme
+
     app = QApplication.instance() or QApplication([])
     if sys.platform == "win32":
         app.setFont(QFont(*WINDOWS_UI_FONT))
+    apply_theme(app)
     return app
 
 
