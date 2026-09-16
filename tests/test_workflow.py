@@ -72,3 +72,19 @@ def test_every_job_but_one_installs_what_the_lock_holds():
     ]
 
     assert not unlocked, unlocked
+
+
+def test_an_action_from_outside_github_is_pinned_to_a_commit():
+    """A tag can be moved to other code, and some publishers -- astral-sh among
+    them -- publish no major-version tag to float on at all. GitHub's own
+    ``actions/`` are the exception, and a local action has no version."""
+    loose = [
+        step["uses"]
+        for job in _jobs().values()
+        for step in job["steps"]
+        if "uses" in step
+        and not step["uses"].startswith(("actions/", "./"))
+        and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"])
+    ]
+
+    assert not loose, loose

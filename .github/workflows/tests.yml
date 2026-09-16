@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui
@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
       - run: uv sync --locked
@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/qt-libraries
         if: runner.os == 'Linux'
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
@@ -92,7 +92,7 @@ jobs:
           - { os: macos-latest, python: "3.13" }
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
@@ -107,7 +107,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/qt-libraries
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui --extra ml
@@ -131,7 +131,7 @@ jobs:
       - run: |
           sudo locale-gen ${{ matrix.locale }}
           sudo update-locale
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui
@@ -149,6 +149,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/qt-libraries
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
       - run: uv sync --upgrade --extra gui --extra ml
       - run: uv run pytest -q
