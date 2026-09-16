@@ -437,7 +437,7 @@ of one of these files, is held by `test_docs.py`.
   read as, and it shows against light and dark grey alike.
 - **The chart carries its own bar, never matplotlib's toolbar.** That toolbar's *Subplots* and
   *Customize* change a figure bound for a paper with nothing recording it, so the bar offers reset,
-  pan, zoom, save and copy, pan and zoom still driven by a hidden toolbar
+  pan, zoom, save, copy and the table as CSV, pan and zoom still driven by a hidden toolbar
   (`test_the_chart_offers_no_way_to_edit_the_figure`). **A cell nothing was counted in is grey and
   unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
 - **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
