@@ -286,6 +286,45 @@ def test_no_tab_needs_more_room_than_the_smallest_screen_supported(window):
     assert window.minimumSizeHint().height() <= tall
 
 
+#: Set this to a directory to save a picture of every tab at each size in
+#: :data:`CAPTURED_SIZES`, for a person to look at how the window lays out
+#: under another platform's fonts, e.g.
+#: ``AM_SEG_SCREENSHOTS=screenshots uv run pytest tests/test_gui_window.py -k captured``.
+SCREENSHOTS_ENV_VAR = "AM_SEG_SCREENSHOTS"
+
+#: The smallest screen the window must fit, and a common desktop one.
+CAPTURED_SIZES = (SMALLEST_SUPPORTED_SCREEN, (1920, 1080))
+
+
+@pytest.mark.skipif(
+    not os.environ.get(SCREENSHOTS_ENV_VAR), reason=f"{SCREENSHOTS_ENV_VAR} is not set"
+)
+@pytest.mark.parametrize("size", CAPTURED_SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
+def test_every_tab_is_captured_for_a_person_to_look_at(window, qt_app, size):
+    """Not a check: the layout tests say a row does not fit, and only a picture
+    says whether that looks wrong. A window Qt will not shrink that far is
+    captured at the width it keeps, which is itself the finding."""
+    import sys
+
+    directory = Path(os.environ[SCREENSHOTS_ENV_VAR])
+    directory.mkdir(parents=True, exist_ok=True)
+    window.show()
+    window.resize(*size)
+    for index in range(window.tabs.count()):
+        window.tabs.setCurrentIndex(index)
+        settle(qt_app, lambda: window.tabs.currentIndex() == index, what="the tab")
+        for _ in range(5):
+            qt_app.processEvents()
+        name = window.tabs.tabText(index).replace(" ", "-").lower()
+        shown = window.size()
+        path = directory / (
+            f"{sys.platform}-{size[0]}x{size[1]}-{index + 1}-{name}"
+            f"-at-{shown.width()}x{shown.height()}.png"
+        )
+
+        assert window.grab().save(str(path)), f"could not write {path}"
+
+
 def test_the_view_controls_wrap_rather_than_widening_the_window(window):
     """The Label tab's controls are the row that broke the rule above.
 

@@ -13,7 +13,8 @@ from pathlib import Path
 import yaml
 
 REPOSITORY = Path(__file__).resolve().parent.parent
-WORKFLOW = REPOSITORY / ".github" / "workflows" / "tests.yml"
+WORKFLOWS = REPOSITORY / ".github" / "workflows"
+WORKFLOW = WORKFLOWS / "tests.yml"
 
 #: The job that resolves the newest dependencies instead of the locked ones.
 UNLOCKED_JOB = "newest"
@@ -25,6 +26,15 @@ def _pyproject() -> dict:
 
 def _jobs() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+
+def _every_job() -> dict:
+    """Return the jobs of every workflow, each named for its file."""
+    return {
+        f"{path.name}:{name}": job
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+        for name, job in yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"].items()
+    }
 
 
 def _classified_versions() -> set[str]:
@@ -63,8 +73,8 @@ def test_every_job_but_one_installs_what_the_lock_holds():
     of uv.lock, and the run tests versions nobody committed."""
     unlocked = [
         f"{name}: {step['run']}"
-        for name, job in _jobs().items()
-        if name != UNLOCKED_JOB
+        for name, job in _every_job().items()
+        if name != f"{WORKFLOW.name}:{UNLOCKED_JOB}"
         for step in job["steps"]
         if "run" in step
         and re.match(r"uv (sync|run)\b", step["run"])
@@ -80,7 +90,7 @@ def test_an_action_from_outside_github_is_pinned_to_a_commit():
     ``actions/`` are the exception, and a local action has no version."""
     loose = [
         step["uses"]
-        for job in _jobs().values()
+        for job in _every_job().values()
         for step in job["steps"]
         if "uses" in step
         and not step["uses"].startswith(("actions/", "./"))

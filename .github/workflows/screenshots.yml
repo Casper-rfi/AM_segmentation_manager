@@ -1,0 +1,42 @@
+# Pictures of every tab of the window, drawn with each platform's fonts.
+#
+# Started by hand from the Actions tab ("Run workflow"). The layout tests say
+# that a row does not fit on a platform; these say how that looks. Each run
+# uploads one artifact per platform, named for it.
+name: screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  UV_PYTHON_PREFERENCE: only-managed
+  AM_SEG_SCREENSHOTS: screenshots
+
+jobs:
+  capture:
+    name: capture (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qt-libraries
+        if: runner.os == 'Linux'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra gui
+      - run: uv run --locked pytest -q tests/test_gui_window.py -k captured
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: screenshots/
+          if-no-files-found: error
