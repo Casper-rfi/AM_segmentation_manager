@@ -1349,7 +1349,8 @@ def canvas(qt_app, config):
     canvas.resize(200, 200)
     canvas.set_frame(np.zeros((60, 80), dtype=np.uint8), new_label((60, 80)))
     canvas.set_editable(True)
-    return canvas
+    yield canvas
+    destroy(canvas)
 
 
 def drag(canvas, start, end):

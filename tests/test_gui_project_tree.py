@@ -14,6 +14,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -48,7 +50,8 @@ def qt_app():
 def tree(qt_app) -> ProjectTree:
     widget = ProjectTree()
     widget.set_projects(FOLDERS, LABELS)
-    return widget
+    yield widget
+    destroy(widget)
 
 
 def _folder(tree, name: str):
@@ -434,7 +437,6 @@ def test_no_button_in_a_project_box_is_ever_clipped(qt_app):
     from qtpy.QtWidgets import QPushButton
 
     from am_segmentation_manager.gui.widgets.lists import project_box
-    from conftest import destroy
 
     box, _filter_edit, _tree = project_box("Projects", on_check_all=lambda _on: None)
     try:

@@ -11,6 +11,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -47,6 +49,7 @@ def timeline(qt_app):
     widget = FrameTimeline()
     widget.resize(400, widget.height())
     yield widget
+    destroy(widget)
 
 
 def _render(widget) -> QImage:

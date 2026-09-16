@@ -15,6 +15,8 @@ import threading
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -79,6 +81,7 @@ def test_an_exception_escaping_a_slot_is_logged_rather_than_printed(
 
     assert "ZeroDivisionError" in caplog.text
     assert "Traceback (most recent call last)" in caplog.text
+    destroy(widget)
 
 
 def test_the_failure_is_offered_to_the_reviewer(qt_app, offered):
@@ -90,6 +93,7 @@ def test_the_failure_is_offered_to_the_reviewer(qt_app, offered):
     _drain(qt_app)
 
     assert offered == ["ZeroDivisionError: division by zero"]
+    destroy(widget)
 
 
 def test_only_one_failure_is_on_screen_at_a_time(qt_app, offered, monkeypatch):

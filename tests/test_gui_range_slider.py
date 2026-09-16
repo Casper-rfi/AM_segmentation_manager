@@ -12,6 +12,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -37,7 +39,8 @@ def slider(qt_app) -> RangeSlider:
     """A slider over 0..255 resting wide open, laid out so x maps to a value."""
     widget = RangeSlider(0, 255, 0, 255)
     widget.resize(200, 20)
-    return widget
+    yield widget
+    destroy(widget)
 
 
 def _double_click_at(slider, x: float) -> None:

@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -61,7 +63,9 @@ def collection(tmp_path: Path) -> Path:
 def dialog(qt_app, collection: Path) -> AddProjectsDialog:
     controller = OperationsController()
     controller.set_start_path(collection)
-    return AddProjectsDialog(None, controller, collection)
+    dialog = AddProjectsDialog(None, controller, collection)
+    yield dialog
+    destroy(dialog)
 
 
 def _rows(dialog) -> list[tuple[str, str, bool]]:

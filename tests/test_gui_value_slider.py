@@ -12,6 +12,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -37,7 +39,8 @@ def slider(qt_app) -> ValueSlider:
     widget = ValueSlider()
     widget.setRange(0, 255)
     widget.resize(200, widget.sizeHint().height())
-    return widget
+    yield widget
+    destroy(widget)
 
 
 def _drawn(widget) -> QImage:

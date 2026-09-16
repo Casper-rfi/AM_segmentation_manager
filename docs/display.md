@@ -505,13 +505,15 @@ of one of these files, is held by `test_docs.py`.
   and `test_gui_*` sorts before most other tests. That is how a locale-dependent `strptime('%p')`
   bug appears only in full runs on a non-English locale. `LC_ALL=… pytest` does **not** test this;
   `AM_SEG_TEST_LOCALE=… pytest` does.
-- **A test that builds a window destroys it** (`conftest.destroy`), `close()` only hiding one.
+- **A test that builds a window destroys it** (`conftest.destroy`), `close()` only hiding one, and
+  the suite fails any test that leaves a top-level widget alive
+  (`test_a_test_that_leaves_a_widget_alive_is_named_and_one_that_frees_its_own_is_not`).
   `setStyleSheet` and `setPalette` walk every live widget at a cost that grows faster than linearly,
-  so a window left behind slows the *later* files that apply the theme rather than the one that
-  leaked it — `test_the_keyboard_picks_out_the_keys_it_is_given` is the worst case, and is fast when
-  run alone. Enough of them also segfault `pytest tests/test_gui_*.py`. `deleteLater()` does not
-  free one: the window is held by the bound methods in its own key bindings, and Qt owns the other
-  half of that cycle.
+  so a window left behind slows the *later* tests that apply the theme rather than the one that
+  leaked it. `deleteLater()` does not free one: the window is held by the bound methods in its own
+  key bindings, and `processEvents` never carries out a deferred deletion anyway, which is why
+  `destroy` flushes them. The guard only counts: a hover card is a top-level window its strip still
+  owns, and deleting what is left crashes a later test.
 - **A wait names what it waits for** (`conftest.settle`), which requires a condition and fails on
   timeout. One with nothing to wait for cannot tell the work finishing from the time running out, so
   it sleeps through its whole timeout and then asserts nothing.

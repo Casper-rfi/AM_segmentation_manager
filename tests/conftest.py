@@ -35,6 +35,7 @@ import locale
 import os
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -280,6 +281,40 @@ def destroy(widget) -> None:
     if shiboken6.isValid(widget):
         shiboken6.delete(widget)
     QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def top_level_widget_names() -> list[str]:
+    """Return the class name of every live top-level widget, or none before Qt loads.
+
+    Asks only for top-level widgets: walking ``allWidgets()`` from between
+    tests has crashed the run.
+    """
+    widgets = sys.modules.get("qtpy.QtWidgets")
+    if widgets is None or widgets.QApplication.instance() is None:
+        return []
+    return sorted(
+        widget.metaObject().className()
+        for widget in widgets.QApplication.topLevelWidgets()
+    )
+
+
+@pytest.fixture(autouse=True)
+def no_widget_left_behind():
+    """Fail a test that leaves a top-level widget alive, naming what it left.
+
+    A live widget slows every later test that applies the theme; see
+    :func:`destroy`. This only counts: deleting what is left would free popups
+    their owners still use, which crashes a later test.
+    """
+    before = Counter(top_level_widget_names())
+    yield
+    left = Counter(top_level_widget_names()) - before
+    if left:
+        pytest.fail(
+            f"left {left.total()} top-level widget(s) alive: "
+            f"{', '.join(sorted(left.elements()))}. Free each with conftest.destroy.",
+            pytrace=False,
+        )
 
 
 def break_import(monkeypatch, module: str, error: Exception) -> None:
