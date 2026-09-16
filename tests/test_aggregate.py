@@ -35,6 +35,7 @@ from am_segmentation_manager.reporting import format_counts, format_cross_tabula
 
 
 def record(name: str, modality: str = "SEM", state: str = "selected") -> ImageRecord:
+    """Return a record relative to the working directory, which an export names from ``Path()``."""
     suffix = "" if state == "selected" else f"/{state}"
     directory = "sem" if modality == "SEM" else "fib"
     return ImageRecord(
@@ -695,7 +696,7 @@ def test_the_image_export_names_both_projects_without_colliding(tmp_path: Path):
     )
     output = tmp_path / "images.csv"
     export_image_metadata_csv(
-        project.image_records, tmp_path, output,
+        project.image_records, Path(), output,
         include_headers=False, projects=ag.project_lookup([project]),
     )
 
@@ -712,7 +713,7 @@ def test_the_project_export_has_no_duplicate_columns(tmp_path: Path):
     and both are columns here. Sharing a name let DictWriter pick a winner
     silently, and the identity came out blank."""
     projects = [make_project("p", "p", "HeLa", [record("a")])]
-    output = export_project_metadata_csv(projects, tmp_path, tmp_path / "p.csv")
+    output = export_project_metadata_csv(projects, Path(), tmp_path / "p.csv")
 
     header = output.read_text(encoding="utf-8").splitlines()[0].split(",")
 
@@ -731,7 +732,7 @@ def test_the_project_export_records_which_file_supplied_each_value(tmp_path: Pat
         project, "experiment_metadata",
         ExperimentMetadata(sample="HeLa", sources={"sample": Path("AM_metadata.yaml")}),
     )
-    output = export_project_metadata_csv([project], tmp_path, tmp_path / "p.csv")
+    output = export_project_metadata_csv([project], Path(), tmp_path / "p.csv")
     row = next(iter(csv.DictReader(output.open(encoding="utf-8"))))
 
     assert row["sample_source"] == "AM_metadata.yaml"
@@ -741,7 +742,7 @@ def test_the_image_export_can_skip_headers(tmp_path: Path):
     """A purely structural listing should not pay to open every file."""
     only = record("a")
     output = export_image_metadata_csv(
-        [only], tmp_path, tmp_path / "images.csv", include_headers=False
+        [only], Path(), tmp_path / "images.csv", include_headers=False
     )
     row = next(iter(csv.DictReader(output.open(encoding="utf-8"))))
 

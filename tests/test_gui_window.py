@@ -3893,7 +3893,8 @@ def test_a_value_says_on_hover_which_file_it_came_from(metadata_panel):
     sample = metadata_panel.dots["sample"].toolTip()
     organisation = metadata_panel.dots["organisation"].toolTip()
 
-    assert "From /" in sample and sample.endswith("AM_metadata.yaml")
+    shown = sample.split("From ", 1)[1]
+    assert Path(shown).is_absolute() and sample.endswith("AM_metadata.yaml")
     assert organisation.endswith("experiment.yaml")
 
 

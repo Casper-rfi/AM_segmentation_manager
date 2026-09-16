@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,7 @@ def test_a_write_creates_the_destination_directory(tmp_path: Path):
     assert destination.read_text() == "written"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
 def test_a_replaced_file_keeps_its_own_permissions(tmp_path: Path):
     """Replacing a file is not a decision about who may read it."""
     destination = tmp_path / "out.txt"
@@ -150,6 +152,7 @@ def test_a_write_with_no_decision_still_replaces(tmp_path: Path):
     assert destination.read_text() == "new"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
 def test_a_committed_file_keeps_the_destination_permissions(tmp_path: Path):
     """The mode is settled before the predicate runs, so deciding late does not
     cost the file its permissions."""

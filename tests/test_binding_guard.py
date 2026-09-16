@@ -96,15 +96,13 @@ def test_the_refusal_names_a_command_that_can_be_run(config, monkeypatch):
     interpreter itself, where the project environment has one.
     """
     monkeypatch.setattr("conftest.installed_qt_binding", lambda: "PyQt5")
-    monkeypatch.setattr(
-        "conftest.supported_interpreters",
-        lambda: [Path("/repository/.venv/bin/python")],
-    )
+    interpreter = Path("/repository/.venv/bin/python")
+    monkeypatch.setattr("conftest.supported_interpreters", lambda: [interpreter])
 
     with pytest.raises(pytest.UsageError) as excinfo:
         pytest_configure(config)
 
-    assert "/repository/.venv/bin/python -m pytest" in str(excinfo.value)
+    assert f"{interpreter} -m pytest" in str(excinfo.value)
 
 
 def test_the_refusal_still_says_what_to_do_where_no_interpreter_is_found(

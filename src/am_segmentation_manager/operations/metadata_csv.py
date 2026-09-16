@@ -17,7 +17,7 @@ from pathlib import Path
 from ..config import SegmentationConfig
 from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
-from ..io.path import make_path_relative
+from ..io.path import exported_relative_path
 from ..io.tables import refuse_existing, write_csv
 from ..metadata import DESCRIPTIVE_FIELDS, format_field_value
 from ..models import ImageRecord, Project
@@ -116,8 +116,8 @@ def image_rows(
             "state": current_state(record),
             "label_state": label_state(record),
             "label_shared": record.label_shared,
-            "image": make_path_relative(record.image_path, start_path),
-            "label": make_path_relative(label, start_path) if label else "",
+            "image": exported_relative_path(record.image_path, start_path),
+            "label": exported_relative_path(label, start_path) if label else "",
         }
 
         entry = metadata.get(record.image_path)
@@ -198,10 +198,10 @@ def _fill_beam(
         "label_state": label_state(record) if record is not None else "",
         "label_shared": record.label_shared if record is not None else "",
         "image": (
-            make_path_relative(record.image_path, start_path)
+            exported_relative_path(record.image_path, start_path)
             if record is not None else ""
         ),
-        "label": make_path_relative(label, start_path) if label else "",
+        "label": exported_relative_path(label, start_path) if label else "",
     }
     for field in PER_BEAM_COLUMNS:
         row[beam_column(modality, field)] = values[field]
@@ -287,6 +287,8 @@ def export_image_metadata_csv(
             header is read.
         UnreadableMetadataError: If the scan could not read a metadata file of
             a project these images belong to, before any header is read.
+        NoRelativePath: If a file has no path relative to *start_path*, before
+            anything is written.
     """
     refuse_existing([output], overwrite=overwrite)
     records = list(records)
@@ -326,7 +328,7 @@ def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str
         row: dict[str, object] = {
             PROJECT_IDENTITY_COLUMN: project.key,
             "name": project.name,
-            "path": make_path_relative(project.path, start_path),
+            "path": exported_relative_path(project.path, start_path),
             "lamellae": len(project.lamellae),
             "stages": sum(len(lamella.stages) for lamella in project.lamellae),
             "sem_images": sum(1 for record in records if record.modality == "SEM"),
@@ -361,6 +363,8 @@ def export_project_metadata_csv(
         FileExistsError: If *output* exists and *overwrite* is False.
         UnreadableMetadataError: If the scan could not read a metadata file of
             any of *projects*.
+        NoRelativePath: If a project has no path relative to *start_path*,
+            before anything is written.
     """
     refuse_existing([output], overwrite=overwrite)
     projects = list(projects)
@@ -444,8 +448,8 @@ def measurement_rows(
             "variant": record.variant or "base",
             "state": current_state(record),
             "label_shared": record.label_shared,
-            "image": make_path_relative(record.image_path, start_path),
-            "label": make_path_relative(label, start_path) if label else "",
+            "image": exported_relative_path(record.image_path, start_path),
+            "label": exported_relative_path(label, start_path) if label else "",
             "label_status": measurement_status(measurement),
         }
 
@@ -513,6 +517,8 @@ def export_label_measurements_csv(
 
     Raises:
         FileExistsError: If *output* exists and *overwrite* is False.
+        NoRelativePath: If a file has no path relative to *start_path*, before
+            anything is written.
     """
     refuse_existing([output], overwrite=overwrite)
     records = list(records)

@@ -352,11 +352,11 @@ def test_a_loose_image_is_keyed_by_its_series_and_beam(tmp_path: Path) -> None:
     lamella = build_loose_lamella(tmp_path)
     electron, ion = (lamella / name for name in LOOSE_PAIR)
 
-    assert group_key(record_from_image_path(electron)).endswith(
-        f"adaptive_sem_labels/{LOOSE_PAIR[0]}"
+    assert Path(group_key(record_from_image_path(electron))).parts[-2:] == (
+        "adaptive_sem_labels", LOOSE_PAIR[0]
     )
-    assert group_key(record_from_image_path(ion)).endswith(
-        f"adaptive_fib_labels/{LOOSE_PAIR[1]}"
+    assert Path(group_key(record_from_image_path(ion))).parts[-2:] == (
+        "adaptive_fib_labels", LOOSE_PAIR[1]
     )
 
 

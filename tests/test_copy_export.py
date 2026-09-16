@@ -55,7 +55,7 @@ def plan_for(source: Path, destination: Path) -> CopyPlan:
 
 def relative_destinations(plan: CopyPlan) -> set[str]:
     return {
-        str(item.destination.relative_to(plan.destination)) for item in plan.items
+        item.destination.relative_to(plan.destination).as_posix() for item in plan.items
     }
 
 

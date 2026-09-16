@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,7 @@ def _record(tmp_path: Path, label: Path) -> ImageRecord:
 # Permissions
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
 def test_a_compressed_label_keeps_the_permissions_it_had(tmp_path: Path, stub_encoder):
     """A label in a shared archive that only its author can read is a label
     nobody else can use, so recompressing must not narrow it."""
@@ -199,6 +201,7 @@ def test_a_corrected_label_is_refused_before_anything_is_written(
     assert label.read_bytes() == before
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
 def test_a_confirmed_corrected_label_keeps_its_permissions(tmp_path: Path, stub_encoder):
     """The confirmed path is the one a proofread label actually travels."""
     label = _label(tmp_path)

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .. import __version__
 from ..history import CONFIG_DISPLAY, USER_ENV_VAR, USER_FILENAME
+from ..io.path import NoRelativePath
 from . import adding, curating, quantifying, recording, restoring
 from .logs import DEFAULT_GUI_LOG, LOG_FILE_MAX_BYTES, open_log_file
 from .scope import report_refused
@@ -174,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
         if not hasattr(args, "overwrite"):
             raise
         report_refused(error)
+        return 2
+    except NoRelativePath as error:
+        logger.error("Could not export: %s", error)
         return 2
 
 

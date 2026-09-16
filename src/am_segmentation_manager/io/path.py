@@ -4,26 +4,61 @@ Two rules the package has to apply the same way everywhere: how a path is
 written relative to a base, for CSVs and command-line output, and what a
 relative key read out of a hand-editable file may look like. Both live here
 rather than beside their first caller, because more than one caller has to
-agree about them.
+agree about them. **A path written here separates directories with '/' on every
+platform**, so a file written on Windows names the same files on Linux.
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-__all__ = ["checked_relative_key", "make_path_relative"]
+__all__ = [
+    "NoRelativePath",
+    "checked_relative_key",
+    "exported_relative_path",
+    "make_path_relative",
+]
+
+
+class NoRelativePath(ValueError):
+    """A path an export must write relative to a folder has no such path."""
+
+
+def exported_relative_path(path: Path, base_path: Path) -> str:
+    """Return *path* relative to *base_path*, for a file another machine reads.
+
+    Outside *base_path* the path climbs with ``..``.
+
+    Raises:
+        NoRelativePath: Where no relative path exists, as between two drives on
+            Windows. An absolute path in its place would name a file on this
+            machine only.
+    """
+    try:
+        return path.resolve().relative_to(base_path.resolve()).as_posix()
+    except (ValueError, RuntimeError):
+        pass
+    try:
+        return Path(os.path.relpath(path, base_path)).as_posix()
+    except ValueError as error:
+        raise NoRelativePath(
+            f"{path} has no path relative to {base_path}, which every path in "
+            f"this export is written from ({error}). Start from a folder on the "
+            f"same drive as the data."
+        ) from error
 
 
 def make_path_relative(path: Path, base_path: Path) -> str:
-    """Return a string path for *path* relative to *base_path*.
+    """Return *path* relative to *base_path*, for showing.
 
-    Attempts ``Path.resolve().relative_to(base_path.resolve())``. If *path*
-    is not a subpath of *base_path*, falls back to ``os.path.relpath``.
+    As :func:`exported_relative_path`, except that where no relative path exists
+    the absolute path is returned: a report naming a file somehow is better than
+    one that cannot be shown.
     """
     try:
-        return str(path.resolve().relative_to(base_path.resolve()))
-    except (ValueError, RuntimeError):
-        return os.path.relpath(path, base_path)
+        return exported_relative_path(path, base_path)
+    except NoRelativePath:
+        return Path(path).resolve().as_posix()
 
 
 def checked_relative_key(key: str, base: Path) -> str:

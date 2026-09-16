@@ -217,3 +217,26 @@ def test_the_log_file_receives_crash_dumps(tmp_path: Path):
     written = log.read_text(encoding="utf-8")
     assert "Fatal Python error" in written
     assert "Current thread" in written
+
+
+def test_an_export_with_no_relative_path_is_refused_with_a_message(
+    monkeypatch, capfd, tmp_path: Path
+):
+    """A file on another drive than the start folder, on Windows: a refusal to
+    act on, not a traceback."""
+    from am_segmentation_manager.cli import quantifying
+    from am_segmentation_manager.io.path import NoRelativePath
+
+    def refuse(*args, **kwargs):
+        raise NoRelativePath("D:/data has no path relative to C:/export")
+
+    monkeypatch.setattr(quantifying, "export_project_metadata_csv", refuse)
+    output = tmp_path / "projects.csv"
+
+    result = main(["export-projects-csv", str(tmp_path), "-o", str(output)])
+
+    captured = capfd.readouterr()
+
+    assert result == 2
+    assert "no path relative to" in captured.out + captured.err
+    assert not output.exists()

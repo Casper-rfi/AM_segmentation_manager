@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from ..frames import group_by_acquisition
-from ..io.path import make_path_relative
+from ..io.path import exported_relative_path
 from ..io.tables import write_csv
 from ..models import ImageRecord
 from .label_groups import condition_sort_key
@@ -111,7 +111,7 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
 
 def _image_cell(record: ImageRecord | None, start_path: Path) -> str:
     """Return an image's recorded path, or blank where that beam has none."""
-    return "" if record is None else make_path_relative(record.image_path, start_path)
+    return "" if record is None else exported_relative_path(record.image_path, start_path)
 
 
 def _label_cell(
@@ -134,7 +134,7 @@ def _label_cell(
         return ""
     if not include_empty_labels and is_empty(label) is True:
         return ""
-    return make_path_relative(label, start_path)
+    return exported_relative_path(label, start_path)
 
 
 def build_training_rows(
@@ -351,6 +351,8 @@ def export_training_csv(
     Raises:
         FileExistsError: If a file this would write exists and *overwrite* is
             False. Nothing has been read or written by then.
+        NoRelativePath: If a file has no path relative to *start_path*, before
+            anything is written.
         ValueError: If *conditions* is not a known policy.
     """
     if conditions not in ("primary", "all"):

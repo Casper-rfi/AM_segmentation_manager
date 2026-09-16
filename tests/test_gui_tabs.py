@@ -1249,9 +1249,10 @@ def test_a_project_path_is_absolute():
     """A path pasted into a terminal has to be, or copying one is no use."""
     controller = at("20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57")
 
-    assert controller.project_path(0) == Path(
-        "/collection/20260728_CB_AM_bitmap/AutoLamella-2026-07-28-13-57"
-    )
+    path = controller.project_path(0)
+
+    assert path is not None and path.is_absolute()
+    assert path.parts[-2:] == ("20260728_CB_AM_bitmap", "AutoLamella-2026-07-28-13-57")
 
 
 def test_a_path_is_not_invented_for_a_row_that_is_not_there():

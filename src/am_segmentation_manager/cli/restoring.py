@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -363,7 +362,7 @@ def _cmd_archive(args: argparse.Namespace) -> int:
 
     versions = archived_versions(project)
     if path.is_file():
-        target = make_path_relative(path, project).replace(os.sep, "/")
+        target = make_path_relative(path, project)
         versions = [version for version in versions if version.target == target]
 
     print(f"{archive_root(project)}")

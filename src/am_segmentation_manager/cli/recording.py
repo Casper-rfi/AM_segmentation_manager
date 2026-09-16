@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -377,7 +376,7 @@ def _cmd_history(args: argparse.Namespace) -> int:
 
     target = args.target
     if target is None and path.is_file():
-        target = make_path_relative(path, project).replace(os.sep, "/")
+        target = make_path_relative(path, project)
 
     log = read_log(project)
     entries = events_for(log, target) if target else list(log.events)
