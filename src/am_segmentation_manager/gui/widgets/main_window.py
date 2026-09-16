@@ -125,6 +125,11 @@ DEFAULT_SIZE = (1600, 950)
 #: rather than something wedged into the corner, as the shortcut list keeps.
 SCREEN_MARGIN = 40
 
+def user_settings() -> QSettings:
+    """Return the store the window keeps its own preferences in, for this user."""
+    return QSettings(SETTINGS_ORGANISATION, SETTINGS_APPLICATION)
+
+
 def _setting_text(settings: QSettings, key: str) -> str:
     """Return the text stored under *key*, or an empty string where none is."""
     value = settings.value(key, "", type=str)
@@ -295,9 +300,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.setWindowTitle(PRODUCT_NAME)
         self.resize(*DEFAULT_SIZE)
 
-        self.settings = settings if settings is not None else QSettings(
-            SETTINGS_ORGANISATION, SETTINGS_APPLICATION
-        )
+        self.settings = settings if settings is not None else user_settings()
         #: Whether the screen the window is on is already being watched. Set
         #: once: a signal connected again on every show would be delivered
         #: once per connection.

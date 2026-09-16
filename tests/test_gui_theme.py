@@ -691,6 +691,10 @@ def test_the_startup_work_waits_for_the_window_to_appear(qt_app, tmp_path, monke
 
     monkeypatch.setattr(app, "CurationWindow", FakeWindow, raising=False)
     monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.main_window.user_settings",
+        lambda: QSettings(str(tmp_path / "settings.ini"), QSettings.IniFormat),
+    )
+    monkeypatch.setattr(
         "am_segmentation_manager.gui.widgets.main_window.CurationWindow", FakeWindow
     )
     monkeypatch.setattr(

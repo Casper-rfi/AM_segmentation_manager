@@ -24,8 +24,8 @@ need the second environment `scripts/setup_ml.sh` builds.
 conflicts decided one at a time or a folder, project or lamella at once.
 [`decisions.md`](decisions.md) § History says how each of those decides.
 
-**Settings** (F2) hold the name changes are recorded under and what each control opens at, the
-latter declared in `gui/preferences.py` and reaching no write path.
+**Settings** (F2) hold the name changes are recorded under, the accent the window opens in and what
+each control opens at, the last two declared in `gui/preferences.py` and reaching no write path.
 
 ## What to pick up next
 

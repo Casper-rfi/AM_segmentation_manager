@@ -5031,6 +5031,37 @@ def test_every_bound_key_has_somewhere_to_be_drawn(window):
     assert _keys_of(window._keys.bindings) <= drawable
 
 
+@pytest.mark.parametrize("passed", [True, False], ids=["given", "the user's"])
+def test_the_window_opens_in_the_accent_its_settings_hold(
+    qt_app, settings, monkeypatch, passed
+):
+    """Read before the window is built, from the same store the window then
+    keeps -- including the user's own, where none is given."""
+    from am_segmentation_manager.gui import app as gui_app
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets import main_window, theme
+
+    monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
+    monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
+    monkeypatch.setattr(main_window, "user_settings", lambda: settings)
+    preferences.write(settings, {"accent": "blue"})
+    style, palette, previous = qt_app.styleSheet(), qt_app.palette(), theme.active_accent()
+
+    _application, window = gui_app.build_window(settings=settings if passed else None)
+    try:
+        # build_window queues bring_to_front; left queued, it would run on the
+        # destroyed window and raise in a later test's event loop.
+        qt_app.processEvents()
+        assert theme.active_accent() == theme.ACCENTS["blue"]
+        assert theme.ACCENTS["blue"].colour in qt_app.styleSheet()
+        assert window.settings is settings
+    finally:
+        destroy(window)
+        theme.apply_theme(qt_app, previous)
+        qt_app.setStyleSheet(style)
+        qt_app.setPalette(palette)
+
+
 def test_starting_on_a_folder_shows_it_in_the_scan_box_and_scans_it(
     qt_app, settings, project, monkeypatch
 ):
@@ -5042,7 +5073,8 @@ def test_starting_on_a_folder_shows_it_in_the_scan_box_and_scans_it(
     monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
     monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
     monkeypatch.setattr(
-        "am_segmentation_manager.gui.widgets.theme.apply_theme", lambda application: None
+        "am_segmentation_manager.gui.widgets.theme.apply_theme",
+        lambda application, accent=None: None,
     )
 
     _application, window = gui_app.build_window(project, settings=settings)

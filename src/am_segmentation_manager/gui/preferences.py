@@ -331,6 +331,11 @@ def write(store, values: Mapping[str, Value]) -> None:
         store.setValue(f"{SETTINGS_PREFIX}/{key}", _coerce(entry, value))
 
 
+def accent_from(values: Mapping[str, Value]) -> str:
+    """Return the key of the accent the window should open in."""
+    return str(values["accent"])
+
+
 def series_from(values: Mapping[str, Value]) -> tuple[str, ...]:
     """Return the series an export should open on, in `layout.SERIES` order.
 

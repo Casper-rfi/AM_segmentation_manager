@@ -232,8 +232,8 @@ def build_window(
         start_path: Directory to scan once the event loop runs. The window opens
             without scanning if this is None.
         config_path: Segmentation config to use, overriding the usual search.
-        settings: Where the window keeps its own preferences; the user's
-            configuration area where None.
+        settings: Where the window keeps its own preferences, the accent it is
+            drawn in among them; the user's configuration area where None.
 
     Returns:
         ``(application, window)``.
@@ -250,8 +250,9 @@ def build_window(
     # Imported here, not at the top: importing the widgets creates a Qt
     # application, and this module is imported to install error reporting
     # before there is one.
-    from .widgets.main_window import CurationWindow
-    from .widgets.theme import apply_theme
+    from . import preferences
+    from .widgets.main_window import CurationWindow, user_settings
+    from .widgets.theme import ACCENTS, apply_theme
 
     # Before anything is built, so a failure while the window is being
     # assembled is reported the same way as one after it is on screen.
@@ -264,7 +265,10 @@ def build_window(
 
     _enable_high_dpi()
     application = QApplication.instance() or QApplication(sys.argv)
-    apply_theme(application)
+    if settings is None:
+        settings = user_settings()
+    # Before the window is built, so nothing is drawn in the default accent first.
+    apply_theme(application, ACCENTS[preferences.accent_from(preferences.read(settings))])
     _apply_icon(application)
     window = CurationWindow(controller, settings=settings)
     window.show()
