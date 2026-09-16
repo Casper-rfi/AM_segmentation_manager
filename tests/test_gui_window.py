@@ -2787,7 +2787,7 @@ def test_setting_a_name_reaches_everything_that_records(window, monkeypatch):
     from am_segmentation_manager.gui.widgets.settings_dialog import author_summary
 
     class _Answered:
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             self.author = "Ada"
             # The dialog carries the preferences too; this test is about the
             # name, so it offers none to write.
@@ -2826,7 +2826,7 @@ def test_a_name_can_be_taken_off_again(window, monkeypatch):
     from am_segmentation_manager.gui.widgets import main_window as module
 
     class _Answered:
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             self.author = ""
             self.values: dict[str, int | bool] = {}
 
@@ -2841,6 +2841,92 @@ def test_a_name_can_be_taken_off_again(window, monkeypatch):
     window.show_settings()
 
     assert cleared == [True]
+
+
+def test_a_name_that_cannot_be_written_takes_the_previewed_accent_back(window, monkeypatch):
+    """Nothing the dialog held is kept when the name fails, and an accent left on
+    screen would look kept until the window next opened."""
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    class _Previewed:
+        def __init__(self, _parent, _values, *, preview_accent):
+            self.author = "Ada"
+            self.values = {"accent": "blue"}
+            self._preview = preview_accent
+
+        def exec_(self):
+            self._preview("blue")
+            return QDialog.Accepted
+
+    def refuse(_name):
+        raise OSError("read-only home directory")
+
+    shown: list[str] = []
+    monkeypatch.setattr(window, "show_accent", shown.append)
+    monkeypatch.setattr(module, "SettingsDialog", _Previewed)
+    monkeypatch.setattr(module, "set_author", refuse)
+    monkeypatch.setattr(module.QMessageBox, "critical", lambda *args: None)
+
+    window.show_settings()
+
+    assert shown == ["blue", "orange"]
+
+
+def test_showing_an_accent_redraws_the_grid_overview_marks(window, monkeypatch):
+    """The one thing on the window that keeps the colour it was drawn in."""
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    redrawn: list[bool] = []
+    monkeypatch.setattr(module, "apply_accent", lambda application, accent: None)
+    monkeypatch.setattr(
+        window.image_panel.grid_view, "refresh_accent", lambda: redrawn.append(True)
+    )
+
+    window.show_accent("blue")
+
+    assert redrawn == [True]
+
+
+def test_switching_the_accent_leaves_none_of_the_old_one_on_screen(window, qt_app):
+    """Held against the whole window rather than a list of what stores a
+    colour, so a widget added later that stores one is caught too."""
+    from qtpy.QtGui import QColor
+
+    from am_segmentation_manager.gui.widgets import theme
+
+    def count(colour: str) -> int:
+        wanted = QColor(colour).rgb()
+        total = 0
+        for index in range(window.tabs.count()):
+            window.tabs.setCurrentIndex(index)
+            qt_app.processEvents()
+            image = window.grab().toImage()
+            total += sum(
+                1
+                for y in range(0, image.height(), 2)
+                for x in range(0, image.width(), 2)
+                if image.pixel(x, y) == wanted
+            )
+        return total
+
+    style, palette, previous = qt_app.styleSheet(), qt_app.palette(), theme.active_accent()
+    theme.apply_theme(qt_app, theme.ACCENTS["orange"])
+    try:
+        window.resize(1400, 900)
+        window.show()
+        orange = theme.ACCENTS["orange"].colour
+        assert count(orange), "nothing drawn in the accent to begin with"
+
+        window.show_accent("blue")
+
+        assert count(orange) == 0
+        assert count(theme.ACCENTS["blue"].colour)
+    finally:
+        theme.apply_theme(qt_app, previous)
+        qt_app.setStyleSheet(style)
+        qt_app.setPalette(palette)
 
 
 def test_the_line_says_plainly_when_nothing_is_recorded(window):
@@ -2987,6 +3073,59 @@ def test_the_settings_dialog_returns_the_accent_chosen_in_it(qt_app, settings):
         destroy(dialog)
 
 
+def test_choosing_an_accent_shows_it_at_once_and_cancel_puts_it_back(qt_app, settings):
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    shown: list[str] = []
+    dialog = SettingsDialog(None, preferences.read(settings), preview_accent=shown.append)
+    try:
+        dialog._editors["accent"].buttons["blue"].click()
+        assert shown == ["blue"]
+
+        dialog.reject()
+
+        assert shown == ["blue", "orange"]
+    finally:
+        destroy(dialog)
+
+
+@pytest.mark.parametrize("close", ["accept", "reject"])
+def test_an_accent_left_as_it_opened_is_not_shown_again(qt_app, settings, close):
+    """Accepted, the previewed accent is the one kept; cancelled with nothing
+    chosen, there is nothing to put back."""
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    shown: list[str] = []
+    dialog = SettingsDialog(None, preferences.read(settings), preview_accent=shown.append)
+    try:
+        if close == "accept":
+            dialog._editors["accent"].buttons["blue"].click()
+        getattr(dialog, close)()
+
+        assert shown == (["blue"] if close == "accept" else [])
+    finally:
+        destroy(dialog)
+
+
+def test_each_accent_offered_carries_its_own_colour(qt_app, settings):
+    from qtpy.QtGui import QColor
+
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets import theme
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        for key, button in dialog._editors["accent"].buttons.items():
+            dot = button.icon().pixmap(theme.SWATCH_DOT).toImage()
+            middle = theme.SWATCH_DOT // 2
+            assert dot.pixelColor(middle, middle) == QColor(theme.ACCENTS[key].colour), key
+    finally:
+        destroy(dialog)
+
+
 def test_every_group_of_settings_gets_the_height_its_rows_need(qt_app, settings):
     """A word-wrapped note reports a one-line hint, and the squeeze lands elsewhere.
 
@@ -3081,7 +3220,7 @@ def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
     opened: list[bool] = []
 
     class _Dismissed:
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             self.author = "Ada"
             self.values: dict[str, int | bool] = {}
 

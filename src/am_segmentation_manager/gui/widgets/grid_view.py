@@ -54,6 +54,10 @@ class GridView(ImageView):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._marks: list[QGraphicsItem] = []
+        #: The arguments the marks on screen were drawn from, so they can be
+        #: drawn again when the accent changes: a scene item keeps the colour it
+        #: was given.
+        self._placed: tuple[tuple[LamellaMarker, ...], str | None, tuple[int, int]] | None = None
 
     def set_markers(
         self,
@@ -77,6 +81,7 @@ class GridView(ImageView):
         and a mark pinned to the nearest edge would claim otherwise.
         """
         self.clear_markers()
+        self._placed = (markers, current, size)
         width, height = size
         for marker in markers:
             if not marker.inside:
@@ -90,6 +95,12 @@ class GridView(ImageView):
         for item in self._marks:
             self.scene().removeItem(item)
         self._marks.clear()
+        self._placed = None
+
+    def refresh_accent(self) -> None:
+        """Draw the marks on screen again, in the accent now applied."""
+        if self._placed is not None:
+            self.set_markers(*self._placed)
 
     def _add_mark(self, x: float, y: float, current: bool, name: str) -> None:
         """Put one ring on the picture, and its name where it is the current one."""

@@ -280,11 +280,11 @@ of one of these files, is held by `test_docs.py`.
   leave behind — a copy's fork point, a training set's manifest: there is no single tab to say it
   on and far too many places to warn at. It is muted, being a fact rather than a message.
 - **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
-  holds reaches a write path, which is what makes it safe to keep these on one machine
-  (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`). The window applies them
-  once, so a panel built without a store still opens at the packaged answer and a control somebody
-  is using is never moved under them; the dialog says so, and is built from the same table
-  (`test_the_settings_dialog_offers_every_preference`).
+  holds reaches a write path (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`).
+  The window applies them once, so a control somebody is using is never moved under them; the
+  accent alone, being chrome, is shown as it is chosen and put back on Cancel, and nothing may keep
+  the old one (`test_switching_the_accent_leaves_none_of_the_old_one_on_screen`). The dialog says
+  so, and is built from the same table (`test_the_settings_dialog_offers_every_preference`).
 - **A word-wrapped label reports a one-line hint, and the squeeze lands somewhere else.** A dialog
   sized from that hint comes up short and everything below is pushed towards its minimum, nowhere
   near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,

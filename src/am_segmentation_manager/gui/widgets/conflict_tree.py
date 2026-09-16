@@ -199,18 +199,23 @@ def decide_all_buttons(noun: str, on_decide) -> QHBoxLayout:
     return row
 
 
-@functools.cache
 def mark_icon(coverage: str) -> QIcon:
-    """Return the mark for how much of a row one side holds.
+    """Return the mark for how much of a row one side holds, in the accent.
 
     Told apart by shape as well as by fill, so none of the three depends on
     seeing a colour.
     """
+    return _mark_icon(coverage, active_accent().colour)
+
+
+@functools.cache
+def _mark_icon(coverage: str, accent: str) -> QIcon:
+    """Return :func:`mark_icon` drawn in *accent*, cached by both."""
     pixmap = QPixmap(MARK_SIZE, MARK_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    colour = QColor(active_accent().colour)
+    colour = QColor(accent)
     painter.setPen(QPen(colour, 1.5))
     painter.setBrush(QBrush(colour) if coverage == ALL else Qt.BrushStyle.NoBrush)
     ring = QRectF(1.5, 1.5, MARK_SIZE - 3.0, MARK_SIZE - 3.0)

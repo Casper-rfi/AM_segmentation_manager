@@ -70,6 +70,9 @@ DEFAULT_SHOWN_SERIES: tuple[str, ...] = LABELLED_SERIES
 #: Qt (`test_the_accent_preference_offers_every_accent_the_theme_has`).
 ACCENT_CHOICES: tuple[tuple[str, str], ...] = (("orange", "Orange"), ("blue", "Blue"))
 DEFAULT_ACCENT = "orange"
+#: The accent's key in :data:`PREFERENCES`. Named, because it is the one
+#: preference the window applies while it is open.
+ACCENT = "accent"
 
 
 @dataclass(frozen=True)
@@ -120,7 +123,7 @@ DEFAULT_ADVANCE = False
 
 PREFERENCES: tuple[Preference, ...] = (
     Preference(
-        key="accent",
+        key=ACCENT,
         group=APPEARANCE,
         label="Accent colour",
         fallback=DEFAULT_ACCENT,
@@ -333,7 +336,7 @@ def write(store, values: Mapping[str, Value]) -> None:
 
 def accent_from(values: Mapping[str, Value]) -> str:
     """Return the key of the accent the window should open in."""
-    return str(values["accent"])
+    return str(values[ACCENT])
 
 
 def series_from(values: Mapping[str, Value]) -> tuple[str, ...]:

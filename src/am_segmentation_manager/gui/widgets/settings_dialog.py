@@ -9,8 +9,10 @@ preference is a row there.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TypeAlias
 
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -25,6 +27,7 @@ from qtpy.QtWidgets import (
 
 from ...history import resolve_author
 from .. import preferences
+from . import theme
 from .controls import SegmentedControl, ToggleSwitch, WrappingLabel
 
 __all__ = ["SettingsDialog", "author_summary"]
@@ -48,8 +51,9 @@ Editor: TypeAlias = "ToggleSwitch | QSpinBox | SegmentedControl"
 #: a dialog that left the reader to discover this is one they would think was
 #: broken.
 APPLIED_NOTE = (
-    "These decide what the window and each control open at. The window applies "
-    "them when it next opens, so anything already on screen keeps what it is set to."
+    "The accent changes as soon as it is chosen, and Cancel puts it back. The "
+    "rest decide what each control opens at: the window applies them when it "
+    "next opens, so anything already on screen keeps what it is set to."
 )
 
 
@@ -79,7 +83,13 @@ def author_summary(name: str | None, *, asked: bool = False) -> str:
 class SettingsDialog(QDialog):
     """The settings belonging to this machine rather than to a collection."""
 
-    def __init__(self, parent, values=None) -> None:
+    def __init__(
+        self,
+        parent,
+        values=None,
+        *,
+        preview_accent: Callable[[str], None] | None = None,
+    ) -> None:
         """Build the dialog, filled from what is set now.
 
         Args:
@@ -87,8 +97,12 @@ class SettingsDialog(QDialog):
                 :func:`~...preferences.read`. None fills every control with
                 its packaged fallback, which is what a caller with no store
                 would want.
+            preview_accent: Called with an accent's key when one is chosen, and
+                with the one the dialog opened on when it is cancelled after
+                that, so the window shows a choice before it is kept.
         """
         super().__init__(parent)
+        self._preview_accent = preview_accent
         self.setWindowTitle("Settings")
         self.setMinimumWidth(DIALOG_WIDTH)
         layout = QVBoxLayout(self)
@@ -114,6 +128,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(note)
 
         held = dict(values or {entry.key: entry.fallback for entry in preferences.PREFERENCES})
+        #: The accent on screen when the dialog opened, which Cancel puts back.
+        self._opened_accent = str(held.get(preferences.ACCENT, preferences.DEFAULT_ACCENT))
         #: The control for each preference, so :attr:`values` can read them
         #: back without a second table saying which widget went where.
         self._editors: dict[str, Editor] = {}
@@ -135,6 +151,8 @@ class SettingsDialog(QDialog):
         for entry in entries:
             editor = self._build_editor(entry, held.get(entry.key, entry.fallback))
             editor.setToolTip(entry.hint)
+            if entry.key == preferences.ACCENT and isinstance(editor, SegmentedControl):
+                self._offer_accents(editor)
             self._editors[entry.key] = editor
             if entry.is_flag:
                 # A switch carries its own caption, so a second one beside it
@@ -169,6 +187,27 @@ class SettingsDialog(QDialog):
         box.setValue(int(value))
         box.setMaximumWidth(SPIN_WIDTH)
         return box
+
+    def _offer_accents(self, run: SegmentedControl) -> None:
+        """Show each accent beside its name, and preview one as it is chosen.
+
+        A dot rather than the chosen fill alone, which is drawn in the accent
+        already on screen and so shows the colour of neither answer until one
+        is previewed.
+        """
+        for key, button in run.buttons.items():
+            button.setIcon(theme.accent_swatch(theme.ACCENTS[key]))
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        if self._preview_accent is not None:
+            run.chosen.connect(self._preview_accent)
+
+    def reject(self) -> None:
+        """Close without keeping anything, the accent on screen included."""
+        editor = self._editors.get(preferences.ACCENT)
+        chosen = _held(editor) if editor is not None else self._opened_accent
+        if self._preview_accent is not None and chosen != self._opened_accent:
+            self._preview_accent(self._opened_accent)
+        super().reject()
 
     @property
     def author(self) -> str:

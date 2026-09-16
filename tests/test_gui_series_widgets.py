@@ -820,3 +820,51 @@ def test_the_current_lamellas_name_is_drawn_above_every_ring(qt_app):
     names = [item for item in view._marks if isinstance(item, QGraphicsRectItem)]
     assert len(rings) == 2 and len(names) == 1
     assert all(names[0].zValue() > ring.zValue() for ring in rings)
+
+
+def test_the_grid_marks_are_redrawn_in_an_accent_changed_under_them(qt_app):
+    """A scene item keeps the colour it was drawn in, so a mark placed before
+    the accent changed stayed the old one."""
+    from qtpy.QtGui import QColor
+    from qtpy.QtWidgets import QGraphicsEllipseItem, QGraphicsRectItem
+
+    from am_segmentation_manager.gui.widgets import theme
+    from am_segmentation_manager.gui.widgets.grid_view import GridView
+    from am_segmentation_manager.overview import LamellaMarker
+
+    class Unstyled:
+        def __getattr__(self, name):
+            return lambda *args: None
+
+    previous = theme.active_accent()
+    view = GridView()
+    try:
+        theme.apply_accent(Unstyled(), theme.ACCENTS["orange"])
+        view.set_markers(
+            (LamellaMarker("05-casual-corgi", 0.5, 0.5, True),), "05-casual-corgi", (400, 400)
+        )
+        theme.apply_accent(Unstyled(), theme.ACCENTS["blue"])
+
+        view.refresh_accent()
+
+        blue = QColor(theme.ACCENTS["blue"].colour)
+        rings = [item for item in view._marks if isinstance(item, QGraphicsEllipseItem)]
+        chips = [item for item in view._marks if isinstance(item, QGraphicsRectItem)]
+        assert rings and chips, "the mark and its name were drawn again"
+        assert all(ring.pen().color() == blue for ring in rings)
+        assert all(chip.brush().color() == blue for chip in chips)
+    finally:
+        theme.apply_accent(Unstyled(), previous)
+
+
+def test_a_grid_with_its_marks_cleared_draws_none_back_on_an_accent_change(qt_app):
+    from am_segmentation_manager.gui.widgets.grid_view import GridView
+    from am_segmentation_manager.overview import LamellaMarker
+
+    view = GridView()
+    view.set_markers((LamellaMarker("a", 0.5, 0.5, True),), "a", (400, 400))
+    view.clear_markers()
+
+    view.refresh_accent()
+
+    assert view._marks == []

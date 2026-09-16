@@ -187,6 +187,63 @@ def test_the_arrow_images_are_drawn_in_the_muted_text_colour(name):
     assert f'fill="{theme.MUTED}"' in image.read_text(encoding="utf-8")
 
 
+class _Unstyled:
+    """An application that takes a palette and stylesheet and draws nothing, so
+    a test can change the accent without restyling the session's application."""
+
+    def __getattr__(self, name):
+        return lambda *args: None
+
+
+def test_switching_the_accent_leaves_the_style_alone():
+    """Setting Fusion again on a window already open would rebuild its style
+    for nothing; only the palette and stylesheet carry the accent."""
+    calls: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, name):
+            return lambda *args: calls.append(name)
+
+    previous = theme.active_accent()
+    try:
+        theme.apply_accent(Recorder(), theme.ACCENTS["blue"])
+    finally:
+        theme.apply_accent(_Unstyled(), previous)
+
+    assert "setStyle" not in calls
+    assert calls.index("setStyleSheet") < calls.index("setFont")
+
+
+@pytest.mark.parametrize("key", ACCENT_KEYS)
+def test_each_accent_is_shown_by_a_dot_of_its_own_colour(qt_app, key):
+    """Offered in Settings, where the chosen fill is the accent already on
+    screen and so shows neither answer's colour."""
+    dot = theme.accent_swatch(theme.ACCENTS[key]).pixmap(theme.SWATCH_DOT).toImage()
+    middle = theme.SWATCH_DOT // 2
+
+    assert dot.pixelColor(middle, middle) == QColor(theme.ACCENTS[key].colour)
+
+
+def test_a_conflict_mark_takes_an_accent_changed_since_it_was_first_drawn(qt_app):
+    """The marks are cached, and a cache keyed on the shape alone kept the
+    accent the first one was drawn in."""
+    from am_segmentation_manager.gui.conflict_resolution import ALL
+    from am_segmentation_manager.gui.widgets.conflict_tree import mark_icon
+
+    def centre(icon) -> QColor:
+        image = icon.pixmap(16).toImage()
+        return image.pixelColor(image.width() // 2, image.height() // 2)
+
+    previous = theme.active_accent()
+    try:
+        theme.apply_accent(_Unstyled(), theme.ACCENTS["orange"])
+        assert centre(mark_icon(ALL)) == QColor(theme.ACCENTS["orange"].colour)
+        theme.apply_accent(_Unstyled(), theme.ACCENTS["blue"])
+        assert centre(mark_icon(ALL)) == QColor(theme.ACCENTS["blue"].colour)
+    finally:
+        theme.apply_accent(_Unstyled(), previous)
+
+
 def test_a_mark_still_to_do_is_not_the_accent():
     """An amber ring beside the orange accent read as the same colour. Orange
     only: under blue the ring shares the accent's hue and is told apart by shape."""

@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from qtpy.QtGui import QColor, QPalette
+from qtpy.QtGui import QColor, QIcon, QPainter, QPalette, QPen, QPixmap
 
 from ...layout import MODALITIES, SERIES
 
@@ -96,6 +96,9 @@ ACCENTS: Mapping[str, Accent] = {
     "blue": Accent(colour="#2f6feb", text="#ffffff", strong="#2258c4", selected="#dbe6fb"),
 }
 DEFAULT_ACCENT = "orange"
+
+#: How wide the dot showing an accent beside its name is, in pixels.
+SWATCH_DOT = 10
 
 _active: Accent = ACCENTS[DEFAULT_ACCENT]
 
@@ -583,23 +586,47 @@ def stylesheet(accent: Accent) -> str:
 
 
 def apply_theme(application, accent: Accent | None = None) -> None:
-    """Give *application* the window's style, palette and stylesheet.
+    """Give *application* the window's style, then its accent.
 
     Args:
-        accent: The accent to draw in, and what :func:`active_accent` answers
-            from now on. None is :data:`DEFAULT_ACCENT`.
+        accent: As :func:`apply_accent`. None is :data:`DEFAULT_ACCENT`.
 
     Fusion rather than the platform style, so the window looks the same wherever
     it runs -- the development machine and the microscope's differ in platform
     and in Qt, and four bugs have already reached the user through that gap.
+    """
+    application.setStyle("Fusion")
+    apply_accent(application, accent if accent is not None else ACCENTS[DEFAULT_ACCENT])
+
+
+def apply_accent(application, accent: Accent) -> None:
+    """Draw *application* in *accent*, and have :func:`active_accent` answer it.
+
+    Safe on a window already on screen: the palette and stylesheet repolish
+    every widget, and the painted ones read the accent when they repaint. What
+    stores a colour instead -- a scene item, a cached icon -- has to be redrawn
+    by whoever holds it (`test_switching_the_accent_leaves_none_of_the_old_one_on_screen`).
+
     macOS gives a tool button a font three points smaller than the rest of the
     window, which drew every run of segments in small print, so that class is
     set level with it -- **after** the stylesheet, which puts the platform's
     class fonts back (`test_the_tool_button_font_is_levelled_after_the_stylesheet`).
     """
     global _active
-    _active = accent if accent is not None else ACCENTS[DEFAULT_ACCENT]
-    application.setStyle("Fusion")
-    application.setPalette(build_palette(_active))
-    application.setStyleSheet(stylesheet(_active))
+    _active = accent
+    application.setPalette(build_palette(accent))
+    application.setStyleSheet(stylesheet(accent))
     application.setFont(application.font(), "QToolButton")
+
+
+def accent_swatch(accent: Accent, size: int = SWATCH_DOT) -> QIcon:
+    """Return a dot filled with *accent*, to show an accent where it is offered."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(QColor(0, 0, 0, 0)))
+    painter.setBrush(QColor(accent.colour))
+    painter.drawEllipse(0, 0, size, size)
+    painter.end()
+    return QIcon(pixmap)

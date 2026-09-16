@@ -87,7 +87,7 @@ from .shortcuts import (
     Shortcuts,
 )
 from .state_panel import StatePanel
-from .theme import COMPACT_BUTTON, HEADING, MUTED
+from .theme import ACCENTS, COMPACT_BUTTON, HEADING, MUTED, apply_accent
 
 logger = logging.getLogger(__name__)
 
@@ -1826,7 +1826,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         property of the machine, and a name written into a collection travels
         with it.
         """
-        dialog = SettingsDialog(self, preferences.read(self.settings))
+        stored = preferences.read(self.settings)
+        dialog = SettingsDialog(self, stored, preview_accent=self.show_accent)
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         wanted = dialog.author
@@ -1837,6 +1838,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 clear_author()
         except (OSError, ValueError) as error:
             QMessageBox.critical(self, AUTHOR_TITLE, str(error))
+            # Nothing was kept, so neither is the accent the dialog previewed.
+            self.show_accent(preferences.accent_from(stored))
             return
         # After the name, and only if it was written: a failure there is
         # reported and returns, and preferences saved past it would leave the
@@ -1844,6 +1847,18 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         preferences.write(self.settings, dialog.values)
         self._adopt_author()
         self._flash(author_summary(wanted or None))
+
+    def show_accent(self, key: str) -> None:
+        """Draw the window in the accent *key*, without storing it.
+
+        The palette and stylesheet reach every widget; the grid overview's
+        marks are scene items holding the colour they were drawn in, so they
+        are drawn again.
+        """
+        application = QApplication.instance()
+        assert application is not None, "a window exists only inside an application"
+        apply_accent(application, ACCENTS[key])
+        self.image_panel.grid_view.refresh_accent()
 
     def _adopt_author(self) -> None:
         """Have everything that records pick the new name up at once.
