@@ -25,14 +25,9 @@ HAS_QT = importlib.util.find_spec("qtpy") is not None
 pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
-    from qtpy.QtWidgets import QApplication, QListWidget
+    from qtpy.QtWidgets import QListWidget
 
     from am_segmentation_manager.gui import app as gui_app
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 if HAS_QT:
     from qtpy.QtCore import Qt
     from qtpy.QtGui import QKeyEvent
-    from qtpy.QtWidgets import QApplication, QCheckBox
+    from qtpy.QtWidgets import QCheckBox
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.export_controller import ExportController
@@ -38,11 +38,6 @@ if HAS_QT:
     from am_segmentation_manager.gui.widgets.metadata_panel import MetadataPanel
     from am_segmentation_manager.gui.widgets.state_panel import StatePanel
 
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

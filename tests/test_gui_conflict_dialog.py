@@ -31,7 +31,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     import tifffile
     from qtpy.QtCore import Qt
     from qtpy.QtGui import QKeyEvent
-    from qtpy.QtWidgets import QApplication, QDialogButtonBox, QMessageBox
+    from qtpy.QtWidgets import QDialogButtonBox, QMessageBox
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.report import ConflictRow
@@ -45,11 +45,6 @@ if HAS_QT and HAS_IMAGE_STACK:
 ROOT = Path("/collection")
 P = "session_a/Auto-1"
 Q = "session_a/Auto-2"
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

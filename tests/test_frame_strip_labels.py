@@ -21,7 +21,6 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtGui import QImage
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.gui.widgets.frame_strip import (
         CURATE_BAND,
@@ -36,12 +35,6 @@ if HAS_QT:
         FrameTimeline,
         timeline_legend,
     )
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    app = QApplication.instance() or QApplication([])
-    yield app
 
 
 @pytest.fixture

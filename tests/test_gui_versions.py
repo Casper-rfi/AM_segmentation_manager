@@ -27,7 +27,6 @@ pytestmark = pytest.mark.skipif(
 
 if HAS_QT and HAS_IMAGES:
     import numpy as np
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.attribution import Attribution
@@ -42,11 +41,6 @@ if HAS_QT and HAS_IMAGES:
     from am_segmentation_manager.io.atomic import fingerprint_of
     from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
     from conftest import destroy, start_history
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

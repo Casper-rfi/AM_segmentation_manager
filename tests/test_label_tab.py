@@ -39,7 +39,6 @@ if HAS_QT and HAS_IMAGE_STACK:
         QWheelEvent,
     )
     from qtpy.QtWidgets import (
-        QApplication,
         QGraphicsView,
         QLabel,
         QMessageBox,
@@ -68,12 +67,6 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.operations.label_edit import new_label
 
 CONFIG_COLOURS = {0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)}
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    """One QApplication for the whole session; Qt dislikes several."""
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

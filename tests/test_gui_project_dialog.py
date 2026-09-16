@@ -24,7 +24,6 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtCore import Qt
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.gui.operations_controller import OperationsController
     from am_segmentation_manager.gui.widgets.project_dialog import (
@@ -32,12 +31,6 @@ if HAS_QT:
         ROW_PATH,
         AddProjectsDialog,
     )
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    app = QApplication.instance() or QApplication([])
-    yield app
 
 
 def _image(directory: Path) -> None:

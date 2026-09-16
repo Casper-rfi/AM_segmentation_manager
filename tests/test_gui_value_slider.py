@@ -24,14 +24,9 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 if HAS_QT:
     from qtpy.QtCore import QEvent, QPointF, QRect, Qt
     from qtpy.QtGui import QColor, QImage, QMouseEvent
-    from qtpy.QtWidgets import QApplication, QSlider
+    from qtpy.QtWidgets import QSlider
 
     from am_segmentation_manager.gui.widgets.controls import RangeSlider, ValueSlider
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

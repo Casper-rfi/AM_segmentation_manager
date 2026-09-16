@@ -789,14 +789,6 @@ def test_sizes_are_reported_in_a_readable_unit(size, expected):
 pytest_qt = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 
-@pytest.fixture(scope="session")
-def qt_app():
-    """One QApplication for the whole session; Qt dislikes several."""
-    from qtpy.QtWidgets import QApplication
-
-    return QApplication.instance() or QApplication([])
-
-
 @pytest_qt
 def test_the_worker_runs_off_the_interface_thread(qt_app):
     """Submitted work must not run where the widgets are drawn.

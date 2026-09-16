@@ -234,6 +234,19 @@ class Dataset:
         return self.label_dir(modality, variant) / self.filenames[modality.upper()][index]
 
 
+@pytest.fixture(scope="session")
+def qt_app():
+    """The one QApplication every widget test shares, drawn offscreen.
+
+    Imported here rather than at the top, so the suite still collects where Qt
+    is not installed; the GUI tests skip themselves there.
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from qtpy.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
 def settle(app, condition, *, timeout: float = 10.0, what: str = "the window") -> None:
     """Run the event loop until *condition* holds.
 

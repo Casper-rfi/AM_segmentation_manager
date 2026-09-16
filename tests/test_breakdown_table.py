@@ -28,11 +28,6 @@ if HAS_QT:
     )
 
 
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
-
-
 def _texts(cells) -> list[str]:
     return [cell.text for cell in cells]
 

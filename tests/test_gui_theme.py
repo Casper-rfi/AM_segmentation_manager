@@ -38,11 +38,6 @@ if importlib.util.find_spec("qtpy") is not None:
     from am_segmentation_manager.gui.widgets.controls import GripSplitter
 
 
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
-
-
 #: Every accent the theme offers, by key; parametrised with ``indirect=True``, a
 #: test receives the application drawn in each. Written out rather than read from
 #: the theme, which is not importable without Qt when the tests are collected.

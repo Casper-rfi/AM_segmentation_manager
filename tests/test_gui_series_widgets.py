@@ -35,7 +35,6 @@ if HAS_QT and HAS_IMAGE_STACK:
     import tifffile
     import yaml
     from qtpy.QtCore import QSettings
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
@@ -43,12 +42,6 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
 
 SEM_VARIANTS = ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4")
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    app = QApplication.instance() or QApplication([])
-    yield app
 
 
 @pytest.fixture

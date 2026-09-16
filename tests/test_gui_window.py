@@ -67,13 +67,6 @@ CONFIG = None
 
 
 @pytest.fixture(scope="session")
-def qt_app():
-    """One QApplication for the whole session; Qt dislikes several."""
-    app = QApplication.instance() or QApplication([])
-    yield app
-
-
-@pytest.fixture(scope="session")
 def project_template(tmp_path_factory) -> Path:
     """The project every window test starts from, built once for the session."""
     return _build_project(tmp_path_factory.mktemp("template"))

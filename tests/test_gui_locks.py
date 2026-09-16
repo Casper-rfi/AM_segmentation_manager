@@ -23,7 +23,6 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtCore import QSize
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import BACKGROUND_CLASS, SegmentationConfig
     from am_segmentation_manager.gui.label_controller import LabelController
@@ -36,11 +35,6 @@ if HAS_QT:
 #: The size the shackle is compared at. The icons are drawn at one size, so
 #: this only has to be that size.
 ICON = QSize(16, 16)
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

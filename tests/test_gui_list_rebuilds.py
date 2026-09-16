@@ -35,7 +35,6 @@ if HAS_QT and HAS_IMAGE_STACK:
     import tifffile
     from qtpy.QtCore import QSettings, Qt
     from qtpy.QtGui import QMouseEvent
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
@@ -44,11 +43,6 @@ if HAS_QT and HAS_IMAGE_STACK:
 
 #: Enough projects that losing your place in the list is the reported problem.
 PROJECT_COUNT = 20
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

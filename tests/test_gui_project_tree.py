@@ -25,7 +25,6 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtCore import Qt
-    from qtpy.QtWidgets import QApplication
 
     from am_segmentation_manager.gui.widgets.lists import ProjectTree
 
@@ -39,11 +38,6 @@ LABELS = [
     "005: AutoLamella-14-01",
     "006: Grid21_adaptive_milling",
 ]
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

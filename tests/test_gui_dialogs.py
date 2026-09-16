@@ -23,7 +23,7 @@ HAS_QT = importlib.util.find_spec("qtpy") is not None
 pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
-    from qtpy.QtWidgets import QApplication, QFileDialog
+    from qtpy.QtWidgets import QFileDialog
 
     from am_segmentation_manager.gui.export_controller import ExportController
     from am_segmentation_manager.gui.widgets import export_panel as export_panel_module
@@ -33,12 +33,6 @@ if HAS_QT:
         CSV_FILTER,
         build_path_dialog,
     )
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    app = QApplication.instance() or QApplication([])
-    yield app
 
 
 @pytest.fixture

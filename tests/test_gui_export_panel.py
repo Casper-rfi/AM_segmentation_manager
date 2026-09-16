@@ -48,12 +48,6 @@ if HAS_QT:
     from conftest import build_dataset, destroy
 
 
-@pytest.fixture(scope="session")
-def qt_app():
-    app = QApplication.instance() or QApplication([])
-    yield app
-
-
 #: The top-level widgets built by the test running now; see :func:`_built`.
 _BUILT: list = []
 

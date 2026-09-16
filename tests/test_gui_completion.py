@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(not HAS_QT, reason="Qt binding not installed")
 
 if HAS_QT:
     from qtpy.QtCore import Qt
-    from qtpy.QtWidgets import QApplication, QCompleter
+    from qtpy.QtWidgets import QCompleter
 
     from am_segmentation_manager.gui.widgets.controls import ChipEditor
     from am_segmentation_manager.gui.widgets.metadata_panel import _suggestion_box
@@ -31,11 +31,6 @@ if HAS_QT:
 #: Two grid types told apart by their middles, not by how they start -- which
 #: is why matching anywhere is worth keeping.
 GRID_TYPES = ["UltrAuFoil Au R2/2 200 mesh", "Quantifoil Cu R2/1 200 mesh"]
-
-
-@pytest.fixture(scope="session")
-def qt_app():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture(params=["suggestion box", "chip editor"])
