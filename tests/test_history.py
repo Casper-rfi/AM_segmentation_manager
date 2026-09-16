@@ -268,6 +268,15 @@ def test_a_blank_line_is_not_a_problem(tmp_path: Path):
 # Several writers
 # ---------------------------------------------------------------------------
 
+def test_a_line_ends_the_same_on_every_platform(tmp_path: Path):
+    """A log is carried between machines; text mode on Windows would end its
+    lines in \\r\\n and a copy made there would differ byte for byte."""
+    append_event(tmp_path, saved("sem_labels/a.tif"))
+
+    written = history_file_path(tmp_path).read_bytes()
+    assert written.endswith(b"}\n") and b"\r" not in written
+
+
 def test_two_processes_recording_at_once_both_land(tmp_path: Path):
     program = (
         "import sys;"

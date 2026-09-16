@@ -247,7 +247,7 @@ def test_projects_are_identified_by_relative_path(tmp_path: Path):
     survey = survey_collection(tmp_path)
     assert len(survey.projects) == 2
     assert {project.relative_path for project in survey.projects} == {
-        "AutoLamella-01", str(Path("FIB") / "AutoLamella-01"),
+        "AutoLamella-01", "FIB/AutoLamella-01",
     }
 
 

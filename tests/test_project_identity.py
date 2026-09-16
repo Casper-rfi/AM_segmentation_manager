@@ -45,7 +45,7 @@ def test_two_projects_with_identical_metadata_are_both_indexed(tmp_path: Path):
     index = Scanner(tmp_path).build_index()
 
     assert len(index.all_projects()) == 2
-    assert set(index.projects) == {"AutoLamella-01", str(Path("FIB") / "AutoLamella-01")}
+    assert set(index.projects) == {"AutoLamella-01", "FIB/AutoLamella-01"}
 
 
 def test_projects_are_retrievable_by_path(tmp_path: Path):
@@ -53,7 +53,7 @@ def test_projects_are_retrievable_by_path(tmp_path: Path):
     _make_project(tmp_path / "FIB", "AutoLamella-01", "b.tif")
 
     index = Scanner(tmp_path).build_index()
-    nested = index.find_by_key(str(Path("FIB") / "AutoLamella-01"))
+    nested = index.find_by_key("FIB/AutoLamella-01")
 
     assert nested.path == tmp_path / "FIB" / "AutoLamella-01"
 
@@ -102,7 +102,7 @@ def test_each_project_keeps_its_own_images(tmp_path: Path):
 
     assert images == {
         "AutoLamella-01": ["a.tif"],
-        str(Path("FIB") / "AutoLamella-01"): ["b.tif"],
+        "FIB/AutoLamella-01": ["b.tif"],
     }
 
 
@@ -113,7 +113,7 @@ def test_display_name_distinguishes_projects_sharing_a_name(tmp_path: Path):
     index = Scanner(tmp_path).build_index()
     labels = sorted(project.display_name for project in index.all_projects())
 
-    assert labels == ["001: AutoLamella-01", f"002: {Path('FIB') / 'AutoLamella-01'}"]
+    assert labels == ["001: AutoLamella-01", "002: FIB/AutoLamella-01"]
 
 
 def test_display_name_falls_back_to_the_name_without_a_scan_root():
@@ -130,7 +130,7 @@ def test_a_project_is_selectable_by_relative_path(tmp_path: Path):
     _make_project(tmp_path / "FIB", "AutoLamella-01", "b.tif")
 
     index = Scanner(tmp_path).build_index()
-    selector = str(Path("FIB") / "AutoLamella-01")
+    selector = "FIB/AutoLamella-01"
     records = list(
         iter_matching_records(
             index, project_selectors=[selector], lamella_selectors=["all"],
@@ -139,6 +139,23 @@ def test_a_project_is_selectable_by_relative_path(tmp_path: Path):
     )
 
     assert [record.image_path.name for record in records] == ["b.tif"]
+
+
+def test_a_relative_path_typed_with_backslashes_selects_the_same_project(tmp_path: Path):
+    """Windows writes a path with '\\', so that is what a person there types."""
+    _make_project(tmp_path, "AutoLamella-01", "a.tif")
+    _make_project(tmp_path / "FIB", "AutoLamella-01", "b.tif")
+
+    index = Scanner(tmp_path).build_index()
+    records = list(
+        iter_matching_records(
+            index, project_selectors=["FIB\\AutoLamella-01"], lamella_selectors=["all"],
+            stage_selectors=["all"], image_selectors=["all"],
+        )
+    )
+
+    assert [record.image_path.name for record in records] == ["b.tif"]
+    assert index.find_by_key("FIB\\AutoLamella-01") is index.find_by_key("FIB/AutoLamella-01")
 
 
 def test_a_project_is_selectable_by_scan_order_number(tmp_path: Path):

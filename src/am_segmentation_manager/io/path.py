@@ -17,7 +17,17 @@ __all__ = [
     "checked_relative_key",
     "exported_relative_path",
     "make_path_relative",
+    "slashed",
 ]
+
+
+def slashed(typed: str) -> str:
+    """Return a relative path someone typed with '\\' read as '/', as Windows writes it.
+
+    For matching what a person typed against a path this module wrote; never
+    for a key read out of a file, which :func:`checked_relative_key` refuses.
+    """
+    return typed.replace("\\", "/")
 
 
 class NoRelativePath(ValueError):

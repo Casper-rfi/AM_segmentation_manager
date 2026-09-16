@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
 from .discovery import PROJECT_MARKERS, project_markers
+from .io.atomic import append_whole
 from .io.image import to_2d
 from .io.path import checked_relative_key
 from .io.yaml import read_yaml, write_yaml
@@ -573,9 +574,10 @@ def containing_project(path: Path) -> Path | None:
 def append_event(project_directory: Path, event: Event) -> Event:
     """Append *event* to *project_directory*'s log and return it.
 
-    One line, written in a single append, so two processes recording at once
-    interleave rather than one discarding the other's entry. There is no
-    read-modify-write and so nothing to be stale against.
+    One line ending in ``\n`` on every platform, written in a single locked
+    append, so two processes recording at once interleave rather than one
+    discarding the other's entry. There is no read-modify-write and so nothing
+    to be stale against.
 
     Raises:
         HistoryError: If the entry cannot be serialised onto one line.
@@ -584,8 +586,7 @@ def append_event(project_directory: Path, event: Event) -> Event:
     if "\n" in line:
         raise HistoryError("an entry must fit on one line")
     path = history_file_path(project_directory)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(line + "\n")
+    append_whole(path, (line + "\n").encode("utf-8"))
     logger.debug("Recorded %s in %s", event.kind, path)
     return event
 

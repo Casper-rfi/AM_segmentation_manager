@@ -14,6 +14,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .io.path import slashed
 from .layout import SERIES, extract_image_number, normalise_task_name
 from .models import ImageRecord, Lamella, Project, Stage
 from .operations.selection import current_state
@@ -87,15 +88,16 @@ def matches_project(project: Project, selectors: list[str] | None) -> bool:
     Matches by relative path, project name, or zero-padded scan-order number.
     The relative path is the project's identity, and is the only selector that
     can distinguish two projects sharing a name; the scan-order number is the
-    convenient equivalent.
+    convenient equivalent. A relative path may separate directories with '\\'.
     """
     numeric_values, name_values = parse_selector_values(selectors)
     if "all" in name_values:
         return True
-    identifiers = {project.name}
-    if project.relative_path:
-        identifiers.add(project.relative_path)
-    if identifiers & name_values:
+    if project.name in name_values:
+        return True
+    if project.relative_path and project.relative_path in {
+        slashed(value) for value in name_values
+    } | name_values:
         return True
     project_number = parse_scope_number(project.number)
     return project_number is not None and int(project_number) in numeric_values

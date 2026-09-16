@@ -25,7 +25,7 @@ from .discovery import (
     group_stages_by_lamella,
 )
 from .image_metadata import ImageMetadata, header_reader
-from .io.path import make_path_relative
+from .io.path import make_path_relative, slashed
 from .io.yaml import read_yaml_or_problem
 from .layout import (
     PREDICTION_KINDS,
@@ -100,8 +100,13 @@ class ProjectIndex:
         return list(self.projects.values())
 
     def find_by_key(self, key: str) -> Project:
-        """Return the project with the given identity (its relative path)."""
-        return self.projects[key]
+        """Return the project with the given identity (its relative path).
+
+        Directories may be separated with '\\' as well as '/'.
+        """
+        if key in self.projects:
+            return self.projects[key]
+        return self.projects[slashed(key)]
 
     def find_by_name(self, name: str) -> Project:
         """Return the single project called *name*.

@@ -2,23 +2,30 @@
 
 A write goes to a temporary file in the destination's own directory and is
 renamed into place, so an interrupted run leaves the previous file rather than
-half of a new one. A fingerprint taken before a write is what lets a caller
-refuse a destination something else has rewritten since it was read.
+half of a new one. An append holds an exclusive lock for its one write, so no
+other process's append splits or overwrites it. A fingerprint taken before a
+write is what lets a caller refuse a destination something else has rewritten.
 
 Nothing here knows what it is writing.
 """
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import stat
+import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["file_mode_for", "fingerprint_of", "write_atomically"]
+__all__ = ["append_whole", "file_mode_for", "fingerprint_of", "write_atomically"]
+
+#: What a filesystem without locks answers a request for one, on macOS and Linux.
+_LOCKS_UNSUPPORTED = frozenset({errno.ENOLCK, errno.ENOTSUP, errno.EOPNOTSUPP})
 
 
 def write_atomically(
@@ -72,6 +79,62 @@ def write_atomically(
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def append_whole(path: Path, data: bytes) -> None:
+    """Append *data* to *path* so that no other process's append splits or overwrites it.
+
+    macOS and Linux guarantee that of an append; Windows emulates one as a seek
+    to the end and a write, so two processes can land at one offset and the
+    second replaces the first. An exclusive lock held for the write closes that
+    everywhere. Where a filesystem offers no locks -- some network shares --
+    macOS and Linux append without one, their own guarantee still holding.
+
+    Raises:
+        OSError: If *path* cannot be opened, locked or written. On Windows a
+            lock another process holds is waited for about ten seconds first.
+    """
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
+    descriptor = os.open(path, flags, 0o666)
+    try:
+        with _locked(descriptor):
+            remaining = memoryview(data)
+            while remaining:
+                remaining = remaining[os.write(descriptor, remaining):]
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def _locked(descriptor: int) -> Iterator[None]:
+    """Hold an exclusive lock on the open file *descriptor*, released however the body ends."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        # The lock covers the first byte, which every writer asks for, whatever
+        # the file's length; an append then writes at the end regardless.
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+    except OSError as error:
+        if error.errno not in _LOCKS_UNSUPPORTED:
+            raise
+        yield
+        return
+    try:
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
 def file_mode_for(destination: Path) -> int:

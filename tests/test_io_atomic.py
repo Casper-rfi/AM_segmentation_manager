@@ -5,14 +5,18 @@ stack installed. They are a shared primitive now, so they are pinned directly.
 """
 from __future__ import annotations
 
+import errno
 import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.io import atomic
 from am_segmentation_manager.io.atomic import (
+    append_whole,
     file_mode_for,
     fingerprint_of,
     write_atomically,
@@ -167,3 +171,66 @@ def test_a_committed_file_keeps_the_destination_permissions(tmp_path: Path):
     )
 
     assert stat.S_IMODE(destination.stat().st_mode) == 0o640
+
+
+# ---------------------------------------------------------------------------
+# Appending
+# ---------------------------------------------------------------------------
+
+def test_appends_land_in_order_exactly_as_given(tmp_path: Path):
+    """Bytes, not text: a line ends in \\n on Windows too."""
+    log = tmp_path / "log.jsonl"
+    append_whole(log, b"first\n")
+    append_whole(log, b"second\n")
+
+    assert log.read_bytes() == b"first\nsecond\n"
+
+
+def test_a_failed_write_leaves_the_file_free_for_the_next_writer(tmp_path: Path, monkeypatch):
+    """A lock left held would stall every later append, in any process."""
+    log = tmp_path / "log.jsonl"
+
+    def refuse(descriptor: int, data: object) -> int:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(atomic.os, "write", refuse)
+    with pytest.raises(OSError):
+        append_whole(log, b"lost\n")
+    monkeypatch.undo()
+
+    program = (
+        "import sys; from pathlib import Path;"
+        "from am_segmentation_manager.io.atomic import append_whole;"
+        "append_whole(Path(sys.argv[1]), b'landed\\n')"
+    )
+    subprocess.run([sys.executable, "-c", program, str(log)], check=True, timeout=60)
+
+    assert log.read_bytes() == b"landed\n"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="flock is not used on Windows")
+def test_a_filesystem_without_locks_still_takes_the_append(tmp_path: Path, monkeypatch):
+    """Some network shares refuse locks; macOS and Linux keep an append whole
+    without one, so recording there goes on as before."""
+    import fcntl
+
+    def unsupported(descriptor: int, operation: int) -> None:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(fcntl, "flock", unsupported)
+    log = tmp_path / "log.jsonl"
+    append_whole(log, b"kept\n")
+
+    assert log.read_bytes() == b"kept\n"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="flock is not used on Windows")
+def test_any_other_failure_to_lock_is_raised(tmp_path: Path, monkeypatch):
+    import fcntl
+
+    def broken(descriptor: int, operation: int) -> None:
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(fcntl, "flock", broken)
+    with pytest.raises(OSError):
+        append_whole(tmp_path / "log.jsonl", b"not written\n")
