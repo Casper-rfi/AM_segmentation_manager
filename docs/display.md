@@ -493,6 +493,14 @@ of one of these files, is held by `test_docs.py`.
   records who asked. Nothing is shown, so `isVisible()` is False whatever the code did and
   `isHidden()` is the state to assert. And a modal dialog has nobody to dismiss it, so its `exec_`
   must be intercepted per dialog class, not just `QMessageBox`, or the suite hangs.
+- **The window's error reporter, once installed, turns a later test's exception into a hang.**
+  `app.install_error_reporting` replaces `sys.excepthook` for the whole session, and a test through
+  `app.run` that does not patch it leaves it on. An exception in a Qt callback afterwards — a
+  zero-delay timer firing on a window already destroyed is the usual one — queues the failure
+  dialog, and whichever test next turns the event loop opens it and waits for a click nobody gives.
+  So patch it, and let a queued call run before `destroy`
+  (`test_the_window_opens_in_the_accent_its_settings_hold`); `-o faulthandler_timeout=120` names
+  the test that stalls.
 - **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side effect,
   and `test_gui_*` sorts before most other tests. That is how a locale-dependent `strptime('%p')`
   bug appears only in full runs on a non-English locale. `LC_ALL=… pytest` does **not** test this;

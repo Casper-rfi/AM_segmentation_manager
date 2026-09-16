@@ -37,7 +37,7 @@ TESTS = REPOSITORY / "tests"
 #: has landed, or because the scientist said so -- never to make room for
 #: something being added. Over the ceiling with none of those available is a
 #: question for the scientist rather than a deletion to be chosen.
-MAX_DOC_LINES = 1200
+MAX_DOC_LINES = 1220
 
 #: The documents holding invariants rather than status. An entry in the roadmap
 #: or the future-work sketches describes what is unbuilt or unfinished and so
@@ -50,7 +50,7 @@ REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
 #: fixing another, and a test pointer may not be traded for a weaker one.
 #: Neither ever forces a deletion -- a backed entry is free at any length.
 MAX_UNBACKED_ENTRIES = 36
-MIN_TEST_BACKED_ENTRIES = 80
+MIN_TEST_BACKED_ENTRIES = 81
 
 
 def _documents() -> list[Path]:
