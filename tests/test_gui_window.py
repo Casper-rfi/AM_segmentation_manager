@@ -73,12 +73,28 @@ def qt_app():
     yield app
 
 
+@pytest.fixture(scope="session")
+def project_template(tmp_path_factory) -> Path:
+    """The project every window test starts from, built once for the session."""
+    return _build_project(tmp_path_factory.mktemp("template"))
+
+
 @pytest.fixture
-def project(tmp_path: Path) -> Path:
-    """A two-lamella project with real (tiny) image, label and plot files."""
+def project(tmp_path: Path, project_template: Path) -> Path:
+    """A two-lamella project with real (tiny) image, label and plot files.
+
+    A copy of :func:`project_template`, because a test may write into it.
+    """
+    import shutil
+
+    return Path(shutil.copytree(project_template, tmp_path / "scan"))
+
+
+def _build_project(directory: Path) -> Path:
+    """Write the two-lamella project under *directory* and return its scan root."""
     import cv2
 
-    root = tmp_path / "scan"
+    root = directory / "scan"
     project_root = root / "AutoLamella-2026-07-28-13-57"
     project_root.mkdir(parents=True)
     (project_root / "experiment.yaml").write_text("name: test-project")
