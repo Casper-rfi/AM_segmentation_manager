@@ -12,6 +12,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -47,7 +49,9 @@ def panel(qt_app) -> LabelPanel:
         class_colors={0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)},
         class_labels={0: "background", 1: "GIS", 2: "lamella"},
     )
-    return LabelPanel(LabelController(config=config))
+    panel = LabelPanel(LabelController(config=config))
+    yield panel
+    destroy(panel)
 
 
 def _drawn(icon) -> bytes:

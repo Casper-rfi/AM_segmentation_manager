@@ -1076,7 +1076,7 @@ def test_moving_lamella_from_the_tab_moves_both_views(qt_app, config, tmp_path):
         assert window.label_controller.lamella is window.controller.lamella
         assert window.label_panel.frame_label.text() == "1 / 2"
     finally:
-        window.close()
+        destroy(window)
 
 
 def test_the_tab_s_keys_are_live_only_on_it(window):
@@ -1845,7 +1845,7 @@ def test_an_image_with_no_label_can_still_be_annotated(qt_app, config, tmp_path)
         assert window.label_controller.editable
         assert window.label_controller.current_key.name.endswith(".tif")
     finally:
-        window.close()
+        destroy(window)
 
 
 @pytest.fixture

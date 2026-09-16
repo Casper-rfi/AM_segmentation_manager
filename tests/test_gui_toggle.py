@@ -12,6 +12,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -155,11 +157,12 @@ def test_every_standalone_on_off_control_is_a_switch(qt_app, config):
     """
     for panel in _panels(config):
         plain = [
-            box
+            box.text()
             for box in panel.findChildren(QCheckBox)
             if not isinstance(box, ToggleSwitch)
         ]
-        assert not plain, [box.text() for box in plain]
+        destroy(panel)
+        assert not plain, plain
 
 
 def test_a_row_of_a_list_is_still_ticked(qt_app):

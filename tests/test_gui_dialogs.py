@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -41,7 +43,9 @@ def qt_app():
 
 @pytest.fixture
 def panel(qt_app) -> ExportPanel:
-    return ExportPanel(ExportController())
+    panel = ExportPanel(ExportController())
+    yield panel
+    destroy(panel)
 
 
 def open_dialog(**kwargs) -> QFileDialog:

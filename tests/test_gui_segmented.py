@@ -11,6 +11,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -48,7 +50,9 @@ def themed(qt_app):
 
 @pytest.fixture
 def control(qt_app) -> SegmentedControl:
-    return SegmentedControl(SEGMENTS)
+    control = SegmentedControl(SEGMENTS)
+    yield control
+    destroy(control)
 
 
 # ---------------------------------------------------------------------------
@@ -120,12 +124,14 @@ def test_a_run_of_two_has_no_middle(qt_app):
     assert [b.objectName() for b in control.buttons.values()] == [
         "segmentFirst", "segmentLast",
     ]
+    destroy(control)
 
 
 def test_a_run_of_one_is_rounded_on_both_ends(qt_app):
     control = SegmentedControl(SEGMENTS[:1])
 
     assert [b.objectName() for b in control.buttons.values()] == ["segmentOnly"]
+    destroy(control)
 
 
 def test_the_segments_are_not_spaced_apart(control):
@@ -176,6 +182,8 @@ def test_the_chosen_segment_is_filled_not_tinted(themed):
 
     assert _fill(control.buttons["sem"]) == QColor(theme.active_accent().colour)
     assert _fill(plain) != QColor(theme.active_accent().colour)
+    destroy(control)
+    destroy(plain)
 
 
 def test_the_segments_not_chosen_stay_readable(themed):
@@ -183,6 +191,7 @@ def test_the_segments_not_chosen_stay_readable(themed):
     control.set_current("sem")
 
     assert _fill(control.buttons["fib"]) == QColor(theme.BUTTON)
+    destroy(control)
 
 
 def test_a_disabled_segment_is_still_drawn(themed):
@@ -191,3 +200,4 @@ def test_a_disabled_segment_is_still_drawn(themed):
     control.buttons["plot"].setEnabled(False)
 
     assert _fill(control.buttons["plot"]) == QColor(theme.BUTTON)
+    destroy(control)

@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -295,7 +297,7 @@ def test_a_segment_caption_is_bold(themed):
     themed.processEvents()
 
     assert all(button.font().bold() for button in control.buttons.values())
-    control.close()
+    destroy(control)
 
 
 def test_the_tool_button_font_is_levelled_after_the_stylesheet():

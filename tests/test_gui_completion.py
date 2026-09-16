@@ -12,6 +12,8 @@ import os
 
 import pytest
 
+from conftest import destroy
+
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -42,10 +44,13 @@ def box(qt_app, request):
     if request.param == "suggestion box":
         box = _suggestion_box()
         box.addItems(["", *GRID_TYPES])
-        return box
+        yield box
+        destroy(box)
+        return
     editor = ChipEditor()
     editor.set_suggestions(GRID_TYPES)
-    return editor.entry
+    yield editor.entry
+    destroy(editor)
 
 
 def test_a_suggestion_matches_the_middle_of_a_value(box):
@@ -156,3 +161,4 @@ def test_a_chip_is_the_whole_value_and_not_the_letter_that_found_it(qt_app, rout
     # Not compared against the box, which committing empties.
     assert len(editor.values()) == 1
     assert editor.values()[0] in GRID_TYPES
+    destroy(editor)
