@@ -288,6 +288,9 @@ def destroy(widget) -> None:
     Pending ``deleteLater`` calls are then carried out, because a test turns
     the event loop with ``processEvents``, which never does: a chip the window
     detached and scheduled for deletion would otherwise outlive the test.
+
+    A tooltip the window showed goes too. It is Qt's one shared tooltip, owned
+    by no widget, and on Windows it outlives the window that showed it.
     """
     import shiboken6
     from qtpy.QtCore import QEvent
@@ -296,6 +299,9 @@ def destroy(widget) -> None:
     widget.close()
     if shiboken6.isValid(widget):
         shiboken6.delete(widget)
+    for tooltip in QApplication.topLevelWidgets():
+        if tooltip.metaObject().className() == "QTipLabel" and shiboken6.isValid(tooltip):
+            shiboken6.delete(tooltip)
     QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 

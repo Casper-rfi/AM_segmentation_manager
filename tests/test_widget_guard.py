@@ -65,3 +65,20 @@ def test_a_test_that_leaves_a_widget_alive_is_named_and_one_that_frees_its_own_i
     assert "ERROR at teardown of test_keeps_a_widget" in output, output
     assert "left 1 top-level widget(s) alive: QWidget" in output, output
     assert "test_frees_its_widget" not in output.split("short test summary")[-1], output
+
+
+def test_destroying_a_window_takes_the_tooltip_it_showed_with_it(qt_app):
+    """Qt's one tooltip belongs to no widget and, on Windows, outlives the
+    window that showed it; the guard then blamed whichever test showed one."""
+    from qtpy.QtCore import QPoint, QRect
+    from qtpy.QtWidgets import QToolTip, QWidget
+
+    from conftest import destroy, top_level_widget_names
+
+    window = QWidget()
+    QToolTip.showText(QPoint(200, 200), "path copied", None, QRect(), 2000)
+    assert "QTipLabel" in top_level_widget_names()
+
+    destroy(window)
+
+    assert "QTipLabel" not in top_level_widget_names()

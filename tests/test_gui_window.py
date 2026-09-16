@@ -335,17 +335,36 @@ def test_every_tab_is_captured_for_a_person_to_look_at(window, qt_app, size):
 
 @needs_screenshots
 def test_the_curate_tab_before_a_scan_is_captured_for_a_person_to_look_at(qt_app, settings):
-    """What a window opens on, and what the view-controls test measures: the
-    panels say different things before there is anything to show."""
+    """Built and measured as the view-controls test below measures it, so the
+    picture shows what that test saw; the controls' height is in the name."""
+    import sys
+
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
 
-    window = CurationWindow(CurationController(cache=FrameCache()), settings=settings)
+    directory = Path(os.environ[SCREENSHOTS_ENV_VAR])
+    directory.mkdir(parents=True, exist_ok=True)
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
     try:
-        _capture(
-            qt_app, window, SMALLEST_SUPPORTED_SCREEN, "unscanned-",
-            [window.tabs.indexOf(window.curate)],
-        )
+        window.tabs.setCurrentWidget(window.curate)
+        for width in (SMALLEST_SUPPORTED_SCREEN[0], 1920):
+            window.resize(width, 900)
+            window.show()
+            qt_app.processEvents()
+            picture = window.grab()
+            controls = window.image_panel.controls
+            path = directory / (
+                f"{sys.platform}-{width}x900-unscanned-2-curate"
+                f"-controls-{controls.width()}x{controls.height()}.png"
+            )
+
+            assert picture.save(str(path)), f"could not write {path}"
     finally:
         destroy(window)
 
