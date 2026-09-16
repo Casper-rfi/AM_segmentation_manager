@@ -22,6 +22,9 @@ permissions:
 
 env:
   QT_QPA_PLATFORM: offscreen
+  # Every pytest here runs with -v, naming each test as it starts, and with
+  # faulthandler_timeout, printing where a test hung: a process that crashes or
+  # stalls leaves no summary, and the log's last line is then the only witness.
   # The same interpreter uv would install on a developer's machine, never a
   # runner's own Python.
   UV_PYTHON_PREFERENCE: only-managed
@@ -50,7 +53,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - run: uv run --locked pytest -q
+      - run: uv run --locked pytest -v -o faulthandler_timeout=600
 
   test:
     name: test (${{ matrix.os }}, ${{ matrix.python }})
@@ -73,7 +76,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --locked --extra gui
-      - run: uv run --locked pytest -q --durations=15
+      - run: uv run --locked pytest -v --durations=15 -o faulthandler_timeout=600
 
   # The rest of the platforms, run on request while the repository is private.
   test-more:
@@ -97,7 +100,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --locked --extra gui
-      - run: uv run --locked pytest -q --durations=15
+      - run: uv run --locked pytest -v --durations=15 -o faulthandler_timeout=600
 
   # The inference stack on a runner with no GPU: loading, preprocessing and
   # the prediction process on the CPU.
@@ -112,7 +115,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra gui --extra ml
       - run: uv run --locked python scripts/check_environment.py
-      - run: uv run --locked pytest -q
+      - run: uv run --locked pytest -v -o faulthandler_timeout=600
 
   # A QApplication adopts the system locale, which is how a locale bug has
   # reached a user before; see AM_SEG_TEST_LOCALE in tests/conftest.py.
@@ -135,7 +138,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui
-      - run: uv run --locked pytest -q
+      - run: uv run --locked pytest -v -o faulthandler_timeout=600
         env:
           AM_SEG_TEST_LOCALE: ${{ matrix.locale }}
 
@@ -151,4 +154,4 @@ jobs:
       - uses: ./.github/actions/qt-libraries
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
       - run: uv sync --upgrade --extra gui --extra ml
-      - run: uv run pytest -q
+      - run: uv run pytest -v -o faulthandler_timeout=600
