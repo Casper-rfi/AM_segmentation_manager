@@ -46,8 +46,9 @@ CURSOR = QColor("#f5f5f5")
 
 #: Something still to do rather than a state: a field not filled in, a project
 #: still short of fields. Blue, as the curate list's chip draws a series not yet
-#: started, and far from the orange accent
-#: (`test_a_mark_still_to_do_is_not_the_accent`).
+#: started, whichever accent is chosen: far from the orange one
+#: (`test_a_mark_still_to_do_is_not_the_accent`), and told from the blue one by
+#: shape: a field's ring and the completeness bar's partial fill.
 #:
 #: **Nothing on this timeline is painted with it**, so it is never read beside
 #: the selected state's blue. It is here because it sits with the colours that

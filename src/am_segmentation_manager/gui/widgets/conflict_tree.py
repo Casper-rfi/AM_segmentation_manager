@@ -23,7 +23,7 @@ from qtpy.QtWidgets import (
 from ...operations.merge import OURS, THEIRS
 from ..conflict_resolution import ALL, SOME, ConflictNode, ConflictResolution
 from .lists import TREE_INDENT
-from .theme import ACCENT, WARNING
+from .theme import WARNING, active_accent
 
 __all__ = ["ConflictTree", "SIDE_COLUMNS", "decide_all_buttons", "mark_icon"]
 
@@ -210,7 +210,7 @@ def mark_icon(coverage: str) -> QIcon:
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    colour = QColor(ACCENT)
+    colour = QColor(active_accent().colour)
     painter.setPen(QPen(colour, 1.5))
     painter.setBrush(QBrush(colour) if coverage == ALL else Qt.BrushStyle.NoBrush)
     ring = QRectF(1.5, 1.5, MARK_SIZE - 3.0, MARK_SIZE - 3.0)

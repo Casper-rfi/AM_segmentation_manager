@@ -3788,12 +3788,12 @@ def test_a_change_not_yet_saved_is_drawn_apart_from_a_missing_field(qt_app):
 
     from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
     from am_segmentation_manager.gui.widgets.metadata_panel import DOT, _dot_pixmap
-    from am_segmentation_manager.gui.widgets.theme import ACCENT, TEXT
+    from am_segmentation_manager.gui.widgets.theme import TEXT, active_accent
 
     centre = _dot_pixmap("edited").toImage().pixelColor(DOT // 2, DOT // 2)
 
     assert centre == QColor(TEXT)
-    assert centre not in (QColor(ACCENT), MISMATCH)
+    assert centre not in (QColor(active_accent().colour), MISMATCH)
 
 
 def test_the_fields_sit_under_their_section_headings(metadata_panel):
@@ -4974,7 +4974,7 @@ def test_the_keyboard_picks_out_the_keys_it_is_given(qt_app):
     from qtpy.QtGui import QColor
 
     from am_segmentation_manager.gui.widgets.keyboard import keyboard_diagram
-    from am_segmentation_manager.gui.widgets.theme import ACCENT, apply_theme
+    from am_segmentation_manager.gui.widgets.theme import active_accent, apply_theme
 
     stylesheet, palette = qt_app.styleSheet(), qt_app.palette()
     apply_theme(qt_app)
@@ -4984,7 +4984,7 @@ def test_the_keyboard_picks_out_the_keys_it_is_given(qt_app):
 
         assert plain.size() == marked.size(), "one key does not change the shape"
         assert plain != marked
-        accent = QColor(ACCENT).rgb()
+        accent = QColor(active_accent().colour).rgb()
         assert not any(
             plain.pixel(x, y) == accent
             for x in range(plain.width())

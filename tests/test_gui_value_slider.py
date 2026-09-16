@@ -86,18 +86,19 @@ def test_it_is_drawn_as_the_range_slider_is(slider):
 
 
 def test_the_groove_is_filled_up_to_the_handle(slider):
-    from am_segmentation_manager.gui.widgets.theme import ACCENT
+    from am_segmentation_manager.gui.widgets.theme import active_accent
 
     slider.setValue(128)
     image = _drawn(slider)
     middle = slider.height() // 2
 
-    assert image.pixelColor(round(slider._x_of(40)), middle) == QColor(ACCENT)
-    assert image.pixelColor(round(slider._x_of(230)), middle) != QColor(ACCENT)
+    assert image.pixelColor(round(slider._x_of(40)), middle) == QColor(active_accent().colour)
+    assert image.pixelColor(round(slider._x_of(230)), middle) != QColor(active_accent().colour)
 
 
 def test_no_stylesheet_rule_names_the_control(qt_app):
     from am_segmentation_manager.gui.widgets import theme
 
-    assert "ValueSlider" not in theme.stylesheet()
-    assert "QSlider" not in theme.stylesheet()
+    sheet = theme.stylesheet(theme.active_accent())
+    assert "ValueSlider" not in sheet
+    assert "QSlider" not in sheet

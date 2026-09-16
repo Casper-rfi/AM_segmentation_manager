@@ -117,7 +117,7 @@ class ToggleSwitch(QCheckBox):
                 # A control reachable by keyboard has to show where the
                 # keyboard is; nothing else here would say so.
                 ring = track.adjusted(-2.5, -2.5, 2.5, 2.5)
-                pen = QPen(QColor(theme.ACCENT))
+                pen = QPen(QColor(theme.active_accent().colour))
                 pen.setWidthF(1.5)
                 painter.setPen(pen)
                 painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -175,7 +175,7 @@ class ToggleSwitch(QCheckBox):
     def _track_colour(self) -> str:
         if not self.isEnabled():
             return theme.BORDER_LIGHT
-        return theme.ACCENT if self.isChecked() else theme.SWITCH_OFF
+        return theme.active_accent().colour if self.isChecked() else theme.SWITCH_OFF
 
     def _text_colour(self) -> str:
         return theme.TEXT if self.isEnabled() else theme.DISABLED_TEXT
@@ -233,7 +233,7 @@ class _GripHandle(QSplitterHandle):
         painter.fillRect(self.rect(), QColor(theme.WINDOW))
 
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(theme.ACCENT if self._pointed_at else theme.GRIP))
+        painter.setBrush(QColor(theme.active_accent().colour if self._pointed_at else theme.GRIP))
         painter.drawRoundedRect(
             self._grip(), theme.GRIP_THICKNESS / 2, theme.GRIP_THICKNESS / 2
         )
@@ -772,7 +772,7 @@ def _paint_track(
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(theme.BORDER))
     painter.drawRoundedRect(groove, radius, radius)
-    painter.setBrush(QColor(theme.ACCENT))
+    painter.setBrush(QColor(theme.active_accent().colour))
     painter.drawRoundedRect(
         QRectF(filled_from, groove.top(), filled_to - filled_from, RANGE_GROOVE),
         radius, radius,
@@ -784,7 +784,7 @@ def _paint_knob(painter: QPainter, x: float, middle: float, *, ringed: bool) -> 
     centre = QPointF(x, middle)
     if ringed:
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(theme.ACCENT))
+        painter.setBrush(QColor(theme.active_accent().colour))
         painter.drawEllipse(centre, RANGE_HANDLE + RANGE_FOCUS, RANGE_HANDLE + RANGE_FOCUS)
     pen = QPen(QColor(theme.BORDER))
     pen.setWidthF(1.0)

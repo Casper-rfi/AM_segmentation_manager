@@ -133,12 +133,12 @@ def _paint_arrows(painter: QPainter, left: int, height: int, pressed: set[str]) 
 
 def _paint_key(painter: QPainter, x: int, y: int, name: str, used: bool) -> None:
     """Draw one key, tinted when the tab in front binds it."""
-    painter.setPen(QColor(theme.ACCENT if used else theme.BORDER))
-    painter.setBrush(QColor(theme.ACCENT if used else theme.BASE))
+    painter.setPen(QColor(theme.active_accent().colour if used else theme.BORDER))
+    painter.setBrush(QColor(theme.active_accent().colour if used else theme.BASE))
     painter.drawRoundedRect(
         QRectF(x, y, _key_width(name), KEY_SIZE), KEY_RADIUS, KEY_RADIUS
     )
-    painter.setPen(QColor(theme.ACCENT_TEXT if used else theme.MUTED))
+    painter.setPen(QColor(theme.active_accent().text if used else theme.MUTED))
     painter.drawText(
         QRectF(x, y, _key_width(name), KEY_SIZE),
         Qt.AlignmentFlag.AlignCenter,

@@ -420,7 +420,7 @@ def run(cases: list[Case], out: Path) -> None:
     )
 
     from am_segmentation_manager.gui.widgets.image_view import ImageView
-    from am_segmentation_manager.gui.widgets.theme import ACCENT
+    from am_segmentation_manager.gui.widgets.theme import active_accent
 
     def display(array: np.ndarray) -> np.ndarray:
         low, high = np.percentile(array, (0.5, 99.5))
@@ -487,7 +487,7 @@ def run(cases: list[Case], out: Path) -> None:
     row.addWidget(side)
     window.setCentralWidget(central)
 
-    pen = QPen(QColor(ACCENT), 2)
+    pen = QPen(QColor(active_accent().colour), 2)
     pen.setCosmetic(True)
     ring = QGraphicsEllipseItem(QRectF(-8, -8, 16, 16))
     ring.setPen(pen)

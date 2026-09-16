@@ -137,7 +137,7 @@ def test_the_segments_are_not_spaced_apart(control):
 def test_the_stylesheet_names_every_segment_position(themed):
     """Qt stylesheets have no wildcard, so a name left out of a rule is a
     segment silently drawn as an ordinary button."""
-    sheet = theme.stylesheet()
+    sheet = theme.stylesheet(theme.active_accent())
     for name in ("segmentOnly", "segmentFirst", "segmentMiddle", "segmentLast"):
         assert sheet.count(f"QToolButton#{name}:checked") == 1, name
 
@@ -174,8 +174,8 @@ def test_the_chosen_segment_is_filled_not_tinted(themed):
     plain.resize(60, 26)
     plain.show()
 
-    assert _fill(control.buttons["sem"]) == QColor(theme.ACCENT)
-    assert _fill(plain) != QColor(theme.ACCENT)
+    assert _fill(control.buttons["sem"]) == QColor(theme.active_accent().colour)
+    assert _fill(plain) != QColor(theme.active_accent().colour)
 
 
 def test_the_segments_not_chosen_stay_readable(themed):

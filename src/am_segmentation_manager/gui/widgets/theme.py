@@ -3,7 +3,8 @@
 Everything visual that carries no information is set here, so the window looks
 the same wherever it runs; see `docs/display.md` for why the style is set rather
 than inherited, and why a stylesheet rule beats a palette. It is kept short
-because Qt re-evaluates it whenever a widget is polished.
+because Qt re-evaluates it whenever a widget is polished. The accent is one of
+:data:`ACCENTS`; every other colour is shared by all of them.
 
 Colours that carry *meaning* are not here: the workflow states and label lines
 live in :mod:`frame_strip`, and the class colours come from the segmentation
@@ -11,6 +12,8 @@ config. Those are data, this is chrome.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from qtpy.QtGui import QColor, QPalette
@@ -55,17 +58,57 @@ PRESSED = "#e2e0db"
 #: to press rather than as a field to type in.
 BUTTON = "#f9f8f6"
 
-#: One accent, used for selection, focus and hover. A second would have to mean
-#: something, and everything that means something is already spoken for by the
-#: workflow colours. It is orange, which is also a class colour, so it stays on
-#: controls and off anything drawn beside a label or the legend. It is the logo's
-#: orange softened, light enough that what is written on it is dark
-#: (`test_text_on_the_accent_is_readable`).
-ACCENT = "#f5a04a"
-ACCENT_TEXT = TEXT
-#: A deeper cut of the same accent, not a second colour, for accent-coloured text
-#: on a light ground: a link (`test_accent_coloured_text_is_readable`).
-ACCENT_STRONG = "#b35c12"
+
+@dataclass(frozen=True)
+class Accent:
+    """The colours one accent gives the window, used for selection, focus and hover.
+
+    One accent at a time: a second would have to mean something, and everything
+    that means something is spoken for by the workflow colours. Every accent is
+    also a class colour, so it stays on controls and off anything drawn beside a
+    label or the legend.
+
+    Attributes:
+        colour: Filled or drawn on a control: a chosen segment, a tab's edge,
+            a switch that is on.
+        text: What is written on :attr:`colour`
+            (`test_text_on_the_accent_is_readable`).
+        strong: A deeper cut of the same accent, not a second colour, for
+            accent-coloured text on a light ground: a link
+            (`test_accent_coloured_text_is_readable`).
+        selected: The tint behind the row being looked at. A tint rather than
+            :attr:`colour`: Qt draws a row's check indicator in its own
+            colours, so a saturated row left the tick at low contrast on exactly
+            the row the user is on. A chip is not outlined, so every fill it
+            uses has to hold against this tint as well as against white.
+    """
+
+    colour: str
+    text: str
+    strong: str
+    selected: str
+
+
+#: The accents the window can be drawn in, by the key a preference stores. Orange
+#: is the logo's, softened light enough that what is written on it is dark.
+ACCENTS: Mapping[str, Accent] = {
+    "orange": Accent(colour="#f5a04a", text=TEXT, strong="#b35c12", selected="#fdeedf"),
+    "blue": Accent(colour="#2f6feb", text="#ffffff", strong="#2258c4", selected="#dbe6fb"),
+}
+DEFAULT_ACCENT = "orange"
+
+_active: Accent = ACCENTS[DEFAULT_ACCENT]
+
+
+def active_accent() -> Accent:
+    """Return the accent :func:`apply_theme` last applied.
+
+    Read when painting, never at import: widget modules are imported before the
+    theme is applied, so a colour bound then would be the default whatever was
+    chosen.
+    """
+    return _active
+
 
 #: The grip on a splitter handle. Darker than :data:`BORDER`, because it is the
 #: one separator that is meant to be *seen*: a division nobody can tell is
@@ -75,13 +118,6 @@ GRIP = "#b1aea8"
 
 #: A scroll bar's handle at rest. Under the pointer it takes :data:`MUTED`.
 SCROLL_HANDLE = "#c5c2bc"
-
-#: The row being looked at, in a list whose rows also carry a checkbox and a
-#: status chip. A tint rather than a solid accent fill: Qt draws the check
-#: indicator in its own colours, so a saturated row left the tick at low
-#: contrast on exactly the row the user is on. A chip is not outlined, so every
-#: fill it uses has to hold against this tint as well as against white.
-SELECTED = "#fdeedf"
 
 #: Text colours for a short annotation beside a value. The warning is a dark
 #: amber: text, where the accent never is, so the two are not read as one
@@ -126,8 +162,8 @@ SECTION_HEADING = "sectionHeading"
 PADLOCK_BUTTON = "padlockButton"
 
 #: Object name of a class button on the Label tab. Chosen, it is ringed in
-#: :data:`TEXT` rather than the accent, which would merge into an orange class's
-#: swatch and hide which class a stroke will write.
+#: :data:`TEXT` rather than the accent, which would merge into the swatch of a
+#: class of the same colour and hide which class a stroke will write.
 CLASS_BUTTON = "classButton"
 
 #: Object name of the timeline's hover card, so the stylesheet can draw it as it
@@ -206,8 +242,8 @@ SWATCH_WIDTH = swatch_width(len(SERIES))
 SWATCH_HEIGHT = len(MODALITIES) * SWATCH_CELL + (len(MODALITIES) - 1) * SWATCH_GAP
 
 
-def build_palette() -> QPalette:
-    """Return the window's colour palette.
+def build_palette(accent: Accent) -> QPalette:
+    """Return the window's colour palette, in *accent*.
 
     The palette covers everything the stylesheet does not name. Where the two
     disagree the stylesheet wins, which is why a locked editor's text colour is
@@ -223,9 +259,9 @@ def build_palette() -> QPalette:
     palette.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
     palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(BASE))
     palette.setColor(QPalette.ColorRole.ToolTipText, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(SELECTED))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(accent.selected))
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.Link, QColor(ACCENT_STRONG))
+    palette.setColor(QPalette.ColorRole.Link, QColor(accent.strong))
     if hasattr(QPalette, "PlaceholderText"):  # Qt 5.12+
         palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(MUTED))
     for role in (QPalette.ColorRole.Text, QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
@@ -233,8 +269,8 @@ def build_palette() -> QPalette:
     return palette
 
 
-def stylesheet() -> str:
-    """Return the application stylesheet.
+def stylesheet(accent: Accent) -> str:
+    """Return the application stylesheet, in *accent*.
 
     Backgrounds, borders and spacing only. Nothing here sets a text colour on an
     input, for the reason :func:`build_palette` gives.
@@ -277,7 +313,7 @@ def stylesheet() -> str:
         border: 1px solid {BORDER};
         border-radius: 6px;
         padding: 3px 5px;
-        selection-background-color: {SELECTED};
+        selection-background-color: {accent.selected};
         selection-color: {TEXT};
     }}
     /* The arrows keep Qt's own drawing, but not its square boxes, which stood
@@ -305,22 +341,22 @@ def stylesheet() -> str:
     QAbstractSpinBox::up-arrow {{ image: url("{ARROW_UP}"); width: 7px; height: 4px; }}
     QAbstractSpinBox::down-arrow {{ image: url("{ARROW_DOWN}"); width: 7px; height: 4px; }}
     /* An open dropdown and a context menu mark their row as a list does: the
-       palette's highlight is a solid deep orange across the whole row. */
+       palette's highlight would fill the whole row in a solid colour. */
     QComboBox QAbstractItemView {{
         background: {BASE};
         border: 1px solid {BORDER};
-        selection-background-color: {SELECTED};
+        selection-background-color: {accent.selected};
         selection-color: {TEXT};
         outline: 0;
     }}
     QMenu {{ background: {BASE}; border: 1px solid {BORDER}; padding: 4px 0; }}
     QMenu::item {{ padding: 4px 20px; }}
-    QMenu::item:selected {{ background: {SELECTED}; color: {TEXT}; }}
+    QMenu::item:selected {{ background: {accent.selected}; color: {TEXT}; }}
     QMenu::item:disabled {{ color: {DISABLED_TEXT}; }}
     QMenu::separator {{ height: 1px; background: {BORDER_LIGHT}; margin: 4px 8px; }}
     QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus,
     QTreeWidget:focus {{
-        border-color: {ACCENT};
+        border-color: {accent.colour};
     }}
     /* A locked field is read, not merely unavailable: the Add data tab opens
        locked and is mostly used for reading, and Qt's disabled grey puts every
@@ -342,8 +378,8 @@ def stylesheet() -> str:
     QComboBox[single="true"]::drop-down {{ width: 0px; border: none; }}
     QComboBox[single="true"]::down-arrow {{ image: none; border: none; }}
     QLabel#{CHOICE_COUNT} {{
-        background: {ACCENT};
-        color: {ACCENT_TEXT};
+        background: {accent.colour};
+        color: {accent.text};
         border-radius: 8px;
         padding: 0px 5px;
         font-weight: 600;
@@ -365,10 +401,10 @@ def stylesheet() -> str:
        background -- the selected row simply goes blank. Both states are set
        here because an inactive window uses its own. */
     QListWidget::item:selected, QTreeWidget::item:selected {{
-        background: {SELECTED}; color: {TEXT}; border-left-color: {ACCENT};
+        background: {accent.selected}; color: {TEXT}; border-left-color: {accent.colour};
     }}
     QListWidget::item:selected:!active, QTreeWidget::item:selected:!active {{
-        background: {SELECTED}; color: {TEXT}; border-left-color: {ACCENT};
+        background: {accent.selected}; color: {TEXT}; border-left-color: {accent.colour};
     }}
 
     /* Buttons, fields and segments share one corner radius, nearer the round
@@ -384,7 +420,7 @@ def stylesheet() -> str:
        character is clipped away and the button draws blank. Named rather than
        styled where it is built, because chrome is set here and nowhere else. */
     QPushButton#{COMPACT_BUTTON} {{ padding: 5px 2px; }}
-    QPushButton:hover {{ background: {HOVER}; border-color: {ACCENT}; }}
+    QPushButton:hover {{ background: {HOVER}; border-color: {accent.colour}; }}
     QPushButton:pressed {{ background: {PRESSED}; }}
     QPushButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
     /* The button a dialog expects you to press. Qt tints it itself, but the
@@ -392,12 +428,12 @@ def stylesheet() -> str:
        showed them as two identical buttons, with nothing saying which one the
        reviewer almost always wants. */
     QPushButton:default {{
-        background: {ACCENT};
-        color: {ACCENT_TEXT};
-        border-color: {ACCENT};
+        background: {accent.colour};
+        color: {accent.text};
+        border-color: {accent.colour};
     }}
-    QPushButton:default:hover {{ background: {ACCENT}; border-color: {TEXT}; }}
-    QPushButton:default:pressed {{ background: {ACCENT}; border-color: {TEXT}; }}
+    QPushButton:default:hover {{ background: {accent.colour}; border-color: {TEXT}; }}
+    QPushButton:default:pressed {{ background: {accent.colour}; border-color: {TEXT}; }}
     QPushButton:default:disabled {{
         background: {BUTTON};
         color: {DISABLED_TEXT};
@@ -410,15 +446,15 @@ def stylesheet() -> str:
         border-radius: 6px;
         padding: 3px 8px;
     }}
-    QToolButton:hover {{ border-color: {ACCENT}; }}
+    QToolButton:hover {{ border-color: {accent.colour}; }}
     /* Fusion marks a checked button with a barely darker fill. These carry
        which class a stroke will write and which classes are protected from
        one, so being able to see the answer across the room is worth a rule. */
-    QToolButton:checked {{ background: {SELECTED}; border-color: {ACCENT}; }}
+    QToolButton:checked {{ background: {accent.selected}; border-color: {accent.colour}; }}
     QToolButton:disabled {{ color: {DISABLED_TEXT}; border-color: {BORDER_LIGHT}; }}
     /* Save while edits are held only in this window. Its caption is gone, so
        the button itself says there is something to write. */
-    QToolButton[pending="true"] {{ background: {SELECTED}; border-color: {ACCENT}; }}
+    QToolButton[pending="true"] {{ background: {accent.selected}; border-color: {accent.colour}; }}
     QToolButton#{PADLOCK_BUTTON} {{ padding: 1px; }}
     QToolButton#{CLASS_BUTTON}:checked {{ border-color: {TEXT}; }}
 
@@ -449,9 +485,9 @@ def stylesheet() -> str:
     QToolButton#segmentMiddle, QToolButton#segmentLast {{ border-left: none; }}
     QToolButton#segmentOnly:checked, QToolButton#segmentFirst:checked,
     QToolButton#segmentMiddle:checked, QToolButton#segmentLast:checked {{
-        background: {ACCENT};
-        color: {ACCENT_TEXT};
-        border-color: {ACCENT};
+        background: {accent.colour};
+        color: {accent.text};
+        border-color: {accent.colour};
     }}
     QToolButton#segmentOnly:hover:!checked, QToolButton#segmentFirst:hover:!checked,
     QToolButton#segmentMiddle:hover:!checked, QToolButton#segmentLast:hover:!checked {{
@@ -473,11 +509,11 @@ def stylesheet() -> str:
         border: 1px solid {BORDER};
         border-radius: 6px;
         gridline-color: {BORDER_LIGHT};
-        selection-background-color: {SELECTED};
+        selection-background-color: {accent.selected};
         selection-color: {TEXT};
     }}
     QTableView::item {{ padding: 2px 6px; }}
-    QTableView::item:selected {{ background: {SELECTED}; color: {TEXT}; }}
+    QTableView::item:selected {{ background: {accent.selected}; color: {TEXT}; }}
     QHeaderView::section {{
         background: {ALTERNATE};
         color: {HEADING};
@@ -513,7 +549,7 @@ def stylesheet() -> str:
     QTabBar::tab:selected {{
         background: {BASE};
         border-color: {BORDER};
-        border-top-color: {ACCENT};
+        border-top-color: {accent.colour};
         border-bottom-color: {BASE};
         color: {TEXT};
         font-weight: bold;
@@ -546,8 +582,12 @@ def stylesheet() -> str:
     """
 
 
-def apply_theme(application) -> None:
+def apply_theme(application, accent: Accent | None = None) -> None:
     """Give *application* the window's style, palette and stylesheet.
+
+    Args:
+        accent: The accent to draw in, and what :func:`active_accent` answers
+            from now on. None is :data:`DEFAULT_ACCENT`.
 
     Fusion rather than the platform style, so the window looks the same wherever
     it runs -- the development machine and the microscope's differ in platform
@@ -557,7 +597,9 @@ def apply_theme(application) -> None:
     set level with it -- **after** the stylesheet, which puts the platform's
     class fonts back (`test_the_tool_button_font_is_levelled_after_the_stylesheet`).
     """
+    global _active
+    _active = accent if accent is not None else ACCENTS[DEFAULT_ACCENT]
     application.setStyle("Fusion")
-    application.setPalette(build_palette())
-    application.setStyleSheet(stylesheet())
+    application.setPalette(build_palette(_active))
+    application.setStyleSheet(stylesheet(_active))
     application.setFont(application.font(), "QToolButton")

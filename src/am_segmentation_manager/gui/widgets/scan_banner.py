@@ -16,7 +16,7 @@ from qtpy.QtGui import QColor, QFont, QPainter
 from qtpy.QtWidgets import QApplication, QWidget
 
 from .branding import PRODUCT_NAME, logo_pixmap
-from .theme import ACCENT, BORDER_LIGHT, HEADING, MUTED, WINDOW
+from .theme import BORDER_LIGHT, HEADING, MUTED, WINDOW, active_accent
 
 #: What the banner swallows while it is up. Everything a person can do: the
 #: shortcut events as well as the key ones, or F1 would still open the list
@@ -216,7 +216,7 @@ class ScanBanner(QWidget):
         filled = min(max(self._done, 0), self._total) / self._total
         if filled <= 0:
             return
-        painter.setBrush(QColor(ACCENT))
+        painter.setBrush(QColor(active_accent().colour))
         painter.drawRoundedRect(
             QRect(track.left(), track.top(), round(track.width() * filled), BAR_HEIGHT),
             BAR_RADIUS,

@@ -198,7 +198,7 @@ def _drawn(slider) -> QImage:
 
 def test_the_interval_is_drawn_and_not_only_its_ends(slider):
     """The filled span is the answer; the empty ends are what is thrown away."""
-    from am_segmentation_manager.gui.widgets.theme import ACCENT
+    from am_segmentation_manager.gui.widgets.theme import active_accent
 
     slider.set_range(100, 160)
     image = _drawn(slider)
@@ -207,8 +207,8 @@ def test_the_interval_is_drawn_and_not_only_its_ends(slider):
     inside = image.pixelColor(round(slider._x_of(130)), middle)
     outside = image.pixelColor(round(slider._x_of(30)), middle)
 
-    assert inside == QColor(ACCENT)
-    assert outside != QColor(ACCENT)
+    assert inside == QColor(active_accent().colour)
+    assert outside != QColor(active_accent().colour)
 
 
 def test_moving_a_handle_changes_the_picture(slider):
@@ -226,4 +226,4 @@ def test_no_stylesheet_rule_names_the_control(qt_app):
     QStyle and draw a second control underneath this one."""
     from am_segmentation_manager.gui.widgets import theme
 
-    assert "RangeSlider" not in theme.stylesheet()
+    assert "RangeSlider" not in theme.stylesheet(theme.active_accent())

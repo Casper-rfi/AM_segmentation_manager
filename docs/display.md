@@ -37,9 +37,9 @@ of one of these files, is held by `test_docs.py`.
   swallows every press, key, wheel and shortcut itself — that guarantee, held by the widget rather
   than asked of the loop, is what makes turning the loop safe where `busy_dialog.py` says it is not.
   The filter comes off in the same `finally`, one left on being a window nobody can type into.
-- **The accent is orange, a class colour, so it stays on the controls.** Nothing on the timeline
-  or beside a label takes it, and a chosen class is ringed in ink rather than in orange, which
-  would merge into its swatch (`test_a_chosen_class_is_ringed_in_ink_not_the_accent`).
+- **Every accent in `theme.ACCENTS` is a class colour, so it stays on the controls.** Nothing on
+  the timeline or beside a label takes it, and a chosen class is ringed in ink rather than in the
+  accent, which would merge into its swatch (`test_a_chosen_class_is_ringed_in_ink_not_the_accent`).
   `branding.py` holds both paths to it and the one spelling of the product name; a checkout
   without the asset draws nothing rather than failing. **macOS draws no container for a Dock icon**,
   so the icon there carries one: a superellipse over 824/1024 of the canvas, measured off the
@@ -190,8 +190,8 @@ of one of these files, is held by `test_docs.py`.
   sitting off it. Its hues are still the timeline's, but the chip is a *summary* rather than those
   states repeated — a "done" cell counts deselected images as finished, and those are grey on the
   timeline — which is what lets it have a ramp of its own. An outline round a seven-pixel cell takes
-  more of it than the colour it frames, so the fills hold against the white row and the `SELECTED`
-  tint instead. **`SWATCH_HEIGHT` must stay even**, for the reason
+  more of it than the colour it frames, so the fills hold against the white row and each accent's
+  selected tint instead. **`SWATCH_HEIGHT` must stay even**, for the reason
   `test_the_chip_is_an_even_number_of_pixels_tall` gives.
 - **Choosing a folder lists every lamella under it, and `controller.project` is then the project of
   the lamella in view rather than the row last clicked**, `controller.select_folder` saying why one
@@ -433,7 +433,7 @@ of one of these files, is held by `test_docs.py`.
   curates that neither `experiment.yaml` nor its images position is named as such
   (`test_a_lamella_the_experiment_never_positioned_is_told_so`). A mark keeps its size as the
   picture is zoomed (`ItemIgnoresTransformations`) and its name sits on a filled chip, `grid_view`
-  saying why of both. **Both take the accent**: an overview carries no label for its orange to be
+  saying why of both. **Both take the accent**: an overview carries no label for the accent to be
   read as, and it shows against light and dark grey alike.
 - **The chart carries its own bar, never matplotlib's toolbar.** That toolbar's *Subplots* and
   *Customize* change a figure bound for a paper with nothing recording it, so the bar offers reset,

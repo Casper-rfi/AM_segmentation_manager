@@ -24,7 +24,7 @@ from ...operations.merge import OURS
 from ..conflict_resolution import ALL, NONE, ConflictNode, ConflictResolution
 from .conflict_tree import MARK_SIZE, SIDE_COLUMNS, ConflictTree, decide_all_buttons, mark_icon
 from .controls import GripSplitter
-from .theme import ALTERNATE, MUTED, SELECTED
+from .theme import ALTERNATE, MUTED, active_accent
 
 __all__ = ["FieldConflictPage", "UNSET"]
 
@@ -215,7 +215,7 @@ class FieldConflictPage(QWidget):
                 assert item is not None, "_add_field filled every side of its row"
                 picked = side == chosen
                 item.setIcon(mark_icon(ALL if picked else NONE))
-                item.setBackground(QBrush(QColor(SELECTED)) if picked else QBrush())
+                item.setBackground(QBrush(QColor(active_accent().selected)) if picked else QBrush())
                 font = item.font()
                 font.setBold(picked)
                 item.setFont(font)

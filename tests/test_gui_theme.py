@@ -41,19 +41,34 @@ def qt_app():
     return QApplication.instance() or QApplication([])
 
 
+#: Every accent the theme offers, by key; parametrised with ``indirect=True``, a
+#: test receives the application drawn in each. Written out rather than read from
+#: the theme, which is not importable without Qt when the tests are collected.
+ACCENT_KEYS = ("orange", "blue")
+
+
 @pytest.fixture
-def themed(qt_app):
-    """Apply the theme, and put the application back afterwards.
+def themed(qt_app, request):
+    """Apply the theme, in the accent a test is parametrised with, and put the
+    application back afterwards.
 
     The QApplication is session-wide, so a test that left the stylesheet on
-    would change how every later widget test renders.
+    would change how every later widget test renders -- and a test that left
+    the accent on would change what every later painted widget draws.
     """
     style = qt_app.styleSheet()
     palette = qt_app.palette()
-    theme.apply_theme(qt_app)
+    previous = theme.active_accent()
+    key = getattr(request, "param", theme.DEFAULT_ACCENT)
+    theme.apply_theme(qt_app, theme.ACCENTS[key])
     yield qt_app
+    theme.apply_theme(qt_app, previous)
     qt_app.setStyleSheet(style)
     qt_app.setPalette(palette)
+
+
+def _accent_colour() -> QColor:
+    return QColor(theme.active_accent().colour)
 
 
 # ---------------------------------------------------------------------------
@@ -78,20 +93,79 @@ def _contrast(foreground: str, background: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
+def test_the_accents_tested_are_the_accents_offered():
+    assert tuple(theme.ACCENTS) == ACCENT_KEYS
+
+
 @pytest.mark.parametrize("text", ["TEXT", "HEADING", "MUTED"])
-@pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE", "ALTERNATE", "HOVER", "SELECTED"])
+@pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE", "ALTERNATE", "HOVER"])
 def test_every_text_colour_is_readable_on_every_surface(text, surface):
     """A palette change is the moment a caption quietly drops below legibility."""
     assert _contrast(getattr(theme, text), getattr(theme, surface)) >= 4.5
 
 
-def test_text_on_the_accent_is_readable():
+@pytest.mark.parametrize("text", ["TEXT", "HEADING", "MUTED"])
+@pytest.mark.parametrize("key", ACCENT_KEYS)
+def test_every_text_colour_is_readable_on_the_row_being_looked_at(text, key):
+    """The selected tint is a surface text sits on, and each accent has its own."""
+    assert _contrast(getattr(theme, text), theme.ACCENTS[key].selected) >= 4.5
+
+
+@pytest.mark.parametrize("key", ACCENT_KEYS)
+def test_text_on_the_accent_is_readable(key):
     """A chosen segment, a count badge and a dialog's default button write on it."""
-    assert _contrast(theme.ACCENT_TEXT, theme.ACCENT) >= 4.5
+    accent = theme.ACCENTS[key]
+    assert _contrast(accent.text, accent.colour) >= 4.5
 
 
-def test_accent_coloured_text_is_readable():
-    assert _contrast(theme.ACCENT_STRONG, theme.BASE) >= 4.5
+@pytest.mark.parametrize("key", ACCENT_KEYS)
+def test_accent_coloured_text_is_readable(key):
+    assert _contrast(theme.ACCENTS[key].strong, theme.BASE) >= 4.5
+
+
+def test_the_window_opens_in_the_default_accent(qt_app):
+    """No accent asked for is the packaged one, not whichever was applied last."""
+    style, palette, previous = qt_app.styleSheet(), qt_app.palette(), theme.active_accent()
+    theme.apply_theme(qt_app, theme.ACCENTS["blue"])
+    try:
+        theme.apply_theme(qt_app)
+        assert theme.active_accent() == theme.ACCENTS[theme.DEFAULT_ACCENT]
+    finally:
+        theme.apply_theme(qt_app, previous)
+        qt_app.setStyleSheet(style)
+        qt_app.setPalette(palette)
+
+
+@pytest.mark.parametrize("themed", ["blue"], indirect=True)
+def test_an_accent_applied_leaves_no_colour_of_another_behind(themed):
+    """A rule still naming a colour of its own would draw one control orange in
+    a blue window, and nothing but looking would find it."""
+    orange = theme.ACCENTS["orange"]
+    sheet = themed.styleSheet().lower()
+
+    for colour in (orange.colour, orange.strong, orange.selected):
+        assert colour not in sheet
+    assert theme.ACCENTS["blue"].colour in sheet
+    assert themed.palette().color(QPalette.Highlight).name() == theme.ACCENTS["blue"].selected
+    assert themed.palette().color(QPalette.Link).name() == theme.ACCENTS["blue"].strong
+
+
+@pytest.mark.parametrize("themed", ["blue"], indirect=True)
+def test_a_painted_control_takes_the_accent_applied_after_it_was_imported(themed):
+    """Widget modules are imported before the theme is applied, so a colour
+    read at import would stay the default whatever accent was chosen."""
+    from am_segmentation_manager.gui.widgets.controls import ToggleSwitch
+
+    switch = ToggleSwitch("")
+    switch.setChecked(True)
+    switch.resize(switch.sizeHint())
+    track = switch._track()
+    image = switch.grab().toImage()
+
+    # The knob sits at the right of a switch that is on, so the left of the
+    # track is bare.
+    left = image.pixelColor(round(track.left() + 4), round(track.center().y()))
+    assert left == QColor(theme.ACCENTS["blue"].colour)
 
 
 @pytest.mark.parametrize("name", ["ARROW_DOWN", "ARROW_UP"])
@@ -104,10 +178,12 @@ def test_the_arrow_images_are_drawn_in_the_muted_text_colour(name):
 
 
 def test_a_mark_still_to_do_is_not_the_accent():
-    """An amber ring beside the orange accent read as the same colour."""
+    """An amber ring beside the orange accent read as the same colour. Orange
+    only: under blue the ring shares the accent's hue and is told apart by shape."""
     from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
 
-    assert abs(MISMATCH.hueF() * 360 - QColor(theme.ACCENT).hueF() * 360) >= 60
+    orange = QColor(theme.ACCENTS["orange"].colour)
+    assert abs(MISMATCH.hueF() * 360 - orange.hueF() * 360) >= 60
 
 
 @pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE"])
@@ -222,6 +298,7 @@ def test_a_scroll_area_inside_a_card_shows_the_card_behind_it(themed):
     card.close()
 
 
+@pytest.mark.parametrize("themed", ACCENT_KEYS, indirect=True)
 def test_choosing_a_row_marks_its_edge_without_moving_it(themed):
     """Every row reserves the edge the chosen one marks, so the chosen row's
     text stays in line with the rows around it."""
@@ -243,15 +320,16 @@ def test_choosing_a_row_marks_its_edge_without_moving_it(themed):
             if QColor(image.pixel(x, y)).lightness() < 100
         )
 
-    assert image.pixelColor(chosen.left() + 1, chosen.center().y()) == QColor(theme.ACCENT)
-    assert image.pixelColor(other.left() + 1, other.center().y()) != QColor(theme.ACCENT)
+    assert image.pixelColor(chosen.left() + 1, chosen.center().y()) == _accent_colour()
+    assert image.pixelColor(other.left() + 1, other.center().y()) != _accent_colour()
     assert leftmost_ink(chosen) == leftmost_ink(other)
     widget.close()
 
 
+@pytest.mark.parametrize("themed", ACCENT_KEYS, indirect=True)
 def test_a_chosen_class_is_ringed_in_ink_not_the_accent(themed):
-    """The accent is orange, and so is a class: an orange ring round an orange
-    swatch hides which class a stroke will write."""
+    """Every accent is also a class colour: a ring in it round a swatch of the
+    same colour hides which class a stroke will write."""
     from qtpy.QtWidgets import QToolButton
 
     button = QToolButton()
@@ -264,9 +342,10 @@ def test_a_chosen_class_is_ringed_in_ink_not_the_accent(themed):
 
     edge = image.pixelColor(0, image.height() // 2)
     assert edge == QColor(theme.TEXT)
-    assert edge != QColor(theme.ACCENT)
+    assert edge != _accent_colour()
 
 
+@pytest.mark.parametrize("themed", ACCENT_KEYS, indirect=True)
 def test_the_chosen_tab_is_marked_along_its_top_edge(themed):
     """The tabs are the one control on screen whatever is being done."""
     from qtpy.QtWidgets import QTabWidget
@@ -282,7 +361,7 @@ def test_the_chosen_tab_is_marked_along_its_top_edge(themed):
     def has_stripe(index: int) -> bool:
         rect = bar.tabRect(index)
         return any(
-            image.pixelColor(rect.center().x(), y) == QColor(theme.ACCENT)
+            image.pixelColor(rect.center().x(), y) == _accent_colour()
             for y in range(rect.top(), rect.top() + 4)
         )
 
@@ -305,9 +384,10 @@ def test_the_style_is_the_same_one_everywhere(themed):
 
 def test_the_stylesheet_applies_without_error(themed):
     widget = QWidget()
-    widget.setStyleSheet(theme.stylesheet())
+    sheet = theme.stylesheet(theme.active_accent())
+    widget.setStyleSheet(sheet)
 
-    assert widget.styleSheet() == theme.stylesheet()
+    assert widget.styleSheet() == sheet
     assert themed.styleSheet()
 
 
@@ -484,6 +564,7 @@ def test_a_division_that_moves_says_so(themed, orientation):
     assert _colour_at(handle, *along) == theme.WINDOW, "the grip runs the whole way"
 
 
+@pytest.mark.parametrize("themed", ACCENT_KEYS, indirect=True)
 def test_the_grip_reacts_to_the_pointer(themed):
     """The same accent every other control takes when it is pointed at."""
     splitter, handle = _handle(themed, Qt.Horizontal)
@@ -491,7 +572,7 @@ def test_the_grip_reacts_to_the_pointer(themed):
     point = QPointF(handle.rect().center())
 
     QApplication.sendEvent(handle, QEnterEvent(point, point, point))
-    assert _colour_at(handle, *middle) == theme.ACCENT
+    assert _colour_at(handle, *middle) == theme.active_accent().colour
 
     QApplication.sendEvent(handle, QEvent(QEvent.Leave))
     assert _colour_at(handle, *middle) == theme.GRIP

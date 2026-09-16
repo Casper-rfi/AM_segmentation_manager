@@ -4,7 +4,7 @@ An :class:`.ImageView` with marks placed in the picture's own pixel coordinates
 and told to ignore the view's transform, so zooming magnifies the picture and
 leaves each mark its size. Every mark is the window's accent, and the lamella
 being looked at is drawn heavier with its name above every ring; an overview
-carries no label for the orange to be read as a class.
+carries no label for the accent to be read as a class.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from qtpy.QtWidgets import (
 
 from ...overview import LamellaMarker
 from .image_view import ImageView
-from .theme import ACCENT, ACCENT_TEXT
+from .theme import active_accent
 
 #: Radius of a mark, in screen pixels. Large enough to find on a 2048-pixel
 #: overview holding eighteen of them, small enough not to hide the square it
@@ -93,7 +93,7 @@ class GridView(ImageView):
 
     def _add_mark(self, x: float, y: float, current: bool, name: str) -> None:
         """Put one ring on the picture, and its name where it is the current one."""
-        colour = QColor(ACCENT)
+        colour = QColor(active_accent().colour)
         radius = CURRENT_MARK_RADIUS if current else MARK_RADIUS
         ring = QGraphicsEllipseItem(
             QRectF(-radius, -radius, radius * 2, radius * 2)
@@ -119,16 +119,15 @@ class GridView(ImageView):
 
         **Filled rather than drawn straight onto the picture.** The overview is
         a greyscale micrograph of arbitrary brightness, so text of any single
-        colour is unreadable somewhere on it; the accent filled with
-        :data:`~.theme.ACCENT_TEXT` on top is the same pair every filled
-        control in the window uses, and its contrast does not depend on what
+        colour is unreadable somewhere on it; the accent with its own text
+        colour on top is the same pair every filled control in the window uses, and its contrast does not depend on what
         the name happens to land on.
         """
         font = QFont()
         font.setBold(True)
         text = QGraphicsSimpleTextItem(name)
         text.setFont(font)
-        text.setBrush(QBrush(QColor(ACCENT_TEXT)))
+        text.setBrush(QBrush(QColor(active_accent().text)))
 
         bounds = text.boundingRect()
         chip = QGraphicsRectItem(
