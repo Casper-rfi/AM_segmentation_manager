@@ -173,6 +173,25 @@ def test_a_committed_file_keeps_the_destination_permissions(tmp_path: Path):
     assert stat.S_IMODE(destination.stat().st_mode) == 0o640
 
 
+def test_a_file_replaced_by_rename_has_changed_whatever_its_size_and_time(tmp_path: Path):
+    """How every write here lands, and how another process's does: the clock
+    alone cannot tell two such writes apart within one of its steps."""
+    path = tmp_path / "label.tif"
+    path.write_bytes(b"12345678")
+    before = fingerprint_of(path)
+    assert before is not None
+
+    replacement = tmp_path / "replacement.tif"
+    replacement.write_bytes(b"87654321")
+    os.utime(replacement, ns=(before.modified_ns, before.modified_ns))
+    os.replace(replacement, path)
+    after = fingerprint_of(path)
+
+    assert after is not None
+    assert (after.size, after.modified_ns) == (before.size, before.modified_ns)
+    assert after != before
+
+
 # ---------------------------------------------------------------------------
 # Appending
 # ---------------------------------------------------------------------------

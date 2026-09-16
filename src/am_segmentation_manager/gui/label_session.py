@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..io.atomic import Fingerprint
 from ..io.image import to_2d
 from ..operations.label_edit import DEFAULT_UNDO_DEPTH, EditPatch, UndoStack
 
@@ -75,7 +76,7 @@ class PendingLabel:
 
     key: Path
     created: bool = False
-    fingerprint: tuple[int, int] | None = None
+    fingerprint: Fingerprint | None = None
     edited: bool = False
     reviewed: bool = False
     undo: UndoStack = field(default_factory=UndoStack)
@@ -110,7 +111,7 @@ class LabelSession:
         source: np.ndarray,
         *,
         created: bool = False,
-        fingerprint: tuple[int, int] | None = None,
+        fingerprint: Fingerprint | None = None,
     ) -> np.ndarray:
         """Return the working array for *key*, and make it the open one.
 

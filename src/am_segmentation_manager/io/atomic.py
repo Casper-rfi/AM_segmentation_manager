@@ -19,10 +19,17 @@ import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["append_whole", "file_mode_for", "fingerprint_of", "write_atomically"]
+__all__ = [
+    "Fingerprint",
+    "append_whole",
+    "file_mode_for",
+    "fingerprint_of",
+    "write_atomically",
+]
 
 #: What a filesystem without locks answers a request for one, on macOS and Linux.
 _LOCKS_UNSUPPORTED = frozenset({errno.ENOLCK, errno.ENOTSUP, errno.EOPNOTSUPP})
@@ -159,15 +166,28 @@ def _current_umask() -> int:
     return mask
 
 
-def fingerprint_of(path: Path) -> tuple[int, int] | None:
+class Fingerprint(NamedTuple):
+    """What a file looked like at one moment, compared whole to tell whether it changed."""
+
+    size: int
+    modified_ns: int
+    #: The inode, or the file ID on Windows, which a file replaced by a rename
+    #: does not keep.
+    file_id: int
+
+
+def fingerprint_of(path: Path) -> Fingerprint | None:
     """Return a cheap identity for *path*'s contents, or None if it is absent.
 
-    Size and modification time, which is enough to tell that something else
-    rewrote a file between a read and a write. Absent is itself a fingerprint:
-    a file that did not exist and now does has changed.
+    Enough to tell that something else rewrote a file between a read and a
+    write: a replacement by rename, as every write here is, changes the file ID
+    whatever the clock says. **One rewrite goes unseen**: in place, at the same
+    size, within one step of the modification time's clock -- about 15 ms on
+    Windows, 2 s on exFAT -- of the write before it. Absent is itself a
+    fingerprint: a file that did not exist and now does has changed.
     """
     try:
         status = path.stat()
     except OSError:
         return None
-    return (status.st_size, status.st_mtime_ns)
+    return Fingerprint(status.st_size, status.st_mtime_ns, status.st_ino)

@@ -29,9 +29,10 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
-- **Cross-platform readiness**, in order: a first run of `.github/workflows/tests.yml`, whose jobs
-  beyond Linux and Windows on 3.11 start by hand while the repository is private; what it finds
-  on Windows; a cap on `POOL_WORKERS`; choosing a GPU by name and free memory.
+- **Cross-platform readiness**: CI's remaining failures are window layout under Windows' and Linux's
+  fonts, to check on a real desktop; then a cap on `POOL_WORKERS`, and choosing a GPU by name.
+- **Can the Label tab edit pixels older than the file?** It fingerprints a label when editing starts
+  (`label_controller.py`), which may be after the read-ahead cache read it.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,

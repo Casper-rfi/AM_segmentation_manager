@@ -50,6 +50,18 @@ def existing(path: Path, value: int = 1) -> Path:
     return path
 
 
+def rewritten_elsewhere(path: Path) -> None:
+    """Rewrite a label in place at the same size, as another program would.
+
+    Its time is moved on explicitly: a rewrite within one step of the file
+    clock is the case :func:`fingerprint_of` states it cannot see, and these
+    tests are about what a save does with a change it can.
+    """
+    before = path.stat()
+    existing(path, value=7)
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000))
+
+
 def item(path: Path, label=None, **kwargs) -> LabelToSave:
     """A save entry whose fingerprint matches what is on disk now."""
     return LabelToSave(
@@ -117,7 +129,7 @@ def test_saving_nothing_is_not_an_error(tmp_path: Path):
 def test_a_label_rewritten_since_it_was_opened_is_refused(tmp_path: Path):
     destination = existing(tmp_path / "labels" / "img.tif")
     entry = item(destination)
-    existing(destination, value=7)  # something else wrote it
+    rewritten_elsewhere(destination)
 
     with pytest.raises(StaleLabels, match="changed on disk"):
         save_labels([entry])
@@ -129,7 +141,7 @@ def test_one_stale_label_stops_the_whole_batch(tmp_path: Path):
     good = existing(tmp_path / "labels" / "good.tif")
     stale = existing(tmp_path / "labels" / "stale.tif")
     entries = [item(good), item(stale)]
-    existing(stale, value=7)
+    rewritten_elsewhere(stale)
 
     with pytest.raises(StaleLabels):
         save_labels(entries)
@@ -149,7 +161,7 @@ def test_a_label_that_appeared_since_it_was_opened_is_refused(tmp_path: Path):
 def test_the_plan_names_what_changed(tmp_path: Path):
     destination = existing(tmp_path / "labels" / "img.tif")
     entry = item(destination)
-    existing(destination, value=7)
+    rewritten_elsewhere(destination)
 
     plan = plan_saves([entry])
 

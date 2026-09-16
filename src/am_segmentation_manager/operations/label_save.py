@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..io.atomic import fingerprint_of, write_atomically
+from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
 from .archive import Archivist, archive_replaced
 from .label_io import label_fields, read_label, replacement_fields, save_label_image
 
@@ -74,8 +74,8 @@ class LabelToSave:
         label: The edited array.
         created: Whether no file existed when the reviewer started, so saving
             writes a new one rather than replacing.
-        fingerprint: The destination's size and modification time when it was
-            read, or None if it did not exist. Compared before writing, so a
+        fingerprint: The destination's fingerprint when it was read, or None
+            if it did not exist. Compared before writing, so a
             file something else has changed since is not overwritten blind.
         corrected: Whether the group owning this label is declared corrected.
             Carried on the item because the destination path no longer says.
@@ -85,7 +85,7 @@ class LabelToSave:
     destination: Path
     label: np.ndarray
     created: bool = False
-    fingerprint: tuple[int, int] | None = None
+    fingerprint: Fingerprint | None = None
     corrected: bool = False
     provenance: WriteProvenance | None = None
 

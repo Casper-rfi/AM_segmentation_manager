@@ -24,7 +24,7 @@ from ..history import (
     declared_project_id,
     read_log,
 )
-from ..io.atomic import fingerprint_of
+from ..io.atomic import Fingerprint, fingerprint_of
 from ..io.image import read_array
 from ..models import ImageRecord, Project
 from ..scanner import Scanner
@@ -138,7 +138,7 @@ class LabelMerge:
     reason: str = ""
     source_event: str = ""
     corrected: bool = False
-    our_fingerprint: tuple[int, int] | None = None
+    our_fingerprint: Fingerprint | None = None
     our_image: Path | None = None
     record: ImageRecord | None = None
 

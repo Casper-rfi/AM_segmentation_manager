@@ -427,7 +427,6 @@ def _plan_item(
     fingerprint = fingerprint_of(source)
     if fingerprint is None:
         return None
-    size, _modified = fingerprint
 
     try:
         relative = source.resolve().relative_to(start_path)
@@ -441,12 +440,15 @@ def _plan_item(
     existing = fingerprint_of(target)
     if existing is None:
         outcome = COPY
-    elif existing == fingerprint:
+    # A copy is another file, so its size and time are all it can share with
+    # the source; _copy_file keeps the time.
+    elif (existing.size, existing.modified_ns) == (fingerprint.size, fingerprint.modified_ns):
         outcome = PRESENT
     else:
         outcome = CONFLICT
     return CopyItem(
-        source=source, destination=target, size=size, kind=kind, outcome=outcome
+        source=source, destination=target, size=fingerprint.size, kind=kind,
+        outcome=outcome,
     )
 
 

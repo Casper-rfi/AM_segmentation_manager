@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal, get_args
 
-from .io.atomic import fingerprint_of
+from .io.atomic import Fingerprint, fingerprint_of
 from .io.path import checked_relative_key
 from .io.yaml import write_yaml
 
@@ -93,7 +93,7 @@ class StageState:
 
     path: Path
     states: Mapping[str, RecordState]
-    fingerprint: tuple[int, int] | None
+    fingerprint: Fingerprint | None
 
     def state_of(self, key: str) -> RecordState:
         """Return the state declared for *key*, or the default if none is."""

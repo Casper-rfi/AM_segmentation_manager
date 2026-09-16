@@ -232,8 +232,8 @@ class VersionController:
     def _project_log(self) -> HistoryLog:
         """Return the project's log, re-read only when the file has changed.
 
-        The log is appended to and never rewritten, so its size and modification
-        time settle whether a held copy is still current. Without this every
+        The log is appended to and never rewritten, so its fingerprint settles
+        whether a held copy is still current. Without this every
         arrow key re-reads every entry the project has.
         """
 
