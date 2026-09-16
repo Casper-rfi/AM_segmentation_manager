@@ -171,7 +171,7 @@ def _missing_qt_message(error: Exception) -> str:
         return (
             "The curation window needs qtpy and a Qt binding, and neither is "
             "installed.\n"
-            "  conda install -c conda-forge pyside6 qtpy\n"
+            "  uv sync --extra gui\n"
             "  or: pip install 'am_segmentation_manager[gui]'"
         )
 
@@ -180,8 +180,7 @@ def _missing_qt_message(error: Exception) -> str:
         return (
             "qtpy is installed, but there is no Qt binding for it to use. qtpy "
             "is only an adapter; it needs PySide6 (or PyQt5) underneath.\n"
-            "  conda install -c conda-forge pyside6\n"
-            "  or: pip install PySide6"
+            "  pip install PySide6"
         )
 
     return (

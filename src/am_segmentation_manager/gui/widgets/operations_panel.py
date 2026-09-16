@@ -336,7 +336,7 @@ class OperationsPanel(QWidget):
     def set_prediction_available(self, available: bool) -> None:
         """Offer or withhold the predict button, saying why when withholding.
 
-        The inference dependencies are a separate install, so a window running
+        The inference dependencies are an optional extra, so a window running
         without them should say so on the button rather than at the end of a
         dialog the user opened expecting it to work. The full explanation is a
         terminal's job; this is a hover.
@@ -345,7 +345,7 @@ class OperationsPanel(QWidget):
         if not available:
             self.predict_button.setToolTip(
                 "The inference dependencies are not installed.\n"
-                "Run scripts/setup_ml.sh to build an environment with them."
+                "Install them with: uv sync --extra gui --extra ml"
             )
         self._apply_lock()
 

@@ -17,7 +17,7 @@ Every main function `CLAUDE.md` names is built, across the three series of image
 and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
 Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
-need the second environment `scripts/setup_ml.sh` builds.
+need the `ml` extra.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its
@@ -29,6 +29,10 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
+- **Cross-platform readiness**, in order: a CI matrix on Linux, Windows and macOS for Python
+  3.11–3.13, trimmed while the repository is private; what it finds on Windows; a cap on
+  `POOL_WORKERS`; choosing a GPU by name and free memory. Without extras the suite already fails:
+  four test files and eight tests need numpy or Qt rather than skipping.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,

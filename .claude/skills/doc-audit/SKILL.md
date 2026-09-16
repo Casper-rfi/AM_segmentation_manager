@@ -56,11 +56,10 @@ job. Length comes out of the reasons above or it does not come out.
 ## Then
 
 ```bash
-python -m pytest -q
+uv run pytest -q
 ```
 
-In `am_segmentation_manager` or `am_segmentation_manager_ml`; the run names the
-interpreter if it refuses. `test_docs.py` will say whether the ratchets moved --
+From the repository root; the run names the interpreter if it refuses. `test_docs.py` will say whether the ratchets moved --
 correcting an entry to name the test that guards it improves both, and tightening
 them to match is what stops the improvement being given back later.
 

@@ -550,36 +550,43 @@ rather than appending to it.
 
 ## Environment
 
-- **Run the suite from the repository root, in `am_segmentation_manager` or
-  `am_segmentation_manager_ml`.** Two ways to get this wrong, only one of which announces itself.
-  Run `pytest` from *outside* the repository and there is no `pyproject.toml` above the working
-  directory, so rootdir becomes that directory, `testpaths` never applies, and pytest recurses into
-  everything below it — from `$HOME` that means importing every `.py` under the data archives,
-  which looks exactly like a hang. Run it in conda's `base` and the imports resolve to a different
-  stack; that one is caught before any test runs, and the refusal names an interpreter to run
-  rather than an environment to activate (`test_the_refusal_names_a_command_that_can_be_run`),
-  `conda activate` being a shell function absent from the shells it is read in. The Qt binding is
-  the part of the wrong stack the suite can name — [`display.md`](display.md) § The binding.
+- **Run the suite from the repository root, with `uv run pytest`.** Two ways to get this wrong,
+  only one of which announces itself. Run `pytest` from *outside* the repository and there is no
+  `pyproject.toml` above the working directory, so rootdir becomes that directory, `testpaths`
+  never applies, and pytest recurses into everything below it — from `$HOME` that means importing
+  every `.py` under the data archives, which looks exactly like a hang. Run it with an interpreter
+  outside the project environment — conda's `base` is the usual one — and the imports resolve to a
+  different stack; that one is caught before any test runs, and the refusal names a command rather
+  than an environment to activate (`test_the_refusal_names_a_command_that_can_be_run`). The Qt
+  binding is the part of the wrong stack the suite can name — [`display.md`](display.md) § The
+  binding.
 - **The reference collection is the live archive, and there is no disposable copy of it.**
   `<collection>/` — a couple of hundred gigabytes covering
   every layout era from pre-Autolamella to 2026-05, and still being added to, so any count of it
   written down here is wrong by the time it is read. Point the smoke test at it with
-  `AM_SEG_REFERENCE_COLLECTION=<path> pytest -q`.
+  `AM_SEG_REFERENCE_COLLECTION=<path> uv run pytest -q`.
   **Never write to it.** Not a test, not a script, not an exploratory one-liner: nothing may create,
   move, overwrite or delete anything inside it without permission asked for and given for that
   specific change. It holds thousands of proofread labels that cannot be reconstructed, and the copy
   that used to absorb mistakes is gone — which is why this entry names real data at all. Read it,
   and copy *out* of it. `test_reference_collection.py` snapshots every file before and after;
   nothing enforces this for anything else you run.
-- **Every `cv2` hazard is a provider conflict**, which is why `environment.yml` pins `nodefaults` —
-  a mixed conda-forge/Anaconda environment paired Anaconda's OpenCV with conda-forge's protobuf so
-  that `cv2` would not load at all. The curation environment takes conda's *headless* OpenCV and
-  PyPI's PySide6, whose stubs mypy reads: OpenCV's Qt build would link a second Qt into the window.
-  **The second environment is pip-first**: albumentations requires `opencv-python-headless`, a third
-  provider no ordering of install commands avoids, so `environment-ml.yml` takes only python, pip
-  and the test tools from conda and the stack from the `[ml]` extra, its torch build chosen per
-  machine (`AM_SEG_TORCH_INDEX_URL`). **It is a superset, not a peer**: the curation environment is
-  the *lighter* of the two, and splitting them the other way forces a switch mid-workflow.
+- **One environment, every dependency from PyPI, and `uv.lock` holding the versions tested.** Every
+  `cv2` failure this package has met was two providers of one module — conda's `opencv` beside
+  pip's, or `opencv-python` beside the `opencv-python-headless` albumentations requires — so every
+  extra names the headless build and nothing comes from conda. **Inference is an extra, not an
+  environment**: nothing outside `ml/` imports torch
+  (`test_torch_is_not_loaded_outside_the_module_that_runs_it`), so an environment without it is a
+  subset rather than a peer. The lock is refused unless every dependency has a build for Windows,
+  Linux and Apple silicon on each supported Python, so a missing wheel fails here rather than on
+  someone else's machine.
+- **Windows and Linux take torch built for CUDA 12.6, not PyPI's.** PyPI's Windows torch is
+  CPU-only, and its Linux torch needs a driver for CUDA 13 (580 or later); 12.6 runs on any driver
+  from 525, the shared A100 workstations' included. A lock is one file for every machine and cannot
+  follow a machine's driver, so a GPU needing a newer build is an extra to add, not a detection to
+  write. **A wrong build does not fail**: torch reports no CUDA, `available_devices` offers `cpu`
+  alone, and prediction runs at CPU speed — which is why `scripts/check_environment.py` prints the
+  devices.
 
 ## Inference
 

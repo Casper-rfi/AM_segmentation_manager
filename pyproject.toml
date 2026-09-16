@@ -10,6 +10,8 @@ readme = "README.md"
 authors = [ { name = "Casper Berger", email = "casper.berger@rfi.ac.uk" } ]
 keywords = ["FIB-SEM", "segmentation", "autolamella", "microscopy"]
 
+requires-python = ">=3.11"
+
 # No license field. The package previously declared MIT with no LICENSE file,
 # which is a licence grant that was never actually decided on. Undeclared means
 # the default -- all rights reserved -- which is the accurate state while the
@@ -22,6 +24,9 @@ keywords = ["FIB-SEM", "segmentation", "autolamella", "microscopy"]
 # `twine upload` while the package is unlicensed and unpublished.
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Private :: Do Not Upload",
 ]
 
@@ -30,20 +35,23 @@ dependencies = [
   "PyYAML>=5.4",
 ]
 
+# Every extra names OpenCV's headless build, and only that one: albumentations
+# requires it, and opencv-python beside it would be a second provider of cv2,
+# which breaks the import. Nothing here opens OpenCV's own windows, and the
+# headless build carries none of the Qt plugins that would compete with
+# PySide6's. Extras therefore combine freely -- `gui` and `ml` together is the
+# whole workflow.
 [project.optional-dependencies]
-# For a pip-only installation. In the conda environment from environment.yml
-# these are already provided by conda, and installing them again from PyPI
-# gives you two cv2 installations -- conda's `opencv` and pip's
-# `opencv-python` -- which breaks the import.
+# The image stack for the command line, without the window.
 all = [
   "numpy",
   "tifffile",
   "imagecodecs",
-  "opencv-python",
+  "opencv-python-headless",
   "matplotlib",
 ]
 # Charts alone, for a command-line install that wants `stats --plot` and
-# nothing else. matplotlib is in `all`, `gui` and `qt` as well: against the ~250 MB
+# nothing else. matplotlib is in `all` and `gui` as well: against the ~250 MB
 # those already install for OpenCV and Qt, its own ~50 MB is not what makes an
 # environment large, and charting is not a feature worth having to discover a
 # second install command to reach. The core stays near-stdlib, and every
@@ -54,45 +62,23 @@ plots = [
 ]
 # The curation window. PySide6 is the binding this is developed and tested
 # against; qtpy adapts to whichever is present, but two in one process crash at
-# import. Give this package an environment of its own rather than dropping it
-# into one that already has a binding.
+# import.
 gui = [
   "qtpy",
   "PySide6",
   "numpy",
   "tifffile",
   "imagecodecs",
-  "opencv-python",
-  "matplotlib",
-]
-# The window's Qt binding without the image stack, for an environment that
-# already has one. `gui` names opencv-python, and an environment holding
-# opencv-python-headless (which albumentations requires, so every inference
-# environment has it) must not also get that: two providers of cv2 is the
-# hazard this file warns about throughout. So the inference environment takes
-# `ml` for the image stack and `qt` for the window.
-#
-# Headless is in fact the better pairing with PySide6: opencv-python bundles Qt
-# plugins of its own, and headless is the build with those left out.
-qt = [
-  "qtpy",
-  "PySide6",
+  "opencv-python-headless",
   "matplotlib",
 ]
 # Inference: producing predictions from a trained model. Several gigabytes,
-# which is why it is an extra and why scripts/setup_ml.sh puts it in its own
-# environment rather than adding it to the one you curate in.
+# which is why it is an extra.
 #
-# NEVER install this beside `all`, `gui`, or conda's `opencv`. albumentations
-# requires opencv-python-headless, which provides cv2 just as opencv-python
-# does; an environment holding both has an import that fails. The image stack
-# is listed here rather than reused from `all` precisely so that this extra
-# names the headless build and can stand alone.
-#
-# Deliberately unpinned. Which torch build is right depends on the machine's
-# GPU, so pinning one here would be wrong somewhere; setup_ml.sh takes an
-# index URL instead. The architecture a checkpoint was trained with is
-# recovered from the checkpoint, not from a version pin.
+# Unpinned here; the lock file records the versions tested. Which torch build
+# a platform receives is set in [tool.uv.sources] below. The architecture a
+# checkpoint was trained with is recovered from the checkpoint, not from a
+# version pin.
 ml = [
   "numpy",
   "tifffile",
@@ -102,6 +88,15 @@ ml = [
   "torchvision",
   "segmentation-models-pytorch",
   "albumentations",
+]
+
+# Tools for working on the package, installed by `uv sync` and never by a user's
+# `pip install`.
+[dependency-groups]
+dev = [
+  "pytest",
+  "ruff",
+  "mypy",
 ]
 
 [project.scripts]
@@ -188,3 +183,29 @@ exclude = ['src/am_segmentation_manager/ml/preprocessing\.py$']
 # segmentation_models_pytorch are absent from the main environment; calls into
 # them are unchecked rather than reported.
 ignore_missing_imports = true
+
+[tool.uv]
+# The lock is refused unless every dependency has a build for each of these, on
+# each Python version the classifiers name. Bounded here rather than in
+# requires-python, which would refuse the core to a newer Python outright.
+required-environments = [
+  "sys_platform == 'win32' and platform_machine == 'AMD64' and python_full_version < '3.14'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64' and python_full_version < '3.14'",
+  "sys_platform == 'darwin' and platform_machine == 'arm64' and python_full_version < '3.14'",
+]
+
+# CUDA builds of torch for Windows and Linux. PyPI's Windows torch is CPU-only,
+# and its Linux torch needs a driver recent enough for CUDA 13; CUDA 12.6 runs on
+# the older drivers shared workstations keep. macOS takes PyPI's, which has MPS.
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]
+torchvision = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]

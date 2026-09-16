@@ -59,11 +59,11 @@ def test_the_error_names_what_failed_and_why(monkeypatch):
     assert "boom" in message
 
 
-def test_the_hint_warns_against_mixing_conda_and_pip_opencv():
+def test_the_hint_warns_against_a_second_opencv():
     """The fix for the incident is not "install it again", so the hint must not
-    read that way inside a conda environment."""
-    assert "conda" in image_io.INSTALL_HINT
-    assert "opencv-python" in image_io.INSTALL_HINT
+    read that way where a second provider of cv2 is the cause."""
+    assert "conda's opencv" in image_io.INSTALL_HINT
+    assert "opencv-python-headless" in image_io.INSTALL_HINT
 
 
 def test_every_problem_is_reported_not_just_the_first(monkeypatch):

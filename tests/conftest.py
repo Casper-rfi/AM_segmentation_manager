@@ -44,33 +44,31 @@ LOCALE_ENV_VAR = "AM_SEG_TEST_LOCALE"
 #: unrelated GUI regressions rather than as one wrong interpreter.
 REQUIRED_QT_BINDING = "PySide6"
 
-#: The environments this suite is meant to run in, the lighter one first.
-#: `CLAUDE.md` names them too; they are here so the refusal below can turn them
-#: into a command, which a sentence in a document cannot do.
-SUPPORTED_ENVIRONMENTS = ("am_segmentation_manager", "am_segmentation_manager_ml")
+#: The project environment `uv sync` builds, which this suite is meant to run
+#: in. Named here so the refusal below can turn it into a command, which a
+#: sentence in a document cannot do.
+PROJECT_ENVIRONMENT = Path(__file__).resolve().parent.parent / ".venv"
+
+#: The command that runs the suite in :data:`PROJECT_ENVIRONMENT` from any shell.
+RUN_COMMAND = "uv run pytest"
 
 
 def supported_interpreters() -> list[Path]:
-    """Return the interpreters of the supported environments found beside this one.
+    """Return the project environment's interpreter, where it has been built.
 
-    Located from ``sys.prefix`` rather than by asking conda: the refusal below
-    is most often read in a shell where ``conda activate`` is not a function,
-    which is the one shell where advice to activate something cannot be
-    followed. Returns nothing on a machine laid out some other way, and the
-    caller says what it can without them.
+    An interpreter rather than an environment to activate: the refusal below is
+    most often read in a shell where activating something is not possible, and
+    a file that can be run is the one remedy that helps there. Returns nothing
+    before ``uv sync`` has run, and the caller says what it can without it.
     """
-    prefix = Path(sys.prefix)
-    environments = prefix.parent if prefix.parent.name == "envs" else prefix / "envs"
-    found = []
-    for name in SUPPORTED_ENVIRONMENTS:
+    return [
+        interpreter
         for interpreter in (
-            environments / name / "bin" / "python",
-            environments / name / "python.exe",
-        ):
-            if interpreter.exists():
-                found.append(interpreter)
-                break
-    return found
+            PROJECT_ENVIRONMENT / "bin" / "python",
+            PROJECT_ENVIRONMENT / "Scripts" / "python.exe",
+        )
+        if interpreter.exists()
+    ]
 
 
 def installed_qt_binding() -> str | None:
@@ -95,24 +93,25 @@ def pytest_configure(config) -> None:
 
     Both fail loudly rather than skipping, for the same reason: a run that
     quietly went ahead would report a result for a check that never happened.
-    A missing qtpy is not one of these -- the curation environment without the
-    window is a supported way to run, and the GUI tests skip themselves there.
+    A missing qtpy is not one of these -- an environment without the gui extra
+    is a supported way to run, and the GUI tests skip themselves there.
     """
     binding = installed_qt_binding()
     if binding is not None and binding != REQUIRED_QT_BINDING:
-        interpreters = supported_interpreters()
-        remedy = (
-            "Run instead:\n"
-            + "\n".join(f"    {one} -m pytest" for one in interpreters)
-            if interpreters
-            else f"Run the suite in {' or '.join(SUPPORTED_ENVIRONMENTS)}."
+        remedy = "Run instead:\n" + "\n".join(
+            f"    {command}"
+            for command in [
+                RUN_COMMAND,
+                *(f"{one} -m pytest" for one in supported_interpreters()),
+            ]
         )
         raise pytest.UsageError(
             f"qtpy resolves to {binding} here, and the window is written for "
             f"{REQUIRED_QT_BINDING}. Running anyway fails about a dozen GUI "
             f"tests on differences between the bindings rather than on "
-            f"anything wrong with the package -- conda's `base` is the usual "
-            f"cause. See docs/decisions.md § Environment.\n\n{remedy}"
+            f"anything wrong with the package -- an interpreter outside the "
+            f"project environment, such as conda's `base`, is the usual cause. "
+            f"See docs/decisions.md § Environment.\n\n{remedy}"
         )
 
     requested = os.environ.get(LOCALE_ENV_VAR)

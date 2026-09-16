@@ -87,14 +87,47 @@ images naming no task at all:
 Installation
 ------------
 
-With conda, from a source checkout:
+From a source checkout, with [uv](https://docs.astral.sh/uv/) — one command on
+Windows, macOS and Linux, and it installs Python itself:
 
-    ./scripts/setup_dev.sh
+    uv sync --extra gui               # the window, the command line and charts
+    uv sync --extra gui --extra ml    # ... and predicting
 
-This creates the environment from `environment.yml`, installs the package, and
-checks the optional dependencies import. With pip instead:
+This builds `.venv` inside the checkout from `uv.lock`, so every machine gets
+the versions the suite was run against, on the Python `.python-version` names.
+Run anything in it through `uv run`, without activating it:
 
-    pip install -e '.[all,gui]'
+    uv run am-seg gui
+    uv run pytest
+
+**`uv sync` installs exactly the extras it is given** and removes the rest, so
+name every extra you want each time. `uv run` leaves the environment as it is.
+
+The extras combine freely:
+
+| Extra | Adds |
+|---|---|
+| `gui` | the window, the image stack and charts |
+| `ml` | predicting: torch and the model libraries, several gigabytes |
+| `all` | the image stack and charts, for the command line without the window |
+| `plots` | charts alone, for the command line's plots |
+
+Without an extra everything that needs it declines rather than failing. To see
+what this environment can do:
+
+    uv run python scripts/check_environment.py
+
+**Which torch build you get.** Windows and Linux receive torch built for CUDA
+12.6, which runs on any NVIDIA driver from version 525; macOS on Apple silicon
+receives the build that uses its GPU (`mps`). Intel Macs get the window and the
+command line but cannot predict: torch no longer publishes builds for them.
+
+With pip instead, into an environment of its own:
+
+    pip install -e '.[gui,ml]'
+
+pip ignores `uv.lock` and takes whichever versions are newest, and on Linux its
+torch needs a driver recent enough for CUDA 13.
 
 **Two installation hazards, both of which break imports:**
 
@@ -105,42 +138,10 @@ checks the optional dependencies import. With pip instead:
   window does still work there, but nothing checks it and it has broken before
   without anyone noticing. Give `am-seg` an environment of its own rather than
   sharing one with a PyQt5 application.
-* **Do not mix conda and pip for the image stack.** conda's `opencv` and pip's
-  `opencv-python` both provide `cv2`, and having both leaves an import that
-  fails. In a conda environment, do not also run `pip install -e '.[all]'`.
-
-The `[all]` and `[gui]` extras both include matplotlib, so charting works out of
-the box. `[plots]` installs it alone, for a command-line-only environment that
-wants `stats --plot` and nothing else. Without it everything still runs and the
-charts decline to draw.
-
-**Inference is a separate environment.** `am-seg predict` needs torch and
-several gigabytes of dependencies, so it is not installed alongside the curation
-environment:
-
-    ./scripts/setup_ml.sh
-
-This builds `am_segmentation_manager_ml` from `environment-ml.yml`, installs the
-package with the `[ml]` and `[qt]` extras, and reports which devices torch can
-see. It is a second environment rather than an addition to the first because
-albumentations requires `opencv-python-headless`, which cannot share an
-environment with conda's `opencv` — the two-cv2 hazard above, in a form you
-cannot avoid by being careful.
-
-**This environment does the whole workflow**, window included, so predicting
-does not mean switching environments mid-task. The curation environment is the
-lighter one for anyone who never predicts; it is not the more capable one.
-Predicting is a button on the Curate tab as well as `am-seg predict`, so
-running the window from this environment is what makes it available.
-
-pip's default torch build is CUDA-enabled on Linux and Windows and CPU/MPS on
-macOS. To choose another, set an index URL first:
-
-    AM_SEG_TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu ./scripts/setup_ml.sh
-
-To check an environment at any time:
-
-    python -c "from am_segmentation_manager.io.image import image_stack_problems; print(image_stack_problems() or 'image stack OK')"
+* **Do not add a second OpenCV.** Every extra installs `opencv-python-headless`.
+  `opencv-python`, or conda's `opencv`, beside it is a second provider of `cv2`,
+  and the import fails. In a conda environment, install nothing but Python with
+  conda and the rest with pip.
 
 Getting started
 ---------------
@@ -148,8 +149,8 @@ Getting started
     am-seg inspect-layout <folder>    # read-only: how is this data read?
     am-seg gui <folder>               # the main interface
 
-Installing provides the `am-seg` command; `python -m am_segmentation_manager.cli`
-is equivalent and needs no installation.
+Installing provides the `am-seg` command — `uv run am-seg` from a uv checkout;
+`python -m am_segmentation_manager.cli` is equivalent and needs no installation.
 
 **The window is the primary interface.** Four tabs in workflow order — *Add data* to
 name which directories are projects, describe them so they can be indexed and grouped,

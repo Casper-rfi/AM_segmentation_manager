@@ -52,7 +52,7 @@ def open_dialog(**kwargs) -> QFileDialog:
 # Built conditionally: parametrize arguments are evaluated when the module is
 # imported, which happens before pytestmark can skip anything. Naming a Qt enum
 # at module level is what stops the whole file collecting in an environment
-# without a Qt binding -- the inference environment is one.
+# without a Qt binding -- one without the gui extra.
 DIALOG_MODES = (
     [QFileDialog.ExistingFile, QFileDialog.AnyFile, QFileDialog.Directory]
     if HAS_QT else []

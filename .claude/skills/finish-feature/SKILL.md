@@ -70,12 +70,11 @@ scientist — that is a decision, not a tidying job.
 ## 6. Run the suite and the type check
 
 ```bash
-python -m pytest -q
-python -m mypy
+uv run pytest -q
+uv run mypy
 ```
 
-In `am_segmentation_manager` or `am_segmentation_manager_ml`. If the run refuses, it
-names the interpreter to use instead.
+From the repository root. If the run refuses, it names the command to use instead.
 
 `mypy` must report nothing, and it checks every module. Never add a
 `[[tool.mypy.overrides]]` entry to `pyproject.toml` to make an error go away.

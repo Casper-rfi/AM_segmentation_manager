@@ -22,11 +22,10 @@ logger = logging.getLogger(__name__)
 TIFF_SUFFIXES = {".tif", ".tiff"}
 
 INSTALL_HINT = (
-    "In a conda environment install them with conda "
-    "(numpy tifffile imagecodecs opencv), and do not also pip install "
-    "'am_segmentation_manager[all]' -- conda's opencv and pip's opencv-python "
-    "both provide cv2, and installing both breaks the import. Outside conda: "
-    "pip install 'am_segmentation_manager[all]'"
+    "Install them with: uv sync --extra all (or --extra gui), or pip install "
+    "'am_segmentation_manager[all]'. If one is installed but fails to import, "
+    "look for a second provider of cv2: opencv-python or conda's opencv beside "
+    "the opencv-python-headless this package installs breaks the import."
 )
 
 #: The modules that must import for any image to be read, and the distribution
@@ -40,8 +39,8 @@ def image_stack_problems() -> list[tuple[str, str]]:
     Reporting *why* each one failed matters more than it looks. An earlier
     version caught every exception and said "not installed", which is wrong and
     misleading whenever a package is installed but broken -- the usual cause
-    being two installations of cv2, one from conda's ``opencv`` and one from
-    pip's ``opencv-python``. That reads as a missing dependency and sends you
+    being two installations of cv2, such as conda's ``opencv`` beside pip's
+    ``opencv-python-headless``. That reads as a missing dependency and sends you
     to install it again, which makes it worse.
     """
     problems: list[tuple[str, str]] = []

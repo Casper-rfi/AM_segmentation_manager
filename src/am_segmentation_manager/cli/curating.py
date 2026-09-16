@@ -88,7 +88,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "conditions of a scene share that one label. Predictions are "
             "written at the model's resolution; 'convert-predictions' resizes "
             "them to the image when it makes the label. Needs the inference "
-            "dependencies: see scripts/setup_ml.sh."
+            "dependencies: the ml extra (README, Installation)."
         ),
     )
     _add_scope_arguments(predict_cmd, default_modality="SEM")

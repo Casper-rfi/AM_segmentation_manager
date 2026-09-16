@@ -102,9 +102,9 @@ additional dependency without explaining why it is beneficial and asking permiss
 Every module should be testable. Suggest pytest tests for every major function. Avoid
 writing code that is difficult to test because of tightly coupled filesystem access.
 
-Use as testing environments:
-am_segmentation_manager (without ml)
-am_segmentation_manager_ml (with ml)
+Run the suite from the repository root with uv run pytest, in the environment uv sync 
+--extra gui --extra ml builds. The configurations without ml or without any extra are 
+covered by CI.
 
 Run the suite from the repository root in one of those two. `docs/decisions.md`
 § Environment says what running it anywhere else looks like, which is worth reading

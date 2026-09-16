@@ -3,8 +3,8 @@
 The counterpart of :mod:`..io.image` for the machine-learning dependencies:
 torch is imported inside functions, never at module level, so this module can
 be imported and asked its questions in an installation that has no torch at
-all. The install script and every future inference command ask through here
-rather than catching ``ImportError`` themselves.
+all. ``scripts/check_environment.py`` and every inference command ask through
+here rather than catching ``ImportError`` themselves.
 """
 from __future__ import annotations
 
@@ -14,13 +14,10 @@ import sys
 logger = logging.getLogger(__name__)
 
 INSTALL_HINT = (
-    "Install them into a separate environment with ./scripts/setup_ml.sh, "
-    "which is kept apart from the main environment because the inference "
-    "stack is several gigabytes and brings its own OpenCV. Outside conda: "
-    "pip install 'am_segmentation_manager[ml]' -- but never into an "
-    "environment that already has the [all] extra or conda's opencv, since "
-    "opencv-python-headless and opencv-python both provide cv2 and having two "
-    "breaks the import."
+    "Install the ml extra: uv sync --extra gui --extra ml, or pip install "
+    "'am_segmentation_manager[ml]' -- but never beside conda's opencv or "
+    "opencv-python, since albumentations brings opencv-python-headless and two "
+    "providers of cv2 break the import."
 )
 
 #: The modules that must import before any prediction can be made, and the

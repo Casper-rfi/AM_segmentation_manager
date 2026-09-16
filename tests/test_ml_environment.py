@@ -49,20 +49,20 @@ def test_requiring_the_stack_names_the_operation_and_the_fix(monkeypatch):
     message = str(raised.value)
     assert message.startswith("Predicting needs")
     assert "torch" in message
-    assert "setup_ml.sh" in message
+    assert "--extra ml" in message
 
 
 def test_listing_devices_without_torch_explains_rather_than_raising_importerror(monkeypatch):
     break_import(monkeypatch, "torch", ImportError("No module named 'torch'"))
 
-    with pytest.raises(RuntimeError, match="setup_ml.sh"):
+    with pytest.raises(RuntimeError, match="--extra ml"):
         ml_env.available_devices()
 
 
 def test_verifying_preprocessing_without_torch_explains_itself(monkeypatch):
     break_import(monkeypatch, "torch", ImportError("No module named 'torch'"))
 
-    with pytest.raises(RuntimeError, match="setup_ml.sh"):
+    with pytest.raises(RuntimeError, match="--extra ml"):
         ml_env.verify_preprocessing()
 
 
@@ -78,7 +78,7 @@ def test_an_explicitly_named_device_needs_no_torch_to_resolve(monkeypatch):
 def test_choosing_a_device_without_torch_explains_itself(monkeypatch):
     break_import(monkeypatch, "torch", ImportError("No module named 'torch'"))
 
-    with pytest.raises(RuntimeError, match="setup_ml.sh"):
+    with pytest.raises(RuntimeError, match="--extra ml"):
         ml_env.resolve_device("auto")
 
 

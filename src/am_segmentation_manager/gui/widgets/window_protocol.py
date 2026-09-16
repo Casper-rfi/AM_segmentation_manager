@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from qtpy.QtCore import (  # type: ignore[attr-defined]  # a conda PySide6 ships no stubs
+    from qtpy.QtCore import (
         QSettings,
         SignalInstance,
     )

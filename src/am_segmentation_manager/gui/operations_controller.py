@@ -567,7 +567,7 @@ class OperationsController:
         nothing and a typo in the description is reported before anything loads.
         """
         # Imports torch. This controller is built at window start, where a
-        # machine without the second environment must still get a window.
+        # machine without the ml extra must still get a window.
         from ..ml.model import read_model_description, run_name_of
 
         if not weights.exists():

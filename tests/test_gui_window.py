@@ -2158,12 +2158,12 @@ def test_compressing_waits_for_the_add_data_guard(window, monkeypatch):
 
 
 def test_the_predict_button_is_withheld_where_inference_is_not_installed(window):
-    """A separate install, so the window must say so on the button rather than
+    """An optional extra, so the window must say so on the button rather than
     at the end of a dialog opened expecting it to work."""
     window.operations_panel.set_prediction_available(False)
 
     assert not window.operations_panel.predict_button.isEnabled()
-    assert "setup_ml.sh" in window.operations_panel.predict_button.toolTip()
+    assert "--extra ml" in window.operations_panel.predict_button.toolTip()
 
 
 def test_browsing_for_a_model_predicts_nothing_by_itself(window):

@@ -8,10 +8,10 @@ so. The result reads as a set of unrelated regressions in the window, which is
 the most expensive thing a green package can report.
 
 The rule these pin: name the binding before running, keep an absent qtpy a
-skip rather than an error -- the curation environment without the window being a
+skip rather than an error -- an environment without the gui extra being a
 supported way to work -- and **say what to run, not what to activate**. The
-refusal is usually read in a shell where ``conda activate`` is not a function,
-so an interpreter that can be run is the only remedy that helps there.
+refusal is usually read in a shell where nothing has been activated, so a
+command that can be run is the only remedy that helps there.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import pytest
 
 from conftest import (
     REQUIRED_QT_BINDING,
-    SUPPORTED_ENVIRONMENTS,
+    RUN_COMMAND,
     installed_qt_binding,
     pytest_configure,
     supported_interpreters,
@@ -75,8 +75,8 @@ def test_an_unsupported_binding_stops_the_run_before_any_test(config, monkeypatc
 
 def test_the_refusal_says_what_to_do_about_it(config, monkeypatch):
     """A guard that only says no sends the reader looking for the cause it
-    already knows. It names the binding found, the one wanted, and the two
-    environments that have it."""
+    already knows. It names the binding found, the one wanted, and how to run
+    the suite where the wanted one is."""
     monkeypatch.setattr("conftest.installed_qt_binding", lambda: "PyQt6")
 
     with pytest.raises(pytest.UsageError) as excinfo:
@@ -85,32 +85,32 @@ def test_the_refusal_says_what_to_do_about_it(config, monkeypatch):
     message = str(excinfo.value)
     assert "PyQt6" in message
     assert REQUIRED_QT_BINDING in message
-    assert "am_segmentation_manager_ml" in message
+    assert RUN_COMMAND in message
 
 
 def test_the_refusal_names_a_command_that_can_be_run(config, monkeypatch):
     """Naming the environment is not naming a way into it.
 
-    `conda activate` is a shell function an interactive profile loads, so it is
-    absent from exactly the shells this refusal is read in. The message
-    therefore carries the interpreter itself.
+    Activating an environment is a shell's job, and the shells this refusal is
+    read in have often done none of it. The message therefore carries the
+    interpreter itself, where the project environment has one.
     """
     monkeypatch.setattr("conftest.installed_qt_binding", lambda: "PyQt5")
     monkeypatch.setattr(
         "conftest.supported_interpreters",
-        lambda: [Path("/envs/am_segmentation_manager/bin/python")],
+        lambda: [Path("/repository/.venv/bin/python")],
     )
 
     with pytest.raises(pytest.UsageError) as excinfo:
         pytest_configure(config)
 
-    assert "/envs/am_segmentation_manager/bin/python -m pytest" in str(excinfo.value)
+    assert "/repository/.venv/bin/python -m pytest" in str(excinfo.value)
 
 
 def test_the_refusal_still_says_what_to_do_where_no_interpreter_is_found(
     config, monkeypatch
 ):
-    """A machine laid out some other way loses the command, not the advice."""
+    """A checkout never synced loses the interpreter, not the advice."""
     monkeypatch.setattr("conftest.installed_qt_binding", lambda: "PyQt5")
     monkeypatch.setattr("conftest.supported_interpreters", lambda: [])
 
@@ -118,8 +118,8 @@ def test_the_refusal_still_says_what_to_do_where_no_interpreter_is_found(
         pytest_configure(config)
 
     message = str(excinfo.value)
-    assert "Run instead" not in message
-    assert all(name in message for name in SUPPORTED_ENVIRONMENTS)
+    assert RUN_COMMAND in message
+    assert "-m pytest" not in message
 
 
 def test_an_interpreter_is_offered_only_where_one_exists():

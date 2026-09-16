@@ -16,7 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt  # type: ignore[attr-defined]  # a conda PySide6 ships no stubs
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ...operations.metadata_csv import export_project_metadata_csv
