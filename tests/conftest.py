@@ -267,12 +267,19 @@ def destroy(widget) -> None:
     ``deleteLater()`` does not free one: the window is also held by the bound
     methods in its own key bindings, and Qt owns the other half of that cycle,
     so Python's collector cannot break it. Deleting through shiboken does.
+
+    Pending ``deleteLater`` calls are then carried out, because a test turns
+    the event loop with ``processEvents``, which never does: a chip the window
+    detached and scheduled for deletion would otherwise outlive the test.
     """
     import shiboken6
+    from qtpy.QtCore import QEvent
+    from qtpy.QtWidgets import QApplication
 
     widget.close()
     if shiboken6.isValid(widget):
         shiboken6.delete(widget)
+    QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 def break_import(monkeypatch, module: str, error: Exception) -> None:

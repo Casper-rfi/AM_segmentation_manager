@@ -867,7 +867,7 @@ def test_return_and_scan_both_ask_for_the_typed_folder(qt_app):
     bar.scan_button.click()
 
     assert asked == ["/some/folder", "/some/folder"]
-    bar.deleteLater()
+    destroy(bar)
 
 
 def test_the_scan_box_says_what_the_folder_held(window, project):
@@ -3536,7 +3536,7 @@ def test_a_report_lines_up_in_a_fixed_width_font(qt_app):
     metrics = QFontMetricsF(dialog.view.font())
 
     assert metrics.horizontalAdvance("i") == metrics.horizontalAdvance("W")
-    dialog.deleteLater()
+    destroy(dialog)
 
 
 def test_a_report_dialog_shows_its_lines_and_asks_only_when_it_can_act(qt_app):
@@ -3555,6 +3555,8 @@ def test_a_report_dialog_shows_its_lines_and_asks_only_when_it_can_act(qt_app):
 
     telling = ReportDialog(None, "Inspect layout", ["headline"])
     assert telling.buttons.button(QDialogButtonBox.Ok) is None
+    destroy(asking)
+    destroy(telling)
 
 
 # ---------------------------------------------------------------------------
@@ -3843,7 +3845,7 @@ def metadata_panel(qt_app, tmp_path: Path):
     panel = MetadataPanel(controller)
     panel.set_projects(controller.project_summaries())
     yield panel
-    panel.close()
+    destroy(panel)
 
 
 def test_a_locked_field_still_shows_its_value(metadata_panel):
@@ -4352,11 +4354,18 @@ def test_predicting_stays_off_where_it_was_never_available(window):
 # The chip editor, as a widget
 # ---------------------------------------------------------------------------
 
-def test_chips_wrap_onto_another_row_rather_than_off_the_edge(qt_app):
+@pytest.fixture
+def editor(qt_app):
+    """A chip editor on its own, destroyed when the test ends."""
+    editor = ChipEditor()
+    yield editor
+    destroy(editor)
+
+
+def test_chips_wrap_onto_another_row_rather_than_off_the_edge(editor):
     """Values that do not fit used to be laid out below the bottom edge, where
     they are addressable and invisible -- so a field would report two
     organisations while showing one."""
-    editor = ChipEditor()
     editor._chips.resize(90, 0)
     editor.set_values(["alpha"])
     one_row = editor._chips.height()
@@ -4368,13 +4377,12 @@ def test_chips_wrap_onto_another_row_rather_than_off_the_edge(qt_app):
     assert editor._chip_layout.count() == 4
 
 
-def test_a_chip_is_tall_enough_to_be_seen_as_soon_as_it_exists(qt_app):
+def test_a_chip_is_tall_enough_to_be_seen_as_soon_as_it_exists(editor):
     """Regression, and the worst kind: adding a widget to a layout reparents
     it, reparenting hides it, and a hidden widget measures as nothing -- so the
     row of chips was given no height. The values were held, addressable and
     saved, and simply not on screen, which reads as a field that refuses to
     take a value and as one that loses the value already in it."""
-    editor = ChipEditor()
     editor.show()
     editor._chips.resize(300, 0)
 
@@ -4385,12 +4393,11 @@ def test_a_chip_is_tall_enough_to_be_seen_as_soon_as_it_exists(qt_app):
     assert editor._chip_layout.heightForWidth(300) > 0
 
 
-def test_chips_come_back_after_a_project_that_had_none(qt_app):
+def test_chips_come_back_after_a_project_that_had_none(editor):
     """What stepping through a collection does to one editor. A project with
     nothing in the field hides the chips, and the next project has to be able
     to show them again -- which is the case that failed, because a chip cannot
     be shown into a parent that is still hidden."""
-    editor = ChipEditor()
     editor.show()
     editor._chips.resize(300, 0)
 
@@ -4401,10 +4408,9 @@ def test_chips_come_back_after_a_project_that_had_none(qt_app):
         assert editor.values() == values
 
 
-def test_a_value_sits_beside_the_box_rather_than_on_a_row_of_its_own(qt_app):
+def test_a_value_sits_beside_the_box_rather_than_on_a_row_of_its_own(qt_app, editor):
     """A row per field whether or not it holds anything, so fields with values
     and fields without them are the same height."""
-    editor = ChipEditor()
     editor.resize(600, 80)
     editor.show()
     editor.set_values(["RFI"])
@@ -4416,10 +4422,9 @@ def test_a_value_sits_beside_the_box_rather_than_on_a_row_of_its_own(qt_app):
     assert corner.y() < editor.entry.height()
 
 
-def test_a_box_with_no_values_beside_it_stays_at_the_left(qt_app):
+def test_a_box_with_no_values_beside_it_stays_at_the_left(qt_app, editor):
     """Regression: with the chips hidden, a box aligned only by its top was
     centred in the room they left, out of line with every other box."""
-    editor = ChipEditor()
     editor.resize(600, 40)
     editor.show()
     editor.set_values([])
@@ -4428,19 +4433,17 @@ def test_a_box_with_no_values_beside_it_stays_at_the_left(qt_app):
     assert editor.entry.x() == 0
 
 
-def test_a_chip_area_takes_no_minimum_width(qt_app):
+def test_a_chip_area_takes_no_minimum_width(editor):
     """A minimum is a floor. Asked for the widest value in it, the pane could
     never be narrower than the longest organisation anybody had typed."""
-    editor = ChipEditor()
     editor.set_values(["a value considerably longer than the pane it sits in"])
 
     assert editor._chip_layout.minimumSize().width() == 0
     assert editor._chip_layout.sizeHint().width() > 0
 
 
-def test_typing_several_values_at_once_makes_several_chips(qt_app):
+def test_typing_several_values_at_once_makes_several_chips(editor):
     """Pasting a separated line is how anyone would try it first."""
-    editor = ChipEditor()
     editor.entry.setCurrentText("infected; differentiated")
     editor.entry.lineEdit().editingFinished.emit()
 
@@ -4448,8 +4451,7 @@ def test_typing_several_values_at_once_makes_several_chips(qt_app):
     assert editor.entry.currentText() == "", "the box empties into the chips"
 
 
-def test_a_value_already_there_is_not_added_twice(qt_app):
-    editor = ChipEditor()
+def test_a_value_already_there_is_not_added_twice(editor):
     editor.set_values(["HeLa"])
     reported: list[int] = []
     editor.changed.connect(lambda: reported.append(1))
@@ -4461,10 +4463,9 @@ def test_a_value_already_there_is_not_added_twice(qt_app):
     assert reported == [], "nothing changed, so nothing is reported"
 
 
-def test_setting_the_values_is_a_redraw_rather_than_an_edit(qt_app):
+def test_setting_the_values_is_a_redraw_rather_than_an_edit(editor):
     """The panel fills every editor whenever it refreshes, and a refresh that
     reported edits would have the window saving what it had just read."""
-    editor = ChipEditor()
     reported: list[int] = []
     editor.changed.connect(lambda: reported.append(1))
 
