@@ -9,6 +9,8 @@ preference is a row there.
 """
 from __future__ import annotations
 
+from typing import TypeAlias
+
 from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -16,20 +18,17 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
 )
 
 from ...history import resolve_author
 from .. import preferences
-from .controls import ToggleSwitch, WrappingLabel
+from .controls import SegmentedControl, ToggleSwitch, WrappingLabel
 
 __all__ = ["SettingsDialog", "author_summary"]
 
-#: Said under the preference boxes. A default decides what a control opens on,
-#: so changing one while that control is on screen changes nothing there -- and
-#: a dialog that left the reader to discover this is one they would think was
-#: broken.
 #: How wide the dialog opens, in logical pixels. Wide enough that the notes
 #: wrap to a few lines rather than a column, and that a spin box beside its
 #: caption is a control rather than a sliver.
@@ -40,9 +39,17 @@ DIALOG_WIDTH = 420
 #: with something small in the corner of it.
 SPIN_WIDTH = 110
 
+#: The control a preference is edited with: a switch, a number, or a run of
+#: segments for one of a closed set.
+Editor: TypeAlias = "ToggleSwitch | QSpinBox | SegmentedControl"
+
+#: Said under the preference boxes. A default decides what a control opens on,
+#: so changing one while that control is on screen changes nothing there -- and
+#: a dialog that left the reader to discover this is one they would think was
+#: broken.
 APPLIED_NOTE = (
-    "These decide what each control opens at. The window applies them when it "
-    "next opens, so anything already on screen keeps what it is set to."
+    "These decide what the window and each control open at. The window applies "
+    "them when it next opens, so anything already on screen keeps what it is set to."
 )
 
 
@@ -109,7 +116,7 @@ class SettingsDialog(QDialog):
         held = dict(values or {entry.key: entry.fallback for entry in preferences.PREFERENCES})
         #: The control for each preference, so :attr:`values` can read them
         #: back without a second table saying which widget went where.
-        self._editors: dict[str, ToggleSwitch | QSpinBox] = {}
+        self._editors: dict[str, Editor] = {}
         for title, entries in preferences.groups():
             layout.addWidget(self._build_group(title, entries, held))
 
@@ -140,10 +147,17 @@ class SettingsDialog(QDialog):
         return box
 
     @staticmethod
-    def _build_editor(
-        entry: preferences.Preference, value: int | bool
-    ) -> ToggleSwitch | QSpinBox:
+    def _build_editor(entry: preferences.Preference, value: preferences.Value) -> Editor:
         """Return the control for one preference, filled with *value*."""
+        if entry.is_choice:
+            run = SegmentedControl(
+                [(key, caption, entry.hint) for key, caption in entry.choices]
+            )
+            run.set_current(str(value))
+            # A form stretches its field column, which pulls the segments apart
+            # into buttons that no longer read as one control.
+            run.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            return run
         if entry.is_flag:
             switch = ToggleSwitch(entry.label)
             switch.setChecked(bool(value))
@@ -162,9 +176,17 @@ class SettingsDialog(QDialog):
         return self.author_edit.text().strip()
 
     @property
-    def values(self) -> dict[str, int | bool]:
+    def values(self) -> dict[str, preferences.Value]:
         """Return every preference as the dialog now holds it."""
-        return {
-            key: editor.isChecked() if isinstance(editor, ToggleSwitch) else editor.value()
-            for key, editor in self._editors.items()
-        }
+        return {key: _held(editor) for key, editor in self._editors.items()}
+
+
+def _held(editor: Editor) -> preferences.Value:
+    """Return the value one preference's control holds."""
+    if isinstance(editor, SegmentedControl):
+        chosen = editor.current()
+        assert chosen is not None, "every run is built with a segment chosen"
+        return chosen
+    if isinstance(editor, ToggleSwitch):
+        return editor.isChecked()
+    return editor.value()

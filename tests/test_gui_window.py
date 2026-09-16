@@ -2968,6 +2968,25 @@ def test_the_settings_dialog_offers_every_preference(qt_app, settings):
         destroy(dialog)
 
 
+def test_the_settings_dialog_returns_the_accent_chosen_in_it(qt_app, settings):
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        dialog.show()
+        qt_app.processEvents()
+        run = dialog._editors["accent"]
+        assert dialog.values["accent"] == "orange"
+        assert run.width() == run.sizeHint().width(), "a form pulls the segments apart"
+
+        run.buttons["blue"].click()
+
+        assert dialog.values["accent"] == "blue"
+    finally:
+        destroy(dialog)
+
+
 def test_every_group_of_settings_gets_the_height_its_rows_need(qt_app, settings):
     """A word-wrapped note reports a one-line hint, and the squeeze lands elsewhere.
 

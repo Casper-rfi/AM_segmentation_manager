@@ -105,7 +105,9 @@ def test_every_preference_has_a_group_a_caption_and_a_hint():
     draws a control nobody can identify."""
     for entry in preferences.PREFERENCES:
         assert entry.group and entry.label and entry.hint, entry.key
-        if not entry.is_flag:
+        if entry.is_choice:
+            assert entry.fallback in {key for key, _caption in entry.choices}, entry.key
+        elif not entry.is_flag:
             assert entry.low is not None and entry.high is not None, entry.key
             assert entry.low <= entry.fallback <= entry.high, entry.key
 
@@ -135,3 +137,29 @@ def test_showing_no_series_falls_back_to_what_the_package_ships():
     )
 
     assert preferences.shown_series_from(values) == preferences.DEFAULT_SHOWN_SERIES
+
+
+def test_a_choice_survives_being_written_and_read_back():
+    store = Store()
+
+    preferences.write(store, {"accent": "blue"})
+
+    assert preferences.read(store)["accent"] == "blue"
+
+
+def test_the_window_opens_orange_with_nothing_stored():
+    assert preferences.read(Store())["accent"] == "orange"
+
+
+def test_a_choice_not_offered_falls_back_rather_than_raising(caplog):
+    """A hand-edited settings file, or one written by a later version offering
+    an accent this one does not have."""
+    store = Store({f"{preferences.SETTINGS_PREFIX}/accent": "purple"})
+
+    assert preferences.read(store)["accent"] == preferences.DEFAULT_ACCENT
+    assert "accent='purple'" in caplog.text
+
+
+def test_the_accent_opens_the_settings_dialog():
+    """Felt on every tab, so it comes before the groups felt on one."""
+    assert preferences.groups()[0][0] == preferences.APPEARANCE

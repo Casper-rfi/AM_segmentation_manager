@@ -1,4 +1,4 @@
-"""What a control opens on, and where those answers are kept.
+"""What the window and its controls open on, and where those answers are kept.
 
 **A default decides the value a control starts at, never what an operation
 does**: the command line and every write path keep the packaged constants, so
@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from ..display import DEFAULT_ALPHA
 from ..layout import LABELLED_SERIES, SERIES, SERIES_LABELS
@@ -25,6 +25,9 @@ from ..operations.label_measure import (
 from .export_controller import DEFAULT_SERIES
 
 logger = logging.getLogger(__name__)
+
+#: What a preference can be worth: a number, a switch, or the key of a choice.
+Value: TypeAlias = int | bool | str
 
 #: Where these sit in the window's own settings, under one prefix so they can
 #: be told from the things the window merely remembers -- the scan root, the
@@ -49,8 +52,9 @@ DEFAULT_SEEDED = True
 #: narrowing it silently would disagree with `create-training-csv`.
 DEFAULT_ONE_PER_LABEL = False
 
-#: The two boxes the dialog groups these under. A group is the tab a
-#: preference is felt on, not the module it reaches.
+#: The boxes the dialog groups these under. A group is the tab a preference is
+#: felt on, not the module it reaches; appearance is felt on every tab.
+APPEARANCE = "Appearance"
 PROOFREADING = "Proofreading"
 EXPORT = "Export"
 SHOWN = "Series shown"
@@ -60,6 +64,12 @@ SHOWN = "Series shown"
 #: diagnostics -- worth being able to open and not worth listing beside the
 #: lamellae by default.
 DEFAULT_SHOWN_SERIES: tuple[str, ...] = LABELLED_SERIES
+
+#: The accents the window can be drawn in, as ``(key, caption)``. The keys are
+#: those of ``widgets.theme.ACCENTS``, written out because this module holds no
+#: Qt (`test_the_accent_preference_offers_every_accent_the_theme_has`).
+ACCENT_CHOICES: tuple[tuple[str, str], ...] = (("orange", "Orange"), ("blue", "Blue"))
+DEFAULT_ACCENT = "orange"
 
 
 @dataclass(frozen=True)
@@ -71,27 +81,36 @@ class Preference:
         group: Which box of the settings dialog it appears in.
         label: Its caption there.
         fallback: What it is worth with nothing stored -- the packaged
-            constant, so the dialog and a fresh install agree.
+            constant, so the dialog and a fresh install agree. Its type says
+            what kind of preference this is: a bool is a switch, an int a
+            number, a str one of :attr:`choices`.
         hint: The tooltip, which says what the value does rather than what it
             is called.
         low: Smallest accepted value, for a number.
         high: Largest accepted value, for a number.
         suffix: Shown after a number, where it has a unit.
+        choices: The answers a choice offers, as ``(key, caption)``.
     """
 
     key: str
     group: str
     label: str
-    fallback: int | bool
+    fallback: Value
     hint: str
     low: int | None = None
     high: int | None = None
     suffix: str = ""
+    choices: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_flag(self) -> bool:
-        """Return whether this is a switch rather than a number."""
+        """Return whether this is a switch."""
         return isinstance(self.fallback, bool)
+
+    @property
+    def is_choice(self) -> bool:
+        """Return whether this is one of a closed set of answers."""
+        return isinstance(self.fallback, str)
 
 
 #: Whether the conflict resolver moves on after a decision. Off, because a
@@ -100,6 +119,17 @@ DEFAULT_ADVANCE = False
 
 
 PREFERENCES: tuple[Preference, ...] = (
+    Preference(
+        key="accent",
+        group=APPEARANCE,
+        label="Accent colour",
+        fallback=DEFAULT_ACCENT,
+        choices=ACCENT_CHOICES,
+        hint=(
+            "The colour that marks the chosen tab, row and segment, and the "
+            "control in focus. Nothing that carries meaning changes with it."
+        ),
+    ),
     Preference(
         key="speck_pixels",
         group=PROOFREADING,
@@ -235,16 +265,23 @@ def groups() -> list[tuple[str, list[Preference]]]:
     return list(ordered.items())
 
 
-def _coerce(entry: Preference, stored: Any) -> int | bool:
+def _coerce(entry: Preference, stored: Any) -> Value:
     """Return *stored* as *entry*'s type, or its fallback where it is not one.
 
     A store may hand back a string -- an INI file has no types, and a file
     somebody has edited by hand can hold anything at all. A value that will
-    not convert, or one outside the range the control offers, is logged and
-    replaced rather than raised on: a preference is not worth refusing to open
-    the window over.
+    not convert, one outside the range the control offers, or a choice it does
+    not offer, is logged and replaced rather than raised on: a preference is not
+    worth refusing to open the window over.
     """
     if stored is None:
+        return entry.fallback
+    if entry.is_choice:
+        if str(stored) in {key for key, _caption in entry.choices}:
+            return str(stored)
+        logger.warning(
+            "Ignoring %s=%r in the settings: not one of the choices", entry.key, stored
+        )
         return entry.fallback
     if entry.is_flag:
         if isinstance(stored, bool):
@@ -266,7 +303,7 @@ def _coerce(entry: Preference, stored: Any) -> int | bool:
     return clamped
 
 
-def read(store) -> dict[str, int | bool]:
+def read(store) -> dict[str, Value]:
     """Return every preference resolved against *store*, keyed by name.
 
     Args:
@@ -279,7 +316,7 @@ def read(store) -> dict[str, int | bool]:
     }
 
 
-def write(store, values: Mapping[str, int | bool]) -> None:
+def write(store, values: Mapping[str, Value]) -> None:
     """Record *values*, which need not be every preference.
 
     A value equal to its fallback is written like any other: a preference the
@@ -294,7 +331,7 @@ def write(store, values: Mapping[str, int | bool]) -> None:
         store.setValue(f"{SETTINGS_PREFIX}/{key}", _coerce(entry, value))
 
 
-def series_from(values: Mapping[str, int | bool]) -> tuple[str, ...]:
+def series_from(values: Mapping[str, Value]) -> tuple[str, ...]:
     """Return the series an export should open on, in `layout.SERIES` order.
 
     Ticked nowhere leaves the Export tab counting nothing, which reads as a
@@ -305,7 +342,7 @@ def series_from(values: Mapping[str, int | bool]) -> tuple[str, ...]:
     return chosen or DEFAULT_SERIES
 
 
-def shown_series_from(values: Mapping[str, int | bool]) -> tuple[str, ...]:
+def shown_series_from(values: Mapping[str, Value]) -> tuple[str, ...]:
     """Return the series Curate and Label should open showing, in `SERIES` order.
 
     Shown nowhere would list nothing, which reads as a fault rather than as a

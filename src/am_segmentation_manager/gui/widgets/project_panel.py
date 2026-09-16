@@ -230,7 +230,7 @@ class ProjectPanel(QWidget):
             return
         self.shown_series_changed.emit(self.shown_series())
 
-    def apply_defaults(self, values: Mapping[str, int | bool]) -> None:
+    def apply_defaults(self, values: Mapping[str, int | bool | str]) -> None:
         """Open the series switches at what the settings say. See `ImagePanel`.
 
         Set quietly and announced once, so opening does not redraw the lists

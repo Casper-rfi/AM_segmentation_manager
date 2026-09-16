@@ -97,6 +97,16 @@ def test_the_accents_tested_are_the_accents_offered():
     assert tuple(theme.ACCENTS) == ACCENT_KEYS
 
 
+def test_the_accent_preference_offers_every_accent_the_theme_has():
+    """The preference table holds no Qt, so it names the accents itself; one
+    the theme lacks would be stored and then fail to draw."""
+    from am_segmentation_manager.gui import preferences
+
+    offered = tuple(key for key, _caption in preferences.ACCENT_CHOICES)
+    assert offered == tuple(theme.ACCENTS)
+    assert preferences.DEFAULT_ACCENT == theme.DEFAULT_ACCENT
+
+
 @pytest.mark.parametrize("text", ["TEXT", "HEADING", "MUTED"])
 @pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE", "ALTERNATE", "HOVER"])
 def test_every_text_colour_is_readable_on_every_surface(text, surface):
