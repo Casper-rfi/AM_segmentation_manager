@@ -71,6 +71,26 @@ def supported_interpreters() -> list[Path]:
     ]
 
 
+#: The font a Windows desktop draws a window in at 100% scaling, which the
+#: offscreen platform does not choose for itself there.
+WINDOWS_UI_FONT = ("Segoe UI", 9)
+
+
+def use_windows_fonts_offscreen() -> None:
+    """Point the offscreen platform at Windows' own fonts, on Windows only.
+
+    It looks for fonts beside Qt, and PySide6's wheel ships none, so without
+    this every character is drawn as an empty box of one width -- and every
+    layout test measures the boxes. The window itself draws through Windows and
+    is unaffected. A folder already named in ``QT_QPA_FONTDIR`` is kept.
+    """
+    if sys.platform != "win32":
+        return
+    fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    if fonts.is_dir():
+        os.environ.setdefault("QT_QPA_FONTDIR", str(fonts))
+
+
 def installed_qt_binding() -> str | None:
     """Return the binding qtpy would use here, or None when qtpy is absent.
 
@@ -91,11 +111,14 @@ def installed_qt_binding() -> str | None:
 def pytest_configure(config) -> None:
     """Refuse an unsupported Qt binding, then apply any requested locale.
 
+    Windows' fonts are made available first, before anything can start Qt.
+
     Both fail loudly rather than skipping, for the same reason: a run that
     quietly went ahead would report a result for a check that never happened.
     A missing qtpy is not one of these -- an environment without the gui extra
     is a supported way to run, and the GUI tests skip themselves there.
     """
+    use_windows_fonts_offscreen()
     binding = installed_qt_binding()
     if binding is not None and binding != REQUIRED_QT_BINDING:
         remedy = "Run instead:\n" + "\n".join(
@@ -214,12 +237,17 @@ def qt_app():
     """The one QApplication every widget test shares, drawn offscreen.
 
     Imported here rather than at the top, so the suite still collects where Qt
-    is not installed; the GUI tests skip themselves there.
+    is not installed; the GUI tests skip themselves there. On Windows it draws
+    in :data:`WINDOWS_UI_FONT`, as a desktop there would.
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from qtpy.QtGui import QFont
     from qtpy.QtWidgets import QApplication
 
-    return QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])
+    if sys.platform == "win32":
+        app.setFont(QFont(*WINDOWS_UI_FONT))
+    return app
 
 
 def settle(app, condition, *, timeout: float = 10.0, what: str = "the window") -> None:

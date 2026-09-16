@@ -296,21 +296,20 @@ SCREENSHOTS_ENV_VAR = "AM_SEG_SCREENSHOTS"
 CAPTURED_SIZES = (SMALLEST_SUPPORTED_SCREEN, (1920, 1080))
 
 
-@pytest.mark.skipif(
+needs_screenshots = pytest.mark.skipif(
     not os.environ.get(SCREENSHOTS_ENV_VAR), reason=f"{SCREENSHOTS_ENV_VAR} is not set"
 )
-@pytest.mark.parametrize("size", CAPTURED_SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
-def test_every_tab_is_captured_for_a_person_to_look_at(window, qt_app, size):
-    """Not a check: the layout tests say a row does not fit, and only a picture
-    says whether that looks wrong. A window Qt will not shrink that far is
-    captured at the width it keeps, which is itself the finding."""
+
+
+def _capture(qt_app, window, size: tuple[int, int], label: str, tabs: list[int]) -> None:
+    """Save *window* showing each of *tabs* at *size*, named for what was asked and kept."""
     import sys
 
     directory = Path(os.environ[SCREENSHOTS_ENV_VAR])
     directory.mkdir(parents=True, exist_ok=True)
     window.show()
     window.resize(*size)
-    for index in range(window.tabs.count()):
+    for index in tabs:
         window.tabs.setCurrentIndex(index)
         settle(qt_app, lambda: window.tabs.currentIndex() == index, what="the tab")
         for _ in range(5):
@@ -318,11 +317,48 @@ def test_every_tab_is_captured_for_a_person_to_look_at(window, qt_app, size):
         name = window.tabs.tabText(index).replace(" ", "-").lower()
         shown = window.size()
         path = directory / (
-            f"{sys.platform}-{size[0]}x{size[1]}-{index + 1}-{name}"
+            f"{sys.platform}-{size[0]}x{size[1]}-{label}{index + 1}-{name}"
             f"-at-{shown.width()}x{shown.height()}.png"
         )
 
         assert window.grab().save(str(path)), f"could not write {path}"
+
+
+@needs_screenshots
+@pytest.mark.parametrize("size", CAPTURED_SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
+def test_every_tab_is_captured_for_a_person_to_look_at(window, qt_app, size):
+    """Not a check: the layout tests say a row does not fit, and only a picture
+    says whether that looks wrong. A window Qt will not shrink that far is
+    captured at the width it keeps, which is itself the finding."""
+    _capture(qt_app, window, size, "", list(range(window.tabs.count())))
+
+
+@needs_screenshots
+def test_the_curate_tab_before_a_scan_is_captured_for_a_person_to_look_at(qt_app, settings):
+    """What a window opens on, and what the view-controls test measures: the
+    panels say different things before there is anything to show."""
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    window = CurationWindow(CurationController(cache=FrameCache()), settings=settings)
+    try:
+        _capture(
+            qt_app, window, SMALLEST_SUPPORTED_SCREEN, "unscanned-",
+            [window.tabs.indexOf(window.curate)],
+        )
+    finally:
+        destroy(window)
+
+
+def test_the_window_is_drawn_in_letters_of_different_widths(qt_app):
+    """Where the offscreen platform finds no fonts it draws every character as
+    one box, and every layout test then measures boxes -- which is what
+    Windows gave it until conftest named Windows' own fonts."""
+    from qtpy.QtGui import QFontMetrics
+
+    metrics = QFontMetrics(qt_app.font())
+
+    assert metrics.horizontalAdvance("i") < metrics.horizontalAdvance("W")
 
 
 def test_the_view_controls_wrap_rather_than_widening_the_window(window):
