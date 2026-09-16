@@ -45,7 +45,7 @@ if HAS_QT:
     )
     from am_segmentation_manager.layout import SERIES
     from am_segmentation_manager.scanner import Scanner
-    from conftest import build_dataset
+    from conftest import build_dataset, destroy
 
 
 @pytest.fixture(scope="session")
@@ -54,9 +54,33 @@ def qt_app():
     yield app
 
 
+#: The top-level widgets built by the test running now; see :func:`_built`.
+_BUILT: list = []
+
+
+def _built(widget):
+    """Return *widget*, registered to be destroyed when the test ends.
+
+    Every panel built here goes through this: a panel left alive slows every
+    later test that applies the theme, as ``conftest.destroy`` explains.
+    """
+    _BUILT.append(widget)
+    return widget
+
+
+@pytest.fixture(autouse=True)
+def _destroy_built_widgets():
+    """Destroy what :func:`_built` registered, once queued calls have run."""
+    yield
+    if _BUILT:
+        QApplication.processEvents()
+    while _BUILT:
+        destroy(_BUILT.pop())
+
+
 @pytest.fixture
 def panel(qt_app) -> ExportPanel:
-    return ExportPanel(ExportController())
+    return _built(ExportPanel(ExportController()))
 
 
 def _tick(widget, row: int, on: bool = True) -> None:
@@ -100,7 +124,7 @@ def _loaded_panel(tmp_path, **kwargs) -> ExportPanel:
     build_dataset(tmp_path, lamellae=2, acquisitions=2, labels="annotated", **kwargs)
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = ExportPanel(controller)
+    panel = _built(ExportPanel(controller))
     panel.refresh()
     return panel
 
@@ -163,7 +187,7 @@ def _two_stage_names(tmp_path) -> ExportPanel:
         )
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = ExportPanel(controller)
+    panel = _built(ExportPanel(controller))
     panel.refresh()
     return panel
 
@@ -188,7 +212,7 @@ def _loose_lamella_panel(tmp_path) -> ExportPanel:
 
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = ExportPanel(controller)
+    panel = _built(ExportPanel(controller))
     panel.refresh()
     # Through the boxes rather than the filter behind them: the tab opens on
     # Adaptive Polishing alone, and there is none of it here.
@@ -538,7 +562,7 @@ def test_the_table_is_headed_with_the_readable_name(qt_app, tmp_path):
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = ExportPanel(controller)
+    panel = _built(ExportPanel(controller))
 
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("variant"))
     panel.refresh()
@@ -620,7 +644,7 @@ def test_choosing_a_second_property_turns_the_table_into_a_grid(qt_app, tmp_path
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = ExportPanel(controller)
+    panel = _built(ExportPanel(controller))
 
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
     panel.refresh()
@@ -644,7 +668,7 @@ def measurable(qt_app, tmp_path) -> ExportPanel:
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    return ExportPanel(controller)
+    return _built(ExportPanel(controller))
 
 
 def test_the_button_says_how_much_it_is_about_to_read(qt_app, tmp_path):
@@ -957,7 +981,7 @@ def test_a_breakdown_needing_measured_labels_is_not_written_unmeasured(qt_app, t
 
 def _long_row(qt_app, count: int = 20, ticked=("v3",)) -> FilterRow:
     """A filter row over *count* values, as a pixel size's would be."""
-    row = FilterRow(ExportController())
+    row = _built(FilterRow(ExportController()))
     row.show_values([f"v{index}" for index in range(count)], set(ticked), "pixel size")
     row.show_filled()
     return row
