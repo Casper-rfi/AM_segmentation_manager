@@ -16,3 +16,6 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **Filtering the Export tab from its chart** — filter chips, or clicking a heatmap cell —
   suggested in a review of the window. First: how a filter set there shows in the filter controls,
   so the two never disagree about what is selected.
+- **Running the suite in parallel** with `pytest-xdist`, a new dependency. First: whether the
+  process-wide state [`display.md`](display.md) § Testing the window names — the locale a
+  `QApplication` sets, the error reporter's excepthook — stays confined to one worker.

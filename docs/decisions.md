@@ -300,8 +300,7 @@ rather than appending to it.
   *measured* value rounds it, a header recording what was measured rather than what was set: pixel
   size and beam current are derived from the magnification and differ in the last decimal between
   two images of one field of view. Significant figures rather than decimal places, pixel sizes
-  spanning decades. The conversion rounds to six decimals in the stored unit, binary floating point
-  turning 6e-05 m into 59.99999999999999 um.
+  spanning decades.
 - **A declared path counts as matched only if its value converts**, a key being able to state
   nothing while present: the FEI dialect leaves uninitialised memory in the stage keys it never
   fills, so `Stage.StageX` is a subnormal float while the real position sits in
@@ -572,9 +571,6 @@ rather than appending to it.
   that used to absorb mistakes is gone — which is why this entry names real data at all. Read it,
   and copy *out* of it. `test_reference_collection.py` snapshots every file before and after;
   nothing enforces this for anything else you run.
-- **`matplotlib` is in the `gui` and `all` extras rather than only `plots`**: against the OpenCV
-  and Qt those already install, its size is not what makes an environment large. Why figures are
-  never built through `pyplot` is `plots.py`'s own docstring.
 - **Every `cv2` hazard is a provider conflict**, which is why `environment.yml` pins `nodefaults` —
   a mixed conda-forge/Anaconda environment paired Anaconda's OpenCV with conda-forge's protobuf so
   that `cv2` would not load at all. The curation environment takes conda's *headless* OpenCV and

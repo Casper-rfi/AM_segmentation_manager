@@ -43,7 +43,7 @@ all = [
   "matplotlib",
 ]
 # Charts alone, for a command-line install that wants `stats --plot` and
-# nothing else. matplotlib is in `all` and `gui` as well: against the ~250 MB
+# nothing else. matplotlib is in `all`, `gui` and `qt` as well: against the ~250 MB
 # those already install for OpenCV and Qt, its own ~50 MB is not what makes an
 # environment large, and charting is not a feature worth having to discover a
 # second install command to reach. The core stays near-stdlib, and every
