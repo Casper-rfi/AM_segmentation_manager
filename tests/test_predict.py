@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from am_segmentation_manager.operations.predict import (
@@ -21,6 +20,8 @@ from am_segmentation_manager.operations.predict import (
 )
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
+
+np = pytest.importorskip("numpy")
 
 MODEL = PredictionSource(name="AM_SEM_All_V01.pth", run_name="run_epoch086")
 

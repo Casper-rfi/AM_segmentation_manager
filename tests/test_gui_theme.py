@@ -611,7 +611,10 @@ def _colour_at(widget, x: int, y: int) -> str:
     return QColor(widget.grab().toImage().pixel(x, y)).name()
 
 
-@pytest.mark.parametrize("orientation", [Qt.Horizontal, Qt.Vertical])
+@pytest.mark.parametrize(
+    "orientation",
+    [Qt.Horizontal, Qt.Vertical] if importlib.util.find_spec("qtpy") is not None else [],
+)
 def test_a_division_that_moves_says_so(themed, orientation):
     """A splitter handle was a hairline like every other rule in the window, so
     the only way to find one was to sweep the pointer along it until the cursor

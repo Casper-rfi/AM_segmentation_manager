@@ -34,7 +34,7 @@ if HAS_QT:
 
 #: The size the shackle is compared at. The icons are drawn at one size, so
 #: this only has to be that size.
-ICON = QSize(16, 16)
+ICON = QSize(16, 16) if HAS_QT else None
 
 
 @pytest.fixture

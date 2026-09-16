@@ -36,8 +36,8 @@ def _window_modules(_item: object) -> list[str]:
 
 def _images(directory: Path) -> list[Path]:
     """Write two images with a header, and one file that is not an image at all."""
-    import numpy as np
-    import tifffile
+    np = pytest.importorskip("numpy")
+    tifffile = pytest.importorskip("tifffile")
 
     paths = []
     for name, beam in (("sem.tif", "ELECTRON"), ("fib.tif", "ION")):

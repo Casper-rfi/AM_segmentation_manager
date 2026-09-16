@@ -1,0 +1,13 @@
+name: Qt system libraries
+description: >
+  The shared libraries PySide6's wheels load but do not bundle, which a Linux
+  runner lacks. The offscreen platform draws nothing, yet QtGui still links
+  OpenGL, EGL, xkbcommon, fontconfig and D-Bus.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libegl1 libgl1 libopengl0 libxkbcommon0 libfontconfig1 libdbus-1-3

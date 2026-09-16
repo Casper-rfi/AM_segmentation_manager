@@ -25,6 +25,7 @@ from am_segmentation_manager.image_metadata import (
     read_image_metadata,
     read_records_metadata,
 )
+from am_segmentation_manager.io.image import has_image_stack_support
 from am_segmentation_manager.models import ImageRecord
 
 
@@ -540,6 +541,12 @@ def test_beam_is_inferred_when_the_header_does_not_state_it():
 # Reading files
 # ---------------------------------------------------------------------------
 
+#: Reading a header needs the image stack, so each reading test skips without it.
+needs_image_stack = pytest.mark.skipif(
+    not has_image_stack_support(), reason="optional image libs not installed"
+)
+
+@needs_image_stack
 def test_round_trip_through_a_real_tiff(tmp_path: Path):
     """One test that the tag numbers and JSON handling are right."""
     import json
@@ -560,6 +567,7 @@ def test_round_trip_through_a_real_tiff(tmp_path: Path):
     assert metadata.acceleration_voltage_kv == 30.0
 
 
+@needs_image_stack
 def test_an_unreadable_file_is_reported_as_absent_rather_than_raising(tmp_path: Path):
     """12 of 2680 images in the reference collection fail to parse. A batch
     over thousands must not stop for one of them."""
@@ -569,6 +577,7 @@ def test_an_unreadable_file_is_reported_as_absent_rather_than_raising(tmp_path: 
     assert read_image_metadata(broken) is None
 
 
+@needs_image_stack
 def test_a_tiff_without_a_recognised_header_is_absent_not_empty(tmp_path: Path):
     import numpy as np
     import tifffile
@@ -579,6 +588,7 @@ def test_a_tiff_without_a_recognised_header_is_absent_not_empty(tmp_path: Path):
     assert read_image_metadata(path) is None
 
 
+@needs_image_stack
 def test_records_without_readable_headers_are_simply_missing(tmp_path: Path):
     import json
 

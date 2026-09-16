@@ -70,10 +70,10 @@ def test_every_problem_is_reported_not_just_the_first(monkeypatch):
     real = builtins.__import__
 
     def fake(name, *args, **kwargs):
-        if name in {"cv2", "tifffile"}:
+        if name in {"numpy", "cv2", "tifffile"}:
             raise ImportError(f"No module named {name!r}")
         return real(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake)
 
-    assert len(image_io.image_stack_problems()) == 2
+    assert len(image_io.image_stack_problems()) == 3

@@ -15,15 +15,16 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-import numpy as np
 import pytest
-import tifffile
 
 from am_segmentation_manager.gui.operations_controller import OperationsController
 from am_segmentation_manager.operations.predict_process import ProcessOutcome
 from am_segmentation_manager.progress import Cancellation, OperationCancelled
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
+
+np = pytest.importorskip("numpy")
+tifffile = pytest.importorskip("tifffile")
 
 
 @pytest.fixture

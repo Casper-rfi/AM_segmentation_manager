@@ -29,10 +29,9 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
-- **Cross-platform readiness**, in order: a CI matrix on Linux, Windows and macOS for Python
-  3.11–3.13, trimmed while the repository is private; what it finds on Windows; a cap on
-  `POOL_WORKERS`; choosing a GPU by name and free memory. Without extras the suite already fails:
-  four test files and eight tests need numpy or Qt rather than skipping.
+- **Cross-platform readiness**, in order: a first run of `.github/workflows/tests.yml`, whose jobs
+  beyond Linux and Windows on 3.11 start by hand while the repository is private; what it finds
+  on Windows; a cap on `POOL_WORKERS`; choosing a GPU by name and free memory.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
@@ -45,11 +44,11 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 - **Before publishing**, several packaging gaps are open by decision rather than oversight and all
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
-  obligation this package carries whatever licence it takes), no CI, no `CHANGELOG.md`, no
+  obligation this package carries whatever licence it takes), no `CHANGELOG.md`, no
   `[project.urls]`, and the version pinned at `0.0.0`. `mypy` checks every module's annotations
-  and reports nothing. The suite passed under German and
-  Japanese locales on 2026-09-11; run it so again before any release, for the reasons in
-  [`display.md`](display.md) § Testing the window. And
+  and reports nothing. Run the workflow's `locale` job, German and Japanese, before any release,
+  for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
+  under both on 2026-09-11. And
   [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which
   is what makes never writing to it a rule about a real place rather than a principle: decide then
   whether a reader outside this machine needs the paths or only the rule.

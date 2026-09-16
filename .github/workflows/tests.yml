@@ -1,0 +1,154 @@
+# The suite on every platform and Python version the package supports.
+#
+# While the repository is private, Actions minutes are metered and a macOS
+# minute counts ten times a Linux one, so a push runs Linux on every Python
+# version and Windows on the oldest. The rest of the matrix, the locale runs
+# and the newest-dependency run start from the Actions tab ("Run workflow"),
+# and on every push once the repository is public.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  # The same interpreter uv would install on a developer's machine, never a
+  # runner's own Python.
+  UV_PYTHON_PREFERENCE: only-managed
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra gui
+      - run: uv run --locked ruff check
+      - run: uv run --locked mypy
+
+  # The core without any extra: nothing but PyYAML, and every test needing
+  # more skips itself.
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run --locked pytest -q
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: windows-latest, python: "3.11" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qt-libraries
+        if: runner.os == 'Linux'
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --extra gui
+      - run: uv run --locked pytest -q --durations=15
+
+  # The rest of the platforms, run on request while the repository is private.
+  test-more:
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, python: "3.12" }
+          - { os: windows-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.11" }
+          - { os: macos-latest, python: "3.12" }
+          - { os: macos-latest, python: "3.13" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --extra gui
+      - run: uv run --locked pytest -q --durations=15
+
+  # The inference stack on a runner with no GPU: loading, preprocessing and
+  # the prediction process on the CPU.
+  ml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qt-libraries
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra gui --extra ml
+      - run: uv run --locked python scripts/check_environment.py
+      - run: uv run --locked pytest -q
+
+  # A QApplication adopts the system locale, which is how a locale bug has
+  # reached a user before; see AM_SEG_TEST_LOCALE in tests/conftest.py.
+  locale:
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    name: locale (${{ matrix.locale }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        locale: [de_DE.UTF-8, ja_JP.UTF-8]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qt-libraries
+      - run: |
+          sudo locale-gen ${{ matrix.locale }}
+          sudo update-locale
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra gui
+      - run: uv run --locked pytest -q
+        env:
+          AM_SEG_TEST_LOCALE: ${{ matrix.locale }}
+
+  # What `pip install` gives someone today: the newest release of every
+  # dependency rather than the locked ones, so a release that breaks the
+  # package shows here before a user meets it.
+  newest:
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qt-libraries
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --upgrade --extra gui --extra ml
+      - run: uv run pytest -q
