@@ -68,7 +68,9 @@ DEFAULT_SHOWN_SERIES: tuple[str, ...] = LABELLED_SERIES
 #: The accents the window can be drawn in, as ``(key, caption)``. The keys are
 #: those of ``widgets.theme.ACCENTS``, written out because this module holds no
 #: Qt (`test_the_accent_preference_offers_every_accent_the_theme_has`).
-ACCENT_CHOICES: tuple[tuple[str, str], ...] = (("orange", "Orange"), ("blue", "Blue"))
+ACCENT_CHOICES: tuple[tuple[str, str], ...] = (
+    ("orange", "Orange"), ("blue", "Blue"), ("green", "Green"),
+)
 DEFAULT_ACCENT = "orange"
 #: The accent's key in :data:`PREFERENCES`. Named, because it is the one
 #: preference the window applies while it is open.

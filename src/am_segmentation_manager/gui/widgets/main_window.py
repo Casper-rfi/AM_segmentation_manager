@@ -474,8 +474,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # In the tab row rather than in Curate: a scan serves every tab, and
         # this is the one place all four of them show. The mark ends the row,
         # and appears only here and on the banner -- the orange and green in it
-        # are segmentation class colours everywhere else, so a third use would
-        # be read as data.
+        # are segmentation class colours, so a use beyond the logo and the
+        # accent on controls would be read as data.
         self._corner = _corner(self.scan_bar, self.show_shortcuts, self.show_settings)
         self.tabs.setCornerWidget(self._corner, Qt.Corner.TopRightCorner)
         self.setCentralWidget(self.tabs)

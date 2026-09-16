@@ -44,7 +44,7 @@ def qt_app():
 #: Every accent the theme offers, by key; parametrised with ``indirect=True``, a
 #: test receives the application drawn in each. Written out rather than read from
 #: the theme, which is not importable without Qt when the tests are collected.
-ACCENT_KEYS = ("orange", "blue")
+ACCENT_KEYS = ("orange", "blue", "green")
 
 
 @pytest.fixture
@@ -146,18 +146,21 @@ def test_the_window_opens_in_the_default_accent(qt_app):
         qt_app.setPalette(palette)
 
 
-@pytest.mark.parametrize("themed", ["blue"], indirect=True)
+@pytest.mark.parametrize("themed", ACCENT_KEYS, indirect=True)
 def test_an_accent_applied_leaves_no_colour_of_another_behind(themed):
     """A rule still naming a colour of its own would draw one control orange in
     a blue window, and nothing but looking would find it."""
-    orange = theme.ACCENTS["orange"]
+    applied = theme.active_accent()
     sheet = themed.styleSheet().lower()
 
-    for colour in (orange.colour, orange.strong, orange.selected):
-        assert colour not in sheet
-    assert theme.ACCENTS["blue"].colour in sheet
-    assert themed.palette().color(QPalette.Highlight).name() == theme.ACCENTS["blue"].selected
-    assert themed.palette().color(QPalette.Link).name() == theme.ACCENTS["blue"].strong
+    for other in theme.ACCENTS.values():
+        if other == applied:
+            continue
+        for colour in (other.colour, other.strong, other.selected):
+            assert colour not in sheet
+    assert applied.colour in sheet
+    assert themed.palette().color(QPalette.Highlight).name() == applied.selected
+    assert themed.palette().color(QPalette.Link).name() == applied.strong
 
 
 @pytest.mark.parametrize("themed", ["blue"], indirect=True)
@@ -244,13 +247,14 @@ def test_a_conflict_mark_takes_an_accent_changed_since_it_was_first_drawn(qt_app
         theme.apply_accent(_Unstyled(), previous)
 
 
-def test_a_mark_still_to_do_is_not_the_accent():
-    """An amber ring beside the orange accent read as the same colour. Orange
-    only: under blue the ring shares the accent's hue and is told apart by shape."""
+@pytest.mark.parametrize("key", ["orange", "green"])
+def test_a_mark_still_to_do_is_not_the_accent(key):
+    """An amber ring beside the orange accent read as the same colour. Not blue:
+    under blue the ring shares the accent's hue and is told apart by shape."""
     from am_segmentation_manager.gui.widgets.frame_strip import MISMATCH
 
-    orange = QColor(theme.ACCENTS["orange"].colour)
-    assert abs(MISMATCH.hueF() * 360 - orange.hueF() * 360) >= 60
+    accent = QColor(theme.ACCENTS[key].colour)
+    assert abs(MISMATCH.hueF() * 360 - accent.hueF() * 360) >= 60
 
 
 @pytest.mark.parametrize("surface", ["WINDOW", "CARD", "BASE"])

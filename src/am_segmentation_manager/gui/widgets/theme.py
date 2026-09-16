@@ -90,10 +90,12 @@ class Accent:
 
 
 #: The accents the window can be drawn in, by the key a preference stores. Orange
-#: is the logo's, softened light enough that what is written on it is dark.
+#: and green are the logo's, softened light enough that what is written on them
+#: is dark, and green greyed to a sage.
 ACCENTS: Mapping[str, Accent] = {
     "orange": Accent(colour="#f5a04a", text=TEXT, strong="#b35c12", selected="#fdeedf"),
     "blue": Accent(colour="#2f6feb", text="#ffffff", strong="#2258c4", selected="#dbe6fb"),
+    "green": Accent(colour="#83b483", text=TEXT, strong="#3f7a45", selected="#e9f1e9"),
 }
 DEFAULT_ACCENT = "orange"
 

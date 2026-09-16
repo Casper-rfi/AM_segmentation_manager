@@ -4,8 +4,8 @@ One module, so the window, the application icon and the scan banner agree about
 which file the mark is and how it is scaled. A missing asset is never an error: a
 caller gets an empty pixmap and draws nothing. The mark is free-form against the
 window's own background and set in the system's container as the macOS icon, the
-Dock drawing none of its own. **It is the only place orange and green appear**,
-both being segmentation class colours; see ``docs/display.md``.
+Dock drawing none of its own. **Its orange and green are class colours**, so the
+accents softened from them stay on controls; see ``docs/display.md``.
 """
 from __future__ import annotations
 
