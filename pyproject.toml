@@ -131,9 +131,8 @@ am_segmentation_manager = [
 ]
 
 [tool.pytest.ini_options]
-# Put src/ on the import path, so the tests run against the source tree without
-# the package needing to be installed first. This is the supported way to do it;
-# the tests previously each inserted src/ into sys.path by hand.
+# The source tree and the standalone scripts on the import path, so the tests run
+# without the package installed and can import the scripts they test.
 pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
 

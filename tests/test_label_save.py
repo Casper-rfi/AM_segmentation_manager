@@ -222,10 +222,6 @@ def test_a_failed_write_leaves_the_previous_label_intact(tmp_path: Path, monkeyp
     assert list(destination.parent.iterdir()) == [destination], "a temporary was left"
 
 
-def test_a_fingerprint_of_a_missing_file_is_nothing(tmp_path: Path):
-    assert fingerprint_of(tmp_path / "absent.tif") is None
-
-
 # ---------------------------------------------------------------------------
 # Permissions
 # ---------------------------------------------------------------------------

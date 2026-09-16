@@ -13,7 +13,7 @@ import pytest
 
 from am_segmentation_manager.operations.label_io import is_label_file_empty
 from am_segmentation_manager.scanner import Scanner
-from conftest import ERAS, LABEL_NAMING, build_dataset
+from conftest import LABEL_NAMING, SAMPLE_LAYOUTS, build_dataset
 
 
 def scanned(root: Path):
@@ -33,18 +33,18 @@ def records_of(root: Path) -> list:
     ]
 
 
-@pytest.mark.parametrize("era", ERAS)
-def test_every_era_scans_to_one_indexable_project(tmp_path: Path, era: str):
-    build_dataset(tmp_path, era=era)
+@pytest.mark.parametrize("layout", SAMPLE_LAYOUTS)
+def test_every_era_scans_to_one_indexable_project(tmp_path: Path, layout: str):
+    build_dataset(tmp_path, layout=layout)
     project = scanned(tmp_path)
 
     assert project.lamellae
     assert project.lamellae[0].stages
 
 
-@pytest.mark.parametrize("era", ERAS)
-def test_every_era_pairs_each_image_with_its_label(tmp_path: Path, era: str):
-    build_dataset(tmp_path, era=era, acquisitions=2)
+@pytest.mark.parametrize("layout", SAMPLE_LAYOUTS)
+def test_every_era_pairs_each_image_with_its_label(tmp_path: Path, layout: str):
+    build_dataset(tmp_path, layout=layout, acquisitions=2)
     records = records_of(tmp_path)
 
     assert records
@@ -55,7 +55,7 @@ def test_every_era_pairs_each_image_with_its_label(tmp_path: Path, era: str):
 def test_collapsed_eras_report_the_level_they_lack_as_synthetic(tmp_path: Path):
     """The point of these fixtures: the missing level is synthesised, not
     invented on disk."""
-    build_dataset(tmp_path, era="legacy_collapsed")
+    build_dataset(tmp_path, layout="no_lamella_level")
     project = scanned(tmp_path)
 
     assert project.lamellae[0].synthetic is True
@@ -63,7 +63,7 @@ def test_collapsed_eras_report_the_level_they_lack_as_synthetic(tmp_path: Path):
 
 
 def test_a_lamella_directory_without_a_stage_is_synthetic_only_at_stage_level(tmp_path: Path):
-    build_dataset(tmp_path, era="legacy_variants")
+    build_dataset(tmp_path, layout="no_stage_level")
     project = scanned(tmp_path)
 
     assert project.lamellae[0].synthetic is False
@@ -81,7 +81,7 @@ def test_sem_variants_share_one_label(tmp_path: Path):
     """Several imaging conditions of one scene resolve to a single label, which
     is what makes the label rather than the image the unit of workflow state."""
     data = build_dataset(
-        tmp_path, era="legacy_variants", sem_variants=("SEM_8_fi_1", "SEM_8_fi_4"),
+        tmp_path, layout="no_stage_level", sem_variants=("SEM_8_fi_1", "SEM_8_fi_4"),
         modalities=("SEM",), acquisitions=1,
     )
     sem_records = [r for r in records_of(tmp_path) if r.modality == "SEM"]
@@ -92,15 +92,15 @@ def test_sem_variants_share_one_label(tmp_path: Path):
     assert all(r.label_shared for r in sem_records)
 
 
-@pytest.mark.parametrize("era", ERAS)
-def test_a_dataset_can_lack_a_modality_in_any_era(tmp_path: Path, era: str):
+@pytest.mark.parametrize("layout", SAMPLE_LAYOUTS)
+def test_a_dataset_can_lack_a_modality_in_any_era(tmp_path: Path, layout: str):
     """Modality presence is independent of layout era.
 
     Two documented pre-Autolamella datasets have SEM only, but that is about
     those datasets, not their layout -- every lamella of the oldest dataset in
     the current collection has FIB.
     """
-    build_dataset(tmp_path, era=era, modalities=("SEM",))
+    build_dataset(tmp_path, layout=layout, modalities=("SEM",))
 
     assert {r.modality for r in records_of(tmp_path)} == {"SEM"}
 
@@ -144,7 +144,7 @@ def test_marker_defaults_match_the_era(tmp_path: Path):
     """Legacy datasets predate experiment.yaml; AM_metadata.yaml is what makes
     them indexable at all."""
     modern = build_dataset(tmp_path / "m")
-    legacy = build_dataset(tmp_path / "l", era="legacy_collapsed")
+    legacy = build_dataset(tmp_path / "l", layout="no_lamella_level")
 
     assert (modern.project / "experiment.yaml").exists()
     assert (legacy.project / "AM_metadata.yaml").exists()
@@ -152,8 +152,8 @@ def test_marker_defaults_match_the_era(tmp_path: Path):
 
 
 def test_an_unknown_era_is_rejected_rather_than_silently_building_nothing(tmp_path: Path):
-    with pytest.raises(ValueError, match="Unknown layout era"):
-        build_dataset(tmp_path, era="v2027_speculative")
+    with pytest.raises(ValueError, match="Unknown sample layout"):
+        build_dataset(tmp_path, layout="v2027_speculative")
 
 
 # ---------------------------------------------------------------------------
@@ -217,11 +217,3 @@ def test_variants_are_independent_of_layout(tmp_path: Path):
     # One acquisition, two conditions, one label between them.
     assert len(sem) == 2
     assert len({str(r.labels[0]) for r in sem}) == 1
-
-
-def test_the_old_era_names_still_resolve(tmp_path: Path):
-    """Renaming the samples must not silently change what a caller builds."""
-    old = build_dataset(tmp_path / "old", era="v2025_timestamped")
-    new = build_dataset(tmp_path / "new", layout="timestamped_stage")
-
-    assert old.stage.relative_to(old.root) == new.stage.relative_to(new.root)

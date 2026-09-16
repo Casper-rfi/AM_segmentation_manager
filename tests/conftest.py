@@ -1,32 +1,11 @@
-"""Shared pytest configuration, dataset builders and window helpers.
+"""Shared pytest configuration: dataset builders, window helpers and the suite's guards.
 
-Import path setup used to live here and in a copy at the top of most test
-files. It is now declared once as ``pythonpath = ["src"]`` in
-``pyproject.toml``, so the tests run against the source tree whether or not the
-package is installed.
-
-What lives here instead is :func:`build_dataset`, which constructs on disk the
-real layouts this collection has been seen in. That variety is the risk this
-package exists to manage, so a new layout found in the wild should be a new
-branch *here* rather than another hand-built tree in another test file.
-
-**These builders spell out real-world paths literally, and must keep doing so.**
-It would be tidier to ask :mod:`am_segmentation_manager.layout` where a label
-directory goes, and it would be wrong: the tests would then agree with
-``layout.py`` by construction, and a bug in the conventions would be invisible
-to exactly the tests written to catch it. The paths below are transcribed from
-real datasets and are the independent statement of what the conventions must
-produce.
-
-:func:`settle` and :func:`destroy` are here for the same reason: every window
-test needs both, and a per-file copy of either is how the suite grew a wait
-that slept through its whole timeout and a window that was never freed.
-
-Migration is deliberately opportunistic. Roughly thirty test files still build
-their own trees; they are correct and passing, and rewriting them all at once
-would be a large diff with no behaviour change in the code that would tell us
-if something broke. Use these builders for new tests, and convert an old file
-when you are editing it anyway. See ``docs/00_roadmap.md``.
+:func:`build_dataset` constructs on disk the layouts this collection has been seen
+in, so a new layout found in the wild is a new branch here rather than a hand-built
+tree in a test file. **Its paths are spelled out literally, never asked of**
+:mod:`am_segmentation_manager.layout`: tests deriving them from ``layout.py`` would
+agree with it by construction. :func:`settle`, :func:`destroy` and ``qt_app`` are
+shared so every window test waits for and frees its widgets the same way.
 """
 from __future__ import annotations
 
@@ -177,9 +156,6 @@ SAMPLE_LAYOUTS: tuple[str, ...] = (
     "no_lamella_level",
 )
 
-#: Kept so existing callers and any external references keep working.
-ERAS = SAMPLE_LAYOUTS
-
 #: Label directory naming schemes, oldest first. ``convention`` is what new
 #: label directories are named; the other two are read indefinitely.
 LABEL_NAMING: dict[str, tuple[str, str]] = {
@@ -196,11 +172,11 @@ class Dataset:
     Attributes:
         root: The scan root, which is what you hand to ``Scanner``.
         project: The project directory, holding the marker file.
-        lamella: The lamella directory. Equal to *project* where the era has no
+        lamella: The lamella directory. Equal to *project* where the layout has no
             lamella level.
-        stage: The stage directory. Equal to *lamella* where the era has no
+        stage: The stage directory. Equal to *lamella* where the layout has no
             stage level.
-        era: Which layout was built.
+        layout: Which sample layout was built.
         image_dirs: Image directory path per ``(modality, variant)``.
         label_dirs: Label directory path per ``(modality, variant)``.
         filenames: The image filenames written per modality, in order. Kept
@@ -212,7 +188,7 @@ class Dataset:
     project: Path
     lamella: Path
     stage: Path
-    era: str
+    layout: str
     image_dirs: dict[tuple[str, str | None], Path] = field(default_factory=dict)
     label_dirs: dict[tuple[str, str | None], Path] = field(default_factory=dict)
     filenames: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -485,22 +461,11 @@ _SAMPLES: dict[str, LayoutAxes] = {
     ),
 }
 
-#: Older names for the samples, so existing tests keep reading.
-_ALIASES = {
-    "v2026_nested": "nested_stage",
-    "v2025_timestamped": "timestamped_stage",
-    "v2024_untimed": "untimed_stage",
-    "legacy_variants": "no_stage_level",
-    "legacy_collapsed": "no_lamella_level",
-}
-
-
 def layout_axes(layout: str) -> LayoutAxes:
     """Return the axis values for a named sample layout."""
-    resolved = _ALIASES.get(layout, layout)
-    if resolved not in _SAMPLES:
-        raise ValueError(f"Unknown layout era: {layout}")
-    return _SAMPLES[resolved]
+    if layout not in _SAMPLES:
+        raise ValueError(f"Unknown sample layout: {layout}")
+    return _SAMPLES[layout]
 
 
 def _directories_for(project: Path, axes: LayoutAxes, number: int) -> tuple[Path, Path]:
@@ -523,7 +488,6 @@ def build_dataset(
     root: Path,
     *,
     layout: str = "timestamped_stage",
-    era: str | None = None,
     name: str = "project",
     lamellae: int = 1,
     acquisitions: int = 2,
@@ -550,7 +514,6 @@ def build_dataset(
     Args:
         root: Scan root to build under.
         layout: A name from :data:`SAMPLE_LAYOUTS` to start from.
-        era: Deprecated alias for *layout*.
         lamella_name: Override the lamella directory name; ``None`` removes the
             lamella level so the project directory stands in for one.
         stage_parts: Override the path from lamella to stage; ``None`` removes
@@ -560,7 +523,7 @@ def build_dataset(
         lamellae: How many lamellae to build. The returned :class:`Dataset`
             points at the first; the others exist to be scanned.
         acquisitions: Images per modality per lamella.
-        modalities: Which modalities to write. Independent of *era*: whether a
+        modalities: Which modalities to write. Independent of *layout*: whether a
             dataset has FIB is a property of the dataset, not of its layout.
             Two documented pre-Autolamella datasets have SEM only, but every
             lamella of the oldest dataset in the current collection has FIB.
@@ -583,7 +546,7 @@ def build_dataset(
     Returns:
         Where everything landed.
     """
-    axes = layout_axes(era if era is not None else layout)
+    axes = layout_axes(layout)
     if lamella_name is not _KEEP:
         axes = replace(axes, lamella_name=lamella_name)
     if stage_parts is not _KEEP:
@@ -670,7 +633,7 @@ def build_dataset(
         project=project,
         lamella=first[0],
         stage=first[1],
-        era=era if era is not None else layout,
+        layout=layout,
         image_dirs=built_image_dirs,
         label_dirs=label_dirs,
         filenames=filenames,
@@ -685,12 +648,6 @@ def sample_layout(request) -> str:
     claim of exhaustive coverage -- see :data:`SAMPLE_LAYOUTS`. Where a
     behaviour depends on a specific property, vary that property directly.
     """
-    return request.param
-
-
-@pytest.fixture(params=SAMPLE_LAYOUTS)
-def era(request) -> str:
-    """Deprecated alias for :func:`sample_layout`."""
     return request.param
 
 
