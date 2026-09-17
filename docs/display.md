@@ -334,11 +334,13 @@ of one of these files, is held by `test_docs.py`.
   most, a crack being a fraction of a percent of the frame. So a batch table ranking labels by how
   far something moved them is refused, and so is a percentage beside a conflict; the answer is one
   frame at a time on a subset.
-- **A save puts what it wrote into the prepared frame.** A prepared frame holds the pixels its label
-  had when it was read, and the editing session's own copy hides that until the save discards it —
-  after which the canvas draws the label the save replaced, and only leaving the tab and coming back
-  reads the file again. Put in rather than dropped: dropping leaves nothing to draw until a
-  background read catches up, which is a blank canvas exactly where a save was just made.
+- **Editing never starts from pixels older than the label's file.** A prepared frame holds the pixels
+  its label had when read, perhaps long before it is opened, so the cache fingerprints the file just
+  before reading and editing opens with that fingerprint; a frame whose file changed since is read
+  again first (`test_a_frame_read_ahead_opens_what_was_written_since`). **A save puts what it wrote,
+  and its fingerprint, into the prepared frame**, or the canvas draws the label it replaced. Put in
+  rather than dropped: dropping leaves nothing to draw until a background read catches up, which is
+  a blank canvas exactly where a save was just made.
 
 - **The brush outline is redrawn from state, never from mouse movement alone**, being drawn in
   *scene* coordinates: anything moving the scene under a stationary pointer leaves a ring around a

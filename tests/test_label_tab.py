@@ -2217,6 +2217,29 @@ def test_a_label_changed_on_disk_stops_the_save(qt_app, window, monkeypatch):
     assert window.label_controller.pending_count() == 1, "the edit is still held"
 
 
+def test_a_frame_read_before_its_label_changed_is_read_again(qt_app, window):
+    """The frame reported ready holds pixels older than the file: the window
+    asks for it again rather than drawing them, or sitting on *loading*."""
+    from am_segmentation_manager.gui.cache import LoadRequest
+
+    controller = window.label_controller
+    ahead = controller._positions[1]
+    settle(qt_app, lambda: controller.cache.holds(ahead, controller.modality))
+    controller.step(1)
+    tifffile.imwrite(str(controller.current_key), np.full((48, 64), 1, dtype=np.uint8))
+
+    window._on_label_loaded(
+        window.label_loader.token, LoadRequest(ahead, controller.modality)
+    )
+
+    canvas = window.label_panel.canvas
+    settle(
+        qt_app,
+        lambda: canvas._label_array is not None and (canvas._label_array == 1).all(),
+        what="the rewritten label on the canvas",
+    )
+
+
 # ---------------------------------------------------------------------------
 # The fill tool
 # ---------------------------------------------------------------------------

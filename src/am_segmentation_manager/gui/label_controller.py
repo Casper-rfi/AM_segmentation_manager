@@ -437,22 +437,53 @@ class LabelController:
     # -- what to draw -------------------------------------------------------
 
     def current_image(self) -> FrameImage | None:
-        """Return the prepared frame, reading it if it is not already held."""
+        """Return the prepared frame, reading it if it is not already held or not current."""
         index = self.frame_index
         if index is None:
             return None
+        prepared = self.cached_image()
+        if prepared is not None:
+            return prepared
         return self.cache.image(index, self._modality, self.variant)
 
     def cached_image(self) -> FrameImage | None:
-        """Return the prepared frame only if it is already held.
+        """Return the prepared frame only if it is already held and still current.
 
         Lets the panel say *loading* instead of blocking the interface on a
-        full-resolution read.
+        full-resolution read. A frame whose label file has changed since it was
+        read is discarded and answered as not held, so editing never starts
+        from pixels older than the file.
         """
         index = self.frame_index
         if index is None:
             return None
-        return self.cache.cached_image(index, self._modality, self.variant)
+        prepared = self.cache.cached_image(index, self._modality, self.variant)
+        if prepared is not None and self._read_before_rewrite(prepared):
+            logger.info(
+                "Label of %s changed on disk since it was read; reading it again",
+                self.record.image_path.name,
+            )
+            self.cache.drop_image(index, self._modality, self.variant)
+            return None
+        return prepared
+
+    def _read_before_rewrite(self, prepared: FrameImage) -> bool:
+        """Return whether *prepared*'s label file has changed since it was read.
+
+        Asked only until the label is opened for editing: from then on the
+        session holds the working copy and the save compares against it. A
+        record naming no label is never answered True, reading it again finding
+        no label either; a file that has appeared since is refused at the save.
+        """
+        record = self.record
+        if record is None or not record.labels or prepared.display is None:
+            return False
+        key = self.key_for(record)
+        if key is None or key == self.session.open_key:
+            return False
+        if self.session.state_of(key) is not None:
+            return False
+        return prepared.label_fingerprint != fingerprint_of(key)
 
     def pending_loads(self, *, radius: int | None = DEFAULT_RADIUS) -> list[LoadRequest]:
         """Return the frames to prepare, current first then outwards.
@@ -556,7 +587,7 @@ class LabelController:
             key,
             source,
             created=display.label is None,
-            fingerprint=fingerprint_of(key),
+            fingerprint=prepared.label_fingerprint,
         )
 
     def record_edit(self, patch: EditPatch | None) -> None:

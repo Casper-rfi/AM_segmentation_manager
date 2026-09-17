@@ -17,6 +17,7 @@ from am_segmentation_manager.gui.cache import (
     LoadRequest,
     prefetch_order,
 )
+from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.models import ImageRecord
 
 
@@ -159,6 +160,73 @@ def test_label_path_is_passed_to_the_loader():
     cache.image(0, "SEM")
 
     assert calls == [(Path("sem/img.tif"), Path("labels/img.tif"))]
+
+
+def labelled_cache(label: Path, loader) -> FrameCache:
+    """A cache over one SEM frame whose label is *label*."""
+    record = ImageRecord(image_path=Path("sem/img.tif"), labels=[label], modality="SEM")
+    cache = FrameCache(loader, lambda path: "plot")
+    cache.set_frames([
+        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0, sem=(record,))
+    ])
+    return cache
+
+
+def test_the_label_is_fingerprinted_before_it_is_read(tmp_path):
+    """A rewrite landing during the read must leave the frame looking stale."""
+    label = tmp_path / "img.tif"
+    label.write_bytes(b"before")
+
+    def rewritten_while_reading(image_path, label_path=None):
+        replacement = tmp_path / "replacement.tif"
+        replacement.write_bytes(b"after, and longer")
+        replacement.replace(label)
+        return "prepared"
+
+    cache = labelled_cache(label, rewritten_while_reading)
+    prepared = cache.image(0, "SEM")
+
+    assert prepared.label_fingerprint is not None
+    assert prepared.label_fingerprint != fingerprint_of(label)
+
+
+def test_a_frame_with_no_label_has_no_fingerprint():
+    cache, _, _ = make_cache(1)
+
+    assert cache.image(0, "SEM").label_fingerprint is None
+
+
+def test_relabelling_takes_the_written_label_s_fingerprint(tmp_path):
+    np = pytest.importorskip("numpy")
+    from am_segmentation_manager.display import DisplayImage
+
+    label = tmp_path / "img.tif"
+    label.write_bytes(b"before")
+
+    def load(image_path, label_path=None):
+        return DisplayImage(
+            image=np.zeros((4, 4), np.uint8), label=np.zeros((4, 4), np.uint8),
+            label_status="empty", source=image_path,
+        )
+
+    cache = labelled_cache(label, load)
+    cache.image(0, "SEM")
+    label.write_bytes(b"written by this window")
+
+    cache.relabel({label: np.ones((4, 4), np.uint8)})
+
+    assert cache.cached_image(0, "SEM").label_fingerprint == fingerprint_of(label)
+
+
+def test_a_dropped_frame_is_read_again():
+    cache, loader, _ = make_cache(2)
+    cache.image(0, "SEM")
+
+    assert cache.drop_image(0, "SEM")
+    assert not cache.drop_image(0, "SEM"), "nothing was held the second time"
+    cache.image(0, "SEM")
+
+    assert len(loader.calls) == 2
 
 
 def test_absent_modality_returns_none_without_loading():

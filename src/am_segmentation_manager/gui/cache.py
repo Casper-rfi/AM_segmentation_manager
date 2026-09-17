@@ -25,6 +25,7 @@ from ..display import (
     prepare_plot,
 )
 from ..frames import LamellaFrame
+from ..io.atomic import Fingerprint, fingerprint_of
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -97,6 +98,10 @@ class FrameImage:
 
     display: DisplayImage | None = None
     error: str | None = None
+    #: What the label file looked like just before its pixels were read, or
+    #: None where there was none to read. Taken before rather than after, so a
+    #: rewrite during the read counts as a change.
+    label_fingerprint: Fingerprint | None = None
 
     @property
     def failed(self) -> bool:
@@ -328,6 +333,9 @@ class FrameCache:
         leaves nothing to draw until a background read catches up -- a blank
         canvas where a save had just been made.
 
+        Each frame takes the label's fingerprint as it now is, so that what it
+        holds and what it says it read stay one moment.
+
         Several imaging conditions of one scene share a label, so one written
         label can reach more than one prepared frame. A frame whose label had
         to be resampled to be displayed is left alone: its array is not the
@@ -339,6 +347,7 @@ class FrameCache:
         wanted = {Path(path).resolve(): array for path, array in written.items()}
         if not wanted:
             return 0
+        fingerprints = {path: fingerprint_of(path) for path in wanted}
         changed = 0
         for key in self._images.keys():
             prepared = self._images.get(key)
@@ -353,7 +362,11 @@ class FrameCache:
                     continue
                 self._images.put(
                     key,
-                    replace(prepared, display=replace(prepared.display, label=array)),
+                    replace(
+                        prepared,
+                        display=replace(prepared.display, label=array),
+                        label_fingerprint=fingerprints[label.resolve()],
+                    ),
                 )
                 changed += 1
                 break
@@ -381,9 +394,13 @@ class FrameCache:
             return cached
 
         label_path = record.labels[0] if record.labels else None
+        fingerprint = fingerprint_of(label_path) if label_path is not None else None
         generation = self._generation
         try:
-            prepared = FrameImage(display=self._load_image(record.image_path, label_path))
+            prepared = FrameImage(
+                display=self._load_image(record.image_path, label_path),
+                label_fingerprint=fingerprint,
+            )
         except Exception as exc:  # noqa: BLE001 - a bad file must not block navigation
             logger.warning("Could not prepare %s: %s", record.image_path, exc)
             prepared = FrameImage(error=str(exc))
@@ -481,6 +498,12 @@ class FrameCache:
         view can say *loading* rather than blocking on a slow read.
         """
         return self._images.get((frame_index, modality, variant))
+
+    def drop_image(
+        self, frame_index: int, modality: str, variant: str | None = None
+    ) -> bool:
+        """Discard a prepared acquisition, so it is read again; return whether one was held."""
+        return self._images.drop([(frame_index, modality, variant)]) > 0
 
     def cached_plot(self, frame_index: int) -> FramePlot | None:
         """Return a prepared plot only if it is already held."""

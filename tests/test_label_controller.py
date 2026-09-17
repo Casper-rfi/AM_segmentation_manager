@@ -539,6 +539,127 @@ def test_a_corrected_label_is_still_looked_up_where_it_was_written(tmp_path: Pat
 
 
 # ---------------------------------------------------------------------------
+# A label rewritten by another program
+# ---------------------------------------------------------------------------
+
+def read_ahead_controller(root: Path, *, labels: str = "empty"):
+    """A controller on real files, with the frame after this one already read.
+
+    Real files and the real loader, because what is at stake is the moment a
+    label's pixels were read against the moment its file changed.
+    """
+    dataset = build_dataset(
+        root, acquisitions=2, modalities=("SEM",), labels=labels,
+        label_naming="convention",
+    )
+    for index in range(2):
+        tifffile.imwrite(str(dataset.image("SEM", index)), np.zeros((32, 32), np.uint8))
+        if labels != "none":
+            tifffile.imwrite(str(dataset.label("SEM", index)), np.zeros((32, 32), np.uint8))
+    controller = LabelController(CONFIG)
+    controller.set_lamella(scan_lamella(root))
+    for request in controller.pending_loads():
+        controller.cache.ensure(request)
+    controller.working_label()
+    return controller, dataset
+
+
+def rewrite(path: Path) -> None:
+    """Write a label with a mark in it, as another program would."""
+    label = np.zeros((32, 32), np.uint8)
+    label[4:8, 4:8] = 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(str(path), label)
+
+
+def test_a_frame_read_ahead_opens_what_was_written_since(tmp_path: Path):
+    controller, dataset = read_ahead_controller(tmp_path)
+    rewrite(dataset.label("SEM", 1))
+
+    controller.step(1)
+    assert controller.cached_image() is None, "the frame read before the rewrite was kept"
+    controller.current_image()
+
+    assert controller.working_label()[4:8, 4:8].all(), (
+        "editing started from pixels older than the file"
+    )
+
+
+def test_a_frame_returned_to_opens_what_was_written_since(tmp_path: Path):
+    controller, dataset = read_ahead_controller(tmp_path)
+    controller.step(1)
+    controller.working_label()
+    controller.step(-1)
+    controller.working_label()  # opening frame 0 puts frame 1 away, unedited
+    rewrite(dataset.label("SEM", 1))
+
+    controller.step(1)
+    controller.current_image()
+
+    assert controller.working_label()[4:8, 4:8].all()
+
+
+def test_saving_after_a_rewrite_keeps_what_was_written(tmp_path: Path):
+    """The whole path the reviewer takes, ending where the damage would be."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    controller, dataset = read_ahead_controller(tmp_path)
+    rewrite(dataset.label("SEM", 1))
+
+    controller.step(1)
+    controller.current_image()
+    label = controller.working_label()
+    controller.record_edit(paint(label, [(20, 20)], 0, 2))
+    controller.save()
+
+    assert tifffile.imread(str(dataset.label("SEM", 1)))[4:8, 4:8].all()
+
+
+def test_a_label_created_after_the_scan_is_not_overwritten(tmp_path: Path):
+    """Reading again cannot help, the record naming no label to read: the
+    save is what refuses."""
+    from am_segmentation_manager.operations.label_edit import paint
+    from am_segmentation_manager.operations.label_save import StaleLabels
+
+    controller, dataset = read_ahead_controller(tmp_path, labels="none")
+    rewrite(dataset.label("SEM", 1))
+
+    controller.step(1)
+    label = controller.working_label()
+    controller.record_edit(paint(label, [(20, 20)], 0, 2))
+
+    with pytest.raises(StaleLabels):
+        controller.save()
+    assert tifffile.imread(str(dataset.label("SEM", 1)))[4:8, 4:8].all()
+
+
+def test_a_rewrite_after_editing_starts_still_stops_the_save(tmp_path: Path):
+    from am_segmentation_manager.operations.label_edit import paint
+    from am_segmentation_manager.operations.label_save import StaleLabels
+
+    controller, dataset = read_ahead_controller(tmp_path)
+    label = controller.working_label()
+    controller.record_edit(paint(label, [(20, 20)], 0, 2))
+    rewrite(dataset.label("SEM", 0))
+
+    assert controller.cached_image() is not None, "an edited frame is not read again"
+    with pytest.raises(StaleLabels):
+        controller.save()
+
+
+def test_a_frame_saved_twice_is_not_refused_by_its_own_save(tmp_path: Path):
+    from am_segmentation_manager.operations.label_edit import paint
+
+    controller, dataset = read_ahead_controller(tmp_path)
+    for point in ((20, 20), (22, 22)):
+        label = controller.working_label()
+        controller.record_edit(paint(label, [point], 0, 2))
+        controller.save()
+
+    assert tifffile.imread(str(dataset.label("SEM", 0)))[22, 22] == 2
+
+
+# ---------------------------------------------------------------------------
 # Imaging conditions
 # ---------------------------------------------------------------------------
 

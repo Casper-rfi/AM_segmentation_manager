@@ -64,8 +64,9 @@ class PendingLabel:
     Attributes:
         key: Where the label will be written. Its identity here.
         created: Whether no label file existed, so saving writes a new one.
-        fingerprint: What the label's file looked like when it was first
-            opened, for the save to check nothing else has rewritten it since.
+        fingerprint: What the label's file looked like when the pixels it was
+            first opened from were read, for the save to check nothing else has
+            rewritten it since.
             Held rather than taken here, so this module stays off the disk.
         edited: Whether a stroke has changed it.
         reviewed: Whether the reviewer has passed it as correct. Set by editing

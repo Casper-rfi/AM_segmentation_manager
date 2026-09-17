@@ -273,9 +273,15 @@ class LabelTab(_Window):
         self.label_panel.refresh_timeline()
 
     def _on_label_loaded(self, token: int, request) -> None:
-        """Redraw the canvas when the frame on screen finishes preparing."""
+        """Redraw the canvas when the frame on screen finishes preparing.
+
+        A frame whose label was rewritten while it was being read is discarded
+        by the redraw, and asked for again here rather than left loading.
+        """
         if token != self.label_loader.token:
             return
         if request.frame_index == self.label_controller.frame_index:
             self.label_panel.draw_current()
+            if self.label_controller.cached_image() is None:
+                self._schedule_label_loads()
 

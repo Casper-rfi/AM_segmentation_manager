@@ -35,8 +35,6 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   `nvidia-smi` shows a run on that GPU alone. **The Windows suite
   crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, with nothing
   logged; CI now names each test as it starts, so the next crash says where.
-- **Can the Label tab edit pixels older than the file?** It fingerprints a label when editing starts
-  (`label_controller.py`), which may be after the read-ahead cache read it.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
