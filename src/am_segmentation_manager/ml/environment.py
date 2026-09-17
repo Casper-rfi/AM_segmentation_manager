@@ -207,7 +207,7 @@ def cuda_problem(inventory: GpuInventory) -> str:
     import torch
 
     if torch.cuda.is_available():
-        return ""
+        return _missing_kernels(torch)
     found = f"{len(inventory.gpus)} NVIDIA GPU(s) found"
     if torch.version.cuda is None:
         return (
@@ -221,6 +221,50 @@ def cuda_problem(inventory: GpuInventory) -> str:
         f"and a driver too old for that CUDA version is the usual cause. "
         f"Predictions run on the CPU."
     )
+
+
+def _missing_kernels(torch) -> str:
+    """Return why torch has no kernels for the GPUs it can see, or "" if it has.
+
+    A driver new enough to run CUDA is not a build that can run on the card:
+    each torch wheel carries kernels for the architectures it was compiled for,
+    and a card newer than all of them fails at the first launch rather than at
+    load. Asked only where CUDA is available, every visible GPU having been
+    checked before any of them is used.
+    """
+    architectures = [
+        _compute_capability(name) for name in torch.cuda.get_arch_list()
+    ]
+    supported = {capability for capability in architectures if capability is not None}
+    if not supported:
+        return ""
+    unusable = []
+    for index in range(torch.cuda.device_count()):
+        major, minor = torch.cuda.get_device_capability(index)
+        if any(built == major and level <= minor for built, level in supported):
+            continue
+        unusable.append(f"{torch.cuda.get_device_name(index)} (sm_{major}{minor})")
+    if not unusable:
+        return ""
+    built_for = ", ".join(f"sm_{major}{minor}" for major, minor in sorted(supported))
+    return (
+        f"{len(unusable)} NVIDIA GPU(s) too new for this torch "
+        f"({torch.__version__}): {', '.join(unusable)}, against kernels for "
+        f"{built_for}. Predictions run on the CPU. Install the build that has "
+        f"them: uv sync --extra gui --extra ml-cuda13"
+    )
+
+
+def _compute_capability(architecture: str) -> tuple[int, int] | None:
+    """Return the (major, minor) a ``sm_90``-style name states, or None.
+
+    ``compute_90`` entries name PTX rather than kernels, and are read the same
+    way: a card can run PTX built for its own architecture.
+    """
+    _, _, digits = architecture.partition("_")
+    if not digits.isdigit() or len(digits) < 2:
+        return None
+    return int(digits[:-1]), int(digits[-1])
 
 
 def limit_cpu_threads() -> int:

@@ -150,15 +150,30 @@ FOUR = GpuInventory(
 )
 
 
-def _torch_that_can_use_cuda(monkeypatch, available: bool = True, built: str | None = "12.6"):
-    """Put a stand-in torch in place, answering the questions device choice asks."""
+def _torch_that_can_use_cuda(
+    monkeypatch,
+    available: bool = True,
+    built: str | None = "12.6",
+    architectures: tuple[str, ...] = ("sm_80", "sm_86", "sm_90"),
+    capability: tuple[int, int] = (8, 0),
+):
+    """Put a stand-in torch in place, answering the questions device choice asks.
+
+    *architectures* are the kernels the build carries and *capability* is the
+    card in the machine, which is how a build too old for a card is staged.
+    """
     import sys
     import types
 
     torch = types.ModuleType("torch")
     torch.__version__ = "2.14.0"
     torch.cuda = types.SimpleNamespace(
-        is_available=lambda: available, is_initialized=lambda: False
+        is_available=lambda: available,
+        is_initialized=lambda: False,
+        get_arch_list=lambda: list(architectures),
+        device_count=lambda: 1,
+        get_device_capability=lambda index: capability,
+        get_device_name=lambda index: "NVIDIA GeForce RTX 5060 Ti",
     )
     torch.version = types.SimpleNamespace(cuda=built)
     threads: list[int] = []
@@ -219,6 +234,37 @@ def test_gpus_torch_cannot_use_are_said_so_and_auto_falls_back(monkeypatch, capl
 
     assert "built for CUDA 12.6" in caplog.text
     assert "535.288.01" in caplog.text
+
+
+def test_a_card_newer_than_every_kernel_is_said_so_and_auto_falls_back(monkeypatch, caplog):
+    """A driver new enough to start CUDA is not a build that can run on the card:
+    the kernels are missing, and the first launch is what would say so."""
+    import logging
+
+    _torch_that_can_use_cuda(monkeypatch, capability=(12, 0))
+    monkeypatch.setattr(ml_env, "available_devices", lambda: ("cpu",))
+
+    with caplog.at_level(logging.WARNING, logger=ml_env.__name__):
+        assert ml_env.resolve_device("auto", FOUR, {}) == "cpu"
+
+    assert "sm_120" in caplog.text
+    assert "sm_90" in caplog.text, "and what it does carry, or there is nothing to act on"
+    assert "ml-cuda13" in caplog.text, "and the way out of it"
+
+
+def test_a_card_the_build_carries_kernels_for_is_not_reported(monkeypatch):
+    """A minor version below the card's runs on it, or every check would be a warning."""
+    _torch_that_can_use_cuda(monkeypatch, architectures=("sm_86",), capability=(8, 9))
+
+    assert ml_env.cuda_problem(FOUR) == ""
+
+
+def test_a_build_naming_no_architectures_is_not_read_as_a_problem(monkeypatch):
+    """Absent evidence is not evidence: refusing a GPU here would take a working
+    one away over a question torch did not answer."""
+    _torch_that_can_use_cuda(monkeypatch, architectures=(), capability=(12, 0))
+
+    assert ml_env.cuda_problem(FOUR) == ""
 
 
 def test_a_torch_built_without_cuda_is_named_as_the_reason(monkeypatch):
