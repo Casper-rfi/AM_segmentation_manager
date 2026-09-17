@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
 from ..io.long_paths import refuse_unreachable
-from .archive import Archivist, archive_paths_for, archive_replaced
+from .archive import ArchiveFailed, Archivist, archive_paths_for, archive_replaced
 from .label_io import label_fields, read_label, replacement_fields, save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -32,10 +32,24 @@ __all__ = [
     "WriteProvenance",
     "SavePlan",
     "SaveReport",
+    "SaveStopped",
     "StaleLabels",
     "plan_saves",
     "save_labels",
 ]
+
+
+class SaveStopped(RuntimeError):
+    """Raised when a save stopped partway, having written what it reports and nothing after.
+
+    Attributes:
+        report: What was written before it stopped, which a caller holding
+            those labels has to bring into step as after any save.
+    """
+
+    def __init__(self, message: str, report: SaveReport) -> None:
+        super().__init__(message)
+        self.report = report
 
 
 class StaleLabels(RuntimeError):
@@ -203,6 +217,8 @@ def save_labels(
             *allow_corrected* was not set.
         PathTooLong: If Windows cannot reach a label or the archived copy of
             what it replaces here. Checked before anything is written.
+        SaveStopped: If the version a label replaces could not be kept. That
+            label and every one after it are left as they were.
     """
     plan = plan_saves(items)
 
@@ -231,11 +247,18 @@ def save_labels(
     written: list[Path] = []
     created: list[Path] = []
     kept: list[str] = []
-    for item in (*plan.writes, *plan.corrected):
+    batch = (*plan.writes, *plan.corrected)
+    for item in batch:
         previous = _previous_pixels(item) if recorder is not None else None
-        archived = archive_replaced(
-            archivist, item.destination, previous, replacement=item.label
-        )
+        try:
+            archived = archive_replaced(
+                archivist, item.destination, previous, replacement=item.label
+            )
+        except ArchiveFailed as error:
+            raise SaveStopped(
+                f"Saved {len(written)} of {len(batch)} label(s), then stopped: {error}",
+                SaveReport(tuple(written), tuple(created), tuple(kept)),
+            ) from error
         if archived is not None:
             kept.append(archived)
         def write(temporary: Path, item: LabelToSave = item) -> None:

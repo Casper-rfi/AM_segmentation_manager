@@ -253,9 +253,14 @@ def test_the_entry_says_where_the_version_went(tmp_path: Path, recorder):
     assert (tmp_path / event.data["archived_as"]).is_file()
 
 
-def test_an_unwritable_archive_does_not_stop_the_save(
+def test_a_version_that_cannot_be_kept_is_not_written_over(
     tmp_path: Path, recorder, monkeypatch
 ):
+    """Writing anyway would replace proofread work with no copy of it kept,
+    and a line in a log nobody reads is the only trace."""
+    from am_segmentation_manager.operations.archive import archive_root
+    from am_segmentation_manager.operations.label_save import SaveStopped
+
     logged(tmp_path)
     destination = tmp_path / "sem_labels" / "i.tif"
     write_label(destination, label())
@@ -264,9 +269,53 @@ def test_an_unwritable_archive_does_not_stop_the_save(
         raise OSError("read-only file system")
 
     monkeypatch.setattr("shutil.copy2", refuse)
-    report = save(destination, label(3), recorder)
+    with pytest.raises(SaveStopped) as stopped:
+        save(destination, label(3), recorder)
 
-    assert report.written == (destination,)
+    assert stopped.value.report.written == ()
+    assert (read_label(destination) == label()).all(), "the version kept nowhere was replaced"
+    assert not any(path.is_file() for path in archive_root(tmp_path).rglob("*")), (
+        "a half-made copy would pass for the version kept"
+    )
+
+
+def test_a_save_stopped_by_the_archive_reports_what_it_had_written(
+    tmp_path: Path, recorder, monkeypatch
+):
+    """So a caller holding those labels can bring them into step, and leave the
+    rest to be saved again."""
+    import shutil
+
+    from am_segmentation_manager.operations.label_save import SaveStopped
+
+    logged(tmp_path)
+    first = tmp_path / "sem_labels" / "a.tif"
+    second = tmp_path / "sem_labels" / "b.tif"
+    for path in (first, second):
+        write_label(path, label())
+    real = shutil.copy2
+    calls: list[str] = []
+
+    def second_refused(source, target, *args, **kwargs):
+        calls.append(str(source))
+        if Path(source) == second:
+            raise OSError("disk full")
+        return real(source, target, *args, **kwargs)
+
+    monkeypatch.setattr("shutil.copy2", second_refused)
+    with pytest.raises(SaveStopped) as stopped:
+        save_labels(
+            [
+                LabelToSave(destination=path, label=label(3), fingerprint=fingerprint_of(path))
+                for path in (first, second)
+            ],
+            recorder=recorder,
+        )
+
+    assert stopped.value.report.written == (first,)
+    assert (read_label(first) == label(3)).all()
+    assert (read_label(second) == label()).all()
+    assert "1 of 2" in str(stopped.value)
 
 
 # ---------------------------------------------------------------------------

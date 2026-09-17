@@ -759,6 +759,8 @@ def apply_merge(
         PermissionError: If it would touch proofread work and *allow_corrected*
             was not set. Checked over the whole merge before the first write.
         StaleLabels: If a label here changed between the plan and now.
+        SaveStopped: If the version a label replaces could not be kept; the
+            labels after it are left as they were.
     """
     if plan.is_refused:
         raise MergeRefused(

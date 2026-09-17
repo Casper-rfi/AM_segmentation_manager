@@ -288,6 +288,15 @@ class LabelSession:
                 continue
             yield entry, decode_label(stored)
 
+    def forget(self, keys) -> None:
+        """Forget the pending edits of *keys*, as after they were saved; keep the rest."""
+        for key in keys:
+            self._pending.pop(key, None)
+            self._stored.pop(key, None)
+            if key == self._open_key:
+                self._open_key = None
+                self._open_label = None
+
     def discard(self) -> None:
         """Forget every pending edit, saved or not."""
         self._pending.clear()

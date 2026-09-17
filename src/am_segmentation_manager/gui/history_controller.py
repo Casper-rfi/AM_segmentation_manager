@@ -27,7 +27,7 @@ from ..operations.archive import (
 )
 from ..operations.export_record import read_export_record
 from ..operations.init_history import plan_baseline, writing_recorder
-from ..operations.label_save import StaleLabels
+from ..operations.label_save import SaveStopped, StaleLabels
 from ..operations.merge import (
     CONFLICT,
     CONVERGED,
@@ -410,6 +410,11 @@ class HistoryController:
             report = apply_merge(plan, recorder=batch, allow_corrected=allow_corrected)
         except (MergeRefused, PermissionError, StaleLabels, PathTooLong) as error:
             return OperationReport(f"Nothing was merged: {error}")
+        except SaveStopped as error:
+            return OperationReport(
+                f"The merge stopped partway, leaving what it had not reached as it "
+                f"was: {error}"
+            )
 
         return OperationReport(
             f"Merged {report.labels_taken} label(s), {report.states_taken} "

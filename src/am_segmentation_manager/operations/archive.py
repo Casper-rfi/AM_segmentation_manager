@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..history import Event, HistoryLog, Recorder, events_for, read_log
-from ..io.atomic import fingerprint_of
+from ..io.atomic import fingerprint_of, write_atomically
 from ..io.image import read_array
 from ..io.long_paths import refuse_unreachable
 from ..layout import ARCHIVE_DIRECTORY
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ARCHIVE_DIRECTORY",
+    "ArchiveFailed",
     "ArchivedVersion",
     "Archivist",
     "PrunePlan",
@@ -78,18 +79,29 @@ class ArchivedVersion:
     present: bool = True
 
 
+class ArchiveFailed(OSError):
+    """A version that was to be kept could not be, so nothing may replace it."""
+
+
 def keep_version(
     project_root: Path, target: str, source: Path, digest: str
-) -> str | None:
+) -> str:
     """Copy the version now at *source* into *project_root*'s archive.
 
     The copying, with the deciding left to the caller. :class:`Archivist` asks
     whether a version being replaced has earned keeping; a savepoint asks
     nothing, because naming a state is itself the reason to keep what it names.
+    The copy lands whole or not at all, so a failed one leaves no file that a
+    later attempt would take for the version kept.
 
     Returns:
         The archived file's path relative to the project root, ready to go into
-        an entry, or None where nothing could be copied.
+        an entry.
+
+    Raises:
+        PathTooLong: If Windows cannot reach the archived copy here.
+        ArchiveFailed: If the copy could not be made. **The caller must not then
+            write over *source***: that is the version this was to keep.
     """
     destination = archived_path(project_root, target, digest, datetime.now(UTC))
     # Raised rather than warned about below: a version that cannot be kept must
@@ -101,10 +113,12 @@ def keep_version(
         return destination.relative_to(project_root).as_posix()
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        write_atomically(destination, lambda temporary: shutil.copy2(source, temporary))
     except OSError as error:
-        logger.warning("Could not archive %s: %s", source, error)
-        return None
+        raise ArchiveFailed(
+            f"Could not keep the version of {target} being replaced, so it was "
+            f"not written over: {error}"
+        ) from error
     logger.info("Archived %s as %s", target, destination.name)
     return destination.relative_to(project_root).as_posix()
 

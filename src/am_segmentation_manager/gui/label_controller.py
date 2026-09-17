@@ -34,6 +34,7 @@ from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
     LabelToSave,
     SavePlan,
+    SaveStopped,
     plan_saves,
     save_labels,
 )
@@ -733,6 +734,9 @@ class LabelController:
             StaleLabels: If a label's file changed after it was opened.
             PermissionError: If a proofread label would be replaced without
                 *allow_corrected*.
+            SaveStopped: If the version a label replaces could not be kept.
+                What was written before is brought into step; the rest stay
+                pending, to be saved again, and nothing is marked corrected.
         """
         pending = self.pending_saves()
         batch = writing_recorder(
@@ -741,9 +745,20 @@ class LabelController:
             ),
             self.recorder,
         )
-        report = save_labels(
-            pending, allow_corrected=allow_corrected, recorder=batch
-        )
+        try:
+            report = save_labels(
+                pending, allow_corrected=allow_corrected, recorder=batch
+            )
+        except SaveStopped as stopped:
+            written = set(stopped.report.written)
+            self._attach_created_labels(stopped.report.created)
+            self.cache.relabel(
+                {item.destination: item.label for item in pending if item.destination in written}
+            )
+            self.session.forget(written)
+            self.known_labels.forget(labels=written, records=self.records_for(written))
+            self._refresh_positions(keep_frame=self.frame_index)
+            raise
         self._attach_created_labels(report.created)
         headline = report.headline()
 

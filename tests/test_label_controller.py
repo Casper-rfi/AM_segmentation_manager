@@ -777,3 +777,31 @@ def test_a_save_leaves_no_measurement_of_the_label_it_replaced(tmp_path: Path):
 
     assert saved.written == (edited,)
     assert exporter.measurable_labels() == 1, "the saved label waits to be measured again"
+
+
+def test_a_save_stopped_partway_settles_what_it_wrote_and_keeps_the_rest(
+    tmp_path: Path, monkeypatch
+):
+    """Left pending, a written label would be refused next time as changed on
+    disk -- by this window's own save."""
+    pytest.importorskip("tifffile")
+    from am_segmentation_manager.gui import label_controller as module
+    from am_segmentation_manager.operations.label_save import SaveReport, SaveStopped
+
+    build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    first = controller.current_key
+    annotate(controller)
+    controller.step(1)
+    second = controller.current_key
+    annotate(controller)
+
+    def stopped(items, **kwargs):
+        raise SaveStopped("disk full", SaveReport(written=(first,)))
+
+    monkeypatch.setattr(module, "save_labels", stopped)
+    with pytest.raises(SaveStopped):
+        controller.save(mark_corrected=True)
+
+    assert controller.session.edited_keys() == {second}

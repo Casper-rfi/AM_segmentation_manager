@@ -492,11 +492,13 @@ rather than appending to it.
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
 - **What is archived asks the log, not the state**, for the reason `archive.py` opens with. Unknown
   provenance counts as human work, which is every label in the collection today.
-- **A path Windows cannot reach refuses the whole batch, before anything is written**, archived
-  copies included: a failed archive copy is only warned about, so a save reaching the label but
-  not its archive would replace proofread work with nothing kept
-  (`test_one_label_windows_cannot_reach_refuses_the_whole_save`). Whether long paths work is found
-  by writing one, not by reading `LongPathsEnabled`, which is necessary but not sufficient.
+- **A version that cannot be kept is not written over.** A failed archive copy stops the save at
+  that label, keeping what was written before it, rather than replacing proofread work with no copy
+  kept (`test_a_version_that_cannot_be_kept_is_not_written_over`); the copy lands whole or not at
+  all, so none half-made passes for the version kept. **A path Windows cannot reach refuses the
+  whole batch before anything is written**, archived copies included
+  (`test_one_label_windows_cannot_reach_refuses_the_whole_save`): that failure can be foreseen. Long
+  paths are found to work by writing one, `LongPathsEnabled` being necessary but not sufficient.
 - **Restoring and merging are the ordinary save**, held to batch validation, the stale-file refusal
   and the protection of proofread work; only what is *recorded* differs, which is why
   `WriteProvenance` names the entry kind. A merge that copied the file **wrote over proofread work

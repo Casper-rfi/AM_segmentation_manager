@@ -390,6 +390,8 @@ def convert_record_predictions(
     Raises:
         PathTooLong: If Windows cannot reach a label or the archived copy of
             what it replaces here. Checked before anything is written.
+        ArchiveFailed: If the version a label replaces could not be kept. That
+            label and every one after it are left as they were.
     """
     plan = plan_conversions(records, overwrite=overwrite, prefer=prefer)
     destinations = [conversion.destination for conversion in plan.conversions]

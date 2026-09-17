@@ -577,6 +577,8 @@ def close_gap(plan: SavepointPlan) -> list[str]:
     Raises:
         PathTooLong: If Windows cannot reach a version's archived copy here.
             Checked before anything is copied.
+        ArchiveFailed: If a version could not be kept, so the savepoint that
+            would name it is not taken.
     """
     refuse_unreachable(
         projected
@@ -590,8 +592,7 @@ def close_gap(plan: SavepointPlan) -> list[str]:
             logger.warning("%s is named by the savepoint but is not here", state.target)
             continue
         archived = keep_version(project.path, state.target, source, state.digest)
-        if archived is not None:
-            kept.append(f"{project.key}/{archived}")
+        kept.append(f"{project.key}/{archived}")
     return kept
 
 

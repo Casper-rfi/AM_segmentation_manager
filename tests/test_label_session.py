@@ -226,3 +226,21 @@ def test_undoing_nothing_is_harmless(session):
     assert not session.undo()
     assert not session.redo()
     assert not session.can_undo
+
+
+def test_forgetting_saved_labels_keeps_the_edits_still_waiting(session, blank):
+    """What a save that stopped partway leaves: some labels written, the rest
+    still to save."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    saved, waiting = Path("labels/a.tif"), Path("labels/b.tif")
+    for key in (saved, waiting):
+        label = session.open(key, blank)
+        session.record(paint(label, [(1, 1)], 0, 2))
+    session.release()
+
+    session.forget([saved])
+
+    assert session.edited_keys() == {waiting}
+    assert session.stored_label(saved) is None
+    assert session.stored_label(waiting) is not None
