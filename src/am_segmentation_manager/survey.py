@@ -30,6 +30,7 @@ from .discovery import (
     project_markers,
 )
 from .image_metadata import header_reader
+from .io.long_paths import WINDOWS_MAX_PATH, explanation, long_paths_work, unreachable
 from .io.path import make_path_relative
 from .io.yaml import read_yaml_or_problem
 from .layout import (
@@ -56,6 +57,7 @@ from .metadata import (
     ExperimentMetadata,
     build_experiment_metadata,
 )
+from .operations.archive import projected_archive_path
 from .operations.label_io import is_label_file_empty
 from .state import (
     AM_STATE_FILENAME,
@@ -331,6 +333,7 @@ def survey_collection(
             *_collection_findings(projects),
             *_unindexed_dataset_findings(unindexed),
             *_stray_image_findings(root, stray),
+            *_long_path_findings(root, projects),
         ]
     )
     logger.info(
@@ -1027,6 +1030,53 @@ def _stray_image_findings(root: Path, stray: list[Path]) -> list[Finding]:
                 f"{len(stray)} image file(s) sit under the scan root but inside no "
                 f"project, so nothing indexes them: {shown}{more}. Move each into the "
                 f"project it belongs to, or make its directory one"
+            ),
+        )
+    ]
+
+
+def _long_path_findings(
+    root: Path, projects: Iterable[ProjectSurvey], works: bool | None = None
+) -> list[Finding]:
+    """Return the finding for paths Windows cannot reach here, if there are any.
+
+    Counts every image, its label, and the archived copy saving that label
+    would keep, since the archive's are the longest paths and the ones this
+    package writes. Nothing to report wherever long paths work.
+
+    Args:
+        works: Whether long paths work; :func:`~.io.long_paths.long_paths_work` by default.
+    """
+    if long_paths_work() if works is None else works:
+        return []
+    paths: list[Path] = []
+    for project in projects:
+        for lamella in project.lamellae:
+            for stage in lamella.stages:
+                for entry in stage.image_sets:
+                    labels = entry.image_set.labels_directory
+                    for name in entry.image_names:
+                        paths.append(entry.image_set.directory / name)
+                        if labels is None:
+                            continue
+                        paths.append(labels / name)
+                        archived = projected_archive_path(project.path, labels / name)
+                        if archived is not None:
+                            paths.append(archived)
+    too_long = unreachable(paths, works=False)
+    if not too_long:
+        return []
+    return [
+        Finding(
+            severity="warning",
+            category="windows-path-length",
+            path=root,
+            message=(
+                f"{len(too_long)} path(s) here -- images, labels, or the archived "
+                f"versions saving a label keeps -- are {WINDOWS_MAX_PATH} characters "
+                f"or longer, which Windows cannot reach in this process: "
+                f"{make_path_relative(too_long[0], root)} is the longest. Saving, "
+                f"converting and exporting refuse them. {explanation()}"
             ),
         )
     ]

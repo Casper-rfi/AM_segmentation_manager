@@ -19,6 +19,7 @@ from typing import Final, Literal
 from ..history import Recorder
 from ..io.atomic import write_atomically
 from ..io.image import to_2d
+from ..io.long_paths import refuse_unreachable
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
     MODALITIES,
@@ -28,7 +29,7 @@ from ..layout import (
     prediction_precedence,
 )
 from ..models import ImageRecord
-from .archive import Archivist, archive_replaced
+from .archive import Archivist, archive_paths_for, archive_replaced
 from .label_io import (
     has_image_stack_support,
     is_label_file_empty,
@@ -385,8 +386,14 @@ def convert_record_predictions(
         Where each label was written. The paths rather than a count, so a
         caller can name the new labels on the records that share them instead
         of re-reading the collection to find them; ``len`` gives the count.
+
+    Raises:
+        PathTooLong: If Windows cannot reach a label or the archived copy of
+            what it replaces here. Checked before anything is written.
     """
     plan = plan_conversions(records, overwrite=overwrite, prefer=prefer)
+    destinations = [conversion.destination for conversion in plan.conversions]
+    refuse_unreachable([*destinations, *archive_paths_for(recorder, destinations)])
     archivist = None
     if recorder is not None:
 

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from ..io.atomic import write_atomically
 from ..io.image import read_array, to_2d
+from ..io.long_paths import refuse_unreachable
 from ..io.yaml import read_yaml, write_yaml
 from ..layout import (
     MODALITIES,
@@ -257,6 +258,8 @@ def run_predictions(
             reported rather than run.
         OperationCancelled: If *on_progress* asked it to stop. Everything
             written up to that point is kept and recorded.
+        PathTooLong: If Windows cannot reach a prediction here. Checked before
+            anything is written.
     """
     if plan.is_refused:
         raise RuntimeError(
@@ -265,6 +268,7 @@ def run_predictions(
             f"of them"
         )
 
+    refuse_unreachable(planned.destination for planned in plan.predictions)
     provenance: dict[Path, dict[str, Any]] = {}
     written = 0
     for planned in plan.predictions:

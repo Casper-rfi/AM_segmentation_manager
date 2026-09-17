@@ -18,8 +18,14 @@ from pathlib import Path
 from typing import Final
 
 from ..history import Event, HistoryLog, Recorder, history_file_path, read_log
+from ..io.long_paths import refuse_unreachable
 from ..models import Project
-from .archive import NAME_DIGEST_LENGTH, keep_version, version_directory
+from .archive import (
+    NAME_DIGEST_LENGTH,
+    keep_version,
+    projected_archive_path,
+    version_directory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -567,8 +573,16 @@ def close_gap(plan: SavepointPlan) -> list[str]:
 
     Returns:
         The archived paths, relative to their projects.
-    """
 
+    Raises:
+        PathTooLong: If Windows cannot reach a version's archived copy here.
+            Checked before anything is copied.
+    """
+    refuse_unreachable(
+        projected
+        for project, state in plan.at_risk
+        if (projected := projected_archive_path(project.path, project.path / state.target))
+    )
     kept = []
     for project, state in plan.at_risk:
         source = project.path / state.target

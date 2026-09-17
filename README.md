@@ -133,6 +133,18 @@ takes no memory on the others. Where the machine has NVIDIA GPUs that torch cann
 use -- a CPU-only torch, or a driver too old for its CUDA -- the window, the log
 and `scripts/check_environment.py` say so rather than predicting slowly on the CPU.
 
+**On Windows, turn on long paths.** Windows reaches a path of 260 characters or
+more only with its long-path setting on, and the versions this package archives
+under `AM_archive/` run long -- a collection under `C:\Users\<you>\` or
+OneDrive can pass the limit. Without it, the Add data report warns, and saving,
+converting and exporting refuse the whole batch rather than failing partway.
+Turn it on once, in PowerShell run as administrator, then restart am-seg:
+
+    New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+
+On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
+`scripts/check_environment.py` says whether long paths work.
+
 **Which torch build you get.** Windows and Linux receive torch built for CUDA
 12.6, which runs on any NVIDIA driver from version 525; macOS on Apple silicon
 receives the build that uses its GPU (`mps`). Intel Macs get the window and the

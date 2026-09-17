@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..history import AM_HISTORY_FILENAME
 from ..io.atomic import fingerprint_of, write_atomically
+from ..io.long_paths import refuse_unreachable
 from ..layout import ARCHIVE_DIRECTORY
 from ..metadata import AM_METADATA_FILENAME, EXPERIMENT_FILENAME, PROTOCOL_FILENAME
 from ..models import ImageRecord, Project, projects_holding
@@ -262,9 +263,12 @@ def copy_export(
     Raises:
         ValueError: If the plan is refused. What it was refused for is the
             caller's to report; running it anyway is not an option.
+        PathTooLong: If Windows cannot reach a copy here. Checked before
+            anything is copied.
     """
     if plan.is_refused:
         raise ValueError("This export was refused; nothing was copied.")
+    refuse_unreachable(item.destination for item in plan.to_copy)
 
     copied: list[CopyItem] = []
     stopped = False

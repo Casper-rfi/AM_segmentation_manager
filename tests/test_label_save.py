@@ -267,3 +267,27 @@ def test_replacing_a_label_keeps_its_permissions(tmp_path: Path, umask):
     assert stat.S_IMODE(destination.stat().st_mode) == 0o640, (
         "replacing a label is not a decision about who may read it"
     )
+
+
+# ---------------------------------------------------------------------------
+# A path Windows cannot reach
+# ---------------------------------------------------------------------------
+
+def test_one_label_windows_cannot_reach_refuses_the_whole_save(tmp_path: Path, monkeypatch):
+    """Partway through would leave some labels saved and some not, with the
+    edits to the rest still open."""
+    from am_segmentation_manager.io import long_paths
+    from am_segmentation_manager.io.long_paths import PathTooLong
+
+    monkeypatch.setattr(long_paths, "long_paths_work", lambda: False)
+    near = tmp_path / "labels" / "near.tif"
+    far_directory = tmp_path
+    while len(str(far_directory)) < 280:
+        far_directory = far_directory / ("d" * 30)
+    far = far_directory / "far.tif"
+
+    with pytest.raises(PathTooLong):
+        save_labels([item(near, created=True), item(far, created=True)])
+
+    assert not near.exists(), "a batch must not write partway"
+    assert not far.exists()

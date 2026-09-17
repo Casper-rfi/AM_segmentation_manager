@@ -21,6 +21,7 @@ from pathlib import Path
 from ..history import Event, HistoryLog, Recorder, events_for, read_log
 from ..io.atomic import fingerprint_of
 from ..io.image import read_array
+from ..io.long_paths import refuse_unreachable
 from ..layout import ARCHIVE_DIRECTORY
 from .label_io import label_fields
 
@@ -32,12 +33,14 @@ __all__ = [
     "Archivist",
     "PrunePlan",
     "archive_replaced",
+    "archive_paths_for",
     "archive_root",
     "archived_versions",
     "keep_version",
     "apply_prune",
     "restore",
     "plan_prune",
+    "projected_archive_path",
     "version_directory",
     "versions_of",
 ]
@@ -89,6 +92,9 @@ def keep_version(
         an entry, or None where nothing could be copied.
     """
     destination = archived_path(project_root, target, digest, datetime.now(UTC))
+    # Raised rather than warned about below: a version that cannot be kept must
+    # stop the write that would replace it.
+    refuse_unreachable([destination])
     if destination.exists():
         # The same pixels already kept from the same second. Nothing is gained
         # by a second copy, and overwriting one is never right.
@@ -101,6 +107,39 @@ def keep_version(
         return None
     logger.info("Archived %s as %s", target, destination.name)
     return destination.relative_to(project_root).as_posix()
+
+
+def projected_archive_path(project_root: Path, label_path: Path) -> Path | None:
+    """Return a path as long as any version of *label_path* would be archived at.
+
+    For a batch to check before it writes: which digest and second a version
+    gets are not known yet, and change nothing about the length. None where
+    *label_path* is outside *project_root*.
+    """
+    try:
+        target = label_path.resolve().relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return None
+    return archived_path(
+        project_root, target, "0" * NAME_DIGEST_LENGTH, datetime(2000, 1, 1, tzinfo=UTC)
+    )
+
+
+def archive_paths_for(recorder: Recorder | None, label_paths: Iterable[Path]) -> list[Path]:
+    """Return where replacing each existing label of *label_paths* could archive it.
+
+    Only where a replaced version could be kept at all: with a recorder, in a
+    project keeping a log, for a label already on disk.
+    """
+    if recorder is None:
+        return []
+    paths = []
+    for label_path in label_paths:
+        root = recorder.project_of(label_path.resolve()) if label_path.is_file() else None
+        projected = projected_archive_path(root, label_path) if root is not None else None
+        if projected is not None:
+            paths.append(projected)
+    return paths
 
 
 def archive_root(project_root: Path) -> Path:

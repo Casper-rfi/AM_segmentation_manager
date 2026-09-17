@@ -30,7 +30,8 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 ## What to pick up next
 
 - **Cross-platform readiness**: CI passes on Linux and Windows; check the window on a real Windows
-  and Ubuntu desktop, and check on an A100 workstation that `auto` takes the freest GPU and that
+  and Ubuntu desktop, and `scripts/check_environment.py` on Windows with long paths off and then
+  on; check on an A100 workstation that `auto` takes the freest GPU and that
   `nvidia-smi` shows a run on that GPU alone. **The Windows suite
   crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, with nothing
   logged; CI now names each test as it starts, so the next crash says where.

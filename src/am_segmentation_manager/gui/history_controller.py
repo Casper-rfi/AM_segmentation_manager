@@ -16,6 +16,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..history import Recorder
+from ..io.long_paths import PathTooLong
 from ..models import ImageRecord
 from ..operations.archive import (
     apply_prune,
@@ -407,7 +408,7 @@ class HistoryController:
         batch = writing_recorder(projects, self.recorder)
         try:
             report = apply_merge(plan, recorder=batch, allow_corrected=allow_corrected)
-        except (MergeRefused, PermissionError, StaleLabels) as error:
+        except (MergeRefused, PermissionError, StaleLabels, PathTooLong) as error:
             return OperationReport(f"Nothing was merged: {error}")
 
         return OperationReport(

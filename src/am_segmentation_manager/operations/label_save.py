@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
-from .archive import Archivist, archive_replaced
+from ..io.long_paths import refuse_unreachable
+from .archive import Archivist, archive_paths_for, archive_replaced
 from .label_io import label_fields, read_label, replacement_fields, save_label_image
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -200,6 +201,8 @@ def save_labels(
         StaleLabels: If any label's file changed after it was opened.
         PermissionError: If any destination is already corrected and
             *allow_corrected* was not set.
+        PathTooLong: If Windows cannot reach a label or the archived copy of
+            what it replaces here. Checked before anything is written.
     """
     plan = plan_saves(items)
 
@@ -216,6 +219,9 @@ def save_labels(
             f"Refusing to replace {len(plan.corrected)} corrected label(s) "
             f"without explicit confirmation ({names})"
         )
+
+    destinations = [item.destination for item in (*plan.writes, *plan.corrected)]
+    refuse_unreachable([*destinations, *archive_paths_for(recorder, destinations)])
 
     archivist = None
     if recorder is not None:

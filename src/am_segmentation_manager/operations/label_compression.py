@@ -17,6 +17,7 @@ from pathlib import Path
 from ..history import Recorder
 from ..io.atomic import fingerprint_of, write_atomically
 from ..io.image import read_array
+from ..io.long_paths import refuse_unreachable
 from ..models import ImageRecord
 from ..progress import OperationCancelled
 from .label_io import has_image_stack_support, label_fields, save_label_image
@@ -106,6 +107,10 @@ def compress_labels(
         One :class:`LabelCompressionResult` per label file examined, in the
         order they were examined. Shorter than :func:`existing_labels` when the
         run was stopped through *on_progress*.
+
+    Raises:
+        PathTooLong: If Windows cannot reach a label's temporary copy here.
+            Checked before anything is written.
     """
     if not has_image_stack_support():
         raise RuntimeError(
@@ -128,6 +133,8 @@ def compress_labels(
                 f"confirmation: {corrected}"
             )
 
+    if not dry_run:
+        refuse_unreachable(labels)
     results = []
     try:
         for done, label_path in enumerate(labels, start=1):

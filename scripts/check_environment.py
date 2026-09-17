@@ -5,8 +5,8 @@ Run after installing, on any platform:
 
     uv run python scripts/check_environment.py
 
-Checks the image stack, the Qt binding and charts, and how many worker processes
-a scan starts; then, where the ``ml`` extra is installed, the inference stack, the
+Checks the image stack, the Qt binding and charts, how many worker processes a
+scan starts, and on Windows whether long paths can be reached; then, where the ``ml`` extra is installed, the inference stack, the
 devices torch can see, the NVIDIA GPUs and how full they are, and the vendored
 preprocessing on each device. Exits non-zero when something installed does not
 work, NVIDIA GPUs torch cannot use among it; an extra that was simply not
@@ -61,6 +61,24 @@ def check_workers() -> None:
         f"  workers       {worker_count()} of {available_cpus()} CPU(s) "
         f"({WORKERS_ENV_VAR} changes it)"
     )
+
+
+def check_long_paths() -> None:
+    """Report, on Windows, whether paths past 260 characters can be reached here.
+
+    Not a failure: a collection with short enough paths never needs them, and
+    the Add data report says when one does not.
+    """
+    import sys
+
+    from am_segmentation_manager.io.long_paths import explanation, long_paths_work
+
+    if sys.platform != "win32":
+        return
+    if long_paths_work():
+        print("  long paths    OK")
+    else:
+        print(f"  long paths    NOT AVAILABLE: {explanation()}")
 
 
 def check_inference() -> bool:
@@ -123,6 +141,7 @@ def main() -> int:
     images = check_image_stack()
     check_window()
     check_workers()
+    check_long_paths()
     inference = check_inference()
     return 0 if images and inference else 1
 

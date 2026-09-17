@@ -21,6 +21,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
+from .long_paths import refuse_unreachable
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -65,7 +67,11 @@ def write_atomically(
 
     Returns:
         Whether *destination* was replaced.
+
+    Raises:
+        PathTooLong: If Windows cannot reach *destination* or its temporary here.
     """
+    refuse_unreachable([destination])
     destination.parent.mkdir(parents=True, exist_ok=True)
     mode = file_mode_for(destination)
     # The suffix is kept: the encoder OpenCV selects is chosen by extension.

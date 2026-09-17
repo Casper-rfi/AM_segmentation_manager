@@ -366,3 +366,21 @@ def test_a_project_keeping_no_log_is_named_rather_than_left_out(
     record = record_fork_point(tmp_path / "out", records, projects, source)
 
     assert record.without_history == tuple(sorted(record.projects))
+
+
+def test_a_copy_windows_cannot_reach_refuses_the_whole_export(
+    source: Path, tmp_path: Path, monkeypatch
+):
+    from am_segmentation_manager.io import long_paths
+    from am_segmentation_manager.io.long_paths import PathTooLong
+
+    monkeypatch.setattr(long_paths, "long_paths_work", lambda: False)
+    destination = tmp_path
+    while len(str(destination)) < 230:
+        destination = destination / ("d" * 30)
+    plan = plan_for(source, destination)
+
+    with pytest.raises(PathTooLong):
+        copy_export(plan)
+
+    assert not destination.exists()

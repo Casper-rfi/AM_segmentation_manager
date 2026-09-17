@@ -673,3 +673,23 @@ def test_a_label_left_beside_a_project_is_not_reported_as_stray(tmp_path: Path):
     _write_image(tmp_path / "sem_labels", "img_000_SEM.tif")
 
     assert "stray-images" not in _categories(survey_collection(tmp_path))
+
+
+def test_paths_windows_cannot_reach_are_reported_once_for_the_collection(tmp_path: Path):
+    """The archived copies saving would keep are counted too: they are the
+    longest paths, and the ones this package writes."""
+    from am_segmentation_manager.survey import _long_path_findings, survey_collection
+
+    root = tmp_path
+    while len(str(root)) < 180:
+        root = root / ("d" * 30)
+    root.mkdir(parents=True)
+    build_dataset(root, labels="annotated")
+    surveyed = survey_collection(root)
+
+    assert _long_path_findings(root, surveyed.projects, works=True) == []
+    findings = _long_path_findings(root, surveyed.projects, works=False)
+
+    assert [finding.category for finding in findings] == ["windows-path-length"]
+    assert "archived" in findings[0].message
+    assert "AM_archive" in findings[0].message
