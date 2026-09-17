@@ -346,7 +346,9 @@ def test_the_device_probe_really_starts_a_process():
     Without the inference stack the child says nothing rather than raising."""
     from am_segmentation_manager.operations.predict_process import probe_devices
 
-    devices = probe_devices()
+    probe = probe_devices()
+    devices = probe.devices
 
     assert isinstance(devices, tuple)
     assert all(isinstance(name, str) for name in devices)
+    assert isinstance(probe.problem, str)

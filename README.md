@@ -122,8 +122,16 @@ this process may use but two, and never more than eight, past which reading gets
 no faster. Name another number for a session with `AM_SEG_WORKERS`, e.g.
 `AM_SEG_WORKERS=4 uv run am-seg gui` (in PowerShell, set `$env:AM_SEG_WORKERS=4`
 first). A job scheduler's or `taskset`'s limit is honoured; a container's CPU
-quota is not visible, so set the number there. Predicting is separate: torch uses
-every core of the machine unless told otherwise.
+quota is not visible, so set the number there. Predicting holds torch to the same
+number of CPU threads.
+
+**Choosing a GPU.** The device box, and `am-seg predict --device`, name GPUs as
+`nvidia-smi` numbers them, and the box shows each one's model and free memory,
+read afresh whenever it opens. `auto` takes the GPU with the most memory free, and
+warns when even that has under 4 GB. A run sees only the GPU it was given, so it
+takes no memory on the others. Where the machine has NVIDIA GPUs that torch cannot
+use -- a CPU-only torch, or a driver too old for its CUDA -- the window, the log
+and `scripts/check_environment.py` say so rather than predicting slowly on the CPU.
 
 **Which torch build you get.** Windows and Linux receive torch built for CUDA
 12.6, which runs on any NVIDIA driver from version 525; macOS on Apple silicon

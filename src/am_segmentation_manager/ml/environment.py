@@ -9,7 +9,19 @@ here rather than catching ``ImportError`` themselves.
 from __future__ import annotations
 
 import logging
+import os
 import sys
+from collections.abc import MutableMapping
+
+from .gpus import (
+    LOW_MEMORY_MIB,
+    Gpu,
+    GpuInventory,
+    gpu_inventory,
+    least_used,
+    number_as_nvidia_smi,
+    pin_to,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +114,7 @@ def available_devices() -> tuple[str, ...]:
         RuntimeError: If the inference stack is not installed.
     """
     require_ml_stack("Listing devices")
+    number_as_nvidia_smi()
     import torch
 
     devices: list[str] = []
@@ -136,27 +149,119 @@ def discovered_devices() -> tuple[str, ...]:
         return ()
 
 
-def resolve_device(requested: str | None = None) -> str:
-    """Return the torch device to run on.
+def resolve_device(
+    requested: str | None = None,
+    inventory: GpuInventory | None = None,
+    environ: MutableMapping[str, str] | None = None,
+) -> str:
+    """Return the torch device to run on in this process, pinning the GPU it names.
 
-    ``None`` or ``"auto"`` takes the most capable device available, which on
-    this collection's images is worth having: a GPU is several times faster,
-    and inference over a whole project is the difference between an hour and an
-    afternoon.
+    ``None`` or ``"auto"`` takes the NVIDIA GPU with the most free memory where
+    ``nvidia-smi`` lists some and torch can use them, and otherwise the most
+    capable device available: a GPU is several times faster, and inference over
+    a whole project is the difference between an hour and an afternoon.
 
-    An explicitly named device is returned unexamined -- not even checked
-    against :func:`available_devices`, which would import torch to answer.
-    Asking what is installed is only needed when something has to choose, and a
-    device that does not exist is reported by the load that follows far more
-    precisely than a warning here could.
+    A named device is not checked against what is installed -- the load that
+    follows reports one that does not exist more precisely -- but a CUDA GPU
+    ``nvidia-smi`` lists is pinned as the only one visible, so it is ``cuda:0``
+    in what this returns. **Call it before anything in the process uses CUDA**,
+    or the pinning cannot take effect and is skipped.
 
     Raises:
         RuntimeError: If the inference stack is not installed and a choice has
             to be made.
     """
-    if requested is None or requested == "auto":
+    environ = os.environ if environ is None else environ
+    number_as_nvidia_smi(environ)
+    requested = (requested or "auto").strip()
+    if inventory is None:
+        wants_gpu = requested == "auto" or requested.startswith("cuda")
+        inventory = gpu_inventory(environ=environ) if wants_gpu else GpuInventory()
+
+    if requested != "auto":
+        named = inventory.by_device(requested)
+        return requested if named is None else _pin(named, environ)
+
+    gpu = least_used(inventory)
+    if gpu is None:
         return available_devices()[0]
-    return requested
+    device = _pin(gpu, environ, chosen_by="auto")
+    problem = cuda_problem(inventory)
+    if problem:
+        logger.warning("%s", problem)
+        return available_devices()[0]
+    return device
+
+
+def cuda_problem(inventory: GpuInventory) -> str:
+    """Return why torch cannot use the NVIDIA GPUs in *inventory*, or "" if it can.
+
+    Also "" where there are none. Asking torch starts CUDA, so a GPU is pinned
+    before this is called, never after.
+
+    Raises:
+        RuntimeError: If there are GPUs to ask about and no inference stack.
+    """
+    if not inventory.gpus:
+        return ""
+    require_ml_stack("Checking CUDA")
+    import torch
+
+    if torch.cuda.is_available():
+        return ""
+    found = f"{len(inventory.gpus)} NVIDIA GPU(s) found"
+    if torch.version.cuda is None:
+        return (
+            f"{found}, but this torch ({torch.__version__}) was built without "
+            f"CUDA, so predictions run on the CPU. Install the CUDA build: "
+            f"uv sync --extra gui --extra ml"
+        )
+    return (
+        f"{found}, but torch cannot use them: it was built for CUDA "
+        f"{torch.version.cuda} and the driver is {inventory.driver_version or 'unknown'}, "
+        f"and a driver too old for that CUDA version is the usual cause. "
+        f"Predictions run on the CPU."
+    )
+
+
+def limit_cpu_threads() -> int:
+    """Hold torch to as many CPU threads as am-seg may use, and return how many.
+
+    Preprocessing runs on the CPU whatever the device, and torch otherwise takes
+    every core of the machine. The count is :func:`~..parallel.worker_count`'s,
+    so ``AM_SEG_WORKERS`` sets both.
+
+    Raises:
+        RuntimeError: If the inference stack is not installed.
+    """
+    require_ml_stack("Setting CPU threads")
+    import torch
+
+    from ..parallel import worker_count
+
+    threads = worker_count()
+    torch.set_num_threads(threads)
+    return threads
+
+
+def _pin(gpu: Gpu, environ: MutableMapping[str, str], chosen_by: str = "") -> str:
+    """Pin *gpu* where CUDA has not started, returning the device to load onto."""
+    how = f"{chosen_by}: " if chosen_by else ""
+    if gpu.free_mib < LOW_MEMORY_MIB:
+        logger.warning(
+            "%s has %.1f GB free; a model may not fit beside what is already on it",
+            gpu.device, gpu.free_mib / 1024,
+        )
+    torch = sys.modules.get("torch")
+    if torch is not None and torch.cuda.is_initialized():
+        logger.info(
+            "%s%s -- CUDA is already in use in this process, so other GPUs "
+            "stay visible", how, gpu.describe(),
+        )
+        return gpu.device
+    device = pin_to(gpu, environ)
+    logger.info("%s%s, the only GPU visible to this run", how, gpu.describe())
+    return device
 
 
 def verify_preprocessing(device: str = "cpu", image_size: int = 512) -> tuple[int, ...]:

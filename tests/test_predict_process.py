@@ -138,8 +138,10 @@ def test_a_cancellation_before_anything_starts_still_only_asks_once():
 def test_the_device_probe_starts_a_real_process():
     """This process never imports torch, so it cannot answer this itself. A
     machine without the inference stack says nothing rather than raising."""
-    devices = probe_devices()
+    probe = probe_devices()
+    devices = probe.devices
 
     assert isinstance(devices, tuple)
     assert all(isinstance(name, str) for name in devices)
+    assert isinstance(probe.problem, str)
     assert "torch" not in __import__("sys").modules or devices

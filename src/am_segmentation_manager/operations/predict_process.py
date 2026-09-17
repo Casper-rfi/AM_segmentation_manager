@@ -16,7 +16,7 @@ import multiprocessing
 import os
 import signal
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -64,12 +64,25 @@ class ProcessOutcome:
     represented: int = 0
     stopped: bool = False
     error: str = ""
-    devices: tuple[str, ...] = field(default=())
+
 
     @property
     def refused(self) -> bool:
         """Return whether the selection named more than one modality."""
         return len(self.modalities) > 1
+
+
+@dataclass(frozen=True)
+class DeviceProbe:
+    """What a probe found out about the machine, brought back to the window.
+
+    Attributes:
+        devices: The torch devices, most capable first; ``()`` if it could not say.
+        problem: Why torch cannot use the NVIDIA GPUs the machine has, or "".
+    """
+
+    devices: tuple[str, ...] = ()
+    problem: str = ""
 
 
 class _QueueLog(logging.handlers.QueueHandler):
@@ -105,7 +118,7 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
     # Inside the child process, deliberately: torch is never imported into
     # the parent, which is the whole point of running inference here and is
     # what CLAUDE.md's rule about ml/ asks for.
-    from ..ml.environment import available_devices, resolve_device
+    from ..ml.environment import limit_cpu_threads, resolve_device
     from ..ml.model import load_model, read_model_description, run_name_of
 
     path = Path(weights)
@@ -121,14 +134,16 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
             "destinations": destinations,
             "up_to_date": len(plan.up_to_date),
             "represented": plan.represented,
-            "devices": tuple(available_devices()),
         }
         if plan.is_refused or not plan.predictions:
             queue.put(("done", ProcessOutcome(**common)))
             return
 
+        # Before anything asks torch about CUDA: a GPU can only be pinned
+        # while CUDA has not started in this process.
         resolved = resolve_device(device)
-        logger.info("Loading %s onto %s", path.name, resolved)
+        threads = limit_cpu_threads()
+        logger.info("Loading %s onto %s, with %d CPU thread(s)", path.name, resolved, threads)
         loaded = load_model(path, description, device=resolved)
 
         def report(index: int, _planned) -> None:
@@ -254,17 +269,19 @@ def _reap(process) -> None:
 
 
 def _probe(queue) -> None:
-    """Report the devices torch can see. Runs in the child."""
+    """Report the devices torch can see, and why it cannot use a GPU. Runs in the child."""
     try:
         # In the child, as above: the parent never imports torch.
-        from ..ml.environment import available_devices
+        from ..ml.environment import available_devices, cuda_problem
+        from ..ml.gpus import gpu_inventory
 
-        queue.put(tuple(available_devices()))
+        devices = tuple(available_devices())
+        queue.put(DeviceProbe(devices=devices, problem=cuda_problem(gpu_inventory())))
     except BaseException:  # noqa: BLE001 - a machine that cannot answer says nothing
-        queue.put(())
+        queue.put(DeviceProbe())
 
 
-def probe_devices(context: str | None = None) -> tuple[str, ...]:
+def probe_devices(context: str | None = None) -> DeviceProbe:
     """Return the torch devices available, asked of a separate process.
 
     The window never imports torch -- that is what this module is for -- so
@@ -273,7 +290,8 @@ def probe_devices(context: str | None = None) -> tuple[str, ...]:
     interpreter start and one torch import, so callers ask once and keep it.
 
     Returns:
-        The devices, most capable first, or ``()`` if the child could not say.
+        The devices, most capable first -- none if the child could not say --
+        and why torch cannot use the machine's NVIDIA GPUs, if it cannot.
     """
     ctx: Any = multiprocessing.get_context(context or "spawn")
     queue = ctx.Queue()
@@ -286,7 +304,7 @@ def probe_devices(context: str | None = None) -> tuple[str, ...]:
             return queue.get(timeout=PROBE_SECONDS)
         except queue_module.Empty:
             logger.warning("Timed out asking which devices are available")
-            return ()
+            return DeviceProbe()
     finally:
         _reap(process)
 
@@ -302,5 +320,6 @@ __all__ = [
     "ProcessOutcome",
     "predict_out_of_process",
     "probe_devices",
+    "DeviceProbe",
     "raise_if_cancelled",
 ]

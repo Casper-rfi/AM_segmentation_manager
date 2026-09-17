@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
 from ... import __version__
 from ...history import clear_author, set_author
 from ...layout import MODALITIES
+from ...operations.predict_process import DeviceProbe
 from ...operations.selection import (
     RecordState,
     StaleState,
@@ -391,9 +392,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.operations.worker.progressed.connect(self._operation_progressed)
         self._pending_operation: tuple | None = None
         self._busy: BusyDialog | None = None
-        #: The devices a child process reported, asked for once per session.
-        #: None until asked; an empty tuple is a machine that could not say.
-        self._devices: tuple[str, ...] | None = None
+        #: What a child process reported of the devices, asked once per session.
+        #: None until asked; no devices is a machine that could not say.
+        self._devices: DeviceProbe | None = None
         #: Whether the archive has been measured for the folder now open. One
         #: measurement per scan: the number cannot change without something
         #: writing, and everything that writes rescans.

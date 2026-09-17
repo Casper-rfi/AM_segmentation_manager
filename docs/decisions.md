@@ -584,9 +584,9 @@ rather than appending to it.
   CPU-only, and its Linux torch needs a driver for CUDA 13 (580 or later); 12.6 runs on any driver
   from 525, the shared A100 workstations' included. A lock is one file for every machine and cannot
   follow a machine's driver, so a GPU needing a newer build is an extra to add, not a detection to
-  write. **A wrong build does not fail**: torch reports no CUDA, `available_devices` offers `cpu`
-  alone, and prediction runs at CPU speed — which is why `scripts/check_environment.py` prints the
-  devices.
+  write. **A wrong build does not stop a run, so it is said**: where `nvidia-smi` lists GPUs torch
+  cannot use, `cuda_problem` names why, `auto` falls back to the CPU with a warning, and
+  `scripts/check_environment.py` fails (`test_gpus_torch_cannot_use_are_said_so_and_auto_falls_back`).
 
 ## Inference
 
@@ -618,8 +618,16 @@ rather than appending to it.
   import costs seconds at every window start, including for someone who never predicts, so
   `ml_stack_present` uses `find_spec`; a missing or broken stack is reported by the child, which has
   to import it anyway. **The device box does not import torch either**, opening on `auto` and `cpu`,
-  true everywhere, and gaining the machine's own the moment a child process loads torch. Editable,
-  since `resolve_device` passes a named device through unexamined.
+  true everywhere, and gaining the machine's own from a child process the first time it opens.
+  Editable, since `resolve_device` passes a device it does not recognise through unexamined.
+- **A run sees one GPU, numbered as `nvidia-smi` numbers it.** On a shared workstation the index
+  a colleague reads in `nvidia-smi` must be the card a run takes, so `number_as_nvidia_smi` sets
+  PCI order, and `resolve_device` pins the chosen card by UUID in `CUDA_VISIBLE_DEVICES` before
+  CUDA starts — otherwise torch may open a context on GPU 0 whatever it runs on
+  (`test_a_gpu_named_by_number_is_pinned_and_is_cuda_0_in_the_run`). **GPUs are read from
+  `nvidia-smi`, not torch or `nvidia-ml-py`**: no dependency, no CUDA context on anyone's card, and
+  cheap enough to refresh free memory each time the box opens
+  (`test_opening_the_device_box_asks_torch_once_and_nvidia_smi_every_time`).
 - **Predictions are written at model resolution**, which is what the segmentation pipeline's own
   `raw/` already holds; `convert-predictions` resizes to the image when it makes the label, so
   upsampling earlier would only be undone.

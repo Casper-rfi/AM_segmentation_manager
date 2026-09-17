@@ -6,9 +6,11 @@ Run after installing, on any platform:
     uv run python scripts/check_environment.py
 
 Checks the image stack, the Qt binding and charts, and how many worker processes
-a scan starts, then -- where the ``ml`` extra is installed -- the inference stack, the devices torch can see, and the
-vendored preprocessing on each. Exits non-zero when something installed does not
-work; an extra that was simply not installed is reported and is not a failure.
+a scan starts; then, where the ``ml`` extra is installed, the inference stack, the
+devices torch can see, the NVIDIA GPUs and how full they are, and the vendored
+preprocessing on each device. Exits non-zero when something installed does not
+work, NVIDIA GPUs torch cannot use among it; an extra that was simply not
+installed is reported and is not a failure.
 """
 from __future__ import annotations
 
@@ -65,10 +67,12 @@ def check_inference() -> bool:
     """Report the inference stack and its devices, returning whether it works."""
     from am_segmentation_manager.ml.environment import (
         available_devices,
+        cuda_problem,
         ml_stack_present,
         ml_stack_problems,
         verify_preprocessing,
     )
+    from am_segmentation_manager.ml.gpus import gpu_inventory
 
     if not ml_stack_present():
         print("  inference     not installed: predicting needs the ml extra")
@@ -89,6 +93,14 @@ def check_inference() -> bool:
         print("                CPU only. Inference will run; expect ~1 s per image.")
 
     working = True
+    inventory = gpu_inventory()
+    for gpu in inventory.gpus:
+        print(f"  gpu           {gpu.describe()}")
+    problem = cuda_problem(inventory)
+    if problem:
+        print(f"  GPUs          NOT USABLE: {problem}")
+        working = False
+
     for device in dict.fromkeys([devices[0], "cpu"]):
         try:
             started = time.perf_counter()

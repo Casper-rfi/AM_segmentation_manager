@@ -8,6 +8,7 @@ that only reads has no preview, what it would find being what it costs to find.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from qtpy.QtCore import Signal
@@ -47,6 +48,25 @@ MODEL_FILTER = "Model weights (*.pth *.pt)"
 #: device through unexamined, so a device this package has never seen can be
 #: typed rather than waiting for support.
 BASE_DEVICES = ("auto", "cpu")
+
+#: Between a device and the description shown after it in the box, so what is
+#: typed or chosen can be read back as the device alone.
+DESCRIPTION_SEPARATOR = " · "
+
+#: What the device box says on hover, before anything is known of the machine.
+DEVICE_HINT = (
+    "Where the model runs. 'auto' takes the GPU with the most free memory, else "
+    "the best device here. cuda:N is nvidia-smi's GPU N, and a run sees no "
+    "other. Any torch device can be typed."
+)
+
+#: The hint where torch cannot use the machine's GPUs, which is then what a
+#: person choosing a device needs to know. The reason is announced in full and
+#: logged, being longer than a hover is read.
+UNUSABLE_GPU_HINT = (
+    "Torch cannot use this machine's NVIDIA GPUs, so 'auto' runs on the CPU. "
+    "The log says why. Any torch device can still be typed."
+)
 
 
 class OperationsPanel(QWidget):
@@ -117,16 +137,7 @@ class OperationsPanel(QWidget):
         self.device_box = _DeviceCombo(self.devices_requested)
         self.device_box.setEditable(True)
         self.device_box.addItems(BASE_DEVICES)
-        device_row.addWidget(
-            caption_for(
-                "Device",
-                self.device_box,
-                "Where the model runs. 'auto' takes the most capable device "
-                "this machine has -- a GPU where there is one, otherwise the "
-                "CPU. Any torch device can be typed, such as cuda:1 on a "
-                "machine with several.",
-            )
-        )
+        device_row.addWidget(caption_for("Device", self.device_box, DEVICE_HINT))
         device_row.addWidget(self.device_box, stretch=1)
         column.addLayout(device_row)
 
@@ -293,35 +304,50 @@ class OperationsPanel(QWidget):
         return self.model_edit.text().strip()
 
     def device(self) -> str:
-        """Return the device to predict on, as chosen or typed."""
-        return self.device_box.currentText().strip() or BASE_DEVICES[0]
+        """Return the device to predict on, as chosen or typed, without its description."""
+        typed = self.device_box.currentText().split(DESCRIPTION_SEPARATOR, 1)[0]
+        return typed.strip() or BASE_DEVICES[0]
 
     def set_device(self, device: str) -> None:
         """Show *device* as the one to predict on, from a previous session."""
-        if device:
-            self.device_box.setCurrentText(device)
+        if not device:
+            return
+        for index in range(self.device_box.count()):
+            if self.device_box.itemData(index) == device:
+                self.device_box.setCurrentIndex(index)
+                return
+        self.device_box.setCurrentText(device)
 
-    def show_devices(self, devices) -> None:
-        """Offer the devices torch reports, keeping what is currently chosen.
+    def show_devices(
+        self,
+        devices: Iterable[str],
+        descriptions: Mapping[str, str] | None = None,
+        problem: str = "",
+    ) -> None:
+        """Offer the devices torch reports, described, keeping what is currently chosen.
 
-        Called when the box is opened and again after a run, by which time
-        torch is loaded and the real list is free to ask for. The base entries
-        stay: "auto" is not a torch device and so is never in the list, and a
-        machine whose GPU has gone missing should still be able to choose the
-        CPU.
+        The base entries stay: "auto" is not a torch device and so is never in
+        the list, and a machine whose GPU has gone missing should still be able
+        to choose the CPU. Each item shows its description where there is one
+        and carries the bare device, which is what :meth:`device` reads back.
+        A *problem* -- why torch cannot use the machine's GPUs -- replaces the hint.
         """
-        chosen = self.device_box.currentText()
-        offered = list(BASE_DEVICES[:1]) + [
+        descriptions = descriptions or {}
+        chosen = self.device()
+        offered: list[str] = list(BASE_DEVICES[:1]) + [
             device for device in devices if device not in BASE_DEVICES[:1]
         ]
         for fallback in BASE_DEVICES[1:]:
             if fallback not in offered:
                 offered.append(fallback)
-        if offered == [self.device_box.itemText(i) for i in range(self.device_box.count())]:
+        self.device_box.setToolTip(UNUSABLE_GPU_HINT if problem else DEVICE_HINT)
+        shown = [descriptions.get(device, device) for device in offered]
+        if shown == [self.device_box.itemText(i) for i in range(self.device_box.count())]:
             return
         self.device_box.clear()
-        self.device_box.addItems(offered)
-        self.device_box.setCurrentText(chosen)
+        for device, text in zip(offered, shown, strict=True):
+            self.device_box.addItem(text, device)
+        self.set_device(chosen)
 
     def set_model(self, path: str) -> None:
         """Show *path* as the model to predict with, from a previous session."""

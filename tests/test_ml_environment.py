@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from am_segmentation_manager.ml import environment as ml_env
+from am_segmentation_manager.ml.gpus import Gpu, GpuInventory
 from conftest import break_import
 
 
@@ -71,20 +72,20 @@ def test_an_explicitly_named_device_needs_no_torch_to_resolve(monkeypatch):
     A controller told 'cpu' should not import torch to agree."""
     break_import(monkeypatch, "torch", ImportError("No module named 'torch'"))
 
-    assert ml_env.resolve_device("cpu") == "cpu"
-    assert ml_env.resolve_device("cuda:1") == "cuda:1"
+    assert ml_env.resolve_device("cpu", GpuInventory(), {}) == "cpu"
+    assert ml_env.resolve_device("cuda:1", GpuInventory(), {}) == "cuda:1"
 
 
 def test_choosing_a_device_without_torch_explains_itself(monkeypatch):
     break_import(monkeypatch, "torch", ImportError("No module named 'torch'"))
 
     with pytest.raises(RuntimeError, match="--extra ml"):
-        ml_env.resolve_device("auto")
+        ml_env.resolve_device("auto", GpuInventory(), {})
 
 
 @pytest.mark.skipif(not ml_env.has_ml_support(), reason="inference stack not installed")
 def test_auto_takes_the_most_capable_device():
-    assert ml_env.resolve_device("auto") == ml_env.available_devices()[0]
+    assert ml_env.resolve_device("auto", GpuInventory(), {}) == ml_env.available_devices()[0]
 
 
 @pytest.mark.skipif(not ml_env.has_ml_support(), reason="inference stack not installed")
@@ -129,3 +130,131 @@ def test_devices_are_reported_once_torch_is_loaded(monkeypatch):
     )
 
     assert environment.discovered_devices() == ("cuda:0", "cuda:1", "cpu")
+
+
+# ---------------------------------------------------------------------------
+# Choosing a GPU on a shared workstation
+# ---------------------------------------------------------------------------
+#
+# Every GPU here is described rather than present: no test machine has one.
+
+def _gpu(index: int, free_gb: float, name: str = "NVIDIA A100 80GB PCIe") -> Gpu:
+    return Gpu(
+        index=index, physical_index=index, uuid=f"GPU-{index:04d}", name=name,
+        free_mib=int(free_gb * 1024), total_mib=80 * 1024, pci_bus_id=f"0:{index}",
+    )
+
+
+FOUR = GpuInventory(
+    gpus=(_gpu(0, 1), _gpu(1, 71), _gpu(2, 39), _gpu(3, 29)), driver_version="535.288.01"
+)
+
+
+def _torch_that_can_use_cuda(monkeypatch, available: bool = True, built: str | None = "12.6"):
+    """Put a stand-in torch in place, answering the questions device choice asks."""
+    import sys
+    import types
+
+    torch = types.ModuleType("torch")
+    torch.__version__ = "2.14.0"
+    torch.cuda = types.SimpleNamespace(
+        is_available=lambda: available, is_initialized=lambda: False
+    )
+    torch.version = types.SimpleNamespace(cuda=built)
+    threads: list[int] = []
+    torch.set_num_threads = threads.append
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setattr(ml_env, "require_ml_stack", lambda operation: None)
+    return threads
+
+
+def test_auto_runs_on_the_gpu_with_most_memory_free_and_no_other(monkeypatch):
+    """cuda:0 is the GPU whoever sits nearest the machine uses first."""
+    _torch_that_can_use_cuda(monkeypatch)
+    environ: dict[str, str] = {}
+
+    assert ml_env.resolve_device("auto", FOUR, environ) == "cuda:0"
+    assert environ["CUDA_VISIBLE_DEVICES"] == "GPU-0001"
+    assert environ["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+
+
+def test_a_gpu_named_by_number_is_pinned_and_is_cuda_0_in_the_run(monkeypatch):
+    environ: dict[str, str] = {}
+
+    assert ml_env.resolve_device("cuda:2", FOUR, environ) == "cuda:0"
+    assert environ["CUDA_VISIBLE_DEVICES"] == "GPU-0002"
+
+
+def test_a_device_that_is_not_a_listed_gpu_is_passed_on_untouched(monkeypatch):
+    def not_asked(**kwargs):
+        raise AssertionError("nvidia-smi is asked only where a GPU might be meant")
+
+    monkeypatch.setattr(ml_env, "gpu_inventory", not_asked)
+    environ: dict[str, str] = {}
+
+    assert ml_env.resolve_device("cpu", environ=environ) == "cpu"
+    assert ml_env.resolve_device("cuda:7", FOUR, environ) == "cuda:7"
+    assert "CUDA_VISIBLE_DEVICES" not in environ
+
+
+def test_a_gpu_short_of_memory_is_warned_about_before_the_load(monkeypatch, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger=ml_env.__name__):
+        ml_env.resolve_device("cuda:0", FOUR, {})
+
+    assert "1.0 GB free" in caplog.text
+
+
+def test_gpus_torch_cannot_use_are_said_so_and_auto_falls_back(monkeypatch, caplog):
+    """A CPU run on a GPU workstation is an hour where it should be minutes, so
+    it is announced rather than merely slow."""
+    import logging
+
+    _torch_that_can_use_cuda(monkeypatch, available=False)
+    monkeypatch.setattr(ml_env, "available_devices", lambda: ("cpu",))
+
+    with caplog.at_level(logging.WARNING, logger=ml_env.__name__):
+        assert ml_env.resolve_device("auto", FOUR, {}) == "cpu"
+
+    assert "built for CUDA 12.6" in caplog.text
+    assert "535.288.01" in caplog.text
+
+
+def test_a_torch_built_without_cuda_is_named_as_the_reason(monkeypatch):
+    _torch_that_can_use_cuda(monkeypatch, available=False, built=None)
+
+    problem = ml_env.cuda_problem(FOUR)
+
+    assert "built without CUDA" in problem
+    assert "uv sync" in problem
+
+
+def test_there_is_no_problem_to_report_without_gpus_or_with_usable_ones(monkeypatch):
+    _torch_that_can_use_cuda(monkeypatch)
+
+    assert ml_env.cuda_problem(GpuInventory()) == ""
+    assert ml_env.cuda_problem(FOUR) == ""
+
+
+def test_a_gpu_is_not_pinned_once_cuda_has_started_in_the_process(monkeypatch):
+    """CUDA reads the visible GPUs once; changing them afterwards would claim a
+    pinning that did not happen."""
+    import sys
+
+    _torch_that_can_use_cuda(monkeypatch)
+    sys.modules["torch"].cuda.is_initialized = lambda: True
+    environ: dict[str, str] = {}
+
+    assert ml_env.resolve_device("cuda:2", FOUR, environ) == "cuda:2"
+    assert "CUDA_VISIBLE_DEVICES" not in environ
+
+
+def test_prediction_uses_as_many_cpu_threads_as_am_seg_may(monkeypatch):
+    """Preprocessing runs on the CPU whatever the device, and torch would
+    otherwise take every core of a shared machine."""
+    threads = _torch_that_can_use_cuda(monkeypatch)
+    monkeypatch.setenv("AM_SEG_WORKERS", "3")
+
+    assert ml_env.limit_cpu_threads() == 3
+    assert threads == [3]

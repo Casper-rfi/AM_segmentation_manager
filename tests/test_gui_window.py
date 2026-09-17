@@ -4417,6 +4417,84 @@ def test_filling_the_box_keeps_what_was_chosen(window):
     assert window.operations_panel.device() == "cuda:1"
 
 
+def test_a_gpu_is_offered_with_its_model_and_free_memory_and_read_back_bare(window):
+    """Four identical cards are told apart by how full they are, which is what
+    someone sharing the machine chooses by; the run is given the device alone."""
+    panel = window.operations_panel
+    described = "cuda:1 · NVIDIA A100 80GB PCIe · 71.2 of 80 GB free"
+
+    panel.show_devices(("cuda:0", "cuda:1", "cpu"), {"cuda:1": described})
+    panel.set_device("cuda:1")
+
+    assert panel.device_box.currentText() == described
+    assert panel.device() == "cuda:1"
+
+
+def test_a_described_device_typed_or_pasted_is_read_back_bare(window):
+    window.operations_panel.device_box.setCurrentText("cuda:2 · NVIDIA A100-PCIE-40GB · 39 GB free")
+
+    assert window.operations_panel.device() == "cuda:2"
+
+
+def test_new_free_memory_keeps_the_gpu_that_was_chosen(window):
+    """The descriptions are read afresh each time the box opens."""
+    panel = window.operations_panel
+    panel.show_devices(("cuda:0", "cuda:1", "cpu"), {"cuda:1": "cuda:1 · A100 · 70 GB free"})
+    panel.set_device("cuda:1")
+
+    panel.show_devices(("cuda:0", "cuda:1", "cpu"), {"cuda:1": "cuda:1 · A100 · 12 GB free"})
+
+    assert panel.device() == "cuda:1"
+    assert panel.device_box.currentText() == "cuda:1 · A100 · 12 GB free"
+
+
+def test_gpus_torch_cannot_use_are_said_so_on_the_box(window):
+    from am_segmentation_manager.gui.widgets.operations_panel import (
+        DEVICE_HINT,
+        UNUSABLE_GPU_HINT,
+    )
+
+    panel = window.operations_panel
+    panel.show_devices(("cpu",), problem="4 NVIDIA GPU(s) found, but torch cannot use them")
+    assert panel.device_box.toolTip() == UNUSABLE_GPU_HINT
+
+    panel.show_devices(("cuda:0", "cpu"))
+    assert panel.device_box.toolTip() == DEVICE_HINT
+
+
+def test_opening_the_device_box_asks_torch_once_and_nvidia_smi_every_time(window, monkeypatch):
+    """Which devices exist costs a torch import; how full the GPUs are changes
+    while colleagues work, and costs nvidia-smi alone."""
+    from am_segmentation_manager.gui.widgets import operation_actions
+    from am_segmentation_manager.ml import gpus
+    from am_segmentation_manager.operations.predict_process import DeviceProbe
+
+    probes: list[int] = []
+    monkeypatch.setattr(
+        operation_actions, "probe_devices",
+        lambda: probes.append(1) or DeviceProbe(devices=("cuda:0", "cuda:1", "cpu")),
+    )
+    free = iter([70.0, 12.0])
+
+    def inventory():
+        gb = next(free)
+        gpu = gpus.Gpu(1, 1, "GPU-1", "NVIDIA A100 80GB PCIe", int(gb * 1024), 80 * 1024, "0:1")
+        return gpus.GpuInventory(gpus=(gpu,))
+
+    monkeypatch.setattr(gpus, "gpu_inventory", inventory)
+    items = window.operations_panel.device_box
+
+    window._offer_devices()
+    first = [items.itemText(index) for index in range(items.count())]
+    window._offer_devices()
+    second = [items.itemText(index) for index in range(items.count())]
+
+    assert probes == [1]
+    assert first[2] == "cuda:1 · NVIDIA A100 80GB PCIe · 70.0 of 80 GB free"
+    assert second[2] == "cuda:1 · NVIDIA A100 80GB PCIe · 12.0 of 80 GB free"
+    assert [first[0], first[1], first[3]] == ["auto", "cuda:0", "cpu"]
+
+
 def test_the_chosen_device_reaches_the_run(window, monkeypatch, tmp_path: Path):
     """Every prediction from the window used to be 'auto'."""
     seen: list[str] = []

@@ -20,7 +20,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ...operations.metadata_csv import export_project_metadata_csv
-from ...operations.predict_process import probe_devices
+from ...operations.predict_process import DeviceProbe, probe_devices
 from ...progress import Cancellation
 from .. import preferences
 from ..report import OperationReport
@@ -47,7 +47,7 @@ class OperationActions(_Window):
     """
 
     #: The devices the machine offers, once asked; whether the archive was measured.
-    _devices: tuple[str, ...] | None
+    _devices: DeviceProbe | None
     _archive_measured: bool
 
     def _predict(self, model: str) -> None:
@@ -96,24 +96,34 @@ class OperationActions(_Window):
         )
 
     def _offer_devices(self) -> None:
-        """Fill the device box with what the machine actually has.
+        """Fill the device box with what the machine actually has, and how full its GPUs are.
 
-        Asked of a separate process, because this one never imports torch --
-        that is what predicting in a child is for. It costs an interpreter
-        start and a torch import, so it is done once per session, when the box
-        is first opened: by then the user has said they want to choose one.
+        Which devices exist is asked of a separate process, because this one
+        never imports torch -- that is what predicting in a child is for. It
+        costs an interpreter start and a torch import, so it is done once per
+        session, when the box is first opened. The GPUs' free memory changes
+        while others work, and costs ``nvidia-smi`` alone, so it is read afresh
+        every time the box opens.
         """
-        if self._devices is not None:
-            return
+        from ...ml.gpus import gpu_inventory
 
-        self.project_panel.announce("Asking which devices are available...")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            self._devices = probe_devices()
-        finally:
-            QApplication.restoreOverrideCursor()
-        logger.info("Devices available for prediction: %s", self._devices or "none")
-        self.operations_panel.show_devices(self._devices)
+        if self._devices is None:
+            self.project_panel.announce("Asking which devices are available...")
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                self._devices = probe_devices()
+            finally:
+                QApplication.restoreOverrideCursor()
+            logger.info(
+                "Devices available for prediction: %s", self._devices.devices or "none"
+            )
+            if self._devices.problem:
+                logger.warning("%s", self._devices.problem)
+                self.project_panel.announce(self._devices.problem)
+        descriptions = {gpu.device: gpu.describe() for gpu in gpu_inventory().gpus}
+        self.operations_panel.show_devices(
+            self._devices.devices, descriptions, self._devices.problem
+        )
         self.refresh()
 
     def _convert_predictions(self) -> None:

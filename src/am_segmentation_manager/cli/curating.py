@@ -102,8 +102,11 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     predict_cmd.add_argument(
         "--device", default="auto",
         help=(
-            "Torch device: 'auto' for the fastest available (default), or "
-            "'cpu', 'mps', 'cuda:0'. CPU always works and is several times slower"
+            "Torch device: 'auto' (default) for the NVIDIA GPU with the most free "
+            "memory, else the fastest available; or 'cpu', 'mps', 'cuda:0'. "
+            "cuda:N is the GPU nvidia-smi numbers N, and the run sees no other. "
+            "CPU always works and is several times slower. AM_SEG_WORKERS "
+            "limits the CPU threads"
         ),
     )
     predict_cmd.add_argument(
@@ -323,11 +326,13 @@ def _cmd_predict(args: argparse.Namespace) -> int:
     try:
         # Both import torch, which costs seconds and is only in the second
         # environment: a command that does not predict must not pay for it.
-        from ..ml.environment import resolve_device
+        from ..ml.environment import limit_cpu_threads, resolve_device
         from ..ml.model import load_model
 
+        # Before the load, which starts CUDA: a GPU is pinned only before then.
         device = resolve_device(args.device)
-        logger.info("Loading %s onto %s", weights.name, device)
+        threads = limit_cpu_threads()
+        logger.info("Loading %s onto %s, with %d CPU thread(s)", weights.name, device, threads)
         loaded = load_model(weights, description, device=device)
     except (RuntimeError, FileNotFoundError) as exc:
         logger.error("%s", exc)
