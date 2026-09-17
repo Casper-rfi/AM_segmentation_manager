@@ -29,7 +29,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
-- **Cross-platform readiness**: CI passes on Linux and Windows; check the window on a real Windows
+- **Cross-platform readiness**: CI passes on Linux, Windows and macOS; check the window on a real Windows
   and Ubuntu desktop, and `scripts/check_environment.py` on Windows with long paths off and then
   on; check on an A100 workstation that `auto` takes the freest GPU and that
   `nvidia-smi` shows a run on that GPU alone. **The Windows suite
@@ -51,7 +51,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   `[project.urls]`, and the version pinned at `0.0.0`. `mypy` checks every module's annotations
   and reports nothing. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
-  under both on 2026-09-11. And
+  under both on 2026-09-17. And
   [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which
   is what makes never writing to it a rule about a real place rather than a principle: decide then
   whether a reader outside this machine needs the paths or only the rule.
