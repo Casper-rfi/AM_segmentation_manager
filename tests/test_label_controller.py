@@ -565,11 +565,19 @@ def read_ahead_controller(root: Path, *, labels: str = "empty"):
 
 
 def rewrite(path: Path) -> None:
-    """Write a label with a mark in it, as another program would."""
+    """Write a label with a mark in it, as another program would.
+
+    Compressed, so that the file changes *size*. An uncompressed replacement is
+    byte-for-byte as long as what it replaces, and a same-size write in place
+    keeps the file's identity -- leaving only the modification time to tell
+    them apart, which on Windows moves in steps of about 15 ms and so may not
+    have moved at all. :func:`~..io.atomic.fingerprint_of` documents that blind
+    spot; a test of what the window does with a rewrite must not sit in it.
+    """
     label = np.zeros((32, 32), np.uint8)
     label[4:8, 4:8] = 1
     path.parent.mkdir(parents=True, exist_ok=True)
-    tifffile.imwrite(str(path), label)
+    tifffile.imwrite(str(path), label, compression="zlib")
 
 
 def test_a_frame_read_ahead_opens_what_was_written_since(tmp_path: Path):
