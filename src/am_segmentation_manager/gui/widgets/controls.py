@@ -727,8 +727,10 @@ RANGE_FOCUS = 3.0
 
 
 #: How wide a view slider is. The range slider asks for it and a plain slider
-#: paired above one is fixed to it, so the two grid cells end together.
-SLIDER_WIDTH = 150
+#: paired above one is fixed to it, so the two grid cells end together. It sets
+#: whether the Curate tab's view controls hold two lines on a 1440px screen:
+#: under Linux's DejaVu Sans they need 811px of 824 at this width.
+SLIDER_WIDTH = 120
 
 
 def _track_span(width: float) -> tuple[float, float]:

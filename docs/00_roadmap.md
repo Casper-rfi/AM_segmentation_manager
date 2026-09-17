@@ -29,8 +29,10 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
-- **Cross-platform readiness**: CI's remaining failures are window layout under Windows' and Linux's
-  fonts, to check on a real desktop; then a cap on `POOL_WORKERS`, and choosing a GPU by name.
+- **Cross-platform readiness**: CI passes on Linux and Windows; check the window on a real Windows
+  and Ubuntu desktop, then cap `POOL_WORKERS` and choose a GPU by name. **The Windows suite
+  crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, with nothing
+  logged; CI now names each test as it starts, so the next crash says where.
 - **Can the Label tab edit pixels older than the file?** It fingerprints a label when editing starts
   (`label_controller.py`), which may be after the read-ahead cache read it.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
