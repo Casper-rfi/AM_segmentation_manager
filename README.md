@@ -138,7 +138,8 @@ more only with its long-path setting on, and the versions this package archives
 under `AM_archive/` run long -- a collection under `C:\Users\<you>\` or
 OneDrive can pass the limit. Without it, the Add data report warns, and saving,
 converting and exporting refuse the whole batch rather than failing partway.
-Turn it on once, in PowerShell run as administrator, then restart am-seg:
+Turn it on once, in PowerShell run as administrator, then restart am-seg (and
+Windows, if am-seg still cannot reach them):
 
     New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
 

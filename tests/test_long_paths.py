@@ -111,3 +111,28 @@ def test_windows_is_asked_by_trying_and_answers():
 
     assert isinstance(long_paths.long_paths_work(), bool)
     assert set(Path(tempfile.gettempdir()).glob("am-seg-long-path-*")) == before
+
+
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_every_explanation_says_where_the_steps_are(monkeypatch, enabled):
+    """Whether the setting is off or on but unused, a person needs the steps.
+    Found on GitHub's Windows runner, where it is on."""
+    import types
+
+    monkeypatch.setattr(long_paths.sys, "platform", "win32")
+
+    class Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    winreg = types.SimpleNamespace(
+        HKEY_LOCAL_MACHINE=0,
+        OpenKey=lambda root, key: Key(),
+        QueryValueEx=lambda key, name: (enabled, 4),
+    )
+    monkeypatch.setitem(sys.modules, "winreg", winreg)
+
+    assert "README" in long_paths.explanation()

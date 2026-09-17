@@ -73,7 +73,10 @@ def long_paths_work() -> bool:
 
 
 def explanation() -> str:
-    """Return why long paths do not work in this process, for a person to act on."""
+    """Return why long paths do not work in this process, and what to do, for a person to act on.
+
+    Every answer names the README, where the steps are.
+    """
     if sys.platform != "win32":
         return f"Paths this long are not reachable here: {HOW_TO_FIX}"
     try:
@@ -85,8 +88,10 @@ def explanation() -> str:
         enabled = 0
     if enabled:
         return (
-            f"Windows' {REGISTRY_VALUE} setting is on, but this Python does not "
-            f"use it; run am-seg with the Python uv installs"
+            f"Windows' {REGISTRY_VALUE} setting is on, but this process cannot use "
+            f"it: restart am-seg, then Windows if that is not enough, and run it "
+            f"with the Python uv installs, as the README's Installation section "
+            f"describes"
         )
     return f"Windows' {REGISTRY_VALUE} setting is off: {HOW_TO_FIX}"
 
