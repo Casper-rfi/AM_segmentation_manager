@@ -35,9 +35,8 @@ dependencies = [
   "PyYAML>=5.4",
 ]
 
-# Every extra names OpenCV's headless build, and only that one: albumentations
-# requires it, and opencv-python beside it would be a second provider of cv2,
-# which breaks the import. Nothing here opens OpenCV's own windows, and the
+# Every extra names OpenCV's headless build, and only that one: opencv-python
+# beside it would be a second provider of cv2, which breaks the import. Nothing here opens OpenCV's own windows, and the
 # headless build carries none of the Qt plugins that would compete with
 # PySide6's. Extras therefore combine freely -- `gui` and `ml` together is the
 # whole workflow.
@@ -87,7 +86,6 @@ ml = [
   "torch",
   "torchvision",
   "segmentation-models-pytorch",
-  "albumentations",
 ]
 
 # Tools for working on the package, installed by `uv sync` and never by a user's
@@ -136,11 +134,11 @@ line-length = 100
 src = ["src", "tests"]
 target-version = "py311"
 
-# A verbatim copy of AM_training's module, kept byte-identical so it can be
-# diffed against upstream. Linting it would report import order and trailing
-# whitespace we must not fix: the moment this package reformats it, "is this
-# still the same preprocessing the model was trained with?" stops being a
-# question `diff` can answer. Not ours to lint, so not linted.
+# A copy of AM_training's module, changed only by the removal of its
+# training-only transform. Linting it would report import order and trailing
+# whitespace we must not fix: the moment this package reformats it, "what did we
+# change?" stops being a question `diff` can answer. Not ours to lint, so not
+# linted.
 extend-exclude = [
   "src/am_segmentation_manager/ml/preprocessing.py",
 ]
@@ -177,7 +175,7 @@ ignore = ["E501"]
 # `mypy` from the repository root checks the package and should report nothing.
 files = ["src/am_segmentation_manager"]
 python_version = "3.11"
-# Not ours to type: the verbatim copy of AM_training's module, as for ruff.
+# Not ours to type: the copy of AM_training's module, as for ruff.
 exclude = ['src/am_segmentation_manager/ml/preprocessing\.py$']
 # PyYAML and segmentation_models_pytorch ship no annotations, and torch and
 # segmentation_models_pytorch are absent from the main environment; calls into

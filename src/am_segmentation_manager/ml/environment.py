@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 INSTALL_HINT = (
     "Install the ml extra: uv sync --extra gui --extra ml, or pip install "
     "'am_segmentation_manager[ml]' -- but never beside conda's opencv or "
-    "opencv-python, since albumentations brings opencv-python-headless and two "
+    "opencv-python, since the extra brings opencv-python-headless and two "
     "providers of cv2 break the import."
 )
 
@@ -39,7 +39,6 @@ ML_MODULES: tuple[tuple[str, str], ...] = (
     ("torch", "torch"),
     ("torchvision", "torchvision"),
     ("segmentation_models_pytorch", "segmentation-models-pytorch"),
-    ("albumentations", "albumentations"),
 )
 
 

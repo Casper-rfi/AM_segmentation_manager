@@ -50,10 +50,10 @@ SOFTWARE.
 
 ## AM_training
 
-**Used by:** `src/am_segmentation_manager/ml/preprocessing.py`, a verbatim copy
-of that project's module, kept byte-identical so that "is this still the
-preprocessing the model was trained with?" is a question `diff` can answer. It
-is excluded from `ruff` for the same reason.
+**Used by:** `src/am_segmentation_manager/ml/preprocessing.py`, a copy of that
+project's module with its training-only transform removed and nothing else
+changed, so that a `diff` against that source shows only what this package did
+to it. It is excluded from `ruff` for the same reason.
 
 **Licence:** not declared upstream. The copy is internal to the group that
 wrote it; settle this before publishing, along with this package's own licence

@@ -580,13 +580,13 @@ rather than appending to it.
   nothing enforces this for anything else you run.
 - **One environment, every dependency from PyPI, and `uv.lock` holding the versions tested.** Every
   `cv2` failure this package has met was two providers of one module — conda's `opencv` beside
-  pip's, or `opencv-python` beside the `opencv-python-headless` albumentations requires — so every
+  pip's, or `opencv-python` beside `opencv-python-headless` — so every
   extra names the headless build and nothing comes from conda. **Inference is an extra, not an
   environment**: nothing outside `ml/` imports torch
   (`test_torch_is_not_loaded_outside_the_module_that_runs_it`), so an environment without it is a
-  subset rather than a peer. The lock is refused unless every dependency has a build for Windows,
-  Linux and Apple silicon on each supported Python, so a missing wheel fails here rather than on
-  someone else's machine.
+  subset rather than a peer. `required-environments` locks for Windows, Linux and Apple silicon on
+  each supported Python — but a dependency lacking a wheel for one of them locks anyway and is
+  built from source there, as `stringzilla` 5.1.2 was on Windows 3.11. Nothing checks this yet.
 - **Windows and Linux take torch built for CUDA 12.6, not PyPI's.** PyPI's Windows torch is
   CPU-only, and its Linux torch needs a driver for CUDA 13 (580 or later); 12.6 runs on any driver
   from 525, the shared A100 workstations' included. A lock is one file for every machine and cannot
