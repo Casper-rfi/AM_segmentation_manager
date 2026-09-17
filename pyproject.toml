@@ -87,6 +87,21 @@ ml = [
   "torchvision",
   "segmentation-models-pytorch",
 ]
+# The same set, taking torch built for CUDA 13 instead: a card newer than the
+# CUDA 12.6 build's kernels -- a 50-series among them -- runs on nothing that
+# build carries. Installed *instead of* `ml`, never beside it, because the two
+# name one torch from two indexes; uv refuses both at once, and
+# `test_the_two_inference_extras_install_the_same_package_set` keeps this list
+# in step with that one.
+ml-cuda13 = [
+  "numpy",
+  "tifffile",
+  "imagecodecs",
+  "opencv-python-headless",
+  "torch",
+  "torchvision",
+  "segmentation-models-pytorch",
+]
 
 # Tools for working on the package, installed by `uv sync` and never by a user's
 # `pip install`.
@@ -183,9 +198,16 @@ exclude = ['src/am_segmentation_manager/ml/preprocessing\.py$']
 ignore_missing_imports = true
 
 [tool.uv]
-# The lock is refused unless every dependency has a build for each of these, on
-# each Python version the classifiers name. Bounded here rather than in
-# requires-python, which would refuse the core to a newer Python outright.
+# One torch from two indexes: uv needs to know these never appear together, so
+# `--extra ml-cuda13` replaces `--extra ml` rather than joining it.
+conflicts = [
+  [{ extra = "ml" }, { extra = "ml-cuda13" }],
+]
+
+# Resolution covers each of these, on each Python version the classifiers name.
+# Bounded here rather than in requires-python, which would refuse the core to a
+# newer Python outright. A dependency without a wheel for one of them still
+# locks, and is built from source there; see `decisions.md` § Environment.
 required-environments = [
   "sys_platform == 'win32' and platform_machine == 'AMD64' and python_full_version < '3.14'",
   "sys_platform == 'linux' and platform_machine == 'x86_64' and python_full_version < '3.14'",
@@ -195,15 +217,27 @@ required-environments = [
 # CUDA builds of torch for Windows and Linux. PyPI's Windows torch is CPU-only,
 # and its Linux torch needs a driver recent enough for CUDA 13; CUDA 12.6 runs on
 # the older drivers shared workstations keep. macOS takes PyPI's, which has MPS.
+#
+# The CUDA 13 build is the `ml-cuda13` extra rather than the default: it needs a
+# driver from 580, which the shared A100 workstations do not have, and it is the
+# only build with kernels for a 50-series card.
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+  { index = "pytorch-cu130", extra = "ml-cuda13", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+  { index = "pytorch-cu126", extra = "ml", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
 torchvision = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+  { index = "pytorch-cu130", extra = "ml-cuda13", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+  { index = "pytorch-cu126", extra = "ml", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
+

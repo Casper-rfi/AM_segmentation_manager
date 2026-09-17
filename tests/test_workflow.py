@@ -68,6 +68,22 @@ def test_the_lock_requires_builds_for_exactly_the_claimed_versions():
     assert all(f"python_full_version < '{bound}'" in marker for marker in environments)
 
 
+def test_the_two_inference_extras_install_the_same_package_set():
+    """`ml-cuda13` exists to change which torch is fetched, nothing else. It is a
+    second copy of one list -- uv gives no way to extend an extra whose sources
+    conflict -- so the copies are held together here rather than by care."""
+    extras = _pyproject()["project"]["optional-dependencies"]
+
+    assert set(extras["ml-cuda13"]) == set(extras["ml"])
+
+
+def test_the_conflicting_extras_are_declared_so_neither_can_join_the_other():
+    """Installed together they would name one torch from two indexes."""
+    conflicts = _pyproject()["tool"]["uv"]["conflicts"]
+
+    assert [{"extra": "ml"}, {"extra": "ml-cuda13"}] in conflicts
+
+
 def test_every_job_but_one_installs_what_the_lock_holds():
     """Without --locked, uv re-resolves whenever pyproject.toml has moved ahead
     of uv.lock, and the run tests versions nobody committed."""

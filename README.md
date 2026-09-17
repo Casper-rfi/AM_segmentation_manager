@@ -103,12 +103,13 @@ Run anything in it through `uv run`, without activating it:
 **`uv sync` installs exactly the extras it is given** and removes the rest, so
 name every extra you want each time. `uv run` leaves the environment as it is.
 
-The extras combine freely:
+The extras combine freely, `ml` and `ml-cuda13` apart:
 
 | Extra | Adds |
 |---|---|
 | `gui` | the window, the image stack and charts |
 | `ml` | predicting: torch and the model libraries, several gigabytes |
+| `ml-cuda13` | predicting, with torch for CUDA 13: a card the 12.6 build has no kernels for |
 | `all` | the image stack and charts, for the command line without the window |
 | `plots` | charts alone, for the command line's plots |
 
@@ -150,6 +151,18 @@ On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
 12.6, which runs on any NVIDIA driver from version 525; macOS on Apple silicon
 receives the build that uses its GPU (`mps`). Intel Macs get the window and the
 command line but cannot predict: torch no longer publishes builds for them.
+
+**A card newer than that build.** A GPU whose compute capability the CUDA 12.6
+build carries no kernels for -- a 50-series among them -- cannot run a
+prediction, however new the driver is. The window, the log and
+`scripts/check_environment.py` name the card and what the build holds, and a run
+falls back to the CPU rather than failing partway. Install the CUDA 13 build
+instead, which needs a driver from version 580:
+
+    uv sync --extra gui --extra ml-cuda13
+
+That extra replaces `ml` rather than joining it, the two naming one torch from
+two indexes; `uv sync` refuses both at once.
 
 With pip instead, into an environment of its own:
 

@@ -589,11 +589,15 @@ rather than appending to it.
   built from source there, as `stringzilla` 5.1.2 was on Windows 3.11. Nothing checks this yet.
 - **Windows and Linux take torch built for CUDA 12.6, not PyPI's.** PyPI's Windows torch is
   CPU-only, and its Linux torch needs a driver for CUDA 13 (580 or later); 12.6 runs on any driver
-  from 525, the shared A100 workstations' included. A lock is one file for every machine and cannot
-  follow a machine's driver, so a GPU needing a newer build is an extra to add, not a detection to
-  write. **A wrong build does not stop a run, so it is said**: where `nvidia-smi` lists GPUs torch
-  cannot use, `cuda_problem` names why, `auto` falls back to the CPU with a warning, and
-  `scripts/check_environment.py` fails (`test_gpus_torch_cannot_use_are_said_so_and_auto_falls_back`).
+  from 525, the shared A100 workstations' 535 included. A lock cannot follow a machine's driver, so
+  a GPU needing a newer build is an extra: `ml-cuda13`, that set with torch from the CUDA 13 index,
+  in `conflicts` so uv refuses it beside `ml` (`test_the_two_inference_extras_install_the_same_package_set`).
+- **A wrong build does not stop a run, so it is said**, and *wrong* is two things: a driver too old
+  leaves `torch.cuda.is_available()` false, a card too new leaves it **true** with every launch
+  failing. So `cuda_problem` also compares each card's compute capability with
+  `torch.cuda.get_arch_list()` (`test_a_card_newer_than_every_kernel_is_said_so_and_auto_falls_back`),
+  reading a build that names no architectures as no problem; either way `auto` falls back to the CPU
+  with a warning and `check_environment.py` fails.
 
 ## Inference
 
