@@ -117,6 +117,14 @@ what this environment can do:
 
     uv run python scripts/check_environment.py
 
+**On a shared machine.** A scan reads headers in worker processes: every CPU
+this process may use but two, and never more than eight, past which reading gets
+no faster. Name another number for a session with `AM_SEG_WORKERS`, e.g.
+`AM_SEG_WORKERS=4 uv run am-seg gui` (in PowerShell, set `$env:AM_SEG_WORKERS=4`
+first). A job scheduler's or `taskset`'s limit is honoured; a container's CPU
+quota is not visible, so set the number there. Predicting is separate: torch uses
+every core of the machine unless told otherwise.
+
 **Which torch build you get.** Windows and Linux receive torch built for CUDA
 12.6, which runs on any NVIDIA driver from version 525; macOS on Apple silicon
 receives the build that uses its GPU (`mps`). Intel Macs get the window and the

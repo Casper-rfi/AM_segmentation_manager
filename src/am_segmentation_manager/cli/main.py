@@ -17,6 +17,7 @@ from pathlib import Path
 from .. import __version__
 from ..history import CONFIG_DISPLAY, USER_ENV_VAR, USER_FILENAME
 from ..io.path import NoRelativePath
+from ..parallel import MAX_DEFAULT_WORKERS, WORKERS_ENV_VAR
 from . import adding, curating, quantifying, recording, restoring
 from .logs import DEFAULT_GUI_LOG, LOG_FILE_MAX_BYTES, open_log_file
 from .scope import report_refused
@@ -71,6 +72,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         "am_segmentation_manager",
         description="Manage Autolamella segmentation projects",
+        epilog=(
+            f"A scan reads image headers in worker processes: every CPU this "
+            f"process may use but two, at most {MAX_DEFAULT_WORKERS}. Set "
+            f"{WORKERS_ENV_VAR} to a whole number to use another count."
+        ),
         formatter_class=GroupedHelp,
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")

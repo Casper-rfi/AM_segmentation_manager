@@ -5,8 +5,8 @@ Run after installing, on any platform:
 
     uv run python scripts/check_environment.py
 
-Checks the image stack, the Qt binding and charts, then -- where the ``ml``
-extra is installed -- the inference stack, the devices torch can see, and the
+Checks the image stack, the Qt binding and charts, and how many worker processes
+a scan starts, then -- where the ``ml`` extra is installed -- the inference stack, the devices torch can see, and the
 vendored preprocessing on each. Exits non-zero when something installed does not
 work; an extra that was simply not installed is reported and is not a failure.
 """
@@ -49,6 +49,16 @@ def check_window() -> None:
         print("  charts        OK (matplotlib)")
     else:
         print("  charts        not installed: the Chart button and 'stats --plot' decline to draw")
+
+
+def check_workers() -> None:
+    """Report how many worker processes a scan starts, and what changes it."""
+    from am_segmentation_manager.parallel import WORKERS_ENV_VAR, available_cpus, worker_count
+
+    print(
+        f"  workers       {worker_count()} of {available_cpus()} CPU(s) "
+        f"({WORKERS_ENV_VAR} changes it)"
+    )
 
 
 def check_inference() -> bool:
@@ -100,6 +110,7 @@ def main() -> int:
     print(f"Python {sys.version.split()[0]} at {sys.executable}")
     images = check_image_stack()
     check_window()
+    check_workers()
     inference = check_inference()
     return 0 if images and inference else 1
 

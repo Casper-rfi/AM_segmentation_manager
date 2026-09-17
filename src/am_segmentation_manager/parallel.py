@@ -6,15 +6,16 @@ use with the *spawn* method, a fresh interpreter inheriting nothing Qt has touch
 and lasts until this one exits. **A function sent here is module-level and imports
 nothing from ``gui/`` or ``ml/``**; what it raises for one input is raised by the
 whole map, as it would be here. What a worker logs at WARNING or above is logged
-again here.
+again here. How many workers it holds is :func:`worker_count`'s answer, read once.
 """
 from __future__ import annotations
 
 import logging
 import multiprocessing
 import os
+import sys
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from typing import TypeVar
@@ -24,9 +25,83 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 R = TypeVar("R")
 
-#: How many worker processes the pool holds, leaving two cores for the window and
-#: the disk: more workers than that read headers more slowly, not faster.
-POOL_WORKERS = max(1, (os.cpu_count() or 1) - 2)
+#: Names a worker count to use instead of the default, as a whole number.
+WORKERS_ENV_VAR = "AM_SEG_WORKERS"
+
+#: The most workers started without being asked. The reference collection's
+#: 37,779 headers read in 5.2 s with 4 workers, 4.5 s with 6, and 4.3 s with 8 and
+#: with 12: past this, gathering results and the disk set the pace, and a further
+#: worker only holds memory the other users of a shared machine want.
+MAX_DEFAULT_WORKERS = 8
+
+#: The most workers Windows lets one pool start.
+WINDOWS_MAX_WORKERS = 61
+
+
+def available_cpus() -> int:
+    """Return how many CPUs this process may run on, rather than how many the machine has.
+
+    A restriction set by a scheduler or ``taskset`` is honoured wherever the
+    platform reports one; a container's CPU quota is not reported, and so not seen.
+    """
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    if process_cpu_count is not None:
+        return process_cpu_count() or 1
+    sched_getaffinity = getattr(os, "sched_getaffinity", None)
+    if sched_getaffinity is not None:
+        return len(sched_getaffinity(0)) or 1
+    return os.cpu_count() or 1
+
+
+def worker_count(
+    environ: Mapping[str, str] | None = None,
+    cpus: int | None = None,
+    platform: str | None = None,
+) -> int:
+    """Return how many worker processes the pool should hold.
+
+    Every CPU this process may use but two, which are left for the window and
+    the disk, up to :data:`MAX_DEFAULT_WORKERS` -- unless :data:`WORKERS_ENV_VAR`
+    names another whole number. A value that is not one is warned about and the
+    default used, so a typing slip slows a scan rather than stopping it. Never
+    fewer than one, nor more than :data:`WINDOWS_MAX_WORKERS` on Windows.
+
+    Args:
+        environ: The environment to read; this process's by default.
+        cpus: The CPUs available; :func:`available_cpus` by default.
+        platform: As ``sys.platform``, which it defaults to.
+    """
+    environ = os.environ if environ is None else environ
+    cpus = available_cpus() if cpus is None else cpus
+    platform = sys.platform if platform is None else platform
+
+    count = max(1, min(MAX_DEFAULT_WORKERS, cpus - 2))
+    requested = environ.get(WORKERS_ENV_VAR, "").strip()
+    if requested:
+        try:
+            asked = int(requested)
+        except ValueError:
+            asked = 0
+        if asked >= 1:
+            count = asked
+        else:
+            logger.warning(
+                "%s=%r is not a whole number of 1 or more; using %d worker process(es)",
+                WORKERS_ENV_VAR, requested, count,
+            )
+    if platform == "win32" and count > WINDOWS_MAX_WORKERS:
+        logger.warning(
+            "Windows allows %d worker processes, not %d; using %d",
+            WINDOWS_MAX_WORKERS, count, WINDOWS_MAX_WORKERS,
+        )
+        count = WINDOWS_MAX_WORKERS
+    return count
+
+
+#: How many worker processes the pool holds. None until the pool first starts,
+#: when :func:`worker_count` decides it for the session -- not at import, which
+#: every worker repeats, each warning again about a count it was given.
+POOL_WORKERS: int | None = None
 
 #: Inputs sent to a worker at a time. Smaller chunks spend the gain on messaging;
 #: larger ones are no faster.
@@ -119,10 +194,15 @@ def shutdown_pool() -> None:
 
 def _session_pool() -> ProcessPoolExecutor:
     """Return the session's pool, starting it on first use."""
-    global _pool
+    global _pool, POOL_WORKERS
     with _pool_lock:
         if _pool is None:
-            logger.info("Starting %d worker process(es)", POOL_WORKERS)
+            if POOL_WORKERS is None:
+                POOL_WORKERS = worker_count()
+            logger.info(
+                "Starting %d worker process(es); %d CPU(s) available, %s changes it",
+                POOL_WORKERS, available_cpus(), WORKERS_ENV_VAR,
+            )
             _pool = ProcessPoolExecutor(
                 POOL_WORKERS, mp_context=multiprocessing.get_context("spawn")
             )

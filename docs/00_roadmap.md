@@ -30,7 +30,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 ## What to pick up next
 
 - **Cross-platform readiness**: CI passes on Linux and Windows; check the window on a real Windows
-  and Ubuntu desktop, then cap `POOL_WORKERS` and choose a GPU by name. **The Windows suite
+  and Ubuntu desktop, then choose a GPU by name and free memory. **The Windows suite
   crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, with nothing
   logged; CI now names each test as it starts, so the next crash says where.
 - **Can the Label tab edit pixels older than the file?** It fingerprints a label when editing starts
