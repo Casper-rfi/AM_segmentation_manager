@@ -181,6 +181,7 @@ def test_the_child_resolves_the_device_before_it_reaches_torch(
     """
     from am_segmentation_manager.ml import environment
     from am_segmentation_manager.ml import model as model_module
+    from am_segmentation_manager.ml.gpus import GpuInventory
     from am_segmentation_manager.operations import predict_process
 
     dataset = build_dataset(tmp_path)
@@ -195,6 +196,8 @@ def test_the_child_resolves_the_device_before_it_reaches_torch(
             )
 
     monkeypatch.setattr(environment, "available_devices", lambda: ("cpu",))
+    monkeypatch.setattr(environment, "gpu_inventory", lambda **kwargs: GpuInventory())
+    monkeypatch.setattr(environment, "limit_cpu_threads", lambda: 1)
     monkeypatch.setattr(
         model_module, "load_model",
         lambda weights, description, device="cpu": (
