@@ -88,7 +88,7 @@ from .shortcuts import (
     Shortcuts,
 )
 from .state_panel import StatePanel
-from .theme import ACCENTS, COMPACT_BUTTON, HEADING, MUTED, apply_accent
+from .theme import ACCENTS, COMPACT_BUTTON, MUTED, apply_accent
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ def _setting_bytes(settings: QSettings, key: str) -> QByteArray | None:
 class CornerBar(QWidget):
     """The tab row's corner, naming the widgets in it the window reaches back into."""
 
-    product_name: QLabel
+    mark: QLabel
     author: QLabel
     settings_button: QToolButton
     help_button: QToolButton
@@ -158,9 +158,10 @@ def _corner(scan_bar: QWidget, on_help, on_settings) -> CornerBar:
     **Three runs with a rule between each**, read from what is being worked on
     to whose window this is. The folder first, nearest the tabs it serves; then
     this machine's own state and the two buttons for what nothing else on
-    screen mentions, F2 and F1; then the mark and the product name at the far
-    end. Written as one run of muted text, the product name and the name
-    changes are recorded under read as a single phrase.
+    screen mentions, F2 and F1; then the mark at the far end. **The mark
+    without the words**: the title bar carries the product name on Windows and
+    Linux and the menu bar does on macOS, and printed here as well it read as
+    the window saying its own name twice.
 
     A widget rather than a `QLabel`, a label showing either a pixmap or text
     and this needing both. **The mark and the name are not clickable**: they
@@ -213,15 +214,10 @@ def _corner(scan_bar: QWidget, on_help, on_settings) -> CornerBar:
 
     mark = QLabel()
     mark.setPixmap(logo_pixmap(CORNER_LOGO))
+    mark.setToolTip(PRODUCT_NAME)
     layout.addWidget(mark)
 
-    # The one piece of text here that is not muted: it is the product's name,
-    # and a brand that reads as a caption is not one.
-    name = QLabel(PRODUCT_NAME)
-    name.setStyleSheet(f"color: {HEADING}; font-weight: 600;")
-    layout.addWidget(name)
-
-    row.product_name = name
+    row.mark = mark
     row.author = author
     row.settings_button = settings_button
     row.help_button = help_button
@@ -530,6 +526,15 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # key -- "F1  Show this list" is a row in it.
         self._add_action(help_menu, "Keyboard shortcuts", self.show_shortcuts)
         self._add_action(help_menu, f"About {PRODUCT_NAME}", self._show_about)
+
+    def menu_actions(self) -> dict[str, QAction]:
+        """Return each menu item by the words it shows, for F1 to read its key from.
+
+        The list explains what the window offers, and the menu is part of that;
+        read here rather than copied there, so a key changed in one place
+        cannot leave the other teaching the old one.
+        """
+        return dict(self._menu_actions)
 
     def _add_action(self, menu, text: str, slot, shortcut=None) -> None:
         """Add one menu item, keeping the reference that stops it being freed."""

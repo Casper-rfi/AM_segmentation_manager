@@ -291,7 +291,7 @@ def test_the_banner_draws_the_mark_and_the_name(qt_app):
 # The mark beside the tabs
 # ---------------------------------------------------------------------------
 
-def test_the_tab_row_carries_the_mark_and_the_product_name(window):
+def test_the_tab_row_carries_the_mark(window):
     from qtpy.QtCore import Qt
 
     corner = window.tabs.cornerWidget(Qt.TopRightCorner)
@@ -299,4 +299,6 @@ def test_the_tab_row_carries_the_mark_and_the_product_name(window):
     assert corner is not None
     labels = corner.findChildren(QLabel)
     assert any(not label.pixmap().isNull() for label in labels), "no mark"
-    assert any(label.text() == PRODUCT_NAME for label in labels)
+    assert all(label.text() != PRODUCT_NAME for label in labels), (
+        "the title bar and the menu bar already name it"
+    )

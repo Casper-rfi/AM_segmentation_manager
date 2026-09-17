@@ -5,6 +5,9 @@ bottom: **the order below is the order F1 reads in**, headings appearing where t
 bindings first name them, so regrouping is moving a line. The table names the
 window's own methods, so this knows the window while the window knows only that it
 has keys; ``docs/display.md`` under Controls says why the list looks as it does.
+
+The File menu's keys are listed but not bound here: the menu owns them, and F1
+reads each one back off its action, so every platform reads its own spelling.
 """
 from __future__ import annotations
 
@@ -72,6 +75,12 @@ GROUP_CLASSES = "Choose a class"
 GROUP_SPECKS = "Find specks"
 GROUP_EDITS = "Save and undo"
 GROUP_ELSEWHERE = "Elsewhere in the window"
+#: The File menu's keys. Listed rather than bound here: the menu's own actions
+#: carry them, and a second binding of one key is Qt's "ambiguous shortcut",
+#: where neither fires. The sequences are read back off those actions when the
+#: list is built, so each platform reads its own -- Ctrl+O where macOS says
+#: Cmd+O -- and a key changed in the menu cannot leave a stale row here.
+GROUP_MENU = "The File menu"
 #: The legend headings. Separate rather than one "what the marks mean",
 #: because a reader arrives asking about a particular mark and the heading is
 #: what tells them which part to read.
@@ -512,6 +521,24 @@ def bindings_for(window) -> list[Binding]:
         ),
     ]
 
+def menu_rows(window) -> tuple[tuple[str, str], ...]:
+    """Return the File menu's keys as ``(key, what it does)``, platform-spelled.
+
+    Empty entries are left out: an action with no shortcut is one the list has
+    no key to teach, and a platform that gives a standard key no sequence --
+    which happens -- should show nothing rather than a blank row.
+    """
+    rows = []
+    for name, action in window.menu_actions().items():
+        sequence = action.shortcut()
+        if sequence.isEmpty():
+            continue
+        rows.append(
+            (sequence.toString(QKeySequence.SequenceFormat.NativeText), name)
+        )
+    return tuple(rows)
+
+
 def _grouped_rows(
     bindings: list[Binding],
     gestures: tuple[Gesture, ...],
@@ -642,7 +669,12 @@ class Shortcuts:
         tab = tab if tab is not None else self._window._current_tab()
         applicable = [b for b in self.bindings if b.tab in (tab, ANY_TAB)]
         grouped = _grouped_rows(
-            applicable, TAB_GESTURES.get(tab, ()), _tab_marks(tab)
+            applicable,
+            TAB_GESTURES.get(tab, ()),
+            _tab_marks(tab) + tuple(
+                (GROUP_MENU, key, description)
+                for key, description in menu_rows(self._window)
+            ),
         )
         help_text = "".join(
             f"<p style='{HEADING_STYLE}'>{group}</p>{_table(rows)}"

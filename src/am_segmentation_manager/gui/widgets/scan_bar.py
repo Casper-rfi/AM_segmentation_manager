@@ -7,7 +7,13 @@ reading the folder is the window's to do.
 from __future__ import annotations
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QWidget
+from qtpy.QtWidgets import (
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QSizePolicy,
+    QWidget,
+)
 
 from .paths import choose_directory
 
@@ -15,6 +21,12 @@ from .paths import choose_directory
 #: tabs and the mark, which together must fit the smallest screen supported; a
 #: path typed or chosen shows its end, the folder's own name.
 SCAN_FIELD_WIDTH = 320
+
+#: How narrow it may be squeezed. A tab row too narrow for everything in it
+#: takes the room from the tabs, which Qt shrinks to slivers nobody can hit,
+#: while the corner keeps its width -- so the field gives way first. Still wide
+#: enough to read a folder name in, which is what the field is for.
+SCAN_FIELD_MINIMUM = 120
 
 #: What the field says about itself, under what the folder held once it is read.
 SCAN_HINT = (
@@ -38,7 +50,12 @@ class ScanBar(QWidget):
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Folder to scan for Autolamella projects")
         self.path_edit.setToolTip(SCAN_HINT)
-        self.path_edit.setFixedWidth(SCAN_FIELD_WIDTH)
+        # Preferred rather than fixed: see SCAN_FIELD_MINIMUM.
+        self.path_edit.setMinimumWidth(SCAN_FIELD_MINIMUM)
+        self.path_edit.setMaximumWidth(SCAN_FIELD_WIDTH)
+        self.path_edit.setSizePolicy(
+            QSizePolicy.Policy.Preferred, self.path_edit.sizePolicy().verticalPolicy()
+        )
         # Clicked into, never tabbed into: a focused line edit claims Left and
         # Right, which step through frames on the tabs beside it.
         self.path_edit.setFocusPolicy(Qt.FocusPolicy.ClickFocus)

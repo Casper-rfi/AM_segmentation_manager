@@ -29,12 +29,12 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
-- **Cross-platform readiness**: CI passes on Linux, Windows and macOS; check the window on a real Windows
-  and Ubuntu desktop, and `scripts/check_environment.py` on Windows with long paths off and then
-  on; check on an A100 workstation that `auto` takes the freest GPU and that
-  `nvidia-smi` shows a run on that GPU alone. **The Windows suite
-  crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, with nothing
-  logged; CI now names each test as it starts, so the next crash says where.
+- **Cross-platform readiness**: CI passes on Linux, Windows and macOS, and Windows 11 has been
+  worked through by hand — all four tabs, predicting on a 50-series GPU with the `ml-cuda13` extra.
+  Left: the window on an Ubuntu desktop, `check_environment.py` on Windows with long paths *off*,
+  and an A100 workstation taking the freest GPU with `nvidia-smi` showing the run on it alone.
+  **The Windows suite crashed once in five runs** of 2026-09-17, near
+  `test_gui_thread_shutdown.py`, with nothing logged; CI now names each test, so the next says where.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,

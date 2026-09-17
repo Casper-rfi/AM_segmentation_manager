@@ -292,13 +292,13 @@ of one of these files, is held by `test_docs.py`.
 - **The folder is chosen in the tab row, not in a tab.** A scan serves all four, and only Curate
   could show which folder was read; the corner holds the path, Browse and Scan, and says on hover
   what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
-- **The corner is three runs with a rule between each, not one line of text**, read from the folder
-  to what this machine is set to and the gear that changes it, and on to the mark and product name
-  at the far right (`test_the_corner_reads_from_the_folder_to_the_mark`). Written alike the last two
-  read as one phrase, so the product name alone is unmuted, asserted on the pixels
-  (`test_the_product_name_is_not_drawn_like_the_line_beside_it`). The gear and the **?** are the
-  two things nothing else on screen mentions, F2 and F1
-  (`test_the_settings_button_opens_what_f2_opens`).
+- **The corner is three runs with a rule between each, not one line of text**, read from the folder to what
+  this machine is set to and the gear that changes it, and on to the mark
+  (`test_the_corner_reads_from_the_folder_to_the_mark`). **The mark carries no words**: the title bar names
+  the product, and printed here too the window said its own name twice
+  (`test_the_corner_shows_the_mark_without_naming_the_product`). The gear and the **?** are what nothing else
+  mentions, F2 and F1 (`test_the_settings_button_opens_what_f2_opens`), and **the path field gives way before
+  the tabs**, Qt otherwise shrinking them to slivers (`test_the_path_field_gives_way_before_the_tabs_do`).
 - **Everything that records shares one `Attribution`, so adopting a name is one assignment.** Several
   controllers write to a log and one is reached through the Label tab rather than the window, so
   telling them individually was a list kept by hand in two places that a new one fell off silently.

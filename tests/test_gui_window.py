@@ -946,7 +946,7 @@ def test_the_corner_reads_from_the_folder_to_the_mark(window):
     corner = window._corner
     order = [
         corner.layout().indexOf(widget)
-        for widget in (window.scan_bar, corner.author, corner.product_name)
+        for widget in (window.scan_bar, corner.author, corner.mark)
     ]
 
     assert window.tabs.cornerWidget(Qt.TopLeftCorner) is None
@@ -1263,6 +1263,37 @@ def test_the_shortcut_list_follows_the_tab(window):
     window.tabs.setCurrentWidget(window.label_panel)
 
     assert window._keys.help._text.text() == window._keys.help_html(TAB_LABEL)
+
+
+def test_the_help_lists_the_menu_keys_every_tab_shares(window):
+    """F1 is the one place that answers "what can I press?", and the File menu's
+    keys -- rescanning among them -- were in the menu and nowhere else."""
+    from am_segmentation_manager.gui.widgets.shortcuts import (
+        TAB_ADD_DATA,
+        TAB_CURATE,
+        TAB_EXPORT,
+        TAB_LABEL,
+    )
+
+    for tab in (TAB_ADD_DATA, TAB_CURATE, TAB_LABEL, TAB_EXPORT):
+        listed = window._keys.help_html(tab)
+        assert "The File menu" in listed, tab
+        assert "Rescan" in listed, tab
+
+
+def test_the_menu_keys_are_read_off_the_menu_rather_than_copied(window):
+    """A key spelled here would be a second table to keep in step, and each
+    platform spells its own -- Ctrl+O where macOS says Cmd+O."""
+    from qtpy.QtGui import QKeySequence
+
+    from am_segmentation_manager.gui.widgets.shortcuts import menu_rows
+
+    rows = dict(menu_rows(window))
+    rescan = window.menu_actions()["Rescan"]
+
+    assert rescan.shortcut().toString(QKeySequence.NativeText) in rows
+    assert rows[rescan.shortcut().toString(QKeySequence.NativeText)] == "Rescan"
+    assert all(key for key in rows), "an action with no key teaches nothing"
 
 
 def test_the_help_lists_only_the_active_tab(window):
@@ -3338,31 +3369,34 @@ def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
     assert opened == [True]
 
 
-def test_the_product_name_is_not_drawn_like_the_line_beside_it(window):
-    """Two facts of different kinds sat in one run of muted text.
+def test_the_corner_shows_the_mark_without_naming_the_product(window):
+    """The window would otherwise say its own name twice: the title bar carries
+    it on Windows and Linux, the menu bar on macOS, and it was printed here as
+    well. The mark stays -- it says whose window this is without repeating it."""
+    from qtpy.QtWidgets import QLabel
 
-    Left of the rule is whose window this is; right of it is what this machine
-    is set to. Written alike they read as one phrase, and a reader had to work
-    out where one ended and the other began. Asserted on the pixels, a
-    stylesheet being the one thing that can be set and not take effect.
-    """
-    from qtpy.QtGui import QColor
+    from am_segmentation_manager.gui.widgets.branding import PRODUCT_NAME
 
-    name = window._corner.product_name
-    author = window._corner.author
-    assert name.text() and author.text(), "both say something to compare"
+    corner = window._corner
+    labels = corner.findChildren(QLabel)
 
-    def darkest(widget) -> int:
-        image = widget.grab().toImage()
-        return min(
-            QColor(image.pixel(x, y)).lightness()
-            for y in range(image.height())
-            for x in range(image.width())
-        )
+    assert not corner.mark.pixmap().isNull(), "the mark is what is left"
+    assert all(label.text() != PRODUCT_NAME for label in labels)
+    assert corner.mark.toolTip() == PRODUCT_NAME, "named on hover, for a reader who asks"
 
-    assert darkest(name) < darkest(author), (
-        "the product name is drawn more strongly than the machine's own state"
+
+def test_the_path_field_gives_way_before_the_tabs_do(window):
+    """A tab row too narrow for everything in it takes the room from the tabs,
+    which Qt shrinks to slivers nobody can hit. The field is what shrinks."""
+    from am_segmentation_manager.gui.widgets.scan_bar import (
+        SCAN_FIELD_MINIMUM,
+        SCAN_FIELD_WIDTH,
     )
+
+    field = window.scan_bar.path_edit
+
+    assert field.minimumWidth() == SCAN_FIELD_MINIMUM < SCAN_FIELD_WIDTH
+    assert field.maximumWidth() == SCAN_FIELD_WIDTH, "and no wider than it reads well at"
 
 
 def test_the_help_button_in_the_corner_opens_the_list(window):
