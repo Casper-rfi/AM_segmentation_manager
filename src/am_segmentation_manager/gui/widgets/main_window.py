@@ -401,25 +401,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.scan_bar.set_path(remembered)
             self._show_folder_in_title(Path(remembered))
 
-        #: Whether the window opened on Add data for want of anything to
-        #: curate, and so still owes the reviewer the move to Curate that a
-        #: first scan earns. Cleared by that move, and never set again.
-        self._awaiting_first_scan = not remembered
-
         self.refresh()
-        if remembered:
-            # The window opens on Curate, and _tab_changed does not fire for
-            # the tab that was already showing.
-            self._focus_curate()
-        else:
-            # Nothing has ever been scanned on this machine, so Curate opens on
-            # an empty tree with nothing to curate and no cue about what comes
-            # first. Add data holds the two things that do -- reading a folder
-            # and naming its projects -- so a first run opens where it can act,
-            # and `scan` moves on to Curate once there is something in it.
-            # Ordinary use is unaffected: a scan root, once chosen, is
-            # remembered.
-            self.tabs.setCurrentWidget(self.metadata_panel)
+        # Curate either way, and _tab_changed does not fire for the tab that is
+        # already showing. A first run once opened on Add data, Curate having
+        # nothing to curate and no cue about what comes first; it now offers
+        # the folder to read where the frames would be, which is the cue that
+        # was missing and the one thing to do next.
+        self._focus_curate()
 
     # -- construction ------------------------------------------------------
 
@@ -1057,13 +1045,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.scan_bar.show_as_next_step(False)
             self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
             self._show_folder_in_title(directory)
-            if self._awaiting_first_scan:
-                # A first run opened on Add data with nothing to curate. There
-                # is now something, so this hands over to the tab that shows
-                # it -- once. Every later scan leaves the reviewer on the tab
-                # they asked from, which is as often Export as anywhere.
-                self._awaiting_first_scan = False
-                self.tabs.setCurrentWidget(self.curate)
 
     def rescan(self) -> None:
         """Read the folder again, staying on the lamella being reviewed.

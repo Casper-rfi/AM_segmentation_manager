@@ -2767,33 +2767,29 @@ def test_the_collection_actions_wait_for_a_folder(qt_app, settings):
         destroy(fresh)
 
 
-def test_a_first_run_opens_on_add_data(qt_app, settings):
-    """Curate is the right tab to come back to and the wrong one to arrive on.
-
-    With nothing ever scanned it holds an empty tree, no cue about what comes
-    first, and none of the three buttons that could do anything about it.
-    """
+def test_a_first_run_opens_on_curate(qt_app, settings):
+    """Curate once held an empty tree and no cue about what comes first, which
+    is why a first run opened on Add data instead. It now offers the folder to
+    read where the frames would be, so it is where a first run can act."""
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
 
     controller = CurationController(cache=FrameCache(), config=CONFIG)
     fresh = CurationWindow(controller, settings=settings)
     try:
-        assert fresh.tabs.currentWidget() is fresh.metadata_panel
+        assert fresh.tabs.currentWidget() is fresh.curate
+        assert fresh.image_panel.stack.currentWidget() is fresh.image_panel.nothing_read
     finally:
         destroy(fresh)
 
 
-def test_the_first_scan_hands_over_to_curate(qt_app, project: Path, settings):
-    """Opening on Add data is only half of it: once a folder has been scanned
-    there is something to curate, and leaving the reviewer on the tab they
-    started from would hide the tree they just filled."""
+def test_a_first_scan_leaves_the_reviewer_on_curate(qt_app, project: Path, settings):
+    """Nothing hands the tab over any more: the tab a first run starts on is
+    the tab that shows what the scan just found."""
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
 
     controller = CurationController(cache=FrameCache(), config=CONFIG)
     fresh = CurationWindow(controller, settings=settings)
     try:
-        assert fresh.tabs.currentWidget() is fresh.metadata_panel
-
         fresh.scan(str(project))
 
         assert fresh.tabs.currentWidget() is fresh.curate
