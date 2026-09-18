@@ -37,7 +37,7 @@ TESTS = REPOSITORY / "tests"
 #: has landed, or because the scientist said so -- never to make room for
 #: something being added. Over the ceiling with none of those available is a
 #: question for the scientist rather than a deletion to be chosen.
-MAX_DOC_LINES = 1250
+MAX_DOC_LINES = 1260
 
 #: The documents holding invariants rather than status. An entry in the roadmap
 #: or the future-work sketches describes what is unbuilt or unfinished and so

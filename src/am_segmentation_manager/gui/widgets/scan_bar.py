@@ -68,12 +68,10 @@ class ScanBar(QWidget):
         row.addWidget(self.browse_button)
 
         self.scan_button = QPushButton("Scan")
-        self.scan_button.setToolTip(
-            "Re-read the folder from disk. Use this after changing files "
-            "outside the window."
-        )
+        self.scan_button.setAutoDefault(False)
         self.scan_button.clicked.connect(self._scan_typed)
         row.addWidget(self.scan_button)
+        self.show_as_next_step(True)
 
     def browse(self) -> None:
         """Ask for a folder to scan, and request a scan of it if one is chosen.
@@ -87,6 +85,23 @@ class ScanBar(QWidget):
         if directory is not None:
             self.set_path(str(directory))
             self.scan_requested.emit(str(directory))
+
+    def show_as_next_step(self, waiting: bool) -> None:
+        """Draw Scan as the thing to press next, or as one button among several.
+
+        Nothing in the window works until a folder has been read, and until
+        then the button that reads one looked like every other button. Drawn in
+        the accent through Qt's *default* state, which the theme already tints:
+        a second way of marking one button would be a second thing to keep in
+        step with the accent. Enter is not bound to it -- that belongs to
+        dialogs, and the path field answers Enter itself.
+        """
+        self.scan_button.setDefault(waiting)
+        self.scan_button.setToolTip(
+            "Read this folder and list what it holds" if waiting else
+            "Re-read the folder from disk. Use this after changing files "
+            "outside the window."
+        )
 
     def set_path(self, path: str) -> None:
         """Show *path* as the folder being read."""

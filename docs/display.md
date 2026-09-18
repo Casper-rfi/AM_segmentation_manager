@@ -292,6 +292,14 @@ of one of these files, is held by `test_docs.py`.
 - **The folder is chosen in the tab row, not in a tab.** A scan serves all four, and only Curate
   could show which folder was read; the corner holds the path, Browse and Scan, and says on hover
   what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
+- **A window that has read nothing says so across the panes, and Scan is drawn as the thing to press**:
+  nothing in the window works until a folder is read, and empty panes waiting to be asked looked exactly like
+  those of a lamella holding nothing (`test_a_window_that_has_read_nothing_says_what_to_press`). The sentence
+  names the remembered folder, or says where to find one
+  (`test_a_window_with_no_folder_remembered_points_at_browse`); the button takes Qt's *default* state, which
+  the theme already tints. **Nothing is scanned at startup** — a remembered root may be large, or on a drive
+  that is not there — so Rescan reads the box instead of doing nothing
+  (`test_rescan_reads_the_remembered_folder_before_anything_has_been_scanned`).
 - **The corner is three runs with a rule between each, not one line of text**, read from the folder to what
   this machine is set to and the gear that changes it, and on to the mark
   (`test_the_corner_reads_from_the_folder_to_the_mark`). **The mark carries no words**: the title bar names

@@ -2832,6 +2832,36 @@ def test_a_remembered_folder_still_opens_on_curate(qt_app, settings, tmp_path):
         destroy(fresh)
 
 
+def test_a_window_that_has_read_nothing_says_what_to_press(qt_app, settings, project: Path):
+    """The window opens on empty panes that look no different from a lamella
+    with nothing in it, and nothing in it works until a folder is read."""
+    from am_segmentation_manager.gui.widgets.main_window import SETTING_SCAN_ROOT, CurationWindow
+
+    settings.setValue(SETTING_SCAN_ROOT, str(project))
+    fresh = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
+    try:
+        said = fresh.image_panel.pair.placeholder
+
+        assert "Scan" in said and project.name in said, "it names the folder waiting to be read"
+        assert fresh.scan_bar.scan_button.isDefault(), "and the button to press is the accented one"
+
+        fresh.scan(str(project))
+
+        assert not fresh.scan_bar.scan_button.isDefault(), "once read, it is a button like any other"
+        assert not fresh.image_panel.pair.placeholder, "and the panes have frames to draw"
+    finally:
+        destroy(fresh)
+
+
+def test_a_window_with_no_folder_remembered_points_at_browse(qt_app, settings):
+    """A first run of all has nothing to name, so it says where to find one."""
+    fresh = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
+    try:
+        assert "Browse" in fresh.image_panel.pair.placeholder
+    finally:
+        destroy(fresh)
+
+
 def test_rescan_reads_the_remembered_folder_before_anything_has_been_scanned(
     qt_app, settings, project: Path
 ):

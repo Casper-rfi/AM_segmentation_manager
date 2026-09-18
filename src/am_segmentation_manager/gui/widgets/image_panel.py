@@ -710,14 +710,25 @@ class ImagePanel(QWidget):
         """Say that the frame is still being prepared."""
         self._set_badges([("loading...", "info")])
 
-    def show_empty(self) -> None:
-        """Clear the panel when there is no frame at all."""
+    def show_empty(self, message: str = "") -> None:
+        """Clear the panel when there is no frame at all, saying *message* if given.
+
+        A window that has read nothing looks the same as one whose lamella
+        holds nothing, and the difference is that the first is waiting to be
+        asked. The panes are where somebody looks when a window seems empty, so
+        that is where what to do next is said.
+        """
         self.pair.clear()
         self.plot_view.clear()
         self.grid_view.clear_markers()
         self.grid_view.clear()
+        self.pair.set_placeholder(message)
         self._set_badges([])
         self.status.setText("")
+
+    def set_placeholder(self, text: str) -> None:
+        """Say *text* across the panes while they are empty, or "" to say nothing."""
+        self.pair.set_placeholder(text)
 
     def set_status(self, text: str) -> None:
         """Show the line describing where the user is."""
