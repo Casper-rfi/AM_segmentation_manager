@@ -510,8 +510,8 @@ of one of these files, is held by `test_docs.py`.
   zero-delay timer firing on a window already destroyed is the usual one — queues the failure
   dialog, and whichever test next turns the event loop opens it and waits for a click nobody gives.
   So patch it, and let a queued call run before `destroy`
-  (`test_the_window_opens_in_the_accent_its_settings_hold`); `-o faulthandler_timeout=120` names
-  the test that stalls.
+  (`test_the_window_opens_in_the_accent_its_settings_hold`); `-o faulthandler_timeout=600` names
+  the test that stalls, as every CI run does.
 - **Constructing a `QApplication` calls `setlocale(LC_ALL, "")`** — a process-global side effect,
   and `test_gui_*` sorts before most other tests. That is how a locale-dependent `strptime('%p')`
   bug appears only in full runs on a non-English locale. `LC_ALL=… pytest` does **not** test this;

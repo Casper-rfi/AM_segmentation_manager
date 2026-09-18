@@ -17,7 +17,7 @@ Every main function `CLAUDE.md` names is built, across the three series of image
 and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
 Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
-need the `ml` extra.
+need the `ml` extra, or `ml-cuda13` where the card is newer than its torch.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its
