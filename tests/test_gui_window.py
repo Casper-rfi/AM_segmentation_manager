@@ -2832,6 +2832,42 @@ def test_a_remembered_folder_still_opens_on_curate(qt_app, settings, tmp_path):
         destroy(fresh)
 
 
+def test_rescan_reads_the_remembered_folder_before_anything_has_been_scanned(
+    qt_app, settings, project: Path
+):
+    """A session that opens on a remembered folder has scanned nothing, and the
+    key that says Rescan did nothing at all -- silently, and now that F1 lists
+    it, having advertised itself first."""
+    from am_segmentation_manager.gui.widgets.main_window import SETTING_SCAN_ROOT, CurationWindow
+
+    settings.setValue(SETTING_SCAN_ROOT, str(project))
+    fresh = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
+    try:
+        assert fresh.controller.start_path is None, "nothing is read at startup"
+
+        fresh.rescan()
+
+        assert fresh.controller.start_path == project
+        assert fresh.controller.projects, "and the projects are there to work on"
+    finally:
+        destroy(fresh)
+
+
+def test_rescan_with_no_folder_to_read_says_so_rather_than_nothing(qt_app, settings, monkeypatch):
+    """The first run of all: nothing remembered, nothing typed."""
+    from am_segmentation_manager.gui.widgets import main_window as module
+
+    said = []
+    monkeypatch.setattr(module.CurationWindow, "_flash", lambda self, message, **kw: said.append(message))
+    fresh = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
+    try:
+        fresh.rescan()
+    finally:
+        destroy(fresh)
+
+    assert said and "Browse" in said[0], "and names the way out"
+
+
 def _menu_items(window, title: str) -> dict[str, str]:
     """Return ``{item text: shortcut}`` for one menu of the bar.
 

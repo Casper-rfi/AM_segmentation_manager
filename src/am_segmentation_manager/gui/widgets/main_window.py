@@ -1063,14 +1063,22 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 self.tabs.setCurrentWidget(self.curate)
 
     def rescan(self) -> None:
-        """Read the same folder again, staying on the lamella being reviewed.
+        """Read the folder again, staying on the lamella being reviewed.
 
         What follows anything that moved files. Scanning again is how the
         window learns what an operation did; going back to where the reviewer
         was is what stops that costing them their place.
+
+        Before anything has been read, this reads the folder the box holds --
+        the one a previous session left there. The key is called Rescan and a
+        key that does nothing is worse than one that is not there.
         """
-        if self.controller.start_path is None:  # pragma: no cover - always set by here
-            self.refresh(reload_lists=True)
+        if self.controller.start_path is None:
+            remembered = self.scan_bar.path_edit.text().strip()
+            if remembered:
+                self.scan(remembered)
+            else:
+                self._flash("No folder to read yet -- choose one with Browse")
             return
         self._reading(
             lambda on_progress: self.controller.rescan(on_progress),
