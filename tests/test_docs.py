@@ -36,7 +36,8 @@ TESTS = REPOSITORY / "tests"
 #: now sits in a docstring beside that code, because it was a plan and the work
 #: has landed, or because the scientist said so -- never to make room for
 #: something being added. Over the ceiling with none of those available is a
-#: question for the scientist rather than a deletion to be chosen.
+#: question for the scientist rather than a deletion to be chosen, and a raise
+#: is a commit of its own, made only after a `doc-audit` found nothing to move.
 MAX_DOC_LINES = 1260
 
 #: The documents holding invariants rather than status. An entry in the roadmap
@@ -45,12 +46,13 @@ MAX_DOC_LINES = 1260
 REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
 
 #: Entries in :data:`REFERENCE_DOCUMENTS` naming nothing a reader can check,
-#: and entries naming a test the suite defines. Both are ratchets, and both
-#: move only by a deliberate edit: an unbacked entry may be added only by
-#: fixing another, and a test pointer may not be traded for a weaker one.
-#: Neither ever forces a deletion -- a backed entry is free at any length.
+#: and entries naming no test the suite defines. Both are ceilings that only
+#: fall: an entry leaving for any reason lowers or keeps them, so moving one to
+#: a docstring never fails here, while a new entry naming no test, or a test
+#: pointer traded for a weaker one, costs an existing entry its weakness.
+#: Neither ever forces a deletion -- a test-backed entry is free at any length.
 MAX_UNBACKED_ENTRIES = 34
-MIN_TEST_BACKED_ENTRIES = 88
+MAX_ENTRIES_WITHOUT_A_TEST = 95
 
 
 def _documents() -> list[Path]:
@@ -131,7 +133,10 @@ def test_the_documents_stay_short_enough_to_read():
     }
     total = sum(counted.values())
 
-    assert total <= MAX_DOC_LINES, f"{total} lines: {counted}"
+    assert total <= MAX_DOC_LINES, (
+        f"{total} lines: {counted}. Run doc-audit; never raise the ceiling in "
+        "the commit that needs the room"
+    )
 
 
 #: Suffixes that make a dotted name a *file* rather than a reference to code --
@@ -393,12 +398,14 @@ def test_the_evidence_for_an_entry_is_not_traded_for_a_weaker_one():
     The other ratchet, and the one that matters for staleness: swapping a named
     test for a named function passes every other check in this file while
     quietly removing the only thing that would notice the entry going out of
-    date.
+    date. Counted as entries *without* a test, so an entry removed or moved to
+    a docstring beside its code can only lower it.
     """
-    backed = sum(1 for _name, entry in _reference_entries() if _backing(entry) == "test")
+    weak = sum(1 for _name, entry in _reference_entries() if _backing(entry) != "test")
 
-    assert backed >= MIN_TEST_BACKED_ENTRIES, (
-        f"{backed} entries name a live test, was {MIN_TEST_BACKED_ENTRIES}"
+    assert weak <= MAX_ENTRIES_WITHOUT_A_TEST, (
+        f"{weak} entries name no live test, was {MAX_ENTRIES_WITHOUT_A_TEST}: "
+        "name the test that guards the claim, or move it to a docstring"
     )
 
 

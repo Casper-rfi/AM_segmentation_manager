@@ -53,19 +53,36 @@ Four things go stale most often and are easy to miss:
 
 ## 4. Writing a new entry
 
-Put the fact in one place, chosen by the table in `CLAUDE.md` § Documentation. Behaviour
-of one module goes in its docstring, not in `docs/`.
+**First decide whether `docs/` gets one at all.** A new entry in `decisions.md` or
+`display.md` must answer yes to one of these, each a question the code settles:
+
+- **Does it constrain code outside the module it is about?** A rule a change elsewhere
+  could break — the state key, the write path, what the layers may import.
+- **Is it a trap no test or docstring beside the code can hold?** A Qt, platform or
+  environment behaviour that bites without warning.
+- **Is it a fact about the world rather than the code?** The reference collection, a
+  quirk of the microscope's header, the torch builds.
+
+If none holds — how one widget looks, why one control sits where it does — it goes in
+that module's docstring, with the test named there, and `docs/` stays as it was. Before
+adding an entry, look for one it extends: correcting an existing entry beats adding a
+neighbour to it.
+
+Put a fact in one place, chosen by the table in `CLAUDE.md` § Documentation.
 
 An entry in `decisions.md` or `display.md` **names the test that guards it**. A symbol
 only shows the name was not renamed; a passing test shows the behaviour still holds.
-`tests/test_docs.py` counts both and refuses to let either get worse.
+`tests/test_docs.py` caps the entries naming no test, and those naming nothing at all,
+and refuses to let either rise.
 
 ## 5. Removing an entry
 
 Only for one of the reasons listed on `MAX_DOC_LINES` in `tests/test_docs.py`, and say
 which in the commit message. **Never to make room for something you are adding.** If
-`docs/` is over the ceiling and none of those reasons applies, stop and ask the
-scientist — that is a decision, not a tidying job.
+`docs/` is over the ceiling, first ask whether the new entry passes step 4; then run
+`doc-audit`. If neither frees the room, stop and ask the scientist — that is a decision,
+not a tidying job. **Never raise `MAX_DOC_LINES` in the commit that needs the room**: a
+raise is its own commit, after an audit that found nothing to move.
 
 ## 6. Run the suite and the type check
 

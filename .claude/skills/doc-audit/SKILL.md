@@ -59,9 +59,10 @@ job. Length comes out of the reasons above or it does not come out.
 uv run pytest -q
 ```
 
-From the repository root; the run names the interpreter if it refuses. `test_docs.py` will say whether the ratchets moved --
-correcting an entry to name the test that guards it improves both, and tightening
-them to match is what stops the improvement being given back later.
+From the repository root; the run names the interpreter if it refuses. `test_docs.py`
+will say whether the ratchets moved -- correcting an entry to name the test that guards
+it, or moving it to a docstring, lowers both, and lowering the constants to match is
+what stops the improvement being given back later.
 
 ## Report
 
@@ -69,5 +70,6 @@ Every entry removed and under which reason. Every correction, with what was wron
 The line count before and after.
 
 If the count is still high and nothing else legitimately goes, **say so and
-stop**. That is an answer. Manufacturing the difference by compressing is how the
+stop**. That is an answer, and the only one after which the scientist may choose to
+raise `MAX_DOC_LINES` -- in a commit of its own that says this audit found nothing. Manufacturing the difference by compressing is how the
 documents become dense, unverifiable and still too long.
