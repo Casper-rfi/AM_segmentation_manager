@@ -58,6 +58,7 @@ from .controls import (
 )
 from .grid_view import GridView
 from .image_view import ImageView, LinkedImageViews
+from .nothing_read import NothingReadPage
 from .theme import BADGE_STYLES, GROUP_GAP
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -117,6 +118,11 @@ class ImagePanel(QWidget):
     #: a prepared image -- so the window answers these from the controller.
     path_requested = Signal()
     reveal_requested = Signal()
+    #: Emitted by the page shown before anything has been read: with the folder
+    #: to read, and when another folder is wanted. The window connects both to
+    #: what the tab row's Scan and Browse already do.
+    scan_requested = Signal(str)
+    browse_requested = Signal()
 
     def __init__(self, config: SegmentationConfig) -> None:
         super().__init__()
@@ -288,10 +294,14 @@ class ImagePanel(QWidget):
         self._swapping = False
         self.plot_view.zoomed.connect(self._plot_zoomed)
         self.grid_view = GridView()
+        self.nothing_read = NothingReadPage()
+        self.nothing_read.scan_requested.connect(self.scan_requested)
+        self.nothing_read.browse_requested.connect(self.browse_requested)
         self.stack = QStackedWidget()
         self.stack.addWidget(self.pair)
         self.stack.addWidget(self.plot_view)
         self.stack.addWidget(self.grid_view)
+        self.stack.addWidget(self.nothing_read)
         layout.addWidget(self.stack, stretch=1)
 
         # -- badges and legend ---------------------------------------------
@@ -710,25 +720,39 @@ class ImagePanel(QWidget):
         """Say that the frame is still being prepared."""
         self._set_badges([("loading...", "info")])
 
-    def show_empty(self, message: str = "") -> None:
-        """Clear the panel when there is no frame at all, saying *message* if given.
-
-        A window that has read nothing looks the same as one whose lamella
-        holds nothing, and the difference is that the first is waiting to be
-        asked. The panes are where somebody looks when a window seems empty, so
-        that is where what to do next is said.
-        """
+    def show_empty(self) -> None:
+        """Clear the panel when there is no frame at all."""
         self.pair.clear()
         self.plot_view.clear()
         self.grid_view.clear_markers()
         self.grid_view.clear()
-        self.pair.set_placeholder(message)
+        self._showing_nothing_read(False)
         self._set_badges([])
         self.status.setText("")
 
-    def set_placeholder(self, text: str) -> None:
-        """Say *text* across the panes while they are empty, or "" to say nothing."""
-        self.pair.set_placeholder(text)
+    def show_nothing_read(self, folder: str) -> None:
+        """Offer to read *folder* in place of the panes, or to choose one.
+
+        A window that has read nothing looks the same as one whose lamella
+        holds nothing, and the difference is that the first is waiting to be
+        asked. This is the middle of the window, where somebody looks when it
+        appears empty; the tab row's own controls are the same two actions.
+        """
+        self.show_empty()
+        self.nothing_read.show_folder(folder)
+        self._showing_nothing_read(True)
+
+    def _showing_nothing_read(self, showing: bool) -> None:
+        """Put the empty-window page in front, or the view the mode names.
+
+        The page is one of the stack's, so anything that switches views leaves
+        it: a scan is what ends the state it describes, and the frame that
+        follows must not arrive behind it.
+        """
+        if showing:
+            self.stack.setCurrentWidget(self.nothing_read)
+        elif self.stack.currentWidget() is self.nothing_read:
+            self.stack.setCurrentWidget(self.pair)
 
     def set_status(self, text: str) -> None:
         """Show the line describing where the user is."""

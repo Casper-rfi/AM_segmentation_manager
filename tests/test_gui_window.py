@@ -2832,32 +2832,48 @@ def test_a_remembered_folder_still_opens_on_curate(qt_app, settings, tmp_path):
         destroy(fresh)
 
 
-def test_a_window_that_has_read_nothing_says_what_to_press(qt_app, settings, project: Path):
+def test_a_window_that_has_read_nothing_offers_the_folder_it_remembers(
+    qt_app, settings, project: Path
+):
     """The window opens on empty panes that look no different from a lamella
-    with nothing in it, and nothing in it works until a folder is read."""
+    holding nothing, and nothing in it works until a folder is read. Pressing
+    the button in the middle is what the tab row's Scan does, where a first
+    user is already looking."""
     from am_segmentation_manager.gui.widgets.main_window import SETTING_SCAN_ROOT, CurationWindow
 
     settings.setValue(SETTING_SCAN_ROOT, str(project))
     fresh = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
     try:
-        said = fresh.image_panel.pair.placeholder
+        page = fresh.image_panel.nothing_read
+        assert fresh.image_panel.stack.currentWidget() is page, "in place of the panes"
+        assert project.name in page.scan_button.text(), "the button names what it would read"
+        assert page.path.text() == str(project), "and the path says which folder that is"
 
-        assert "Scan" in said and project.name in said, "it names the folder waiting to be read"
-        assert fresh.scan_bar.scan_button.isDefault(), "and the button to press is the accented one"
+        page.scan_button.click()
 
-        fresh.scan(str(project))
-
-        assert not fresh.scan_bar.scan_button.isDefault(), "once read, it is a button like any other"
-        assert not fresh.image_panel.pair.placeholder, "and the panes have frames to draw"
+        assert fresh.controller.start_path == project
+        assert fresh.image_panel.stack.currentWidget() is not page, "the page is done with"
+        assert not fresh.scan_bar.scan_button.isDefault(), "and Scan is a button like any other"
     finally:
         destroy(fresh)
 
 
-def test_a_window_with_no_folder_remembered_points_at_browse(qt_app, settings):
-    """A first run of all has nothing to name, so it says where to find one."""
+def test_a_window_with_no_folder_remembered_offers_to_choose_one(qt_app, settings, monkeypatch):
+    """A first run of all has nothing to name, so both ways in open the chooser."""
+    from am_segmentation_manager.gui.widgets import scan_bar as module
+
     fresh = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
+    asked = []
+    monkeypatch.setattr(module, "choose_directory", lambda *args, **kwargs: asked.append(args) or None)
     try:
-        assert "Browse" in fresh.image_panel.pair.placeholder
+        page = fresh.image_panel.nothing_read
+        assert fresh.image_panel.stack.currentWidget() is page
+        assert not page.path.isVisible(), "there is no folder to name"
+        assert not page.browse_button.isVisible(), "and no second way to say the same thing"
+
+        page.scan_button.click()
+
+        assert asked, "the one button opens the chooser"
     finally:
         destroy(fresh)
 

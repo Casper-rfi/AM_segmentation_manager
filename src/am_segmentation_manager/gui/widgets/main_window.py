@@ -598,6 +598,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.project_panel.lamellae_check_all.connect(self._check_all_lamellae)
         self.project_panel.shown_series_changed.connect(self._show_series)
 
+        self.image_panel.scan_requested.connect(self.scan)
+        self.image_panel.browse_requested.connect(self.scan_bar.browse)
         self.image_panel.mode_changed.connect(self._set_mode)
         self.image_panel.variant_changed.connect(self._set_variant)
         self.image_panel.overview_chosen.connect(self._choose_overview)
@@ -993,20 +995,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._flash(f"{noun} path copied")
         logger.info("Copied %s path to clipboard: %s", noun.lower(), path)
 
-    def _nothing_read_yet(self) -> str:
-        """Return what to do about a window that has read nothing, or "".
-
-        Empty once a folder has been read: a lamella holding no frames of the
-        series on screen is a different emptiness, and telling that reviewer to
-        press Scan would send them the wrong way.
-        """
-        if self.controller.start_path is not None:
-            return ""
-        remembered = self.scan_bar.path_edit.text().strip()
-        if remembered:
-            return f"Nothing read yet. Press Scan to read {Path(remembered).name}"
-        return "Nothing read yet. Choose a folder with Browse, then press Scan"
-
     def _flash(self, message: str, milliseconds: int = 2000) -> None:
         """Show a short confirmation at the pointer, taking no layout space."""
         QToolTip.showText(QCursor.pos(), message, self, QRect(), milliseconds)
@@ -1067,9 +1055,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         ):
             self.scan_bar.set_path(str(directory))
             self.scan_bar.show_as_next_step(False)
-            # Before the first frame arrives, which is a read away: what the
-            # panes say while they wait must not still be "press Scan".
-            self.image_panel.set_placeholder("")
             self.settings.setValue(SETTING_SCAN_ROOT, str(directory))
             self._show_folder_in_title(directory)
             if self._awaiting_first_scan:
@@ -1672,7 +1657,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             # Emptied rather than left as it was: the conditions on offer
             # belonged to a frame that is no longer on screen.
             self.image_panel.set_variants([])
-            self.image_panel.show_empty(self._nothing_read_yet())
+            if self.controller.start_path is None:
+                self.image_panel.show_nothing_read(self.scan_bar.path_edit.text().strip())
+            else:
+                self.image_panel.show_empty()
             return
 
         self.image_panel.set_available_modes(self.controller.available_modes())

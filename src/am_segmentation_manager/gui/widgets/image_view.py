@@ -102,15 +102,6 @@ def _with_margin(rect):
     )
 
 
-#: What a placeholder is written in: light, the pane behind it being near-black,
-#: and not the accent, which on these panes would read as something drawn.
-PLACEHOLDER_TEXT = "#b8b5b0"
-
-#: Kept clear either side of a placeholder, in pixels, so a line that fills the
-#: pane still reads as a sentence rather than as something cut off.
-PLACEHOLDER_MARGIN = 24
-
-
 class ImageView(QGraphicsView):
     """A single pane showing one image, with wheel zoom and drag panning."""
 
@@ -122,8 +113,6 @@ class ImageView(QGraphicsView):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
-        #: Said across the pane while it holds no picture; see `set_placeholder`.
-        self._placeholder = ""
         # Under the picture, and the size of it. Drawn only where the picture
         # is hidden, so what is left on screen still says where the frame ends;
         # see :data:`~...display.HIDDEN_IMAGE_GREY`.
@@ -200,9 +189,6 @@ class ImageView(QGraphicsView):
                 where the user had zoomed to, at the moment they are looking
                 at it, so the region on screen is kept instead.
         """
-        # A picture answers what the placeholder was there to ask about, and a
-        # sentence kept past that would be shown again by the next empty frame.
-        self._placeholder = ""
         shape = array.shape[:2]
         before = self._item.boundingRect()
         centre = self.mapToScene(self.viewport().rect().center())
@@ -309,46 +295,6 @@ class ImageView(QGraphicsView):
         self._item.setPixmap(QPixmap())
         self._sync_backdrop()
         self._shape = None
-
-    def set_placeholder(self, text: str) -> None:
-        """Say *text* across the empty pane, or "" to say nothing.
-
-        Drawn only while the pane holds no picture, so it can be left set: a
-        window that has read nothing is what this exists for, and the sentence
-        must not survive onto the first frame that arrives.
-        """
-        self._placeholder = text
-        self.viewport().update()
-
-    @property
-    def placeholder(self) -> str:
-        """Return what is said across the pane while it is empty."""
-        return self._placeholder
-
-    def drawForeground(self, painter, rect) -> None:  # noqa: N802 - Qt's own name
-        """Draw the placeholder across an empty pane, centred in the viewport.
-
-        In viewport coordinates rather than the scene's: an empty scene has no
-        extent to centre anything in, and text in scene units would be scaled
-        by whatever zoom the pane was left at.
-        """
-        super().drawForeground(painter, rect)
-        if not self._placeholder or not self._item.pixmap().isNull():
-            return
-        painter.save()
-        painter.resetTransform()
-        painter.setPen(QColor(PLACEHOLDER_TEXT))
-        # Wrapped, and inside a margin: a pane is narrower than a sentence,
-        # and text drawn to the edges of one reads as clipped even when it is
-        # not.
-        painter.drawText(
-            self.viewport().rect().adjusted(
-                PLACEHOLDER_MARGIN, 0, -PLACEHOLDER_MARGIN, 0
-            ),
-            Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
-            self._placeholder,
-        )
-        painter.restore()
 
     def fit(self) -> None:
         """Scale so the whole image is visible."""
@@ -527,16 +473,3 @@ class LinkedImageViews(QWidget):
         """Empty both panes."""
         self.left.clear()
         self.right.clear()
-
-    def set_placeholder(self, text: str) -> None:
-        """Say *text* across the left pane while it is empty.
-
-        One pane rather than both: the same sentence twice, side by side, reads
-        as two things to do.
-        """
-        self.left.set_placeholder(text)
-
-    @property
-    def placeholder(self) -> str:
-        """Return what the empty panes say."""
-        return self.left.placeholder
