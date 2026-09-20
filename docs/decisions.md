@@ -558,17 +558,17 @@ rather than appending to it.
   than an environment to activate (`test_the_refusal_names_a_command_that_can_be_run`). The Qt
   binding is the part of the wrong stack the suite can name — [`display.md`](display.md) § The
   binding.
-- **The reference collection is the live archive, and there is no disposable copy of it.**
-  `<collection>/` — a couple of hundred gigabytes covering
-  every layout era from pre-Autolamella to 2026-05, and still being added to, so any count of it
-  written down here is wrong by the time it is read. Point the smoke test at it with
-  `AM_SEG_REFERENCE_COLLECTION=<path> uv run pytest -q`.
+- **The reference collection is the live archive, and there is no disposable copy of it.** A couple
+  of hundred gigabytes covering every layout era from pre-Autolamella to 2026-05, and still being
+  added to, so any count of it written down here is wrong by the time it is read. It is named by
+  `AM_SEG_REFERENCE_COLLECTION=<path> uv run pytest -q` rather than by a path written down here, so
+  the rule travels to whoever holds a collection instead of describing one machine.
   **Never write to it.** Not a test, not a script, not an exploratory one-liner: nothing may create,
   move, overwrite or delete anything inside it without permission asked for and given for that
   specific change. It holds thousands of proofread labels that cannot be reconstructed, and the copy
-  that used to absorb mistakes is gone — which is why this entry names real data at all. Read it,
-  and copy *out* of it. `test_reference_collection.py` snapshots every file before and after;
-  nothing enforces this for anything else you run.
+  that used to absorb mistakes is gone. Read it, and copy *out* of it.
+  `test_reference_collection.py` snapshots every file before and after; nothing enforces this for
+  anything else you run.
 - **One environment, every dependency from PyPI, and `uv.lock` holding the versions tested.** Every
   `cv2` failure this package has met was two providers of one module — conda's `opencv` beside
   pip's, or `opencv-python` beside `opencv-python-headless` — so every

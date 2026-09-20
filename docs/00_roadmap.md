@@ -51,7 +51,4 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   obligation this package carries whatever licence it takes), no `CHANGELOG.md`, no
   `[project.urls]`, and the version pinned at `0.0.0`. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
-  under both on 2026-09-17. And
-  [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which
-  is what makes never writing to it a rule about a real place rather than a principle: decide then
-  whether a reader outside this machine needs the paths or only the rule.
+  under both on 2026-09-17.
