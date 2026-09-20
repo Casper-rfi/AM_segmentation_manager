@@ -13,7 +13,8 @@ recorded lamella on every Autolamella overview it can read, and
 reaches -- the ion beam, the stage facing the ion column, a pre-tilt below 45
 degrees, a compustage either way up, no scan rotation -- made by changing one
 real header. Each case records the header values the projection reads, so the
-suite needs no fibsem to compare against them.
+suite needs no fibsem to compare against them, and names its overview by an
+opaque id -- ``overview_sources.py`` says where the real names are kept.
 
 Nothing existing is overwritten unless ``--overwrite`` says so.
 """
@@ -30,6 +31,9 @@ from pathlib import Path
 import yaml
 from fibsem.imaging import tiled
 from fibsem.structures import BeamType, FibsemImage, FibsemStagePosition
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from overview_sources import identify  # noqa: E402 - beside this script, not on the path
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 FUNCTION = "calculate_reprojected_stage_position2"
@@ -131,8 +135,8 @@ def real_cases(collection: Path) -> list[dict]:
                 and abs(math.degrees(rotation - position.r)) <= ROTATION_TOLERANCE_DEG
             ]
             if entries:
-                cases.append({"overview": path.relative_to(collection).as_posix(), **case,
-                              "positions": entries})
+                cases.append({"overview": identify(path.relative_to(collection).as_posix()),
+                              **case, "positions": entries})
     return cases
 
 

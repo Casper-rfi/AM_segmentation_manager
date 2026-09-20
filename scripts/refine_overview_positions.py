@@ -50,6 +50,9 @@ from am_segmentation_manager.overview import (
     reproject,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from overview_sources import identify  # noqa: E402 - beside this script, not on the path
+
 REPOSITORY = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPOSITORY / "tests" / "data" / "overview_ground_truth.json"
 
@@ -199,7 +202,7 @@ def load_case(collection: Path, relative: str) -> Case | None:
         if target is not None:
             targets.append(target)
     return Case(
-        overview=overview.path.relative_to(collection).as_posix(),
+        overview=identify(overview.path.relative_to(collection).as_posix()),
         geometry=geometry_of(overview, metadata),
         display_path=choice.overview.display_path,
         targets=targets,
