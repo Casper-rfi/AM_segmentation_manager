@@ -892,8 +892,7 @@ def read_image_metadata(path: Path) -> ImageMetadata | None:
 
     Returns None when the file has no recognised header, or cannot be read at
     all. A batch over thousands of images must not stop because one file is
-    truncated -- 12 of 2680 in the reference collection are -- so failure is
-    logged and reported as absence.
+    truncated, so failure is logged and reported as absence.
 
     Raises:
         RuntimeError: If the optional image stack is not installed.

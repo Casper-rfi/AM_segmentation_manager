@@ -482,9 +482,9 @@ def _unindexed_findings(project_root: Path, survey: ProjectSurvey) -> list[Findi
 
     **The last-resort check for a layout nobody anticipated.** Every other
     finding describes something the conventions recognised; this one counts
-    what they did not reach at all, which is the failure that hides best --
-    before reference images were indexed, a project holding 430 images was
-    surveyed as holding 100, and nothing said so.
+    what they did not reach at all, which is the failure that hides best: a
+    project can be surveyed as holding a fraction of its images with nothing
+    saying so.
 
     Since the ``other`` series, an image no naming rule recognises is indexed
     rather than missed, and ``unrecognised-image`` reports that population per

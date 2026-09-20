@@ -50,9 +50,9 @@ class ImageRecord:
             reference images at once.
         acquired_at: when the instrument recorded taking the image, read from
             its header. Set for a loose image, which has nothing else that
-            orders it: 44% of them carry no timestamp in the filename, and the
-            epochs that do appear are when the milling stage started, up to
-            eleven minutes before the image. ``None`` for an Adaptive
+            orders it: many carry no timestamp in the filename, and the epochs
+            that do appear are when the milling stage started rather than when
+            the image was taken. ``None`` for an Adaptive
             Polishing image, whose filename carries the acquisition number
             that orders it, so its header is never opened.
         stage_path: the stage directory the image belongs to. Carried rather

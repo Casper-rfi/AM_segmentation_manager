@@ -543,12 +543,8 @@ class Scanner:
         that shape is invisible to a rule scoped to one lamella.
 
         A copy here is a filename and an acquisition time another lamella has
-        already used -- the same key :meth:`_copied_image_paths` was measured
-        on, and it is kept rather than loosened to time alone. Over the whole
-        reference collection, 2,514 loose images in 301 lamellae, this merges
-        11 files in 2 groups, every one byte-identical to what it merged with.
-        Dropping the filename from the key would have merged one file more, in
-        exchange for a key nothing has measured.
+        already used -- the same key :meth:`_copied_image_paths` uses, kept
+        rather than loosened to time alone.
 
         The earliest lamella keeps the image, so the copy that survives is the
         one whose lamella actually took it.
@@ -598,20 +594,15 @@ class Scanner:
         name that says what it is (``Polishing_alignment_reference_20-12-30_ib``
         or ``ref_alignment_ib``). The original is kept: it is the one file where
         several runs copy it, its name carries the milling task, and it sits at
-        the same point in a time-ordered timeline anyway. Over the reference
-        collection this matched 36 of the 51 run references, every one of them
-        byte-identical to the image it was matched with and none of the other
-        15 -- runs whose reference was never saved outside -- touched. The
-        containing directory and the acquisition time agreed on all 36
-        independently, so **neither signal is carrying this alone**.
+        the same point in a time-ordered timeline anyway. The containing
+        directory and the acquisition time must agree, so **neither signal
+        carries this alone**.
 
         Otherwise a copy is a filename and an acquisition time another
         directory has already used, which collapses the run copies among
         themselves. **The filename is what makes that one safe**: two images
         taken within one second are ordinary -- an alignment run takes several
-        -- so matching on time and size alone merged 38 groups of genuinely
-        different pictures, among them ``new_image_00`` and ``new_image_01`` of
-        one run.
+        -- so time and size alone would merge genuinely different pictures.
 
         Nothing is hashed. The acquisition time is already read for every loose
         image, and with either rule's second condition it partitions these

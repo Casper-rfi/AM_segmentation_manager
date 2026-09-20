@@ -615,10 +615,10 @@ def alignment_run_order(image_name: str) -> int:
 
     A run holds the reference image it aligns against, the images taken as it
     iterates, and the final one. A header records whole seconds, so several of
-    them land on the same second and need something to break the tie -- in the
-    reference collection 11 of 121 runs would otherwise read ``final_image``
-    before the last ``new_image``. The sequence is fixed by the names
-    Autolamella writes, which is what makes this a rule rather than a guess.
+    them land on the same second and need something to break the tie, or a run
+    reads ``final_image`` before its last ``new_image``. The sequence is fixed
+    by the names Autolamella writes, which is what makes this a rule rather
+    than a guess.
 
     Returns:
         A rank, or :data:`UNSEQUENCED` for a name outside the sequence.
