@@ -319,9 +319,6 @@ rather than appending to it.
   (`test_the_three_software_versions_are_kept_apart`). The microscope's own version is the only one
   the FEI dialect states, under `System.Software`, and so the only one covering the pre-Autolamella
   datasets.
-- **A label carries no header.** Its scale comes from the image it was drawn from, rescaled by the
-  ratio of their widths, a label converted from a prediction not necessarily sharing its image's
-  dimensions. `label_measure` returns no areas rather than assuming 1:1.
 - **Most TIFFs in a collection have no acquisition header, and should not.** Predictions, labels
   and autofocus frames are not acquisitions; only indexed *images* carry one. A count of
   "unreadable headers" over `rglob("*.tif")` measures the wrong population.
@@ -457,8 +454,6 @@ rather than appending to it.
 
 - **JSONL rather than YAML** buys three things a record needs and a control file does not — a
   one-write append, a union of two logs, and a damaged line costing only itself.
-- **A label is digested over its pixels, never its file bytes**, or `compress-labels` would report
-  each run as thousands of edits; `pixel_digest` states what that costs at the edges.
 - **An entry's id hashes its whole body, `at` and `batch` included**, so it is an identity rather
   than a fingerprint of the change: two runs of one operation get two ids. That is what a union
   needs — entries travel by file copy, keep their id and combine exactly once, uncoordinated.
@@ -466,8 +461,6 @@ rather than appending to it.
 - **A log tolerates what `state.py` refuses**: a control file must be understood completely before
   anything acts on it, a record must not lose four thousand entries over one bad line. Forward
   compatibility is append-only plus that tolerance.
-- **What a kind carries is a row in `history.KINDS`**, as a metadata field is a row in
-  `metadata.FIELDS`, and for the reason stated there.
 - **No name is recorded unless somebody states one.** There is no fallback to the account running
   the command: an account name is not a chosen identity, and **a log lives inside its project**, so
   depositing a collection deposits its logs — a guess written there is a name nobody agreed to
@@ -490,8 +483,6 @@ rather than appending to it.
 - **`AM_archive` is reserved and skipped at `subdirectories_by_name`**, the one function every
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
-- **What is archived asks the log, not the state**, for the reason `archive.py` opens with. Unknown
-  provenance counts as human work, which is every label in the collection today.
 - **A version that cannot be kept is not written over.** A failed archive copy stops the save at
   that label, keeping what was written before it, rather than replacing proofread work with no copy
   kept (`test_a_version_that_cannot_be_kept_is_not_written_over`); the copy lands whole or not at
@@ -586,7 +577,7 @@ rather than appending to it.
   (`test_torch_is_not_loaded_outside_the_module_that_runs_it`), so an environment without it is a
   subset rather than a peer. `required-environments` locks for Windows, Linux and Apple silicon on
   each supported Python — but a dependency lacking a wheel for one of them locks anyway and is
-  built from source there, as `stringzilla` 5.1.2 was on Windows 3.11. Nothing checks this yet.
+  built from source there, which on Windows means a C++ compiler. Nothing checks this yet.
 - **Windows and Linux take torch built for CUDA 12.6, not PyPI's.** PyPI's Windows torch is
   CPU-only, and its Linux torch needs a driver for CUDA 13 (580 or later); 12.6 runs on any driver
   from 525, the shared A100 workstations' 535 included. A lock cannot follow a machine's driver, so

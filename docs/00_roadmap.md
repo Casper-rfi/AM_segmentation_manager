@@ -30,8 +30,9 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 ## What to pick up next
 
 - **Cross-platform readiness**: CI passes on Linux, Windows and macOS, and Windows 11 has been worked through
-  by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`. Left: the window on an Ubuntu
-  desktop, and an A100 workstation taking the freest GPU with `nvidia-smi` showing the run on it alone. **Long
+  by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`. Left: the window at 125% and 150%
+  scaling on Windows and on an Ubuntu desktop, and an A100 workstation taking the freest GPU with `nvidia-smi`
+  showing the run on it alone. **No CI job installs `ml` on Windows, or `ml-cuda13` anywhere.** **Long
   paths off stays unchecked on a real machine**, `test_long_paths.py` forcing the probe's answer. **The
   Windows suite crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged;
   CI now names each test.
@@ -48,8 +49,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
   obligation this package carries whatever licence it takes), no `CHANGELOG.md`, no
-  `[project.urls]`, and the version pinned at `0.0.0`. `mypy` checks every module's annotations
-  and reports nothing. Run the workflow's `locale` job, German and Japanese, before any release,
+  `[project.urls]`, and the version pinned at `0.0.0`. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
   under both on 2026-09-17. And
   [`decisions.md`](decisions.md) § Environment names the collection by absolute path, which
