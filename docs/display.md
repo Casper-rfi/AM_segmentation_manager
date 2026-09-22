@@ -266,8 +266,9 @@ of one of these files, is held by `test_docs.py`.
   and a conflict exists precisely because there is not one — so nothing is chosen in advance and
   *Merge* stays disabled until every conflict is answered. **Qt makes the first accepting button in
   a `QDialogButtonBox` the default and draws it in the accent**, which recommends a side in the one
-  place nothing may: both are cleared and Cancel takes it, as before every other write. Return and
-  Escape therefore reach Cancel, which asks before discarding decisions already made.
+  place nothing may: both are cleared and Cancel takes it (`test_nothing_is_offered_as_the_answer`),
+  as before every other write. Return and Escape therefore reach Cancel, which asks before
+  discarding decisions already made.
 - **A conflict heading shows decisions and holds none.** Two marks per row, *Here* and *Copy*, each
   full, dotted or empty: a heading decided both ways must show some of each, which one control per
   row could not (`test_a_heading_shows_how_much_of_it_each_side_holds`). **The keys decide the
@@ -320,9 +321,10 @@ of one of these files, is held by `test_docs.py`.
 - **An earlier version replaces the label on the canvas rather than sitting beside it**, and so does
   the other side of a merge conflict. Segmentation is compared by flicking between two pictures in
   one place; side by side halves the resolution of both. Held on a key (**B**, V already showing and
-  hiding the label) rather than toggled, **badged while it shows** — the two look alike, and a
-  reviewer who cannot tell which is on screen is comparing without knowing what — and **not
-  paintable**, or a stroke would land on the label underneath, unseen. The difference mask draws
+  hiding the label) rather than toggled, **badged while it shows**
+  (`test_holding_b_shows_the_copys_label_and_says_so`) — the two look alike, and a reviewer who
+  cannot tell which is on screen is comparing without knowing what — and **not paintable**, or a
+  stroke would land on the label underneath, unseen. The difference mask draws
   with a class value no configuration defines, so it appears in the colour reserved for an
   unconfigured class rather than as a segmentation; **flat, one colour**, since with several classes
   on both sides colouring by what each holds has no readable scheme and the mask becomes the thing

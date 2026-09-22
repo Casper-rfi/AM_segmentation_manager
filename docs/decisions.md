@@ -415,8 +415,9 @@ rather than appending to it.
   scanner reading it to order stages and this to remove one.
 - **Series is the one filter that does not open on everything.** Every other control starts wide
   and narrows towards an export; this one starts on Adaptive Polishing unless the settings say
-  otherwise, a tab *silently* counting the rest disagreeing with `create-training-csv`. A dedicated control rather than a derived
-  filter row, and switches rather than a dropdown, an export covering two series being a real
+  otherwise, a tab *silently* counting the rest disagreeing with `create-training-csv`
+  (`test_the_series_control_opens_on_adaptive_polishing_alone`). A dedicated control rather than a
+  derived filter row, and switches rather than a dropdown, an export covering two series being a real
   request. The metadata CSV names the series of every row, and `task` beside it: a row not saying
   which it came from cannot be read.
 - **The Export tab opens on the whole collection, so it counts what that admits.** The
@@ -464,7 +465,8 @@ rather than appending to it.
 - **No name is recorded unless somebody states one.** There is no fallback to the account running
   the command: an account name is not a chosen identity, and **a log lives inside its project**, so
   depositing a collection deposits its logs — a guess written there is a name nobody agreed to
-  publish. An entry with no stated author carries neither field.
+  publish (`test_no_name_is_resolved_when_nobody_stated_one`). An entry with no stated author
+  carries neither field.
 - **Attribution is a record, not an authentication**: `by_source` says how a name was arrived at,
   every value left being a deliberate statement. `declared` is the one nothing can verify, so
   `history` never prints it silently.
@@ -510,8 +512,8 @@ rather than appending to it.
   policy**: a count of recent versions cannot know which states somebody named, so it could leave
   one pointing at pixels that are gone.
 - **A round still open is never collapsed**, so nothing is removed until a savepoint has been
-  taken. Cut **by position, not by time** — one written in the same millisecond as a save cannot be
-  ordered against it.
+  taken (`test_work_done_since_the_last_savepoint_is_never_collapsed`). Cut **by position, not by
+  time** — one written in the same millisecond as a save cannot be ordered against it.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
   establish an ancestor without the log. The archive is a cache, so `--with-archive` is opt-in —
   and **a merged log names versions this collection does not hold**, which the version list says.
