@@ -10,7 +10,7 @@ PyYAML's C loader is used where it was built against libyaml: Autolamella's
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -86,17 +86,29 @@ def read_yaml_or_problem(path: Path) -> tuple[dict[str, Any], str | None]:
 
 
 def write_yaml(
-    path: Path, body: Mapping[str, Any], *, header: str = "", sort_keys: bool = False
-) -> None:
+    path: Path,
+    body: Mapping[str, Any],
+    *,
+    header: str = "",
+    sort_keys: bool = False,
+    commit_if: Callable[[Path], bool] | None = None,
+) -> bool:
     """Write *body* to *path* as YAML beneath *header*, replacing the file whole.
 
     Args:
         header: Comment lines to open the file with, each ending in a newline.
         sort_keys: Sort every mapping's keys; otherwise they keep their order.
+        commit_if: As :func:`.atomic.write_atomically`: asked just before the
+            rename whether to go ahead.
+
+    Returns:
+        Whether *path* was replaced.
     """
     import yaml
 
     text = header + yaml.safe_dump(
         dict(body), sort_keys=sort_keys, allow_unicode=True, default_flow_style=False
     )
-    write_atomically(path, lambda temporary: temporary.write_text(text, encoding="utf-8"))
+    return write_atomically(
+        path, lambda temporary: temporary.write_text(text, encoding="utf-8"), commit_if=commit_if
+    )

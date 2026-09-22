@@ -1,12 +1,11 @@
 """Workflow state changes for selected, deselected and corrected records.
 
 State is declared in a stage's ``AM_state.yaml``, so a change edits that file and
-moves nothing. **Validate the whole batch, then act**: every stage file is resolved
-and re-checked against what the plan read before the first write, so two places
-curating at once fail with nothing written. **A corrected group is never left
-without** ``allow_leaving_corrected``. **An unmigrated stage is refused**, its
-unlisted groups reading as selected, until ``scripts/migrate_state.py`` transcribes
-its folders.
+moves nothing. **Validate the whole batch, then act**: every stage file is re-checked
+against what the plan read before the first write. **A corrected group is never left
+without** ``allow_leaving_corrected``, and **a write that could replace its label asks
+the file, not the record** (:func:`declared_states`). **An unmigrated stage is
+refused** until ``scripts/migrate_state.py`` transcribes its folders.
 """
 from __future__ import annotations
 
@@ -34,6 +33,7 @@ from ..state import (
     RecordState,
     StageState,
     StaleState,
+    StateFileError,
     read_state,
     state_key,
     write_state,
@@ -45,10 +45,12 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "RecordState",
     "StaleState",
+    "StateFileError",
     "TransitionPlan",
     "UnmigratedStage",
     "apply_plan",
     "current_state",
+    "declared_states",
     "plan_transition",
     "transition_records",
     "deselect_records",
@@ -110,8 +112,9 @@ def current_state(record: ImageRecord) -> RecordState:
 
     Read from the record rather than from the filesystem: the scanner sets it
     from the stage's declared state, and a successful transition updates it.
-    The one place the package asks this question, so how a record carries its
-    state stays a detail of :class:`~..models.ImageRecord`.
+    The one place the package asks this question of a record, so how a record
+    carries its state stays a detail of :class:`~..models.ImageRecord`; a write
+    about to replace a label asks :func:`declared_states` instead.
     """
     return record.state
 
@@ -160,8 +163,42 @@ def _stage_and_key(record: ImageRecord) -> tuple[Path, str]:
             f"{record.image_path} is not in a recognised image directory, "
             "so its workflow state cannot be declared"
         )
-    stage_directory = identity.parent.parent
-    return stage_directory, state_key(identity, stage_directory)
+    return _stage_and_key_of_label(identity)
+
+
+def _stage_and_key_of_label(label_path: Path) -> tuple[Path, str]:
+    """Return the stage declaring the group whose label is *label_path*, and its key.
+
+    A label directory sits directly in its stage, whether its images fill a
+    directory beside it or sit loose in the stage itself.
+    """
+    stage_directory = label_path.parent.parent
+    return stage_directory, state_key(label_path, stage_directory)
+
+
+def declared_states(label_paths: Iterable[Path]) -> dict[Path, RecordState]:
+    """Return the state each label's group is declared in now, read from disk.
+
+    :func:`current_state` answers from the record, which holds what the file
+    said at the last scan; this is the answer for a write about to replace a
+    label, which must not trust that. Each stage's file is read once.
+
+    Args:
+        label_paths: Labels as :func:`group_identity` names them -- where each
+            group's label is or would be.
+
+    Raises:
+        StateFileError: If a stage's file cannot be read. A write that cannot
+            tell whether a label is corrected must not go ahead.
+    """
+    stages: dict[Path, StageState] = {}
+    declared: dict[Path, RecordState] = {}
+    for label_path in label_paths:
+        stage_directory, key = _stage_and_key_of_label(label_path)
+        if stage_directory not in stages:
+            stages[stage_directory] = read_state(stage_directory)
+        declared[label_path] = stages[stage_directory].state_of(key)
+    return declared
 
 
 def _has_nested_files(stage_directory: Path) -> bool:

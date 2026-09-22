@@ -26,7 +26,7 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
   `<stem>.tif` flat into one directory, which this collection's repeated filenames would overwrite;
   MONAI, mlflow and its torch index are not ours; and whether it is a dependency or an environment
   a child process runs, as predicting already is.
-- **Splitting the five classes that outgrew a screen** — `CurationWindow` (89 methods, 1655
+- **Splitting the five classes that outgrew a screen** — `CurationWindow` (89 methods, 1657
   lines), `CurationController` (82), `LabelPanel` (66), `ExportController` (48) and `ExportPanel`
   (31). None is public API — that is six names and the `am-seg` entry point — so this is
   maintainability, not a break a user would see, and it is deliberately not done before a release.

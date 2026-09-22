@@ -10,6 +10,8 @@ somebody proofread for an hour are both ``annotated`` and both ``selected``.
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -757,3 +759,69 @@ def test_a_missing_label_has_no_digest(tmp_path: Path):
     assert label_digest(write_label(tmp_path / "label.tif", label(2))) == (
         label_fields(label(2))["digest"]
     )
+
+
+# ---------------------------------------------------------------------------
+# A label that will not decode
+# ---------------------------------------------------------------------------
+
+UNDECODABLE = b"II*\x00 not a label any reader can decode"
+
+
+def test_a_label_that_will_not_decode_is_kept_as_its_bytes(tmp_path: Path, recorder):
+    """Nobody can say what it held, which is the reason to keep it."""
+    project = logged(tmp_path / "project")
+    destination = project / "sem_labels" / "img.tif"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(UNDECODABLE)
+
+    save(destination, label(), recorder)
+
+    [kept] = versions_of(project, "sem_labels/img.tif")
+    assert kept.path.read_bytes() == UNDECODABLE
+    assert (read_label(destination) == label()).all()
+    [entry] = read_log(project).events
+    assert entry.data["archived_as"] == kept.path.relative_to(project).as_posix()
+
+
+def test_a_conversion_over_a_label_that_will_not_decode_keeps_its_bytes(
+    tmp_path: Path, recorder
+):
+    from am_segmentation_manager.models import ImageRecord
+    from am_segmentation_manager.operations.predictions import convert_record_predictions
+
+    project = logged(tmp_path / "project")
+    image = write_label(project / "sem" / "img.tif", label(0))
+    prediction = write_label(project / "sem_predictions" / "img.tif", label(1))
+    destination = project / "sem_labels" / "img.tif"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(UNDECODABLE)
+    record = ImageRecord(
+        image_path=image, labels=[destination], predictions=[prediction], modality="SEM",
+    )
+
+    convert_record_predictions([record], overwrite=True, recorder=recorder)
+
+    [kept] = versions_of(project, "sem_labels/img.tif")
+    assert kept.path.read_bytes() == UNDECODABLE
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_a_label_that_cannot_be_read_at_all_is_not_written_over(tmp_path: Path, recorder):
+    from am_segmentation_manager.operations.label_save import SaveStopped
+
+    project = logged(tmp_path / "project")
+    destination = project / "sem_labels" / "img.tif"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(UNDECODABLE)
+    destination.chmod(0o200)
+    try:
+        if os.access(destination, os.R_OK):
+            pytest.skip("this account reads files whatever their permissions")
+        with pytest.raises(SaveStopped, match="not written over"):
+            save(destination, label(), recorder)
+    finally:
+        destination.chmod(0o600)
+
+    assert destination.read_bytes() == UNDECODABLE
+    assert not archive_root(project).exists() or not any(archive_root(project).rglob("*.tif"))

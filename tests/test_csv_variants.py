@@ -14,6 +14,7 @@ from pathlib import Path
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.operations.csv import split_pairs
 from am_segmentation_manager.state import read_state
+from conftest import write_label
 
 SEM_VARIANTS = ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4")
 
@@ -22,10 +23,14 @@ def make_project(root: Path, acquisitions: int = 1) -> Path:
     """Three SEM conditions sharing one label per acquisition, plus a FIB image."""
     project = root / "project"
     lamella = project / "lam_010"
-    for directory in (*SEM_VARIANTS, "FIB", "labels", "labels_FIB"):
+    for directory in (*SEM_VARIANTS, "FIB"):
         (lamella / directory).mkdir(parents=True, exist_ok=True)
         for number in range(acquisitions):
             (lamella / directory / f"img_{number:04d}.tif").write_bytes(b"")
+    # Annotated, because an export pairs only a label it can see is not blank.
+    for directory in ("labels", "labels_FIB"):
+        for number in range(acquisitions):
+            write_label(lamella / directory / f"img_{number:04d}.tif", "annotated")
     (project / "AM_metadata.yaml").write_text("metadata:\n  sample: HeLa\n", encoding="utf-8")
     return project
 
@@ -45,7 +50,7 @@ def export(
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
         "--lamella", "all", "--stage", "all", "--image", "all", "--state", "all",
         "--modality", modality,
-        "-o", str(output), "--split", split, "--include-empty-labels", *extra,
+        "-o", str(output), "--split", split, *extra,
     ]) == 0
     with (output / "dataset_train.csv").open() as handle:
         return list(csv.DictReader(handle))

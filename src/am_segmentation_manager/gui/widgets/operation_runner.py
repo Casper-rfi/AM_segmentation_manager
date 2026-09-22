@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
 
-from ...progress import Cancellation
+from ...progress import Cancellation, StoppedPartway
 from ..report import OperationReport
 from .busy_dialog import BusyDialog
 from .report_dialog import ReportDialog
@@ -90,10 +90,20 @@ class OperationRunner(_Window):
         on_done(result)
 
     def _operation_failed(self, error) -> None:
-        """Report an operation that raised, on the thread that can show it."""
+        """Report an operation that raised, and bring the window back in step.
+
+        Brought into step whatever the failure, because failing is not the same
+        as having changed nothing: a run stopped partway names what it wrote,
+        and those files go on their records as after a finished run.
+        """
         logger.warning("Operation failed: %s", error)
         pending = self._take_pending_operation()
         description = pending[0] if pending else "Operation failed"
+        if isinstance(error, StoppedPartway) and error.written:
+            self.controller.attach_written(error.written)
+            self.export_controller.forget_labels(error.written)
+            self.label_panel.refresh()
+        self.refresh(reload_lists=True)
         QMessageBox.critical(self, description, str(error))
 
     def _operation_running(self) -> bool:

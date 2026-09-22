@@ -125,6 +125,10 @@ def is_label_file_empty(path: Path) -> bool | None:
     except Exception as exc:  # noqa: BLE001 - an unreadable label must not raise here
         logger.warning("Could not read label %s: %s", path, exc)
         return None
+    # tifffile answers some damaged files with no pixels rather than an error.
+    if array.size == 0:
+        logger.warning("Could not read label %s: it holds no pixels", path)
+        return None
     return is_empty_label(to_2d(array))
 
 
@@ -369,24 +373,57 @@ def save_label_image(mask: np.ndarray, output_path: Path, original_dtype: DTypeL
     write so the output always stays readable with whatever stack is
     present.
 
+    **The file holds exactly the pixels asked for, or this raises**: it is read
+    back before returning, so a caller writing to a temporary never renames a
+    wrong or empty file over a label.
+
     Args:
         mask: 2D array of discrete label values.
         output_path: Destination path; parent directories are created if
             needed.
         original_dtype: The bit-depth to preserve -- ``numpy.uint16`` keeps
             16-bit output, anything else is written as 8-bit.
+
+    Raises:
+        ValueError: If *mask* is not a single 2D plane, or holds a value the
+            written bit-depth cannot represent exactly.
+        OSError: If OpenCV could not write the file, or what it wrote does not
+            read back as *mask*.
     """
     import cv2
     import numpy as np
+    import tifffile
+
+    if mask.ndim != 2:
+        raise ValueError(
+            f"{output_path.name}: a label is one 2D plane, not an array of shape {mask.shape}"
+        )
+    # A value the cast cannot represent is what the comparison below catches.
+    with np.errstate(invalid="ignore"):
+        stored: np.ndarray = mask.astype(np.uint16 if original_dtype == np.uint16 else np.uint8)
+    if not np.array_equal(stored, mask):
+        raise ValueError(
+            f"{output_path.name}: holds values a {stored.dtype} label cannot represent "
+            f"exactly (a {mask.dtype} array)"
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    mask = mask.astype(np.uint16 if original_dtype == np.uint16 else np.uint8)
     if has_compression_support():
-        cv2.imwrite(str(output_path), mask, [cv2.IMWRITE_TIFF_COMPRESSION, _TIFF_COMPRESSION_LZW])
+        compression = _TIFF_COMPRESSION_LZW
     else:
         logger.warning(
             "imagecodecs not installed; writing %s uncompressed. Install the "
             "'all' extra for smaller label files.",
             output_path,
         )
-        cv2.imwrite(str(output_path), mask, [cv2.IMWRITE_TIFF_COMPRESSION, _TIFF_COMPRESSION_NONE])
+        compression = _TIFF_COMPRESSION_NONE
+    # OpenCV reports a failed write by returning False rather than raising.
+    if not cv2.imwrite(str(output_path), stored, [cv2.IMWRITE_TIFF_COMPRESSION, compression]):
+        raise OSError(f"OpenCV could not write {output_path}")
+
+    try:
+        written = tifffile.imread(str(output_path))
+    except Exception as error:  # noqa: BLE001 - any failure to decode is the same answer
+        raise OSError(f"{output_path} did not read back after writing: {error}") from error
+    if written.shape != stored.shape or not np.array_equal(written, stored):
+        raise OSError(f"{output_path} did not read back as the label written")

@@ -342,7 +342,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "Export images whose label holds only background. Excluded by "
             "default: the segmentation software writes an empty label for every "
             "image it is pointed at, so exporting one pairs an image with a "
-            "blank mask"
+            "blank mask. A label that cannot be read is left out either way, "
+            "and counted"
         ),
     )
     create_training_csv.add_argument(

@@ -1,11 +1,12 @@
 """Writing proofread labels back to disk.
 
 The whole batch is validated before any of it is written, and each file goes
-through a temporary renamed into place, so a save neither stops partway nor
-leaves a truncated label. Two things stop a write on their own: a label whose
+through a temporary renamed into place, so no label is left truncated. A write
+failing partway raises :class:`SaveStopped` carrying what was written before
+it, so a caller can settle those. Two things stop a write on their own: a label whose
 file changed on disk since it was read, which would be overwritten blind, and
-one whose group is declared corrected, which nothing here touches without the
-reviewer saying so.
+one whose group is declared corrected -- in its state file now, not only when it
+was opened -- which nothing here touches without the reviewer saying so.
 """
 from __future__ import annotations
 
@@ -17,8 +18,10 @@ from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
 from ..io.long_paths import refuse_unreachable
-from .archive import ArchiveFailed, Archivist, archive_paths_for, archive_replaced
+from ..progress import StoppedPartway
+from .archive import Archivist, archive_paths_for, archive_replaced
 from .label_io import label_fields, read_label, replacement_fields, save_label_image
+from .selection import declared_states
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -39,7 +42,7 @@ __all__ = [
 ]
 
 
-class SaveStopped(RuntimeError):
+class SaveStopped(StoppedPartway):
     """Raised when a save stopped partway, having written what it reports and nothing after.
 
     Attributes:
@@ -48,7 +51,7 @@ class SaveStopped(RuntimeError):
     """
 
     def __init__(self, message: str, report: SaveReport) -> None:
-        super().__init__(message)
+        super().__init__(message, report.written)
         self.report = report
 
 
@@ -174,9 +177,19 @@ class SaveReport:
 def plan_saves(items) -> SavePlan:
     """Sort *items* into what can be written, what needs consent, and what cannot.
 
+    A label is corrected if its item says so or its stage's state file does
+    now: the item carries what was known when the label was opened, and a
+    group marked corrected since must still be asked about.
+
     Args:
         items: The :class:`LabelToSave` entries a save would cover.
+
+    Raises:
+        StateFileError: If a stage's state file cannot be read, so whether a
+            label there is proofread cannot be told.
     """
+    items = list(items)
+    declared = declared_states(item.destination for item in items)
     writes: list[LabelToSave] = []
     corrected: list[LabelToSave] = []
     stale: list[LabelToSave] = []
@@ -187,7 +200,7 @@ def plan_saves(items) -> SavePlan:
                 "Label %s changed on disk since it was opened", item.destination
             )
             stale.append(item)
-        elif item.corrected:
+        elif item.corrected or declared[item.destination] == "corrected":
             corrected.append(item)
         else:
             writes.append(item)
@@ -215,10 +228,13 @@ def save_labels(
         StaleLabels: If any label's file changed after it was opened.
         PermissionError: If any destination is already corrected and
             *allow_corrected* was not set.
+        StateFileError: If a stage's state file cannot be read. Nothing is
+            written.
         PathTooLong: If Windows cannot reach a label or the archived copy of
             what it replaces here. Checked before anything is written.
-        SaveStopped: If the version a label replaces could not be kept. That
-            label and every one after it are left as they were.
+        SaveStopped: If a label could not be written, or the version it
+            replaces could not be kept. That label and every one after it are
+            left as they were; the error carries what was written before it.
     """
     plan = plan_saves(items)
 
@@ -250,21 +266,34 @@ def save_labels(
     batch = (*plan.writes, *plan.corrected)
     for item in batch:
         previous = _previous_pixels(item) if recorder is not None else None
+
+        def write(temporary: Path, item: LabelToSave = item) -> None:
+            save_label_image(item.label, temporary, item.label.dtype)
+
+        def unchanged(temporary: Path, item: LabelToSave = item) -> bool:
+            return fingerprint_of(item.destination) == item.fingerprint
+
+        # Past the first write, a failure of any kind must say what was written:
+        # a caller still holding those labels as unsaved would next find them
+        # "changed on disk" and be told to discard the edits it has not saved.
         try:
             archived = archive_replaced(
                 archivist, item.destination, previous, replacement=item.label
             )
-        except ArchiveFailed as error:
+            if archived is not None:
+                kept.append(archived)
+            # Asked again just before the rename: the plan's check is as old as
+            # the batch, and a label rewritten since is not to be overwritten.
+            if not write_atomically(item.destination, write, commit_if=unchanged):
+                raise StaleLabels(
+                    f"{item.destination.name} changed on disk while the save was "
+                    f"running, so it was not written over"
+                )
+        except Exception as error:
             raise SaveStopped(
                 f"Saved {len(written)} of {len(batch)} label(s), then stopped: {error}",
                 SaveReport(tuple(written), tuple(created), tuple(kept)),
             ) from error
-        if archived is not None:
-            kept.append(archived)
-        def write(temporary: Path, item: LabelToSave = item) -> None:
-            save_label_image(item.label, temporary, item.label.dtype)
-
-        write_atomically(item.destination, write)
         written.append(item.destination)
         if item.created:
             created.append(item.destination)

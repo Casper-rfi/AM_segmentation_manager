@@ -36,6 +36,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   paths off stays unchecked on a real machine**, `test_long_paths.py` forcing the probe's answer. **The
   Windows suite crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged;
   CI now names each test.
+- **Finish the code review of 2026-09-21**: two findings to verify, three minor; `plans/review_fixes.md`.
 - **Try the conflict resolver on a real merge.** Its keys have been exercised only through their
   handlers, an offscreen window never being activated.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,

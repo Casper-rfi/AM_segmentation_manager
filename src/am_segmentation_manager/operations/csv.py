@@ -5,9 +5,10 @@ side (``sem_image, sem_label, fib_image, fib_label``), a single-beam selection
 writes ``image, label``, and a cell is blank where that beam has no image or no
 label worth pairing with one.
 
-Two rules nothing may get past: an empty label is never written as a training
-pair, and a split never cuts a group -- the label in a single-beam export, the
-acquisition in a paired one. ``docs/decisions.md`` § Counting and export says why.
+Two rules nothing may get past: an empty label, or one that could not be read to
+tell, is never written as a training pair; and a split never cuts a group -- the
+label in a single-beam export, the acquisition in a paired one.
+``docs/decisions.md`` § Counting and export says why.
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from ..io.path import exported_relative_path
 from ..io.tables import write_csv
 from ..models import ImageRecord
 from .label_groups import condition_sort_key
-from .label_io import is_label_file_empty
+from .label_io import has_image_stack_support, is_label_file_empty
 from .training_manifest import manifest_path, write_training_manifest
 
 logger = logging.getLogger(__name__)
@@ -122,19 +123,39 @@ def _label_cell(
 ) -> str:
     """Return the path of a label worth pairing with an image, or blank.
 
-    Blank covers both "no label" and "a label holding nothing but background",
-    which are different facts about the archive but the same instruction to a
-    training run: there is nothing here to learn from. Which of the two it was
-    is the preview's to report, not the file's.
+    Blank covers "no label", "a label holding nothing but background" and "a
+    label whose contents could not be read", which are different facts about
+    the archive but the same instruction to a training run: nothing here is
+    known to be worth learning from. An unreadable label is left out even
+    with *include_empty_labels*, which asks for blank masks known to be blank.
+    Which it was is the preview's to report, not the file's.
     """
     if record is None:
         return ""
     label = find_matching_label(record)
     if label is None:
         return ""
-    if not include_empty_labels and is_empty(label) is True:
+    empty = is_empty(label)
+    if empty is None or (empty and not include_empty_labels):
         return ""
     return exported_relative_path(label, start_path)
+
+
+def unreadable_labels(
+    records: Iterable[ImageRecord],
+    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+) -> list[Path]:
+    """Return the labels of *records* whose contents could not be read, once each.
+
+    Unreadable here includes a label that could not be opened because the image
+    stack is not installed: either way nobody can say whether it is blank.
+    """
+    found: dict[Path, None] = {}
+    for record in records:
+        label = find_matching_label(record)
+        if label is not None and label not in found and is_empty(label) is None:
+            found[label] = None
+    return list(found)
 
 
 def build_training_rows(
@@ -327,7 +348,8 @@ def export_training_csv(
         train_ratio: Ratio of rows assigned to training (0.0 to 1.0).
         seed: Optional seed for a reproducible split.
         include_empty_labels: Pair an image with a label holding nothing but
-            background. Off by default: the segmentation software writes an
+            background. A label that could not be read is left out either way,
+            and counted. Off by default: the segmentation software writes an
             empty label for every image it is pointed at, so an existing label
             file is not evidence of annotation, and exporting one actively
             teaches a model that the structure is background. Turn it on only
@@ -385,6 +407,14 @@ def export_training_csv(
     )
     if not rows:
         logger.warning("No image/label pairs found to export")
+    unreadable = unreadable_labels(selected, is_empty)
+    if unreadable:
+        logger.warning(
+            "Left out %d label(s) whose contents could not be read, so could not "
+            "be told blank or annotated%s", len(unreadable),
+            "" if has_image_stack_support() else
+            ": the image stack is not installed; install the 'all' extra",
+        )
     if paired:
         left_out = "label_cells_left_blank", sum(
             1 for row in rows for cell in (row.values[1], row.values[3]) if not cell
@@ -446,6 +476,7 @@ def export_training_csv(
             "train": len(train_rows),
             "validation": len(val_rows),
             left_out[0]: left_out[1],
+            "unreadable_labels_left_out": len(unreadable),
         },
         user=user,
     )

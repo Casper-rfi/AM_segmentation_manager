@@ -10,6 +10,7 @@ from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.csv import export_training_csv, find_matching_label
 from am_segmentation_manager.state import read_state, write_state
+from conftest import write_label
 
 
 def _declare_corrected(stage: Path, names: list[str]) -> None:
@@ -49,7 +50,7 @@ def test_export_training_csv_full_split(tmp_path: Path):
         img = sem / f"AP_img_{i:03d}_SEM.tif"
         lbl = labels / f"AP_img_{i:03d}_SEM.tif"
         img.write_text("img")
-        lbl.write_text("lbl")
+        write_label(lbl, "annotated")
         records.append(
             ImageRecord(
                 image_path=img,
@@ -99,7 +100,7 @@ def test_export_training_csv_reproducibility(tmp_path: Path):
         img = sem / f"AP_img_{i:03d}_SEM.tif"
         lbl = labels / f"AP_img_{i:03d}_SEM.tif"
         img.write_text("img")
-        lbl.write_text("lbl")
+        write_label(lbl, "annotated")
         records.append(
             ImageRecord(
                 image_path=img,
@@ -132,7 +133,7 @@ def test_cli_create_training_csv_integration(tmp_path: Path):
 
     for i in range(5):
         (sem / f"img{i}.tif").write_text("img")
-        (labels / f"img{i}.tif").write_text("lbl")
+        write_label(labels / f"img{i}.tif", "annotated")
     _declare_corrected(stage, [f"img{i}.tif" for i in range(5)])
 
     out_dir = tmp_path / "csv_output"
@@ -178,7 +179,7 @@ def test_cli_create_training_csv_positional_scan_dir(tmp_path: Path):
 
     name = "01-ruling-ibex_AP_img_013_SEM.tif"
     (sem / name).write_text("img")
-    (labels / name).write_text("lbl")
+    write_label(labels / name, "annotated")
     _declare_corrected(stage, [name])
 
     out_dir = tmp_path / "csv_out"
@@ -235,7 +236,7 @@ def _labelled_records(root: Path, count: int = 10) -> list[ImageRecord]:
         image = stage / "sem" / f"AP_img_{i:03d}_SEM.tif"
         label = stage / "labels" / f"AP_img_{i:03d}_SEM.tif"
         image.write_text("img")
-        label.write_text("lbl")
+        write_label(label, "annotated")
         records.append(
             ImageRecord(image_path=image, labels=[label], state="corrected", modality="SEM")
         )
@@ -340,7 +341,7 @@ def test_cli_refuses_to_replace_a_training_set_without_overwrite(tmp_path: Path)
     (project / "experiment.yaml").write_text("name: projX")
     for i in range(5):
         (stage / "sem" / f"img{i}.tif").write_text("img")
-        (stage / "labels" / f"img{i}.tif").write_text("lbl")
+        write_label(stage / "labels" / f"img{i}.tif", "annotated")
     _declare_corrected(stage, [f"img{i}.tif" for i in range(5)])
     out_dir = tmp_path / "csv_output"
     command = [

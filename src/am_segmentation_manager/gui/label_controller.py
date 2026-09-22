@@ -73,10 +73,16 @@ def load_full_resolution(image_path: Path, label_path: Path | None) -> DisplayIm
 
 @dataclass(frozen=True)
 class SavedLabels:
-    """What a save did: a line for the window's log, and every label it wrote."""
+    """What a save did: a line for the window's log, and every label it wrote.
+
+    Attributes:
+        problem: Why the reviewed labels, though saved, were not marked
+            corrected; empty where nothing went wrong.
+    """
 
     headline: str
     written: tuple[Path, ...]
+    problem: str = ""
 
 
 class LabelController:
@@ -765,9 +771,15 @@ class LabelController:
             StaleLabels: If a label's file changed after it was opened.
             PermissionError: If a proofread label would be replaced without
                 *allow_corrected*.
-            SaveStopped: If the version a label replaces could not be kept.
-                What was written before is brought into step; the rest stay
-                pending, to be saved again, and nothing is marked corrected.
+            SaveStopped: If a label could not be written, or the version it
+                replaces could not be kept. What was written before is brought
+                into step; the rest stay pending, to be saved again, and nothing
+                is marked corrected.
+            StateFileError: If a stage's state file cannot be read. Nothing is
+                written.
+
+        A failure to mark the saved labels corrected is not raised: they are
+        saved and settled, and :attr:`SavedLabels.problem` says why.
         """
         pending = self.pending_saves()
         batch = writing_recorder(
@@ -792,31 +804,40 @@ class LabelController:
             raise
         self._attach_created_labels(report.created)
         headline = report.headline()
+        # Taken before the session goes, which is what knows what was reviewed.
+        approved = self.approved_records() if mark_corrected else []
 
-        if mark_corrected:
-            records = self.approved_records()
-            if records:
-                declared = transition_records(records, "corrected", recorder=batch)
-                headline += f", marked {declared} image(s) corrected"
-
-        # Before the session is discarded, and before anything redraws: a
-        # prepared frame holds the pixels its label had when it was read, so
-        # one just written would go on drawing what it replaced; the session's
-        # own copy hides that until the session is discarded.
+        # Settled before marking corrected, so a state change that fails leaves
+        # the labels saved rather than pending over files they now match.
+        # Relabelled before anything redraws: a prepared frame holds the pixels
+        # its label had when it was read, so one just written would go on
+        # drawing what it replaced; the session's own copy hides that until the
+        # session is discarded.
         self.cache.relabel({item.destination: item.label for item in pending})
         self.session.discard()
         # Forgotten for every view sharing the answers: the Curate timeline and
         # the Export counts read these labels too.
         written = {item.destination for item in pending}
         self.known_labels.forget(labels=written, records=self.records_for(written))
+
+        problem = ""
+        if approved:
+            try:
+                declared = transition_records(approved, "corrected", recorder=batch)
+            except (ValueError, OSError, RuntimeError) as error:
+                problem = str(error)
+                headline += ", not marked corrected"
+            else:
+                headline += f", marked {declared} image(s) corrected"
         # The frames worth visiting are recomputed here rather than by a
-        # rescan: marking corrected moves the state
-        # this reads, and a label written where there was none changes what a
-        # frame's line reports. Both are known here, so nothing has to re-read
-        # the collection to find them out.
+        # rescan: marking corrected moves the state this reads, and a label
+        # written where there was none changes what a frame's line reports.
+        # Both are known here, so nothing has to re-read the collection.
         self._refresh_positions(keep_frame=self.frame_index)
         return SavedLabels(
-            headline=headline, written=tuple(item.destination for item in pending)
+            headline=headline,
+            written=tuple(item.destination for item in pending),
+            problem=problem,
         )
 
     def _attach_created_labels(self, created: Iterable[Path]) -> None:

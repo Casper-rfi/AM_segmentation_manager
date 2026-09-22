@@ -50,6 +50,7 @@ from ..operations.savepoint import (
     reached_versions,
 )
 from ..reporting import format_bytes
+from ..state import StateFileError
 from .attribution import Attribution
 from .report import ConflictRow, OperationReport, capped, shown_path
 
@@ -408,7 +409,7 @@ class HistoryController:
         batch = writing_recorder(projects, self.recorder)
         try:
             report = apply_merge(plan, recorder=batch, allow_corrected=allow_corrected)
-        except (MergeRefused, PermissionError, StaleLabels, PathTooLong) as error:
+        except (MergeRefused, PermissionError, StaleLabels, StateFileError, PathTooLong) as error:
             return OperationReport(f"Nothing was merged: {error}")
         except SaveStopped as error:
             return OperationReport(

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
 
+from ...state import StateFileError
 from .save_dialog import SAVE_TITLE, SaveLabelsDialog
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -137,7 +138,16 @@ class LabelTab(_Window):
             self._flash("No label edits to save")
             return
 
-        plan = self.label_controller.save_plan()
+        try:
+            plan = self.label_controller.save_plan()
+        except StateFileError as error:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                f"Nothing has been saved: whether these labels are corrected "
+                f"cannot be told, because a state file will not read.\n\n{error}",
+            )
+            return
         if plan.stale:
             QMessageBox.critical(
                 self,
@@ -236,6 +246,12 @@ class LabelTab(_Window):
         self.export_controller.forget_labels(saved.written)
         self.refresh(reload_lists=True)
         self.label_panel.refresh()
+        if saved.problem:
+            QMessageBox.warning(
+                self,
+                SAVE_TITLE,
+                f"The labels were saved, but not marked corrected:\n\n{saved.problem}",
+            )
 
     def _schedule_label_loads(self) -> None:
         """Ask the Label tab's loader to prepare the frames around this one."""

@@ -920,9 +920,10 @@ def test_reverting_refuses_proofread_work_until_it_is_named(tmp_path: Path):
     controller.take_savepoint(projects, "round 1")
 
     records = [record for project in projects for record in project.image_records]
-    transition_records(records, "corrected")
     label = next(label for record in records for label in record.labels)
+    # Edited before it is marked: a save over a corrected label needs consent.
     _edit_through_the_package(label)
+    transition_records(records, "corrected")
 
     report = controller.revert_labels(
         records, savepoint="round 1", projects=projects, dry_run=True

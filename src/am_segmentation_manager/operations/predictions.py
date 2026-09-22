@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import logging
 import shutil
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Final, Literal
 
 from ..history import Recorder
-from ..io.atomic import write_atomically
+from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
 from ..io.image import to_2d
 from ..io.long_paths import refuse_unreachable
 from ..layout import (
@@ -29,6 +30,7 @@ from ..layout import (
     prediction_precedence,
 )
 from ..models import ImageRecord
+from ..progress import StoppedPartway
 from .archive import Archivist, archive_paths_for, archive_replaced
 from .label_io import (
     has_image_stack_support,
@@ -39,13 +41,20 @@ from .label_io import (
     replacement_fields,
     save_label_image,
 )
+from .label_save import StaleLabels
 from .predict import read_provenance
-from .selection import current_state
+from .selection import current_state, declared_states
 
 logger = logging.getLogger(__name__)
 
 
-def prediction_to_label(prediction_path: Path, label_path: Path, target_image_path: Path | None = None) -> None:
+def prediction_to_label(
+    prediction_path: Path,
+    label_path: Path,
+    target_image_path: Path | None = None,
+    *,
+    commit_if: Callable[[Path], bool] | None = None,
+) -> bool:
     """Convert a prediction file into a label file, whole or not at all.
 
     Resized to *target_image_path* by nearest neighbour where their dimensions
@@ -58,13 +67,19 @@ def prediction_to_label(prediction_path: Path, label_path: Path, target_image_pa
             an interrupted run cannot truncate a label already there.
         target_image_path: Optional path to the SEM/FIB image whose shape should
             be matched.
+        commit_if: As :func:`~..io.atomic.write_atomically`: asked just before
+            the rename whether to go ahead.
+
+    Returns:
+        Whether *label_path* was written.
     """
     if not prediction_path.exists():
         raise FileNotFoundError(f"Prediction file does not exist: {prediction_path}")
 
-    write_atomically(
+    return write_atomically(
         label_path,
         lambda temporary: _write_label(prediction_path, temporary, target_image_path),
+        commit_if=commit_if,
     )
 
 
@@ -125,6 +140,10 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
     logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, resized.shape)
 
 
+class ConversionStopped(StoppedPartway):
+    """Raised when a conversion stopped partway, having written what it carries."""
+
+
 #: What is already at a conversion's destination. The three that exist differ in
 #: what replacing them costs: nothing, nothing, and irreplaceable work.
 ExistingLabel = Literal["none", "placeholder", "annotated", "corrected"]
@@ -150,6 +169,8 @@ class PlannedConversion:
         existing: What is at the destination now.
         fallback: Whether the prediction is from the source not asked for,
             the image having none from the one that was.
+        fingerprint: The destination as it was when *existing* was decided,
+            None where there was nothing. A conversion writes only over that.
     """
 
     record: ImageRecord
@@ -157,6 +178,7 @@ class PlannedConversion:
     destination: Path
     existing: ExistingLabel = "none"
     fallback: bool = False
+    fingerprint: Fingerprint | None = None
 
     @property
     def origin(self) -> PredictionOrigin:
@@ -313,15 +335,22 @@ def plan_conversions(
     image with predictions from both sources converts the *prefer* one; an image
     with only the other converts that, marked as a fallback. An existing
     label is replaced only when *overwrite* is set, and a proofread one not even
-    then. The whole set is resolved before any of it is written, and no
-    destination appears twice -- conditions of one scene share a label file, and
-    listing it twice would have the second write silently replace the first.
+    then -- proofread as the stage's state file declares it now, not as the
+    record remembers it. The whole set is resolved before any of it is written,
+    and no destination appears twice -- conditions of one scene share a label
+    file, and listing it twice would have the second write silently replace the
+    first.
+
+    Raises:
+        StateFileError: If a stage's state file cannot be read, so whether a
+            label there is proofread cannot be told.
     """
     planned: list[PlannedConversion] = []
     replaceable: list[PlannedConversion] = []
     refused: list[PlannedConversion] = []
     skipped: list[SkippedConversion] = []
     claimed: set[Path] = set()
+    candidates: list[tuple[ImageRecord, Path, Path]] = []
     for record in records:
         if record.modality not in MODALITIES:
             continue
@@ -344,13 +373,17 @@ def plan_conversions(
         if destination in claimed:
             continue
         claimed.add(destination)
+        candidates.append((record, convertible[0], destination))
 
-        existing = classify_destination(
-            destination, corrected=current_state(record) == "corrected"
-        )
+    declared = declared_states(destination for _, _, destination in candidates)
+    for record, prediction, destination in candidates:
+        corrected = "corrected" in (current_state(record), declared[destination])
+        fingerprint = fingerprint_of(destination)
+        existing = classify_destination(destination, corrected=corrected)
         conversion = PlannedConversion(
-            record, convertible[0], destination, existing,
-            fallback=prediction_origin(convertible[0]) != prefer,
+            record, prediction, destination, existing,
+            fallback=prediction_origin(prediction) != prefer,
+            fingerprint=fingerprint,
         )
         if existing == "corrected":
             refused.append(conversion)
@@ -390,8 +423,9 @@ def convert_record_predictions(
     Raises:
         PathTooLong: If Windows cannot reach a label or the archived copy of
             what it replaces here. Checked before anything is written.
-        ArchiveFailed: If the version a label replaces could not be kept. That
-            label and every one after it are left as they were.
+        ConversionStopped: If a label could not be written, or the version it
+            replaces could not be kept. That label and every one after it are
+            left as they were; the error carries what was written before it.
     """
     plan = plan_conversions(records, overwrite=overwrite, prefer=prefer)
     destinations = [conversion.destination for conversion in plan.conversions]
@@ -401,6 +435,7 @@ def convert_record_predictions(
 
         archivist = Archivist(recorder)
 
+    written: list[Path] = []
     for conversion in plan.conversions:
         if conversion.existing != "none":
             logger.info(
@@ -412,15 +447,35 @@ def convert_record_predictions(
             if recorder is not None and conversion.existing != "none"
             else None
         )
-        archived = archive_replaced(archivist, conversion.destination, previous)
-        prediction_to_label(
-            conversion.prediction,
-            conversion.destination,
-            target_image_path=conversion.record.image_path,
-        )
+        try:
+            archived = archive_replaced(archivist, conversion.destination, previous)
+            # Asked again just before the rename: a label that appeared, or
+            # changed, since the plan looked is not what the plan decided about.
+            if not prediction_to_label(
+                conversion.prediction,
+                conversion.destination,
+                target_image_path=conversion.record.image_path,
+                commit_if=partial(_unchanged, conversion),
+            ):
+                raise StaleLabels(
+                    f"{conversion.destination.name} changed on disk while the "
+                    f"conversion was running, so it was not written over"
+                )
+        except Exception as error:
+            raise ConversionStopped(
+                f"Converted {len(written)} of {len(plan.conversions)} label(s), then "
+                f"stopped at {conversion.destination.name}: {error}",
+                written,
+            ) from error
+        written.append(conversion.destination)
         if recorder is not None:
             _record_conversion(recorder, conversion, previous, archived)
-    return tuple(conversion.destination for conversion in plan.conversions)
+    return tuple(written)
+
+
+def _unchanged(conversion: PlannedConversion, _temporary: Path) -> bool:
+    """Return whether *conversion*'s destination is as it was when planned."""
+    return fingerprint_of(conversion.destination) == conversion.fingerprint
 
 
 def _record_conversion(

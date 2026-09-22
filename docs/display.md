@@ -138,8 +138,7 @@ of one of these files, is held by `test_docs.py`.
   current row in the full accent.
 - **The furniture round the tree comes from `lists.project_box`, and what differs is passed in** —
   the chip, and whether rows are checkable at all (`test_a_tree_can_be_built_without_tick_boxes`).
-  Three tabs list the same projects, and which of them a reader is looking at is not something the
-  window should have to teach. **The checkable flag is cleared rather than merely not set**:
+  **The checkable flag is cleared rather than merely not set**:
   `ItemIsUserCheckable` is on by default and Qt just draws no box while no check state exists, so
   every row would report as checkable and the first `setCheckState` would put the boxes back.
 - **The left column is read across rather than down, and is sized for its widest row.** It is the
@@ -453,13 +452,10 @@ of one of these files, is held by `test_docs.py`.
   pan, zoom, save, copy and the table as CSV, pan and zoom still driven by a hidden toolbar
   (`test_the_chart_offers_no_way_to_edit_the_figure`). **A cell nothing was counted in is grey and
   unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
-- **A plot describes one acquisition or a whole stage, and the window says which.** An Adaptive
-  Polishing stage writes one plot per milling cycle into `plots/`, matched to a frame by its
-  acquisition number. An alignment run writes one `figure.png` for the several images it took to
-  converge, so there is nothing to match it to: every frame of the run shows it and carries a badge
-  saying so, a figure describing five frames read as describing one being worse than none.
-  `displayed_plot` prefers `frame.plot_path` over `stage_plot`; `centring.png` is excluded as
-  recording where the plugin looked rather than what the run achieved.
+- **A plot describes one acquisition or a whole stage, and the window says which**, for the reason
+  `displayed_plot` gives: every frame of an alignment run shows its one `figure.png` and carries a
+  badge saying so. `centring.png` is excluded as recording where the plugin looked rather than what
+  the run achieved.
 
 ## The binding
 

@@ -170,19 +170,23 @@ def write_state(previous: StageState, states: Mapping[str, str]) -> StageState:
         StateFileError: If a key or state is not valid.
     """
     path = previous.path
+    stale = StaleState(
+        f"{path} changed since it was read; re-read it and apply the change again"
+    )
     if fingerprint_of(path) != previous.fingerprint:
-        raise StaleState(
-            f"{path} changed since it was read; re-read it and apply the change again"
-        )
+        raise stale
 
     declared = _checked_states(dict(states), path, path.parent)
     kept = {key: value for key, value in declared.items() if value != DEFAULT_STATE}
     # Sorted, so two runs producing the same states produce the same file.
-    write_yaml(
+    # Checked again just before the rename, which is as late as it can be asked.
+    if not write_yaml(
         path,
         {_VERSION_KEY: FILE_VERSION, _STATE_KEY: dict(sorted(kept.items()))},
         header=_HEADER,
-    )
+        commit_if=lambda _temporary: fingerprint_of(path) == previous.fingerprint,
+    ):
+        raise stale
     logger.debug("Wrote %s declared states to %s", len(kept), path)
     return StageState(path=path, states=kept, fingerprint=fingerprint_of(path))
 

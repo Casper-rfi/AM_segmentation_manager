@@ -39,7 +39,7 @@ from .label_groups import build_groups
 from .label_io import label_digest
 from .label_save import LabelToSave, WriteProvenance, save_labels
 from .metadata_edit import update_project_metadata
-from .selection import current_state, transition_records
+from .selection import current_state, plan_transition, transition_records
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,8 @@ class MergeRefused(RuntimeError):
     Distinct from a conflict: a conflict is one target a person can decide
     about, while this means the two trees cannot be compared -- no fork point,
     a fork point naming a history this collection does not have, or two
-    projects that are not the same project.
+    projects that are not the same project -- or that a label the merge would
+    take cannot be read.
     """
 
 
@@ -741,7 +742,8 @@ def apply_merge(
     """Carry out *plan*, or none of it.
 
     Refuses while any conflict stands: applying the rest would make what
-    happened depend on what somebody had not got round to deciding.
+    happened depend on what somebody had not got round to deciding. Every label
+    to take is read, and every state change rehearsed, before the first write.
 
     **Every label goes through the ordinary save, in one batch**, so a merge is
     validated whole before it writes anything and is held to every guard a
@@ -755,7 +757,8 @@ def apply_merge(
             claims, that are somebody's proofreading.
 
     Raises:
-        MergeRefused: If any conflict is unresolved.
+        MergeRefused: If any conflict is unresolved, or a label to take from
+            the copy cannot be read. Nothing is written.
         PermissionError: If it would touch proofread work and *allow_corrected*
             was not set. Checked over the whole merge before the first write.
         StaleLabels: If a label here changed between the plan and now.
@@ -774,29 +777,45 @@ def apply_merge(
             f"kept either way, so this can be undone -- but not unasked."
         )
 
-
     taking = [
         (project, item)
         for project in plan.projects
         for item in project.labels
         if item.outcome in _APPLIED and item.their_path is not None
     ]
-    to_save = []
+    to_save, unreadable = [], []
     for project, item in taking:
-        prepared = _label_to_save(item, project)
-        if prepared is not None:
-            to_save.append(prepared)
+        try:
+            to_save.append(_label_to_save(item, project))
+        except Exception as error:  # noqa: BLE001 - every label that will not read is named
+            unreadable.append(f"{project.key}/{item.target} ({error})")
+    if unreadable:
+        raise MergeRefused(
+            f"{len(unreadable)} of the copy's label(s) could not be read; nothing "
+            f"was merged: {', '.join(unreadable[:3])}"
+        )
+
+    # Every state change is rehearsed before the first label is written, so a
+    # state that cannot be declared stops the merge with nothing changed.
+    by_state: dict[RecordState, list[ImageRecord]] = {}
+    for project in plan.projects:
+        for state in project.states:
+            if state.outcome in _APPLIED and state.record is not None:
+                by_state.setdefault(state.theirs, []).append(state.record)
+    for declared, records in by_state.items():
+        plan_transition(records, declared, allow_leaving_corrected=allow_corrected)
 
     report = save_labels(
         to_save, allow_corrected=allow_corrected, recorder=recorder
     )
 
-    states = fields = entries = 0
+    for declared, records in by_state.items():
+        transition_records(
+            records, declared, allow_leaving_corrected=allow_corrected, recorder=recorder
+        )
+    states = sum(len(records) for records in by_state.values())
+    fields = entries = 0
     for project in plan.projects:
-        for state in project.states:
-            if state.outcome in _APPLIED and state.record is not None:
-                _take_state(state, state.record, recorder, allow_corrected=allow_corrected)
-                states += 1
         for edit in project.metadata:
             if edit.outcome in _APPLIED:
                 _take_field(project, edit, recorder)
@@ -813,21 +832,21 @@ def apply_merge(
     )
 
 
-def _label_to_save(item: LabelMerge, project: ProjectMerge):
+def _label_to_save(item: LabelMerge, project: ProjectMerge) -> LabelToSave:
     """Return the copy's label as something the ordinary save can write.
 
     The pixels are read rather than the file copied, so what lands here is
-    written the way every other label is -- and so that a label that will not
-    open stops this one item rather than the whole merge partway through.
+    written the way every other label is. Nothing is written here: the save
+    creates the label's directory where it has none.
+
+    Raises:
+        ValueError: If the copy holds no label for the item.
+        Exception: Whatever reading the copy's label raised.
     """
 
-    try:
-        if item.their_path is None:
-            raise ValueError("the copy holds no label")
-        pixels = read_array(item.their_path)
-    except Exception as error:
-        logger.warning("Not taking %s: %s", item.target, error)
-        return None
+    if item.their_path is None:
+        raise ValueError("the copy holds no label")
+    pixels = read_array(item.their_path)
 
     fields: dict[str, object] = {
         "resolution": item.outcome,
@@ -836,7 +855,6 @@ def _label_to_save(item: LabelMerge, project: ProjectMerge):
     }
     if item.ancestor:
         fields["parent_digest"] = item.ancestor
-    item.our_path.parent.mkdir(parents=True, exist_ok=True)
     return LabelToSave(
         destination=item.our_path,
         label=pixels,
@@ -844,22 +862,6 @@ def _label_to_save(item: LabelMerge, project: ProjectMerge):
         fingerprint=item.our_fingerprint,
         corrected=item.corrected,
         provenance=WriteProvenance("merged", fields),
-    )
-
-
-def _take_state(
-    item: StateMerge, record: ImageRecord, recorder: Recorder, *, allow_corrected: bool = False
-) -> None:
-    """Declare the copy's state here, through the one operation that may.
-
-    Leaving corrected is permitted only where the caller said so.
-    """
-
-    transition_records(
-        [record],
-        item.theirs,
-        allow_leaving_corrected=allow_corrected,
-        recorder=recorder,
     )
 
 
@@ -878,8 +880,12 @@ def _add_entries(project: ProjectMerge) -> int:
     same entry from both sides is one entry, and doing this twice changes
     nothing the second time.
     """
+    present = {event.id for event in read_log(project.our_root).events}
     added = 0
     for event in project.incoming:
+        if event.id in present:
+            continue
         append_event(project.our_root, event)
+        present.add(event.id)
         added += 1
     return added

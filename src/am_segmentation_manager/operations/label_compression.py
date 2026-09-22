@@ -21,7 +21,7 @@ from ..io.long_paths import refuse_unreachable
 from ..models import ImageRecord
 from ..progress import OperationCancelled
 from .label_io import has_image_stack_support, label_fields, save_label_image
-from .selection import current_state
+from .selection import current_state, declared_states
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,8 @@ class LabelCompressionResult:
             recompressed, so it was left alone. Distinguished from the other
             reasons for not applying: those mean there was nothing to gain,
             this one means somebody else's write was nearly overwritten.
+        problem: Why the label could not be read or re-encoded without
+            altering a pixel, so it was left alone; empty where it could.
     """
 
     label_path: Path
@@ -49,6 +51,7 @@ class LabelCompressionResult:
     new_size: int
     applied: bool
     stale: bool = False
+    problem: str = ""
 
 
 def existing_labels(records: Iterable[ImageRecord]) -> list[Path]:
@@ -68,6 +71,28 @@ def existing_labels(records: Iterable[ImageRecord]) -> list[Path]:
     return labels
 
 
+def corrected_labels(records: Iterable[ImageRecord], labels: Iterable[Path]) -> list[Path]:
+    """Return those of *labels* whose group is corrected, by its record or its state file now.
+
+    One answer for the preview and the run, so the two cannot disagree.
+
+    Raises:
+        StateFileError: If a stage's state file cannot be read.
+    """
+    labels = list(labels)
+    remembered = {
+        label
+        for record in records
+        if current_state(record) == "corrected"
+        for label in record.labels
+    }
+    declared = declared_states(labels)
+    return [
+        label for label in labels
+        if label in remembered or declared[label] == "corrected"
+    ]
+
+
 def compress_labels(
     records: Iterable[ImageRecord],
     *,
@@ -79,7 +104,7 @@ def compress_labels(
     """Recompress every on-disk label referenced by *records*.
 
     Validates the whole batch before changing anything: if any label belongs to
-    a group declared corrected, the whole call is refused unless
+    a group declared corrected -- by its record, or its state file now -- the whole call is refused unless
     *allow_corrected* is True, since corrected labels are user-generated
     data that must never be modified without explicit confirmation.
 
@@ -87,9 +112,10 @@ def compress_labels(
     crash mid-write can never leave a truncated label, and the label keeps the
     permissions it had rather than the owner-only ones a temporary file is
     created with. The original is left untouched when *dry_run* is True, when
-    recompression would not shrink the file, and when the label changed on disk
+    recompression would not shrink the file, when the label changed on disk
     while it was being re-encoded -- recompressing pixels that have since been
-    replaced would put the old ones back.
+    replaced would put the old ones back -- and when it will not read, or will
+    not re-encode without altering a pixel, which its result's ``problem`` says.
 
     Args:
         records: Records whose labels should be checked (as produced by the
@@ -111,6 +137,8 @@ def compress_labels(
     Raises:
         PathTooLong: If Windows cannot reach a label's temporary copy here.
             Checked before anything is written.
+        StateFileError: If a stage's state file cannot be read, so whether a
+            label there is corrected cannot be told.
     """
     if not has_image_stack_support():
         raise RuntimeError(
@@ -120,13 +148,7 @@ def compress_labels(
     records = list(records)
     labels = existing_labels(records)
     if not allow_corrected:
-        declared_corrected = {
-            label
-            for record in records
-            if current_state(record) == "corrected"
-            for label in record.labels
-        }
-        corrected = [label for label in labels if label in declared_corrected]
+        corrected = corrected_labels(records, labels)
         if corrected:
             raise PermissionError(
                 "Refusing to recompress corrected labels without explicit "
@@ -182,7 +204,9 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
     rename. Three things stop the rename: the new encoding is no smaller, the
     caller only asked what would happen, or the label changed on disk while it
     was being re-encoded. That last one would put the old pixels back over
-    somebody else's write, so it is reported rather than passed over.
+    somebody else's write, so it is reported rather than passed over. A label
+    that will not read, or not re-encode without altering a pixel, is left
+    alone with the reason, and the batch goes on.
     """
     import tifffile
 
@@ -191,7 +215,10 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
     logger.debug("Recompressing %s", label_path)
     original_size = label_path.stat().st_size
     before = fingerprint_of(label_path)
-    array = tifffile.imread(str(label_path))
+    try:
+        array = tifffile.imread(str(label_path))
+    except Exception as error:  # noqa: BLE001 - one unreadable label must not stop the batch
+        return _left_alone(label_path, original_size, f"could not be read: {error}")
 
     new_size = original_size
     stale = False
@@ -212,11 +239,14 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
             return False
         return True
 
-    applied = write_atomically(
-        label_path,
-        lambda temporary: save_label_image(array, temporary, array.dtype),
-        commit_if=commit,
-    )
+    try:
+        applied = write_atomically(
+            label_path,
+            lambda temporary: save_label_image(array, temporary, array.dtype),
+            commit_if=commit,
+        )
+    except (ValueError, OSError) as error:
+        return _left_alone(label_path, original_size, str(error))
     if applied:
         # Debug, not info: this runs once per label over a whole collection,
         # and both front ends already say the same thing in a form that suits
@@ -226,3 +256,11 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
         # pressure on that thread at worst.
         logger.debug("Compressed %s: %d -> %d bytes", label_path, original_size, new_size)
     return LabelCompressionResult(label_path, original_size, new_size, applied, stale=stale)
+
+
+def _left_alone(label_path: Path, original_size: int, problem: str) -> LabelCompressionResult:
+    """Return the result for a label this run could not safely re-encode."""
+    logger.warning("Left %s alone: %s", label_path, problem)
+    return LabelCompressionResult(
+        label_path, original_size, original_size, applied=False, problem=problem
+    )

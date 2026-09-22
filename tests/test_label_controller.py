@@ -934,3 +934,76 @@ def test_a_save_stopped_partway_settles_what_it_wrote_and_keeps_the_rest(
         controller.save(mark_corrected=True)
 
     assert controller.session.edited_keys() == {second}
+
+
+def test_a_write_that_fails_partway_leaves_the_rest_to_save_again(
+    tmp_path: Path, monkeypatch
+):
+    """The real failure rather than a stub: the second label's write is refused.
+    Saving again afterwards must write it, not refuse the first as changed on
+    disk by this window's own save."""
+    from am_segmentation_manager.operations import label_save
+    from am_segmentation_manager.operations.label_save import SaveStopped
+
+    dataset = build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    annotate(controller)
+    controller.step(1)
+    annotate(controller)
+    labels = [dataset.label("SEM", 0), dataset.label("SEM", 1)]
+    before = {label: label.read_bytes() for label in labels}
+
+    real = label_save.save_label_image
+    calls = []
+
+    def second_write_fails(mask, path, dtype):
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError("disk full")
+        real(mask, path, dtype)
+
+    monkeypatch.setattr(label_save, "save_label_image", second_write_fails)
+    with pytest.raises(SaveStopped, match="disk full") as stopped:
+        controller.save()
+
+    [written] = stopped.value.report.written
+    [unwritten] = [label for label in labels if label != written]
+    assert written.read_bytes() != before[written]
+    assert unwritten.read_bytes() == before[unwritten]
+    assert controller.session.edited_keys() == {unwritten}
+
+    monkeypatch.setattr(label_save, "save_label_image", real)
+    saved = controller.save()
+
+    assert saved.written == (unwritten,)
+    assert unwritten.read_bytes() != before[unwritten]
+
+
+def test_labels_saved_but_not_marked_corrected_are_settled_and_say_why(
+    tmp_path: Path, monkeypatch
+):
+    """Marking corrected is a second write. Its failing must not leave the
+    labels the first one wrote pending, to be refused as changed on disk."""
+    from am_segmentation_manager.gui import label_controller as module
+    from am_segmentation_manager.state import StaleState
+
+    dataset = build_dataset(tmp_path, acquisitions=2, labels="annotated")
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    label = controller.current_key
+    before = label.read_bytes()
+    annotate(controller)
+
+    def curated_elsewhere(*args, **kwargs):
+        raise StaleState("AM_state.yaml changed since it was read")
+
+    monkeypatch.setattr(module, "transition_records", curated_elsewhere)
+    saved = controller.save(mark_corrected=True)
+
+    assert label.read_bytes() != before
+    assert saved.written == (label,)
+    assert "changed since it was read" in saved.problem
+    assert "not marked corrected" in saved.headline
+    assert not controller.session.edited_keys()
+    assert read_state(dataset.stage).states == {}

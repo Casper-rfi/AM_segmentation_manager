@@ -3,7 +3,8 @@
 Expressed without Qt, so the operations layer and the controllers test without a
 display. Cancellation is cooperative and lands between whole units of work, never
 inside one: a prediction is written atomically and recorded before the next
-begins, so a stopped run leaves finished work and an accurate account of it.
+begins, so a stopped run leaves finished work and an accurate account of it --
+which a run stopped by a failure hands back as :class:`StoppedPartway`.
 :func:`timed` says how long an operation's parts take, so making one faster is
 decided against measurements.
 """
@@ -12,8 +13,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 
 class OperationCancelled(Exception):
@@ -23,6 +25,22 @@ class OperationCancelled(Exception):
     no cancellation branch of its own: it reports progress, and stopping is one
     of the things that can happen when it does.
     """
+
+
+class StoppedPartway(RuntimeError):
+    """Raised when an operation stopped on a failure after writing some of its files.
+
+    Carries what was written, so a caller holding records can name those files
+    on them rather than leaving the collection's picture of itself behind what
+    is on disk.
+
+    Attributes:
+        written: Every file written before the failure, in the order written.
+    """
+
+    def __init__(self, message: str, written: Iterable[Path] = ()) -> None:
+        super().__init__(message)
+        self.written: tuple[Path, ...] = tuple(written)
 
 
 class Cancellation:

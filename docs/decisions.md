@@ -114,14 +114,10 @@ rather than appending to it.
   root, at a directory a role claims, and at one already reported, so it costs a few listings rather
   than a second pass and cannot report a file twice
   (`test_a_directory_already_reported_as_a_dataset_is_not_reported_twice`).
-- **A loose frame is ordered by its header's acquisition time, across its whole series.** Nothing in
-  a loose filename orders it: many carry no timestamp, and the epochs that do appear are when the
-  milling *stage* started, minutes before the image. **mtime is worse than useless**, the collection
-  having been copied. Nor can the stages be walked in order: a lamella holds reference images
-  spanning the whole session while the milling tasks below hold theirs in the middle.
-  `_in_acquisition_order` sorts by time whenever every frame has one — exactly a loose series —
-  leaving an Adaptive Polishing timeline, ordered by filename, alone. Ties go to
-  `alignment_run_order`: a run takes several images inside the whole second a header records.
+- **A loose frame is ordered by its header's acquisition time, across its whole series**, for the
+  reasons `ImageRecord.acquired_at` and `_in_acquisition_order` give. **mtime is worse than
+  useless**, the collection having been copied. Ties go to `alignment_run_order`: a run takes
+  several images inside the whole second a header records.
 - **Indexing opens an image only in the scanner, and only a loose one**, for the beam its filename
   may not state and the time it never does — one memoised read. Discovery opens nothing: it asks
   `holds_loose_images`, which reads filenames. **It is the largest single cost of a scan**, most
@@ -174,9 +170,9 @@ rather than appending to it.
   `deselected:` headings could. `ImageRecord` carries one `state` field rather than a `selected` and
   a `corrected` flag for the same reason: two booleans have a fourth combination that means nothing,
   and every reader must then be trusted to spell out `selected and not corrected`.
-- **Whether a group is corrected is asked of the record, never of a path.** Every guard protecting
-  proofread work — conversion, compression, label saving — reads the declared state the scanner put
-  on the record; a guard that quietly stops firing is worse than none.
+- **Whether a group is corrected is asked of its state file as a label is written, never of a path.**
+  A record keeps what the scan saw, and a scan reads a damaged file as all selected, so conversion,
+  compression and every save ask `declared_states` (`test_a_damaged_state_file_stops_a_conversion_over_corrected_labels`).
 - **Nothing here reads a folder name as a state; `scripts/migrate_state.py` does, once**, and its
   docstring says why it is a script. The scanner does not look inside `deselected/` or `corrected/`,
   so a nested file is *missing and reported* rather than present and wrong, and those names stay
@@ -191,14 +187,16 @@ rather than appending to it.
   what stops two windows on one collection discarding each other's curation
   (`test_a_stage_changed_since_planning_stops_the_whole_batch`). Every file is compared against what
   the plan read *before the first is written*, so the answer is "nothing happened" rather than "some
-  of it happened"; each write then checks again for itself. That is what lets `plan_transition` and
-  `apply_plan` be separate — previewed decisions, fresh safety check.
+  of it happened"; each write checks again just before its rename (`test_a_save_leaves_a_label_rewritten_while_it_ran`).
+  That is what lets `plan_transition` and `apply_plan` be separate — previewed decisions, fresh check.
 - **Every label write goes through `io/atomic.py`, including compression, and so does every YAML
-  file and `AM_metadata.yaml` edit.** It restores the
-  destination's own permissions before the rename, because `mkstemp` creates owner-only — a
-  recompressed label kept `0o600` becomes unreadable to everyone but its author, which on a shared
-  archive is the same as losing it (`test_a_committed_file_keeps_the_destination_permissions`).
-  Compression decides *after* encoding, so `write_atomically` takes a `commit_if` predicate.
+  file and `AM_metadata.yaml` edit.** It restores the destination's own permissions before the
+  rename, `mkstemp` creating owner-only: a label kept `0o600` on a shared archive is as good as lost
+  (`test_a_committed_file_keeps_the_destination_permissions`). Compression decides *after*
+  encoding, so `write_atomically` takes a `commit_if` predicate. **The rename trusts the
+  temporary**, and OpenCV reports a failed write by returning False: so `save_label_image` refuses
+  pixels a uint8/uint16 file cannot hold exactly, and raises unless the file reads back as asked
+  (`test_a_failed_write_through_a_temporary_leaves_the_label_as_it_was`).
 - **Overwriting a label is tiered by what replacing it would cost, not by one flag.** Conversion
   sorts destinations three ways: an empty placeholder costs nothing to replace; a pseudo-label
   holding annotation is regenerable machine output, replaced once the user confirms; a corrected
@@ -425,12 +423,12 @@ rather than appending to it.
   export rather than opening on one and hiding the archive. The cost is that an image somebody
   decided against can reach a training set, so the summary line counts those
   (`test_a_deselected_image_that_would_be_exported_is_counted`).
-- **Both modalities means side by side, not mixed together**
-  (`test_both_modalities_put_the_two_beams_on_one_row`): a selection holding both writes `sem_image,
-  sem_label, fib_image, fib_label`, one row per acquisition, where one naming a single beam writes
-  `image, label`. A cell is blank where that beam has no image or no label worth pairing with one,
-  and a row survives only if at least one beam has a label — the empty-label rule drops a one-beam
-  row and empties a cell where there are two (`test_an_empty_label_is_not_paired_with_its_image`).
+- **Both modalities means side by side, not mixed together** (`test_both_modalities_put_the_two_beams_on_one_row`):
+  both write `sem_image, sem_label, fib_image, fib_label`, one row per acquisition; one beam writes
+  `image, label`. A cell is blank where that beam has no image or no label worth pairing, and a row
+  survives only if one beam has a label — the empty-label rule, **which takes a label that will not
+  read with it**, blank being unknowable, drops a one-beam row and empties a cell where there are two
+  (`test_an_empty_label_is_not_paired_with_its_image`).
 - **What makes an SEM and a FIB image the same acquisition is stated once**, in
   `frames.group_by_acquisition`, which says why a stem will not do it. **What pairs them depends on
   the era of the filename**: Adaptive Polishing images match on an acquisition number within one
@@ -486,16 +484,24 @@ rather than appending to it.
   traversal goes through; the survey's `rglob` excludes it by `directory_role`, one vocabulary
   rather than two lists. Missing it means a superseded version **reaches a training CSV**.
 - **A version that cannot be kept is not written over.** A failed archive copy stops the save at
-  that label, keeping what was written before it, rather than replacing proofread work with no copy
-  kept (`test_a_version_that_cannot_be_kept_is_not_written_over`); the copy lands whole or not at
-  all, so none half-made passes for the version kept. **A path Windows cannot reach refuses the
-  whole batch before anything is written**, archived copies included
-  (`test_one_label_windows_cannot_reach_refuses_the_whole_save`): that failure can be foreseen. Long
-  paths are found to work by writing one, `LongPathsEnabled` being necessary but not sufficient.
+  that label, keeping what was written before it (`test_a_version_that_cannot_be_kept_is_not_written_over`);
+  the copy lands whole or not at all. **One that will not decode is kept as its bytes**, nobody able
+  to say it is not somebody's work (`test_a_label_that_will_not_decode_is_kept_as_its_bytes`).
+  **A path Windows cannot reach refuses the whole batch before anything is written**, archived copies
+  included (`test_one_label_windows_cannot_reach_refuses_the_whole_save`): that failure can be
+  foreseen. Long paths are found to work by writing one, `LongPathsEnabled` being necessary but not
+  sufficient.
+- **A write that stops partway hands back what it wrote**, as a `progress.StoppedPartway`
+  (`SaveStopped`, `ConversionStopped`). The window names those files on their records and refreshes
+  whatever the failure, failing not being the same as changing nothing
+  (`test_an_operation_stopped_partway_names_what_it_wrote_on_the_records`). An operation writing
+  files owes the window this, or its partial work stays invisible until the next scan.
 - **Restoring and merging are the ordinary save**, held to batch validation, the stale-file refusal
   and the protection of proofread work; only what is *recorded* differs, which is why
   `WriteProvenance` names the entry kind. A merge that copied the file **wrote over proofread work
-  unasked**.
+  unasked**. **A merge reads every label it takes, and rehearses every state, before its first write**
+  (`test_a_state_that_cannot_be_declared_stops_the_merge_before_any_label`): the copy's history comes
+  with its labels, so a label skipped would leave the log naming pixels this collection never got.
 - **A savepoint is taken explicitly and only explicitly.** Not offered before a conversion, and not
   written by a training export: an automatic one recreates the gradient of small saves under a name
   that sounds deliberate, which is the whole of what a savepoint is not.
@@ -618,10 +624,9 @@ rather than appending to it.
   before the button is pressed and reported in the preview rather than asked about, the preview
   being the one question a conversion already asks
   (`test_the_preview_says_how_many_images_use_the_other_source`).
-- **Whether to offer the predict button is decided by locating torch, not importing it.** An
-  import costs seconds at every window start, including for someone who never predicts, so
-  `ml_stack_present` uses `find_spec`; a missing or broken stack is reported by the child, which has
-  to import it anyway. **The device box does not import torch either**, opening on `auto` and `cpu`,
+- **Whether to offer the predict button is decided by locating torch, not importing it**, for the
+  reason `ml_stack_present` gives; a missing or broken stack is reported by the child, which has to
+  import it anyway. **The device box does not import torch either**, opening on `auto` and `cpu`,
   true everywhere, and gaining the machine's own from a child process the first time it opens.
   Editable, since `resolve_device` passes a device it does not recognise through unexamined.
 - **A run sees one GPU, numbered as `nvidia-smi` numbers it.** On a shared workstation the index

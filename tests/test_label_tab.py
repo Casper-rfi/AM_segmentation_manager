@@ -2025,6 +2025,32 @@ def test_marking_corrected_declares_the_whole_group(qt_app, window):
     assert read_state(stage).states[f"{label.parent.name}/{label.name}"] == "corrected"
 
 
+def test_labels_saved_but_not_marked_corrected_are_said_to_be(qt_app, window, monkeypatch):
+    """A flash in the status line is gone in four seconds; a claim the reviewer
+    asked for and did not get has to be said where it cannot be missed."""
+    from am_segmentation_manager.gui import label_controller as module
+    from am_segmentation_manager.state import StaleState
+
+    def curated_elsewhere(*args, **kwargs):
+        raise StaleState("AM_state.yaml changed since it was read")
+
+    warnings = []
+    monkeypatch.setattr(module, "transition_records", curated_elsewhere)
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda parent, title, text, *args: warnings.append(text),
+    )
+    window.controller.set_editing_enabled(True)
+    paint_on(window)
+
+    save_with(window, mark_corrected=True)
+    settle(qt_app, lambda: saved(window))
+    settle(qt_app, lambda: bool(warnings), what="the warning")
+
+    assert "saved, but not marked corrected" in warnings[0]
+    assert "changed since it was read" in warnings[0]
+
+
 def test_saving_leaves_the_reviewer_on_the_lamella_they_saved(qt_app, two_lamellae):
     two_lamellae._step_label_lamella(1)
     settle(qt_app, lambda: drawn(two_lamellae))

@@ -166,6 +166,8 @@ class ExportPreview:
         empty_labels: Images excluded because their label holds nothing but
             background.
         missing_labels: Images excluded because they have no label at all.
+        unreadable_labels: Images excluded because their label could not be
+            read, so could not be told blank or annotated.
         exportable: What a training export would actually write -- images
             where one modality is chosen, rows where both are.
         train: How many of those the split would put in the training set.
@@ -187,6 +189,7 @@ class ExportPreview:
     annotated: int = 0
     empty_labels: int = 0
     missing_labels: int = 0
+    unreadable_labels: int = 0
     exportable: int = 0
     train: int = 0
     validation: int = 0
@@ -212,6 +215,8 @@ class ExportPreview:
             parts.append(f"{self.missing_labels} without a label")
         if self.empty_labels:
             parts.append(f"{self.empty_labels} with an empty label")
+        if self.unreadable_labels:
+            parts.append(f"{self.unreadable_labels} with an unreadable label")
         if self.paired:
             parts.append(f"{self.exportable} paired row(s)")
             if self.sem_only:
@@ -237,12 +242,15 @@ class Sifted:
         annotated: How many of those have a label holding an annotation.
         empty_labels: Images whose label holds nothing but background.
         missing_labels: Images with no label at all.
+        unreadable_labels: Images whose label could not be read, so could not
+            be told blank or annotated.
     """
 
     pairs: list[tuple[ImageRecord, Path]]
     annotated: int = 0
     empty_labels: int = 0
     missing_labels: int = 0
+    unreadable_labels: int = 0
 
 
 @dataclass
@@ -819,16 +827,20 @@ class ExportController:
         The filters have already run, dedup included. What is left is the rule
         no filter can express: a training pair needs a label with something in
         it, so an image whose label is missing or blank is reported here rather
-        than written.
+        than written, and so is one whose label could not be read.
         """
-        empty = missing = annotated = 0
+        empty = missing = unreadable = annotated = 0
         pairs: list[tuple[ImageRecord, Path]] = []
         for record in matched:
             label = find_matching_label(record)
             if label is None:
                 missing += 1
                 continue
-            if self.known_labels.emptiness(label) is True:
+            emptiness = self.known_labels.emptiness(label)
+            if emptiness is None:
+                unreadable += 1
+                continue
+            if emptiness:
                 empty += 1
                 continue
             annotated += 1
@@ -839,6 +851,7 @@ class ExportController:
             annotated=annotated,
             empty_labels=empty,
             missing_labels=missing,
+            unreadable_labels=unreadable,
         )
 
     def exportable_records(self) -> list[ImageRecord]:
@@ -992,6 +1005,7 @@ class ExportController:
             annotated=sifted.annotated,
             empty_labels=sifted.empty_labels,
             missing_labels=sifted.missing_labels,
+            unreadable_labels=sifted.unreadable_labels,
             exportable=len(rows),
             train=len(train),
             validation=len(validation),

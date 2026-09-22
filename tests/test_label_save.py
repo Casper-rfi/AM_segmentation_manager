@@ -30,6 +30,7 @@ if HAS_IMAGE_STACK:
     from am_segmentation_manager.io.atomic import fingerprint_of
     from am_segmentation_manager.operations.label_save import (
         LabelToSave,
+        SaveStopped,
         StaleLabels,
         plan_saves,
         save_labels,
@@ -227,8 +228,9 @@ def test_a_failed_write_leaves_the_previous_label_intact(tmp_path: Path, monkeyp
         "am_segmentation_manager.operations.label_save.save_label_image", explode
     )
 
-    with pytest.raises(OSError, match="disk full"):
+    with pytest.raises(SaveStopped, match="disk full") as stopped:
         save_labels([item(destination)])
+    assert stopped.value.report.written == ()
 
     assert (tifffile.imread(str(destination)) == 1).all()
     assert list(destination.parent.iterdir()) == [destination], "a temporary was left"

@@ -45,6 +45,7 @@ from ..operations.savepoint import (
 )
 from ..reporting import format_bytes
 from ..scanner import Scanner
+from ..state import StateFileError
 from .scope import _add_scope_arguments, _projects_in_scope, _recorder, _resolve_scope
 
 logger = logging.getLogger(__name__)
@@ -266,9 +267,13 @@ def _cmd_merge(args: argparse.Namespace) -> int:
         )
         return 2
 
-    report = apply_merge(
-        plan, recorder=_recorder(args), allow_corrected=args.allow_corrected
-    )
+    try:
+        report = apply_merge(
+            plan, recorder=_recorder(args), allow_corrected=args.allow_corrected
+        )
+    except (MergeRefused, StateFileError) as error:
+        logger.error("Nothing was merged: %s", error)
+        return 2
     logger.info(
         "Merged %d label(s), %d state(s) and %d field(s); %d version(s) kept, "
         "%d history entr(ies) added",

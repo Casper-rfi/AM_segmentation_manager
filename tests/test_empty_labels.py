@@ -284,3 +284,69 @@ def test_the_exclusion_is_reported_not_silent(tmp_path: Path, capsys):
     output = capsys.readouterr().out
     assert "only background" in output
     assert "--include-empty-labels" in output
+
+
+def _make_fib_label_unreadable(root: Path) -> None:
+    label = root / "project" / "01-lamella" / "adaptive_polish" / "fib_labels" / "img_000_ion.tif"
+    label.write_bytes(b"II*\x00 not a label any reader can decode")
+
+
+def test_a_label_that_cannot_be_read_is_not_paired_even_when_blank_ones_are_asked_for(
+    tmp_path: Path, capsys
+):
+    """Nobody can say whether it is blank, so it is not a known negative either."""
+    make_project(tmp_path)
+    _make_fib_label_unreadable(tmp_path)
+
+    (row,) = _export(tmp_path, "--include-empty-labels")
+
+    assert row["fib_label"] == ""
+    assert "electron" in row["sem_label"]
+    assert "could not be read" in capsys.readouterr().out
+
+
+def test_the_manifest_counts_the_labels_that_could_not_be_read(tmp_path: Path):
+    from am_segmentation_manager.io.yaml import read_yaml
+
+    make_project(tmp_path)
+    _make_fib_label_unreadable(tmp_path)
+    _export(tmp_path)
+
+    manifest = read_yaml(tmp_path / "out" / "dataset_manifest.yaml")
+    assert manifest["counts"]["unreadable_labels_left_out"] == 1
+
+
+def test_without_the_image_stack_no_label_is_exported_and_the_export_says_why(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """A core install cannot open a label, so cannot tell a placeholder from
+    annotation; exporting them all would train on every blank mask."""
+    from am_segmentation_manager.operations import csv as csv_module
+    from am_segmentation_manager.operations import label_io
+
+    make_project(tmp_path)
+    monkeypatch.setattr(label_io, "has_image_stack_support", lambda: False)
+    monkeypatch.setattr(csv_module, "has_image_stack_support", lambda: False)
+
+    assert _export(tmp_path, modality="SEM") == []
+    output = capsys.readouterr().out
+    assert "could not be read" in output
+    assert "'all' extra" in output
+
+
+def test_the_export_preview_names_labels_that_could_not_be_read():
+    from am_segmentation_manager.gui.export_controller import ExportPreview
+
+    summary = ExportPreview(matched=3, annotated=2, unreadable_labels=1, exportable=2).summary()
+
+    assert "1 with an unreadable label" in summary
+
+
+def test_a_damaged_label_tifffile_reads_as_no_pixels_is_unknown_not_empty(tmp_path: Path):
+    """tifffile answers some damaged files with an empty array rather than an
+    error; counted as a blank placeholder, one would be replaced unasked."""
+    label = tmp_path / "sem_labels" / "img.tif"
+    label.parent.mkdir()
+    label.write_bytes(b"II*\x00 not a label any reader can decode")
+
+    assert is_label_file_empty(label) is None

@@ -3739,6 +3739,32 @@ def test_a_failing_operation_is_reported_and_leaves_the_window_usable(
     assert window.operations_panel.convert_button.isEnabled()
 
 
+def test_an_operation_stopped_partway_names_what_it_wrote_on_the_records(
+    qt_app, project: Path, window, monkeypatch
+):
+    """Failing is not the same as having changed nothing: a label written
+    before the failure is on disk, and the window has to say so."""
+    from am_segmentation_manager.operations.label_io import label_destination
+    from am_segmentation_manager.progress import StoppedPartway
+
+    record = _unlabelled_record(window)
+    written = label_destination(record)
+    reported: list = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.critical",
+        lambda parent, title, text, *args: reported.append(text),
+    )
+
+    def stopped():
+        raise StoppedPartway("disk full after one label", [written])
+
+    window._run_operation("Test", stopped, lambda result: pytest.fail("no result"))
+    settle(qt_app, lambda: bool(reported))
+
+    assert "disk full" in reported[0]
+    assert record.labels == [written]
+
+
 def test_a_report_lines_up_in_a_fixed_width_font(qt_app):
     """A report pads its columns with spaces, which line up only where every
     character advances as far as every other. Asked of the metrics, never of

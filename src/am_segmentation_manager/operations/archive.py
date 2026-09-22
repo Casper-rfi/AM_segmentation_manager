@@ -10,6 +10,7 @@ where a project keeps a history, as recording does.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -260,9 +261,14 @@ def archive_replaced(
 ) -> str | None:
     """Keep the version a write is about to replace at *destination*, if it earns keeping.
 
+    **A label that will not decode is kept as its bytes**, named by their
+    digest: whatever it holds, nobody can say it is not somebody's work, and it
+    is about to be written over.
+
     Args:
         archivist: The run's archivist, or None where nothing is recorded.
-        previous: The pixels there now, or None where nothing is being replaced.
+        previous: The pixels there now, or None where nothing is being replaced
+            or what is there would not decode.
         replacement: The pixels about to be written. Where given and identical
             to *previous* nothing is kept, a re-encoding not being a change. A
             conversion passes none: a machine guess going over a label keeps
@@ -270,14 +276,19 @@ def archive_replaced(
 
     Returns:
         The archived path relative to the project root, or None.
+
+    Raises:
+        ArchiveFailed: If the version could not be kept, its bytes included.
     """
-    if archivist is None or previous is None:
+    if archivist is None:
         return None
+    if previous is None:
+        return _keep_undecodable(archivist, destination)
     try:
         fields = label_fields(previous)
     except ValueError as error:
         logger.warning("Could not describe %s before replacing it: %s", destination, error)
-        return None
+        return _keep_undecodable(archivist, destination)
     if replacement is not None:
         try:
             if label_fields(replacement)["digest"] == fields["digest"]:
@@ -285,6 +296,24 @@ def archive_replaced(
         except ValueError:
             pass
     return archivist.keep(destination, str(fields["digest"]), bool(fields["empty"]))
+
+
+def _keep_undecodable(archivist: Archivist, destination: Path) -> str | None:
+    """Keep the file at *destination* by its bytes, where there is one to keep.
+
+    Raises:
+        ArchiveFailed: If the file is there but cannot be read even as bytes.
+    """
+    if not destination.is_file():
+        return None
+    try:
+        digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+    except OSError as error:
+        raise ArchiveFailed(
+            f"Could not read {destination} to keep it, so it was not written over: {error}"
+        ) from error
+    logger.warning("%s will not decode; keeping its bytes before replacing it", destination)
+    return archivist.keep(destination, digest, empty=False)
 
 
 # ---------------------------------------------------------------------------

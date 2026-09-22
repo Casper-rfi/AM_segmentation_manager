@@ -30,10 +30,14 @@ from ..operations.predict import (
     plan_predictions,
     run_predictions,
 )
-from ..operations.predictions import convert_record_predictions, plan_conversions
+from ..operations.predictions import (
+    ConversionStopped,
+    convert_record_predictions,
+    plan_conversions,
+)
 from ..operations.selection import StaleState, apply_plan, plan_transition
 from ..reporting import format_speck_report
-from ..state import RecordState
+from ..state import RecordState, StateFileError
 from .scope import (
     _add_scope_arguments,
     _format_duration,
@@ -232,7 +236,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         description=(
             "Re-encode label TIFFs discovered by the scanner using a compact "
             "encoding, shrinking file size on disk without changing pixel "
-            "dimensions or label values."
+            "dimensions or label values. A label that will not read, or will "
+            "not re-encode without altering a pixel, is left alone and named."
         ),
     )
     _add_scope_arguments(compress_labels_cmd, default_modality="all")
@@ -369,7 +374,11 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     if not records:
         logger.info("No matching images found to convert")
         return 2
-    plan = plan_conversions(records, overwrite=args.overwrite, prefer=args.prefer)
+    try:
+        plan = plan_conversions(records, overwrite=args.overwrite, prefer=args.prefer)
+    except StateFileError as error:
+        logger.error("Nothing was converted: %s", error)
+        return 2
     if plan.count_fallbacks():
         logger.info(
             "%d image(s) have no %s prediction; converting the %s one",
@@ -388,10 +397,15 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     if args.dry_run:
         logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
         return 0
-    converted = len(convert_record_predictions(
-        records, overwrite=args.overwrite, recorder=_recorder(args),
-        prefer=args.prefer,
-    ))
+    try:
+        converted = len(convert_record_predictions(
+            records, overwrite=args.overwrite, recorder=_recorder(args),
+            prefer=args.prefer,
+        ))
+    except ConversionStopped as stopped:
+        logger.error("%s", stopped)
+        logger.info("Total converted: %d; re-run to convert the rest", len(stopped.written))
+        return 1
     logger.info("Total converted: %d", converted)
     return 0
 
@@ -524,7 +538,9 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
 
     for result in results:
         rel = make_path_relative(result.label_path, start_path)
-        if args.dry_run:
+        if result.problem:
+            logger.warning("Left %s alone: %s", rel, result.problem)
+        elif args.dry_run:
             logger.info("Would compress %s: %d -> %d bytes", rel, result.original_size, result.new_size)
         elif result.applied:
             logger.info("Compressed %s: %d -> %d bytes", rel, result.original_size, result.new_size)
@@ -543,6 +559,12 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
         len(results), applied_count, "would compress" if args.dry_run else "compressed",
         total_before, total_after,
     )
+    unsafe = [r for r in results if r.problem]
+    if unsafe:
+        logger.warning(
+            "%d label(s) could not be read or re-encoded without altering a "
+            "pixel, and were left alone", len(unsafe),
+        )
     stale = [r for r in results if r.stale]
     if stale:
         logger.warning(

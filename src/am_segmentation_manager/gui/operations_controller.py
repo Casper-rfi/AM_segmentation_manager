@@ -41,7 +41,11 @@ from ..operations.csv_check import check_csv_paths, summarize_results
 from ..operations.export_record import ExportRecord
 from ..operations.init_history import writing_recorder
 from ..operations.init_project import init_projects, project_placement_problem
-from ..operations.label_compression import compress_labels, existing_labels
+from ..operations.label_compression import (
+    compress_labels,
+    corrected_labels,
+    existing_labels,
+)
 from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, plan_predictions
 from ..operations.predict_process import ProcessOutcome, predict_out_of_process
@@ -53,9 +57,9 @@ from ..operations.predictions import (
     count_convertible,
     plan_conversions,
 )
-from ..operations.selection import current_state
 from ..progress import Cancellation, timed
 from ..reporting import format_bytes, format_survey
+from ..state import StateFileError
 from ..survey import survey_collection
 from .attribution import Attribution
 from .report import OperationReport, capped, shown_path
@@ -627,13 +631,10 @@ class OperationsController:
         if not labels:
             return OperationReport("Nothing to compress: the selection has no labels.")
 
-        corrected_labels = {
-            label
-            for record in records
-            if current_state(record) == "corrected"
-            for label in record.labels
-        }
-        corrected = [label for label in labels if label in corrected_labels]
+        try:
+            corrected = corrected_labels(records, labels)
+        except StateFileError as error:
+            return OperationReport(f"Nothing was compressed: {error}")
         if corrected and not allow_corrected:
             # The refusal itself lives in compress_labels and still fires; asking
             # here is what lets the window say how much is at stake in advance.
@@ -678,6 +679,10 @@ class OperationsController:
             f"{self._relative(result.label_path)}: changed on disk, left alone"
             for result in results if result.stale
         )
+        unsafe = tuple(
+            f"{self._relative(result.label_path)}: left alone, {result.problem}"
+            for result in results if result.problem
+        )
         if len(results) < len(labels):
             headline = (
                 f"Stopped after {len(results)} of {len(labels)} label(s), having "
@@ -691,9 +696,14 @@ class OperationsController:
             )
         if stale:
             headline += f" {len(stale)} changed on disk and were left alone."
+        if unsafe:
+            headline += (
+                f" {len(unsafe)} could not be re-encoded without altering a "
+                f"pixel and were left alone."
+            )
         return OperationReport(
             headline,
-            lines + stale,
+            lines + stale + unsafe,
             len(applied),
             applied=True,
         )

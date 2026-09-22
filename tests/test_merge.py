@@ -437,6 +437,70 @@ def test_a_state_changed_only_in_the_copy_is_taken(forked, recorder):
     assert len(taken) == 1 and taken[0].theirs == "deselected"
 
 
+def test_a_copy_label_that_will_not_read_refuses_the_whole_merge(forked, recorder):
+    """Taking the rest would still append the copy's history for it, naming
+    pixels this collection never received."""
+    _edit(forked.label(forked.copy), 3, recorder)
+    plan = plan_merge(forked.copy, forked.main)
+    forked.label(forked.copy).write_bytes(b"not a label")
+    before = forked.label(forked.main).read_bytes()
+    entries = len(read_log(forked.project).events)
+
+    with pytest.raises(MergeRefused, match="could not be read"):
+        apply_merge(plan, recorder=recorder)
+
+    assert forked.label(forked.main).read_bytes() == before
+    assert len(read_log(forked.project).events) == entries
+
+
+def test_a_state_that_cannot_be_declared_stops_the_merge_before_any_label(
+    forked, recorder
+):
+    from am_segmentation_manager.operations.selection import transition_records
+
+    _edit(forked.label(forked.copy), 3, recorder)
+    transition_records(_records(forked.copy), "deselected", recorder=recorder)
+    plan = plan_merge(forked.copy, forked.main)
+    [taken] = [item for item in plan.projects[0].states if item.outcome == TAKE_THEIRS][:1]
+    taken.record.image_path.unlink()
+    before = forked.label(forked.main).read_bytes()
+
+    with pytest.raises(FileNotFoundError):
+        apply_merge(plan, recorder=recorder)
+
+    assert forked.label(forked.main).read_bytes() == before
+
+
+def test_states_taken_together_are_declared_in_one_change(forked, recorder, monkeypatch):
+    from am_segmentation_manager.operations import merge as module
+    from am_segmentation_manager.operations.selection import transition_records
+
+    transition_records(_records(forked.copy), "deselected", recorder=recorder)
+    plan = plan_merge(forked.copy, forked.main)
+    calls: list = []
+    real = module.transition_records
+    monkeypatch.setattr(
+        module, "transition_records",
+        lambda records, *args, **kwargs: calls.append(records) or real(records, *args, **kwargs),
+    )
+
+    report = apply_merge(plan, recorder=recorder)
+
+    assert len(calls) == 1
+    assert report.states_taken == len(calls[0]) >= 2
+    assert {record.state for record in _records(forked.main)} == {"deselected"}
+
+
+def test_history_already_here_is_not_added_again(forked, recorder):
+    from am_segmentation_manager.operations.merge import _add_entries
+
+    _edit(forked.label(forked.copy), 3, recorder)
+    [project] = plan_merge(forked.copy, forked.main).projects
+
+    assert _add_entries(project) == len(project.incoming) >= 1
+    assert _add_entries(project) == 0
+
+
 def test_a_state_both_sides_moved_differently_is_a_conflict(forked, recorder):
     from am_segmentation_manager.operations.selection import transition_records
 
