@@ -45,7 +45,6 @@ if HAS_QT and HAS_IMAGE_STACK:
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
-    from am_segmentation_manager.gui.widgets.branding import PRODUCT_NAME
     from am_segmentation_manager.gui.widgets.controls import ChipEditor
     from am_segmentation_manager.gui.widgets.image_view import MIN_FIT_FRACTION
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
@@ -55,6 +54,7 @@ if HAS_QT and HAS_IMAGE_STACK:
         set_editor_text,
     )
     from am_segmentation_manager.gui.widgets.theme import BADGE_STYLES
+    from am_segmentation_manager.identity import PRODUCT_NAME
     from am_segmentation_manager.metadata import (
         DESCRIPTIVE_FIELDS,
         FIELDS,
@@ -3453,7 +3453,7 @@ def test_the_corner_shows_the_mark_without_naming_the_product(window):
     well. The mark stays -- it says whose window this is without repeating it."""
     from qtpy.QtWidgets import QLabel
 
-    from am_segmentation_manager.gui.widgets.branding import PRODUCT_NAME
+    from am_segmentation_manager.identity import PRODUCT_NAME
 
     corner = window._corner
     labels = corner.findChildren(QLabel)
@@ -5549,6 +5549,35 @@ def test_starting_on_a_folder_shows_it_in_the_scan_box_and_scans_it(
         assert window.controller.project.name == "test-project"
     finally:
         destroy(window)
+
+
+def test_the_window_names_itself_to_the_desktop_as_it_opens(qt_app, settings, monkeypatch):
+    """The menu bar's name before the application exists, as AppKit reads it
+    only then; and the desktop entry a Linux launcher writes, which is how a
+    Wayland desktop finds the window's icon."""
+    from qtpy.QtGui import QGuiApplication
+
+    from am_segmentation_manager.gui import app as gui_app
+    from am_segmentation_manager.identity import APPLICATION_ID, PRODUCT_NAME
+
+    named: list[str] = []
+    monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
+    monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
+    monkeypatch.setattr(gui_app, "set_bundle_name", lambda name: named.append(name) or True)
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.theme.apply_theme",
+        lambda application, accent=None: None,
+    )
+    previous = QGuiApplication.desktopFileName()
+
+    _application, window = gui_app.build_window(settings=settings)
+    try:
+        qt_app.processEvents()
+        assert named == [PRODUCT_NAME]
+        assert QGuiApplication.desktopFileName() == APPLICATION_ID
+    finally:
+        destroy(window)
+        QGuiApplication.setDesktopFileName(previous)
 
 
 def test_the_window_hands_what_a_save_wrote_to_the_export_tab(window, monkeypatch):

@@ -33,9 +33,9 @@ if importlib.util.find_spec("qtpy") is not None:
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
     from am_segmentation_manager.gui.controller import CurationController
-    from am_segmentation_manager.gui.widgets.branding import PRODUCT_NAME
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
     from am_segmentation_manager.gui.widgets.scan_banner import ScanBanner
+    from am_segmentation_manager.identity import PRODUCT_NAME
 
 
 @pytest.fixture

@@ -192,7 +192,7 @@ Getting started
     am-seg gui <folder>               # the main interface
 
 Installing provides the `am-seg` command — `uv run am-seg` from a uv checkout;
-`python -m am_segmentation_manager.cli` is equivalent and needs no installation.
+`python -m am_segmentation_manager.cli` is the same command, run by an environment's own interpreter.
 
 **The window is the primary interface.** Four tabs in workflow order — *Add data* to
 name which directories are projects, describe them so they can be indexed and grouped,

@@ -136,7 +136,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # -- configure logging --------------------------------------------------
     level = logging.DEBUG if getattr(args, "verbose", False) else logging.INFO
-    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    # No console at all when started by a launcher through pythonw on Windows.
+    handlers: list[logging.Handler] = (
+        [logging.StreamHandler(sys.stdout)] if sys.stdout is not None else []
+    )
     # The window logs without being asked to. It is the one command whose
     # failures are not visible where it was started: it detaches from the
     # terminal on some platforms, and a crash that kills the process takes

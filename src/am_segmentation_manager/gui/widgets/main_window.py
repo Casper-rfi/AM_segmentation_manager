@@ -36,6 +36,7 @@ from qtpy.QtWidgets import (
 
 from ... import __version__
 from ...history import clear_author, set_author
+from ...identity import PRODUCT_NAME
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
 from ...operations.selection import (
@@ -62,7 +63,7 @@ from ..operations_controller import OperationsController
 from ..selection import counted
 from ..version_controller import VersionController
 from ..worker import BackgroundOperation
-from .branding import PRODUCT_NAME, logo_pixmap
+from .branding import logo_pixmap
 from .busy_dialog import BusyDialog
 from .common import MAX_LISTED_FILES, vertical_rule
 from .controls import GripSplitter

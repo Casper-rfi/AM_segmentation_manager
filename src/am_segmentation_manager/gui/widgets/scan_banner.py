@@ -15,7 +15,8 @@ from qtpy.QtCore import QEvent, QEventLoop, QRect, Qt
 from qtpy.QtGui import QColor, QFont, QPainter
 from qtpy.QtWidgets import QApplication, QWidget
 
-from .branding import PRODUCT_NAME, logo_pixmap
+from ...identity import PRODUCT_NAME
+from .branding import logo_pixmap
 from .theme import BORDER_LIGHT, HEADING, MUTED, WINDOW, active_accent
 
 #: What the banner swallows while it is up. Everything a person can do: the

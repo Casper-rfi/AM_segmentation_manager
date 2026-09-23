@@ -19,8 +19,10 @@ import traceback
 from pathlib import Path
 
 from ..config import load_segmentation_config
+from ..identity import APPLICATION_ID, PRODUCT_NAME
 from .cache import FrameCache
 from .controller import CurationController
+from .macos import set_bundle_name
 
 logger = logging.getLogger(__name__)
 
@@ -242,9 +244,13 @@ def build_window(
     """
     try:
         from qtpy.QtCore import QTimer
+        from qtpy.QtGui import QGuiApplication
         from qtpy.QtWidgets import QApplication
     except Exception as exc:  # noqa: BLE001 - reported as a clear instruction
         raise RuntimeError(_missing_qt_message(exc)) from exc
+
+    # Before any QApplication exists, which is when AppKit reads the name.
+    set_bundle_name(PRODUCT_NAME)
 
     # Imported here, not at the top: importing the widgets creates a Qt
     # application, and this module is imported to install error reporting
@@ -269,6 +275,9 @@ def build_window(
     # Before the window is built, so nothing is drawn in the default accent first.
     apply_theme(application, ACCENTS[preferences.accent_from(preferences.read(settings))])
     _apply_icon(application)
+    # The desktop entry a launcher writes on Linux, which is how a Wayland
+    # desktop finds the icon for the window. Ignored elsewhere.
+    QGuiApplication.setDesktopFileName(APPLICATION_ID)
     window = CurationWindow(controller, settings=settings)
     window.show()
     # Queued for the same reason the scan below is: show() only asks for a

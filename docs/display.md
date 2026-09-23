@@ -40,7 +40,7 @@ of one of these files, is held by `test_docs.py`.
 - **Every accent in `theme.ACCENTS` is a class colour, so it stays on the controls.** Nothing on
   the timeline or beside a label takes it, and a chosen class is ringed in ink rather than in the
   accent, which would merge into its swatch (`test_a_chosen_class_is_ringed_in_ink_not_the_accent`).
-  `branding.py` holds both paths to it and the one spelling of the product name; a checkout
+  `identity.py` holds its paths and the one spelling of the product name, outside Qt; a checkout
   without the asset draws nothing rather than failing. **macOS draws no container for a Dock icon**,
   so the icon there carries one: a superellipse over 824/1024 of the canvas, measured off the
   system's own (`test_the_mac_icon_is_the_shape_macos_draws_its_own_icons_in`).
