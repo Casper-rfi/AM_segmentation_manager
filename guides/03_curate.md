@@ -40,6 +40,14 @@ Along the top:
 - **Show label**, **Show image**, **Opacity** and **Min / max** change how the
   frame is drawn, and nothing else.
 
+The **Grid** view is the one that is not of the frame: it shows where on the
+grid the lamella is. Every lamella of the project is ringed, and the one you
+are looking at is named. Where a project has several overviews, **Overview**
+chooses between them, and a note under the picture says when the positions
+are approximate.
+
+![The Grid view: the project's grid overview, every lamella ringed and the one being looked at named](images/curate-grid.png)
+
 Under the frame, the class legend names the colours, and a line of text names
 the project, lamella and image. A note above the legend says when what you see
 is not the whole story: no label, an empty one the segmentation software wrote,

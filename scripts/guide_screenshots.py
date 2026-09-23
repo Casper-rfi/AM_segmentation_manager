@@ -3,9 +3,9 @@
 
 **A standalone script, not an ``am-seg`` command.** Run it when the window has
 changed enough that a picture in ``guides/images/`` no longer shows it. The
-pictures are of ``AutoLamella-2024-07-05-12-53``, from the Adaptive Milling data
-published on Zenodo (doi:10.5281/zenodo.21804785, CC-BY-4.0), which is not in
-this repository: name the folder holding it::
+pictures are of ``AutoLamella-2024-07-05-12-53`` and ``AutoLamella-2025-04-14-20-54``,
+from the Adaptive Milling data published on Zenodo (doi:10.5281/zenodo.21804785,
+CC-BY-4.0), which is not in this repository: name the folder holding both::
 
     uv run python scripts/guide_screenshots.py <folder>
     uv run python scripts/guide_screenshots.py <folder> --only curate,label
@@ -38,6 +38,7 @@ class Shot:
 
     name: str
     tab: str
+    project: str | None = None
     lamella: str | None = None
     frame: int | None = None
     prepare: Callable[[object], None] | None = None
@@ -91,11 +92,17 @@ def tab_widget(window, tab: str):
     raise KeyError(f"no tab called {tab!r}")
 
 
-def go_to(application, window, lamella: str, frame: int | None) -> None:
-    """Show *lamella* on Curate, at *frame* where one is given, and wait for it.
+def go_to(application, window, project: str | None, lamella: str, frame: int | None) -> None:
+    """Show *lamella* of *project* on Curate, at *frame* where one is given, and wait.
 
-    Chosen through the list, as a click would, so the list shows it chosen.
+    Chosen through the lists, as a click would, so the lists show it chosen.
     """
+    if project is not None:
+        tree = window.project_panel.project_list
+        index = [entry.name for entry in window.controller.projects].index(project)
+        tree.setCurrentItem(
+            next(item for item in tree.project_items() if tree.project_of(item) == index)
+        )
     names = [entry.name for entry in window.controller.lamellae]
     window.project_panel.lamella_list.setCurrentRow(names.index(lamella))
     if frame is not None:
@@ -116,11 +123,16 @@ def pause(application, seconds: float = 1.0) -> None:
 
 
 def take(application, window, shot: Shot) -> Path:
-    """Take *shot*, returning where it was saved."""
+    """Take *shot*, returning where it was saved.
+
+    Every shot starts with editing off, whatever the one before switched on,
+    since one window takes them all.
+    """
     curate = tab_widget(window, "curate")
     window.tabs.setCurrentWidget(curate)
+    window.state_panel.enable_check.setChecked(False)
     if shot.lamella is not None:
-        go_to(application, window, shot.lamella, shot.frame)
+        go_to(application, window, shot.project, shot.lamella, shot.frame)
     window.tabs.setCurrentWidget(tab_widget(window, shot.tab))
     pause(application)
     if shot.prepare is not None:
@@ -128,9 +140,14 @@ def take(application, window, shot: Shot) -> Path:
     pause(application, 2.0)
     IMAGES.mkdir(parents=True, exist_ok=True)
     path = IMAGES / f"{shot.name}.png"
-    if not window.grab().save(str(path)):
+    # Quality 0 is PNG's strongest compression: lossless, only slower.
+    if not window.grab().save(str(path), "PNG", 0):
         raise OSError(f"could not write {path}")
     return path
+
+
+def _grid(window) -> None:
+    window.image_panel.mode_buttons["grid"].click()
 
 
 def _editing_on(window) -> None:
@@ -159,12 +176,17 @@ def _chart(window) -> None:
     panel.as_table.click()
 
 
+#: The two projects: one with labels on every lamella, one with a grid overview.
+_2024 = "AutoLamella-2024-07-05-12-53"
+_2025 = "AutoLamella-2025-04-14-20-54"
+
 SHOTS: tuple[Shot, ...] = (
     Shot("add-data", "add data"),
-    Shot("curate", "curate", lamella="03-secure-oyster", frame=20),
-    Shot("curate-editing", "curate", lamella="11-cosmic-locust", frame=2, prepare=_editing_on),
-    Shot("label", "label", lamella="15-brave-tetra", prepare=_label_frame(12)),
-    Shot("specks", "label", lamella="16-casual-swan", prepare=_specks),
+    Shot("curate", "curate", _2024, "03-secure-oyster", frame=20),
+    Shot("curate-editing", "curate", _2024, "11-cosmic-locust", frame=2, prepare=_editing_on),
+    Shot("curate-grid", "curate", _2025, "05-major-finch", prepare=_grid),
+    Shot("label", "label", _2024, "15-brave-tetra", prepare=_label_frame(12)),
+    Shot("specks", "label", _2024, "16-casual-swan", prepare=_specks),
     Shot("export", "export", prepare=_chart),
 )
 
