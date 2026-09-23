@@ -9,6 +9,8 @@ am-seg <command> --help       # one command: its options, and how to read its ou
 ```
 
 From a checkout, put `uv run` in front: `uv run am-seg --help`.
+`python -m am_segmentation_manager.cli` is the same command, run by an
+environment's own Python.
 
 ## Pointing a command at part of a collection
 
@@ -21,6 +23,29 @@ Most commands take a folder and the same options to narrow it down:
 | `--task` | one milling task, by the name the project's protocol gave it |
 | `--state` | `selected`, `deselected`, `corrected`, or `all` |
 | `--modality` | `SEM`, `FIB`, or `all` |
+
+### Series and tasks
+
+`inspect-layout` and `stats` report on every series; every other command acts
+on Adaptive Polishing unless told otherwise. A command that writes, measures or
+exports label data does not offer *other*, and `--series all` means every
+series that command covers:
+
+```bash
+am-seg stats /path/to/collection --by series
+am-seg create-training-csv --start-path /path/to/collection --state corrected --series reference,adaptive
+```
+
+`--task` narrows to one milling task, taking in every stage of it: one task
+can span several stage folders (`Rough 1`, `Rough 2`), and a lamella folder
+holds every task's reference images at once. Task names come from the project's
+own `experiment.yaml`, so they are whatever its protocol called them; case and
+separators are ignored, and `--task none` chooses the images naming no task:
+
+```bash
+am-seg stats /path/to/collection --by task
+am-seg create-training-csv --start-path /path/to/collection --state corrected --series reference --task polishing
+```
 
 ## Every command
 

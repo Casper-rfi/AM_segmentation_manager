@@ -1,0 +1,57 @@
+# Contributing
+
+## Running the tests
+
+From the repository root, in the environment the gui and ml extras build:
+
+    uv sync --extra gui --extra ml
+    uv run pytest
+    uv run mypy
+    uv run ruff check .
+
+All three should report nothing wrong. The configurations without `ml`, and
+without any extra, are covered by CI. [`docs/decisions.md`](docs/decisions.md)
+§ Environment says what running the suite anywhere else looks like, which is
+worth reading before believing a failure.
+
+## How the package is laid out
+
+The core is four layers, and higher layers depend on lower ones, never the
+reverse:
+
+    layout.py      what things are called
+    discovery.py   where they are
+    scanner.py     what they mean (the model)
+    operations/    what you can do to them
+
+`io/` sits below all four. `layout.py` is the single source of truth for
+filesystem conventions: nothing else embeds a directory name, so supporting a
+new layout is a change there rather than one spread across every module that
+touches files.
+
+Nothing imports `gui/`, so whatever the window can do the command line can do,
+and the core installs without Qt. Qt appears only under `gui/widgets/`;
+everything the window knows lives in plain Python controllers that test without
+a display. Nothing outside `ml/` imports it at module level, the main
+environment having no torch.
+
+## Where things are written down
+
+| Document | Holds |
+|---|---|
+| [`CLAUDE.md`](CLAUDE.md) | the working agreement and the package philosophy |
+| [`docs/00_roadmap.md`](docs/00_roadmap.md) | what is built, and what to pick up next |
+| [`docs/decisions.md`](docs/decisions.md) | why the software is the way it is; read before changing `operations/` |
+| [`docs/display.md`](docs/display.md) | the same for the window, and the Qt traps behind it; read before changing `gui/` |
+| [`docs/04_future_work.md`](docs/04_future_work.md) | what is not built, and what to answer before designing it |
+| [`guides/`](guides/README.md) | how to use it |
+
+## The user guide's generated parts
+
+The guide's tables of fields, commands and keys are generated from the code,
+and its pictures are taken of the window:
+
+    uv run python scripts/guide_tables.py
+    uv run python scripts/guide_screenshots.py <folder holding the Zenodo projects>
+
+`tests/test_guides.py` fails when a table has fallen behind the code.

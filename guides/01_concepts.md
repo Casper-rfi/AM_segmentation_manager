@@ -60,8 +60,11 @@ value names a class: background, lamella, and so on. The classes and their
 colours come from `segmentation_config_AM.yaml`, a project's own where it has
 one and the packaged one otherwise.
 
-Labels live beside their images, in a folder named after the image folder:
-`sem_labels/` beside `sem/`, one file per image under the same name.
+Labels live beside their images, one file per image under the same name. A
+folder of images has its labels in a folder named after it: `sem_labels/`
+beside `sem/`. Images sitting loose in a lamella folder, as reference and
+alignment images do, have theirs in a folder named for their series and beam:
+`adaptive_sem_labels/`, `reference_fib_labels/`. *Other* has none.
 **Predictions**, what a trained model makes of an image, live in
 `sem_predictions/`. A prediction becomes a label only when you convert it, and
 that label is a first draft for a person to proofread.

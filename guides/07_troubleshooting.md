@@ -55,7 +55,10 @@ am-seg --log-file ~/am-seg.log gui /path/to/collection
 ```
 
 On macOS, the system writes its own report of a crash to
-`~/Library/Logs/DiagnosticReports/`, naming the library that failed.
+`~/Library/Logs/DiagnosticReports/`, naming the library that failed. If a crash
+points at Python's own memory allocator rather than at am-seg, run it again
+with `PYTHONDEVMODE=1` set: the debugging allocator stops where memory is
+actually damaged, rather than where it is next touched.
 
 ### A button stays greyed out
 
@@ -94,23 +97,13 @@ In PowerShell, run `$env:AM_SEG_WORKERS=4` first. A job scheduler's or
 `taskset`'s limit is honoured; a container's CPU quota is not visible, so set
 the number there. Predicting keeps torch to the same number of threads.
 
-### On Windows: turn on long paths
+### On Windows: a batch refused for a path too long
 
 Windows reaches a path of 260 characters or more only with its long-path
-setting on, and the label versions kept under `AM_archive/` have long paths: a
-collection under `C:\Users\<you>\` or OneDrive can pass the limit. Without the
-setting, *Inspect layout* warns, and saving, converting and exporting refuse
-the whole batch rather than failing halfway.
-
-Turn it on once, in PowerShell run as administrator, then restart am-seg (and
-Windows, if that is not enough):
-
-```powershell
-New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
-```
-
-On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
-`check_environment.py` says whether long paths work.
+setting on, and the label versions kept under `AM_archive/` have long paths.
+Without the setting, *Inspect layout* warns, and saving, converting and
+exporting refuse the whole batch rather than failing halfway. Turn it on as
+the [README's Installation section](../README.md#installation) describes.
 
 ## Predicting
 
