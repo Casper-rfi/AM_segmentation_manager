@@ -51,8 +51,8 @@ REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
 #: a docstring never fails here, while a new entry naming no test, or a test
 #: pointer traded for a weaker one, costs an existing entry its weakness.
 #: Neither ever forces a deletion -- a test-backed entry is free at any length.
-MAX_UNBACKED_ENTRIES = 28
-MAX_ENTRIES_WITHOUT_A_TEST = 84
+MAX_UNBACKED_ENTRIES = 27
+MAX_ENTRIES_WITHOUT_A_TEST = 82
 
 
 def _documents() -> list[Path]:

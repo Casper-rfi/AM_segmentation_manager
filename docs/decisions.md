@@ -645,6 +645,3 @@ rather than appending to it.
   `nvidia-smi`, not torch or `nvidia-ml-py`**: no dependency, no CUDA context on anyone's card, and
   cheap enough to refresh free memory each time the box opens
   (`test_opening_the_device_box_asks_torch_once_and_nvidia_smi_every_time`).
-- **Predictions are written at model resolution**, which is what the segmentation pipeline's own
-  `raw/` already holds; `convert-predictions` resizes to the image when it makes the label, so
-  upsampling earlier would only be undone.
