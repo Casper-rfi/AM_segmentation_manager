@@ -168,12 +168,14 @@ def _specks(window) -> None:
     panel.speck_check.setChecked(True)
 
 
-def _chart(window) -> None:
-    panel = window.export_panel
-    panel._tick_all_projects(True)
-    panel.breakdown.setCurrentIndex(panel.breakdown.findData("lamella"))
-    panel.cross.setCurrentIndex(panel.cross.findData("state"))
-    panel.as_table.click()
+def _breakdown(view: str) -> Callable[[object], None]:
+    def prepare(window) -> None:
+        panel = window.export_panel
+        panel._tick_all_projects(True)
+        panel.breakdown.setCurrentIndex(panel.breakdown.findData("lamella"))
+        panel.cross.setCurrentIndex(panel.cross.findData("state"))
+        (panel.as_chart if view == "chart" else panel.as_table).click()
+    return prepare
 
 
 #: The two projects: one with labels on every lamella, one with a grid overview.
@@ -187,7 +189,8 @@ SHOTS: tuple[Shot, ...] = (
     Shot("curate-grid", "curate", _2025, "05-major-finch", prepare=_grid),
     Shot("label", "label", _2024, "15-brave-tetra", prepare=_label_frame(12)),
     Shot("specks", "label", _2024, "16-casual-swan", prepare=_specks),
-    Shot("export", "export", prepare=_chart),
+    Shot("export", "export", prepare=_breakdown("table")),
+    Shot("export-chart", "export", prepare=_breakdown("chart")),
 )
 
 

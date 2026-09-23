@@ -24,8 +24,10 @@ flowchart LR
    predicting and converting labels.
 4. [Label](04_label.md): proofreading at full resolution, saving, specks and
    earlier versions.
-5. [The command line](08_command_line.md): every command, and how to point one
+5. [Export](05_export.md): choosing a subset, counting and measuring it, and
+   writing training sets, metadata and copies.
+6. [The command line](08_command_line.md): every command, and how to point one
    at part of a collection.
-6. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
+7. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
 
-The chapters on exporting and history are being written. Until they are, the [README](../README.md) describes each tab.
+The chapter on history is being written. Until they are, the [README](../README.md) describes each tab.
