@@ -28,6 +28,8 @@ flowchart LR
    writing training sets, metadata and copies.
 6. [History](06_history.md): the record of every change, savepoints, undoing
    work, and merging a copy back.
-7. [The command line](08_command_line.md): every command, and how to point one
+7. [Troubleshooting](07_troubleshooting.md): checking the environment, the log,
+   long paths on Windows, GPUs, and reporting a problem.
+8. [The command line](08_command_line.md): every command, and how to point one
    at part of a collection.
-8. [Keys and gestures](09_keys.md): everything F1 lists, for every tab. Until they are, the [README](../README.md) describes each tab.
+9. [Keys and gestures](09_keys.md): everything F1 lists, for every tab. Until they are, the [README](../README.md) describes each tab.
