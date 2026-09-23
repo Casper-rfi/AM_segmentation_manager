@@ -124,7 +124,10 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
     path = Path(weights)
     try:
         description = read_model_description(path)
-        source = PredictionSource(name=path.name, run_name=run_name_of(path))
+        source = PredictionSource(
+            name=path.name, run_name=run_name_of(path),
+            generation=description.generation.name,
+        )
         plan = plan_predictions(records, source, overwrite=False)
         destinations = tuple(str(item.destination) for item in plan.predictions)
         common: dict[str, Any] = {

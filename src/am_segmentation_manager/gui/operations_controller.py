@@ -577,7 +577,10 @@ class OperationsController:
         if not weights.exists():
             raise FileNotFoundError(f"No model at {weights}")
         description = read_model_description(weights)
-        source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
+        source = PredictionSource(
+            name=weights.name, run_name=run_name_of(weights),
+            generation=description.generation.name,
+        )
         return description, source
 
     def _prediction_context(self, plan, source: PredictionSource) -> tuple[str, ...]:

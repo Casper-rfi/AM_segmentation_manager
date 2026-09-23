@@ -1,10 +1,11 @@
 """Loading a trained checkpoint and turning one image into a prediction.
 
-A checkpoint holds weights and nothing else, so the class and channel counts are
-read from its own tensors and the rest -- preprocessing and architecture -- comes
-from a description file beside it. Nothing recoverable from the weights is ever
-declared, and ``strict=True`` on every load is what makes the two agree or fail.
-Why that division: ``docs/decisions.md`` § Inference.
+A checkpoint holds weights and nothing else. How it is run -- preprocessing and
+architecture -- is fixed by its generation, which a description file beside it
+names and which defaults to generation 1; the class and channel counts are read
+from its own tensors and must be the generation's. ``strict=True`` on every load
+is what makes the weights and the architecture agree or fail. Why that division:
+``docs/decisions.md`` § Inference.
 
 Predictions come back at the model's own resolution, never resized to the image.
 """
@@ -13,7 +14,7 @@ from __future__ import annotations
 import logging
 import zipfile
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -39,21 +40,15 @@ _STEM_KEYS = ("encoder._conv_stem.weight", "encoder.conv_stem.weight")
 
 
 @dataclass(frozen=True)
-class ModelDescription:
-    """The settings a checkpoint does not record, and cannot be inferred.
+class Generation:
+    """How every model of one generation is run: what its checkpoints cannot record.
 
-    Defaults describe the Adaptive Milling models in use, so a checkpoint with
-    no description file beside it still runs. Every field here would produce a
-    visibly wrong prediction if it were wrong, which is what makes a default
-    safe: a mistake shows itself at once.
-
-    Which modality a model was trained on is deliberately **not** here. Nothing
-    in a checkpoint says, and a name like ``AM_SEM_All_V01.pth`` is whatever
-    whoever trained it chose to type. Recording it would be recording a claim
-    this package cannot check, so the choice of which images to predict is the
-    caller's alone -- see :mod:`..operations.predict`.
+    A generation is frozen once predictions have been made with it; a change to
+    how models are run is a new generation, so that every prediction on disk
+    stays reproducible by the generation it records.
 
     Attributes:
+        name: What a description file and a prediction's provenance call it.
         image_size: Longest edge the image is resized to before the forward
             pass, and therefore the resolution the prediction is written at.
         normalise_first: Whether normalisation runs before padding.
@@ -63,16 +58,62 @@ class ModelDescription:
         resize_version: ``"pytorch"`` or ``"cv2"``.
         architecture: The segmentation-models-pytorch model name.
         encoder: The encoder name within that architecture.
+        classes: Segmentation classes the head must predict.
+        in_channels: Input channels the stem must expect.
+    """
+
+    name: str
+    image_size: int
+    normalise_first: bool
+    pad: bool
+    normalise_version: int
+    resize_version: str
+    architecture: str
+    encoder: str
+    classes: int
+    in_channels: int
+
+
+#: Adaptive Milling's generation 1 -- ``Gen1Model`` in adaptive-milling 0.4.0,
+#: ``1.4fpn`` before that -- which the microscope predicts with.
+GENERATION_1 = Generation(
+    name="1.0",
+    image_size=1536,
+    normalise_first=True,
+    pad=False,
+    normalise_version=2,
+    resize_version="pytorch",
+    architecture="FPN",
+    encoder="efficientnet-b6",
+    classes=5,
+    in_channels=3,
+)
+
+#: Every generation this package can run, by name.
+GENERATIONS: Mapping[str, Generation] = {GENERATION_1.name: GENERATION_1}
+
+#: The generation of a checkpoint whose description does not name one. Never
+#: the latest: a checkpoint left undescribed must not change how it is run
+#: when a generation is added.
+DEFAULT_GENERATION = GENERATION_1.name
+
+
+@dataclass(frozen=True)
+class ModelDescription:
+    """What the description file beside a checkpoint declares.
+
+    Which modality a model was trained on is deliberately **not** here. Nothing
+    in a checkpoint says, and a name like ``AM_SEM_All_V01.pth`` is whatever
+    whoever trained it chose to type. Recording it would be recording a claim
+    this package cannot check, so the choice of which images to predict is the
+    caller's alone -- see :mod:`..operations.predict`.
+
+    Attributes:
+        generation: How the checkpoint is run.
         source: The description file this came from, or ``None`` for defaults.
     """
 
-    image_size: int = 1536
-    normalise_first: bool = True
-    pad: bool = False
-    normalise_version: int = 2
-    resize_version: str = "pytorch"
-    architecture: str = "FPN"
-    encoder: str = "efficientnet-b6"
+    generation: Generation = GENERATION_1
     source: Path | None = None
 
 
@@ -107,26 +148,33 @@ def description_path(weights: Path) -> Path:
 
 
 def read_model_description(weights: Path) -> ModelDescription:
-    """Return the description beside *weights*, or the defaults if there is none.
+    """Return the description beside *weights*, or generation 1 if there is none.
 
     Raises:
-        ValueError: If the file names a field this package does not know, which
-            is more likely a typo than a setting that will be ignored safely.
+        ValueError: If the file names anything but ``generation`` -- a typo, or
+            a setting a generation fixes and a file therefore cannot change --
+            or a generation this package does not know.
     """
     path = description_path(weights)
     data = read_yaml(path)
     if not data:
-        logger.info("No description at %s; using the default model settings", path)
+        logger.info("No description at %s; running it as generation %s", path, DEFAULT_GENERATION)
         return ModelDescription()
 
-    known = {field.name for field in fields(ModelDescription)} - {"source"}
-    unknown = sorted(set(data) - known)
+    unknown = sorted(set(data) - {"generation"})
     if unknown:
         raise ValueError(
-            f"{path}: unknown setting(s) {', '.join(unknown)}. "
-            f"Known settings are {', '.join(sorted(known))}"
+            f"{path}: unknown setting(s) {', '.join(unknown)}. A description names "
+            f"only the model's generation, which fixes everything else"
         )
-    return ModelDescription(**data, source=path)
+    # YAML reads `generation: 1.0` as a number; str() gives back what was typed.
+    name = str(data.get("generation", DEFAULT_GENERATION))
+    if name not in GENERATIONS:
+        raise ValueError(
+            f"{path}: unknown generation {name!r}. Known generations are "
+            f"{', '.join(repr(known) for known in GENERATIONS)}"
+        )
+    return ModelDescription(generation=GENERATIONS[name], source=path)
 
 
 def run_name_of(weights: Path) -> str | None:
@@ -176,13 +224,29 @@ def checkpoint_facts(state: Mapping[str, Any], run_name: str | None = None) -> C
     )
 
 
+def check_generation(facts: CheckpointFacts, generation: Generation) -> None:
+    """Refuse a checkpoint whose class or channel count is not *generation*'s.
+
+    Raises:
+        RuntimeError: Naming both counts, rather than the state-dict error the
+            strict load would give.
+    """
+    if (facts.classes, facts.in_channels) != (generation.classes, generation.in_channels):
+        raise RuntimeError(
+            f"Not a generation-{generation.name} checkpoint: it predicts "
+            f"{facts.classes} classes from {facts.in_channels} channel(s), and "
+            f"generation {generation.name} predicts {generation.classes} from "
+            f"{generation.in_channels}"
+        )
+
+
 @dataclass(frozen=True)
 class LoadedModel:
     """A model on a device, with everything needed to describe what it produced.
 
     Attributes:
         model: The torch module, in evaluation mode.
-        description: The settings it is run with.
+        description: What its description file declares, generation included.
         facts: What its weights state about it.
         weights: Path the weights were read from.
         device: The torch device it sits on.
@@ -218,14 +282,15 @@ class LoadedModel:
         # must not pay for the stack that runs one.
         from .preprocessing import image_preprocess
 
+        generation = self.description.generation
         tensor = image_preprocess(
             image.astype(np.float32),
-            image_size=self.description.image_size,
-            normalise_first=self.description.normalise_first,
+            image_size=generation.image_size,
+            normalise_first=generation.normalise_first,
             rgb=self.facts.rgb,
-            pad=self.description.pad,
-            normalise_version=self.description.normalise_version,
-            resize_version=self.description.resize_version,
+            pad=generation.pad,
+            normalise_version=generation.normalise_version,
+            resize_version=generation.resize_version,
         )
         with torch.no_grad():
             output = self.model(tensor.to(self.device))
@@ -249,7 +314,7 @@ def load_model(
 
     Raises:
         RuntimeError: If the inference stack is not installed, or if the
-            weights do not fit the architecture the description names.
+            weights are not of the generation the description names.
         FileNotFoundError: If *weights* does not exist.
     """
     require_ml_stack("Loading a model")
@@ -266,13 +331,15 @@ def load_model(
     # that this machine may not have.
     state = torch.load(weights, map_location="cpu")
     facts = checkpoint_facts(state, run_name=run_name_of(weights))
+    generation = description.generation
+    check_generation(facts, generation)
 
     # encoder_weights=None because the state dict overwrites them on the next
     # line. Asking for pretrained weights here downloads ~100 MB to discard it,
     # and fails on a machine with no route to the internet.
     model = smp.create_model(
-        description.architecture,
-        encoder_name=description.encoder,
+        generation.architecture,
+        encoder_name=generation.encoder,
         encoder_weights=None,
         in_channels=facts.in_channels,
         classes=facts.classes,
@@ -285,7 +352,8 @@ def load_model(
         model.load_state_dict(state, strict=True)
     except RuntimeError as error:
         raise RuntimeError(
-            f"{weights} does not fit {description.architecture}/{description.encoder}"
+            f"{weights} does not fit generation {generation.name}'s "
+            f"{generation.architecture}/{generation.encoder}"
             f"{f' as described by {description.source}' if description.source else ''}: "
             f"{error}"
         ) from error
@@ -293,8 +361,8 @@ def load_model(
     model = model.to(device)
     model.eval()
     logger.info(
-        "Loaded %s (%s, %d classes, %d channels) onto %s",
-        weights.name, facts.run_name or "run unrecorded", facts.classes,
-        facts.in_channels, device,
+        "Loaded %s (%s, generation %s, %d classes, %d channels) onto %s",
+        weights.name, facts.run_name or "run unrecorded", generation.name,
+        facts.classes, facts.in_channels, device,
     )
     return LoadedModel(model, description, facts, weights, device)

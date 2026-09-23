@@ -1,9 +1,9 @@
 """Tests for reading a checkpoint and the description beside it.
 
 Everything here runs without torch. That is the point of the split: what a
-checkpoint states about itself is read from a mapping of tensor shapes, and what
-it cannot state is read from a YAML file, so both are checkable without a 170 MB
-download or a GPU. Only the load itself needs the inference stack, and that is
+checkpoint states about itself is read from a mapping of tensor shapes, and its
+generation from a YAML file, so both are checkable without a 170 MB download or
+a GPU. Only the load itself needs the inference stack, and that is
 covered by the strict-load check in ml/model.py rather than in a test.
 """
 from __future__ import annotations
@@ -13,8 +13,12 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.ml.model import (
+    DEFAULT_GENERATION,
+    GENERATION_1,
+    GENERATIONS,
     CheckpointFacts,
     ModelDescription,
+    check_generation,
     checkpoint_facts,
     description_path,
     read_model_description,
@@ -111,11 +115,26 @@ def test_the_description_sits_beside_the_weights_keeping_their_extension(tmp_pat
     assert description_path(tmp_path / "model.pth").name == "model.pth.yaml"
 
 
-def test_no_description_file_means_the_defaults(tmp_path: Path):
+def test_an_undescribed_checkpoint_is_generation_one(tmp_path: Path):
+    """Never the latest generation: a checkpoint left undescribed must not
+    change how it is run when one is added."""
     description = read_model_description(tmp_path / "model.pth")
 
     assert description == ModelDescription()
+    assert description.generation is GENERATION_1
+    assert DEFAULT_GENERATION == "1.0"
     assert description.source is None
+
+
+@pytest.mark.parametrize("written", ['"1.0"', "1.0", "'1.0'"])
+def test_a_description_names_the_generation_however_yaml_types_it(tmp_path: Path, written):
+    weights = tmp_path / "model.pth"
+    description_path(weights).write_text(f"generation: {written}\n", encoding="utf-8")
+
+    description = read_model_description(weights)
+
+    assert description.generation is GENERATION_1
+    assert description.source == description_path(weights)
 
 
 def test_the_description_says_nothing_about_modality(tmp_path: Path):
@@ -131,24 +150,51 @@ def test_the_description_says_nothing_about_modality(tmp_path: Path):
         read_model_description(weights)
 
 
-def test_a_description_overrides_only_what_it_names(tmp_path: Path):
+@pytest.mark.parametrize("setting", ["image_size: 1024", "pad: true", "image_sze: 1024"])
+def test_a_description_naming_anything_but_the_generation_is_refused(tmp_path: Path, setting):
+    """A generation fixes how a model is run, so a setting it fixes is a request
+    that cannot be honoured, and a typo would run it on settings you did not
+    choose. Either way ignoring it would be worse than refusing."""
     weights = tmp_path / "model.pth"
-    description_path(weights).write_text("image_size: 1024\n", encoding="utf-8")
+    description_path(weights).write_text(f"generation: '1.0'\n{setting}\n", encoding="utf-8")
 
-    description = read_model_description(weights)
-
-    assert description.image_size == 1024
-    assert description.normalise_first is ModelDescription().normalise_first
-    assert description.source == description_path(weights)
-
-
-def test_an_unknown_setting_is_refused_rather_than_ignored(tmp_path: Path):
-    """A silently ignored typo runs the model on settings you did not choose."""
-    weights = tmp_path / "model.pth"
-    description_path(weights).write_text("image_sze: 1024\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="image_sze"):
+    with pytest.raises(ValueError, match=setting.split(":")[0]):
         read_model_description(weights)
+
+
+def test_an_unknown_generation_is_refused_naming_the_known_ones(tmp_path: Path):
+    weights = tmp_path / "model.pth"
+    description_path(weights).write_text("generation: '1.4fpn'\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"'1\.4fpn'.*'1\.0'"):
+        read_model_description(weights)
+
+
+def test_generation_one_s_settings_are_the_ones_predictions_were_made_with():
+    """Written out, so that changing how generation 1 runs is a deliberate edit
+    here: every prediction on disk was made with these, and they are what
+    reproduce Adaptive Milling's Gen1Model."""
+    assert GENERATIONS == {"1.0": GENERATION_1}
+    assert (
+        GENERATION_1.image_size, GENERATION_1.normalise_first, GENERATION_1.pad,
+        GENERATION_1.normalise_version, GENERATION_1.resize_version,
+        GENERATION_1.architecture, GENERATION_1.encoder,
+        GENERATION_1.classes, GENERATION_1.in_channels,
+    ) == (1536, True, False, 2, "pytorch", "FPN", "efficientnet-b6", 5, 3)
+
+
+def test_a_generation_one_checkpoint_is_accepted():
+    check_generation(checkpoint_facts(state_dict()), GENERATION_1)
+
+
+@pytest.mark.parametrize("classes, in_channels", [(4, 3), (5, 1)])
+def test_a_checkpoint_of_another_shape_is_refused_as_not_generation_one(classes, in_channels):
+    """Named in both counts, rather than as the state-dict error the strict load
+    would give."""
+    facts = checkpoint_facts(state_dict(classes=classes, in_channels=in_channels))
+
+    with pytest.raises(RuntimeError, match="Not a generation-1.0 checkpoint"):
+        check_generation(facts, GENERATION_1)
 
 
 def test_facts_are_frozen_so_a_prediction_cannot_be_relabelled_after_the_fact():

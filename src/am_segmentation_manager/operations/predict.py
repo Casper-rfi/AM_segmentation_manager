@@ -43,10 +43,13 @@ class PredictionSource:
         run_name: The training run recorded inside the weights, or ``None``.
             Two checkpoints can share a filename; the run is what identifies
             what actually produced a prediction.
+        generation: How the model is run, recorded but not matched on: one
+            checkpoint is of one generation, so the model and run already say it.
     """
 
     name: str
     run_name: str | None = None
+    generation: str | None = None
 
     def matches(self, entry: Mapping[str, Any]) -> bool:
         """Return whether a provenance entry records this same model."""
@@ -286,6 +289,7 @@ def run_predictions(
         provenance[directory][planned.destination.name] = {
             "model": source.name,
             "run": source.run_name,
+            "generation": source.generation,
             "predicted_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "image": planned.record.image_path.name,
         }

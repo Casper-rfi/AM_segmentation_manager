@@ -17,13 +17,14 @@ from am_segmentation_manager.operations.predict import (
     prediction_destination,
     read_provenance,
     run_predictions,
+    write_provenance,
 )
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
 
 np = pytest.importorskip("numpy")
 
-MODEL = PredictionSource(name="AM_SEM_All_V01.pth", run_name="run_epoch086")
+MODEL = PredictionSource(name="AM_SEM_All_V01.pth", run_name="run_epoch086", generation="1.0")
 
 
 def write_real_images(records) -> None:
@@ -201,7 +202,30 @@ def test_every_prediction_records_which_model_made_it(tmp_path: Path):
 
     assert entry["model"] == "AM_SEM_All_V01.pth"
     assert entry["run"] == "run_epoch086"
+    assert entry["generation"] == "1.0"
     assert entry["predicted_at"]
+
+
+def test_a_prediction_recorded_before_generations_is_still_up_to_date(tmp_path: Path):
+    """The generation is recorded, not matched on: one checkpoint is of one
+    generation, and every prediction made before it was recorded was made as
+    generation 1, so none of them is predicted again."""
+    dataset = build_dataset(tmp_path)
+    records = records_of(dataset.root)
+    write_real_images(records)
+    run_predictions(plan_predictions(records, MODEL), fake_predict, MODEL)
+    replanned = plan_predictions(records, MODEL, overwrite=True)
+    directories = {item.destination.parent for item in replanned.predictions}
+    for directory in directories:
+        entries = read_provenance(directory)
+        for entry in entries.values():
+            del entry["generation"]
+        write_provenance(directory, entries)
+
+    plan = plan_predictions(records, MODEL)
+
+    assert not plan.predictions
+    assert plan.up_to_date
 
 
 def test_a_second_run_of_the_same_model_predicts_nothing_again(tmp_path: Path):

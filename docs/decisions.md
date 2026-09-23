@@ -603,10 +603,14 @@ rather than appending to it.
 
 ## Inference
 
-- **A fact recoverable from the weights is never declared**, the division `ml/model.py` sets out.
-  One default in the description file is load-bearing: **`decoder_attention_type="scse"` is not
-  part of these models** — the training call passes it, smp's `FPN` swallows it into `**kwargs`,
-  the checkpoints hold no attention tensors, and a plain FPN strict-loads every one.
+- **How a model is run is its generation's, never a file's**, the division `ml/model.py` sets out:
+  the description beside a checkpoint names only the generation, undescribed meaning `1.0`, not
+  the latest (`test_a_description_naming_anything_but_the_generation_is_refused`). Generation 1 is
+  Adaptive Milling's, which the microscope predicts with, and is frozen
+  (`test_generation_one_s_settings_are_the_ones_predictions_were_made_with`). The class and channel
+  counts are read from the weights and must be the generation's. **`decoder_attention_type="scse"`
+  is not part of these models** — the training call passes it, smp's `FPN` swallows it into
+  `**kwargs`, the checkpoints hold no attention tensors, and a plain FPN strict-loads every one.
 - **Which modality a model is for is not recorded anywhere, deliberately.** Nothing in a checkpoint
   says, and a filename is whatever whoever trained it chose to type; reading that as evidence makes
   the software's answer depend on someone else's naming habit, and declaring it in the sidecar only

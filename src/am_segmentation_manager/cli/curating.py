@@ -99,8 +99,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     predict_cmd.add_argument(
         "--model", required=True, metavar="PATH",
         help=(
-            "Trained model weights (.pth). Settings that the weights do not "
-            "record are read from <PATH>.yaml beside them, if it exists"
+            "Trained model weights (.pth). The model's generation, which fixes "
+            "how it is run, is read from <PATH>.yaml beside them as "
+            "'generation: \"1.0\"'; without that file it is generation 1.0, "
+            "the one the microscope predicts with"
         ),
     )
     predict_cmd.add_argument(
@@ -291,7 +293,10 @@ def _cmd_predict(args: argparse.Namespace) -> int:
     except ValueError as exc:
         logger.error("%s", exc)
         return 2
-    source = PredictionSource(name=weights.name, run_name=run_name_of(weights))
+    source = PredictionSource(
+        name=weights.name, run_name=run_name_of(weights),
+        generation=description.generation.name,
+    )
 
     plan = plan_predictions(records, source, overwrite=args.overwrite)
     if plan.is_refused:
