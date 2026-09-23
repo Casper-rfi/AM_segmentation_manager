@@ -25,7 +25,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-INSTALL_HINT = "Install it with: pip install 'am_segmentation_manager[plots]'"
+INSTALL_HINT = "Install it with: pip install 'adaptive-milling-seg[plots]'"
 
 #: Figure geometry, in inches. Bars grow downwards as groups are added; the
 #: floors stop a two-bar chart from being drawn as a stripe.

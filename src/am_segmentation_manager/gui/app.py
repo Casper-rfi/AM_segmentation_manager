@@ -172,7 +172,7 @@ def _missing_qt_message(error: Exception) -> str:
             "The curation window needs qtpy and a Qt binding, and neither is "
             "installed.\n"
             "  uv sync --extra gui\n"
-            "  or: pip install 'am_segmentation_manager[gui]'"
+            "  or: pip install 'adaptive-milling-seg[gui]'"
         )
 
     installed = [name for name in QT_BINDINGS if importlib.util.find_spec(name) is not None]

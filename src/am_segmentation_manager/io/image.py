@@ -23,7 +23,7 @@ TIFF_SUFFIXES = {".tif", ".tiff"}
 
 INSTALL_HINT = (
     "Install them with: uv sync --extra all (or --extra gui), or pip install "
-    "'am_segmentation_manager[all]'. If one is installed but fails to import, "
+    "'adaptive-milling-seg[all]'. If one is installed but fails to import, "
     "look for a second provider of cv2: opencv-python or conda's opencv beside "
     "the opencv-python-headless this package installs breaks the import."
 )

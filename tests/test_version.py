@@ -1,4 +1,4 @@
-"""The version is stated once, and a file format changes only as a breaking change.
+"""The name and version are stated once, and a file format changes only as a breaking change.
 
 Read from the repository's own files, so these hold whether or not the package
 is installed; `decisions.md` § Environment says why each rule is there.
@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
+
+import pytest
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 
@@ -19,6 +21,22 @@ def _project() -> dict:
 
 def _normalised(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
+
+
+#: A requirement with extras, as a hint quotes it: 'name[gui]'.
+INSTALL_HINT = re.compile(r"'([A-Za-z0-9_.-]+)\[[a-z0-9,-]+\]'")
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["gui/app.py", "io/image.py", "ml/environment.py", "plots.py"],
+)
+def test_an_install_hint_names_the_package_pyproject_does(module):
+    """The distribution is not called what it is imported as, so a hint
+    written from the import name would send a user to install nothing."""
+    source = (REPOSITORY / "src" / "am_segmentation_manager" / module).read_text(encoding="utf-8")
+
+    assert set(INSTALL_HINT.findall(source)) == {_project()["name"]}
 
 
 def test_the_version_is_a_release_or_the_development_of_one():
