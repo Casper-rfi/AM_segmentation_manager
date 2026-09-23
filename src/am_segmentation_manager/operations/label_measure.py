@@ -72,7 +72,7 @@ _CACHE: dict[tuple[Path, int, int, int | None], LabelPixels] = {}
 #: by hand; extended use of the speck filter found the components worth a
 #: second glance run a good deal larger, and that some false positives are
 #: worth the ones this catches.
-DEFAULT_SPECK_PIXELS = 64
+DEFAULT_SPECK_PIXELS = 128
 
 #: The smallest area a label converted from a prediction can hold, in pixels.
 #:
@@ -88,7 +88,7 @@ PREDICTION_PIXEL_BLOCK = 4
 #: a widget: two controls now offer this size, and a range owned by one of them
 #: would be a dependency between two panels with nothing else in common.
 MIN_SPECK_PIXELS = 1
-MAX_SPECK_PIXELS = 128
+MAX_SPECK_PIXELS = 256
 
 
 @dataclass(frozen=True)

@@ -807,7 +807,7 @@ def test_the_filter_opens_wide_enough_to_sweep_a_label(window):
         DEFAULT_SPECK_PIXELS,
     )
 
-    assert window.label_panel.controller.speck_size == DEFAULT_SPECK_PIXELS == 64
+    assert window.label_panel.controller.speck_size == DEFAULT_SPECK_PIXELS == 128
     assert window.label_panel.speck_slider.value() == DEFAULT_SPECK_PIXELS
     assert window.label_panel.speck_slider.maximum() >= DEFAULT_SPECK_PIXELS, (
         "the slider has to reach the size it starts at, and past it"
