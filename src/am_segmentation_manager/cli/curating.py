@@ -139,7 +139,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "kept unless --overwrite is given. Only images explicitly selected by the scope "
             "arguments are converted, because the labels this produces are "
             "pseudo-labels awaiting proofreading, not finished annotations. "
-            "Predictions are read from predictions/am_seg/, which predict-labels "
+            "Predictions are read from predictions/am_seg/, which predict "
             "writes, and from the microscope's predictions/raw/ or an undivided "
             "predictions/ directory. Where an image has both, --prefer chooses, "
             "and the other is used where the chosen one is missing. The "
