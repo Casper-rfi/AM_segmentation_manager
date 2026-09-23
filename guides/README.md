@@ -26,8 +26,8 @@ flowchart LR
    earlier versions.
 5. [Export](05_export.md): choosing a subset, counting and measuring it, and
    writing training sets, metadata and copies.
-6. [The command line](08_command_line.md): every command, and how to point one
+6. [History](06_history.md): the record of every change, savepoints, undoing
+   work, and merging a copy back.
+7. [The command line](08_command_line.md): every command, and how to point one
    at part of a collection.
-7. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
-
-The chapter on history is being written. Until they are, the [README](../README.md) describes each tab.
+8. [Keys and gestures](09_keys.md): everything F1 lists, for every tab. Until they are, the [README](../README.md) describes each tab.

@@ -103,9 +103,8 @@ added later arrive selected. You can read the file, and edit it by hand.
 - **You can see what will happen first.** Most commands that write take
   `--dry-run`; `merge`, `revert`, `savepoint` and `prune-archive` only report
   until given `--apply`.
-- **A replaced label is kept.** Once a collection records its history, a
-  label an operation replaces is kept under `AM_archive/`, and `revert` puts it
-  back. Only a model's untouched output is not kept, as the model can make it
+- **A replaced label is kept.** A label an operation replaces is kept under
+  `AM_archive/`, and `revert` puts it back. Only a model's untouched output is not kept, as the model can make it
   again.
 
 ## What am-seg writes
@@ -120,7 +119,7 @@ one of them yourself.
 | `AM_state.yaml` | stage folder | the state of every group that is not selected |
 | `<images>_labels/` | beside the images | labels: from the segmentation software, converted from predictions, or saved after proofreading |
 | `<images>_predictions/` | beside the images | predictions, with `am_seg_predictions.yaml` saying which model made them |
-| `AM_history.jsonl` | project folder | who changed what, and when, once `init-history` has been run |
+| `AM_history.jsonl` | project folder | who changed what, and when, from the first change on |
 | `AM_archive/` | project folder | every label version an operation replaced |
 | `AM_export.yaml` | an exported copy | where the copy came from, so `merge` can bring it home |
 

@@ -155,5 +155,5 @@ The *Maintenance* card acts on every label under the folder, and waits for
 | **Compress labels...** | Re-encodes every label so it takes less disk space. No pixel changes, and a file that would not shrink is left alone. |
 | **Reclaim space...** | Removes the kept label versions that no savepoint needs. |
 
-Savepoints and kept versions need the collection's history to be recorded;
-`am-seg init-history` starts it.
+On a collection that already holds work, run `am-seg init-history` once first,
+so a savepoint covers every project; [History](06_history.md) says why.

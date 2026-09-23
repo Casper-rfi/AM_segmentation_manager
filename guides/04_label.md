@@ -63,9 +63,9 @@ on, on the Curate tab, it offers two ways to save:
 With editing off it offers **Save** alone, and says how to mark them corrected
 as well.
 
-Saving replaces the label file. Once the collection records its history, the
-version it replaces is kept first, under `AM_archive/`, unless it was a
-prediction nobody had touched, which the model can make again.
+Saving replaces the label file. The version it replaces is kept first, under
+`AM_archive/`, unless it was a prediction nobody had touched, which the model
+can make again.
 
 ## Find specks
 
