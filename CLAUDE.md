@@ -162,6 +162,8 @@ document over that ceiling with none of those reasons available is a question fo
 Before reporting work done, re-read whatever documents mention what you changed and
 correct what is no longer true, status lines included.
 
+how to install goes in README.md; how to use the window and the commands goes in guides/.
+
 ---
 
 # Important Design Constraint
