@@ -2,7 +2,8 @@
 
 Go through the images a lamella at a time, decide which are worth labelling,
 and predict and convert labels for them. Proofreading those labels is the
-Label tab's job; this one is where you choose what gets proofread.
+[Label](04_label.md) tab's job; this one is where you choose what gets
+proofread.
 
 ![The Curate tab, showing 03-secure-oyster beside its label](images/curate.png)
 
@@ -133,7 +134,8 @@ since, is reported and left alone.
 **Find specks...** reads every label in the choice and reports the ones holding
 pieces too small to be likely real: a stray brush stroke, or a pinhole in a
 class. **At most** sets how small, in pixels. Some are genuine, so it changes
-nothing; open the lamella on the Label tab to look at each one.
+nothing; open the lamella on the [Label](04_label.md#find-specks) tab to look
+at each one.
 
 ## From the command line
 

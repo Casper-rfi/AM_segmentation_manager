@@ -22,8 +22,10 @@ flowchart LR
    describing them.
 3. [Curate](03_curate.md): looking through the frames, changing their state,
    predicting and converting labels.
-4. [The command line](08_command_line.md): every command, and how to point one
+4. [Label](04_label.md): proofreading at full resolution, saving, specks and
+   earlier versions.
+5. [The command line](08_command_line.md): every command, and how to point one
    at part of a collection.
-5. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
+6. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
 
-The chapters on proofreading, exporting and history are being written. Until they are, the [README](../README.md) describes each tab.
+The chapters on exporting and history are being written. Until they are, the [README](../README.md) describes each tab.
