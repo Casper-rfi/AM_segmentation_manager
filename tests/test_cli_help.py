@@ -188,6 +188,12 @@ def test_version_flag_reports_the_package_version():
     assert __version__
 
 
+def test_usage_names_the_command_a_user_types():
+    """Not the import name, which is neither what is installed nor what is run."""
+    assert build_parser().format_usage().startswith("usage: am-seg ")
+    assert _subcommands()["gui"].format_usage().startswith("usage: am-seg gui ")
+
+
 def test_no_help_text_carries_the_home_directory_it_was_built_on():
     """Help is documentation: it goes into screenshots, bug reports and READMEs.
 

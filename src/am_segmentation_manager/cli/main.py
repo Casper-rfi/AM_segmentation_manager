@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     running a command, which is what lets the help text be tested.
     """
     parser = argparse.ArgumentParser(
-        "am_segmentation_manager",
+        "am-seg",
         description="Manage Autolamella segmentation projects",
         epilog=(
             f"A scan reads image headers in worker processes: every CPU this "
