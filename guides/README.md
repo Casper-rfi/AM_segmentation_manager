@@ -20,9 +20,10 @@ flowchart LR
    states, and every file am-seg writes.
 2. [Add data](02_add_data.md): opening a folder, naming its projects, and
    describing them.
-3. [The command line](08_command_line.md): every command, and how to point one
+3. [Curate](03_curate.md): looking through the frames, changing their state,
+   predicting and converting labels.
+4. [The command line](08_command_line.md): every command, and how to point one
    at part of a collection.
-4. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
+5. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
 
-The chapters on curating, proofreading, exporting and history are being
-written. Until they are, the [README](../README.md) describes each tab.
+The chapters on proofreading, exporting and history are being written. Until they are, the [README](../README.md) describes each tab.

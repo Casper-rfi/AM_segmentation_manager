@@ -78,9 +78,9 @@ When several conditions of one acquisition share one label, they are one
 
 | State | Means |
 |---|---|
-| selected | in use. Every image starts here. |
-| deselected | left out of the work. |
-| corrected | proofread by a person. No automated operation may overwrite its label. |
+| selected | a label is wanted, and not yet finished. Every image starts here. |
+| deselected | no label is wanted here. |
+| corrected | the label has been proofread. No automated operation may overwrite it. |
 
 A state belongs to the group, never to one image in it, so changing the state
 of one condition changes all of them. Deselecting a corrected group withdraws
