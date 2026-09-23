@@ -212,7 +212,7 @@ Autolamella projects are found by their `experiment.yaml`; datasets predating it
 theirs stripped out, are named on *Add data* through **Add projects**, which proposes the
 directories holding images that nothing indexes and lets you confirm them, look inside one
 that gathers several datasets, or name a folder the scan cannot recognise.
-Reviewing is safe by default: everything that writes stays locked until *Enable editing*
+Reviewing is safe by default: everything on Curate that writes stays locked until *Enable editing*
 is ticked, and stays locked anyway on a series whose images have no labels to change. Press **`F1`** for the keys and mouse gestures live on the tab you are on.
 
 The command line covers the same ground plus the whole-collection reports, and
@@ -266,6 +266,7 @@ Getting help
   under a heading per job — what changes the view, what chooses which images a
   change covers, what changes them. It stays open beside the window while you
   try them, and `F1` puts it away.
+* [The user guide](guides/README.md) — how to use the window and the commands.
 * [`CHANGELOG.md`](CHANGELOG.md) — what each release changed.
 * [`docs/00_roadmap.md`](docs/00_roadmap.md) — what is built and what is next.
 * [`docs/decisions.md`](docs/decisions.md) — why it works this way, and the
