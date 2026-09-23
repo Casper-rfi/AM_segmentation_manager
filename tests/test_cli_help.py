@@ -81,6 +81,8 @@ WORKFLOW_ORDER = [
     "revert",
     "archive",
     "prune-archive",
+    # Setting this computer up, once, and never a step of the workflow.
+    "create-shortcut",
 ]
 
 

@@ -18,16 +18,16 @@ from .. import __version__
 from ..history import CONFIG_DISPLAY, USER_ENV_VAR, USER_FILENAME
 from ..io.path import NoRelativePath
 from ..parallel import MAX_DEFAULT_WORKERS, WORKERS_ENV_VAR
-from . import adding, curating, quantifying, recording, restoring
+from . import adding, curating, installing, quantifying, recording, restoring
 from .logs import DEFAULT_GUI_LOG, LOG_FILE_MAX_BYTES, open_log_file
 from .scope import report_refused
 
 logger = logging.getLogger(__name__)
 
 #: The command groups, in the order ``am-seg --help`` lists them: the order of
-#: the workflow. Adding a group is a line here and nothing else -- its heading,
+#: the workflow, then setting this computer up, which is no step of it. Adding a group is a line here and nothing else -- its heading,
 #: its subparsers and its handlers all come from the module.
-GROUPS = (adding, curating, quantifying, recording, restoring)
+GROUPS = (adding, curating, quantifying, recording, restoring, installing)
 
 #: Which heading each command is listed under, built from the groups so the
 #: help and the modules cannot disagree about what belongs where.

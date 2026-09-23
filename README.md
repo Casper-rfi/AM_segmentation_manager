@@ -188,6 +188,7 @@ torch needs a driver recent enough for CUDA 13.
 Getting started
 ---------------
 
+    am-seg create-shortcut            # once: start the window like any other application
     am-seg inspect-layout <folder>    # read-only: how is this data read?
     am-seg gui <folder>               # the main interface
 
@@ -240,6 +241,7 @@ is the place for anything scripted:
 | Put labels back to what they held before a conversion or a merge | `revert` |
 | See the label versions a project has kept | `archive` |
 | Remove surplus kept versions | `prune-archive` |
+| Add the window to this computer's applications, or take it away again | `create-shortcut` |
 
 Getting help
 ------------
