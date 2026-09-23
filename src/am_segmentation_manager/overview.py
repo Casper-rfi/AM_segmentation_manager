@@ -95,6 +95,8 @@ class Overview:
         rotation_reference: The stage rotation facing the grid to the electron
             column, in radians. Read only for a compustage, which faces the
             ion column only at this rotation.
+        manufacturer: The instrument's maker as its header spells it, or None
+            where it does not say.
     """
 
     path: Path
@@ -108,6 +110,7 @@ class Overview:
     compustage: bool = False
     shuttle_pretilt: float = 0.0
     rotation_reference: float = 0.0
+    manufacturer: str | None = None
 
 
 #: The model name by which fibsemOS recognises a compustage.
@@ -122,6 +125,10 @@ COMPUSTAGE_DEFAULTS: Mapping[str, float] = {
     "stage_rotation_reference_deg": 0.0,
     "ion_column_tilt_deg": 52.0,
 }
+
+#: The maker whose stage fibsemOS projects with a geometry of its own, compared
+#: without regard to case: its headers have spelled it both ``TESCAN`` and ``Tescan``.
+TESCAN: str = "tescan"
 
 #: The coordinate system a compustage's position is taken to be in where its
 #: header does not say: the only one fibsemOS records an Arctis in. Assumed of
@@ -193,6 +200,7 @@ def overview_from_metadata(path: Path, metadata: ImageMetadata) -> Overview | No
         scan_rotation=math.radians(float(scan_deg)),
         beam=beam,
         compustage=compustage,
+        manufacturer=metadata.microscope_manufacturer,
         **column_geometry,
     )
 
@@ -246,7 +254,15 @@ def reproject(overview: Overview, position: StagePosition) -> tuple[float, float
             number of half turns, which fibsemOS does not model either.
         ValueError: If *position* and *overview* are known to be in different
             coordinate systems, which put the same stage in different places.
+        ValueError: If *overview* was taken on a TESCAN, whose stage fibsemOS
+            projects through a derivation of its own that nothing here checks.
     """
+    if (overview.manufacturer or "").strip().lower() == TESCAN:
+        raise ValueError(
+            f"{overview.path.name} was taken on a TESCAN, whose stage moves "
+            f"differently from the one this package models, so nothing can be "
+            f"placed on it"
+        )
     frame, recorded = _frame(overview, overview.centre), _frame(overview, position)
     if frame is not None and recorded is not None and frame != recorded:
         raise ValueError(

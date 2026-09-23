@@ -453,6 +453,19 @@ def test_a_flat_stage_saying_nothing_is_compared_with_nothing():
     assert reproject(upright(), at(coordinate_system="RAW")) == (500.0, 400.0)
 
 
+@pytest.mark.parametrize("spelling", ["TESCAN", "Tescan", " tescan "])
+def test_a_tescan_overview_places_nothing(spelling: str):
+    """fibsemOS projects a TESCAN stage through a derivation of its own, which no
+    header here has been available to check a restatement of."""
+    with pytest.raises(ValueError, match="TESCAN"):
+        reproject(upright(manufacturer=spelling), at())
+
+
+@pytest.mark.parametrize("manufacturer", ["Thermo", "ThermoFisher", None])
+def test_any_other_maker_is_placed_as_the_stage_this_package_models(manufacturer):
+    assert reproject(upright(manufacturer=manufacturer), at()) == (500.0, 400.0)
+
+
 def test_is_inside_reads_the_overview_bounds():
     overview = upright()
 
@@ -491,6 +504,13 @@ def test_the_header_units_are_converted_to_the_instrument_s_own():
     assert resolved.scan_rotation == pytest.approx(math.pi)
     assert resolved.ion_column_tilt == pytest.approx(math.radians(52))
     assert resolved.compustage is False
+
+
+def test_the_header_s_manufacturer_reaches_the_overview():
+    resolved = overview_from_metadata(Path("o.tif"), metadata(microscope_manufacturer="TESCAN"))
+
+    assert resolved is not None
+    assert resolved.manufacturer == "TESCAN"
 
 
 def test_an_arctis_is_known_as_a_compustage():

@@ -476,6 +476,12 @@ def test_the_instrument_is_identified_the_same_way_in_both_dialects():
     assert modern.microscope_serial == legacy.microscope_serial == "9952468"
 
 
+def test_the_manufacturer_is_read_where_fibsem_records_it_and_never_inferred():
+    """The FEI dialect names no maker; its tag is not taken to be one."""
+    assert extract_metadata(fibsem_header(), "fibsem").microscope_manufacturer == "Thermo"
+    assert extract_metadata(fei_header(), "fei").microscope_manufacturer is None
+
+
 @pytest.mark.parametrize("loc", ["C", "de_DE.UTF-8", "fr_FR.UTF-8", "ja_JP.UTF-8"])
 def test_acquisition_time_does_not_depend_on_the_locale(loc):
     """The header says "PM" whatever machine it was written on.

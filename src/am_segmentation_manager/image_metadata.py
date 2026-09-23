@@ -71,6 +71,9 @@ class ImageMetadata:
             image the probe passed over each line at least once, so one is the
             physical floor rather than a guess.
         microscope_model: Instrument model, e.g. ``"Arctis"``.
+        microscope_manufacturer: Instrument maker, as fibsemOS spells it, e.g.
+            ``"Thermo"`` or ``"TESCAN"``. The FEI dialect names none, and is
+            not taken to imply one.
         microscope_serial: Instrument serial number. Distinguishes two
             instruments of the same model, which is what "fine-tune for one
             microscope" actually needs.
@@ -145,6 +148,7 @@ class ImageMetadata:
     image_integrations: int | None = None
     line_integrations: int | None = None
     microscope_model: str | None = None
+    microscope_manufacturer: str | None = None
     microscope_serial: str | None = None
     microscope_software_version: str | None = None
     microscope_api_version: str | None = None
@@ -306,6 +310,10 @@ FIELDS: tuple[HeaderField, ...] = (
         fibsem=(("system", "info", "model"),),
         fei=(("System", "SystemType"),),
         search=("systemtype",),
+    ),
+    HeaderField(
+        "microscope_manufacturer",
+        fibsem=(("system", "info", "manufacturer"),),
     ),
     HeaderField(
         "microscope_serial",
@@ -625,8 +633,8 @@ _BOOL_FIELDS = {"autocontrast", "autogamma"}
 
 #: Fields that are labels rather than numbers.
 _TEXT_FIELDS = {
-    "microscope_model", "microscope_serial", "detector_type", "detector_mode",
-    "plasma_gas", "electron_source", "stage_coordinate_system",
+    "microscope_model", "microscope_manufacturer", "microscope_serial", "detector_type",
+    "detector_mode", "plasma_gas", "electron_source", "stage_coordinate_system",
     "microscope_software_version", "microscope_api_version",
     "acquisition_software", "acquisition_software_version",
 }
