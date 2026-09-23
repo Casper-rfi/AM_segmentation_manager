@@ -19,13 +19,14 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **Running the suite in parallel** with `pytest-xdist`, a new dependency. First: whether the
   process-wide state [`display.md`](display.md) § Testing the window names — the locale a
   `QApplication` sets, the error reporter's excepthook — stays confined to one worker.
-- **Predicting and training through AM-model-training** (Apache-2.0, RFI), which trained these
-  models and reads the `image,label` CSVs `create-training-csv` writes. First: whether
-  `ml/preprocessing.py`, a precursor of it, still preprocesses as its MONAI transforms do — a
-  difference there is wrong predictions now, not untidiness. Then: its inference writes
-  `<stem>.tif` flat into one directory, which this collection's repeated filenames would overwrite;
-  MONAI, mlflow and its torch index are not ours; and whether it is a dependency or an environment
-  a child process runs, as predicting already is.
+- **Training through AM-model-training** (Apache-2.0, RFI), which trained these models and reads
+  the `image,label` CSVs `create-training-csv` writes; its preprocessing is this package's. Not its
+  `am-infer`, which predicts in training mode, never calling `model.eval()`. First: MONAI, mlflow
+  and its torch index are not ours, so whether it is a dependency or an environment a child
+  process runs, as predicting already is.
+- **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
+  `GENERATIONS` held to a recapture of `adaptive_milling_gen1.npz`'s kind, or as a dependency on
+  `adaptive-milling`, 27 packages beside `ml` and an API that renamed its generations once.
 - **Splitting the five classes that outgrew a screen** — `CurationWindow` (89 methods, 1657
   lines), `CurationController` (82), `LabelPanel` (66), `ExportController` (48) and `ExportPanel`
   (31). None is public API — that is six names and the `am-seg` entry point — so this is
