@@ -34,6 +34,12 @@ def test_the_command_table_is_every_command_as_its_help_gives_it():
     )
 
 
+def test_the_field_table_is_every_field_add_data_offers():
+    assert _block("fields").strip() == guide_tables.fields_markdown().strip(), (
+        _regenerate_hint("fields")
+    )
+
+
 def test_the_key_tables_are_what_f1_lists(request, tmp_path):
     """Built as the script builds it: the packaged classes, and a throwaway
     settings file. Skipped without Qt, which the command table does not need."""

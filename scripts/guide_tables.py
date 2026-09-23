@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the user guide's generated tables: every command, and each tab's keys.
+"""Write the user guide's generated tables: the metadata fields, the commands, the keys.
 
 **A standalone script, not an ``am-seg`` command.** Run it after changing a
 command, a key or a mouse gesture; ``tests/test_guides.py`` fails until it has
@@ -13,7 +13,8 @@ between them is rewritten::
     uv run python scripts/guide_tables.py           # rewrite the tables
     uv run python scripts/guide_tables.py --check   # exit 1 if any is out of date
 
-The commands come from the parser, and need nothing installed. The keys are
+The fields come from ``metadata.FIELDS`` and the commands from the parser, and
+need nothing installed. The keys are
 read from the window's own table, the one F1 shows, so they need the ``gui``
 extra: the window is built offscreen, with the packaged segmentation config
 naming the classes and a throwaway settings file, and never shown or scanned.
@@ -32,6 +33,7 @@ GUIDES = REPOSITORY / "guides"
 
 #: Which page holds which table.
 PAGES = {
+    "fields": GUIDES / "02_add_data.md",
     "commands": GUIDES / "08_command_line.md",
     "keys": GUIDES / "09_keys.md",
 }
@@ -66,6 +68,29 @@ def commands_markdown() -> str:
             for name, help_line in helps.items() if name in group.COMMANDS
         )
         parts.append("\n")
+    return "".join(parts)
+
+
+def fields_markdown() -> str:
+    """Return every descriptive field under its heading on the Add data tab, as tables."""
+    from am_segmentation_manager.metadata import FIELDS, NUMBER
+
+    parts, section = [], None
+    for field in FIELDS:
+        if field.section != section:
+            section = field.section
+            parts.append(f"\n**{section}**\n\n| Field | What to enter | Takes |\n|---|---|---|\n")
+        if field.choices:
+            takes = "one of: " + ", ".join(field.choices)
+        elif field.kind == NUMBER:
+            takes = "a number"
+        else:
+            takes = "text"
+        if field.multi:
+            takes += ", one or several"
+        if field.defaults:
+            takes += "; usually " + " or ".join(field.defaults)
+        parts.append(f"| {_cell(field.label)} | {_cell(field.comment)} | {_cell(takes)} |\n")
     return "".join(parts)
 
 
@@ -135,7 +160,7 @@ def replace_generated(text: str, name: str, body: str) -> str:
 
 def generated(window=None) -> dict[str, str]:
     """Return every table's Markdown by name; the keys only where *window* is given."""
-    tables = {"commands": commands_markdown()}
+    tables = {"fields": fields_markdown(), "commands": commands_markdown()}
     if window is not None:
         tables["keys"] = keys_markdown(window)
     return tables

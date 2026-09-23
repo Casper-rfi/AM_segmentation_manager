@@ -18,9 +18,11 @@ flowchart LR
 
 1. [Concepts](01_concepts.md): projects, series, label groups and their three
    states, and every file am-seg writes.
-2. [The command line](08_command_line.md): every command, and how to point one
+2. [Add data](02_add_data.md): opening a folder, naming its projects, and
+   describing them.
+3. [The command line](08_command_line.md): every command, and how to point one
    at part of a collection.
-3. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
+4. [Keys and gestures](09_keys.md): everything F1 lists, for every tab.
 
-The chapters on each phase, with pictures of the window, are being written.
-Until they are, the [README](../README.md) describes each tab.
+The chapters on curating, proofreading, exporting and history are being
+written. Until they are, the [README](../README.md) describes each tab.
