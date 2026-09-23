@@ -47,7 +47,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 - **Before publishing**, several packaging gaps are open by decision rather than oversight and all
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
-  obligation this package carries whatever licence it takes), no `[project.urls]`, and the
-  version pinned at `0.0.0`; `CHANGELOG.md` holds the release's features under *Unreleased*. Run the workflow's `locale` job, German and Japanese, before any release,
+  obligation this package carries whatever licence it takes), and no `[project.urls]`; the
+  version is `0.1.0.dev0`, and `CHANGELOG.md` holds the release's features under *Unreleased*. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
   under both on 2026-09-17.

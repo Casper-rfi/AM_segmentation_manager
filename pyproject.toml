@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "am_segmentation_manager"
-version = "0.0.0"
+version = "0.1.0.dev0"
 description = "Manage Autolamella FIB/SEM segmentation projects: indexing, metadata and label management."
 readme = "README.md"
 authors = [ { name = "Casper Berger", email = "casper.berger@rfi.ac.uk" } ]
