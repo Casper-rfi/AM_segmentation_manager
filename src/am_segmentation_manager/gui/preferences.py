@@ -71,7 +71,7 @@ DEFAULT_SHOWN_SERIES: tuple[str, ...] = LABELLED_SERIES
 ACCENT_CHOICES: tuple[tuple[str, str], ...] = (
     ("orange", "Orange"), ("blue", "Blue"), ("green", "Green"),
 )
-DEFAULT_ACCENT = "orange"
+DEFAULT_ACCENT = "green"
 #: The accent's key in :data:`PREFERENCES`. Named, because it is the one
 #: preference the window applies while it is open.
 ACCENT = "accent"

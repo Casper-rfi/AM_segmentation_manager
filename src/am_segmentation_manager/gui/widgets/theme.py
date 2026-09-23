@@ -97,7 +97,7 @@ ACCENTS: Mapping[str, Accent] = {
     "blue": Accent(colour="#2f6feb", text="#ffffff", strong="#2258c4", selected="#dbe6fb"),
     "green": Accent(colour="#83b483", text=TEXT, strong="#3f7a45", selected="#e9f1e9"),
 }
-DEFAULT_ACCENT = "orange"
+DEFAULT_ACCENT = "green"
 
 #: How wide the dot showing an accent beside its name is, in pixels.
 SWATCH_DOT = 10

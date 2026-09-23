@@ -147,8 +147,9 @@ def test_a_choice_survives_being_written_and_read_back():
     assert preferences.read(store)["accent"] == "blue"
 
 
-def test_the_window_opens_orange_with_nothing_stored():
-    assert preferences.read(Store())["accent"] == "orange"
+def test_the_window_opens_green_with_nothing_stored():
+    """Green was the scientist's choice for the release."""
+    assert preferences.read(Store())["accent"] == "green"
 
 
 def test_a_choice_not_offered_falls_back_rather_than_raising(caplog):

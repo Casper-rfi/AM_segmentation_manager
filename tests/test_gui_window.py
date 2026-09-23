@@ -3083,7 +3083,9 @@ def test_a_name_that_cannot_be_written_takes_the_previewed_accent_back(window, m
 
     window.show_settings()
 
-    assert shown == ["blue", "orange"]
+    from am_segmentation_manager.gui.preferences import DEFAULT_ACCENT
+
+    assert shown == ["blue", DEFAULT_ACCENT]
 
 
 def test_showing_an_accent_redraws_the_grid_overview_marks(window, monkeypatch):
@@ -3392,7 +3394,7 @@ def test_the_settings_dialog_returns_the_accent_chosen_in_it(qt_app, settings):
         dialog.show()
         qt_app.processEvents()
         run = dialog._editors["accent"]
-        assert dialog.values["accent"] == "orange"
+        assert dialog.values["accent"] == preferences.DEFAULT_ACCENT
         assert run.width() == run.sizeHint().width(), "a form pulls the segments apart"
 
         run.buttons["blue"].click()
@@ -3414,7 +3416,7 @@ def test_choosing_an_accent_shows_it_at_once_and_cancel_puts_it_back(qt_app, set
 
         dialog.reject()
 
-        assert shown == ["blue", "orange"]
+        assert shown == ["blue", preferences.DEFAULT_ACCENT]
     finally:
         destroy(dialog)
 
