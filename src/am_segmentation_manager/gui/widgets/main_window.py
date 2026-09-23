@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
 from ... import __version__
 from ...history import clear_author, set_author
 from ...identity import PRODUCT_NAME
+from ...launcher import LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
 from ...operations.selection import (
@@ -73,6 +74,7 @@ from .icons import settings_icon
 from .image_panel import ImagePanel
 from .label_panel import LabelPanel
 from .label_tab import LabelTab
+from .launcher_dialog import LauncherDialog
 from .metadata_panel import MetadataPanel
 from .operation_actions import OperationActions
 from .operation_runner import OperationRunner
@@ -110,6 +112,9 @@ SETTING_GEOMETRY = "geometry"
 SETTING_SPLITTER = "splitter"
 
 AUTHOR_TITLE = "Settings"
+
+#: The title of what is said when this computer has nowhere to add the window to.
+LAUNCHER_TITLE = "Add to this computer"
 
 #: The em dash between the product name and the folder in the window title.
 #: Two windows on two collections are told apart by the title and by nothing
@@ -478,7 +483,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         already, so this is not a second way to drive the application: it is
         where someone looks for the things a window is expected to have and
         this one had nowhere to put -- what the folder is, what version this
-        is, where the log went, and that the shortcut list exists at all.
+        is, where the log went, that the shortcut list exists at all, and
+        adding the window to this computer's applications.
 
         macOS moves About and Quit into the application menu by their text, so
         neither is spelled to read well under File.
@@ -505,6 +511,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._add_action(
             file_menu, "Settings...", self.show_settings, QKeySequence("F2")
         )
+        label = menu_label()
+        if label is not None:
+            self._add_action(file_menu, label, self.show_launcher_dialog)
         file_menu.addSeparator()
         self._add_action(file_menu, "Quit", self.close, QKeySequence.StandardKey.Quit)
 
@@ -1821,6 +1830,15 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         editable = self.controller.series_is_editable
         self.state_panel.set_series_editable(editable)
         self.operations_panel.set_series_editable(editable)
+
+    def show_launcher_dialog(self) -> None:
+        """Offer to add the window to this computer's applications."""
+        try:
+            computer = this_computer()
+        except LauncherRefused as error:
+            QMessageBox.warning(self, LAUNCHER_TITLE, str(error))
+            return
+        LauncherDialog(self, computer).exec_()
 
     def show_settings(self) -> None:
         """Open the settings that belong to this machine rather than the data.

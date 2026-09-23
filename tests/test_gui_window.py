@@ -3154,12 +3154,129 @@ def test_the_window_has_the_menus_a_desktop_application_has(window):
     """Nothing here is a second way to drive the window: it is where someone
     looks for the things a window is expected to have and this one had nowhere
     to put."""
+    from am_segmentation_manager.launcher import menu_label
+
     assert set(_menu_items(window, "File")) == {
-        "Open folder...", "Rescan", "Settings...", "Quit",
+        "Open folder...", "Rescan", "Settings...", menu_label(), "Quit",
     }
     assert set(_menu_items(window, "Help")) == {
         "Keyboard shortcuts", f"About {PRODUCT_NAME}",
     }
+
+
+def _launcher_computer(tmp_path, family="linux"):
+    """This computer, with its menus and Desktop under *tmp_path*."""
+    from am_segmentation_manager.launcher import Places, ThisComputer
+
+    places = Places(menu=tmp_path / "menu", desktop=tmp_path / "Desktop", icons=tmp_path / "icons")
+    return ThisComputer(family, places, Path("/env/python"))
+
+
+def test_the_launcher_dialog_shows_what_it_would_write_before_writing_it(qt_app, tmp_path):
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+    from am_segmentation_manager.launcher import DESKTOP_ENTRY_NAME
+
+    dialog = LauncherDialog(None, _launcher_computer(tmp_path))
+    try:
+        assert str(tmp_path / "menu" / DESKTOP_ENTRY_NAME) in dialog.paths.text()
+        assert str(tmp_path / "Desktop") not in dialog.paths.text()
+        assert dialog.add_button.text() == "Add"
+        assert not dialog.remove_button.isEnabled()
+
+        dialog.desktop.setChecked(True)
+
+        assert str(tmp_path / "Desktop" / DESKTOP_ENTRY_NAME) in dialog.paths.text()
+        assert not (tmp_path / "menu").exists(), "shown, not written"
+    finally:
+        destroy(dialog)
+
+
+def test_the_launcher_dialog_offers_the_desktop_where_the_platform_expects_it(qt_app, tmp_path):
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+
+    for family, expected in (("win32", True), ("darwin", False), ("linux", False)):
+        dialog = LauncherDialog(None, _launcher_computer(tmp_path, family))
+        try:
+            assert dialog.desktop.isChecked() is expected, family
+        finally:
+            destroy(dialog)
+
+
+def test_the_launcher_dialog_adds_writes_again_and_removes(qt_app, tmp_path):
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+    from am_segmentation_manager.launcher import DESKTOP_ENTRY_NAME
+
+    entry = tmp_path / "menu" / DESKTOP_ENTRY_NAME
+    dialog = LauncherDialog(None, _launcher_computer(tmp_path))
+    try:
+        dialog.add_button.click()
+
+        assert entry.exists()
+        assert dialog.status.text().startswith("Added.")
+        assert dialog.add_button.text() == "Write again"
+        assert dialog.remove_button.isEnabled()
+
+        dialog.add_button.click()
+        assert entry.exists()
+
+        dialog.remove_button.click()
+
+        assert not entry.exists()
+        assert dialog.add_button.text() == "Add"
+        assert not dialog.remove_button.isEnabled()
+    finally:
+        destroy(dialog)
+
+
+def test_something_else_in_the_way_disables_adding_and_says_what(qt_app, tmp_path):
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+    from am_segmentation_manager.launcher import DESKTOP_ENTRY_NAME
+
+    theirs = tmp_path / "menu" / DESKTOP_ENTRY_NAME
+    theirs.parent.mkdir(parents=True)
+    theirs.write_text("[Desktop Entry]\nName=Someone else's\n")
+    dialog = LauncherDialog(None, _launcher_computer(tmp_path))
+    try:
+        assert not dialog.add_button.isEnabled()
+        assert not dialog.remove_button.isEnabled()
+        assert str(theirs) in dialog.status.text()
+    finally:
+        destroy(dialog)
+    assert theirs.read_text() == "[Desktop Entry]\nName=Someone else's\n"
+
+
+def test_the_file_menu_opens_the_launcher_dialog(window, monkeypatch, tmp_path):
+    from am_segmentation_manager.gui.widgets import main_window
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+    from am_segmentation_manager.launcher import menu_label
+
+    shown: list = []
+    monkeypatch.setattr(main_window, "this_computer", lambda: _launcher_computer(tmp_path))
+    monkeypatch.setattr(LauncherDialog, "exec_", lambda self: shown.append(self) or 0)
+
+    window._menu_actions[menu_label()].trigger()
+
+    assert len(shown) == 1
+    destroy(shown[0])
+
+
+def test_a_computer_with_nowhere_to_add_the_window_says_so(window, monkeypatch):
+    from am_segmentation_manager.gui.widgets import main_window
+    from am_segmentation_manager.launcher import LauncherRefused
+
+    said: list[str] = []
+
+    def refuse():
+        raise LauncherRefused("Windows did not name its Start menu and Desktop")
+
+    monkeypatch.setattr(main_window, "this_computer", refuse)
+    monkeypatch.setattr(
+        main_window.QMessageBox, "warning", lambda parent, title, text: said.append(text)
+    )
+
+    window.show_launcher_dialog()
+
+    assert said == ["Windows did not name its Start menu and Desktop"]
 
 
 def test_the_shortcut_menu_item_binds_no_key_of_its_own(window):
@@ -3336,6 +3453,25 @@ def test_each_accent_offered_carries_its_own_colour(qt_app, settings):
             assert dot.pixelColor(middle, middle) == QColor(theme.ACCENTS[key].colour), key
     finally:
         destroy(dialog)
+
+
+def test_a_status_line_that_starts_empty_grows_to_what_it_says(qt_app):
+    """Its height followed only a resize, so a line empty when the dialog
+    opened stayed no lines tall whatever it was later given to say."""
+    from am_segmentation_manager.gui.widgets.controls import WrappingLabel
+
+    label = WrappingLabel()
+    try:
+        label.setFixedWidth(200)
+        label.show()
+        qt_app.processEvents()
+        assert label.maximumHeight() == 0
+
+        label.setText("A sentence long enough to need more than one line at this width.")
+
+        assert label.maximumHeight() > label.fontMetrics().lineSpacing()
+    finally:
+        destroy(label)
 
 
 def test_every_group_of_settings_gets_the_height_its_rows_need(qt_app, settings):

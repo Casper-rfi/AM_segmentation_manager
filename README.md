@@ -188,7 +188,8 @@ torch needs a driver recent enough for CUDA 13.
 Getting started
 ---------------
 
-    am-seg create-shortcut            # once: start the window like any other application
+    am-seg create-shortcut            # once: start the window like any other application,
+                                      # or from the window's File menu
     am-seg inspect-layout <folder>    # read-only: how is this data read?
     am-seg gui <folder>               # the main interface
 

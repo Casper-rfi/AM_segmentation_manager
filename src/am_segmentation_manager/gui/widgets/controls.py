@@ -551,9 +551,22 @@ class WrappingLabel(QLabel):
         super().__init__(text)
         self.setWordWrap(True)
 
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt naming
+        """Set the text, and take the height it needs at the width there is.
+
+        A resize is not the only thing that changes the height: a status line
+        that starts empty would otherwise stay no lines tall whatever it says.
+        """
+        super().setText(text)
+        self._fit()
+
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         super().resizeEvent(event)
-        self.setFixedHeight(self.heightForWidth(self.width()))
+        self._fit()
+
+    def _fit(self) -> None:
+        # An empty label answers -1, which is no height a widget can have.
+        self.setFixedHeight(max(0, self.heightForWidth(self.width())))
 
 
 class FlowArea(QWidget):

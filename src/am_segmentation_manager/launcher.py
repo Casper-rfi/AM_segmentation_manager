@@ -56,6 +56,30 @@ LINUX_ICON_NAME: Final[str] = f"{APPLICATION_ID}.png"
 #: The executable inside the macOS bundle, a shell script.
 _MAC_EXECUTABLE: Final[str] = "am-seg"
 
+#: What a menu offers the launcher as, in each platform's own words. Never
+#: "shortcut": in the window that word means a key.
+MENU_LABELS: Final[dict[str, str]] = {
+    "darwin": "Add to Applications...",
+    "linux": "Add to applications menu...",
+    "win32": "Add to Start menu...",
+}
+
+#: Where each platform's launcher is found once written.
+WHERE_TO_FIND: Final[dict[str, str]] = {
+    "darwin": (
+        f"Find '{PRODUCT_NAME}' with Spotlight or in Launchpad; drag it to the Dock "
+        "to keep it there."
+    ),
+    "linux": (
+        f"'{PRODUCT_NAME}' is in the applications menu. A launcher on the GNOME "
+        "Desktop must be allowed once: right-click it and choose Allow Launching."
+    ),
+    "win32": (
+        f"'{PRODUCT_NAME}' is in the Start menu; right-click it there to pin it to "
+        "the taskbar."
+    ),
+}
+
 
 class LauncherRefused(Exception):
     """A launcher that cannot be written or removed as asked; nothing was changed."""
@@ -119,6 +143,14 @@ def platform_family(platform: str = sys.platform) -> str:
     if platform.startswith(("linux", "freebsd")):
         return "linux"
     raise LauncherRefused(f"No launcher is written on {platform}")
+
+
+def menu_label(platform: str | None = None) -> str | None:
+    """Return what a menu offers the launcher as here, or None where there is none."""
+    try:
+        return MENU_LABELS[platform_family(platform or sys.platform)]
+    except LauncherRefused:
+        return None
 
 
 def interpreter(platform: str = sys.platform, executable: str = sys.executable) -> Path:
@@ -413,6 +445,42 @@ def _delete(entry: Entry) -> None:
 
 
 # -- this computer ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ThisComputer:
+    """Where launchers go on this computer, and what they start, asked once.
+
+    Asked once because on Windows the asking is a PowerShell process.
+    """
+
+    family: str
+    places: Places
+    python: Path
+
+    @property
+    def desktop_by_default(self) -> bool:
+        """Whether a Desktop entry comes unless asked otherwise: on Windows only."""
+        return self.family == "win32"
+
+    def launcher(self, desktop: bool | None = None) -> Launcher:
+        """Return the launcher for this computer, on the Desktop as well where *desktop*."""
+        wanted = self.desktop_by_default if desktop is None else desktop
+        return plan(self.family, self.places, self.python, desktop=wanted)
+
+
+def this_computer(platform: str | None = None) -> ThisComputer:
+    """Return where launchers go here, for the environment this process runs in.
+
+    Raises:
+        LauncherRefused: On a platform with no launcher, or where Windows will
+            not name its folders.
+    """
+    platform = platform or sys.platform
+    family = platform_family(platform)
+    return ThisComputer(
+        family, places_for(family, Path.home(), os.environ), interpreter(platform)
+    )
 
 
 def run_powershell(script: str, environment: Mapping[str, str] | None = None) -> str:

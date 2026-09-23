@@ -8,21 +8,16 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from collections.abc import Callable
-from pathlib import Path
 
-from ..identity import PRODUCT_NAME
 from ..launcher import (
+    WHERE_TO_FIND,
     Launcher,
     LauncherRefused,
     check_write,
     existing,
-    interpreter,
-    places_for,
-    plan,
-    platform_family,
     remove,
+    this_computer,
     write,
 )
 
@@ -30,22 +25,6 @@ logger = logging.getLogger(__name__)
 
 #: The heading ``am-seg --help`` files these under.
 TITLE = "Set up this computer"
-
-#: Where each platform's launcher is found once written.
-_WHERE_TO_FIND = {
-    "darwin": (
-        f"Find '{PRODUCT_NAME}' with Spotlight or in Launchpad; drag it to the Dock "
-        "to keep it there."
-    ),
-    "linux": (
-        f"'{PRODUCT_NAME}' is in the applications menu. A launcher on the GNOME "
-        "Desktop must be allowed once: right-click it and choose Allow Launching."
-    ),
-    "win32": (
-        f"'{PRODUCT_NAME}' is in the Start menu; right-click it there to pin it to "
-        "the taskbar."
-    ),
-}
 
 
 def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -88,12 +67,10 @@ def _cmd_create_shortcut(args: argparse.Namespace) -> int:
         logger.error("--remove and --replace ask for opposite things; give one")
         return 2
     try:
-        family = platform_family()
-        places = places_for(family, Path.home(), os.environ)
-        desktop = args.desktop if args.desktop is not None else family == "win32"
+        computer = this_computer()
         # Removing reaches the Desktop whatever was asked, as a launcher put
         # there before is still one of ours.
-        launcher = plan(family, places, interpreter(), desktop=desktop or args.remove)
+        launcher = computer.launcher(True if args.remove else args.desktop)
         if args.remove:
             return _remove(launcher, dry_run=args.dry_run)
         if args.dry_run:
@@ -109,7 +86,7 @@ def _cmd_create_shortcut(args: argparse.Namespace) -> int:
     for path in written:
         print(f"Wrote {path}")
     print(f"Starting {launcher.python}")
-    print(_WHERE_TO_FIND[family])
+    print(WHERE_TO_FIND[launcher.platform])
     return 0
 
 

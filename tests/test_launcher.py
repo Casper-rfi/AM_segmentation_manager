@@ -332,6 +332,27 @@ def test_a_windows_shortcut_is_written_by_powershell(tmp_path, monkeypatch):
 # -- this computer -------------------------------------------------------------------
 
 
+def test_this_computer_is_asked_once_and_puts_a_desktop_entry_on_windows_only(monkeypatch, tmp_path):
+    asked = []
+    monkeypatch.setattr(
+        launcher, "places_for", lambda family, home, environ: asked.append(family) or _places(tmp_path)
+    )
+
+    for platform in ("darwin", "linux", "win32"):
+        computer = launcher.this_computer(platform)
+        computer.launcher()
+        computer.launcher(desktop=True)
+
+        assert computer.desktop_by_default == (platform == "win32")
+    assert asked == ["darwin", "linux", "win32"]
+
+
+def test_no_menu_calls_the_launcher_a_shortcut():
+    """In the window, a shortcut is a key."""
+    assert set(launcher.MENU_LABELS) == set(launcher.WHERE_TO_FIND) == {"darwin", "linux", "win32"}
+    assert not any("shortcut" in label.lower() for label in launcher.MENU_LABELS.values())
+
+
 def test_linux_places_follow_xdg_data_home(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "_linux_desktop", lambda home: home / "Schreibtisch")
 
@@ -362,9 +383,9 @@ def test_windows_places_are_the_folders_windows_names(monkeypatch):
 def linux_home(tmp_path, monkeypatch):
     """The command pointed at a temporary home, as on Linux."""
     installing = importlib.import_module("am_segmentation_manager.cli.installing")
-    monkeypatch.setattr(installing, "platform_family", lambda: "linux")
-    monkeypatch.setattr(installing, "places_for", lambda family, home, environ: _places(tmp_path))
-    return _places(tmp_path)
+    computer = launcher.ThisComputer("linux", _places(tmp_path), Path("/env/python"))
+    monkeypatch.setattr(installing, "this_computer", lambda: computer)
+    return computer.places
 
 
 @posix_only

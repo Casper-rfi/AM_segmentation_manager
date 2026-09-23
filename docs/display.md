@@ -288,7 +288,7 @@ of one of these files, is held by `test_docs.py`.
 - **A word-wrapped label reports a one-line hint, and the squeeze lands somewhere else.** A dialog
   sized from that hint comes up short and everything below is pushed towards its minimum, nowhere
   near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,
-  as `FlowArea` does (`test_every_group_of_settings_gets_the_height_its_rows_need`).
+  and again from each new text (`test_a_status_line_that_starts_empty_grows_to_what_it_says`).
 - **The folder is chosen in the tab row, not in a tab.** A scan serves all four, and only Curate
   could show which folder was read; the corner holds the path, Browse and Scan, and says on hover
   what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
