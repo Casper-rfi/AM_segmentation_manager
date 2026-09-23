@@ -606,8 +606,9 @@ rather than appending to it.
 - **How a model is run is its generation's, never a file's**, the division `ml/model.py` sets out:
   the description beside a checkpoint names only the generation, undescribed meaning `1.0`, not
   the latest (`test_a_description_naming_anything_but_the_generation_is_refused`). Generation 1 is
-  Adaptive Milling's, which the microscope predicts with, and is frozen
-  (`test_generation_one_s_settings_are_the_ones_predictions_were_made_with`). The class and channel
+  Adaptive Milling's, which the microscope predicts with, frozen
+  (`test_generation_one_s_settings_are_the_ones_predictions_were_made_with`) and held to its own
+  answers (`test_generation_one_preprocesses_as_adaptive_milling_does`). The class and channel
   counts are read from the weights and must be the generation's. **`decoder_attention_type="scse"`
   is not part of these models** — the training call passes it, smp's `FPN` swallows it into
   `**kwargs`, the checkpoints hold no attention tensors, and a plain FPN strict-loads every one.

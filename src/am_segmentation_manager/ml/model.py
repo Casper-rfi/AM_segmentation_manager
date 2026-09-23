@@ -278,23 +278,54 @@ class LoadedModel:
         import numpy as np
         import torch
 
-        # Imported at the point of inference: reading a model's description
-        # must not pay for the stack that runs one.
-        from .preprocessing import image_preprocess
-
-        generation = self.description.generation
-        tensor = image_preprocess(
-            image.astype(np.float32),
-            image_size=generation.image_size,
-            normalise_first=generation.normalise_first,
-            rgb=self.facts.rgb,
-            pad=generation.pad,
-            normalise_version=generation.normalise_version,
-            resize_version=generation.resize_version,
-        )
+        tensor = model_input(image, self.description.generation, rgb=self.facts.rgb)
         with torch.no_grad():
             output = self.model(tensor.to(self.device))
             return output.argmax(dim=1).squeeze(0).to("cpu").numpy().astype(np.uint8)
+
+
+def model_input(image: np.ndarray, generation: Generation, rgb: bool) -> Any:
+    """Return *image* as the batched tensor *generation* feeds its model, on the CPU.
+
+    Held to Adaptive Milling's own preprocessing by
+    ``test_generation_one_preprocesses_as_adaptive_milling_does``.
+    """
+    import numpy as np
+
+    # Imported at the point of inference: reading a model's description must
+    # not pay for the stack that runs one.
+    from .preprocessing import image_preprocess
+
+    return image_preprocess(
+        image.astype(np.float32),
+        image_size=generation.image_size,
+        normalise_first=generation.normalise_first,
+        rgb=rgb,
+        pad=generation.pad,
+        normalise_version=generation.normalise_version,
+        resize_version=generation.resize_version,
+    )
+
+
+def build_architecture(generation: Generation) -> Any:
+    """Return *generation*'s model, its weights not yet loaded.
+
+    Held to the one Adaptive Milling builds by
+    ``test_generation_one_builds_adaptive_milling_s_architecture``.
+    """
+    import segmentation_models_pytorch as smp
+
+    # encoder_weights=None because a state dict overwrites them. Asking for
+    # pretrained weights here downloads ~100 MB to discard it, and fails on a
+    # machine with no route to the internet.
+    return smp.create_model(
+        generation.architecture,
+        encoder_name=generation.encoder,
+        encoder_weights=None,
+        in_channels=generation.in_channels,
+        classes=generation.classes,
+        activation=None,
+    )
 
 
 def load_model(
@@ -318,7 +349,6 @@ def load_model(
         FileNotFoundError: If *weights* does not exist.
     """
     require_ml_stack("Loading a model")
-    import segmentation_models_pytorch as smp
     import torch
 
     if not weights.exists():
@@ -334,17 +364,7 @@ def load_model(
     generation = description.generation
     check_generation(facts, generation)
 
-    # encoder_weights=None because the state dict overwrites them on the next
-    # line. Asking for pretrained weights here downloads ~100 MB to discard it,
-    # and fails on a machine with no route to the internet.
-    model = smp.create_model(
-        generation.architecture,
-        encoder_name=generation.encoder,
-        encoder_weights=None,
-        in_channels=facts.in_channels,
-        classes=facts.classes,
-        activation=None,
-    )
+    model = build_architecture(generation)
     try:
         # strict: the description says which architecture these weights are for,
         # and a mismatch must stop here. Loading what fits and leaving the rest
