@@ -396,6 +396,35 @@ def test_the_view_controls_wrap_rather_than_widening_the_window(window):
     assert controls.layout().minimumSize().width() == 0
 
 
+def test_a_row_that_wraps_grows_when_a_control_in_it_appears(qt_app):
+    """Showing a control resizes nothing, so a row measured only on a resize
+    kept one line's height and laid the control that wrapped below its edge."""
+    from qtpy.QtWidgets import QPushButton
+
+    from am_segmentation_manager.gui.widgets.controls import FlowArea, FlowLayout
+
+    area = FlowArea()
+    row = FlowLayout(spacing=4)
+    area.setLayout(row)
+    first, second = QPushButton("First"), QPushButton("Second")
+    row.addWidget(first)
+    row.addWidget(second)
+    second.hide()
+    try:
+        area.resize(first.sizeHint().width() + 10, 10)
+        area.show()
+        qt_app.processEvents()
+        one_row = area.height()
+
+        second.show()
+        qt_app.processEvents()
+
+        assert area.height() > one_row
+        assert area.rect().contains(second.geometry())
+    finally:
+        destroy(area)
+
+
 def test_a_long_caption_does_not_widen_the_curate_tab(window):
     """The line under the frame names the project path and the image file,
     which on a grid overview runs past a screen's width. A line that cannot
@@ -414,6 +443,57 @@ def test_a_long_caption_does_not_widen_the_curate_tab(window):
     assert panel.minimumSizeHint().width() <= before
     assert panel.status.full_text() == caption
     assert panel.status.toolTip() == caption
+
+
+def test_a_chart_does_not_widen_the_export_tab(qt_app, tmp_path, settings):
+    """A grid of long lamella names drawn as a chart fits where its table does.
+
+    The chart's bar gains the shading control for a grid, and a bar that
+    cannot wrap took the width from the Export column until its buttons read
+    "Per-image metadata CSV.." with their first letters cut off, and then
+    pushed the window past the screen.
+    """
+    from qtpy.QtWidgets import QPushButton
+
+    from conftest import build_dataset
+
+    dataset = build_dataset(
+        tmp_path / "scan", name="AutoLamella-2024-07-05-12-53",
+        lamellae=12, lamella_name="01-big-cicada",
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=CONFIG), settings=settings
+    )
+    try:
+        window.resize(*SMALLEST_SUPPORTED_SCREEN)
+        window.show()
+        window.scan(str(dataset.root))
+        panel = window.export_panel
+        window.tabs.setCurrentWidget(panel)
+        panel.breakdown.setCurrentIndex(panel.breakdown.findData("lamella"))
+        panel.cross.setCurrentIndex(panel.cross.findData("state"))
+        panel.as_chart.click()
+        for _ in range(5):
+            qt_app.processEvents()
+        clipped = {
+            button.text(): (button.width(), button.sizeHint().width())
+            for button in panel._export_box.findChildren(QPushButton)
+            if button.isVisible() and button.width() < button.sizeHint().width()
+        }
+        bar = panel.chart_view.bar
+        cut_off = [
+            button.text() for button in panel.chart_view._actions()
+            if not bar.rect().contains(button.geometry())
+        ]
+
+        assert panel.chart_view._canvas is not None
+        assert not panel.chart_view.shading.isHidden()
+        assert window.minimumSizeHint().width() <= SMALLEST_SUPPORTED_SCREEN[0]
+        assert window.width() == SMALLEST_SUPPORTED_SCREEN[0]
+        assert not clipped, clipped
+        assert not cut_off, cut_off
+    finally:
+        destroy(window)
 
 
 def test_a_window_larger_than_the_screen_is_pulled_onto_it(window):

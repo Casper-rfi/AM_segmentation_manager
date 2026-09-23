@@ -216,11 +216,11 @@ of one of these files, is held by `test_docs.py`.
   moving many controls into one recount. The property dropdown refills itself from inside its own
   `currentIndexChanged` and goes through the same timer.
 - **A widget that wraps takes its height from the width it actually has**, for the reason
-  `FlowArea` gives: answering `heightForWidth` alone lays the later rows below the bottom edge,
-  addressable and invisible. Its layout's minimum width is zero and its hint one unwrapped row,
-  which must differ: made equal, the minimum is a floor and the pane could never be narrower than
-  the longest value anybody typed. `addSpacing` is the one thing a row moved off a box layout
-  needs and `QLayout` does not have.
+  `FlowArea` gives, and again when an item in it shows or hides, which resizes nothing
+  (`test_a_row_that_wraps_grows_when_a_control_in_it_appears`). Its layout's minimum width is zero
+  and its hint one unwrapped row, which must differ: made equal, the minimum is a floor and the
+  pane could never be narrower than the longest value anybody typed. `addSpacing` is the one thing
+  a row moved off a box layout needs and `QLayout` does not have.
 - **An editor that collects values commits what is in its box before anyone reads it**, or a value
   typed by someone who then reaches straight for Save is discarded without a word: a chip editor
   commits on Return, on a pick, and on losing focus, and `_edits` asks it to anyway. **Adding a

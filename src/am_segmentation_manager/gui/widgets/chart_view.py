@@ -18,7 +18,6 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QImage
 from qtpy.QtWidgets import (
     QApplication,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QToolButton,
@@ -26,7 +25,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .controls import SegmentedControl
+from .controls import FlowArea, FlowLayout, SegmentedControl
 from .paths import choose_save_file
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -93,13 +92,16 @@ class ChartView(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
 
-        bar = QHBoxLayout()
+        # Wrapped, not a row: a grid adds the shading to six buttons, and a row
+        # that cannot wrap is a floor under the window wider than the screen.
+        self.bar = FlowArea()
+        bar = FlowLayout(spacing=6)
+        self.bar.setLayout(bar)
         self.shading = SegmentedControl(SHADING_SEGMENTS)
         self.shading.set_current("count")
         self.shading.chosen.connect(lambda _shading: self._draw())
         self.shading.setVisible(False)
         bar.addWidget(self.shading)
-        bar.addStretch(1)
 
         self.reset_button = self._action("Reset view", "Undo any panning and zooming", self._reset)
         self.pan_button = self._action(
@@ -122,7 +124,7 @@ class ChartView(QWidget):
         )
         for button in self._actions():
             bar.addWidget(button)
-        self._layout.addLayout(bar)
+        self._layout.addWidget(self.bar)
 
         self.message = QLabel()
         self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)

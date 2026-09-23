@@ -12,6 +12,7 @@ import logging
 from collections.abc import Sequence
 
 from qtpy.QtCore import (
+    QEvent,
     QPoint,
     QPointF,
     QRect,
@@ -589,6 +590,13 @@ class FlowArea(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         super().resizeEvent(event)
         self.sync_height()
+
+    def event(self, event) -> bool:
+        """Take the height again when an item is shown or hidden, which resizes nothing."""
+        handled = super().event(event)
+        if event.type() == QEvent.Type.LayoutRequest:
+            self.sync_height()
+        return handled
 
     def sync_height(self) -> None:
         """Take the height this widget's contents need at its current width."""
