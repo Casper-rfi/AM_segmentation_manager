@@ -5,8 +5,10 @@ has got. **Each update turns the event loop once**, a repaint reaching the scree
 only when the main thread returns to the loop, which a blocking scan never does.
 **So input is stopped by this widget**: ``ExcludeUserInputEvents`` delivers a press
 already posted, so the banner filters the application and swallows every press,
-key and wheel while it is up -- what makes turning the loop safe where
-``busy_dialog.py`` says it is not. An overlay rather than a dialog, a modal dialog
+key and wheel meant for the window while it is up, and every request to close it
+-- what makes turning the loop safe where ``busy_dialog.py`` says it is not.
+Timers and queued signals still run, so a modal dialog can open during a scan,
+and it alone is let through. An overlay rather than a dialog, a modal dialog
 needing the event loop to appear at all.
 """
 from __future__ import annotations
@@ -46,6 +48,16 @@ BAR_RADIUS = 3
 GAP_AFTER_LOGO = 18
 GAP_AFTER_NAME = 6
 GAP_AFTER_PHASE = 18
+
+
+def _inside_modal_dialog(watched) -> bool:
+    """Whether *watched* is, or is part of, the modal dialog now open."""
+    modal = QApplication.activeModalWidget()
+    if modal is None:
+        return False
+    if isinstance(watched, QWidget):
+        return watched is modal or modal.isAncestorOf(watched)
+    return watched is modal.windowHandle()
 
 
 class ScanBanner(QWidget):
@@ -119,8 +131,18 @@ class ScanBanner(QWidget):
         self.hide()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt naming
-        """Swallow anything a person does while the banner is up."""
-        if event.type() in BLOCKED_EVENTS:
+        """Swallow anything a person does to the window while the banner is up.
+
+        A modal dialog open meanwhile, a failure being reported say, still
+        answers: it opened inside the scan, which waits until it is dismissed.
+        A close request is marked ignored as well as swallowed, Qt taking a
+        close event it was never told about as accepted.
+        """
+        kind = event.type()
+        if kind == QEvent.Type.Close and watched is self.window():
+            event.ignore()
+            return True
+        if kind in BLOCKED_EVENTS and not _inside_modal_dialog(watched):
             return True
         return super().eventFilter(watched, event)
 

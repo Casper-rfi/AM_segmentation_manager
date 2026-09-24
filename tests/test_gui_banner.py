@@ -276,6 +276,65 @@ def test_no_user_input_is_delivered_while_the_banner_is_up(qt_app):
     assert not pressed, "a press reached a control the banner is covering"
 
 
+def test_a_dialog_opened_during_a_scan_can_be_answered(qt_app):
+    """Timers still run while the banner is up, so a failure raised in one is
+    reported in a modal dialog opened inside the scan. Swallowing its clicks
+    too left the dialog, and the scan waiting on it, stuck for ever."""
+    from qtpy.QtCore import QCoreApplication, QEvent, QPointF, Qt
+    from qtpy.QtGui import QMouseEvent
+    from qtpy.QtWidgets import QDialog, QPushButton
+
+    host = QWidget()
+    host.resize(400, 300)
+    banner = ScanBanner(host)
+    banner.begin("Reading")
+    dialog = QDialog(host)
+    dialog.setModal(True)
+    answered = []
+    ok = QPushButton("OK", dialog)
+    ok.pressed.connect(lambda: answered.append(None))
+    dialog.show()
+    try:
+        point = QPointF(5, 5)
+        QCoreApplication.postEvent(
+            ok,
+            QMouseEvent(
+                QEvent.MouseButtonPress, point, point,
+                Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+            ),
+        )
+        banner.set_progress(1, 4)
+    finally:
+        dialog.close()
+        banner.end()
+
+    assert answered, "the banner swallowed the click meant for a dialog"
+
+
+def test_the_window_cannot_be_closed_during_a_scan(window, collection, monkeypatch):
+    """Closing stops the worker threads, which is not something to do to a
+    scan half-way through; the window closes once it is over."""
+    stopped = []
+    stop = window.operations.stop
+    monkeypatch.setattr(window.operations, "stop", lambda: (stopped.append(None), stop()))
+    closed_during = []
+    report = window.banner.set_progress
+
+    def progress(done, total):
+        if not closed_during:
+            closed_during.append(window.close())
+        report(done, total)
+
+    window.show()
+    window.banner.set_progress = progress
+    window.scan(str(collection))
+
+    assert closed_during == [False]
+    assert not stopped
+    assert not window.isHidden()
+    assert window.close()
+
+
 def test_the_banner_draws_the_mark_and_the_name(qt_app):
     """It is the one moment the window has nothing else to show."""
     host = QWidget()

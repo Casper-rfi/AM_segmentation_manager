@@ -30,13 +30,13 @@ of one of these files, is held by `test_docs.py`.
   since a scan can be asked for from any of them. **No bar until there is a number**
   (`test_a_scan_that_cannot_count_yet_says_so_without_a_bar`). It comes down in a `finally`, whether
   the read returned or raised (`test_a_failed_scan_still_takes_the_banner_down`).
-- **A repaint is not a frame on the screen** (`test_each_update_is_put_on_the_screen`), so every
-  banner update turns the event loop once. **Which means input has to be stopped, and
-  `ExcludeUserInputEvents` does not stop it**: a press already posted is delivered through it
+- **A repaint is not a frame on the screen** (`test_each_update_is_put_on_the_screen`), so every banner
+  update turns the event loop once. **Which means input has to be stopped, and `ExcludeUserInputEvents`
+  does not stop it**: a press already posted is delivered through it
   (`test_no_user_input_is_delivered_while_the_banner_is_up`). The banner filters the application and
-  swallows every press, key, wheel and shortcut itself — that guarantee, held by the widget rather
-  than asked of the loop, is what makes turning the loop safe where `busy_dialog.py` says it is not.
-  The filter comes off in the same `finally`, one left on being a window nobody can type into.
+  swallows every press, key, wheel, shortcut and close meant for the window, a modal dialog opened
+  meanwhile excepted (`test_a_dialog_opened_during_a_scan_can_be_answered`): what makes turning the loop
+  safe where `busy_dialog.py` says it is not. The filter comes off in the same `finally`.
 - **Every accent in `theme.ACCENTS` is a class colour, so it stays on the controls.** Nothing on
   the timeline or beside a label takes it, and a chosen class is ringed in ink rather than in the
   accent, which would merge into its swatch (`test_a_chosen_class_is_ringed_in_ink_not_the_accent`).

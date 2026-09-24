@@ -1092,10 +1092,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         seconds on a large collection -- so nothing else can paint, answer or
         report while it runs. The banner covers the window for the whole of it
         and is repainted from inside the read, turning the event loop once per
-        update so the frame reaches the screen; it swallows every input event
-        meanwhile, which is what stops anything being re-entered on the way.
-        The wait cursor stays, for the
-        moment before the banner is up and for whatever is outside it.
+        update so the frame reaches the screen. It swallows the window's input
+        and refuses to let it close meanwhile, so nothing a person does
+        re-enters the read; timers and queued signals still run. The wait
+        cursor stays, for the moment before the banner is up and for whatever
+        is outside it.
 
         Args:
             read: Called with the progress callback to report through.
