@@ -88,6 +88,27 @@ On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
 If something will not install or start, see
 [Troubleshooting](guides/07_troubleshooting.md).
 
+Uninstalling
+------------
+
+Three steps remove everything am-seg put on this computer outside your data:
+
+1. Take the launchers away, from the install they were made with:
+
+       uv run am-seg create-shortcut --remove
+
+   On Windows, a taskbar pin is Windows' own copy: unpin it by hand.
+2. Delete the checkout, which holds the environment in `.venv`; or, after a pip
+   install, `pip uninstall adaptive-milling-seg`.
+3. Delete `~/.am_segmentation_manager` (`%USERPROFILE%\.am_segmentation_manager`
+   on Windows): the window's log, and the name your changes are recorded under.
+   Every install on this computer shares it, so keep it while another remains.
+
+uv keeps the packages it downloaded, torch among them, for any project to reuse;
+`uv cache clean` frees that space. Your collections keep the files am-seg wrote
+beside the data, [listed in the user guide](guides/01_concepts.md#what-am-seg-writes):
+they are part of the data, not of the install.
+
 Getting started
 ---------------
 
