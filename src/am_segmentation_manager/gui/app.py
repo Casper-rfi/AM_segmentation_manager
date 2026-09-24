@@ -26,6 +26,9 @@ from .macos import set_bundle_name
 
 logger = logging.getLogger(__name__)
 
+#: Where Qt's own messages are logged, apart from the window's.
+qt_logger = logging.getLogger(f"{__name__}.qt")
+
 QT_BINDINGS = ("PyQt5", "PyQt6", "PySide2", "PySide6")
 
 
@@ -59,6 +62,32 @@ def install_error_reporting() -> None:
     """
     sys.excepthook = _handle_exception
     threading.excepthook = _handle_thread_exception
+
+
+def log_qt_messages() -> None:
+    """Send Qt's own messages to the log rather than to stderr.
+
+    Installed before the application exists, which is when Qt says why it
+    cannot open a window; started from a launcher, stderr goes nowhere.
+    """
+    from qtpy.QtCore import qInstallMessageHandler
+
+    qInstallMessageHandler(log_qt_message)
+
+
+def log_qt_message(kind, context, message: str) -> None:
+    """Log one message from Qt at the level its severity asks for."""
+    from qtpy.QtCore import QtMsgType
+
+    levels = {
+        QtMsgType.QtDebugMsg: logging.DEBUG,
+        QtMsgType.QtInfoMsg: logging.INFO,
+        QtMsgType.QtWarningMsg: logging.WARNING,
+        QtMsgType.QtCriticalMsg: logging.ERROR,
+        QtMsgType.QtFatalMsg: logging.CRITICAL,
+    }
+    category = getattr(context, "category", None) or "qt"
+    qt_logger.log(levels.get(kind, logging.WARNING), "%s: %s", category, message)
 
 
 def _handle_exception(exc_type, exc, tb) -> None:
@@ -249,6 +278,7 @@ def build_window(
     except Exception as exc:  # noqa: BLE001 - reported as a clear instruction
         raise RuntimeError(_missing_qt_message(exc)) from exc
 
+    log_qt_messages()
     # Before any QApplication exists, which is when AppKit reads the name.
     set_bundle_name(PRODUCT_NAME)
 

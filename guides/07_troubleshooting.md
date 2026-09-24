@@ -15,6 +15,7 @@ can see and, on Windows, long paths:
 ```text
   image stack   OK (numpy, tifffile, cv2)
   Qt binding    OK
+  Qt window     OK
   charts        OK (matplotlib)
   workers       6 of 8 CPU(s) (AM_SEG_WORKERS changes it)
   inference     OK (torch 2.14.0)
@@ -35,6 +36,22 @@ The message says which part is missing:
   and PyQt5 say, crash as soon as the second loads. am-seg is developed and
   tested against PySide6; give it an environment of its own rather than sharing
   one with another Qt application.
+- **On Linux, Qt imports but cannot open a window.** Qt says
+  `xcb-cursor0 or libxcb-cursor0 is needed`, and `check_environment.py` reports
+  `Qt window CANNOT OPEN`. A desktop install of Ubuntu usually has this system
+  library; a server or a minimal install often does not. An administrator adds
+  it with `sudo apt install libxcb-cursor0`. Without one, download and unpack
+  it yourself, from the checkout, and put it beside Qt's own libraries:
+
+  ```bash
+  mkdir -p ../xcb-cursor
+  (cd ../xcb-cursor && apt download libxcb-cursor0)
+  dpkg -x ../xcb-cursor/libxcb-cursor0_*.deb ../xcb-cursor
+  cp ../xcb-cursor/usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0* .venv/lib/python3.*/site-packages/PySide6/Qt/lib/
+  ```
+
+  A rebuilt `.venv` loses it, so copy it again after one. Started from a
+  launcher, a window that cannot open shows nothing at all; `gui.log` says why.
 - **Images will not open.** A second copy of OpenCV breaks the first: am-seg
   installs `opencv-python-headless`, and `opencv-python`, or conda's `opencv`,
   beside it makes `cv2` fail to import. In a conda environment, install only

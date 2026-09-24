@@ -85,6 +85,12 @@ them):
 On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
 `scripts/check_environment.py` says whether long paths work.
 
+**On Linux, the window needs the system library `libxcb-cursor0`.** Ubuntu's
+desktop install has it; a server or a minimal install may not, and adding it
+takes an administrator: `sudo apt install libxcb-cursor0`.
+`scripts/check_environment.py` says whether the window can open, and
+[Troubleshooting](guides/07_troubleshooting.md) has a way round it without one.
+
 If something will not install or start, see
 [Troubleshooting](guides/07_troubleshooting.md).
 

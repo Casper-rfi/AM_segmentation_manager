@@ -62,3 +62,62 @@ def test_gpus_torch_cannot_use_fail_the_check(monkeypatch, capsys):
     printed = capsys.readouterr().out
     assert "cuda:0 · NVIDIA A100 80GB PCIe" in printed
     assert "NOT USABLE: built without CUDA" in printed
+
+
+QT_MISSING_CURSOR = """\
+qt.qpa.plugin: From 6.5.0, xcb-cursor0 or libxcb-cursor0 is needed to load the Qt xcb platform plugin.
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized.
+"""
+
+
+def _child(returncode: int, stderr: str = ""):
+    import subprocess
+
+    def run(command, **kwargs):
+        return subprocess.CompletedProcess(command, returncode, "", stderr)
+
+    return run
+
+
+def test_a_qt_that_opens_a_window_is_reported_ok(capsys):
+    check_environment.check_qt_window(_child(0), "linux", {"DISPLAY": ":0"})
+
+    assert "Qt window     OK" in capsys.readouterr().out
+
+
+def test_a_missing_system_library_is_named_with_the_command_that_installs_it(capsys):
+    """Qt imports without it, so only opening a window finds it missing."""
+    check_environment.check_qt_window(_child(-6, QT_MISSING_CURSOR), "linux", {"DISPLAY": ":0"})
+
+    printed = capsys.readouterr().out
+    assert "CANNOT OPEN: From 6.5.0, xcb-cursor0 or libxcb-cursor0 is needed" in printed
+    assert "sudo apt install libxcb-cursor0" in printed
+
+
+def test_a_failure_naming_no_library_says_how_to_find_it(capsys):
+    check_environment.check_qt_window(_child(1, "no platform plugin\n"), "win32", {})
+
+    printed = capsys.readouterr().out
+    assert "CANNOT OPEN: no platform plugin" in printed
+    assert "QT_DEBUG_PLUGINS=1" in printed
+
+
+def test_linux_without_a_display_starts_no_child(capsys):
+    def run(command, **kwargs):
+        raise AssertionError("no child should start without a display")
+
+    check_environment.check_qt_window(run, "linux", {})
+
+    assert "not checked: no display" in capsys.readouterr().out
+
+
+def test_a_child_that_hangs_is_reported_rather_than_waited_on(capsys):
+    import subprocess
+
+    def run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    check_environment.check_qt_window(run, "linux", {"WAYLAND_DISPLAY": "wayland-0"})
+
+    assert "did not answer within" in capsys.readouterr().out

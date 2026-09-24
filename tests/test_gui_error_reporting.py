@@ -132,3 +132,32 @@ def test_a_thread_leaving_normally_reports_nothing(qt_app, offered, caplog):
     assert caplog.text == ""
     _drain(qt_app)
     assert offered == []
+
+
+def test_a_message_from_qt_reaches_the_log(caplog):
+    """Started from a launcher there is no stderr to read, so why Qt could not
+    open a window has to be in the log."""
+    from qtpy import QtCore
+
+    gui_app.log_qt_messages()
+    try:
+        with caplog.at_level(logging.DEBUG, logger=gui_app.qt_logger.name):
+            QtCore.qWarning("no Qt platform plugin could be initialized")
+    finally:
+        QtCore.qInstallMessageHandler(None)
+
+    assert [
+        record.levelno for record in caplog.records
+        if "no Qt platform plugin" in record.getMessage()
+    ] == [logging.WARNING]
+
+
+def test_a_fatal_message_from_qt_is_logged_as_critical(caplog):
+    from qtpy.QtCore import QtMsgType
+
+    with caplog.at_level(logging.DEBUG, logger=gui_app.qt_logger.name):
+        gui_app.log_qt_message(QtMsgType.QtFatalMsg, None, "failed to start")
+
+    (record,) = caplog.records
+    assert record.levelno == logging.CRITICAL
+    assert record.getMessage() == "qt: failed to start"
