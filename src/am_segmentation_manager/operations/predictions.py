@@ -120,7 +120,7 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
         return
 
     # handle multi-page or channel dimensions: reduce to 2D if necessary
-    pred2 = to_2d(pred).astype(np.uint8)
+    pred2 = _class_indices(to_2d(pred), prediction_path)
     target2 = to_2d(target)
 
     if pred2.shape == target2.shape:
@@ -138,6 +138,27 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
 
     save_label_image(resized, label_path, resized.dtype)
     logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, resized.shape)
+
+
+def _class_indices(prediction, prediction_path: Path):
+    """Return *prediction* as 8-bit class indices, refusing any value that would change.
+
+    Raises:
+        ValueError: For a value that is not a whole number from 0 to 255 -- a
+            probability map, or a class map past 255 -- which the cast would
+            silently turn into another class, or into background.
+    """
+    import numpy as np  # type: ignore
+
+    with np.errstate(invalid="ignore", over="ignore"):
+        indices = prediction.astype(np.uint8)
+    if not np.array_equal(indices, prediction):
+        raise ValueError(
+            f"{prediction_path.name} holds {prediction.dtype} values from "
+            f"{prediction.min()} to {prediction.max()}, not class indices from 0 to "
+            f"255; converting it would change them"
+        )
+    return indices
 
 
 class ConversionStopped(StoppedPartway):

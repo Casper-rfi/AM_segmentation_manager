@@ -49,6 +49,56 @@ def test_prediction_resizing(tmp_path: Path):
     assert arr.dtype == np.uint8
 
 
+needs_image_stack = pytest.mark.skipif(
+    not all(
+        __import__("importlib").util.find_spec(name) is not None
+        for name in ("tifffile", "numpy", "cv2")
+    ),
+    reason="Optional image libs not installed",
+)
+
+
+def _convert(tmp_path: Path, prediction) -> Path:
+    import numpy as np
+    import tifffile
+
+    pred, target, out = tmp_path / "pred.tif", tmp_path / "target.tif", tmp_path / "label.tif"
+    tifffile.imwrite(str(pred), prediction)
+    tifffile.imwrite(str(target), np.zeros(prediction.shape, dtype=np.uint8))
+    prediction_to_label(pred, out, target_image_path=target)
+    return out
+
+
+@needs_image_stack
+@pytest.mark.parametrize("kind", ["class past 255", "probabilities"])
+def test_a_prediction_the_conversion_would_change_is_refused(tmp_path: Path, kind: str):
+    """The cast to 8 bits wrapped 256 round to background, and turned a map of
+    probabilities into an empty label written as if it were a prediction."""
+    import numpy as np
+
+    if kind == "class past 255":
+        prediction = np.full((8, 8), 256, dtype=np.uint16)
+    else:
+        prediction = np.full((8, 8), 0.8, dtype=np.float32)
+
+    with pytest.raises(ValueError, match="not class indices"):
+        _convert(tmp_path, prediction)
+
+    assert not (tmp_path / "label.tif").exists()
+
+
+@needs_image_stack
+def test_whole_classes_stored_as_floats_still_convert(tmp_path: Path):
+    import numpy as np
+    import tifffile
+
+    prediction = np.array([[0.0, 1.0], [2.0, 3.0]], dtype=np.float32)
+
+    out = _convert(tmp_path, prediction)
+
+    assert tifffile.imread(str(out)).tolist() == [[0, 1], [2, 3]]
+
+
 @pytest.mark.skipif(
     not (
         __import__("importlib").util.find_spec("tifffile") is not None
