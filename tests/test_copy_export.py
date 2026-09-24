@@ -8,6 +8,7 @@ plan refuses, and what a second run makes of what the first one wrote.
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -171,6 +172,78 @@ def test_a_destination_holding_something_else_refuses_the_whole_run(
     with pytest.raises(ValueError, match="refused"):
         copy_export(plan)
     assert intruder.read_bytes() == b"not what was copied"
+
+
+def _round_times(directory: Path, step_ns: int) -> list[Path]:
+    """Round every file's modification time down, as FAT and exFAT keep it."""
+    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    for path in files:
+        modified = path.stat().st_mtime_ns
+        rounded = modified - modified % step_ns
+        os.utime(path, ns=(rounded, rounded))
+    return files
+
+
+def test_a_copy_on_a_drive_that_rounds_times_is_still_recognised(source: Path, tmp_path: Path):
+    """A USB drive formatted FAT or exFAT keeps a time to 2 s or 10 ms, so an
+    exact match failed and a resumed export there refused every file."""
+    destination = tmp_path / "out"
+    first = plan_for(source, destination)
+    copy_export(first)
+    _round_times(destination, 2_000_000_000)
+
+    again = plan_for(source, destination)
+
+    assert again.conflicts == ()
+    assert len(again.already_there) == len(first.to_copy)
+
+
+def test_a_different_file_of_the_same_size_and_nearly_the_same_time_refuses(
+    source: Path, tmp_path: Path
+):
+    """Rounding is a reason to read the contents, not to skip them."""
+    destination = tmp_path / "out"
+    copy_export(plan_for(source, destination))
+    intruder = next(
+        path for path in _round_times(destination, 2_000_000_000) if path.stat().st_size
+    )
+    modified = intruder.stat().st_mtime_ns
+    intruder.write_bytes(bytes(255 - byte for byte in intruder.read_bytes()))
+    os.utime(intruder, ns=(modified, modified))
+
+    plan = plan_for(source, destination)
+
+    assert [item.destination for item in plan.conflicts] == [intruder]
+
+
+def test_a_rewrite_between_two_plans_is_seen(source: Path, tmp_path: Path):
+    """The window plans more than once in one process, and on a drive that
+    rounds times a rewrite can leave the size and time as they were."""
+    destination = tmp_path / "out"
+    copy_export(plan_for(source, destination))
+    intruder = next(
+        path for path in _round_times(destination, 2_000_000_000) if path.stat().st_size
+    )
+    assert plan_for(source, destination).conflicts == ()
+    modified = intruder.stat().st_mtime_ns
+    intruder.write_bytes(bytes(255 - byte for byte in intruder.read_bytes()))
+    os.utime(intruder, ns=(modified, modified))
+
+    assert [item.destination for item in plan_for(source, destination).conflicts] == [intruder]
+
+
+def test_an_exact_match_is_recognised_without_reading_either_file(
+    source: Path, tmp_path: Path, monkeypatch
+):
+    destination = tmp_path / "out"
+    copy_export(plan_for(source, destination))
+
+    def never(*args, **kwargs):
+        raise AssertionError("an exact match needs no reading")
+
+    monkeypatch.setattr("am_segmentation_manager.operations.copy_export._same_contents", never)
+
+    assert plan_for(source, destination).conflicts == ()
 
 
 def test_a_destination_inside_the_source_is_refused(source: Path):

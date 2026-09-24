@@ -60,6 +60,11 @@ PROJECT_FILES: tuple[str, ...] = (
     AM_HISTORY_FILENAME,
 )
 
+#: How far a copy's modification time may lie from its source's and still be
+#: the same file, once its contents say so: FAT keeps times to 2 s, exFAT to
+#: 10 ms, so an exact match fails on the USB drive an export is often written to.
+TIME_TOLERANCE_NS = 2_000_000_000
+
 #: What a planned item would do at its destination.
 COPY = "copy"
 PRESENT = "present"
@@ -444,16 +449,44 @@ def _plan_item(
     existing = fingerprint_of(target)
     if existing is None:
         outcome = COPY
-    # A copy is another file, so its size and time are all it can share with
-    # the source; _copy_file keeps the time.
-    elif (existing.size, existing.modified_ns) == (fingerprint.size, fingerprint.modified_ns):
-        outcome = PRESENT
     else:
-        outcome = CONFLICT
+        outcome = PRESENT if _same_copy(source, target) else CONFLICT
     return CopyItem(
         source=source, destination=target, size=fingerprint.size, kind=kind,
         outcome=outcome,
     )
+
+
+def _same_copy(source: Path, target: Path) -> bool:
+    """Whether *target* is a finished copy of *source*.
+
+    A copy is another file, so its size and time are all it can share with the
+    source without being read; :func:`_copy_file` keeps the time. Where the
+    destination rounded that time, the contents decide.
+    """
+    copied, original = fingerprint_of(target), fingerprint_of(source)
+    if copied is None or original is None or copied.size != original.size:
+        return False
+    if copied.modified_ns == original.modified_ns:
+        return True
+    if abs(copied.modified_ns - original.modified_ns) > TIME_TOLERANCE_NS:
+        return False
+    return _same_contents(source, target)
+
+
+def _same_contents(first: Path, second: Path, chunk: int = 1 << 20) -> bool:
+    """Whether two files hold the same bytes, read afresh every time.
+
+    Not :func:`filecmp.cmp`, which remembers an answer by size and time: the
+    two things a drive that rounds times can leave unchanged by a rewrite.
+    """
+    with first.open("rb") as one, second.open("rb") as other:
+        while True:
+            block = one.read(chunk)
+            if block != other.read(chunk):
+                return False
+            if not block:
+                return True
 
 
 def _free_space(destination: Path) -> int:
