@@ -34,7 +34,9 @@ from am_segmentation_manager.operations.predictions import (
 )
 from am_segmentation_manager.state import StaleState, read_state, state_file_path, write_state
 
-ELSEWHERE = np.full((64, 64), 7, dtype=np.uint8)
+#: Another program's version, at another size: the same size, rewritten in place
+#: within a clock step, is the one change a fingerprint cannot see.
+ELSEWHERE = np.full((32, 32), 7, dtype=np.uint8)
 
 
 def _tiff(path: Path, value: int) -> Path:

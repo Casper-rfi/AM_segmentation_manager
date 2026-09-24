@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 import zlib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -163,14 +163,16 @@ def _split_exec(value: str) -> list[str]:
 
 @pytest.mark.parametrize("python_path", AWKWARD_PATHS)
 def test_the_desktop_entry_runs_its_python_whatever_its_path_holds(python_path):
-    entry = _read_desktop_entry(launcher.desktop_entry(Path(python_path), Path("/i/icon.png")))
+    entry = _read_desktop_entry(launcher.desktop_entry(
+        PurePosixPath(python_path), PurePosixPath("/i/icon.png")
+    ))
 
     assert _split_exec(entry["Exec"]) == [python_path, *ARGUMENTS]
 
 
 def test_the_desktop_entry_is_named_iconed_marked_and_hidden_once_its_python_goes():
     entry = _read_desktop_entry(
-        launcher.desktop_entry(Path("/env/bin/python"), Path("/icons/am.png"))
+        launcher.desktop_entry(PurePosixPath("/env/bin/python"), PurePosixPath("/icons/am.png"))
     )
 
     assert entry["Name"] == PRODUCT_NAME

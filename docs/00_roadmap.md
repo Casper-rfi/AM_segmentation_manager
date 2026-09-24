@@ -44,7 +44,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
-- **Before publishing** (`plans/release_preparation.md`; `create-shortcut` untried on Windows and Linux), several packaging gaps are open by decision rather than oversight and all
+- **Before publishing** (`plans/release_preparation.md`; `create-shortcut` untried on Linux, and on Windows tried only as far as writing both shortcuts and starting the window from them), several packaging gaps are open by decision rather than oversight and all
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
   obligation this package carries whatever licence it takes), and no `[project.urls]`; the

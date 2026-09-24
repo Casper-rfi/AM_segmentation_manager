@@ -20,7 +20,7 @@ import sys
 import zlib
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Final
 
 from .identity import (
@@ -221,7 +221,7 @@ def _exec_argument(argument: str) -> str:
     return argument.replace("\\", "\\\\").replace("%", "%%")
 
 
-def desktop_entry(python: Path, icon: Path) -> bytes:
+def desktop_entry(python: PurePath, icon: PurePath) -> bytes:
     """Return a Linux desktop entry starting *python*, drawn with *icon*.
 
     ``TryExec`` hides the entry once *python* is gone, rather than leaving one
