@@ -1,10 +1,11 @@
 """Giving the process the application's name on macOS, through ctypes.
 
-The menu bar names a process by its main bundle's ``CFBundleName``. Run from a
-virtual environment the main bundle is the interpreter's directory, which has
-none, so the menu bar reads ``python`` however the window was started. Setting
-the name before the QApplication exists is what AppKit then reads. Off macOS,
-or where the name cannot be changed, nothing happens.
+The menu bar names a process by its main bundle's ``CFBundleName``. Started
+from a terminal, the main bundle is the interpreter's directory, which has none,
+so the menu bar would read ``python``; setting the name before the QApplication
+exists is what AppKit then reads. Started from the app ``create-shortcut``
+writes, the app's own ``Info.plist`` names it. Off macOS, or where the name
+cannot be changed, nothing happens.
 """
 from __future__ import annotations
 
