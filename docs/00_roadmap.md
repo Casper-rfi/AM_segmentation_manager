@@ -31,8 +31,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 - **Cross-platform readiness**: CI passes on Linux, Windows and macOS, and Windows 11 has been worked through
   by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`; on a four-V100 Linux machine `auto`
-  took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. Left: the window at 125% and
-  150% scaling on Windows and on an Ubuntu desktop. **No CI job installs `ml` on Windows, or `ml-cuda13` anywhere.** **Long
+  took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. **No CI job installs `ml` on Windows, or `ml-cuda13` anywhere.** **Long
   paths off stays unchecked on a real machine**, `test_long_paths.py` forcing the probe's answer. **The
   Windows suite crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged;
   CI now names each test.
