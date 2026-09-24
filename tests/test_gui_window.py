@@ -445,6 +445,27 @@ def test_a_long_caption_does_not_widen_the_curate_tab(window):
     assert panel.status.toolTip() == caption
 
 
+def test_a_model_name_does_not_widen_the_curate_tab(window):
+    """A model's file name holds no space to wrap at, and the line repeating
+    the last change was as wide as the name: a floor under the right panel,
+    which the splitter then collapsed rather than squeeze."""
+    panel = window.state_panel
+    before = panel.minimumSizeHint().width()
+    headline = (
+        "Predict labels: Predicted 2 SEM image(s) with Franklin_eBIC_Rosalind_training_"
+        "absolute_Franklin_eBIC_Rosalind_validation_absolute_epoch087.pth."
+    )
+
+    panel.show_last_change(headline)
+
+    assert panel.minimumSizeHint().width() <= before
+    assert panel.last_change.text().replace("\u200b", "") == headline
+
+    panel.show_last_change("x" * 400)
+
+    assert panel.minimumSizeHint().width() <= before
+
+
 def test_a_chart_does_not_widen_the_export_tab(qt_app, tmp_path, settings):
     """A grid of long lamella names drawn as a chart fits where its table does.
 

@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QRadioButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +48,18 @@ STATE_HELP = {
 }
 
 SWATCH_SIZE = 12
+
+#: Where a name in the last-change line may break: after each of these. A
+#: model's or a file's name holds no space, and a word-wrapped label is at
+#: least as wide as its longest word.
+BREAK_AFTER = "_/\\-."
+
+
+def breakable(text: str) -> str:
+    """Return *text* with an invisible break point after each of :data:`BREAK_AFTER`."""
+    return "".join(
+        character + "\u200b" if character in BREAK_AFTER else character for character in text
+    )
 
 
 class StatePanel(QWidget):
@@ -147,6 +160,11 @@ class StatePanel(QWidget):
         # and is repeated here only so the last thing written is on screen.
         self.last_change = QLabel("")
         self.last_change.setWordWrap(True)
+        # Never a floor under the panel's width, which is the splitter's to set:
+        # a name that cannot break is cut at the edge rather than widening it.
+        policy = self.last_change.sizePolicy()
+        policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.last_change.setSizePolicy(policy)
         self.last_change.setStyleSheet(BADGE_STYLES["info"])
         self.last_change.setToolTip(
             "The last change written to disk this session. Nothing here is "
@@ -248,7 +266,7 @@ class StatePanel(QWidget):
 
     def show_last_change(self, description: str) -> None:
         """Say what was last written, or clear the line with an empty string."""
-        self.last_change.setText(description)
+        self.last_change.setText(breakable(description))
         self.last_change.setVisible(bool(description))
 
     def show_reach(
