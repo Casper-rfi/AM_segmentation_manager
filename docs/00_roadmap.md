@@ -30,9 +30,9 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 ## What to pick up next
 
 - **Cross-platform readiness**: CI passes on Linux, Windows and macOS, and Windows 11 has been worked through
-  by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`. Left: the window at 125% and 150%
-  scaling on Windows and on an Ubuntu desktop, and an A100 workstation taking the freest GPU with `nvidia-smi`
-  showing the run on it alone. **No CI job installs `ml` on Windows, or `ml-cuda13` anywhere.** **Long
+  by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`; on a four-V100 Linux machine `auto`
+  took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. Left: the window at 125% and
+  150% scaling on Windows and on an Ubuntu desktop. **No CI job installs `ml` on Windows, or `ml-cuda13` anywhere.** **Long
   paths off stays unchecked on a real machine**, `test_long_paths.py` forcing the probe's answer. **The
   Windows suite crashed once in five runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged;
   CI now names each test.
@@ -44,7 +44,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
-- **Before publishing** (`plans/release_preparation.md`; `create-shortcut` untried on Linux, and on Windows with a Desktop moved into OneDrive), several packaging gaps are open by decision rather than oversight and all
+- **Before publishing** (`plans/release_preparation.md`; `create-shortcut` untried under Wayland and with a Desktop moved into OneDrive; Xfce 4.18's panel menu cannot start the entry `gtk-launch` starts), several packaging gaps are open by decision rather than oversight and all
   become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
   `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
   obligation this package carries whatever licence it takes), and no `[project.urls]`; the
