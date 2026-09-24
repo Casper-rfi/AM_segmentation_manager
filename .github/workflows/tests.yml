@@ -2,9 +2,10 @@
 #
 # While the repository is private, Actions minutes are metered and a macOS
 # minute counts ten times a Linux one, so a push runs Linux on every Python
-# version and Windows on the oldest. The rest of the matrix, the locale runs
-# and the newest-dependency run start from the Actions tab ("Run workflow"),
-# and on every push once the repository is public.
+# version and Windows on the oldest. The rest of the matrix, the other
+# inference builds, the locale runs and the newest-dependency run start from
+# the Actions tab ("Run workflow"), and on every push once the repository is
+# public.
 name: tests
 
 on:
@@ -114,6 +115,32 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui --extra ml
+      - run: uv run --locked python scripts/check_environment.py
+      - run: uv run --locked pytest -v -o faulthandler_timeout=600
+
+  # The inference builds the ml job does not install: the default one on
+  # Windows, and the CUDA 13 one a 50-series card needs. Still no GPU, so each
+  # shows its build installs from the lock, loads, and predicts on the CPU.
+  ml-more:
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    name: ml (${{ matrix.os }}, ${{ matrix.extra }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, extra: ml }
+          - { os: windows-latest, extra: ml-cuda13 }
+          - { os: ubuntu-latest, extra: ml-cuda13 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qt-libraries
+        if: runner.os == 'Linux'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra gui --extra ${{ matrix.extra }}
       - run: uv run --locked python scripts/check_environment.py
       - run: uv run --locked pytest -v -o faulthandler_timeout=600
 

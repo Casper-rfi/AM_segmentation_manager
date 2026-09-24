@@ -31,10 +31,12 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 - **Cross-platform readiness**: CI passes on Linux, Windows and macOS, and Windows 11 has been worked
   through by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`; on a four-V100 Linux
-  machine `auto` took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. **No CI job
-  installs `ml` on Windows, or `ml-cuda13` anywhere.** **Long paths off stays unchecked on a real
-  machine**, `test_long_paths.py` forcing the probe's answer. **The Windows suite crashed once in five
-  runs** of 2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged; CI now names each test.
+  machine `auto` took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. **Every
+  torch build is installed by some CI job on each platform it is chosen for**
+  (`test_each_torch_build_is_installed_on_every_platform_it_is_chosen_for`); the three beyond `ml` on
+  Linux run on request and have not run yet. **Long paths off stays unchecked on a real machine**,
+  `test_long_paths.py` forcing the probe's answer. **The Windows suite crashed once in five runs** of
+  2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged; CI now names each test.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
   taken 2026-09-11 over all 123 projects with 3,236/3,236 labels reachable. Close **one whole
   round** from there with a real training run in the middle: the parts have each been rehearsed,

@@ -114,3 +114,39 @@ def test_an_action_from_outside_github_is_pinned_to_a_commit():
     ]
 
     assert not loose, loose
+
+
+#: The runner each platform in a ``[tool.uv.sources]`` marker is tested on.
+RUNNERS = {"win32": "windows-latest", "linux": "ubuntu-latest"}
+
+
+def _installed() -> set[tuple[str, str]]:
+    """Return each ``(runner, extra)`` some job in the workflow syncs."""
+    installed = set()
+    for job in _jobs().values():
+        entries = job.get("strategy", {}).get("matrix", {}).get("include", [{}])
+        for entry in entries:
+            def expand(text: str, entry: dict = entry) -> str:
+                return re.sub(
+                    r"\$\{\{\s*matrix\.(\w+)\s*\}\}", lambda m: str(entry[m.group(1)]), text
+                )
+
+            runner = expand(job["runs-on"])
+            for step in job["steps"]:
+                if "run" in step and step["run"].startswith("uv sync"):
+                    for extra in re.findall(r"--extra (\S+)", expand(step["run"])):
+                        installed.add((runner, extra))
+    return installed
+
+
+def test_each_torch_build_is_installed_on_every_platform_it_is_chosen_for():
+    """Each inference extra fetches its own torch on Windows and Linux; a build
+    no job installs is one only a user's machine ever tries."""
+    wanted = {
+        (RUNNERS[platform], source["extra"])
+        for source in _pyproject()["tool"]["uv"]["sources"]["torch"]
+        for platform in re.findall(r"sys_platform == '(\w+)'", source["marker"])
+    }
+
+    assert wanted
+    assert wanted <= _installed(), sorted(wanted - _installed())
