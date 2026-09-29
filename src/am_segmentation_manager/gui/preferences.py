@@ -21,7 +21,11 @@ from ..operations.label_measure import (
     MAX_SPECK_PIXELS,
     MIN_SPECK_PIXELS,
 )
-from ..operations.training_split import DEFAULT_TRAIN_RATIO
+from ..operations.training_split import (
+    DEFAULT_KEEP_TOGETHER,
+    DEFAULT_TRAIN_RATIO,
+    KEEP_TOGETHER,
+)
 from .export_controller import DEFAULT_SERIES
 
 logger = logging.getLogger(__name__)
@@ -234,7 +238,7 @@ PREFERENCES: tuple[Preference, ...] = (
         suffix=" %",
         hint=(
             "Share of the exportable pairs written to the training file, the "
-            "rest to validation. Matches create-training-csv --train-ratio."
+            "rest to validation. Matches create-training-csv --split."
         ),
     ),
     Preference(
@@ -255,6 +259,17 @@ PREFERENCES: tuple[Preference, ...] = (
         low=0,
         high=999_999,
         hint="The seed that shuffle uses, where it is seeded.",
+    ),
+    Preference(
+        key="keep_together",
+        group=EXPORT,
+        label="Keep together",
+        fallback=DEFAULT_KEEP_TOGETHER,
+        choices=KEEP_TOGETHER,
+        hint=(
+            "What the split never divides between training and validation. "
+            "Matches create-training-csv --keep-together."
+        ),
     ),
 )
 

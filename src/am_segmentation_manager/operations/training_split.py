@@ -1,16 +1,19 @@
 """Dividing a training export into the sets a model is trained and scored on.
 
-Pure arithmetic over items that already carry a group: nothing here builds a
-row, reads a label or touches the filesystem, so a split can be tested on
-strings. **A split never cuts a group**, and **one seed gives one split** -- an
-export's manifest records the seed so the same files can be made again, which
-holds only while this arithmetic does not change.
+What a split may keep together, and the arithmetic over items that already
+carry a group: nothing here builds a row, reads a label or touches the
+filesystem, so a split can be tested on strings. **A split never cuts a group**,
+and **one seed gives one split** -- an export's manifest records the seed so the
+same files can be made again, which holds only while this arithmetic does not.
 """
 from __future__ import annotations
 
 import random
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Hashable, Sequence
+from dataclasses import dataclass
 from typing import TypeVar
+
+from ..models import ImageRecord
 
 #: An item being split, whatever its group is.
 T = TypeVar("T")
@@ -19,6 +22,55 @@ T = TypeVar("T")
 #: One spelling for the window, the command line and these functions, which
 #: had four between them and could have drifted apart silently.
 DEFAULT_TRAIN_RATIO = 0.8
+
+
+#: What a split can keep on one side, as ``(key, caption)``, finest first. The
+#: finest holds together the imaging conditions and both beams of one
+#: acquisition, which no split may divide; the coarser two keep a whole lamella,
+#: or a whole Autolamella project directory, out of the other side.
+KEEP_TOGETHER: tuple[tuple[str, str], ...] = (
+    ("acquisition", "Acquisition"),
+    ("lamella", "Lamella"),
+    ("project", "Project"),
+)
+
+#: The level whose groups a row builder knows without being told.
+ACQUISITION = "acquisition"
+
+#: What the window and the command line keep together where nobody says.
+#: Successive frames of one lamella are near-duplicates, so a finer split
+#: scores a model on lamellae it was trained on.
+DEFAULT_KEEP_TOGETHER = "lamella"
+
+
+@dataclass(frozen=True)
+class Grouping:
+    """What a split keeps on one side, by name and by record.
+
+    One value rather than a name and a function passed apart, so the level a
+    manifest records cannot differ from the one the rows were grouped by.
+
+    Attributes:
+        level: A key of :data:`KEEP_TOGETHER`.
+        key: Returns the group a record belongs to at *level*; None at
+            :data:`ACQUISITION`, which the row builder already knows.
+
+    Raises:
+        ValueError: If *level* is unknown, or *key* is missing or given where
+            the level says otherwise.
+    """
+
+    level: str = ACQUISITION
+    key: Callable[[ImageRecord], Hashable] | None = None
+
+    def __post_init__(self) -> None:
+        if self.level not in dict(KEEP_TOGETHER):
+            raise ValueError(f"Unknown keep-together level: {self.level!r}")
+        if (self.key is None) != (self.level == ACQUISITION):
+            raise ValueError(
+                f"A {self.level!r} grouping "
+                f"{'takes no' if self.level == ACQUISITION else 'needs a'} key"
+            )
 
 
 def split_grouped(

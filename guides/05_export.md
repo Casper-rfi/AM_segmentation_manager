@@ -65,12 +65,22 @@ made from a prediction measures the model rather than the sample.
 lists of image and label paths, for training a model:
 
 - `<name>_train.csv` and `<name>_val.csv`, split by **Training**, 80 % by
-  default; at 100 % there is no validation file. Images of one acquisition
-  always land on the same side, so a model is never scored on a scene it was
-  trained on.
+  default; at 100 % there is no validation file.
+- **Keep together** says what is never divided between the two: each
+  **Lamella** by default, each **Project**, or only each **Acquisition**.
+  Successive images of one lamella are near-duplicates, so a finer split
+  scores a model on lamellae it was trained on. The imaging conditions and
+  both beams of one acquisition stay together whichever is chosen. The line
+  under the settings says how many groups were kept whole; the larger they
+  are, the further the split can land from the share asked for.
 - With **Seed** on, the same selection always splits the same way; switch it
   off to shuffle differently each time.
-- `<name>_manifest.yaml` beside them records what they were made from.
+- `<name>_manifest.yaml` beside them records what they were made from, and
+  what was kept together.
+
+A training set exported before *Keep together* existed kept only
+acquisitions together. Choose **Acquisition** and the seed its manifest
+records to make the same files again.
 
 With one beam chosen, each row is an image and its label. With both, each row
 is one acquisition, with its SEM and FIB images and labels side by side.

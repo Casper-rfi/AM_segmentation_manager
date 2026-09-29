@@ -404,6 +404,7 @@ def test_the_split_controls_start_where_the_defaults_are(panel: ExportPanel):
 
     assert panel.train_share.value() == training.train_ratio * 100
     assert panel.seed.value() == training.seed
+    assert panel.keep_together.currentData() == training.keep_together
     assert panel.prefix.placeholderText() == training.prefix
 
 
@@ -411,6 +412,23 @@ def test_a_chosen_share_becomes_a_ratio(panel: ExportPanel):
     panel.train_share.setValue(65)
 
     assert panel.controller.training.train_ratio == 0.65
+
+
+def test_a_chosen_level_is_what_the_split_keeps_together(panel: ExportPanel):
+    panel.keep_together.setCurrentIndex(panel.keep_together.findData("project"))
+
+    assert panel.controller.training.keep_together == "project"
+
+
+def test_the_split_names_the_groups_it_kept_whole(qt_app, tmp_path):
+    panel = _loaded_panel(tmp_path)
+    panel.controller.load_measurements()
+
+    panel.keep_together.setCurrentIndex(panel.keep_together.findData("project"))
+    assert panel.split_counts.text().endswith("· 1 project")
+
+    panel.keep_together.setCurrentIndex(panel.keep_together.findData("lamella"))
+    assert panel.split_counts.text().endswith("· 2 lamellae")
 
 
 def test_clearing_the_seed_asks_for_an_unrepeatable_shuffle(panel: ExportPanel):
@@ -451,6 +469,7 @@ def test_the_filters_box_holds_every_control_that_narrows(panel: ExportPanel):
     for widget in panel._export_box.findChildren(QWidget):
         assert not isinstance(widget, narrowing) or widget in (
             panel.seeded,   # a checkbox, but it only makes the shuffle repeatable
+            panel.keep_together,   # a dropdown, but it only decides the side
         ), f"{widget} can narrow, and is in the Export box"
 
 
@@ -1035,7 +1054,7 @@ def test_the_split_says_what_it_comes_out_as_beside_its_settings(qt_app, tmp_pat
 
     preview = panel.controller.preview()
     assert preview.validation == 0
-    assert panel.split_counts.text() == f"{preview.train} train / 0 validation"
+    assert panel.split_counts.text().startswith(f"{preview.train} train / 0 validation · ")
 
 
 # ---------------------------------------------------------------------------
@@ -1049,8 +1068,8 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
     for widget in (
         panel.modality, panel.state, panel.label_state, panel.breakdown,
         panel.cross, panel.conditions, panel.measure_button,
-        panel.train_share, panel.seeded, panel.seed, panel.prefix,
-        panel.check_button,
+        panel.keep_together, panel.train_share, panel.seeded, panel.seed,
+        panel.prefix, panel.check_button,
     ):
         assert widget.toolTip(), f"{widget} explains nothing"
 

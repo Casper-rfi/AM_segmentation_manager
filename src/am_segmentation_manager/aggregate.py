@@ -35,6 +35,7 @@ from .operations.label_measure import (
     measurement_status,
 )
 from .operations.selection import current_state
+from .operations.training_split import ACQUISITION, Grouping
 
 logger = logging.getLogger(__name__)
 
@@ -804,6 +805,26 @@ NEEDS_MEASUREMENTS = frozenset(
 NEEDS_LABEL_STATES = frozenset(
     name for name, entry in BREAKDOWNS.items() if entry.kind == "label"
 )
+
+
+#: The breakdown each coarser level of a training split groups by, so a table
+#: counted by it shows exactly the groups the split keeps whole. A project here
+#: is the Autolamella project directory, not the wider ``project`` field.
+SPLIT_BREAKDOWNS: dict[str, str] = {
+    "lamella": "lamella",
+    "project": "autolamella-project",
+}
+
+
+def split_grouping(level: str, lookup: Mapping[Path, Project]) -> Grouping:
+    """Return what a training split keeps together at *level*.
+
+    Raises:
+        KeyError: If *level* is not a keep-together level.
+    """
+    if level == ACQUISITION:
+        return Grouping()
+    return Grouping(level, resolve_breakdown(SPLIT_BREAKDOWNS[level], lookup=lookup))
 
 
 def _slug(name: str) -> str:

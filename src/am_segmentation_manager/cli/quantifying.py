@@ -21,6 +21,7 @@ from ..aggregate import (
     cross_tabulate,
     project_lookup,
     resolve_breakdown,
+    split_grouping,
     summarise_lamellae,
 )
 from ..config import load_segmentation_config
@@ -46,7 +47,11 @@ from ..operations.metadata_csv import (
     export_lamella_quantification_csv,
     export_project_metadata_csv,
 )
-from ..operations.training_split import DEFAULT_TRAIN_RATIO
+from ..operations.training_split import (
+    DEFAULT_KEEP_TOGETHER,
+    DEFAULT_TRAIN_RATIO,
+    KEEP_TOGETHER,
+)
 from ..plots import plot_counts, plot_cross_tabulation
 from ..reporting import (
     counts_as_rows,
@@ -66,7 +71,6 @@ from .scope import (
     _metadata_selectors,
     _outputs_refused,
     _projects_in_scope,
-    _resolve_records,
     _resolve_scope,
 )
 
@@ -335,6 +339,20 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         type=int,
         default=42,
         help="Random seed for reproducible train/validation split (default: 42)",
+    )
+    create_training_csv.add_argument(
+        "--keep-together",
+        choices=[level for level, _ in KEEP_TOGETHER],
+        default=DEFAULT_KEEP_TOGETHER,
+        help=(
+            "What the split never divides between training and validation: "
+            "each acquisition, each lamella, or each Autolamella project. "
+            "Successive images of one lamella are near-duplicates, so a finer "
+            "split scores a model on lamellae it was trained on "
+            f"(default: {DEFAULT_KEEP_TOGETHER}). An export made before this "
+            "option existed kept acquisitions together; pass 'acquisition' "
+            "with its seed to make it again"
+        ),
     )
     create_training_csv.add_argument(
         "--include-empty-labels",
@@ -645,7 +663,7 @@ def _cmd_quantify_labels(args: argparse.Namespace) -> int:
 def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg create-training-csv``."""
 
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.info("No matching images found to export CSV")
         return 2
@@ -682,6 +700,7 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             # The same rule the window applies, so one selection exported
             # either way gives the same two files.
             paired=args.modality == "all",
+            grouping=split_grouping(args.keep_together, project_lookup(projects)),
             overwrite=args.overwrite,
             scope=scope,
             user=getattr(args, "user", None),

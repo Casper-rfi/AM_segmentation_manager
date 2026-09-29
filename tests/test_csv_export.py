@@ -302,7 +302,7 @@ def test_the_manifest_counts_what_the_files_hold(tmp_path: Path):
     assert manifest["counts"]["validation"] == rows["validation"] == 2
     assert manifest["counts"]["rows"] == manifest["counts"]["images"] == 10
     assert manifest["counts"]["images_left_out"] == 0
-    assert manifest["split"] == {"train_ratio": 0.8, "seed": 42}
+    assert manifest["split"] == {"train_ratio": 0.8, "seed": 42, "keep_together": "acquisition"}
     assert manifest["columns"] == ["image", "label"]
     assert manifest["scope"] == "modality SEM"
     assert manifest["written_by"] == "Ada Lovelace"

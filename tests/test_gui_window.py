@@ -3417,6 +3417,7 @@ def test_a_stored_default_is_what_every_control_opens_at(qt_app, settings):
         "train_share": 60,
         "seed": 7,
         "one_per_label": True,
+        "keep_together": "project",
     })
     config = SegmentationConfig(
         class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
@@ -3435,6 +3436,7 @@ def test_a_stored_default_is_what_every_control_opens_at(qt_app, settings):
         assert window.label_panel.alpha_slider.value() == 15
         assert window.export_panel.train_share.value() == 60
         assert window.export_panel.seed.value() == 7
+        assert window.export_panel.keep_together.currentData() == "project"
         assert window.export_panel.conditions.isChecked()
     finally:
         destroy(window)

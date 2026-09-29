@@ -436,8 +436,8 @@ rather than appending to it.
   `frames.group_by_acquisition`, which says why a stem will not do it. **What pairs them depends on
   the era of the filename**: Adaptive Polishing images match on an acquisition number within one
   stage directory, reference and alignment ones on the stem with `_eb`/`_ib` removed
-  (`layout.acquisition_stem`). **The train/validation split groups by the acquisition**: split a
-  paired row and the model is scored on a scene it has seen.
+  (`layout.acquisition_stem`). **No split divides an acquisition, nor by default a lamella**, whose
+  frames are near-duplicates (`test_no_group_is_on_both_sides_of_the_split`).
 - **An export can also copy the files out**, state files and project metadata included, which is
   what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
   checks are not its: free space is estimated first, and a destination inside the folder being

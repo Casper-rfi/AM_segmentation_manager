@@ -1,9 +1,9 @@
 """The record a training export leaves beside its CSV files.
 
 ``<prefix>_manifest.yaml`` says what the lists were made from -- the scope, the
-split and its seed, how many rows each side holds, which am-seg wrote them, when
-and under whose name -- so a training run can be described, and repeated, from
-the files it read. **Written after the CSVs**, so a manifest names only files
+split, its seed and what it kept together, how many rows each side holds, which
+am-seg wrote them, when and under whose name -- so a training run can be
+described, and repeated, from the files it read. **Written after the CSVs**, so a manifest names only files
 that were written whole. Nothing here chooses rows or writes a CSV.
 """
 from __future__ import annotations
@@ -30,7 +30,10 @@ _HEADER: Final[str] = """\
 # What this training set was made from, written by am-seg beside its CSV files.
 #
 # `scope` is what the export was narrowed to, in the words of whatever made it:
-# the Export tab's filters, or the command line's selectors.
+# the Export tab's filters, or the command line's selectors. `split.keep_together`
+# is what the split never divided between training and validation: an
+# acquisition, a lamella or a project. A manifest that does not say kept
+# acquisitions together.
 """
 
 
@@ -48,6 +51,7 @@ def write_training_manifest(
     columns: Sequence[str],
     train_ratio: float,
     seed: int | None,
+    keep_together: str,
     conditions: str,
     include_empty_labels: bool,
     counts: Mapping[str, int],
@@ -69,7 +73,11 @@ def write_training_manifest(
         "scope": scope,
         "files": {role: file.name if file else None for role, file in files.items()},
         "columns": list(columns),
-        "split": {"train_ratio": train_ratio, "seed": seed},
+        "split": {
+            "train_ratio": train_ratio,
+            "seed": seed,
+            "keep_together": keep_together,
+        },
         "conditions": conditions,
         "include_empty_labels": include_empty_labels,
         "counts": dict(counts),

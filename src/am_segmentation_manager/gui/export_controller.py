@@ -29,6 +29,7 @@ from ..aggregate import (
     groups_of,
     project_lookup,
     resolve_breakdown,
+    split_grouping,
     value_order,
 )
 from ..config import SegmentationConfig, load_segmentation_config
@@ -59,7 +60,11 @@ from ..operations.label_measure import (
 )
 from ..operations.metadata_csv import export_image_metadata_csv
 from ..operations.selection import current_state
-from ..operations.training_split import DEFAULT_TRAIN_RATIO
+from ..operations.training_split import (
+    DEFAULT_KEEP_TOGETHER,
+    DEFAULT_TRAIN_RATIO,
+    Grouping,
+)
 from ..reporting import counts_as_rows, cross_tabulation_as_rows
 from .known_labels import KnownLabels
 
@@ -175,6 +180,9 @@ class ExportPreview:
             whole groups, so the achieved ratio is only as close to the
             requested one as the grouping allows -- which is the reason to show
             it before writing rather than after.
+        groups: How many groups the split kept whole.
+        keep_together: What a group is: a key of
+            :data:`~am_segmentation_manager.operations.training_split.KEEP_TOGETHER`.
         paired: Whether a row carries both beams, which both modalities being
             in play is what decides.
         sem_only: Paired rows with no FIB label to go beside the SEM one.
@@ -193,6 +201,8 @@ class ExportPreview:
     exportable: int = 0
     train: int = 0
     validation: int = 0
+    groups: int = 0
+    keep_together: str = DEFAULT_KEEP_TOGETHER
     paired: bool = False
     sem_only: int = 0
     fib_only: int = 0
@@ -302,12 +312,15 @@ class TrainingExport:
         train_ratio: Share of pairs assigned to training. ``1.0`` writes no
             validation file.
         seed: Seed for a reproducible shuffle, or None to leave the order alone.
+        keep_together: What the split never divides, a key of
+            :data:`~am_segmentation_manager.operations.training_split.KEEP_TOGETHER`.
         prefix: Filename stem, written as ``<prefix>_train.csv`` and
             ``<prefix>_val.csv``.
     """
 
     train_ratio: float = DEFAULT_TRAIN_RATIO
     seed: int | None = 42
+    keep_together: str = DEFAULT_KEEP_TOGETHER
     prefix: str = DEFAULT_PREFIX
 
 
@@ -905,7 +918,12 @@ class ExportController:
             self.start_path or Path(),
             paired=self.paired,
             is_empty=self.known_labels.emptiness,
+            grouping=self.grouping(),
         )
+
+    def grouping(self) -> Grouping:
+        """Return what the split keeps together, keyed as the breakdowns key it."""
+        return split_grouping(self.training.keep_together, self._lookup)
 
     def export_training(
         self, output_dir: Path, *, overwrite: bool = False
@@ -943,6 +961,7 @@ class ExportController:
             conditions="all",
             paired=self.paired,
             is_empty=self.known_labels.emptiness,
+            grouping=self.grouping(),
             overwrite=overwrite,
             scope=self.describe_filters(),
         )
@@ -1009,6 +1028,8 @@ class ExportController:
             exportable=len(rows),
             train=len(train),
             validation=len(validation),
+            groups=len({row.group for row in rows}),
+            keep_together=self.training.keep_together,
             paired=self.paired,
             # Counted off the built rows rather than re-derived, so what the
             # line says is a fact about the file rather than a second opinion.

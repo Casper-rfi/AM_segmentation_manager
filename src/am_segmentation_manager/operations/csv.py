@@ -6,8 +6,8 @@ writes ``image, label``, and a cell is blank where that beam has no image or no
 label worth pairing with one.
 
 Two rules nothing may get past: an empty label, or one that could not be read to
-tell, is never written as a training pair; and a split never cuts a group -- the
-label in a single-beam export, the acquisition in a paired one.
+tell, is never written as a training pair; and a split never cuts a group -- an
+acquisition at the finest, a lamella or a project where asked.
 ``docs/decisions.md`` § Counting and export says why.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ from ..models import ImageRecord
 from .label_groups import condition_sort_key
 from .label_io import has_image_stack_support, is_label_file_empty
 from .training_manifest import manifest_path, write_training_manifest
-from .training_split import DEFAULT_TRAIN_RATIO, split_grouped
+from .training_split import ACQUISITION, DEFAULT_TRAIN_RATIO, Grouping, split_grouped
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,7 @@ def build_training_rows(
     paired: bool,
     include_empty_labels: bool = False,
     is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+    grouping: Grouping = Grouping(),
 ) -> list[TrainingRow]:
     """Return the rows a training export would write.
 
@@ -180,8 +181,14 @@ def build_training_rows(
         is_empty: Answers whether a label holds nothing but background. Passed
             in so a caller holding the answers already -- the export view, which
             reads every label once -- does not open them all again.
+        grouping: What each row's group is. At the acquisition, the label
+            of a single-beam row and the acquisition of a paired one.
     """
     records = list(records)
+
+    def group_of(record: ImageRecord, finest: str) -> str:
+        return finest if grouping.key is None else str(grouping.key(record))
+
     if not paired:
         rows = []
         for record in records:
@@ -189,12 +196,18 @@ def build_training_rows(
             if not label:
                 continue
             rows.append(
-                TrainingRow((_image_cell(record, start_path), label), group=label)
+                TrainingRow(
+                    (_image_cell(record, start_path), label),
+                    group=group_of(record, label),
+                )
             )
         return rows
 
     rows = []
     for acquisition in group_by_acquisition(records):
+        # Every record of one acquisition is in one stage, so any of them
+        # names its lamella and its project.
+        group = group_of(acquisition.records[0], acquisition.identity)
         # A beam with no image still yields one blank column rather than no
         # row, so an acquisition captured on one beam is exported rather than
         # dropped for what it does not have.
@@ -207,7 +220,7 @@ def build_training_rows(
                     _label_cell(fib, start_path, include_empty_labels, is_empty),
                 )
                 if values[1] or values[3]:
-                    rows.append(TrainingRow(values, group=acquisition.identity))
+                    rows.append(TrainingRow(values, group=group))
     return rows
 
 
@@ -232,6 +245,7 @@ def export_training_csv(
     paired: bool = False,
     is_empty: Callable[[Path], bool | None] = is_label_file_empty,
     *,
+    grouping: Grouping = Grouping(),
     overwrite: bool = False,
     scope: str = "",
     user: str | None = None,
@@ -272,6 +286,7 @@ def export_training_csv(
             one ``image`` column is not something anyone trains on.
         is_empty: Answers whether a label holds only background; see
             :func:`build_training_rows`.
+        grouping: What the split never divides, recorded in the manifest.
         overwrite: Replace files an earlier export wrote under *prefix*.
         scope: What the records were narrowed to, recorded in the manifest.
         user: The name to record as writing it; see :func:`write_training_manifest`.
@@ -314,6 +329,7 @@ def export_training_csv(
         paired=paired,
         include_empty_labels=include_empty_labels,
         is_empty=is_empty,
+        grouping=grouping,
     )
     if not rows:
         logger.warning("No image/label pairs found to export")
@@ -352,11 +368,17 @@ def export_training_csv(
 
     train_rows, val_rows = split_rows(rows, train_ratio=train_ratio, seed=seed)
     groups = {row.group for row in rows}
-    if len(groups) < len(rows):
+    if len(groups) < len(rows) or grouping.level != ACQUISITION:
         logger.info(
-            "Split %d row(s) as %d group(s) so images of one scene stay on the "
-            "same side: %d training, %d validation",
-            len(rows), len(groups), len(train_rows), len(val_rows),
+            "Split %d row(s) as %d group(s), keeping each %s on one side: "
+            "%d training, %d validation",
+            len(rows), len(groups), grouping.level, len(train_rows), len(val_rows),
+        )
+    if len(groups) == 1 and 0.0 < train_ratio < 1.0:
+        logger.warning(
+            "Every row is in one %s, so all of them went to %s; keep a finer "
+            "level together to fill both sides", grouping.level,
+            "training" if train_rows else "validation",
         )
 
     columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
@@ -377,6 +399,7 @@ def export_training_csv(
         columns=columns,
         train_ratio=train_ratio,
         seed=seed,
+        keep_together=grouping.level,
         conditions=conditions,
         include_empty_labels=include_empty_labels,
         counts={

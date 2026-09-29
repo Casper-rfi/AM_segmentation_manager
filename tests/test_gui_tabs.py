@@ -362,6 +362,7 @@ def test_the_split_defaults_to_what_the_command_line_does(exporter: ExportContro
     """The same selection exported from either interface must give the same two
     files, so the defaults cannot drift apart."""
     assert (exporter.training.train_ratio, exporter.training.seed) == (0.8, 42)
+    assert exporter.training.keep_together == "lamella"
     assert exporter.training.prefix == "dataset"
 
 
@@ -376,6 +377,27 @@ def test_the_preview_and_the_export_agree_on_the_split(
         measured, tmp_path / "exported"
     )
     assert preview.train + preview.validation == preview.exportable
+
+
+@pytest.mark.parametrize("level", ["acquisition", "lamella", "project"])
+def test_the_preview_and_the_export_agree_at_every_keep_together_level(
+    tmp_path: Path, level: str
+):
+    pytest.importorskip("tifffile")
+    for name in ("alpha", "beta"):
+        build_dataset(tmp_path, name=name, lamellae=3, acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
+    controller.training.keep_together = level
+
+    preview = controller.preview()
+
+    assert preview.keep_together == level
+    assert preview.groups == {"acquisition": 12, "lamella": 6, "project": 2}[level]
+    assert (preview.train, preview.validation) == written_split(
+        controller, tmp_path / "exported"
+    )
 
 
 def test_a_full_training_share_leaves_nothing_to_validate(exporter: ExportController):

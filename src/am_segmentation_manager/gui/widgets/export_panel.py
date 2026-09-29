@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 from ... import plots
 from ...aggregate import AREA_BINS_PER_DECADE, bin_mantissas
 from ...layout import SERIES, SERIES_LABELS
+from ...operations.training_split import KEEP_TOGETHER
 from ...plots import INSTALL_HINT
 from ...reporting import (
     MULTI_CELL_NOTE,
@@ -46,6 +47,7 @@ from ..export_controller import (
     STATES,
     ExportController,
 )
+from ..selection import counted
 from .breakdown_table import BreakdownTable, count_rows, cross_rows
 from .chart_view import ChartView
 from .common import (
@@ -150,6 +152,14 @@ def _captioned(text: str, widget, tooltip: str) -> QHBoxLayout:
 SEARCH_FROM = 12
 
 
+#: What a group of the training split is called, one and several, by level.
+GROUP_NOUNS: dict[str, tuple[str, str]] = {
+    "acquisition": ("acquisition", "acquisitions"),
+    "lamella": ("lamella", "lamellae"),
+    "project": ("project", "projects"),
+}
+
+
 def split_counts_text(preview) -> str:
     """Return what the training split comes out as, for the line under its settings."""
     if not preview.matched:
@@ -158,7 +168,8 @@ def split_counts_text(preview) -> str:
         return "Measure labels to see how the pairs split"
     if not preview.exportable:
         return "Nothing here can be exported"
-    return f"{preview.train} train / {preview.validation} validation"
+    groups = counted(preview.groups, *GROUP_NOUNS[preview.keep_together])
+    return f"{preview.train} train / {preview.validation} validation · {groups}"
 
 
 def _card_caption(text: str) -> QLabel:
@@ -515,6 +526,9 @@ class ExportPanel(QWidget):
             self.seeded.setChecked(bool(values["seeded"]))
             self.seed.setValue(int(values["seed"]))
             self.seed.setEnabled(bool(values["seeded"]))
+            self.keep_together.setCurrentIndex(
+                self.keep_together.findData(values["keep_together"])
+            )
         finally:
             self._updating = False
         self._recount.start()
@@ -1106,6 +1120,26 @@ class ExportPanel(QWidget):
         grid = QVBoxLayout(box)
 
         row = QHBoxLayout()
+        self.keep_together = StepCombo()
+        for level, caption in KEEP_TOGETHER:
+            self.keep_together.addItem(caption, level)
+        self.keep_together.setCurrentIndex(
+            self.keep_together.findData(self.controller.training.keep_together)
+        )
+        self.keep_together.currentIndexChanged.connect(self._controls_changed)
+        row.addWidget(
+            caption_for(
+                "Keep together",
+                self.keep_together,
+                "Never split one of these between training and validation. "
+                "Images of one lamella are near-duplicates, so a finer split "
+                "scores a model on lamellae it was trained on.",
+            )
+        )
+        row.addWidget(self.keep_together, stretch=1)
+        grid.addLayout(row)
+
+        row = QHBoxLayout()
         self.train_share = QSpinBox()
         self.train_share.setRange(0, 100)
         self.train_share.setValue(80)
@@ -1279,6 +1313,7 @@ class ExportPanel(QWidget):
         training = self.controller.training
         training.train_ratio = self.train_share.value() / 100
         training.seed = self.seed.value() if self.seeded.isChecked() else None
+        training.keep_together = self.keep_together.currentData()
         training.prefix = self.prefix.text().strip() or DEFAULT_PREFIX
         self.refresh()
 
