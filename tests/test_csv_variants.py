@@ -12,7 +12,7 @@ import csv
 from pathlib import Path
 
 from am_segmentation_manager.cli import main
-from am_segmentation_manager.operations.csv import split_pairs
+from am_segmentation_manager.operations.training_split import split_pairs
 from am_segmentation_manager.state import read_state
 from conftest import write_label
 

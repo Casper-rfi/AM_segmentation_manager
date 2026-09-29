@@ -16,12 +16,12 @@ from typing import Any, TypeAlias
 
 from ..display import DEFAULT_ALPHA
 from ..layout import LABELLED_SERIES, SERIES, SERIES_LABELS
-from ..operations.csv import DEFAULT_TRAIN_RATIO
 from ..operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
     MAX_SPECK_PIXELS,
     MIN_SPECK_PIXELS,
 )
+from ..operations.training_split import DEFAULT_TRAIN_RATIO
 from .export_controller import DEFAULT_SERIES
 
 logger = logging.getLogger(__name__)

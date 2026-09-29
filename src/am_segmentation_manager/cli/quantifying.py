@@ -35,7 +35,7 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import DEFAULT_TRAIN_RATIO, export_training_csv
+from ..operations.csv import export_training_csv
 from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
@@ -46,6 +46,7 @@ from ..operations.metadata_csv import (
     export_lamella_quantification_csv,
     export_project_metadata_csv,
 )
+from ..operations.training_split import DEFAULT_TRAIN_RATIO
 from ..plots import plot_counts, plot_cross_tabulation
 from ..reporting import (
     counts_as_rows,

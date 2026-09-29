@@ -37,7 +37,6 @@ from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.tables import write_csv
 from ..models import ImageRecord, Project
 from ..operations.csv import (
-    DEFAULT_TRAIN_RATIO,
     build_training_rows,
     export_training_csv,
     find_matching_label,
@@ -60,6 +59,7 @@ from ..operations.label_measure import (
 )
 from ..operations.metadata_csv import export_image_metadata_csv
 from ..operations.selection import current_state
+from ..operations.training_split import DEFAULT_TRAIN_RATIO
 from ..reporting import counts_as_rows, cross_tabulation_as_rows
 from .known_labels import KnownLabels
 
