@@ -29,8 +29,8 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
 
 ## What to pick up next
 
-- **Cross-platform readiness**: CI passes on Linux, Windows and macOS, and Windows 11 has been worked
-  through by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`; on a four-V100 Linux
+- **Cross-platform readiness**: CI passes on Linux and Windows at every push, and passed on macOS
+  when last run by hand on 2026-09-17; Windows 11 has been worked through by hand — all four tabs, predicting on a 50-series GPU with `ml-cuda13`; on a four-V100 Linux
   machine `auto` took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. **Every
   torch build is installed by some CI job on each platform it is chosen for**
   (`test_each_torch_build_is_installed_on_every_platform_it_is_chosen_for`); the three beyond `ml` on

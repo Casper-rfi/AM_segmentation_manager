@@ -298,7 +298,7 @@ of one of these files, is held by `test_docs.py`.
   (`test_a_window_that_has_read_nothing_offers_the_folder_it_remembers`). The button names the folder and the
   path beneath says which one it is; with none remembered, the one button opens the chooser
   (`test_a_window_with_no_folder_remembered_offers_to_choose_one`). It is a page of the view stack, so
-  anything switching views leaves it. **Nothing is scanned at startup** — a remembered root may be large, or
+  anything switching views leaves it. **A remembered folder is not scanned at startup** — it may be large, or
   on a drive that is not there — so Rescan reads the box instead of doing nothing
   (`test_rescan_reads_the_remembered_folder_before_anything_has_been_scanned`).
 - **The corner is three runs with a rule between each, not one line of text**, read from the folder to what
