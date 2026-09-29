@@ -17,7 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from qtpy import API_NAME, QT_VERSION
-from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl, Signal
+from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl
 from qtpy.QtGui import QAction, QCursor, QDesktopServices, QKeySequence
 from qtpy.QtWidgets import (
     QApplication,
@@ -270,23 +270,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
     ``test_no_mixin_shadows_another`` is what keeps true.
     """
 
-    #: Emitted to the background loader thread; see :class:`BackgroundLoader`.
-    request_load = Signal(list, int)
-
-    #: Emitted to the Label tab's own loader thread. Separate from
-    #: :attr:`request_load` because the two prepare frames at different sizes:
-    #: proofreading needs every pixel, and reviewing deliberately does not.
-    request_label_load = Signal(list, int)
-
-    #: Emitted to that same thread with the labels whose specks are still
-    #: uncounted. Behind the frame preparation and sharing its token, so the
-    #: frame being looked at is read first and moving away abandons both.
-    request_speck_counts = Signal(list, int, int)
-
-    #: Emitted to the operations thread with the callable to run; see
-    #: :class:`~am_segmentation_manager.gui.worker.BackgroundOperation`.
-    request_operation = Signal(object)
-
     def __init__(
         self, controller: CurationController, settings: QSettings | None = None
     ) -> None:
@@ -374,13 +357,15 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._adopt_author()
 
         self.loader = BackgroundLoader(controller.cache)
-        self.request_load.connect(self.loader.worker.load_batch)
         self.loader.worker.loaded.connect(self._on_loaded)
 
+        # The Label tab has a loader of its own because the two prepare frames
+        # at different sizes: proofreading needs every pixel, and reviewing
+        # deliberately does not. Its speck counts queue behind its frame
+        # preparation and share its token, so the frame being looked at is read
+        # first and moving away abandons both.
         self.label_loader = BackgroundLoader(self.label_controller.cache)
-        self.request_label_load.connect(self.label_loader.worker.load_batch)
         self.label_loader.worker.loaded.connect(self._on_label_loaded)
-        self.request_speck_counts.connect(self.label_loader.worker.count_specks)
         self.label_loader.worker.counted.connect(self._on_speck_counted)
 
         # Connected once and left alone. Disconnecting a slot from inside the
@@ -388,7 +373,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # mid-emit, which the two bindings do not treat alike; what is pending
         # is tracked in a plain attribute instead.
         self.operations = BackgroundOperation()
-        self.request_operation.connect(self.operations.worker.run)
         self.operations.worker.finished.connect(self._operation_finished)
         self.operations.worker.failed.connect(self._operation_failed)
         self.operations.worker.progressed.connect(self._operation_progressed)
@@ -1914,13 +1898,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         token = self.loader.next_token()
         requests = self.controller.pending_loads()
         if requests:
-            self.request_load.emit(requests, token)
+            self.loader.load_batch(requests, token)
 
-    def _on_loaded(self, token: int, request) -> None:
+    def _on_loaded(self, token: int, frame_index: int) -> None:
         """Redraw when the frame on screen finishes preparing."""
         if token != self.loader.token:
             return
-        if request.frame_index == self.controller.frame_position:
+        if frame_index == self.controller.frame_position:
             self._render()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming

@@ -487,6 +487,15 @@ of one of these files, is held by `test_docs.py`.
   deleted" when asked anything. So the window keeps every menu and item it builds in an attribute
   (`test_the_window_has_the_menus_a_desktop_application_has`), and a reader walking the bar holds
   each link of the chain in a local and takes plain values out rather than live objects.
+- **No Python object rides a queued signal between threads.** PySide6 wraps it in the queued event
+  and releases it from that event's C++ destructor on the receiving thread, outside any Python
+  frame, while the other thread is already handling what was sent — and that has segfaulted the
+  window just after an operation finished. A `list` argument counts, going as a `QVariantList` of
+  wrapped objects. So both workers take work through a queue (`hand_over`), started by
+  `QMetaObject.invokeMethod` with no arguments, and signal back only numbers and text
+  (`test_no_signal_from_a_worker_thread_carries_a_python_object`); the operations worker lets go of
+  the work before signalling, so the window frees it
+  (`test_the_work_and_its_result_are_freed_on_the_submitting_thread`).
 - **Never disconnect a signal from inside the handler for that signal.** A connection list mutated
   mid-emit works under PyQt5 and hangs under PySide6, with no traceback. Connect once and track what
   is pending in an attribute; the same shape hides in any connect-per-call pattern.

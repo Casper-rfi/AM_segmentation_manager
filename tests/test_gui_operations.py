@@ -799,29 +799,135 @@ def test_the_worker_runs_off_the_interface_thread(qt_app):
     """
     import threading
 
-    from qtpy.QtCore import QObject, Signal
-
     from am_segmentation_manager.gui.worker import BackgroundOperation
 
-    class Submitter(QObject):
-        submit = Signal(object)
-
     operation = BackgroundOperation()
-    submitter = Submitter()
-    submitter.submit.connect(operation.worker.run)
     results: list = []
-    operation.worker.finished.connect(results.append)
-    operation.worker.failed.connect(results.append)
+    take = lambda: results.append(operation.worker.take_outcome())  # noqa: E731
+    operation.worker.finished.connect(take)
+    operation.worker.failed.connect(take)
 
     try:
-        submitter.submit.emit(lambda: threading.current_thread().name)
-        submitter.submit.emit(lambda: 1 / 0)
+        operation.submit(lambda: threading.current_thread().name)
+        operation.submit(lambda: 1 / 0)
         _spin(qt_app, lambda: len(results) == 2)
     finally:
         operation.stop()
 
     assert results[0] != threading.current_thread().name
     assert isinstance(results[1], ZeroDivisionError)
+
+
+def _signals(worker) -> dict[str, list[str]]:
+    """Return each signal *worker*'s class declares, with its parameter types."""
+    from qtpy.QtCore import QMetaMethod
+
+    meta = worker.metaObject()
+    return {
+        bytes(method.name()).decode(): [bytes(t).decode() for t in method.parameterTypes()]
+        for method in (meta.method(i) for i in range(meta.methodOffset(), meta.methodCount()))
+        if method.methodType() == QMetaMethod.MethodType.Signal
+    }
+
+
+@pytest_qt
+def test_no_signal_from_a_worker_thread_carries_a_python_object(qt_app):
+    """A Python object carried by a queued signal is released by the binding's
+    C++ event destructor on whichever thread the event reached, racing the
+    interface thread handling it -- so the signals of both workers carry
+    numbers, text or nothing, and anything larger travels through a queue."""
+    from am_segmentation_manager.gui.cache import FrameCache
+    from am_segmentation_manager.gui.loader import FrameLoadWorker
+    from am_segmentation_manager.gui.worker import OperationWorker
+
+    assert _signals(OperationWorker()) == {
+        "finished": [], "failed": [], "progressed": ["int", "int"],
+    }
+    assert _signals(FrameLoadWorker(FrameCache())) == {
+        "loaded": ["int", "int"],
+        "batch_finished": ["int"],
+        "counted": ["int", "QString", "int"],
+    }
+
+
+@pytest_qt
+def test_the_loader_runs_what_it_is_given_off_the_interface_thread(qt_app, tmp_path):
+    """Handed over through its queue, in the order it was asked, and reported
+    from the loader's own thread."""
+    import threading
+
+    from qtpy.QtCore import Qt
+
+    from am_segmentation_manager.gui.cache import FrameCache
+    from am_segmentation_manager.gui.loader import BackgroundLoader
+
+    loader = BackgroundLoader(FrameCache())
+    seen: list[tuple[str, int, str]] = []
+    loader.worker.counted.connect(
+        lambda token, key, count: seen.append((key, count, threading.current_thread().name)),
+        Qt.ConnectionType.DirectConnection,
+    )
+    token = loader.next_token()
+    try:
+        loader.count_specks([(tmp_path / "a.tif", tmp_path / "a.tif")], token, 4)
+        loader.count_specks([(tmp_path / "b.tif", tmp_path / "b.tif")], token, 4)
+        _spin(qt_app, lambda: len(seen) == 2)
+    finally:
+        loader.stop()
+
+    here = threading.current_thread().name
+    assert [(key, count) for key, count, _thread in seen] == [
+        (str(tmp_path / "a.tif"), 0), (str(tmp_path / "b.tif"), 0),
+    ]
+    assert all(thread != here for _key, _count, thread in seen)
+
+
+@pytest_qt
+def test_the_work_and_its_result_are_freed_on_the_submitting_thread(qt_app):
+    """The worker lets go of both before it signals, so the submitter's
+    reference is the last one and whatever the closure captured is freed where
+    it was made -- the window's thread, not the operations thread."""
+    import threading
+    import weakref
+
+    from am_segmentation_manager.gui.worker import BackgroundOperation
+
+    class Watched:
+        pass
+
+    freed: dict[str, str] = {}
+
+    def watched(name: str) -> Watched:
+        thing = Watched()
+        weakref.finalize(
+            thing, lambda: freed.setdefault(name, threading.current_thread().name)
+        )
+        return thing
+
+    def make_work():
+        captured = watched("captured")
+
+        def work() -> Watched:
+            assert captured is not None
+            return watched("result")
+
+        return work
+
+    work = make_work()
+    operation = BackgroundOperation()
+    done: list[bool] = []
+    operation.worker.finished.connect(lambda: done.append(True))
+    try:
+        operation.submit(work)
+        _spin(qt_app, lambda: done)
+        result = operation.worker.take_outcome()
+        assert freed == {}, "the worker must not free what it was handed"
+        del work, result
+    finally:
+        operation.stop()
+
+    here = threading.current_thread().name
+    assert freed == {"captured": here, "result": here}
 
 
 def _spin(app, condition, timeout: float = 10.0) -> None:

@@ -67,8 +67,10 @@ class OperationRunner(_Window):
         self._busy.show()
         self.operations_panel.set_busy(True)
 
-        self._pending_operation = (description, on_done)
-        self.request_operation.emit(work)
+        # *work* is held here until its outcome is taken, so that it is freed
+        # on this thread; see gui/worker.py.
+        self._pending_operation = (description, on_done, work)
+        self.operations.submit(work)
 
     def _operation_progressed(self, done: int, total: int) -> None:
         """Move the busy dialog's bar, on the thread that owns it.
@@ -81,21 +83,23 @@ class OperationRunner(_Window):
             return
         self._busy.set_progress(done, total)
 
-    def _operation_finished(self, result) -> None:
+    def _operation_finished(self) -> None:
         """Hand a finished operation's result to whatever asked for it."""
+        result = self.operations.worker.take_outcome()
         pending = self._take_pending_operation()
         if pending is None:  # pragma: no cover - nothing was submitted
             return
-        _description, on_done = pending
+        _description, on_done, _work = pending
         on_done(result)
 
-    def _operation_failed(self, error) -> None:
+    def _operation_failed(self) -> None:
         """Report an operation that raised, and bring the window back in step.
 
         Brought into step whatever the failure, because failing is not the same
         as having changed nothing: a run stopped partway names what it wrote,
         and those files go on their records as after a finished run.
         """
+        error = self.operations.worker.take_outcome()
         logger.warning("Operation failed: %s", error)
         pending = self._take_pending_operation()
         description = pending[0] if pending else "Operation failed"

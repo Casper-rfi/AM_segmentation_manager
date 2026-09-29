@@ -3,7 +3,7 @@
 The worker is driven directly, without a thread: what is asserted here is that
 it reads each label once, reports as it goes rather than at the end, and stops
 when the reviewer has moved on. Whether Qt delivers the call on another thread
-is :mod:`.loader`'s own arrangement and is not re-tested per slot.
+is :mod:`.loader`'s own arrangement and is not re-tested per method.
 """
 from __future__ import annotations
 

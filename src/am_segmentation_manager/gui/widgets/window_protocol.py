@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from qtpy.QtCore import (
         QSettings,
-        SignalInstance,
     )
     from qtpy.QtWidgets import QMainWindow
 
@@ -57,9 +56,6 @@ class CurationWindowParts(Protocol):
 
     operations: BackgroundOperation
     label_loader: BackgroundLoader
-    request_operation: SignalInstance
-    request_label_load: SignalInstance
-    request_speck_counts: SignalInstance
 
     def _flash(self, message: str, milliseconds: int = 2000) -> None: ...
 

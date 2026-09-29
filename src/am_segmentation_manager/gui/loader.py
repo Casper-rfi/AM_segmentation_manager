@@ -7,13 +7,19 @@ a worker thread that does nothing else.
 
 The worker is a thin shell: it takes requests, hands them to the cache, and
 reports what finished. Deciding *what* to prepare belongs to the controller.
+Requests reach it through a queue and its signals carry numbers and text, so no
+Python object rides a queued signal; ``gui/worker.py`` says why.
 """
 from __future__ import annotations
 
 import logging
+import queue
 import threading
+from collections.abc import Callable
+from functools import partial
+from pathlib import Path
 
-from qtpy.QtCore import QObject, QThread, Signal, Slot
+from qtpy.QtCore import QMetaObject, QObject, Qt, QThread, Signal, Slot
 
 from ..operations.label_measure import count_specks_in, find_specks
 from .cache import FrameCache, LoadRequest
@@ -55,22 +61,34 @@ class FrameLoadWorker(QObject):
     screen would wait behind it.
     """
 
-    #: Emitted after each request completes, with the token it belonged to.
-    loaded = Signal(int, object)
+    #: Emitted after each request completes, with the token it belonged to and
+    #: the frame it prepared.
+    loaded = Signal(int, int)
 
     #: Emitted when a batch runs to completion without being superseded.
     batch_finished = Signal(int)
 
-    #: Emitted after each label is counted, with the token, the label's key and
-    #: how many specks it holds. One signal per label rather than one per batch,
-    #: so the marks appear as the sweep goes rather than all at the end.
-    counted = Signal(int, object, int)
+    #: Emitted after each label is counted, with the token, the label's key as
+    #: text and how many specks it holds. One signal per label rather than one
+    #: per batch, so the marks appear as the sweep goes rather than all at the
+    #: end.
+    counted = Signal(int, str, int)
 
     def __init__(self, cache: FrameCache) -> None:
         super().__init__()
         self._cache = cache
         self._token = 0
         self._lock = threading.Lock()
+        self._jobs: queue.SimpleQueue[Callable[[], None]] = queue.SimpleQueue()
+
+    def hand_over(self, job: Callable[[], None]) -> None:
+        """Queue *job* for the next :meth:`run_next`, from any thread."""
+        self._jobs.put(job)
+
+    @Slot()
+    def run_next(self) -> None:
+        """Run the oldest handed-over job."""
+        self._jobs.get_nowait()()
 
     def set_token(self, token: int) -> None:
         """Supersede any batch older than *token*. Called from the UI thread."""
@@ -81,7 +99,6 @@ class FrameLoadWorker(QObject):
         with self._lock:
             return token == self._token
 
-    @Slot(list, int)
     def load_batch(self, requests: list[LoadRequest], token: int) -> None:
         """Prepare each request in turn, stopping early if superseded."""
         for request in requests:
@@ -92,10 +109,9 @@ class FrameLoadWorker(QObject):
                 self._cache.ensure(request)
             except Exception:  # noqa: BLE001 - the cache records per-frame errors
                 logger.exception("Unexpected failure preparing %s", request)
-            self.loaded.emit(token, request)
+            self.loaded.emit(token, request.frame_index)
         self.batch_finished.emit(token)
 
-    @Slot(list, int, int)
     def count_specks(self, labels: list, token: int, at_most: int) -> None:
         """Count the specks in each ``(key, path)``, stopping early if superseded.
 
@@ -127,18 +143,16 @@ class FrameLoadWorker(QObject):
             except Exception:  # noqa: BLE001 - a bad label must not stop the sweep
                 logger.exception("Could not count specks in %s", key)
                 found = 0
-            self.counted.emit(token, key, found)
+            self.counted.emit(token, str(key), found)
 
 
 class BackgroundLoader:
     """Owns the worker and the thread it runs on.
 
     Keeps the thread's lifecycle in one place so the window does not have to
-    manage it, and guarantees the thread is stopped on shutdown.
-
-    Work is submitted by connecting a signal on the window to
-    :meth:`FrameLoadWorker.load_batch`. Because the worker lives on another
-    thread, Qt delivers that call there and the emit returns immediately.
+    manage it, and guarantees the thread is stopped on shutdown. Work is
+    submitted through :meth:`load_batch` and :meth:`count_specks`, which return
+    at once and are run on the thread in the order they were called.
     """
 
     def __init__(self, cache: FrameCache) -> None:
@@ -159,6 +173,21 @@ class BackgroundLoader:
         self._token += 1
         self.worker.set_token(self._token)
         return self._token
+
+    def load_batch(self, requests: list[LoadRequest], token: int) -> None:
+        """Prepare *requests* on the thread; see :meth:`FrameLoadWorker.load_batch`."""
+        self._submit(partial(self.worker.load_batch, requests, token))
+
+    def count_specks(
+        self, labels: list[tuple[Path, Path | bytes]], token: int, at_most: int
+    ) -> None:
+        """Count *labels*' specks on the thread; see :meth:`FrameLoadWorker.count_specks`."""
+        self._submit(partial(self.worker.count_specks, labels, token, at_most))
+
+    def _submit(self, job: Callable[[], None]) -> None:
+        """Queue *job* and ask the thread to run it, carrying nothing in the call."""
+        self.worker.hand_over(job)
+        QMetaObject.invokeMethod(self.worker, "run_next", Qt.ConnectionType.QueuedConnection)
 
     def stop(self) -> None:
         """Stop accepting work and shut the thread down.

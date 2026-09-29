@@ -10,6 +10,7 @@ window because each of these reaches both tabs.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
@@ -258,7 +259,7 @@ class LabelTab(_Window):
         token = self.label_loader.next_token()
         requests = self.label_controller.pending_loads()
         if requests:
-            self.request_label_load.emit(requests, token)
+            self.label_loader.load_batch(requests, token)
         self._sweep_specks(token)
 
     def _sweep_specks(self, token: int | None = None) -> None:
@@ -277,18 +278,18 @@ class LabelTab(_Window):
             return
         if token is None:
             token = self.label_loader.next_token()
-        self.request_speck_counts.emit(
+        self.label_loader.count_specks(
             labels, token, self.label_controller.speck_size
         )
 
-    def _on_speck_counted(self, token: int, key, count: int) -> None:
+    def _on_speck_counted(self, token: int, key: str, count: int) -> None:
         """Take one label's count from the sweep and redraw the marks."""
         if token != self.label_loader.token:
             return
-        self.label_controller.record_speck_count(key, count)
+        self.label_controller.record_speck_count(Path(key), count)
         self.label_panel.refresh_timeline()
 
-    def _on_label_loaded(self, token: int, request) -> None:
+    def _on_label_loaded(self, token: int, frame_index: int) -> None:
         """Redraw the canvas when the frame on screen finishes preparing.
 
         A frame whose label was rewritten while it was being read is discarded
@@ -296,7 +297,7 @@ class LabelTab(_Window):
         """
         if token != self.label_loader.token:
             return
-        if request.frame_index == self.label_controller.frame_index:
+        if frame_index == self.label_controller.frame_index:
             self.label_panel.draw_current()
             if self.label_controller.cached_image() is None:
                 self._schedule_label_loads()

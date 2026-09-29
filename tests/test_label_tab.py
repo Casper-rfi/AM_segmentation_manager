@@ -2246,7 +2246,6 @@ def test_a_label_changed_on_disk_stops_the_save(qt_app, window, monkeypatch):
 def test_a_frame_read_before_its_label_changed_is_read_again(qt_app, window):
     """The frame reported ready holds pixels older than the file: the window
     asks for it again rather than drawing them, or sitting on *loading*."""
-    from am_segmentation_manager.gui.cache import LoadRequest
 
     controller = window.label_controller
     ahead = controller._positions[1]
@@ -2254,9 +2253,7 @@ def test_a_frame_read_before_its_label_changed_is_read_again(qt_app, window):
     controller.step(1)
     tifffile.imwrite(str(controller.current_key), np.full((48, 64), 1, dtype=np.uint8))
 
-    window._on_label_loaded(
-        window.label_loader.token, LoadRequest(ahead, controller.modality)
-    )
+    window._on_label_loaded(window.label_loader.token, ahead)
 
     canvas = window.label_panel.canvas
     settle(
