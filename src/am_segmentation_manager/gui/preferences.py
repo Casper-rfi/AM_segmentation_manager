@@ -26,7 +26,7 @@ from ..operations.training_split import (
     DEFAULT_TRAIN_RATIO,
     KEEP_TOGETHER,
 )
-from .export_controller import DEFAULT_SERIES
+from .export_controller import DEFAULT_SERIES, MAX_FOLDS
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,10 @@ DEFAULT_BRUSH_RADIUS = 8
 #: one nobody can describe in a methods section.
 DEFAULT_SEED = 42
 DEFAULT_SEEDED = True
+
+#: How many cross-validation folds the Export tab opens on. One is none: a
+#: single train/validation split, as `create-training-csv` writes without --folds.
+DEFAULT_FOLDS = 1
 
 #: Whether an export keeps one image per label rather than every imaging
 #: condition of it. Off: the wider set is what an export has always meant, and
@@ -269,6 +273,18 @@ PREFERENCES: tuple[Preference, ...] = (
         hint=(
             "What the split never divides between training and validation. "
             "Matches create-training-csv --keep-together."
+        ),
+    ),
+    Preference(
+        key="folds",
+        group=EXPORT,
+        label="Cross-validation folds",
+        fallback=DEFAULT_FOLDS,
+        low=1,
+        high=MAX_FOLDS,
+        hint=(
+            "How many train/validation pairs to write for cross-validation; "
+            "1 writes a single split. Matches create-training-csv --folds."
         ),
     ),
 )

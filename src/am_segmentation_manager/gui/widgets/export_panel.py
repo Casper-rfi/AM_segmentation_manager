@@ -41,7 +41,9 @@ from ..export_controller import (
     ANY_LABEL,
     DEFAULT_PREFIX,
     DEFAULT_SERIES,
+    GROUP_NOUNS,
     LABEL_FILTERS,
+    MAX_FOLDS,
     MODALITIES,
     PROJECT_FILTER,
     STATES,
@@ -152,14 +154,6 @@ def _captioned(text: str, widget, tooltip: str) -> QHBoxLayout:
 SEARCH_FROM = 12
 
 
-#: What a group of the training split is called, one and several, by level.
-GROUP_NOUNS: dict[str, tuple[str, str]] = {
-    "acquisition": ("acquisition", "acquisitions"),
-    "lamella": ("lamella", "lamellae"),
-    "project": ("project", "projects"),
-}
-
-
 def split_counts_text(preview) -> str:
     """Return what the training split comes out as, for the line under its settings."""
     if not preview.matched:
@@ -168,8 +162,10 @@ def split_counts_text(preview) -> str:
         return "Measure labels to see how the pairs split"
     if not preview.exportable:
         return "Nothing here can be exported"
+    if preview.folds and not preview.fold_sizes:
+        return preview.split_text()   # which names the groups already
     groups = counted(preview.groups, *GROUP_NOUNS[preview.keep_together])
-    return f"{preview.train} train / {preview.validation} validation · {groups}"
+    return f"{preview.split_text()} · {groups}"
 
 
 def _card_caption(text: str) -> QLabel:
@@ -529,6 +525,8 @@ class ExportPanel(QWidget):
             self.keep_together.setCurrentIndex(
                 self.keep_together.findData(values["keep_together"])
             )
+            self.folds.setValue(int(values["folds"]))
+            self.train_share.setEnabled(self.folds.value() < 2)
         finally:
             self._updating = False
         self._recount.start()
@@ -1157,6 +1155,23 @@ class ExportPanel(QWidget):
         grid.addLayout(row)
 
         row = QHBoxLayout()
+        self.folds = QSpinBox()
+        self.folds.setRange(1, MAX_FOLDS)
+        self.folds.setSpecialValueText("Off")
+        self.folds.valueChanged.connect(self._folds_changed)
+        row.addWidget(
+            caption_for(
+                "Folds",
+                self.folds,
+                "Write this many train/validation pairs for cross-validation "
+                "instead of one split. Each fold validates on its own share of "
+                "the groups kept together, and trains on the rest.",
+            )
+        )
+        row.addWidget(self.folds, stretch=1)
+        grid.addLayout(row)
+
+        row = QHBoxLayout()
         self.seeded = ToggleSwitch("Seed")
         self.seeded.setChecked(True)
         self.seeded.setToolTip(
@@ -1196,6 +1211,11 @@ class ExportPanel(QWidget):
         self.split_counts.setStyleSheet(f"color: {MUTED};")
         grid.addWidget(self.split_counts)
         return box
+
+    def _folds_changed(self, folds: int) -> None:
+        """Grey out the training share, which cross-validation does not use."""
+        self.train_share.setEnabled(folds < 2)
+        self._controls_changed()
 
     def _seeding_toggled(self, seeded: bool) -> None:
         """Grey out the seed when the shuffle is not to be reproducible."""
@@ -1314,6 +1334,7 @@ class ExportPanel(QWidget):
         training.train_ratio = self.train_share.value() / 100
         training.seed = self.seed.value() if self.seeded.isChecked() else None
         training.keep_together = self.keep_together.currentData()
+        training.folds = self.folds.value() if self.folds.value() >= 2 else None
         training.prefix = self.prefix.text().strip() or DEFAULT_PREFIX
         self.refresh()
 

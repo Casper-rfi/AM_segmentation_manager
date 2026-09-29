@@ -14,6 +14,7 @@ import logging
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..aggregate import (
     DEFAULT_AREA_BINS_PER_DECADE,
@@ -38,7 +39,9 @@ from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.tables import write_csv
 from ..models import ImageRecord, Project
 from ..operations.csv import (
+    TrainingRow,
     build_training_rows,
+    export_kfold_csv,
     export_training_csv,
     find_matching_label,
     keep_one_condition_per_scene,
@@ -64,9 +67,11 @@ from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
     Grouping,
+    assign_folds,
 )
 from ..reporting import counts_as_rows, cross_tabulation_as_rows
 from .known_labels import KnownLabels
+from .selection import counted
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +154,10 @@ ANY_LABEL = "any"
 #: the same filenames.
 DEFAULT_PREFIX = "dataset"
 
+#: The most cross-validation folds the window offers: enough for leaving out
+#: one lamella at a time across the whole collection.
+MAX_FOLDS = 999
+
 
 @dataclass(frozen=True)
 class ExportPreview:
@@ -183,6 +192,10 @@ class ExportPreview:
         groups: How many groups the split kept whole.
         keep_together: What a group is: a key of
             :data:`~am_segmentation_manager.operations.training_split.KEEP_TOGETHER`.
+        folds: How many cross-validation folds were asked for; 0 for a single
+            split, which *train* and *validation* then describe.
+        fold_sizes: The rows each fold validates on, empty where there are
+            fewer groups than folds.
         paired: Whether a row carries both beams, which both modalities being
             in play is what decides.
         sem_only: Paired rows with no FIB label to go beside the SEM one.
@@ -203,6 +216,8 @@ class ExportPreview:
     validation: int = 0
     groups: int = 0
     keep_together: str = DEFAULT_KEEP_TOGETHER
+    folds: int = 0
+    fold_sizes: tuple[int, ...] = ()
     paired: bool = False
     sem_only: int = 0
     fib_only: int = 0
@@ -236,8 +251,27 @@ class ExportPreview:
         else:
             parts.append(f"{self.exportable} exportable")
         if self.exportable:
-            parts.append(f"{self.train} train / {self.validation} validation")
+            parts.append(self.split_text())
         return " · ".join(parts)
+
+    def split_text(self) -> str:
+        """Return how the exportable rows divide, for the summary and the split's own line."""
+        if not self.folds:
+            return f"{self.train} train / {self.validation} validation"
+        if not self.fold_sizes:
+            groups = counted(self.groups, *GROUP_NOUNS[self.keep_together])
+            return f"{groups} cannot fill {self.folds} folds"
+        low, high = min(self.fold_sizes), max(self.fold_sizes)
+        sizes = str(low) if low == high else f"{low}–{high}"
+        return f"{self.folds} folds of {sizes} validation"
+
+
+#: What a group of the training split is called, one and several, by level.
+GROUP_NOUNS: dict[str, tuple[str, str]] = {
+    "acquisition": ("acquisition", "acquisitions"),
+    "lamella": ("lamella", "lamellae"),
+    "project": ("project", "projects"),
+}
 
 
 @dataclass(frozen=True)
@@ -314,6 +348,8 @@ class TrainingExport:
         seed: Seed for a reproducible shuffle, or None to leave the order alone.
         keep_together: What the split never divides, a key of
             :data:`~am_segmentation_manager.operations.training_split.KEEP_TOGETHER`.
+        folds: How many cross-validation folds to write instead of one split,
+            or None for one split. *train_ratio* then plays no part.
         prefix: Filename stem, written as ``<prefix>_train.csv`` and
             ``<prefix>_val.csv``.
     """
@@ -321,6 +357,7 @@ class TrainingExport:
     train_ratio: float = DEFAULT_TRAIN_RATIO
     seed: int | None = 42
     keep_together: str = DEFAULT_KEEP_TOGETHER
+    folds: int | None = None
     prefix: str = DEFAULT_PREFIX
 
 
@@ -927,7 +964,7 @@ class ExportController:
 
     def export_training(
         self, output_dir: Path, *, overwrite: bool = False
-    ) -> tuple[Path, Path | None]:
+    ) -> Sequence[tuple[Path, Path | None]]:
         """Write the training files and their manifest for the current selection.
 
         Here rather than in the window because every part of it is a decision
@@ -937,34 +974,38 @@ class ExportController:
         read.
 
         Returns:
-            ``(train_csv_path, val_csv_path)``, the second None at a full
-            training share.
+            ``(train_csv_path, val_csv_path)`` per fold, or once for a single
+            split, whose second is None at a full training share.
 
         Raises:
             FileExistsError: If an earlier export's files are in the way and
                 *overwrite* is False.
+            LeftoverFolds: If an earlier export's fold files would outlive
+                this one, whatever *overwrite* says.
+            ValueError: If there are fewer groups than folds.
         """
-
-        return export_training_csv(
-            records=self.selected_records(),
-            start_path=self.start_path or output_dir,
-            output_dir=output_dir,
-            prefix=self.training.prefix,
-            train_ratio=self.training.train_ratio,
-            seed=self.training.seed,
+        shared: dict[str, Any] = {
+            "records": self.selected_records(),
+            "start_path": self.start_path or output_dir,
+            "output_dir": output_dir,
+            "prefix": self.training.prefix,
+            "seed": self.training.seed,
             # The window never writes blank masks. Deliberate negative examples
             # are a considered thing, and the command line's
             # --include-empty-labels is where they stay.
-            include_empty_labels=False,
+            "include_empty_labels": False,
             # Already applied: the filters decide which images are in play, and
             # "one image per label" is one of them.
-            conditions="all",
-            paired=self.paired,
-            is_empty=self.known_labels.emptiness,
-            grouping=self.grouping(),
-            overwrite=overwrite,
-            scope=self.describe_filters(),
-        )
+            "conditions": "all",
+            "paired": self.paired,
+            "is_empty": self.known_labels.emptiness,
+            "grouping": self.grouping(),
+            "overwrite": overwrite,
+            "scope": self.describe_filters(),
+        }
+        if self.training.folds:
+            return export_kfold_csv(folds=self.training.folds, **shared)
+        return [export_training_csv(train_ratio=self.training.train_ratio, **shared)]
 
     def export_image_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
         """Write the per-image metadata for the current selection.
@@ -1008,11 +1049,23 @@ class ExportController:
 
         sifted = self._sift(matched)
         rows = self.training_rows(matched)
-        train, validation = split_rows(
-            rows,
-            train_ratio=self.training.train_ratio,
-            seed=self.training.seed,
-        )
+        groups = len({row.group for row in rows})
+        folds = self.training.folds or 0
+        if folds:
+            train: list[TrainingRow] = []
+            validation: list[TrainingRow] = []
+            fold_sizes = tuple(
+                len(fold) for fold in assign_folds(
+                    rows, lambda row: row.group, folds, self.training.seed
+                )
+            ) if groups >= folds else ()
+        else:
+            train, validation = split_rows(
+                rows,
+                train_ratio=self.training.train_ratio,
+                seed=self.training.seed,
+            )
+            fold_sizes = ()
 
         return ExportPreview(
             matched=len(matched),
@@ -1028,8 +1081,10 @@ class ExportController:
             exportable=len(rows),
             train=len(train),
             validation=len(validation),
-            groups=len({row.group for row in rows}),
+            groups=groups,
             keep_together=self.training.keep_together,
+            folds=folds,
+            fold_sizes=fold_sizes,
             paired=self.paired,
             # Counted off the built rows rather than re-derived, so what the
             # line says is a fact about the file rather than a second opinion.

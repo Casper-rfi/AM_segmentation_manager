@@ -1729,7 +1729,7 @@ def test_an_earlier_training_set_is_replaced_only_when_asked(window, monkeypatch
         asked_to_overwrite.append(overwrite)
         if not overwrite:
             raise FileExistsError("dataset_train.csv already in here; nothing was written")
-        return output / "dataset_train.csv", None
+        return [(output / "dataset_train.csv", None)]
 
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
     monkeypatch.setattr(window.export_controller, "export_training", export)
@@ -1745,6 +1745,30 @@ def test_an_earlier_training_set_is_replaced_only_when_asked(window, monkeypatch
     )
     window._write_training(str(tmp_path))
     assert asked_to_overwrite == [False, False, True]
+
+
+def test_an_earlier_exports_leftover_folds_are_not_offered_for_replacing(
+    window, monkeypatch, tmp_path
+):
+    """Replacing would leave them where they are, so the only answer is to say so."""
+    from am_segmentation_manager.operations.csv import LeftoverFolds
+
+    def export(output, *, overwrite=False):
+        raise LeftoverFolds("dataset_fold4_train.csv in here belong to an earlier export")
+
+    shown = []
+    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
+    monkeypatch.setattr(window.export_controller, "export_training", export)
+    monkeypatch.setattr(
+        window, "_confirm_overwriting", lambda *a: pytest.fail("offered to replace them")
+    )
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning", lambda _parent, title, text: shown.append(title)
+    )
+
+    window._write_training(str(tmp_path))
+
+    assert shown == ["Export failed"]
 
 
 def _tick_lamella(window, row: int = 0) -> None:
@@ -3418,6 +3442,7 @@ def test_a_stored_default_is_what_every_control_opens_at(qt_app, settings):
         "seed": 7,
         "one_per_label": True,
         "keep_together": "project",
+        "folds": 4,
     })
     config = SegmentationConfig(
         class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
@@ -3437,6 +3462,8 @@ def test_a_stored_default_is_what_every_control_opens_at(qt_app, settings):
         assert window.export_panel.train_share.value() == 60
         assert window.export_panel.seed.value() == 7
         assert window.export_panel.keep_together.currentData() == "project"
+        assert window.export_panel.folds.value() == 4
+        assert not window.export_panel.train_share.isEnabled()
         assert window.export_panel.conditions.isChecked()
     finally:
         destroy(window)

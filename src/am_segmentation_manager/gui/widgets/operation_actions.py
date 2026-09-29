@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
+from ...operations.csv import LeftoverFolds
 from ...operations.metadata_csv import export_project_metadata_csv
 from ...operations.predict_process import DeviceProbe, probe_devices
 from ...progress import Cancellation
@@ -499,17 +500,21 @@ class OperationActions(_Window):
         output = Path(directory)
         try:
             try:
-                train, validation = self.export_controller.export_training(output)
+                files = self.export_controller.export_training(output)
+            except LeftoverFolds:
+                # Replacing is no answer to files this export would not write.
+                raise
             except FileExistsError as existing:
                 if not self._confirm_overwriting(existing):
                     return
-                train, validation = self.export_controller.export_training(
-                    output, overwrite=True
-                )
+                files = self.export_controller.export_training(output, overwrite=True)
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
             return
-        written = ", ".join(str(path.name) for path in (train, validation) if path)
+        if len(files) > 1:
+            written = f"{len(files)} folds"
+        else:
+            written = ", ".join(path.name for path in files[0] if path)
         self._flash(f"Wrote {written} and the manifest", 4000)
         logger.info("Exported training CSV to %s", directory)
 

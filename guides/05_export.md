@@ -66,6 +66,12 @@ lists of image and label paths, for training a model:
 
 - `<name>_train.csv` and `<name>_val.csv`, split by **Training**, 80 % by
   default; at 100 % there is no validation file.
+- Or, with **Folds** at 2 or more, that many pairs for cross-validation:
+  `<name>_fold1_train.csv` and `<name>_fold1_val.csv`, and so on to the last
+  fold. Each fold validates on its own share of what is kept together and
+  trains on the rest, so every image is validated exactly once, and
+  **Training** plays no part. The line under the settings gives the range of
+  validation sizes, or says there are too few groups for the folds asked.
 - **Keep together** says what is never divided between the two: each
   **Lamella** by default, each **Project**, or only each **Acquisition**.
   Successive images of one lamella are near-duplicates, so a finer split
@@ -120,6 +126,11 @@ here is never written over unless you choose it.
 Every file an export would write is checked before anything is read. One
 already there is replaced only once you say so: a training split written over
 by accident is gone, with the seed that made it.
+
+Fold files of an earlier export that this one would not write, such as folds
+4 and 5 when this one writes 3, stop it even then. They would be left beside
+a manifest that no longer names them, and read as part of this export. Move
+them, or choose another name.
 
 ## From the command line
 

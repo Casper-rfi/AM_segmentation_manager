@@ -55,10 +55,10 @@ The first public release, to be published as 0.1.0.
 - `stats` counts images by one or two properties and charts them.
 - `quantify-labels` measures what the labels contain, in µm².
 - Exports per-image and per-project metadata as CSV for deposition, and
-  image and label paths as CSV for training a model. An empty label is never
-  exported as a training pair, and the split never puts one lamella on both
-  sides of training and validation, or one acquisition or one project where
-  asked.
+  image and label paths as CSV for training a model, as one train/validation
+  split or as K folds for cross-validation. An empty label is never exported
+  as a training pair, and no split puts one lamella on both sides, or one
+  acquisition or one project where asked.
 - `export-files` copies a selection of images and labels into a folder of
   its own, and `merge` brings the worked-on copy back.
 

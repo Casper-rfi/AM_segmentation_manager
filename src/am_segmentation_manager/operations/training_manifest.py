@@ -33,7 +33,8 @@ _HEADER: Final[str] = """\
 # the Export tab's filters, or the command line's selectors. `split.keep_together`
 # is what the split never divided between training and validation: an
 # acquisition, a lamella or a project. A manifest that does not say kept
-# acquisitions together.
+# acquisitions together. A cross-validation export has `split.folds`, and under
+# `folds` what each fold holds; its `train_ratio` is the share each fold trains on.
 """
 
 
@@ -55,15 +56,25 @@ def write_training_manifest(
     conditions: str,
     include_empty_labels: bool,
     counts: Mapping[str, int],
+    folds: Sequence[Mapping[str, object]] = (),
     user: str | None = None,
 ) -> Path:
     """Write the manifest of a finished training export, and return where it went.
 
     Args:
         files: Each CSV by its role, None for one this export did not write.
+        folds: What each fold of a cross-validation export holds, in order;
+            empty for a single split.
         user: The name to record, resolved as a history entry's author is.
     """
     by, _ = resolve_author(user)
+    split: dict[str, object] = {
+        "train_ratio": train_ratio,
+        "seed": seed,
+        "keep_together": keep_together,
+    }
+    if folds:
+        split["folds"] = len(folds)
     body = {
         "version": FILE_VERSION,
         "am_seg_version": __version__,
@@ -73,15 +84,13 @@ def write_training_manifest(
         "scope": scope,
         "files": {role: file.name if file else None for role, file in files.items()},
         "columns": list(columns),
-        "split": {
-            "train_ratio": train_ratio,
-            "seed": seed,
-            "keep_together": keep_together,
-        },
+        "split": split,
         "conditions": conditions,
         "include_empty_labels": include_empty_labels,
         "counts": dict(counts),
     }
+    if folds:
+        body["folds"] = [dict(fold) for fold in folds]
     write_yaml(path, body, header=_HEADER)
     logger.info("Wrote the manifest to %s", path)
     return path

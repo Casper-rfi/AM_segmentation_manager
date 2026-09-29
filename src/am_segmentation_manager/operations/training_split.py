@@ -1,10 +1,11 @@
 """Dividing a training export into the sets a model is trained and scored on.
 
-What a split may keep together, and the arithmetic over items that already
-carry a group: nothing here builds a row, reads a label or touches the
-filesystem, so a split can be tested on strings. **A split never cuts a group**,
-and **one seed gives one split** -- an export's manifest records the seed so the
-same files can be made again, which holds only while this arithmetic does not.
+What a split may keep together, and the arithmetic over items that already carry
+a group -- one train/validation split, or K folds for cross-validation. Nothing
+here builds a row, reads a label or touches the filesystem, so a split can be
+tested on strings. **A split never cuts a group**, and **one seed gives one
+split** -- an export's manifest records the seed so the same files can be made
+again, which holds only while this arithmetic does not.
 """
 from __future__ import annotations
 
@@ -152,3 +153,55 @@ def split_pairs(
         ``(train_pairs, val_pairs)``.
     """
     return split_grouped(pairs, lambda pair: pair[1], train_ratio, seed)
+
+
+def assign_folds(
+    items: Sequence[T],
+    key: Callable[[T], str],
+    folds: int,
+    seed: int | None = 42,
+) -> list[list[T]]:
+    """Divide *items* into *folds* validation sets, keeping a group together.
+
+    Groups are shuffled, then each goes to the fold holding fewest items so far,
+    so the folds end at most one group apart in size and a different seed still
+    gives a different partition.
+
+    Returns:
+        One list per fold, the items that fold validates on. A fold trains on
+        every other fold's; see :func:`fold_training`.
+
+    Raises:
+        ValueError: If *folds* is below 2, or above the number of groups.
+    """
+    if folds < 2:
+        raise ValueError(f"Cross-validation needs at least 2 folds, not {folds}")
+    grouped: dict[str, list] = {}
+    for item in items:
+        grouped.setdefault(key(item), []).append(item)
+    if len(grouped) < folds:
+        raise ValueError(
+            f"{len(grouped)} group(s) cannot fill {folds} folds without dividing one"
+        )
+
+    groups = list(grouped.values())
+    if seed is not None:
+        random.Random(seed).shuffle(groups)
+
+    assigned: list[list] = [[] for _ in range(folds)]
+    for group in groups:
+        # The first of the smallest, so a tie is broken by fold number and one
+        # seed always gives one partition.
+        smallest = min(range(folds), key=lambda index: len(assigned[index]))
+        assigned[smallest].extend(group)
+    return assigned
+
+
+def fold_training(validation_sets: Sequence[Sequence[T]], fold: int) -> list[T]:
+    """Return what fold *fold* (from 0) trains on: every other fold's validation set, in order."""
+    return [
+        item
+        for index, validation in enumerate(validation_sets)
+        if index != fold
+        for item in validation
+    ]

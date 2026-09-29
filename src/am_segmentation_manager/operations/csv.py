@@ -1,18 +1,17 @@
-"""Writing the image and label lists a training run reads.
+"""Writing the image and label lists a training run reads: one train/validation
+pair, or one per fold for cross-validation.
 
-One row per acquisition rather than per file: both beams of one scene go side by
-side (``sem_image, sem_label, fib_image, fib_label``), a single-beam selection
-writes ``image, label``, and a cell is blank where that beam has no image or no
-label worth pairing with one.
-
-Two rules nothing may get past: an empty label, or one that could not be read to
-tell, is never written as a training pair; and a split never cuts a group -- an
-acquisition at the finest, a lamella or a project where asked.
+A row is one acquisition: both beams side by side (``sem_image, sem_label,
+fib_image, fib_label``), or ``image, label`` for one beam, a cell blank where that
+beam has no image or no label worth pairing. Two rules nothing may get past: an
+empty or unreadable label is never written as a training pair, and a split never
+cuts a group -- an acquisition, or a lamella or project where asked.
 ``docs/decisions.md`` § Counting and export says why.
 """
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +23,14 @@ from ..models import ImageRecord
 from .label_groups import condition_sort_key
 from .label_io import has_image_stack_support, is_label_file_empty
 from .training_manifest import manifest_path, write_training_manifest
-from .training_split import ACQUISITION, DEFAULT_TRAIN_RATIO, Grouping, split_grouped
+from .training_split import (
+    ACQUISITION,
+    DEFAULT_TRAIN_RATIO,
+    Grouping,
+    assign_folds,
+    fold_training,
+    split_grouped,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +239,130 @@ def split_rows(
     return split_grouped(rows, lambda row: row.group, train_ratio, seed)
 
 
+class LeftoverFolds(FileExistsError):
+    """Fold files of an earlier export are beside this one's, and would outlive it.
+
+    Its own type because replacing is no answer: the files are ones this export
+    would not write, so ``overwrite`` leaves them where they are.
+    """
+
+
+def fold_paths(output_dir: Path, prefix: str, folds: int) -> list[tuple[Path, Path]]:
+    """Return the ``(train, validation)`` files of each fold, numbered from 1."""
+    return [
+        (output_dir / f"{prefix}_fold{fold}_train.csv", output_dir / f"{prefix}_fold{fold}_val.csv")
+        for fold in range(1, folds + 1)
+    ]
+
+
+def _refuse_what_is_in_the_way(
+    output_dir: Path, prefix: str, writing: Iterable[Path | None], folds: int, overwrite: bool
+) -> None:
+    """Raise before anything is read if an earlier export's files are in the way.
+
+    A file this export would write is replaced only with *overwrite*. A fold
+    file it would *not* write -- fold 5 of an earlier export, when this one
+    writes 3 or none -- is refused even then: it would be left beside a
+    manifest that no longer names it, and a run reading every fold would take
+    it for this export's.
+    """
+    existing = [path for path in writing if path is not None and path.exists()]
+    if existing and not overwrite:
+        raise FileExistsError(
+            f"{', '.join(path.name for path in existing)} already in {output_dir}; "
+            f"nothing was written"
+        )
+    pattern = re.compile(rf"{re.escape(prefix)}_fold(\d+)_(?:train|val)\.csv")
+    leftover = sorted(
+        path for path in output_dir.iterdir()
+        if (match := pattern.fullmatch(path.name)) and int(match.group(1)) > folds
+    ) if output_dir.is_dir() else []
+    if leftover:
+        raise LeftoverFolds(
+            f"{', '.join(path.name for path in leftover)} in {output_dir} belong to an "
+            f"earlier export this one would not replace; move them or choose another "
+            f"prefix. Nothing was written"
+        )
+
+
+def _rows_to_write(
+    records: Iterable[ImageRecord],
+    start_path: Path,
+    *,
+    conditions: str,
+    paired: bool,
+    include_empty_labels: bool,
+    is_empty: Callable[[Path], bool | None],
+    grouping: Grouping,
+) -> tuple[list[TrainingRow], dict[str, int]]:
+    """Return the rows an export writes, and the counts its manifest records.
+
+    Logs what was left out and why, which is the same for every way of
+    dividing the rows.
+    """
+    selected = list(records)
+    if conditions == "primary":
+        selected = keep_one_condition_per_scene(selected)
+
+    rows = build_training_rows(
+        selected,
+        start_path,
+        paired=paired,
+        include_empty_labels=include_empty_labels,
+        is_empty=is_empty,
+        grouping=grouping,
+    )
+    if not rows:
+        logger.warning("No image/label pairs found to export")
+    unreadable = unreadable_labels(selected, is_empty)
+    if unreadable:
+        logger.warning(
+            "Left out %d label(s) whose contents could not be read, so could not "
+            "be told blank or annotated%s", len(unreadable),
+            "" if has_image_stack_support() else
+            ": the image stack is not installed; install the 'all' extra",
+        )
+    if paired:
+        left_out = "label_cells_left_blank", sum(
+            1 for row in rows for cell in (row.values[1], row.values[3]) if not cell
+        )
+    else:
+        left_out = "images_left_out", len(selected) - len(rows)
+    if not include_empty_labels:
+        # Reported either way, because it is the same rule with two shapes: a
+        # blank mask is never paired with an image, which drops the row where
+        # there is one beam and empties a cell where there are two. Silence
+        # would be a training set quietly short of what somebody labelled.
+        if paired:
+            if blank := left_out[1]:
+                logger.info(
+                    "Left %d label cell(s) blank: no label, or one holding only "
+                    "background; pass --include-empty-labels to pair the latter "
+                    "anyway", blank,
+                )
+        elif (dropped := left_out[1]) > 0:
+            logger.info(
+                "Excluded %d image(s) with no label, or whose label holds only "
+                "background; pass --include-empty-labels to export the latter",
+                dropped,
+            )
+    return rows, {
+        "images": len(selected),
+        "rows": len(rows),
+        "groups": len({row.group for row in rows}),
+        left_out[0]: left_out[1],
+        "unreadable_labels_left_out": len(unreadable),
+    }
+
+
+def _write_rows(
+    path: Path, columns: Sequence[str], rows: Sequence[TrainingRow], overwrite: bool
+) -> Path:
+    write_csv(path, columns, (row.values for row in rows), overwrite=overwrite)
+    logger.info("Wrote %d row(s) to %s", len(rows), path)
+    return path
+
+
 def export_training_csv(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -298,6 +428,8 @@ def export_training_csv(
     Raises:
         FileExistsError: If a file this would write exists and *overwrite* is
             False. Nothing has been read or written by then.
+        LeftoverFolds: If fold files of an earlier export are beside them,
+            whatever *overwrite* says.
         NoRelativePath: If a file has no path relative to *start_path*, before
             anything is written.
         ValueError: If *conditions* is not a known policy.
@@ -308,73 +440,23 @@ def export_training_csv(
     train_path = output_dir / f"{prefix}_train.csv"
     val_path = output_dir / f"{prefix}_val.csv" if train_ratio < 1.0 else None
     manifest = manifest_path(output_dir, prefix)
-    existing = [
-        path for path in (train_path, val_path, manifest)
-        if path is not None and path.exists()
-    ]
-    if existing and not overwrite:
-        raise FileExistsError(
-            f"{', '.join(path.name for path in existing)} already in {output_dir}; "
-            f"nothing was written"
-        )
+    _refuse_what_is_in_the_way(
+        output_dir, prefix, (train_path, val_path, manifest), folds=0, overwrite=overwrite
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    selected = list(records)
-    if conditions == "primary":
-        selected = keep_one_condition_per_scene(selected)
-
-    rows = build_training_rows(
-        selected,
-        start_path,
-        paired=paired,
-        include_empty_labels=include_empty_labels,
-        is_empty=is_empty,
-        grouping=grouping,
+    rows, counts = _rows_to_write(
+        records, start_path, conditions=conditions, paired=paired,
+        include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
     )
-    if not rows:
-        logger.warning("No image/label pairs found to export")
-    unreadable = unreadable_labels(selected, is_empty)
-    if unreadable:
-        logger.warning(
-            "Left out %d label(s) whose contents could not be read, so could not "
-            "be told blank or annotated%s", len(unreadable),
-            "" if has_image_stack_support() else
-            ": the image stack is not installed; install the 'all' extra",
-        )
-    if paired:
-        left_out = "label_cells_left_blank", sum(
-            1 for row in rows for cell in (row.values[1], row.values[3]) if not cell
-        )
-    else:
-        left_out = "images_left_out", len(selected) - len(rows)
-    if not include_empty_labels:
-        # Reported either way, because it is the same rule with two shapes: a
-        # blank mask is never paired with an image, which drops the row where
-        # there is one beam and empties a cell where there are two. Silence
-        # would be a training set quietly short of what somebody labelled.
-        if paired:
-            if blank := left_out[1]:
-                logger.info(
-                    "Left %d label cell(s) blank: no label, or one holding only "
-                    "background; pass --include-empty-labels to pair the latter "
-                    "anyway", blank,
-                )
-        elif (dropped := left_out[1]) > 0:
-            logger.info(
-                "Excluded %d image(s) with no label, or whose label holds only "
-                "background; pass --include-empty-labels to export the latter",
-                dropped,
-            )
-
     train_rows, val_rows = split_rows(rows, train_ratio=train_ratio, seed=seed)
-    groups = {row.group for row in rows}
-    if len(groups) < len(rows) or grouping.level != ACQUISITION:
+    if counts["groups"] < len(rows) or grouping.level != ACQUISITION:
         logger.info(
             "Split %d row(s) as %d group(s), keeping each %s on one side: "
             "%d training, %d validation",
-            len(rows), len(groups), grouping.level, len(train_rows), len(val_rows),
+            len(rows), counts["groups"], grouping.level, len(train_rows), len(val_rows),
         )
-    if len(groups) == 1 and 0.0 < train_ratio < 1.0:
+    if counts["groups"] == 1 and 0.0 < train_ratio < 1.0:
         logger.warning(
             "Every row is in one %s, so all of them went to %s; keep a finer "
             "level together to fill both sides", grouping.level,
@@ -382,15 +464,9 @@ def export_training_csv(
         )
 
     columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
-
-    def _write_csv(path: Path, written: list[TrainingRow]) -> Path:
-        write_csv(path, columns, (row.values for row in written), overwrite=overwrite)
-        logger.info("Wrote %d row(s) to %s", len(written), path)
-        return path
-
-    _write_csv(train_path, train_rows)
+    _write_rows(train_path, columns, train_rows, overwrite)
     if val_path is not None:
-        _write_csv(val_path, val_rows)
+        _write_rows(val_path, columns, val_rows, overwrite)
     write_training_manifest(
         manifest,
         source=start_path,
@@ -403,14 +479,122 @@ def export_training_csv(
         conditions=conditions,
         include_empty_labels=include_empty_labels,
         counts={
-            "images": len(selected),
-            "rows": len(rows),
-            "groups": len(groups),
+            "images": counts["images"],
+            "rows": counts["rows"],
+            "groups": counts["groups"],
             "train": len(train_rows),
             "validation": len(val_rows),
-            left_out[0]: left_out[1],
-            "unreadable_labels_left_out": len(unreadable),
+            **{key: value for key, value in counts.items()
+               if key not in ("images", "rows", "groups")},
         },
         user=user,
     )
     return train_path, val_path
+
+
+def export_kfold_csv(
+    records: Iterable[ImageRecord],
+    start_path: Path,
+    output_dir: Path,
+    folds: int,
+    prefix: str = "dataset",
+    seed: int | None = 42,
+    include_empty_labels: bool = False,
+    conditions: str = "primary",
+    paired: bool = False,
+    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+    *,
+    grouping: Grouping = Grouping(),
+    overwrite: bool = False,
+    scope: str = "",
+    user: str | None = None,
+) -> list[tuple[Path, Path]]:
+    """Export image and label paths as *folds* train/validation pairs for cross-validation.
+
+    Writes ``<prefix>_fold<k>_train.csv`` and ``<prefix>_fold<k>_val.csv`` for
+    each fold, in the columns :func:`export_training_csv` writes, and last the
+    manifest. Every row validates in exactly one fold, and trains in the rest;
+    no group is in two folds. Arguments not listed are as for
+    :func:`export_training_csv`.
+
+    Args:
+        folds: How many folds, at least 2.
+
+    Returns:
+        ``(train, validation)`` per fold, as :func:`fold_paths` names them.
+
+    Raises:
+        FileExistsError: As for :func:`export_training_csv`.
+        LeftoverFolds: If an earlier export wrote folds past *folds*.
+        ValueError: If *folds* is below 2, or above the groups there are to
+            divide -- before anything is written.
+    """
+    if conditions not in ("primary", "all"):
+        raise ValueError(f"Unknown conditions policy: {conditions}")
+    if folds < 2:
+        raise ValueError(f"Cross-validation needs at least 2 folds, not {folds}")
+
+    paths = fold_paths(output_dir, prefix, folds)
+    manifest = manifest_path(output_dir, prefix)
+    _refuse_what_is_in_the_way(
+        output_dir, prefix, (*(path for pair in paths for path in pair), manifest),
+        folds=folds, overwrite=overwrite,
+    )
+
+    rows, counts = _rows_to_write(
+        records, start_path, conditions=conditions, paired=paired,
+        include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
+    )
+    if counts["groups"] < folds:
+        raise ValueError(
+            f"{counts['groups']} {grouping.level} group(s) cannot fill {folds} folds; "
+            f"choose fewer folds or keep a finer level together. Nothing was written"
+        )
+    validation_sets = assign_folds(rows, lambda row: row.group, folds, seed)
+    logger.info(
+        "Divided %d row(s) as %d group(s) into %d folds, keeping each %s in one: "
+        "%s validation row(s)",
+        len(rows), counts["groups"], folds, grouping.level,
+        ", ".join(str(len(validation)) for validation in validation_sets),
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
+    described = []
+    for index, ((train_path, val_path), validation) in enumerate(zip(paths, validation_sets)):
+        training = fold_training(validation_sets, index)
+        _write_rows(train_path, columns, training, overwrite)
+        _write_rows(val_path, columns, validation, overwrite)
+        groups = sorted({row.group for row in validation})
+        fold: dict[str, object] = {
+            "fold": index + 1,
+            "train": len(training),
+            "validation": len(validation),
+            "groups": len(groups),
+        }
+        # An acquisition's name is a path and a number, which says nothing a
+        # methods section would; a lamella's or a project's is what it reports.
+        if grouping.level != ACQUISITION:
+            fold["validates_on"] = groups
+        described.append(fold)
+
+    write_training_manifest(
+        manifest,
+        source=start_path,
+        scope=scope,
+        files={
+            f"fold{index}_{role}": path
+            for index, pair in enumerate(paths, start=1)
+            for role, path in zip(("train", "validation"), pair)
+        },
+        columns=columns,
+        train_ratio=(folds - 1) / folds,
+        seed=seed,
+        keep_together=grouping.level,
+        conditions=conditions,
+        include_empty_labels=include_empty_labels,
+        counts=counts,
+        folds=described,
+        user=user,
+    )
+    return paths

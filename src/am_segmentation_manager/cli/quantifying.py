@@ -36,7 +36,7 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import export_training_csv
+from ..operations.csv import LeftoverFolds, export_kfold_csv, export_training_csv
 from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
@@ -291,9 +291,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "acquisition, as sem_image, sem_label, fib_image, fib_label -- so a "
             "model can be trained on either beam from one file, or on the two "
             "together. A cell is blank where that beam has no image, or no "
-            "label worth pairing with one. A <prefix>_manifest.yaml beside them "
-            "records what they were made from, and nothing already there is "
-            "replaced without --overwrite."
+            "label worth pairing with one. --folds K writes K train/validation "
+            "pairs for cross-validation instead of one. A <prefix>_manifest.yaml "
+            "beside them records what they were made from, and nothing already "
+            "there is replaced without --overwrite."
         ),
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
@@ -325,13 +326,25 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         default="dataset",
         help="Prefix for generated CSV filenames (default: 'dataset')",
     )
-    create_training_csv.add_argument(
+    division = create_training_csv.add_mutually_exclusive_group()
+    division.add_argument(
         "--split",
         type=float,
         default=DEFAULT_TRAIN_RATIO,
         help=(
             "Ratio of data assigned to training, with the rest set to "
             f"validation (default: {DEFAULT_TRAIN_RATIO})"
+        ),
+    )
+    division.add_argument(
+        "--folds",
+        type=_fold_count,
+        metavar="K",
+        help=(
+            "Write K train/validation pairs for cross-validation, "
+            "<prefix>_fold1_train.csv and <prefix>_fold1_val.csv to foldK, "
+            "instead of one split. Every row validates in exactly one fold, "
+            "and --keep-together holds for each"
         ),
     )
     create_training_csv.add_argument(
@@ -660,6 +673,17 @@ def _cmd_quantify_labels(args: argparse.Namespace) -> int:
 
 
 
+def _fold_count(text: str) -> int:
+    """Parse ``--folds``, which divides nothing below 2."""
+    try:
+        folds = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+    if folds < 2:
+        raise argparse.ArgumentTypeError("cross-validation needs at least 2 folds")
+    return folds
+
+
 def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg create-training-csv``."""
 
@@ -687,29 +711,39 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             for value in values
         ),
     ]).strip()
+    shared = {
+        "records": records,
+        "start_path": start_path,
+        "output_dir": output_dir,
+        "prefix": args.output_prefix,
+        "seed": args.seed,
+        "include_empty_labels": args.include_empty_labels,
+        "conditions": args.conditions,
+        # The same rule the window applies, so one selection exported either
+        # way gives the same files.
+        "paired": args.modality == "all",
+        "grouping": split_grouping(args.keep_together, project_lookup(projects)),
+        "overwrite": args.overwrite,
+        "scope": scope,
+        "user": getattr(args, "user", None),
+    }
+    written: Sequence[tuple[Path, Path | None]]
     try:
-        train_csv, val_csv = export_training_csv(
-            records=records,
-            start_path=start_path,
-            output_dir=output_dir,
-            prefix=args.output_prefix,
-            train_ratio=args.split,
-            seed=args.seed,
-            include_empty_labels=args.include_empty_labels,
-            conditions=args.conditions,
-            # The same rule the window applies, so one selection exported
-            # either way gives the same two files.
-            paired=args.modality == "all",
-            grouping=split_grouping(args.keep_together, project_lookup(projects)),
-            overwrite=args.overwrite,
-            scope=scope,
-            user=getattr(args, "user", None),
-        )
+        if args.folds:
+            written = export_kfold_csv(folds=args.folds, **shared)
+        else:
+            written = [export_training_csv(train_ratio=args.split, **shared)]
+    except LeftoverFolds as error:
+        logger.error("Could not export: %s", error)
+        return 2
     except FileExistsError as error:
         logger.error(
             "Could not export: %s. Pass --overwrite to replace them, or choose "
             "another --output-prefix", error,
         )
+        return 2
+    except ValueError as error:
+        logger.error("Could not export: %s", error)
         return 2
     if args.modality == "all":
         logger.info(
@@ -717,9 +751,10 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             "with SEM and FIB side by side. Pass --modality SEM or FIB for "
             "one row per image."
         )
-    logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
-    if val_csv:
-        logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
+    for train_csv, val_csv in written:
+        logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
+        if val_csv:
+            logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
     return 0
 
 

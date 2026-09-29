@@ -431,6 +431,35 @@ def test_the_split_names_the_groups_it_kept_whole(qt_app, tmp_path):
     assert panel.split_counts.text().endswith("· 2 lamellae")
 
 
+def test_folds_are_off_until_asked_for_and_then_replace_the_share(panel: ExportPanel):
+    assert panel.folds.text() == "Off"
+    assert panel.controller.training.folds is None
+
+    panel.folds.setValue(3)
+    assert panel.controller.training.folds == 3
+    assert not panel.train_share.isEnabled()   # cross-validation does not use it
+
+    panel.folds.setValue(1)
+    assert panel.controller.training.folds is None
+    assert panel.train_share.isEnabled()
+
+
+def test_the_split_says_how_the_folds_come_out(qt_app, tmp_path):
+    panel = _loaded_panel(tmp_path)
+    panel.controller.load_measurements()
+
+    panel.folds.setValue(2)
+    preview = panel.controller.preview()
+    assert panel.split_counts.text() == (
+        f"2 folds of {min(preview.fold_sizes)}"
+        f"{'' if len(set(preview.fold_sizes)) == 1 else '–' + str(max(preview.fold_sizes))}"
+        f" validation · 2 lamellae"
+    )
+
+    panel.keep_together.setCurrentIndex(panel.keep_together.findData("project"))
+    assert panel.split_counts.text() == "1 project cannot fill 2 folds"
+
+
 def test_clearing_the_seed_asks_for_an_unrepeatable_shuffle(panel: ExportPanel):
     panel.seeded.setChecked(False)
 
@@ -1068,8 +1097,8 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
     for widget in (
         panel.modality, panel.state, panel.label_state, panel.breakdown,
         panel.cross, panel.conditions, panel.measure_button,
-        panel.keep_together, panel.train_share, panel.seeded, panel.seed,
-        panel.prefix, panel.check_button,
+        panel.keep_together, panel.train_share, panel.folds, panel.seeded,
+        panel.seed, panel.prefix, panel.check_button,
     ):
         assert widget.toolTip(), f"{widget} explains nothing"
 

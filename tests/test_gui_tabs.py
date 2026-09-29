@@ -354,7 +354,7 @@ def written_split(exporter: ExportController, output: Path) -> tuple[int, int]:
     Through the controller, which is what the window calls: which records,
     which shape, how split and what named are all its decisions.
     """
-    train, validation = exporter.export_training(output)
+    [(train, validation)] = exporter.export_training(output)
     return csv_rows(train), csv_rows(validation)
 
 
@@ -398,6 +398,23 @@ def test_the_preview_and_the_export_agree_at_every_keep_together_level(
     assert (preview.train, preview.validation) == written_split(
         controller, tmp_path / "exported"
     )
+
+
+def test_the_preview_and_the_export_agree_on_the_folds(tmp_path: Path):
+    pytest.importorskip("tifffile")
+    for name in ("alpha", "beta"):
+        build_dataset(tmp_path, name=name, lamellae=3, acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(scanned(tmp_path), tmp_path)
+    controller.load_measurements()
+    controller.training.folds = 3
+
+    preview = controller.preview()
+    written = controller.export_training(tmp_path / "exported")
+
+    assert len(written) == 3
+    assert preview.fold_sizes == tuple(csv_rows(validation) for _, validation in written)
+    assert sum(preview.fold_sizes) == preview.exportable
 
 
 def test_a_full_training_share_leaves_nothing_to_validate(exporter: ExportController):
