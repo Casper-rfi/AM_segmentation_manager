@@ -37,7 +37,7 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   Linux run on request and have not run yet. **Long paths off stays unchecked on a real machine**,
   `test_long_paths.py` forcing the probe's answer. **The Windows suite crashed once in five runs** of
   2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged; CI now names each test.
-- **Families of imaging conditions** (`plans/variant_families.md`): phases 0–3 built and the repair run — `AM_families.yaml` corrects families, and merges; phase 4 (condition keys in the window) next.
+- **Families of imaging conditions** (`plans/variant_families.md`): phases 0–4 built and the repair run — `AM_families.yaml` corrects families and merges, conditions are keyed by directory name, and `family` filters, breaks down and heads a CSV column; phase 5 (the window shows families) next.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
   taken 2026-09-11 over all 123 projects with 3,236/3,236 labels reachable. Close **one whole
   round** from there with a real training run in the middle: the parts have each been rehearsed,

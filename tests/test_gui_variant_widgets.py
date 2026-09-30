@@ -132,7 +132,7 @@ def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project
         combo = window.image_panel.variant_combo
         assert combo.isEnabled() is True
         assert combo.count() == len(SEM_VARIANTS)
-        assert [combo.itemData(i) for i in range(combo.count())] == ["8", "8_fi_1", "8_fi_4"]
+        assert [combo.itemData(i) for i in range(combo.count())] == list(SEM_VARIANTS)
     finally:
         destroy(window)
 
@@ -152,10 +152,10 @@ def test_choosing_a_condition_changes_only_the_view(qt_app, variant_project: Pat
     try:
         before = window.controller.reach()
         window.image_panel.variant_combo.setCurrentIndex(1)
-        settle(qt_app, lambda: window.controller.current_variant("SEM") == "8_fi_1",
+        settle(qt_app, lambda: window.controller.current_condition("SEM") == "SEM_8_fi_1",
                what="the view to move to the other imaging condition")
 
-        assert window.controller.current_variant("SEM") == "8_fi_1"
+        assert window.controller.current_condition("SEM") == "SEM_8_fi_1"
         assert window.controller.reach() == before
     finally:
         destroy(window)

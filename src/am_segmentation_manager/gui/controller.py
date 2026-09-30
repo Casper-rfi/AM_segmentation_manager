@@ -25,7 +25,7 @@ from ..frames import (
 )
 from ..history import Recorder
 from ..layout import LABELLED_SERIES, LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
-from ..models import Lamella, Project, projects_holding
+from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.init_history import writing_recorder
 from ..operations.label_groups import expand_to_groups
@@ -469,11 +469,11 @@ class CurationController:
         self.show_overlay = True
         #: Whether the label is drawn over the acquisition or over a flat ground.
         self.show_image = True
-        #: Which imaging condition is on screen for each modality. None means
-        #: the base image. This is display state only: a state change follows
-        #: the label, so which condition is being viewed never decides what
-        #: moves.
-        self.variant: dict[str, str | None] = {modality: None for modality in MODALITIES}
+        #: Which imaging condition is on screen for each modality, by its
+        #: directory's name. None means the frame's first. This is display state
+        #: only: a state change follows the label, so which condition is being
+        #: viewed never decides what moves.
+        self.condition: dict[str, str | None] = {modality: None for modality in MODALITIES}
         self.editing_enabled = False
         # Starts matching the initial view, for the same reason the target
         # follows the view thereafter: the modality on screen is the one a
@@ -633,8 +633,7 @@ class CurationController:
 
         The current *lamella's* project, not the row last clicked in the tree.
         With a folder listed the two differ, and everything that asks -- the
-        status line, the variant names a project gives its own directories, the
-        path to copy -- is asking about what is on screen. A project holding no
+        status line, the path to copy -- is asking about what is on screen. A project holding no
         lamellae has none to answer for, so the tree's own row stands in and it
         still names itself.
         """
@@ -941,7 +940,7 @@ class CurationController:
     def set_series(self, series: str) -> None:
         """Show one series' timeline, rebuilding the frame stack.
 
-        Unlike the variant, this is not only a view choice: it decides which
+        Unlike the condition, this is not only a view choice: it decides which
         frames exist, so what is ticked and where the view sits go with it.
 
         Remembered whether or not this lamella can show it, so that moving
@@ -955,20 +954,20 @@ class CurationController:
             return
         self._rebuild_frames()
 
-    def available_variants(self, modality: str | None = None) -> list[str | None]:
-        """Return the imaging conditions the current frame has for a modality.
+    def condition_choices(self, modality: str | None = None) -> list[tuple[str, str | None]]:
+        """Return a caption and a condition for each the current frame has.
 
-        Base first. A list of one -- the usual case -- means there is nothing
-        to choose between, and the window hides the control.
+        In condition order. A list of one -- the usual case -- means there is
+        nothing to choose between, and the window greys the control.
         """
         frame = self.frame
         target = modality or MODE_MODALITIES.get(self.mode)
         if frame is None or target is None:
             return []
-        return frame.variants(target)
+        return frame.condition_choices(target)
 
-    def set_variant(self, variant: str | None, modality: str | None = None) -> None:
-        """Choose which imaging condition to display for a modality.
+    def set_condition(self, condition: str | None, modality: str | None = None) -> None:
+        """Choose which imaging condition to display for a modality, by name.
 
         Purely a view choice. State changes follow the label, so the condition
         on screen never decides what a state change moves.
@@ -976,15 +975,24 @@ class CurationController:
         target = modality or MODE_MODALITIES.get(self.mode)
         if target is None:
             return
-        self.variant[target] = variant
-        logger.debug("Viewing %s variant %s", target, variant or "base")
+        self.condition[target] = condition
+        logger.debug("Viewing %s condition %s", target, condition or "(first)")
 
-    def current_variant(self, modality: str | None = None) -> str | None:
-        """Return the imaging condition on screen for a modality."""
-        target = modality or MODE_MODALITIES.get(self.mode)
-        if target is None:
+    def current_condition(self, modality: str | None = None) -> str | None:
+        """Return the imaging condition on screen for a modality, as its frame spells it.
+
+        The frame's first where it was not captured under the one chosen.
+        """
+        record = self._shown_record(modality or MODE_MODALITIES.get(self.mode))
+        return record.condition if record is not None else None
+
+    def _shown_record(self, modality: str | None) -> ImageRecord | None:
+        """Return the record on screen for *modality*, as the cache chooses it."""
+        frame = self.frame
+        if frame is None or modality is None:
             return None
-        return self.variant.get(target)
+        chosen = frame.record(modality, self.condition.get(modality))
+        return chosen if chosen is not None else frame.record(modality)
 
     # -- curation progress, for the project and lamella lists --------------
 
@@ -1040,7 +1048,7 @@ class CurationController:
     def current_image_path(self) -> Path | None:
         """Return the absolute path of the image currently on screen.
 
-        Follows the mode and the variant dropdown, so this is the file the user
+        Follows the mode and the condition dropdown, so this is the file the user
         is actually looking at rather than the frame's base image. Returns None
         in plot mode, which has no single acquisition behind it.
         """
@@ -1048,7 +1056,7 @@ class CurationController:
         frame = self.frame
         if modality is None or frame is None:
             return None
-        record = frame.record(modality, self.variant.get(modality))
+        record = self._shown_record(modality)
         return record.image_path.resolve() if record is not None else None
 
     def current_plot_path(self) -> Path | None:
@@ -1066,7 +1074,7 @@ class CurationController:
         modality = MODE_MODALITIES.get(self.mode)
         if modality is None:
             return None
-        return self.cache.image(self._frame_position, modality, self.variant.get(modality))
+        return self.cache.image(self._frame_position, modality, self.condition.get(modality))
 
     def current_plot(self) -> FramePlot | None:
         """Return the prepared plot for the current frame, if it has one."""
@@ -1085,7 +1093,7 @@ class CurationController:
         return self.cache.pending(
             self._frame_position,
             [m for m in ordered if m is not None],
-            variants=dict(self.variant),
+            conditions=dict(self.condition),
             # A plot takes ~180 ms to read, which is slower than a held-down
             # arrow key, so preparing only the immediate neighbours guarantees
             # the user outruns the loader. In the plot view everything the

@@ -181,6 +181,22 @@ def matches_variant(record: ImageRecord, selectors: list[str] | None) -> bool:
     return record.variant in values
 
 
+def matches_family(record: ImageRecord, selectors: list[str] | None) -> bool:
+    """Return whether *record* is in one of the requested families.
+
+    Matched whatever the case, as family names are; ``"all"`` or ``None``
+    matches everything. An image sitting loose belongs to no family.
+    """
+    if not selectors:
+        return True
+    values = {
+        value.strip().lower() for raw in selectors for value in raw.split(",") if value.strip()
+    }
+    if not values or "all" in values:
+        return True
+    return record.family is not None and record.family.lower() in values
+
+
 def matches_series(record: ImageRecord, selectors: list[str] | None) -> bool:
     """Return whether *record* is in one of the requested series.
 
@@ -262,6 +278,7 @@ def iter_matching_records(
     variant_selectors: list[str] | None = None,
     series_selectors: list[str] | None = None,
     task_selectors: list[str] | None = None,
+    family_selectors: list[str] | None = None,
 ) -> Iterator[ImageRecord]:
     """Yield every :class:`ImageRecord` that passes the supplied filters.
 
@@ -274,14 +291,15 @@ def iter_matching_records(
         paths: Match records at these paths.
         modality: ``"SEM"``, ``"FIB"`` or ``"all"``.
         state: ``"corrected"``, ``"selected"``, ``"deselected"`` or ``"all"``.
-        variant_selectors: Imaging-condition variants, where ``"base"`` is the
-            unsuffixed image directory.
+        variant_selectors: Imaging-condition variants, where ``"base"`` is a
+            family's unsuffixed image directory.
         series_selectors: What the images were taken for -- ``"adaptive"``,
             ``"reference"``, ``"alignment"`` or ``"all"``. ``None`` matches
             every series, so the caller decides the default rather than
             inheriting one from here.
         task_selectors: Milling task names, where :data:`NO_TASK` selects the
             images naming none.
+        family_selectors: Families of imaging conditions, in any case.
     """
     for project in index.all_projects():
         if project_selectors is not None and not matches_project(project, project_selectors):
@@ -300,6 +318,8 @@ def iter_matching_records(
                     if modality != "all" and record.modality != modality:
                         continue
                     if not matches_variant(record, variant_selectors):
+                        continue
+                    if not matches_family(record, family_selectors):
                         continue
                     if state != "all" and not matches_state(record, state):
                         continue

@@ -101,6 +101,20 @@ class ImageRecord:
     label_shared: bool = False
     state: RecordState = DEFAULT_STATE
 
+    @property
+    def condition(self) -> str | None:
+        """Return the imaging condition the image was taken under: its directory's name.
+
+        What identifies a condition across the frames of a lamella, a
+        correction moving it to another family leaving its name alone. None for
+        an image sitting directly in its stage, whose directory holds every set
+        of the stage rather than naming one.
+        """
+        directory = self.image_path.parent
+        if self.stage_path is not None and directory == self.stage_path:
+            return None
+        return directory.name
+
 
 @dataclass
 class Stage:

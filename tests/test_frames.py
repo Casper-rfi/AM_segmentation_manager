@@ -251,10 +251,15 @@ def test_plot_without_an_image_is_ignored():
 # Edge cases
 # ---------------------------------------------------------------------------
 
-def make_variant_record(name: str, modality: str, variant: str | None) -> ImageRecord:
-    """Build a record in a variant image directory."""
-    folder = f"{modality.lower()}_{variant}" if variant else modality.lower()
-    return ImageRecord(image_path=Path(folder) / name, modality=modality, variant=variant)
+def make_variant_record(
+    name: str, modality: str, variant: str | None, family: str | None = None
+) -> ImageRecord:
+    """Build a record in a condition's image directory, ``<family>[_<variant>]``."""
+    family_name = family or modality.lower()
+    folder = f"{family_name}_{variant}" if variant else family_name
+    return ImageRecord(
+        image_path=Path(folder) / name, modality=modality, variant=variant, family=family
+    )
 
 
 def test_every_imaging_condition_of_one_acquisition_is_kept():
@@ -286,11 +291,13 @@ def test_the_base_image_comes_first_and_variants_follow_in_name_order():
 
     frames = build_lamella_frames(make_lamella([stage]))
 
-    assert frames[0].variants("SEM") == [None, "fi_1", "fi_16"]
+    assert frames[0].condition_choices("SEM") == [
+        ("base", "sem"), ("fi_1", "sem_fi_1"), ("fi_16", "sem_fi_16"),
+    ]
     assert frames[0].record("SEM").variant is None
 
 
-def test_a_named_variant_can_be_requested():
+def test_a_condition_is_requested_by_its_directory_in_any_case():
     stage = make_stage("adaptive_polish_1", "01", [
         make_variant_record("img_0004.tif", "SEM", None),
         make_variant_record("img_0004.tif", "SEM", "5kv"),
@@ -298,8 +305,34 @@ def test_a_named_variant_can_be_requested():
 
     frames = build_lamella_frames(make_lamella([stage]))
 
-    assert frames[0].record("SEM", "5kv").image_path.parent.name == "sem_5kv"
+    assert frames[0].record("SEM", "SEM_5KV").image_path.parent.name == "sem_5kv"
     assert frames[0].record("SEM", "nonexistent") is None
+
+
+def test_two_families_of_one_beam_each_offer_their_base():
+    """A variant alone cannot tell them apart: both families have a base."""
+    stage = make_stage("adaptive_polish_1", "01", [
+        make_variant_record("img_0004.tif", "SEM", "fi4", family="sem-5kV"),
+        make_variant_record("img_0004.tif", "SEM", None, family="sem-5kV"),
+        make_variant_record("img_0004.tif", "SEM", "fi4", family="sem"),
+        make_variant_record("img_0004.tif", "SEM", None, family="sem"),
+    ])
+
+    frame = build_lamella_frames(make_lamella([stage]))[0]
+
+    assert frame.condition_choices("SEM") == [
+        ("sem", "sem"), ("sem [fi4]", "sem_fi4"),
+        ("sem-5kV", "sem-5kV"), ("sem-5kV [fi4]", "sem-5kV_fi4"),
+    ]
+    assert frame.record("SEM", "sem-5kV").family == "sem-5kV"
+    assert frame.record("SEM").image_path.parent.name == "sem"
+
+
+def test_an_image_sitting_in_its_stage_has_no_condition(tmp_path: Path):
+    record = ImageRecord(image_path=tmp_path / "ref_SEM.tif", stage_path=tmp_path)
+
+    assert record.condition is None
+    assert ImageRecord(image_path=tmp_path / "sem_fi8" / "a.tif").condition == "sem_fi8"
 
 
 def test_base_records_returns_one_image_per_modality():

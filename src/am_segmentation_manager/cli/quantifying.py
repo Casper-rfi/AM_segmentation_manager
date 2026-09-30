@@ -830,7 +830,8 @@ def _cmd_export_files(args: argparse.Namespace) -> int:
 #: The selectors that narrow an export, in the order they are asked for. Used
 #: to write down what an export covered, so a merge can say what it is merging.
 _SCOPE_SELECTORS: tuple[str, ...] = (
-    "project", "lamella", "stage", "image", "variant", "series", "state", "modality",
+    "project", "lamella", "stage", "image", "variant", "family", "series", "state",
+    "modality",
 )
 
 

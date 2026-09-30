@@ -439,7 +439,7 @@ def test_the_conditions_of_an_acquisition_are_offered(variants):
     combo = variants.label_panel.variant_combo
 
     assert combo.isHidden() is False
-    assert [combo.itemData(i) for i in range(combo.count())] == [None, "8_fi_1"]
+    assert [combo.itemData(i) for i in range(combo.count())] == ["sem", "sem_8_fi_1"]
     assert combo.itemText(0) == "base"
 
 
@@ -448,7 +448,7 @@ def test_choosing_a_condition_draws_it(qt_app, variants):
     panel.variant_combo.setCurrentIndex(1)
     settle(qt_app, lambda: variants.label_controller.cached_image() is not None)
 
-    assert variants.label_controller.variant == "8_fi_1"
+    assert variants.label_controller.condition == "sem_8_fi_1"
     assert "8_fi_1" in str(variants.label_controller.record.image_path)
 
 

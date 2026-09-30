@@ -21,6 +21,7 @@ from .layout import (
     UNSEQUENCED,
     acquisition_stem,
     alignment_run_order,
+    condition_order,
     extract_image_number,
 )
 from .models import ImageRecord, Lamella, Stage
@@ -54,16 +55,16 @@ class LamellaFrame:
     Each modality is a *tuple* rather than a single record, because one
     acquisition can be captured under several imaging conditions -- five SEM
     images of one scene at different frame-integration settings, for example.
-    The base image directory comes first, followed by variants in name order,
-    so ``sem[0]`` is the primary image and :meth:`record` returns it by default.
+    They are in :func:`~.layout.condition_order`: by family, each base before
+    its variants, so :meth:`record` returns the first family's base by default.
 
     Attributes:
         lamella: Name of the lamella the frame belongs to.
         stage: Name of the stage folder the images came from.
         stage_number: Zero-padded stage number within the lamella.
         image_number: Acquisition number parsed from the filename, when present.
-        sem: The SEM image records, base variant first. Empty if there are none.
-        fib: The FIB image records, base variant first. Empty if there are none.
+        sem: The SEM image records, in condition order. Empty if there are none.
+        fib: The FIB image records, in condition order. Empty if there are none.
         plot_path: The summary plot for this acquisition, when one exists.
         stage_plot: The plot describing the whole stage, when it wrote one.
             Shared by every frame of that stage; see :attr:`displayed_plot`.
@@ -144,15 +145,16 @@ class LamellaFrame:
 
     @property
     def base_records(self) -> list[ImageRecord]:
-        """Return one record per modality: the base image of each, SEM first.
+        """Return one record per modality: the first of each, SEM first.
 
-        This is what a single-image view shows, and what an operation means by
-        "this frame's SEM image" when it is not variant-aware.
+        The first family's base, which is what a single-image view opens on and
+        what an operation means by "this frame's SEM image" when it is not
+        condition-aware.
         """
         return [records[0] for records in (self.sem, self.fib) if records]
 
     def modality_records(self, modality: str) -> tuple[ImageRecord, ...]:
-        """Return every record for *modality*, base variant first."""
+        """Return every record for *modality*, in condition order."""
         normalised = modality.upper()
         if normalised == "SEM":
             return self.sem
@@ -160,26 +162,37 @@ class LamellaFrame:
             return self.fib
         raise ValueError(f"Unknown modality: {modality}")
 
-    def record(self, modality: str, variant: str | None = None) -> ImageRecord | None:
+    def record(self, modality: str, condition: str | None = None) -> ImageRecord | None:
         """Return one record for *modality*.
 
         Args:
             modality: ``'SEM'`` or ``'FIB'``.
-            variant: The imaging-condition variant to return. ``None``, the
-                default, returns the base image -- the first record, which is
-                the unsuffixed image directory when there is one.
+            condition: The imaging condition to return, by its directory's name
+                in any case. ``None``, the default, returns the first record:
+                the base of the first family.
 
         Returns:
             The matching record, or None when the frame has no such image.
         """
         records = self.modality_records(modality)
-        if variant is None:
+        if condition is None:
             return records[0] if records else None
-        return next((record for record in records if record.variant == variant), None)
+        wanted = condition.lower()
+        return next(
+            (record for record in records if (record.condition or "").lower() == wanted),
+            None,
+        )
 
-    def variants(self, modality: str) -> list[str | None]:
-        """Return the variants present for *modality*, base first."""
-        return [record.variant for record in self.modality_records(modality)]
+    def condition_choices(self, modality: str) -> list[tuple[str, str | None]]:
+        """Return a caption and a condition for each record of *modality*, in order.
+
+        A caption names the variant, or ``base``; where the beam holds several
+        families it names the family too, as ``sem-5kV [fi4]``, since two
+        families would otherwise each offer a ``base``.
+        """
+        records = self.modality_records(modality)
+        several = len({(record.family or "").lower() for record in records}) > 1
+        return [(_condition_caption(record, several), record.condition) for record in records]
 
 
 def series_present(lamella: Lamella | None) -> list[str]:
@@ -420,8 +433,8 @@ def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
         Acquisition(
             stage_directory=directory,
             key=key,
-            sem=tuple(sorted(modalities.get("SEM", []), key=_variant_sort_key)),
-            fib=tuple(sorted(modalities.get("FIB", []), key=_variant_sort_key)),
+            sem=tuple(sorted(modalities.get("SEM", []), key=_condition_sort_key)),
+            fib=tuple(sorted(modalities.get("FIB", []), key=_condition_sort_key)),
         )
         for (directory, key), modalities in grouped.items()
     ]
@@ -429,9 +442,17 @@ def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
     return acquisitions
 
 
-def _variant_sort_key(record: ImageRecord) -> tuple[bool, str]:
-    """Order the base image first, then variants by name."""
-    return (record.variant is not None, (record.variant or "").lower())
+def _condition_sort_key(record: ImageRecord) -> tuple[tuple[str, bool, str], str]:
+    """Order a beam's records by family, base first, then by variant."""
+    return condition_order(record.family, record.variant), (record.condition or "").lower()
+
+
+def _condition_caption(record: ImageRecord, name_family: bool) -> str:
+    """Return how a condition is offered: its variant, with its family where asked."""
+    variant = record.variant if record.variant is not None else "base"
+    if not name_family or record.family is None:
+        return variant
+    return record.family if record.variant is None else f"{record.family} [{record.variant}]"
 
 
 def _plots_by_image_number(plots: Iterable[Path]) -> dict[int, Path]:

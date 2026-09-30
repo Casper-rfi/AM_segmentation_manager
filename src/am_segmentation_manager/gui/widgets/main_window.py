@@ -583,7 +583,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.image_panel.scan_requested.connect(self.scan)
         self.image_panel.browse_requested.connect(self.scan_bar.browse)
         self.image_panel.mode_changed.connect(self._set_mode)
-        self.image_panel.variant_changed.connect(self._set_variant)
+        self.image_panel.condition_changed.connect(self._set_condition)
         self.image_panel.overview_chosen.connect(self._choose_overview)
         self.image_panel.series_changed.connect(self._set_series)
         self.image_panel.overlay_toggled.connect(self._set_overlay)
@@ -1288,13 +1288,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller.set_series(series)
         self.refresh()
 
-    def _set_variant(self, variant: str) -> None:
+    def _set_condition(self, condition: str) -> None:
         """Show a different imaging condition.
 
         A view change only: which condition is on screen never decides what a
         state change moves, because the change follows the label.
         """
-        self.controller.set_variant(variant or None)
+        self.controller.set_condition(condition or None)
         self.refresh()
 
     def _choose_overview(self, index: int) -> None:
@@ -1633,7 +1633,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         if frame is None:
             # Emptied rather than left as it was: the conditions on offer
             # belonged to a frame that is no longer on screen.
-            self.image_panel.set_variants([])
+            self.image_panel.set_conditions([])
             if self.controller.start_path is None:
                 self.image_panel.show_nothing_read(self.scan_bar.path_edit.text().strip())
             else:
@@ -1645,9 +1645,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # image of the beam on screen puts the view on the other one, and the
         # buttons have to say so.
         self.image_panel.set_mode(self.controller.mode)
-        self.image_panel.set_variants(
-            self.controller.available_variants(),
-            self.controller.current_variant(),
+        self.image_panel.set_conditions(
+            self.controller.condition_choices(),
+            self.controller.current_condition(),
         )
         self.image_panel.set_status(self._status_text())
 
@@ -1662,8 +1662,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             return
 
         modality = "SEM" if self.controller.mode == "sem" else "FIB"
-        variant = self.controller.current_variant(modality)
-        if frame.record(modality, variant) is None and frame.record(modality) is None:
+        condition = self.controller.current_condition(modality)
+        if frame.record(modality) is None:
             self.image_panel.show_image(
                 None, self.controller.show_overlay, self.controller.show_image
             )
@@ -1671,7 +1671,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # Only read what is already prepared: a miss means the loader is still
         # working, and blocking here would freeze the window on a slow read.
         cached = self.controller.cache.cached_image(
-            self.controller.frame_position, modality, variant
+            self.controller.frame_position, modality, condition
         )
         if cached is None:
             self.image_panel.show_loading()

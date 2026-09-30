@@ -48,31 +48,50 @@ def make_controller(root: Path) -> CurationController:
 
 
 # ---------------------------------------------------------------------------
-# The variant is a view choice
+# The condition on screen is a view choice
 # ---------------------------------------------------------------------------
 
 def test_the_conditions_of_a_frame_are_offered_base_first(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    assert controller.available_variants("SEM") == ["8", "8_fi_1", "8_fi_4"]
+    assert controller.condition_choices("SEM") == [
+        ("8", "SEM_8"), ("8_fi_1", "SEM_8_fi_1"), ("8_fi_4", "SEM_8_fi_4"),
+    ]
 
 
 def test_a_modality_with_one_condition_offers_no_choice(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    assert controller.available_variants("FIB") == [None]
+    assert controller.condition_choices("FIB") == [("base", "FIB")]
 
 
 def test_the_viewed_condition_can_be_changed(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    controller.set_variant("8_fi_1", "SEM")
+    controller.set_condition("sem_8_FI_1", "SEM")
 
-    assert controller.current_variant("SEM") == "8_fi_1"
-    assert controller.current_variant("FIB") is None
+    assert controller.current_condition("SEM") == "SEM_8_fi_1"
+    assert controller.current_condition("FIB") == "FIB"
+
+
+def test_a_stage_holding_two_families_offers_each_base(tmp_path: Path):
+    """Keyed by variant, both bases were None and only one could be reached."""
+    lamella = tmp_path / "project" / "lam_010"
+    for directory in ("sem", "sem_fi4", "sem-5kV", "FIB"):
+        (lamella / directory).mkdir(parents=True)
+        (lamella / directory / "img_0004.tif").write_bytes(b"")
+    (tmp_path / "project" / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    controller = make_controller(tmp_path)
+
+    assert controller.condition_choices("SEM") == [
+        ("sem", "sem"), ("sem [fi4]", "sem_fi4"), ("sem-5kV", "sem-5kV"),
+    ]
+    controller.set_mode("sem")
+    controller.set_condition("sem-5kV", "SEM")
+    assert controller.current_image_path().parent.name == "sem-5kV"
 
 
 def test_the_viewed_condition_does_not_change_what_a_state_change_moves(tmp_path: Path):
@@ -81,7 +100,7 @@ def test_the_viewed_condition_does_not_change_what_a_state_change_moves(tmp_path
     controller = make_controller(tmp_path)
 
     before = controller.reach()
-    controller.set_variant("8_fi_4", "SEM")
+    controller.set_condition("SEM_8_fi_4", "SEM")
     after = controller.reach()
 
     assert before == after
@@ -90,11 +109,11 @@ def test_the_viewed_condition_does_not_change_what_a_state_change_moves(tmp_path
 def test_switching_condition_changes_which_image_is_prepared(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
-    controller.set_variant("8_fi_1", "SEM")
+    controller.set_condition("SEM_8_fi_1", "SEM")
 
     requests = controller.pending_loads()
 
-    assert LoadRequest(0, "SEM", "8_fi_1") in requests
+    assert LoadRequest(0, "SEM", "SEM_8_fi_1") in requests
     assert LoadRequest(0, "SEM", None) not in requests
 
 
@@ -103,11 +122,11 @@ def test_both_conditions_stay_cached_when_switching_between_them(tmp_path: Path)
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    controller.cache.image(0, "SEM", "8")
-    controller.cache.image(0, "SEM", "8_fi_1")
+    controller.cache.image(0, "SEM", "SEM_8")
+    controller.cache.image(0, "SEM", "SEM_8_fi_1")
 
-    assert controller.cache.cached_image(0, "SEM", "8") is not None
-    assert controller.cache.cached_image(0, "SEM", "8_fi_1") is not None
+    assert controller.cache.cached_image(0, "SEM", "SEM_8") is not None
+    assert controller.cache.cached_image(0, "SEM", "SEM_8_fi_1") is not None
 
 
 def test_a_frame_missing_a_condition_falls_back_to_its_base_image(tmp_path: Path):
@@ -116,10 +135,14 @@ def test_a_frame_missing_a_condition_falls_back_to_its_base_image(tmp_path: Path
     (project / "lam_010" / "SEM_8" / "img_0009.tif").write_bytes(b"")
     (project / "lam_010" / "labels" / "img_0009.tif").write_bytes(b"")
     controller = make_controller(tmp_path)
-    controller.set_variant("8_fi_1", "SEM")
+    controller.set_condition("SEM_8_fi_1", "SEM")
 
     # Frame 1 is img_0009, which only the base condition captured.
-    assert controller.cache.image(1, "SEM", "8_fi_1") is not None
+    shown = controller.cache.image(1, "SEM", "SEM_8_fi_1")
+    assert shown is not None
+    # Held once, under the image shown, however it was asked for.
+    assert controller.cache.cached_image(1, "SEM", None) is shown
+    assert controller.cache.cached_image(1, "SEM", "SEM_8") is shown
 
 
 # ---------------------------------------------------------------------------

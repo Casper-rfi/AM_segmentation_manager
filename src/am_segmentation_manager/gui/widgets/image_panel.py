@@ -108,7 +108,7 @@ class ImagePanel(QWidget):
     #: Emitted when the acquisition under the label is shown or hidden.
     image_toggled = Signal(bool)
     #: Emitted with the imaging condition to display; empty string means base.
-    variant_changed = Signal(str)
+    condition_changed = Signal(str)
     #: Emitted with the series whose timeline to show.
     series_changed = Signal(str)
     #: Emitted with the position of the grid overview to show.
@@ -214,7 +214,7 @@ class ImagePanel(QWidget):
         self.variant_combo.setMinimumWidth(110)
         self.variant_combo.setToolTip(VARIANT_HINT)
         self.variant_label.setToolTip(self.variant_combo.toolTip())
-        self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
+        self.variant_combo.currentIndexChanged.connect(self._condition_chosen)
         # Which images the timeline is made of, above which file of one is
         # drawn: the narrower question under the wider one.
         controls.addWidget(keep_paired(
@@ -403,8 +403,8 @@ class ImagePanel(QWidget):
             current,
         )
 
-    def _variant_chosen(self, index: int) -> None:
-        """Emit the chosen condition, using an empty string for the base.
+    def _condition_chosen(self, index: int) -> None:
+        """Emit the chosen condition's name, or an empty string for an image with none.
 
         Or the chosen overview, while the slot is offering those instead.
         """
@@ -414,11 +414,11 @@ class ImagePanel(QWidget):
             self.overview_chosen.emit(int(self.variant_combo.itemData(index)))
             return
         value = self.variant_combo.itemData(index)
-        self.variant_changed.emit(value or "")
+        self.condition_changed.emit(value or "")
 
-    def set_variants(
+    def set_conditions(
         self,
-        variants: list[str | None],
+        choices: list[tuple[str, str | None]],
         current: str | None = None,
     ) -> None:
         """Offer the imaging conditions available for the current view.
@@ -429,15 +429,11 @@ class ImagePanel(QWidget):
         step between projects.
 
         Args:
-            variants: Conditions present, base first. ``None`` is the base.
+            choices: A caption and a condition for each present, in order.
             current: The condition on screen.
         """
         self._offer_overviews(False)
-        fill_choice_combo(
-            self.variant_combo,
-            [("base" if variant is None else variant, variant) for variant in variants],
-            current,
-        )
+        fill_choice_combo(self.variant_combo, choices, current)
 
     def set_overviews(self, captions: list[str], current: int) -> None:
         """Offer the project's grid overviews in the imaging condition's place.

@@ -38,7 +38,7 @@ PROJECT_IDENTITY_COLUMN = "autolamella_project"
 #: Columns identifying where an image sits, before any measured values.
 IDENTITY_COLUMNS = (
     PROJECT_IDENTITY_COLUMN, "lamella", "stage", "task", "series", "modality",
-    "variant", "state", "label_state", "label_shared", "image", "label",
+    "variant", "family", "state", "label_state", "label_shared", "image", "label",
 )
 
 #: What a paired row says once, because both beams share it. "modality" is not
@@ -52,7 +52,7 @@ SHARED_COLUMNS = (
 
 #: What a paired row says twice, once per beam, under the prefixes below.
 PER_BEAM_COLUMNS = (
-    "variant", "state", "label_state", "label_shared", "image", "label",
+    "variant", "family", "state", "label_state", "label_shared", "image", "label",
 )
 
 #: How a beam's own columns are marked. Every value under one of these was read
@@ -113,6 +113,7 @@ def image_rows(
             "series": record.series,
             "modality": record.modality,
             "variant": record.variant or "base",
+            "family": record.family or "",
             "state": current_state(record),
             "label_state": label_state(record),
             "label_shared": record.label_shared,
@@ -194,6 +195,7 @@ def _fill_beam(
     label = find_matching_label(record) if record is not None else None
     values: dict[str, object] = {
         "variant": (record.variant or "base") if record is not None else "",
+        "family": (record.family or "") if record is not None else "",
         "state": current_state(record) if record is not None else "",
         "label_state": label_state(record) if record is not None else "",
         "label_shared": record.label_shared if record is not None else "",
@@ -446,6 +448,7 @@ def measurement_rows(
             "stage": record.stage,
             "modality": record.modality,
             "variant": record.variant or "base",
+            "family": record.family or "",
             "state": current_state(record),
             "label_shared": record.label_shared,
             "image": exported_relative_path(record.image_path, start_path),
@@ -529,7 +532,7 @@ def export_label_measurements_csv(
     measured = [record for record in records if record.image_path in measurements]
     rows = measurement_rows(measured, measurements, config, start_path, projects)
     columns = [
-        PROJECT_IDENTITY_COLUMN, "lamella", "stage", "modality", "variant",
+        PROJECT_IDENTITY_COLUMN, "lamella", "stage", "modality", "variant", "family",
         "state", "label_shared", "image", "label",
         *(area_column(config, index) for index in config.classes_to_measure),
         *MEASUREMENT_COLUMNS,

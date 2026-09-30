@@ -125,8 +125,8 @@ class LoadRequest:
     """A single unit of preparation work.
 
     ``modality`` names the acquisition to prepare, or is None to request the
-    frame's summary plot. ``variant`` names the imaging condition, or is None
-    for the frame's base image of that modality.
+    frame's summary plot. ``condition`` names the imaging condition, or is None
+    for the frame's first of that modality.
 
     ``detail`` asks for the plot at the resolution it was rendered at rather
     than at the size of the pane. Only ever asked for the frame being looked
@@ -136,7 +136,7 @@ class LoadRequest:
 
     frame_index: int
     modality: str | None = None
-    variant: str | None = None
+    condition: str | None = None
     detail: bool = False
 
 
@@ -373,22 +373,22 @@ class FrameCache:
         return changed
 
     def image(
-        self, frame_index: int, modality: str, variant: str | None = None
+        self, frame_index: int, modality: str, condition: str | None = None
     ) -> FrameImage | None:
         """Return the prepared acquisition, reading it if not already held.
 
-        Returns None when the frame has no image for *modality* and *variant*,
+        Returns None when the frame has no image for *modality* and *condition*,
         which is a normal outcome rather than a failure -- not every
         acquisition has both modalities, and not every one has every condition.
 
-        Entries are keyed by variant as well as modality, so switching between
+        Entries are keyed by condition as well as modality, so switching between
         two imaging conditions to compare them does not evict either.
         """
-        record = self._record(frame_index, modality, variant)
+        record = self._record(frame_index, modality, condition)
         if record is None:
             return None
 
-        key = (frame_index, modality, variant)
+        key = (frame_index, modality, record.condition)
         cached = self._images.get(key)
         if cached is not None:
             return cached
@@ -490,20 +490,22 @@ class FrameCache:
             self._plots.max_entries = limit
 
     def cached_image(
-        self, frame_index: int, modality: str, variant: str | None = None
+        self, frame_index: int, modality: str, condition: str | None = None
     ) -> FrameImage | None:
         """Return a prepared acquisition only if it is already held.
 
         Lets a caller distinguish "not ready yet" from "nothing to show", so a
         view can say *loading* rather than blocking on a slow read.
         """
-        return self._images.get((frame_index, modality, variant))
+        key = self._key(frame_index, modality, condition)
+        return self._images.get(key) if key is not None else None
 
     def drop_image(
-        self, frame_index: int, modality: str, variant: str | None = None
+        self, frame_index: int, modality: str, condition: str | None = None
     ) -> bool:
         """Discard a prepared acquisition, so it is read again; return whether one was held."""
-        return self._images.drop([(frame_index, modality, variant)]) > 0
+        key = self._key(frame_index, modality, condition)
+        return key is not None and self._images.drop([key]) > 0
 
     def cached_plot(self, frame_index: int) -> FramePlot | None:
         """Return a prepared plot only if it is already held."""
@@ -541,7 +543,7 @@ class FrameCache:
         return self._details.get(frame_index)
 
     def holds(
-        self, frame_index: int, modality: str, variant: str | None = None
+        self, frame_index: int, modality: str, condition: str | None = None
     ) -> bool:
         """Return whether a prepared acquisition is already held.
 
@@ -549,7 +551,8 @@ class FrameCache:
         leave out what is in memory without disturbing the recency ordering the
         way a lookup would.
         """
-        return (frame_index, modality, variant) in self._images
+        key = self._key(frame_index, modality, condition)
+        return key is not None and key in self._images
 
     def ensure(self, request: LoadRequest) -> None:
         """Prepare the data named by *request* if it is not already held."""
@@ -558,7 +561,7 @@ class FrameCache:
         elif request.modality is None:
             self.plot(request.frame_index)
         else:
-            self.image(request.frame_index, request.modality, request.variant)
+            self.image(request.frame_index, request.modality, request.condition)
 
     def pending(
         self,
@@ -567,7 +570,7 @@ class FrameCache:
         *,
         radius: int | None = DEFAULT_RADIUS,
         include_plots: bool = False,
-        variants: dict[str, str | None] | None = None,
+        conditions: dict[str, str | None] | None = None,
     ) -> list[LoadRequest]:
         """Return outstanding work, in the order it should be done.
 
@@ -581,7 +584,7 @@ class FrameCache:
             include_plots: Also prepare summary plots. Off by default: plots
                 cost several times more than images and are only worth
                 preparing while the plot view is on.
-            variants: The imaging condition being viewed for each modality.
+            conditions: The imaging condition being viewed for each modality.
                 Only the viewed condition is prepared ahead -- preparing every
                 condition would multiply the read-ahead cost by however many a
                 stage happens to have.
@@ -590,16 +593,15 @@ class FrameCache:
             Requests for data that is not yet held.
         """
         wanted = list(modalities)
-        chosen = variants or {}
+        chosen = conditions or {}
         requests: list[LoadRequest] = []
         for frame_index in prefetch_order(current, len(self._frames), radius):
             for modality in wanted:
-                variant = chosen.get(modality)
-                if self._record(frame_index, modality, variant) is None:
+                condition = chosen.get(modality)
+                key = self._key(frame_index, modality, condition)
+                if key is None or key in self._images:
                     continue
-                if (frame_index, modality, variant) in self._images:
-                    continue
-                requests.append(LoadRequest(frame_index, modality, variant))
+                requests.append(LoadRequest(frame_index, modality, condition))
             if include_plots:
                 frame = self._frame(frame_index)
                 if frame is not None and frame.displayed_plot is not None:
@@ -620,18 +622,29 @@ class FrameCache:
             return self._frames[frame_index]
         return None
 
-    def _record(self, frame_index: int, modality: str, variant: str | None = None):
-        """Return the image record for a frame, modality and variant, if any.
+    def _record(self, frame_index: int, modality: str, condition: str | None = None):
+        """Return the image record for a frame, modality and condition, if any.
 
-        Falls back to the frame's base image when the requested variant is not
-        present: navigating through a lamella where only some acquisitions were
-        captured under a given condition should keep showing something rather
-        than blanking the pane.
+        Falls back to the frame's first image when the requested condition is
+        not present: navigating through a lamella where only some acquisitions
+        were captured under a given condition should keep showing something
+        rather than blanking the pane.
         """
         frame = self._frame(frame_index)
         if frame is None:
             return None
-        record = frame.record(modality, variant)
-        if record is None and variant is not None:
+        record = frame.record(modality, condition)
+        if record is None and condition is not None:
             return frame.record(modality)
         return record
+
+    def _key(
+        self, frame_index: int, modality: str, condition: str | None
+    ) -> tuple[int, str, str | None] | None:
+        """Return what the image shown for this request is held under, or None.
+
+        The condition of the record actually shown, so an image is held once
+        however it was asked for -- by name, as the first, or by a fallback.
+        """
+        record = self._record(frame_index, modality, condition)
+        return (frame_index, modality, record.condition) if record is not None else None

@@ -205,6 +205,15 @@ def by_variant(record: ImageRecord) -> Hashable:
     return record.variant or "base"
 
 
+def by_family(record: ImageRecord) -> Hashable:
+    """Group by the family of conditions sharing a label, whatever case it is spelled in.
+
+    ``SEM`` and ``sem`` are one family, so they are one row, under the name
+    lowercased. An image sitting loose has none.
+    """
+    return _present(record.family.lower() if record.family else None)
+
+
 def by_series(record: ImageRecord) -> Hashable:
     """Group by what the image was taken for.
 
@@ -760,6 +769,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "modality": Breakdown("record", by_modality, "modality (SEM / FIB)"),
     "state": Breakdown("record", by_state, "workflow state"),
     "variant": Breakdown("record", by_variant, "imaging condition"),
+    "family": Breakdown("record", by_family, "family of imaging conditions"),
     "series": Breakdown("record", by_series, "series (adaptive / reference / alignment)"),
     "autolamella-project": Breakdown(
         "project", by_autolamella_project, "Autolamella project", group="record"

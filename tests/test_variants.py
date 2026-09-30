@@ -1,8 +1,9 @@
-"""Selecting images by imaging-condition variant.
+"""Selecting images by imaging-condition variant, and by family.
 
 A variant is the suffix of an image directory name (``sem_5kv`` -> ``5kv``) and
 is opaque to this package: it is matched exactly, never parsed, so arbitrary
-names like ``5kv``, ``defocus`` or ``lowmag`` work without code changes.
+names like ``5kv``, ``defocus`` or ``lowmag`` work without code changes. A
+family is what comes before it, and is matched whatever its case.
 """
 from __future__ import annotations
 
@@ -10,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.filtering import iter_matching_records, matches_variant
+from am_segmentation_manager.aggregate import MISSING, by_family
+from am_segmentation_manager.filtering import (
+    iter_matching_records,
+    matches_family,
+    matches_variant,
+)
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.scanner import Scanner
 
@@ -109,3 +115,81 @@ def test_cli_accepts_a_variant_selector(tmp_path: Path):
     # and narrows the selection without error.
     assert (tmp_path / "out" / "dataset_train.csv").exists()
     assert stage.exists()
+
+
+# ---------------------------------------------------------------------------
+# Families
+# ---------------------------------------------------------------------------
+
+def _family_record(family: str | None) -> ImageRecord:
+    return ImageRecord(image_path=Path("x") / "img.tif", modality="SEM", family=family)
+
+
+@pytest.mark.parametrize(
+    "family, selectors, expected",
+    [
+        ("sem-5kV", ["sem-5kv"], True),       # whatever the case
+        ("sem-5kV", ["sem"], False),          # a whole name, not a prefix
+        ("SEM", ["sem,sem-5kV"], True),
+        ("sem", ["all"], True),
+        ("sem", None, True),
+        (None, ["sem"], False),               # a loose image belongs to no family
+    ],
+)
+def test_family_matching(family, selectors, expected):
+    assert matches_family(_family_record(family), selectors) is expected
+
+
+def test_a_family_is_counted_as_one_whatever_its_case():
+    assert by_family(_family_record("SEM")) == by_family(_family_record("sem")) == "sem"
+    assert by_family(_family_record(None)) == MISSING
+
+
+def _build_families(tmp_path: Path) -> Path:
+    project = tmp_path / "project"
+    stage = project / "01-lamella" / "adaptive_polish_2025-04-15-02-48-15AM"
+    for directory in ("sem", "sem_fi4", "sem-5kV", "sem-5kV_fi4", "fib"):
+        (stage / directory).mkdir(parents=True)
+        (stage / directory / "img_000.tif").write_bytes(b"")
+    (project / "experiment.yaml").write_text("name: project\n", encoding="utf-8")
+    return project
+
+
+def test_a_family_selects_its_base_and_variants(tmp_path: Path):
+    _build_families(tmp_path)
+
+    assert _select(tmp_path, family_selectors=["SEM-5KV"]) == ["sem-5kV", "sem-5kV_fi4"]
+
+
+def test_family_and_variant_together_name_one_condition(tmp_path: Path):
+    _build_families(tmp_path)
+
+    assert _select(tmp_path, family_selectors=["sem"], variant_selectors=["base"]) == ["sem"]
+
+
+def test_the_metadata_csv_names_each_images_family(tmp_path: Path):
+    from am_segmentation_manager.operations.metadata_csv import IDENTITY_COLUMNS, image_rows
+
+    _build_families(tmp_path)
+    records = list(Scanner(tmp_path).build_index().all_projects()[0].image_records)
+
+    rows = {row["image"].split("/")[-2]: row for row in image_rows(records, tmp_path)}
+
+    assert IDENTITY_COLUMNS.index("family") == IDENTITY_COLUMNS.index("variant") + 1
+    assert (rows["sem-5kV_fi4"]["family"], rows["sem-5kV_fi4"]["variant"]) == ("sem-5kV", "fi4")
+    assert (rows["sem-5kV"]["family"], rows["sem-5kV"]["variant"]) == ("sem-5kV", "base")
+
+
+def test_cli_accepts_a_family_selector(tmp_path: Path, capsys):
+    from am_segmentation_manager.cli import main
+
+    _build_families(tmp_path)
+
+    assert main([
+        "stats", str(tmp_path), "--project", "all", "--lamella", "all", "--stage", "all",
+        "--image", "all", "--family", "sem-5kV", "--by", "family",
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "Images per family  (2 image(s))" in out
+    assert "sem-5kv" in out

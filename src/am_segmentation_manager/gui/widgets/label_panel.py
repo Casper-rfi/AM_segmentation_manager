@@ -372,7 +372,7 @@ class LabelPanel(QWidget):
             "They share one label, so an edit reaches all of them."
         )
         self.variant_label.setToolTip(self.variant_combo.toolTip())
-        self.variant_combo.currentIndexChanged.connect(self._variant_chosen)
+        self.variant_combo.currentIndexChanged.connect(self._condition_chosen)
         # Which images the timeline is made of, above which file of one is
         # drawn: the narrower question under the wider one.
         controls.addWidget(keep_paired(
@@ -725,11 +725,11 @@ class LabelPanel(QWidget):
         self.controller.set_series(self.series_combo.itemData(index))
         self.refresh()
 
-    def _variant_chosen(self, index: int) -> None:
+    def _condition_chosen(self, index: int) -> None:
         """Show the chosen imaging condition."""
         if index < 0:
             return
-        self.controller.set_variant(self.variant_combo.itemData(index))
+        self.controller.set_condition(self.variant_combo.itemData(index))
         self.refresh()
 
     def _overlay_toggled(self, shown: bool) -> None:
@@ -1002,7 +1002,7 @@ class LabelPanel(QWidget):
         self.refresh_versions()
         self._refresh_series()
         self._refresh_modalities()
-        self._refresh_variants()
+        self._refresh_conditions()
         self._refresh_timeline()
         self.status.setText(self.controller.status_text())
         self._refresh_edit_state()
@@ -1127,20 +1127,18 @@ class LabelPanel(QWidget):
             self.controller.series,
         )
 
-    def _refresh_variants(self) -> None:
+    def _refresh_conditions(self) -> None:
         """Offer the conditions this acquisition has, greyed where there is one.
 
         On screen either way, as in the curation view: a lamella with one
         condition per modality is every Autolamella project so far, so hiding
         it moved this row on nearly every step.
         """
+        record = self.controller.record
         fill_choice_combo(
             self.variant_combo,
-            [
-                ("base" if variant is None else variant, variant)
-                for variant in self.controller.available_variants()
-            ],
-            self.controller.variant,
+            self.controller.condition_choices(),
+            record.condition if record is not None else None,
         )
 
     def _refresh_modalities(self) -> None:

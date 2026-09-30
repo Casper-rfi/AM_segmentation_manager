@@ -685,21 +685,24 @@ def variant_controller(root: Path):
 def test_the_base_image_is_what_opens(tmp_path: Path):
     controller = variant_controller(tmp_path)
 
-    assert controller.variant is None
-    assert controller.available_variants()[0] is None
+    assert controller.condition is None
+    assert controller.condition_choices()[0] == ("base", "sem")
+    assert controller.record.variant is None
 
 
 def test_every_condition_of_the_acquisition_is_offered(tmp_path: Path):
     controller = variant_controller(tmp_path)
 
-    assert set(controller.available_variants()) == {None, "8_fi_1", "8_fi_4"}
+    assert [condition for _, condition in controller.condition_choices()] == [
+        "sem", "sem_8_fi_1", "sem_8_fi_4",
+    ]
 
 
 def test_choosing_a_condition_changes_the_image_read(tmp_path: Path):
     controller = variant_controller(tmp_path)
     base = controller.record.image_path
 
-    controller.set_variant("8_fi_4")
+    controller.set_condition("sem_8_fi_4")
 
     assert controller.record.image_path != base
     assert "8_fi_4" in str(controller.record.image_path)
@@ -709,7 +712,7 @@ def test_a_condition_is_proofread_through_the_same_label(tmp_path: Path):
     controller = variant_controller(tmp_path)
     label = controller.current_key
 
-    controller.set_variant("8_fi_1")
+    controller.set_condition("sem_8_fi_1")
 
     assert controller.current_key == label, (
         "the conditions of one acquisition are one segmentation"
@@ -720,7 +723,7 @@ def test_choosing_a_condition_leaves_the_frames_alone(tmp_path: Path):
     controller = variant_controller(tmp_path)
     controller.step(1)
 
-    controller.set_variant("8_fi_1")
+    controller.set_condition("sem_8_fi_1")
 
     assert controller.count == 2, "state follows the label, not the condition"
     assert controller.position == 1, "and the reviewer stays where they were"
@@ -735,7 +738,7 @@ def test_a_frame_without_the_condition_shows_its_base_image(tmp_path: Path):
     dataset.image("SEM", 1, variant="sem_8_fi_1").unlink()
     controller = LabelController(CONFIG, cache=stub_cache())
     controller.set_lamella(scan_lamella(tmp_path))
-    controller.set_variant("8_fi_1")
+    controller.set_condition("sem_8_fi_1")
 
     controller.select(1)
 
@@ -744,9 +747,9 @@ def test_a_frame_without_the_condition_shows_its_base_image(tmp_path: Path):
 
 def test_the_loads_asked_for_name_the_condition(tmp_path: Path):
     controller = variant_controller(tmp_path)
-    controller.set_variant("8_fi_4")
+    controller.set_condition("sem_8_fi_4")
 
-    assert all(request.variant == "8_fi_4" for request in controller.pending_loads())
+    assert all(request.condition == "sem_8_fi_4" for request in controller.pending_loads())
 
 
 # ---------------------------------------------------------------------------

@@ -1271,15 +1271,15 @@ def build_image_sets(
     return image_sets
 
 
-def _image_set_sort_key(image_set: ImageSet) -> tuple[int, str, bool, str]:
-    """Order image sets by modality, then family, then base first and variant name."""
+def _image_set_sort_key(image_set: ImageSet) -> tuple[int, tuple[str, bool, str]]:
+    """Order image sets by modality, then as :func:`condition_order` orders them."""
     modality_order = MODALITIES.index(image_set.modality) if image_set.modality in MODALITIES else len(MODALITIES)
-    return (
-        modality_order,
-        (image_set.family or "").lower(),
-        image_set.variant is not None,
-        (image_set.variant or "").lower(),
-    )
+    return modality_order, condition_order(image_set.family, image_set.variant)
+
+
+def condition_order(family: str | None, variant: str | None) -> tuple[str, bool, str]:
+    """Return where a condition sorts among its beam's: by family, base first, then variant."""
+    return (family or "").lower(), variant is not None, (variant or "").lower()
 
 
 @dataclass(frozen=True)

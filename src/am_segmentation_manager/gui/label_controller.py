@@ -161,10 +161,11 @@ class LabelController:
         #: The series the Curate tab's switches leave on; see
         #: :meth:`set_shown_series`.
         self._shown_series: tuple[str, ...] = SERIES
-        #: The imaging condition on screen, per modality. Purely a view choice:
-        #: the conditions of one acquisition share a label, so which one is
-        #: being looked at never decides what an edit or a state change touches.
-        self._variants: dict[str, str | None] = {}
+        #: The imaging condition on screen, per modality, by its directory's
+        #: name. Purely a view choice: the conditions of one acquisition share a
+        #: label, so which one is being looked at never decides what an edit or
+        #: a state change touches.
+        self._conditions: dict[str, str | None] = {}
         self.known_labels = known_labels if known_labels is not None else KnownLabels()
         self.session = LabelSession()
         self._keys: dict[Path, Path] = {}
@@ -398,7 +399,7 @@ class LabelController:
     def record(self):
         """Return the image record on screen, or None.
 
-        The frame's base image where this frame was not captured under the
+        The frame's first image where this frame was not captured under the
         chosen condition, on the same reasoning as the curation view: stepping
         through a lamella where only some acquisitions have a condition should
         keep showing something rather than blanking the pane.
@@ -406,28 +407,28 @@ class LabelController:
         frame = self.frame
         if frame is None:
             return None
-        record = frame.record(self._modality, self.variant)
+        record = frame.record(self._modality, self.condition)
         return record if record is not None else frame.record(self._modality)
 
     @property
-    def variant(self) -> str | None:
-        """Return the imaging condition on screen, or None for the base image."""
-        return self._variants.get(self._modality)
+    def condition(self) -> str | None:
+        """Return the imaging condition chosen, or None for the frame's first."""
+        return self._conditions.get(self._modality)
 
-    def set_variant(self, variant: str | None) -> None:
-        """Show *variant* of the modality on screen.
+    def set_condition(self, condition: str | None) -> None:
+        """Show *condition* of the modality on screen, by its directory's name.
 
         Which frames are worth proofreading is unchanged: the conditions of one
         acquisition share a label and therefore share its state, so the set is
-        read from the base image whichever condition is being looked at.
+        read from the first image whichever condition is being looked at.
         """
-        self._variants[self._modality] = variant or None
-        logger.debug("Proofreading %s variant %s", self._modality, variant or "base")
+        self._conditions[self._modality] = condition or None
+        logger.debug("Proofreading %s condition %s", self._modality, condition or "(first)")
 
-    def available_variants(self) -> list[str | None]:
-        """Return the conditions the frame on screen was captured under."""
+    def condition_choices(self) -> list[tuple[str, str | None]]:
+        """Return a caption and a condition for each the frame on screen has."""
         frame = self.frame
-        return frame.variants(self._modality) if frame is not None else []
+        return frame.condition_choices(self._modality) if frame is not None else []
 
     def select(self, position: int) -> None:
         """Move to *position* among the proofreadable frames, clamped."""
@@ -450,7 +451,7 @@ class LabelController:
         prepared = self.cached_image()
         if prepared is not None:
             return prepared
-        return self.cache.image(index, self._modality, self.variant)
+        return self.cache.image(index, self._modality, self.condition)
 
     def cached_image(self) -> FrameImage | None:
         """Return the prepared frame only if it is already held and still current.
@@ -463,13 +464,13 @@ class LabelController:
         index = self.frame_index
         if index is None:
             return None
-        prepared = self.cache.cached_image(index, self._modality, self.variant)
+        prepared = self.cache.cached_image(index, self._modality, self.condition)
         if prepared is not None and self._read_before_rewrite(prepared):
             logger.info(
                 "Label of %s changed on disk since it was read; reading it again",
                 self.record.image_path.name,
             )
-            self.cache.drop_image(index, self._modality, self.variant)
+            self.cache.drop_image(index, self._modality, self.condition)
             return None
         return prepared
 
@@ -502,9 +503,9 @@ class LabelController:
         requests = []
         for cursor in prefetch_order(self._cursor, len(self._positions), radius):
             index = self._positions[cursor]
-            if self.cache.holds(index, self._modality, self.variant):
+            if self.cache.holds(index, self._modality, self.condition):
                 continue
-            requests.append(LoadRequest(index, self._modality, self.variant))
+            requests.append(LoadRequest(index, self._modality, self.condition))
         return requests
 
     # -- editing ------------------------------------------------------------

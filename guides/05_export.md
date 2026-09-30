@@ -23,7 +23,7 @@ The tab opens on the whole collection, and every control narrows it:
 - **One image per label** keeps one image of each label group rather than every
   imaging condition, where several share a label: the family's primary condition.
 - **Add filter** adds a filter on any other property: the microscope, the beam
-  current, the sample, a milling task, and so on. Tick the values to keep;
+  current, the sample, a milling task, the family of imaging conditions, and so on. Tick the values to keep;
   ticking none keeps them all. **Clear all filters** unticks every value and
   leaves the filters in place.
 

@@ -110,8 +110,17 @@ def _add_scope_arguments(
         "--variant", action="append", default=[],
         help=(
             "Imaging-condition variant, from the image directory name "
-            "(sem_5kv -> 5kv); 'base' means the unsuffixed directory and 'all' "
-            "every condition. Defaults to every variant"
+            "(sem-5kV_fi4 -> fi4); 'base' means a family's unsuffixed directory "
+            "and 'all' every condition. Defaults to every variant"
+        ),
+    )
+    parser.add_argument(
+        "--family", action="append", default=[],
+        help=(
+            "Family of imaging conditions sharing a label, from the image "
+            "directory name (sem-5kV_fi4 -> sem-5kV) or the project's "
+            "AM_families.yaml, in any case; 'all' every family. Defaults to "
+            "every family"
         ),
     )
     parser.add_argument(
@@ -260,6 +269,7 @@ def _resolve_scope(args: argparse.Namespace) -> tuple[list, Path, list]:
             modality=args.modality,
             state=state,
             variant_selectors=getattr(args, "variant", None) or None,
+            family_selectors=getattr(args, "family", None) or None,
             series_selectors=_series_selectors(args),
             task_selectors=getattr(args, "task", None) or None,
         )
@@ -301,7 +311,8 @@ def _series_selectors(args: argparse.Namespace) -> list[str]:
 #: The selectors that narrow an export, in the order they are asked for. Used
 #: to write down what an export covered, so a merge can say what it is merging.
 _SCOPE_SELECTORS: tuple[str, ...] = (
-    "project", "lamella", "stage", "image", "variant", "series", "state", "modality",
+    "project", "lamella", "stage", "image", "variant", "family", "series", "state",
+    "modality",
 )
 
 
