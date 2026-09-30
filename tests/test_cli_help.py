@@ -57,6 +57,8 @@ WORKFLOW_ORDER = [
     "init-project",
     "show-metadata",
     "edit-metadata",
+    "show-families",
+    "edit-families",
     "list-projects",
     "gui",
     "predict",

@@ -31,6 +31,7 @@ from ..layout import (
 )
 from ..models import ImageRecord
 from ..state import (
+    DEFAULT_STATE,
     STATE_VALUES,
     RecordState,
     StageState,
@@ -46,11 +47,17 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "RecordState",
+    "Regrouping",
+    "RegroupingPlan",
     "StaleState",
+    "StateEffect",
     "StateFileError",
     "TransitionPlan",
     "UnmigratedStage",
     "apply_plan",
+    "apply_regrouping",
+    "plan_regrouping",
+    "refuse_stale_regrouping",
     "current_state",
     "declared_states",
     "plan_transition",
@@ -388,7 +395,7 @@ def apply_plan(plan: TransitionPlan, *, recorder: Recorder | None = None) -> int
     Raises:
         StaleState: If any stage's file changed since the plan read it.
     """
-    _refuse_if_stale(plan)
+    _refuse_if_stale(plan.writes)
 
     by_stage: dict[Path, list[StateChange]] = {}
     if recorder is not None:
@@ -413,8 +420,8 @@ def apply_plan(plan: TransitionPlan, *, recorder: Recorder | None = None) -> int
     return len(plan.records)
 
 
-def _refuse_if_stale(plan: TransitionPlan) -> None:
-    """Raise unless every stage the plan writes is as the plan read it.
+def _refuse_if_stale(writes: Iterable[_StageWrite]) -> None:
+    """Raise unless every stage a plan writes is as the plan read it.
 
     Checked over the whole batch first, so the answer is "nothing happened"
     rather than "some of it happened"; :func:`~..state.write_state` checks the
@@ -422,7 +429,7 @@ def _refuse_if_stale(plan: TransitionPlan) -> None:
     """
     changed = [
         write.previous.path
-        for write in plan.writes
+        for write in writes
         if fingerprint_of(write.previous.path) != write.previous.fingerprint
     ]
     if changed:
@@ -432,6 +439,153 @@ def _refuse_if_stale(plan: TransitionPlan) -> None:
             f"out, so none of it was applied ({listed}). Something else is "
             "curating this collection; look again and repeat the change."
         )
+
+
+# ---------------------------------------------------------------------------
+# Regrouping: images whose label group changes with their family
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Regrouping:
+    """One condition's images in one stage leaving a label group for another.
+
+    Attributes:
+        image_directory: The condition's directory, directly inside its stage.
+        image_names: Its images, by filename.
+        old_labels: The label directory the images read before.
+        new_labels: The label directory they read after.
+        old_group_remains: Whether another condition still reads *old_labels*.
+        new_group_exists: Whether another condition already read *new_labels*.
+    """
+
+    image_directory: Path
+    image_names: tuple[str, ...]
+    old_labels: Path
+    new_labels: Path
+    old_group_remains: bool
+    new_group_exists: bool
+
+
+@dataclass(frozen=True)
+class StateEffect:
+    """One image whose workflow state a regrouping changes."""
+
+    image: Path
+    old: RecordState
+    new: RecordState
+
+
+@dataclass(frozen=True)
+class RegroupingPlan:
+    """The state entries a regrouping writes, validated and not yet written.
+
+    Attributes:
+        changes: One entry per state-file key written or dropped.
+        effects: One entry per image whose state changes.
+    """
+
+    changes: tuple[StateChange, ...] = ()
+    effects: tuple[StateEffect, ...] = ()
+    writes: tuple[_StageWrite, ...] = field(default_factory=tuple)
+
+
+def plan_regrouping(regroupings: Iterable[Regrouping]) -> RegroupingPlan:
+    """Return the state entries that keep images' curation through a regrouping.
+
+    **An image joining a group other images already share takes that group's
+    state**, a group being in exactly one. **Images forming a new group carry
+    ``deselected`` but not ``corrected``**: the first is a decision about the
+    images, the second a claim about a label they no longer share; where the
+    images carried in disagree, ``deselected`` wins. An entry nothing will read
+    any more is dropped rather than left behind.
+
+    Raises:
+        UnmigratedStage: If a stage still keeps its state in folders.
+        StateFileError: If a stage's file cannot be read.
+    """
+    stage_states: dict[Path, StageState] = {}
+    #: Per image: its stage, the key it reads after, and the state it had.
+    moved: list[tuple[Path, Path, str, RecordState]] = []
+    carried: dict[tuple[Path, str], RecordState] = {}
+    dropped: dict[tuple[Path, str], None] = {}
+
+    for regrouping in regroupings:
+        stage = regrouping.image_directory.parent
+        if stage not in stage_states:
+            stage_states[stage] = _stage_state(stage)
+        declared = stage_states[stage]
+        for name in regrouping.image_names:
+            old_key = state_key(regrouping.old_labels / name, stage)
+            new_key = state_key(regrouping.new_labels / name, stage)
+            old = declared.state_of(old_key)
+            moved.append((stage, regrouping.image_directory / name, new_key, old))
+            if not regrouping.old_group_remains:
+                dropped[(stage, old_key)] = None
+            if regrouping.new_group_exists:
+                continue
+            if old == "deselected" or (stage, new_key) not in carried:
+                carried[(stage, new_key)] = "deselected" if old == "deselected" else DEFAULT_STATE
+
+    declared_after = {stage: dict(state.states) for stage, state in stage_states.items()}
+    for stage, key in dropped:
+        declared_after[stage].pop(key, None)
+    for (stage, key), state in carried.items():
+        if state == DEFAULT_STATE:
+            declared_after[stage].pop(key, None)
+        else:
+            declared_after[stage][key] = state
+
+    changes = [
+        StateChange(stage, key, stage_states[stage].state_of(key), after.get(key, DEFAULT_STATE))
+        for stage, after in declared_after.items()
+        for key in sorted(set(stage_states[stage].states) | set(after))
+        if stage_states[stage].state_of(key) != after.get(key, DEFAULT_STATE)
+    ]
+    effects = [
+        StateEffect(image, old, declared_after[stage].get(new_key, DEFAULT_STATE))
+        for stage, image, new_key, old in moved
+        if declared_after[stage].get(new_key, DEFAULT_STATE) != old
+    ]
+    changed = {change.stage_directory for change in changes}
+    return RegroupingPlan(
+        changes=tuple(changes),
+        effects=tuple(effects),
+        writes=tuple(
+            _StageWrite(previous=stage_states[stage], states=declared_after[stage])
+            for stage in stage_states
+            if stage in changed
+        ),
+    )
+
+
+def refuse_stale_regrouping(plan: RegroupingPlan) -> None:
+    """Raise unless every stage *plan* writes is as it was read.
+
+    Raises:
+        StaleState: If any stage's file changed since the plan read it.
+    """
+    _refuse_if_stale(plan.writes)
+
+
+def apply_regrouping(plan: RegroupingPlan, *, recorder: Recorder | None = None) -> int:
+    """Write the state entries of a validated regrouping, or none of them.
+
+    Returns:
+        How many entries were written or dropped.
+
+    Raises:
+        StaleState: If any stage's file changed since the plan read it.
+    """
+    _refuse_if_stale(plan.writes)
+    for write in plan.writes:
+        write_state(write.previous, write.states)
+    if recorder is not None:
+        for change in plan.changes:
+            recorder.record(
+                change.stage_directory / change.key, "state-changed",
+                old=change.old, new=change.new,
+            )
+    return len(plan.changes)
 
 
 def deselect_records(

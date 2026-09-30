@@ -12,17 +12,25 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..discovery import describe_dataset_candidates, find_project_roots, project_markers
+from ..families import StaleFamilies
 from ..filtering import matches_project
 from ..io.path import make_path_relative
 from ..metadata import DESCRIPTIVE_FIELDS, TODO_MARKER, VALUE_SEPARATOR, field_named
 from ..metadata import DESCRIPTIVE_FIELDS as FIELDS
+from ..operations.families_edit import (
+    FamiliesValidationError,
+    apply_families_change,
+    plan_families_change,
+    summarise_families,
+)
 from ..operations.init_project import init_projects, project_placement_problem, read_defaults
 from ..operations.metadata_edit import MetadataValidationError, update_project_metadata
 from ..reporting import print_project_summary, print_survey
 from ..scanner import Scanner
+from ..state import StaleState
 from ..survey import DEFAULT_MAX_DEPTH as SURVEY_MAX_DEPTH
 from ..survey import survey_collection
-from .scope import _recorder
+from .scope import _recorder, _writing_recorder
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +188,66 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     edit_metadata.add_argument(
         "--dry-run", action="store_true",
         help="Show what would change without writing anything",
+    )
+
+    # -- show-families / edit-families ---------------------------------------
+    show_families = sub.add_parser(
+        "show-families",
+        help="Show each project's families of imaging conditions",
+        description=(
+            "Print each project's families: the imaging conditions sharing one "
+            "label, and how many stages hold each. A condition marked * is placed "
+            "in its family by the project's AM_families.yaml rather than by its "
+            "folder name. Read-only."
+        ),
+    )
+    show_families.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    show_families.add_argument(
+        "--project", action="append", default=None,
+        help="Project name, relative path or scan number; repeatable. Default: all",
+    )
+
+    edit_families = sub.add_parser(
+        "edit-families",
+        help="Move imaging conditions between families in AM_families.yaml",
+        description=(
+            "Correct which family a condition belongs to, and so which label it "
+            "shares, without renaming any folder. The change is checked in every "
+            "stage first: it is refused if a label or prediction would be left "
+            "unread, replaced by another, or taken from a condition the change "
+            "does not name. A condition joining a family shares its labels and "
+            "state; one leaving starts unlabelled and keeps a deselection. "
+            "Shows what would change; nothing is written without --apply."
+        ),
+    )
+    edit_families.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
+    edit_families.add_argument(
+        "--project", action="append", default=None, required=True,
+        help="Project name, relative path or scan number; repeatable",
+    )
+    edit_families.add_argument(
+        "--set", action="append", default=[], metavar="CONDITION=FAMILY",
+        help="Place a condition in a family, e.g. sem2kVb=sem-2kV; repeatable",
+    )
+    edit_families.add_argument(
+        "--clear", action="append", default=[], metavar="CONDITION",
+        help="Return a condition to the family its folder name gives; repeatable",
+    )
+    edit_families.add_argument(
+        "--primary", action="append", default=[], metavar="FAMILY=CONDITION",
+        help="Name the condition a family is predicted from; repeatable",
+    )
+    edit_families.add_argument(
+        "--clear-primary", action="append", default=[], metavar="FAMILY",
+        help="Return a family to the default primary condition; repeatable",
+    )
+    edit_families.add_argument(
+        "--confirm-corrected", action="store_true",
+        help="Confirm images leaving a label group declared corrected",
+    )
+    edit_families.add_argument(
+        "--apply", action="store_true",
+        help="Write the change. Without it, only show what would change",
     )
 
     # -- list-projects / scan -----------------------------------------------
@@ -393,6 +461,107 @@ def _cmd_metadata(args: argparse.Namespace) -> int:
 
 
 
+def _cmd_show_families(args: argparse.Namespace) -> int:
+    """Handle ``am-seg show-families``."""
+    start_path = Path(args.start_path)
+    projects = Scanner(start_path).build_index().all_projects()
+    if args.project is not None:
+        projects = [p for p in projects if matches_project(p, args.project)]
+    if not projects:
+        logger.error("No projects matched under %s", start_path)
+        return 2
+    for project in projects:
+        print(project.display_name)
+        summaries = summarise_families(project)
+        if not summaries:
+            print("    (no image folders)")
+        for summary in summaries:
+            for line in summary.describe():
+                print(f"  {line}")
+    return 0
+
+
+def _pairs(items: list[str], flag: str) -> dict[str, str] | None:
+    """Return ``NAME=VALUE`` arguments as a mapping, or None if one is malformed."""
+    pairs: dict[str, str] = {}
+    for item in items:
+        name, separator, value = item.partition("=")
+        if not separator or not name.strip() or not value.strip():
+            logger.error("%s expects NAME=VALUE, got %r", flag, item)
+            return None
+        pairs[name.strip()] = value.strip()
+    return pairs
+
+
+def _cmd_edit_families(args: argparse.Namespace) -> int:
+    """Handle ``am-seg edit-families``."""
+    start_path = Path(args.start_path)
+    projects = [
+        project for project in Scanner(start_path).build_index().all_projects()
+        if matches_project(project, args.project)
+    ]
+    if not projects:
+        logger.error("No projects matched under %s", start_path)
+        return 2
+
+    families_set = _pairs(args.set, "--set")
+    primary_set = _pairs(args.primary, "--primary")
+    if families_set is None or primary_set is None:
+        return 2
+    families: dict[str, str | None] = {**families_set}
+    families.update({name.strip(): None for name in args.clear})
+    primary: dict[str, str | None] = {**primary_set}
+    primary.update({name.strip(): None for name in args.clear_primary})
+    if not families and not primary:
+        logger.error("Nothing to do: pass --set, --clear, --primary or --clear-primary")
+        return 2
+
+    # Every project is planned before any is written, so one refusal leaves
+    # the whole collection as it was.
+    changes = []
+    refused = False
+    for project in projects:
+        try:
+            changes.append(
+                plan_families_change(
+                    project, families=families, primary=primary,
+                    allow_leaving_corrected=args.confirm_corrected,
+                )
+            )
+        except FamiliesValidationError as exc:
+            refused = True
+            logger.error("%s: refused", project.display_name)
+            for problem in exc.problems:
+                logger.error("  %s", problem)
+    if refused:
+        return 2
+
+    for change in changes:
+        for line in change.describe():
+            print(line)
+    changed = [change for change in changes if not change.is_empty]
+    if not changed:
+        logger.info("Nothing to change across %d project(s)", len(projects))
+        return 0
+    if not args.apply:
+        logger.info(
+            "Preview only: %d of %d project(s) would change; pass --apply to write",
+            len(changed), len(projects),
+        )
+        return 0
+
+    roots = {change.project_root for change in changed}
+    recorder = _writing_recorder(args, [project for project in projects if project.path in roots])
+    try:
+        for change in changed:
+            apply_families_change(change, recorder=recorder)
+    except (StaleFamilies, StaleState) as exc:
+        logger.error("%s", exc)
+        return 2
+    logger.info("Updated %d of %d project(s)", len(changed), len(projects))
+    return 0
+
+
 #: What each of this group's subcommands runs. Registered above and
 #: dispatched here, so the two cannot name different sets.
 COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
@@ -402,4 +571,6 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init-project": _cmd_init_project,
     "edit-metadata": _cmd_metadata,
     "show-metadata": _cmd_metadata,
+    "show-families": _cmd_show_families,
+    "edit-families": _cmd_edit_families,
 }

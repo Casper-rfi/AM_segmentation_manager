@@ -6,6 +6,7 @@ family's primary condition. It is read into a :class:`~.layout.FamilyCorrections
 that resolution takes as plain data, and a project without it has none. It is
 hand-editable, so nothing read from it is trusted: a file that will not read is
 an error, never read as no corrections, which would resolve labels elsewhere.
+Only :mod:`.operations.families_edit` writes it, through :func:`write_families`.
 """
 from __future__ import annotations
 
@@ -14,7 +15,8 @@ from pathlib import Path
 from typing import Any, Final
 
 from .discovery import project_markers
-from .io.yaml import DuplicateKeyError, load_unique_keys
+from .io.atomic import Fingerprint, fingerprint_of
+from .io.yaml import DuplicateKeyError, load_unique_keys, write_yaml
 from .layout import NO_CORRECTIONS, FamilyCorrections
 
 logger = logging.getLogger(__name__)
@@ -22,9 +24,11 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "AM_FAMILIES_FILENAME",
     "FamiliesFileError",
+    "StaleFamilies",
     "families_file_path",
     "families_for",
     "read_families",
+    "write_families",
 ]
 
 AM_FAMILIES_FILENAME: Final[str] = "AM_families.yaml"
@@ -38,9 +42,25 @@ _FAMILIES_KEY: Final[str] = "families"
 _PRIMARY_KEY: Final[str] = "primary"
 _KEYS: Final[frozenset[str]] = frozenset({_VERSION_KEY, _FAMILIES_KEY, _PRIMARY_KEY})
 
+_HEADER: Final[str] = """\
+# Families of imaging conditions in this project, written by am-seg.
+#
+# An image folder is named <family>_<variant>, and the conditions of one family
+# share one label folder, <family>_labels. Under families:, a condition belongs
+# to the family given instead of the one its name gives, e.g. sem2kVb: sem-2kV.
+# Under primary:, a family names the condition it is predicted from.
+#
+# Change it with 'am-seg edit-families', which refuses a change that would leave
+# a label unread or replace one, and records each change in AM_history.jsonl.
+"""
+
 
 class FamiliesFileError(RuntimeError):
     """Raised when a project's families file cannot be read, or holds something invalid."""
+
+
+class StaleFamilies(RuntimeError):
+    """Raised when a families file changed between being read and written."""
 
 
 def families_file_path(project_root: Path) -> Path:
@@ -89,6 +109,44 @@ def read_families(project_root: Path) -> FamilyCorrections:
         len(families), len(primary), path,
     )
     return corrections
+
+
+def write_families(
+    project_root: Path, corrections: FamilyCorrections, expected: Fingerprint | None
+) -> Path:
+    """Write *corrections* as *project_root*'s families file, and return its path.
+
+    A project left with no corrections keeps an empty file rather than having
+    one deleted.
+
+    Args:
+        expected: The file's fingerprint when the change was planned, None if
+            it did not exist.
+
+    Raises:
+        StaleFamilies: If the file changed since *expected* was taken.
+    """
+    path = families_file_path(project_root)
+    stale = StaleFamilies(
+        f"{path} changed since this change was worked out; look again and repeat it"
+    )
+    if fingerprint_of(path) != expected:
+        raise stale
+    body = {
+        _VERSION_KEY: FILE_VERSION,
+        _FAMILIES_KEY: dict(sorted(corrections.families.items(), key=_lowered)),
+        _PRIMARY_KEY: dict(sorted(corrections.primary.items(), key=_lowered)),
+    }
+    if not write_yaml(
+        path, body, header=_HEADER,
+        commit_if=lambda _temporary: fingerprint_of(path) == expected,
+    ):
+        raise stale
+    return path
+
+
+def _lowered(item: tuple[str, str]) -> str:
+    return item[0].lower()
 
 
 def families_for(

@@ -146,6 +146,30 @@ am-seg show-metadata /path/to/collection
 am-seg edit-metadata /path/to/collection --all --set organisation="Rosalind Franklin Institute" --dry-run
 ```
 
+## Correct the families
+
+A folder's name places it in a family, and a family shares one label. Where
+the names got it wrong -- `sem2kVb` showing the same scene as `sem-2kV`, or
+`sem_mag2` taken at another magnification than the rest of `sem` -- correct it
+from the command line. No folder is renamed: the correction is kept in the
+project's `AM_families.yaml`, which travels with the data.
+
+```bash
+am-seg show-families /path/to/collection --project 003
+am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2
+am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2 --apply
+```
+
+`show-families` lists each family and its conditions, marking with `*` those
+the file places. `edit-families` shows which label each condition would read
+and every image whose state would change, and writes only with `--apply`. A
+condition joining a family shares its labels and its state; one leaving starts
+unlabelled, keeping a deselection but not a correction. A change is refused if
+it would leave a label unread, swap one label for another, or take a label
+from a condition you did not name, and one taking images out of a corrected
+group needs `--confirm-corrected`. `--clear` puts a condition back where its
+name places it.
+
 ## Maintenance
 
 The *Maintenance* card acts on every label under the folder, and waits for

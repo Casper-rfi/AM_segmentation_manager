@@ -59,6 +59,8 @@ am-seg create-training-csv --start-path /path/to/collection --state corrected --
 | `am-seg init-project` | Write an AM_metadata.yaml template into a project |
 | `am-seg show-metadata` | Show each project's resolved metadata, and where each value came from |
 | `am-seg edit-metadata` | Set or clear fields in a project's AM_metadata.yaml |
+| `am-seg show-families` | Show each project's families of imaging conditions |
+| `am-seg edit-families` | Move imaging conditions between families in AM_families.yaml |
 | `am-seg list-projects` | Scan a directory and list discovered projects |
 
 ### Curate it, and prepare labels

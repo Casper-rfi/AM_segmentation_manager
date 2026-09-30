@@ -154,6 +154,7 @@ whole collection:
 | See how a folder is interpreted | `inspect-layout` |
 | Make a pre-Autolamella dataset indexable | `init-project` |
 | Read or edit project metadata | `show-metadata` / `edit-metadata` |
+| See or correct which imaging conditions share a label | `show-families` / `edit-families` |
 | Scan a directory and list the projects found | `list-projects` |
 | Predict labels with a trained model | `predict` |
 | Turn predictions into labels for proofreading | `convert-predictions` |

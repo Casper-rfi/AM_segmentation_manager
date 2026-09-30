@@ -75,8 +75,11 @@ the condition. `sem_fi4` beside `sem` shares `sem_labels/`; a separate series,
 such as `sem-5kV` and `sem-5kV_fi4`, shares `sem-5kV_labels/` of its own. A
 family's name starts with `sem` or `fib` and then a digit, `-`, `.` or `_`,
 and may use anything but `_` after that. Folders named before families, such
-as `SEM_8` and `SEM_8_fi_1`, are one family, `SEM`. A prediction becomes a label only when you convert it, and
-that label is a first draft for a person to proofread.
+as `SEM_8` and `SEM_8_fi_1`, are one family, `SEM`. Where a name puts a
+condition in the wrong family, the project's `AM_families.yaml` corrects it
+without renaming a folder; see [Add data](02_add_data.md#correct-the-families).
+A prediction becomes a label only when you convert it, and that label is a
+first draft for a person to proofread.
 
 **A label file existing does not mean anything was labelled.** The
 segmentation software writes an empty label for every image it is given, so
