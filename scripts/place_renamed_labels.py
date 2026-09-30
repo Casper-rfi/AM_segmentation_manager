@@ -20,7 +20,7 @@ replaced.
     python scripts/place_renamed_labels.py \\
         --images  <source images> --labels <labels made from them> \\
         --project <project root holding the originals> \\
-        [--shared] [--compress] [--mark-corrected] [--apply]
+        [--compress] [--mark-corrected] [--apply]
 
 Where the source is itself laid out as a project, ``--source-project <root>``
 replaces ``--images``/``--labels`` and pairs up every image directory in it.
@@ -45,10 +45,10 @@ from am_segmentation_manager.layout import (
     LEGACY_LABEL_DIRECTORIES,
     classify_image_directory,
     classify_loose_image,
+    conflicting_label_directories,
     image_files,
     is_ignored_image_name,
     resolve_labels_directory,
-    shared_labels_directory_name,
     subdirectories_by_name,
 )
 from am_segmentation_manager.models import ImageRecord
@@ -305,7 +305,6 @@ def plan_placement(
     pairs: Iterable[tuple[Path, Path]],
     project_root: Path,
     *,
-    shared: bool = False,
     skip_empty: bool = False,
 ) -> list[LabelPlacement]:
     """Return the copies to make, having validated every one of them.
@@ -319,8 +318,6 @@ def plan_placement(
         pairs: Image directory and label directory, one pair per source image
             set. Validated together, so one bad pair stops the whole batch.
         project_root: The project holding the original images.
-        shared: Write into the modality's shared label directory rather than
-            the private one belonging to each image directory.
         skip_empty: Pass over a label holding no annotation instead of
             refusing the batch for it. Each one is named as it is skipped: a
             blank label is a picture nobody segmented, and which ones those
@@ -378,7 +375,7 @@ def plan_placement(
 
         conflicts.extend(_pixel_conflicts(image, original, label))
 
-        destination = _destination_for(original, conflicts, shared=shared)
+        destination = _destination_for(original, conflicts)
         if destination is None:
             continue
         if destination.exists():
@@ -448,25 +445,17 @@ def _pixel_conflicts(image: Path, original: Path, label: Path) -> list[str]:
     return conflicts
 
 
-def _destination_for(
-    original: Path, conflicts: list[str], *, shared: bool = False
-) -> Path | None:
+def _destination_for(original: Path, conflicts: list[str]) -> Path | None:
     """Return where *original*'s label belongs, or None having said why not.
 
     Resolution goes through
     :func:`~am_segmentation_manager.operations.selection.record_from_image_path`,
     so the label lands where the package will look for it, whether the image
-    fills a ``<modality>`` directory or sits loose in its stage. A
-    pre-convention label directory is refused rather than added to: renaming it
-    afterwards would be a second migration over freshly placed data.
-
-    Sharing asks for the modality's directory instead, which every imaging
-    condition of one acquisition resolves to. It is refused where a more
-    specific directory already exists, since that one wins the resolution and
-    the shared label would never be found. It does not apply to a loose image:
-    that set's name already states its series and modality and has no shared
-    form, and a shared ``<modality>_labels`` there would let a reference set
-    claim the same lamella's Adaptive Polishing labels.
+    fills an image directory -- where its family's conditions share one -- or
+    sits loose in its stage. A pre-convention label directory is refused rather
+    than added to: renaming it afterwards would be a second migration over
+    freshly placed data. So is a family with several label directories, which
+    placing into one of them would only deepen.
     """
     record = record_from_image_path(original)
     if record.labels_directory is None or record.modality is None:
@@ -479,18 +468,18 @@ def _destination_for(
         )
         return None
 
-    directory = record.labels_directory
-    fills_a_directory = classify_image_directory(original.parent.name) is not None
-    if shared and fills_a_directory:
-        wanted = directory.parent / shared_labels_directory_name(record.modality)
-        if directory.name.lower() != wanted.name.lower() and directory.is_dir():
+    if classify_image_directory(original.parent.name) is not None:
+        competing = conflicting_label_directories(
+            original.parent, record.modality, subdirectories_by_name(original.parent.parent)
+        )
+        if competing:
+            names = ", ".join(directory.name for directory in competing)
             conflicts.append(
-                f"{original}: {directory} already exists and would shadow the "
-                f"shared {wanted.name}"
+                f"{original}: its family has several label directories ({names}); "
+                f"merge them first"
             )
             return None
-        directory = wanted
-    return directory / original.name
+    return record.labels_directory / original.name
 
 
 # ---------------------------------------------------------------------------
@@ -581,16 +570,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Project root holding the original images; the only tree written to",
     )
     parser.add_argument(
-        "--shared", action="store_true",
-        help=(
-            "Write into the modality's shared label directory (sem_labels, "
-            "fib_labels), which every imaging condition of one acquisition "
-            "resolves to, rather than the private one per image directory. "
-            "Does not apply to loose images, whose label directory is named "
-            "after the series and modality and has no shared form"
-        ),
-    )
-    parser.add_argument(
         "--skip-empty", action="store_true",
         help=(
             "Pass over a label holding no annotation instead of refusing the "
@@ -632,7 +611,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         placements = plan_placement(
-            pairs, args.project, shared=args.shared, skip_empty=args.skip_empty
+            pairs, args.project, skip_empty=args.skip_empty
         )
     except PlacementConflict as exc:
         for conflict in exc.conflicts:

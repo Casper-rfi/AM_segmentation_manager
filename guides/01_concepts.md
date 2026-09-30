@@ -66,7 +66,16 @@ beside `sem/`. Images sitting loose in a lamella folder, as reference and
 alignment images do, have theirs in a folder named for their series and beam:
 `adaptive_sem_labels/`, `reference_fib_labels/`. *Other* has none.
 **Predictions**, what a trained model makes of an image, live in
-`sem_predictions/`. A prediction becomes a label only when you convert it, and
+`sem_predictions/`.
+
+An acquisition imaged under several conditions shares one label between
+them, since they show one scene. A folder's name says which it shares:
+everything before the first `_` names its **family**, and what follows names
+the condition. `sem_fi4` beside `sem` shares `sem_labels/`; a separate series,
+such as `sem-5kV` and `sem-5kV_fi4`, shares `sem-5kV_labels/` of its own. A
+family's name starts with `sem` or `fib` and then a digit, `-`, `.` or `_`,
+and may use anything but `_` after that. Folders named before families, such
+as `SEM_8` and `SEM_8_fi_1`, are one family, `SEM`. A prediction becomes a label only when you convert it, and
 that label is a first draft for a person to proofread.
 
 **A label file existing does not mean anything was labelled.** The
@@ -120,8 +129,8 @@ one of them yourself.
 |---|---|---|
 | `AM_metadata.yaml` | project folder | the project's description: sample, microscope, and so on |
 | `AM_state.yaml` | stage folder | the state of every group that is not selected |
-| `<images>_labels/` | beside the images | labels: from the segmentation software, converted from predictions, or saved after proofreading |
-| `<images>_predictions/` | beside the images | predictions, with `am_seg_predictions.yaml` saying which model made them |
+| `<family>_labels/` | beside the images | labels: from the segmentation software, converted from predictions, or saved after proofreading |
+| `<family>_predictions/` | beside the images | predictions, with `am_seg_predictions.yaml` saying which model made them |
 | `AM_history.jsonl` | project folder | who changed what, and when, from the first change on |
 | `AM_archive/` | project folder | every label version an operation replaced |
 | `AM_export.yaml` | an exported copy | where the copy came from, so `merge` can bring it home |

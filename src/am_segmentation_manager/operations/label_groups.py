@@ -176,6 +176,7 @@ def build_group(record: ImageRecord) -> LabelGroup:
                 stage=record.stage,
                 modality=image_set.modality,
                 variant=image_set.variant,
+                family=image_set.family,
                 label_shared=image_set.labels_are_shared,
             )
         )

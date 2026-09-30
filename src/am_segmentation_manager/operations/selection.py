@@ -508,6 +508,7 @@ def record_from_image_path(path: Path) -> ImageRecord:
         labels=labels,
         modality=classification.modality,
         variant=classification.variant,
+        family=classification.family,
         labels_directory=labels_directory,
         predictions_directory=predictions_directory,
     )

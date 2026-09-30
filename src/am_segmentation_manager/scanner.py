@@ -855,6 +855,7 @@ class Scanner:
                     stage_path=stage_path,
                     modality=image_set.modality,
                     variant=image_set.variant,
+                    family=image_set.family,
                     series=image_set.series,
                     acquired_at=self._acquired_at(image_path) if image_set.is_loose else None,
                     labels_directory=labels_directory,

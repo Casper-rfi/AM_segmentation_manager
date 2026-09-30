@@ -283,6 +283,39 @@ def test_shared_labels_are_reported(tmp_path: Path):
     assert "shared-labels" in _categories(survey)
 
 
+def _family_stage(tmp_path: Path, *directories: str) -> None:
+    """Build a one-stage project holding an image in each of *directories*."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    for directory in directories:
+        _write_image(project / "lam_000" / directory, "img_0000.tif")
+
+
+def test_a_family_split_across_label_directories_is_reported_once(tmp_path: Path):
+    _family_stage(
+        tmp_path, "SEM_8", "SEM_8_fi_1", "SEM_8_fi_4", "SEM_8_labels", "SEM_8_fi_1_labels"
+    )
+
+    conflicts = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "family-label-conflict"
+    ]
+
+    assert len(conflicts) == 1
+    assert "SEM_8_labels/" in conflicts[0].message
+    assert "SEM_8_fi_1_labels/" in conflicts[0].message
+
+
+def test_one_private_directory_standing_in_for_its_family_is_no_conflict(tmp_path: Path):
+    _family_stage(tmp_path, "SEM_8", "SEM_8_fi_1", "SEM_8_labels")
+
+    categories = _categories(survey_collection(tmp_path))
+
+    assert "family-label-conflict" not in categories
+    assert "shared-labels" in categories
+
+
 def test_legacy_label_directories_are_reported_for_migration(tmp_path: Path):
     make_project(tmp_path, "no_stage_level")
     survey = survey_collection(tmp_path)

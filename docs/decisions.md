@@ -24,14 +24,14 @@ rather than appending to it.
 
 ## Filesystem and identity
 
-- **A label directory is `<image-directory>_labels`, a sibling of the image directory.** A pure
-  string function both ways with no lookup table; `sem/` is no special case, its private and shared
-  names coinciding. Conditions share a label by default, and giving one its own means creating the
-  directory rather than configuring anything. **Label directories are the only ones anything here
-  renames** — we do not own `sem` and `fib`, and renaming those breaks reopening the project in
-  Autolamella. **Legacy spellings stay readable indefinitely** (`labels`, `labels_fib`,
-  `labels_FIB`), a new label landing in whichever directory an image set already has, so normalising
-  is cosmetic and lives in `scripts/` rather than in a command.
+- **An image directory is `<family>[_<variant>]`, and a family shares `<family>_labels`.** Only the
+  first `_` separates, so `SEM_8_fi_1` is family `SEM`, as every pre-family name meant. The name
+  alone gives the family, so a first label goes where the family looks afterwards
+  (`test_resolution_does_not_change_once_the_first_label_is_written`); a private answer split them.
+  **One private directory stands in for its family**, several being a reported conflict, each
+  condition reading its own (`test_several_directories_for_one_family_are_a_conflict`). **Only label
+  directories are renamed** — merge, manifests and CSVs name image paths. **Legacy spellings stay
+  readable indefinitely** (`labels`, `labels_FIB`), for the modality's family; normalising is cosmetic.
 - **A copy is paired back to its original by what the acquisition software recorded, never by name
   or order**, both of which survive a copy unchanged. `scripts/place_renamed_labels.py` names the
   header facts that do and reads them itself, `image_metadata.py` having no use for an identity.
@@ -44,9 +44,9 @@ rather than appending to it.
   `sem_labels/` would let a reference set claim the same lamella's Adaptive Polishing labels.
 - **A condition that repeats its variant in the filename is renamed, not parsed around.** Stripping
   the suffix in code would change the identity an image and its label share in four places, one of
-  them the state key, and would parse a variant the model keeps opaque.
+  them the state key, and would read meaning into a variant.
   `scripts/share_variant_labels.py` renames the data instead.
-- **The variant is an opaque string and is never parsed.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
+- **A variant means nothing the package reads.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
   variant may not be named `labels`, `predictions`, `plots`, `deselected` or `corrected`: each is
   another directory's role, so `layout.py` refuses it (`test_reserved_variants_are_rejected`) and
@@ -82,7 +82,7 @@ rather than appending to it.
   task holding its own references loose and its stages below
   (`test_reference_images_above_a_stage_do_not_hide_it`). Nothing sits below an image directory.
 - **A loose set's label directory is resolved exactly, with no fallback chain**, unlike
-  `resolve_labels_directory`, which falls back to the shared `<modality>_labels`. Falling back would
+  `resolve_labels_directory`, which lets any member's directory stand in for a family's. Doing so would
   pair a reference image with a label of a different scene — right dimensions, plausible shapes,
   wrong data (`test_a_loose_set_never_falls_back_to_the_shared_directory`).
 - **A series nobody has started labelling is not reported as unlabelled.** `no-labels-yet` fires

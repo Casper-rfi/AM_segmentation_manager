@@ -19,9 +19,9 @@ from am_segmentation_manager.layout import (
     beam_modality,
     build_image_sets,
     build_loose_image_sets,
-    candidate_labels_directory_names,
     classify_image_directory,
     classify_loose_image,
+    conflicting_label_directories,
     directory_cache,
     directory_role,
     image_files,
@@ -44,16 +44,22 @@ from am_segmentation_manager.layout import (
 @pytest.mark.parametrize(
     "name, expected",
     [
-        ("sem", ImageDirectory("SEM", None)),
-        ("SEM", ImageDirectory("SEM", None)),
-        ("fib", ImageDirectory("FIB", None)),
-        ("FIB", ImageDirectory("FIB", None)),
-        ("SEM_8", ImageDirectory("SEM", "8")),
-        ("SEM_8_fi_1", ImageDirectory("SEM", "8_fi_1")),
-        ("SEM_8_fi_16", ImageDirectory("SEM", "8_fi_16")),
-        ("sem_5kv", ImageDirectory("SEM", "5kv")),
-        ("sem_defocus", ImageDirectory("SEM", "defocus")),
-        ("fib_lowmag", ImageDirectory("FIB", "lowmag")),
+        ("sem", ImageDirectory("SEM", None, "sem")),
+        ("SEM", ImageDirectory("SEM", None, "SEM")),
+        ("fib", ImageDirectory("FIB", None, "fib")),
+        ("FIB", ImageDirectory("FIB", None, "FIB")),
+        ("SEM_8", ImageDirectory("SEM", "8", "SEM")),
+        ("SEM_8_fi_1", ImageDirectory("SEM", "8_fi_1", "SEM")),
+        ("SEM_8_fi_16", ImageDirectory("SEM", "8_fi_16", "SEM")),
+        ("sem_5kv", ImageDirectory("SEM", "5kv", "sem")),
+        ("sem_defocus", ImageDirectory("SEM", "defocus", "sem")),
+        ("fib_lowmag", ImageDirectory("FIB", "lowmag", "fib")),
+        ("sem5kV", ImageDirectory("SEM", None, "sem5kV")),
+        ("sem-5kV", ImageDirectory("SEM", None, "sem-5kV")),
+        ("SEM-5kV-mag-12K", ImageDirectory("SEM", None, "SEM-5kV-mag-12K")),
+        ("SEM-5kV-mag-12K_fi1", ImageDirectory("SEM", "fi1", "SEM-5kV-mag-12K")),
+        ("SEM-5kV-mag-12K_fi1-TLD", ImageDirectory("SEM", "fi1-TLD", "SEM-5kV-mag-12K")),
+        ("sem-2.5kV_fi_4", ImageDirectory("SEM", "fi_4", "sem-2.5kV")),
     ],
 )
 def test_classify_image_directory_recognises_image_directories(name, expected):
@@ -93,8 +99,19 @@ def test_reserved_variants_are_rejected(variant):
 
 
 def test_variant_case_is_preserved():
-    """The variant is opaque, so it is reported as written on disk."""
-    assert classify_image_directory("SEM_LowMag") == ImageDirectory("SEM", "LowMag")
+    """The variant is reported as written on disk."""
+    assert classify_image_directory("SEM_LowMag") == ImageDirectory("SEM", "LowMag", "SEM")
+
+
+@pytest.mark.parametrize("name", ["fibsem_x", "semi-thin", "semLowMag", "FIBre_4"])
+def test_a_modality_followed_by_a_letter_is_not_an_image_directory(name):
+    """``sem-LowMag`` names that family; ``semLowMag`` would claim ``fibsem`` too."""
+    assert classify_image_directory(name) is None
+
+
+@pytest.mark.parametrize("name", ["sem5kV", "sem-LowMag", "sem.2", "fib_2"])
+def test_a_modality_followed_by_a_digit_or_separator_is_an_image_directory(name):
+    assert classify_image_directory(name) is not None
 
 
 @pytest.mark.parametrize(
@@ -122,43 +139,107 @@ def test_labels_directory_name_follows_the_image_directory():
     assert labels_directory_name("sem_5kv") == "sem_5kv_labels"
 
 
-def test_candidates_are_private_then_shared_then_legacy():
-    assert candidate_labels_directory_names("sem_5kv", "SEM") == [
-        "sem_5kv_labels",
-        "sem_labels",
-        "labels",
-    ]
-
-
-def test_base_image_directory_collapses_private_and_shared_candidates():
-    """For ``sem/`` the private and shared names coincide, which is intended."""
-    assert candidate_labels_directory_names("sem", "SEM") == ["sem_labels", "labels"]
-
-
-def test_private_labels_win_over_shared(tmp_path: Path):
+def _stage(tmp_path: Path, *names: str) -> Path:
+    """Return a stage holding the directories *names*."""
     stage = tmp_path / "stage"
-    (stage / "sem_5kv").mkdir(parents=True)
-    (stage / "sem_5kv_labels").mkdir()
-    (stage / "sem_labels").mkdir()
+    for name in names:
+        (stage / name).mkdir(parents=True)
+    return stage
+
+
+def _labels(stage: Path, name: str) -> Path:
+    return resolve_labels_directory(stage / name, "SEM", subdirectories_by_name(stage))[0]
+
+
+def test_a_family_shares_the_directory_named_after_it(tmp_path: Path):
+    stage = _stage(tmp_path, "sem-5kV", "sem-5kV_fi1", "sem-5kV_labels")
+
+    assert {_labels(stage, "sem-5kV"), _labels(stage, "sem-5kV_fi1")} == {
+        stage / "sem-5kV_labels"
+    }
+
+
+def test_the_family_named_after_its_modality_shares_the_modality_directory(tmp_path: Path):
+    stage = _stage(tmp_path, "SEM_8", "SEM_8_fi_1", "sem_labels")
+
+    assert {_labels(stage, "SEM_8"), _labels(stage, "SEM_8_fi_1")} == {stage / "sem_labels"}
+
+
+def test_two_families_resolve_apart(tmp_path: Path):
+    stage = _stage(tmp_path, "sem-2kV", "sem-2kV_fi4", "sem-5kV", "sem-5kV_fi4", "sem-2kV_labels")
+
+    assert _labels(stage, "sem-2kV_fi4") == stage / "sem-2kV_labels"
+    assert _labels(stage, "sem-5kV_fi4") == stage / "sem-5kV_labels"
+
+
+def test_missing_labels_resolve_to_the_family_directory(tmp_path: Path):
+    """With nothing on disk, the answer is where a first label would be written."""
+    stage = _stage(tmp_path, "SEM_8", "SEM_8_fi_1", "sem-5kV_fi4")
 
     directory, exists, legacy = resolve_labels_directory(
-        stage / "sem_5kv", "SEM", subdirectories_by_name(stage)
+        stage / "SEM_8_fi_1", "SEM", subdirectories_by_name(stage)
     )
-    assert directory == stage / "sem_5kv_labels"
-    assert exists is True
-    assert legacy is False
+    assert (directory, exists, legacy) == (stage / "sem_labels", False, False)
+    assert _labels(stage, "sem-5kV_fi4") == stage / "sem-5kV_labels"
 
 
-def test_shared_labels_used_when_no_private_directory(tmp_path: Path):
-    stage = tmp_path / "stage"
-    (stage / "sem_5kv").mkdir(parents=True)
-    (stage / "sem_labels").mkdir()
+def test_resolution_does_not_change_once_the_first_label_is_written(tmp_path: Path):
+    """The answer used to be each condition's private directory, splitting the family."""
+    stage = _stage(tmp_path, "sem", "sem_fi1", "sem_fi4")
+    before = {name: _labels(stage, name) for name in ("sem", "sem_fi1", "sem_fi4")}
 
-    directory, exists, _ = resolve_labels_directory(
-        stage / "sem_5kv", "SEM", subdirectories_by_name(stage)
+    before["sem_fi4"].mkdir()
+
+    assert {name: _labels(stage, name) for name in before} == before
+    assert set(before.values()) == {stage / "sem_labels"}
+
+
+def test_one_private_directory_stands_in_for_the_family(tmp_path: Path):
+    """How a stage labelled before families keeps its conditions together."""
+    stage = _stage(tmp_path, "SEM_8", "SEM_8_fi_1", "SEM_8_fi_16", "SEM_8_labels")
+
+    for name in ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_16"):
+        assert _labels(stage, name) == stage / "SEM_8_labels"
+    assert conflicting_label_directories(
+        stage / "SEM_8", "SEM", subdirectories_by_name(stage)
+    ) == ()
+
+
+def test_several_directories_for_one_family_are_a_conflict(tmp_path: Path):
+    """Each condition keeps its own until they are merged; one without reads the family's."""
+    stage = _stage(
+        tmp_path, "sem", "sem_5kv", "sem_fi4", "sem_labels", "sem_5kv_labels"
     )
-    assert directory == stage / "sem_labels"
-    assert exists is True
+
+    assert _labels(stage, "sem") == stage / "sem_labels"
+    assert _labels(stage, "sem_5kv") == stage / "sem_5kv_labels"
+    assert _labels(stage, "sem_fi4") == stage / "sem_labels"
+    assert set(
+        conflicting_label_directories(stage / "sem_fi4", "SEM", subdirectories_by_name(stage))
+    ) == {stage / "sem_labels", stage / "sem_5kv_labels"}
+
+
+def test_a_family_is_one_whatever_the_case_it_is_spelled_in(tmp_path: Path):
+    stage = _stage(tmp_path, "sem-5kV", "SEM-5KV_fi1")
+
+    assert _labels(stage, "SEM-5KV_fi1") == stage / "sem-5kV_labels"
+    assert _labels(stage, "sem-5kV") == stage / "sem-5kV_labels"
+
+
+def test_a_named_family_never_reads_the_modality_legacy_directory(tmp_path: Path):
+    stage = _stage(tmp_path, "sem", "sem-5kV", "labels")
+
+    assert _labels(stage, "sem") == stage / "labels"
+    assert _labels(stage, "sem-5kV") == stage / "sem-5kV_labels"
+
+
+def test_the_family_directory_wins_over_a_legacy_one(tmp_path: Path):
+    stage = _stage(tmp_path, "sem", "sem_labels", "labels")
+
+    directory, _, legacy = resolve_labels_directory(
+        stage / "sem", "SEM", subdirectories_by_name(stage)
+    )
+    assert (directory, legacy) == (stage / "sem_labels", False)
 
 
 def test_legacy_label_directory_is_matched_case_insensitively(tmp_path: Path):
@@ -173,19 +254,6 @@ def test_legacy_label_directory_is_matched_case_insensitively(tmp_path: Path):
     assert directory == stage / "labels_FIB"
     assert exists is True
     assert legacy is True
-
-
-def test_missing_labels_resolve_to_the_private_name(tmp_path: Path):
-    """With nothing on disk, the answer is where a label would be written."""
-    stage = tmp_path / "stage"
-    (stage / "sem_5kv").mkdir(parents=True)
-
-    directory, exists, legacy = resolve_labels_directory(
-        stage / "sem_5kv", "SEM", subdirectories_by_name(stage)
-    )
-    assert directory == stage / "sem_5kv_labels"
-    assert exists is False
-    assert legacy is False
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +286,7 @@ def test_build_image_sets_detects_sharing(tmp_path: Path):
     assert by_name["FIB"].labels_are_shared is False
 
 
-def test_build_image_sets_reports_private_labels_as_unshared(tmp_path: Path):
+def test_build_image_sets_reports_conditions_in_conflict_as_unshared(tmp_path: Path):
     stage = tmp_path / "stage"
     _make_image(stage / "sem", "img_000.tif")
     _make_image(stage / "sem_5kv", "img_000.tif")
@@ -239,6 +307,20 @@ def test_build_image_sets_orders_sem_before_fib_and_base_before_variants(tmp_pat
     assert [image_set.name for image_set in build_image_sets(stage)] == [
         "sem", "sem_5kv", "fib", "fib_lowmag",
     ]
+
+
+def test_build_image_sets_orders_by_family_then_base_first(tmp_path: Path):
+    stage = tmp_path / "stage"
+    for name in ("sem-5kV_fi4", "sem_fi4", "sem-5kV", "sem"):
+        _make_image(stage / name, "img_000.tif")
+
+    image_sets = build_image_sets(stage)
+
+    assert [image_set.name for image_set in image_sets] == [
+        "sem", "sem_fi4", "sem-5kV", "sem-5kV_fi4",
+    ]
+    assert [image_set.family for image_set in image_sets] == ["sem", "sem", "sem-5kV", "sem-5kV"]
+    assert image_sets[3].display_name == "sem-5kV [fi4]"
 
 
 def test_build_image_sets_ignores_label_and_plot_directories(tmp_path: Path):

@@ -177,7 +177,7 @@ def test_pairs_by_where_the_images_were_written_when_no_guid_exists(
             )
         write_label(source / "lam_000" / "labels" / name)
 
-    placements = plan_placement(source_pairs(source), project, shared=True)
+    placements = plan_placement(source_pairs(source), project)
 
     assert [p.destination.parent.name for p in placements] == [
         "adaptive_sem_labels", "adaptive_sem_labels",
@@ -187,18 +187,16 @@ def test_pairs_by_where_the_images_were_written_when_no_guid_exists(
 
 def test_pairs_by_guid_across_differing_filenames(dataset: dict[str, Path]) -> None:
     placements = plan(dataset)
-    sem_8 = dataset["project"] / "lam_000" / "SEM_8_labels"
+    labels = dataset["project"] / "lam_000" / "sem_labels"
     assert [(p.label.name, p.destination) for p in placements] == [
-        ("SEM_2.tif", sem_8 / "Image_000.tif"),
-        ("SEM_1.tif", sem_8 / "Image_004.tif"),
+        ("SEM_2.tif", labels / "Image_000.tif"),
+        ("SEM_1.tif", labels / "Image_004.tif"),
     ]
 
 
-def test_labels_land_beside_the_image_directory_they_belong_to(
-    dataset: dict[str, Path],
-) -> None:
+def test_labels_land_in_their_family_label_directory(dataset: dict[str, Path]) -> None:
     for placement in plan(dataset):
-        assert placement.destination.parent.name == "SEM_8_labels"
+        assert placement.destination.parent.name == "sem_labels"
 
 
 def test_an_existing_shared_label_directory_is_used(dataset: dict[str, Path]) -> None:
@@ -308,11 +306,6 @@ def test_an_occupied_destination_stops_the_batch(dataset: dict[str, Path]) -> No
     assert any("already holds a label" in line for line in caught.value.conflicts)
 
 
-def test_sharing_writes_into_the_modality_directory(dataset: dict[str, Path]) -> None:
-    for placement in plan(dataset, shared=True):
-        assert placement.destination.parent.name == "sem_labels"
-
-
 #: One acquisition imaged three ways: distinct files, one shared segmentation.
 CONDITIONS = (("SEM_8", 1), ("SEM_8_fi_1", 2), ("SEM_8_fi_4", 3))
 
@@ -326,7 +319,7 @@ def test_conditions_sharing_one_label_place_it_once(tmp_path: Path) -> None:
     # One label directory beside them all, as the source keeps it.
     write_label(source / "lam_000" / "labels" / "img_0000.tif")
 
-    placements = plan_placement(source_pairs(source), project, shared=True)
+    placements = plan_placement(source_pairs(source), project)
     assert [p.destination for p in placements] == [
         project / "lam_000" / "sem_labels" / "img_0000.tif"
     ]
@@ -343,17 +336,26 @@ def test_two_different_labels_claiming_one_destination_stop_the_batch(
         write_label(source / "lam_000" / f"{condition}_labels" / "img_0000.tif")
 
     with pytest.raises(PlacementConflict) as caught:
-        plan_placement(source_pairs(source), project, shared=True)
+        plan_placement(source_pairs(source), project)
     assert any("already claimed by" in line for line in caught.value.conflicts)
 
 
-def test_sharing_is_refused_when_a_private_directory_would_shadow_it(
+def test_a_private_directory_standing_in_for_the_family_is_used(
     dataset: dict[str, Path],
 ) -> None:
     (dataset["project"] / "lam_000" / "SEM_8_labels").mkdir()
+    for placement in plan(dataset):
+        assert placement.destination.parent.name == "SEM_8_labels"
+
+
+def test_a_family_with_several_label_directories_stops_the_batch(
+    dataset: dict[str, Path],
+) -> None:
+    (dataset["project"] / "lam_000" / "SEM_8_labels").mkdir()
+    (dataset["project"] / "lam_000" / "sem_labels").mkdir()
     with pytest.raises(PlacementConflict) as caught:
-        plan(dataset, shared=True)
-    assert any("would shadow the shared" in line for line in caught.value.conflicts)
+        plan(dataset)
+    assert any("several label directories" in line for line in caught.value.conflicts)
 
 
 @pytest.fixture
@@ -392,7 +394,7 @@ def test_a_source_project_places_every_pair_as_one_batch(
 
     assert main([
         "--source-project", str(source_project),
-        "--project", str(project), "--shared", "--mark-corrected", "--apply",
+        "--project", str(project), "--mark-corrected", "--apply",
     ]) == 0
     assert sorted(p.name for p in (project/"lam_000"/"sem_labels").iterdir()) == [
         "img_0011.tif", "img_0012.tif",
@@ -432,12 +434,12 @@ def run(dataset: dict[str, Path], *extra: str) -> int:
 
 def test_a_preview_writes_nothing(dataset: dict[str, Path]) -> None:
     assert run(dataset) == 0
-    assert not (dataset["project"] / "lam_000" / "SEM_8_labels").exists()
+    assert not (dataset["project"] / "lam_000" / "sem_labels").exists()
 
 
 def test_apply_copies_the_labels(dataset: dict[str, Path]) -> None:
     assert run(dataset, "--apply") == 0
-    placed = dataset["project"] / "lam_000" / "SEM_8_labels"
+    placed = dataset["project"] / "lam_000" / "sem_labels"
     assert sorted(path.name for path in placed.iterdir()) == [
         "Image_000.tif", "Image_004.tif",
     ]
@@ -447,7 +449,7 @@ def test_apply_copies_the_labels(dataset: dict[str, Path]) -> None:
 
 def test_compressing_preserves_the_label_values(dataset: dict[str, Path]) -> None:
     assert run(dataset, "--apply", "--compress") == 0
-    placed = dataset["project"] / "lam_000" / "SEM_8_labels" / "Image_000.tif"
+    placed = dataset["project"] / "lam_000" / "sem_labels" / "Image_000.tif"
     original = tifffile.imread(str(dataset["labels"] / "SEM_2.tif"))
     assert np.array_equal(tifffile.imread(str(placed)), original)
 
@@ -459,8 +461,8 @@ def test_marking_corrected_declares_only_the_placed_groups(
     assert run(dataset, "--apply", "--mark-corrected") == 0
     declared = read_state(dataset["project"] / "lam_000")
     assert declared.states == {
-        "SEM_8_labels/Image_000.tif": "corrected",
-        "SEM_8_labels/Image_004.tif": "corrected",
+        "sem_labels/Image_000.tif": "corrected",
+        "sem_labels/Image_004.tif": "corrected",
     }
 
 

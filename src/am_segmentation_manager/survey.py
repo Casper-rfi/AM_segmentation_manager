@@ -41,6 +41,8 @@ from .layout import (
     Series,
     build_image_sets,
     build_loose_image_sets,
+    conflicting_label_directories,
+    conflicting_predictions_directories,
     directory_cache,
     directory_role,
     image_files,
@@ -629,6 +631,7 @@ def _survey_stage(
         )
 
     findings.extend(_loose_findings(stage_path, loose))
+    findings.extend(_family_conflict_findings(stage_path, directory_sets))
 
     for child in subdirectories_by_name(stage_path).values():
         if directory_role(child.name) != "unknown":
@@ -654,6 +657,48 @@ def _survey_stage(
         synthetic=synthetic,
         image_sets=image_sets,
     )
+
+
+def _family_conflict_findings(
+    stage_path: Path, image_sets: Iterable[ImageSet]
+) -> list[Finding]:
+    """Report each family whose conditions have more than one label or
+    predictions directory between them.
+
+    Such a family's conditions each keep reading their own, so they do not share
+    a label -- see :func:`~am_segmentation_manager.layout.resolve_labels_directory`.
+    """
+    siblings = subdirectories_by_name(stage_path)
+    findings: list[Finding] = []
+    reported: set[tuple[str, str, str]] = set()
+    for image_set in image_sets:
+        if image_set.is_loose or image_set.modality is None or image_set.family is None:
+            continue
+        for kind, conflicting in (
+            ("label", conflicting_label_directories),
+            ("predictions", conflicting_predictions_directories),
+        ):
+            key = (image_set.modality, image_set.family.lower(), kind)
+            if key in reported:
+                continue
+            competing = conflicting(image_set.directory, image_set.modality, siblings)
+            if not competing:
+                continue
+            reported.add(key)
+            names = ", ".join(f"{directory.name}/" for directory in competing)
+            findings.append(
+                Finding(
+                    severity="warning",
+                    category=f"family-{kind}-conflict",
+                    path=stage_path,
+                    message=(
+                        f"Family {image_set.family} has {len(competing)} {kind} "
+                        f"directories ({names}); its conditions each read their own "
+                        f"until these are merged into one"
+                    ),
+                )
+            )
+    return findings
 
 
 def _loose_findings(stage_path: Path, loose) -> list[Finding]:

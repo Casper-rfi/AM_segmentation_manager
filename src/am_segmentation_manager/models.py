@@ -37,8 +37,11 @@ class ImageRecord:
         stage: optional stage id/name
         timestamp: optional datetime parsed from metadata or filename
         modality: 'SEM' or 'FIB' when known
-        variant: imaging-condition suffix of the image directory, or None for
-            the base directory. An opaque key, never parsed.
+        variant: imaging-condition suffix of the image directory -- what
+            follows the family and ``_`` -- or None for the family's base
+            condition.
+        family: the family of imaging conditions whose label the image shares,
+            as its directory spells it, or None for an image sitting loose.
         series: what the image was taken for -- 'adaptive', 'reference' or
             'alignment'. Orthogonal to modality and variant.
         task: the milling task the image belongs to, spelt as the project's
@@ -87,6 +90,7 @@ class ImageRecord:
     timestamp: datetime | None = None
     modality: str | None = None
     variant: str | None = None
+    family: str | None = None
     series: str = "adaptive"
     task: str | None = None
     acquired_at: datetime | None = None

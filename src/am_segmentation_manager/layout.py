@@ -1,9 +1,9 @@
 """Filesystem naming conventions for Autolamella and legacy datasets.
 
-The single source of truth for what directories and image files are called. Image
-directories are ``<modality>`` or ``<modality>_<variant>``, the variant never
-parsed; label directories are ``<image-directory>_labels`` beside them, then the
-shared ``<modality>_labels``, then legacy names. Loose images carry their series
+The single source of truth for what directories and image files are called. An
+image directory is ``<family>[_<variant>]``, the family starting with its modality;
+a family's conditions share ``<family>_labels``, which a single older spelling may
+stand in for (:func:`resolve_labels_directory`). Loose images carry their series
 and beam in the filename, read by :func:`classify_loose_image`. Nothing here reads
 workflow state, but ``deselected/`` and ``corrected/`` stay reserved so an
 unmigrated dataset is never read as selected. Only the image-set builders and the
@@ -80,6 +80,16 @@ LEGACY_PREDICTION_DIRECTORIES: Final[dict[str, str]] = {
 #: "labels for sem" rather than "images of variant 'labels'".
 RESERVED_VARIANTS: Final[frozenset[str]] = frozenset(
     {"labels", "predictions", "plots", "deselected", "corrected"}
+)
+
+#: What separates a family from its variant in an image directory's name.
+VARIANT_SEPARATOR: Final[str] = "_"
+
+#: The modality an image directory's name starts with. What follows it must not
+#: be a letter, so ``fibsem_x`` and ``semi-thin`` are not read as image
+#: directories (``test_a_modality_followed_by_a_letter_is_not_an_image_directory``).
+_MODALITY_PREFIX: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<modality>sem|fib)(?=$|[-._0-9])", re.IGNORECASE
 )
 
 #: File extensions treated as images or labels.
@@ -167,17 +177,19 @@ STAGE_SUMMARY_PLOTS: Final[tuple[str, ...]] = ("figure.png", "AP_summary_plots.p
 
 @dataclass(frozen=True)
 class ImageDirectory:
-    """The modality and variant encoded in an image directory's name.
+    """The modality, family and variant encoded in an image directory's name.
 
     Attributes:
         modality: ``"SEM"`` or ``"FIB"``.
-        variant: The imaging-condition suffix, or ``None`` for the base
-            directory. Preserved with the case used on disk, since it is an
-            opaque display and grouping key.
+        variant: What follows the first ``_``, or ``None`` for the family's
+            base condition. Preserved with the case used on disk.
+        family: What precedes the first ``_``, as spelled on disk. Two
+            spellings differing only in case are one family.
     """
 
     modality: str
     variant: str | None
+    family: str
 
     @property
     def display_variant(self) -> str:
@@ -205,6 +217,8 @@ class ImageSet:
         variant: The imaging-condition suffix, or ``None`` for the base
             directory. Always ``None`` for a loose set, which has no image
             directory to carry one.
+        family: The family whose label the set shares, as its directory spells
+            it, or ``None`` for a loose set.
         series: What the images were taken for.
         image_names: The filenames belonging to this set, or ``None`` where the
             set is the whole directory. Read it through
@@ -229,6 +243,7 @@ class ImageSet:
     labels_are_legacy: bool
     series: Series = "adaptive"
     image_names: tuple[str, ...] | None = None
+    family: str | None = None
 
     @property
     def is_loose(self) -> bool:
@@ -253,15 +268,17 @@ class ImageSet:
 
     @property
     def display_name(self) -> str:
-        """Return a short label such as ``'SEM'``, ``'SEM [8_fi_1]'`` or
-        ``'SEM (reference)'``."""
+        """Return a short label such as ``'SEM'``, ``'SEM [8_fi_1]'``,
+        ``'sem-5kV [fi4]'`` or ``'SEM (reference)'``."""
         if self.modality is None:
             return f"({SERIES_LABELS[self.series]})"
         if self.is_loose:
             return f"{self.modality} ({SERIES_LABELS[self.series]})"
+        family = self.family or self.modality
+        prefix = family if family.lower() != self.modality.lower() else self.modality
         if self.variant is None:
-            return self.modality
-        return f"{self.modality} [{self.variant}]"
+            return prefix
+        return f"{prefix} [{self.variant}]"
 
 
 # ---------------------------------------------------------------------------
@@ -346,12 +363,14 @@ def stage_base_name(stage_name: str) -> str:
 
 
 def classify_image_directory(name: str) -> ImageDirectory | None:
-    """Return the modality and variant *name* encodes, or None if it is not an
-    image directory.
+    """Return the modality, family and variant *name* encodes, or None if it is
+    not an image directory.
 
-    Label, prediction, plot and state directories are rejected first, so that
-    ``sem_labels`` and ``sem_fi8_labels`` are never mistaken for images of a
-    variant called ``labels`` or ``fi8_labels``.
+    ``SEM-5kV_fi1`` is family ``SEM-5kV``, variant ``fi1``; ``SEM_8_fi_1`` is
+    family ``SEM``, variant ``8_fi_1``, which is what every name from before
+    families meant. Label, prediction, plot and state directories are rejected
+    first, so that ``sem_labels`` and ``sem_fi8_labels`` are never mistaken for
+    images of a variant called ``labels`` or ``fi8_labels``.
     """
     lowered = name.lower()
     if (
@@ -362,17 +381,16 @@ def classify_image_directory(name: str) -> ImageDirectory | None:
     ):
         return None
 
-    for modality in MODALITIES:
-        prefix = modality.lower()
-        if lowered == prefix:
-            return ImageDirectory(modality=modality, variant=None)
-        if lowered.startswith(f"{prefix}_"):
-            variant = name[len(prefix) + 1:]
-            if not variant or variant.lower() in RESERVED_VARIANTS:
-                logger.debug("Ignoring image directory with reserved variant: %s", name)
-                return None
-            return ImageDirectory(modality=modality, variant=variant)
-    return None
+    match = _MODALITY_PREFIX.match(name)
+    if match is None:
+        return None
+    family, separator, variant = name.partition(VARIANT_SEPARATOR)
+    if separator and (not variant or variant.lower() in RESERVED_VARIANTS):
+        logger.debug("Ignoring image directory with reserved variant: %s", name)
+        return None
+    return ImageDirectory(
+        modality=match["modality"].upper(), variant=variant or None, family=family
+    )
 
 
 def directory_role(name: str) -> DirectoryRole:
@@ -734,27 +752,97 @@ def shared_labels_directory_name(modality: str) -> str:
     return f"{modality.lower()}{LABELS_SUFFIX}"
 
 
-def candidate_labels_directory_names(image_directory_name: str, modality: str) -> list[str]:
-    """Return the label directory names to try, most specific first.
-
-    Order: the private directory for this image directory, the shared directory
-    for the modality, then legacy names. For a base image directory the first
-    two coincide, which is intended -- ``sem/`` uses ``sem_labels/`` like every
-    other ``sem*`` directory that has no private labels of its own.
-    """
-    names = [labels_directory_name(image_directory_name), shared_labels_directory_name(modality)]
-    names.extend(
-        legacy for legacy, legacy_modality in LEGACY_LABEL_DIRECTORIES.items()
-        if legacy_modality == modality
+def _family_of(image_directory: Path, modality: str) -> ImageDirectory:
+    """Return what *image_directory*'s name encodes, reading an unrecognised name
+    as a family of its own so resolution still has an answer for it."""
+    return classify_image_directory(image_directory.name) or ImageDirectory(
+        modality=modality, variant=None, family=image_directory.name
     )
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for name in names:
-        key = name.lower()
-        if key not in seen:
-            seen.add(key)
-            ordered.append(name)
-    return ordered
+
+
+def _family_members(
+    image_directory: Path, modality: str, siblings: Mapping[str, Path]
+) -> list[ImageDirectory]:
+    """Return the conditions of *image_directory*'s family in its stage, base first.
+
+    *image_directory* is always among them, whether or not it is in *siblings*.
+    """
+    own = _family_of(image_directory, modality)
+    members = {image_directory.name.lower(): (image_directory.name, own)}
+    for key, sibling in siblings.items():
+        condition = classify_image_directory(sibling.name)
+        if (
+            condition is not None
+            and condition.modality == own.modality
+            and condition.family.lower() == own.family.lower()
+        ):
+            members.setdefault(key, (sibling.name, condition))
+    ordered = sorted(
+        members.values(), key=lambda item: (item[1].variant is not None, item[0].lower())
+    )
+    return [condition for _, condition in ordered]
+
+
+def _condition_name(condition: ImageDirectory) -> str:
+    """Return the directory name a condition was classified from."""
+    if condition.variant is None:
+        return condition.family
+    return f"{condition.family}{VARIANT_SEPARATOR}{condition.variant}"
+
+
+def _family_directories(
+    image_directory: Path,
+    modality: str,
+    siblings: Mapping[str, Path],
+    suffix: str,
+    legacy: Mapping[str, str],
+) -> tuple[list[Path], Path, list[Path]]:
+    """Return a family's existing directories of one kind, and where a new one goes.
+
+    Returns:
+        ``(existing, new, legacy_existing)``: the family's own directory and its
+        conditions' private ones that exist, in that order; the name a new one
+        takes; and the pre-convention directories present for the modality,
+        which only the family named after the modality reads.
+    """
+    members = _family_members(image_directory, modality, siblings)
+    family = members[0].family
+    named_after_modality = family.lower() == modality.lower()
+    new_name = f"{modality.lower() if named_after_modality else family}{suffix}"
+
+    candidates = [new_name, *(f"{_condition_name(member)}{suffix}" for member in members)]
+    existing: list[Path] = []
+    for name in dict.fromkeys(candidate.lower() for candidate in candidates):
+        if name in siblings:
+            existing.append(siblings[name])
+
+    legacy_existing = [
+        siblings[name]
+        for name, legacy_modality in legacy.items()
+        if named_after_modality and legacy_modality == modality and name in siblings
+    ]
+    return existing, image_directory.parent / new_name, legacy_existing
+
+
+def _resolve_family_directory(
+    image_directory: Path,
+    modality: str,
+    siblings: Mapping[str, Path],
+    suffix: str,
+    legacy: Mapping[str, str],
+) -> tuple[Path, bool, bool]:
+    """Resolve one kind of family directory; see :func:`resolve_labels_directory`."""
+    existing, new, legacy_existing = _family_directories(
+        image_directory, modality, siblings, suffix, legacy
+    )
+    if len(existing) > 1:
+        own = siblings.get(f"{image_directory.name}{suffix}".lower())
+        return (own or existing[0]), True, False
+    if existing:
+        return existing[0], True, False
+    if legacy_existing:
+        return legacy_existing[0], True, True
+    return new, False, False
 
 
 def resolve_labels_directory(
@@ -763,6 +851,15 @@ def resolve_labels_directory(
     siblings: Mapping[str, Path],
 ) -> tuple[Path, bool, bool]:
     """Return where an image directory's labels live.
+
+    A family's labels are ``<family>_labels`` -- ``sem_labels`` for the family
+    named after its modality. **One condition's private directory stands in for
+    it** where it is the only one (``SEM_8_labels`` beside ``SEM_8_fi_1``), and
+    the pre-convention ``labels`` or ``labels_FIB`` where neither exists. **Where
+    several exist, the family is in conflict** (:func:`conflicting_label_directories`):
+    each condition keeps reading its own until they are merged, and one without
+    its own reads the family's. With none, the answer is where a first label
+    would be written, the same answer it will have once written.
 
     Args:
         image_directory: The image directory whose labels are wanted.
@@ -773,15 +870,25 @@ def resolve_labels_directory(
             the legacy ``labels_FIB``.
 
     Returns:
-        A tuple of ``(directory, exists, is_legacy)``. When no candidate
-        exists, the private directory name is returned with ``exists=False``:
-        that is where a label would be written.
+        A tuple of ``(directory, exists, is_legacy)``.
     """
-    for name in candidate_labels_directory_names(image_directory.name, modality):
-        existing = siblings.get(name.lower())
-        if existing is not None:
-            return existing, True, name.lower() in LEGACY_LABEL_DIRECTORIES
-    return image_directory.parent / labels_directory_name(image_directory.name), False, False
+    return _resolve_family_directory(
+        image_directory, modality, siblings, LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES
+    )
+
+
+def conflicting_label_directories(
+    image_directory: Path, modality: str, siblings: Mapping[str, Path]
+) -> tuple[Path, ...]:
+    """Return the label directories competing for *image_directory*'s family.
+
+    Empty unless more than one exists, which leaves the family's conditions
+    each reading their own.
+    """
+    existing, _, _ = _family_directories(
+        image_directory, modality, siblings, LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES
+    )
+    return tuple(existing) if len(existing) > 1 else ()
 
 
 def predictions_directory_name(image_directory_name: str) -> str:
@@ -843,32 +950,6 @@ def prediction_precedence(
     return 0 if prediction_origin(prediction_path) == prefer else 1
 
 
-def candidate_predictions_directory_names(image_directory_name: str, modality: str) -> list[str]:
-    """Return the prediction directory names to try, most specific first.
-
-    Mirrors :func:`candidate_labels_directory_names`. Predictions are written by
-    the external segmentation pipeline, so the legacy ``predictions`` and
-    ``predictions_fib`` names stay first-class rather than being treated as
-    migration candidates.
-    """
-    names = [
-        predictions_directory_name(image_directory_name),
-        f"{modality.lower()}{PREDICTIONS_SUFFIX}",
-    ]
-    names.extend(
-        legacy for legacy, legacy_modality in LEGACY_PREDICTION_DIRECTORIES.items()
-        if legacy_modality == modality
-    )
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for name in names:
-        key = name.lower()
-        if key not in seen:
-            seen.add(key)
-            ordered.append(name)
-    return ordered
-
-
 def resolve_predictions_directory(
     image_directory: Path,
     modality: str,
@@ -876,30 +957,34 @@ def resolve_predictions_directory(
 ) -> tuple[Path, bool, bool]:
     """Return where an image directory's predictions live.
 
-    The counterpart of :func:`resolve_labels_directory`, and shared by reading
-    and writing. A directory shared with another image set is accepted, because
-    only one image of a label group is ever predicted -- see
-    :mod:`..operations.predict` -- so two conditions cannot claim one filename.
+    Resolved exactly as :func:`resolve_labels_directory` resolves labels, with
+    ``predictions`` and ``predictions_fib`` as the pre-convention names, and
+    shared by reading and writing. One directory serves a family because only
+    its primary image is ever predicted -- see :mod:`..operations.predict` -- so
+    two conditions cannot claim one filename.
 
     Args:
         image_directory: The image directory whose predictions are wanted.
         modality: ``"SEM"`` or ``"FIB"``.
         siblings: Existing sibling directories, keyed by lowercased name, as
-            :func:`subdirectories_by_name` returns them. Matching through this
-            rather than :meth:`Path.exists` keeps resolution case-insensitive,
-            which the legacy ``predictions_FIB`` needs.
+            :func:`subdirectories_by_name` returns them.
 
     Returns:
-        A tuple of ``(directory, exists, is_legacy)``. When no candidate
-        exists, the private directory name is returned with ``exists=False``:
-        that is where a prediction would be written.
+        A tuple of ``(directory, exists, is_legacy)``.
     """
-    for name in candidate_predictions_directory_names(image_directory.name, modality):
-        existing = siblings.get(name.lower())
-        if existing is not None:
-            return existing, True, name.lower() in LEGACY_PREDICTION_DIRECTORIES
-    private = predictions_directory_name(image_directory.name)
-    return image_directory.parent / private, False, False
+    return _resolve_family_directory(
+        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES
+    )
+
+
+def conflicting_predictions_directories(
+    image_directory: Path, modality: str, siblings: Mapping[str, Path]
+) -> tuple[Path, ...]:
+    """Return the predictions directories competing for *image_directory*'s family."""
+    existing, _, _ = _family_directories(
+        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES
+    )
+    return tuple(existing) if len(existing) > 1 else ()
 
 
 def resolve_loose_labels_directory(
@@ -998,8 +1083,8 @@ def build_image_sets(stage_directory: Path) -> list[ImageSet]:
     here keeps the convention in one place rather than duplicating it in the
     scanner and the survey.
 
-    Ordering is by modality (SEM before FIB), then base variant first, then
-    variant name, so output is stable across runs.
+    Ordering is by modality (SEM before FIB), then family, then the base
+    condition first and variants by name, so output is stable across runs.
     """
     siblings = subdirectories_by_name(stage_directory)
 
@@ -1022,6 +1107,7 @@ def build_image_sets(stage_directory: Path) -> list[ImageSet]:
             directory=directory,
             modality=image_directory.modality,
             variant=image_directory.variant,
+            family=image_directory.family,
             labels_directory=labels_directory,
             labels_exist=labels_exist,
             labels_are_shared=shared_counts[str(labels_directory)] > 1,
@@ -1034,10 +1120,15 @@ def build_image_sets(stage_directory: Path) -> list[ImageSet]:
     return image_sets
 
 
-def _image_set_sort_key(image_set: ImageSet) -> tuple[int, int, str]:
-    """Order image sets by modality, then base variant, then variant name."""
+def _image_set_sort_key(image_set: ImageSet) -> tuple[int, str, bool, str]:
+    """Order image sets by modality, then family, then base first and variant name."""
     modality_order = MODALITIES.index(image_set.modality) if image_set.modality in MODALITIES else len(MODALITIES)
-    return (modality_order, image_set.variant is not None, (image_set.variant or "").lower())
+    return (
+        modality_order,
+        (image_set.family or "").lower(),
+        image_set.variant is not None,
+        (image_set.variant or "").lower(),
+    )
 
 
 @dataclass(frozen=True)
