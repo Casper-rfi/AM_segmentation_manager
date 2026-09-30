@@ -110,7 +110,8 @@ Each one that writes shows what it would do before doing it, and waits for
 - **Device** chooses where it runs: `auto` takes the GPU with most memory free,
   or names one; `cpu` always works, slowly.
 - A model predicts one beam, so a choice covering both SEM and FIB images is
-  refused. One prediction is made per label group, and an image this model has
+  refused. One prediction is made per label group, from its primary condition
+  (see [Add data](02_add_data.md#correct-the-families)), and an image this model has
   already predicted is passed over, so a run stopped halfway can be started
   again.
 - Predictions go in the image folder's `_predictions` folder, never into a label.

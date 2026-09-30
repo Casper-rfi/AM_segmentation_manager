@@ -17,6 +17,7 @@ from am_segmentation_manager.operations.label_groups import (
     build_groups,
     expand_to_groups,
     group_key,
+    primary_record,
 )
 from am_segmentation_manager.operations.selection import (
     deselect_records,
@@ -117,6 +118,41 @@ def test_the_groups_of_a_whole_scan_collapse_by_label(tmp_path: Path):
 
     # Three SEM sets collapse into one group; FIB is its own.
     assert len(groups) == 2
+
+
+# ---------------------------------------------------------------------------
+# The primary condition
+# ---------------------------------------------------------------------------
+
+def _named_primary(root: Path, condition: str) -> None:
+    (root / "project" / "AM_families.yaml").write_text(
+        f"primary:\n  SEM: {condition}\n", encoding="utf-8"
+    )
+
+
+def test_without_a_named_primary_the_first_condition_stands_for_the_scene(tmp_path: Path):
+    make_project(tmp_path)
+    records = scan(tmp_path)
+
+    assert primary_record(records[name] for name in SEM_VARIANTS) is records["SEM_8"]
+
+
+def test_the_primary_a_project_names_stands_for_the_scene(tmp_path: Path):
+    make_project(tmp_path)
+    _named_primary(tmp_path, "sem_8_FI_4")
+    records = scan(tmp_path)
+
+    assert primary_record(records[name] for name in SEM_VARIANTS) is records["SEM_8_fi_4"]
+
+
+def test_a_named_primary_missing_from_a_scene_falls_back_to_the_default(tmp_path: Path):
+    make_project(tmp_path)
+    _named_primary(tmp_path, "SEM_8_fi_4")
+    records = scan(tmp_path)
+
+    chosen = primary_record([records["SEM_8_fi_1"], records["SEM_8"]])
+
+    assert chosen is records["SEM_8"]
 
 
 # ---------------------------------------------------------------------------

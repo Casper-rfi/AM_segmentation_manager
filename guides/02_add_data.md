@@ -170,6 +170,13 @@ from a condition you did not name, and one taking images out of a corrected
 group needs `--confirm-corrected`. `--clear` puts a condition back where its
 name places it.
 
+Each family has a **primary condition**: the one predicted from, measured at,
+and kept by *One image per label*. It is the base condition, or where a stage
+has none, the first variant by name. `--primary sem=sem_fi8` names another,
+for instance where the base is too noisy to predict on; `--clear-primary sem`
+returns to the default. It moves no label, and predictions already made stay
+until you predict again. A stage without the named condition uses the default.
+
 ## Maintenance
 
 The *Maintenance* card acts on every label under the folder, and waits for

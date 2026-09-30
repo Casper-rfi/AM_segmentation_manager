@@ -112,6 +112,17 @@ def test_the_default_works_where_no_unsuffixed_directory_exists(tmp_path: Path):
     assert "SEM_8/" in sem_rows[0]["image"]
 
 
+def test_the_primary_a_project_names_is_the_condition_exported(tmp_path: Path):
+    project = make_project(tmp_path)
+    (project / "AM_families.yaml").write_text(
+        "primary:\n  SEM: SEM_8_fi_4\n", encoding="utf-8"
+    )
+
+    rows = export(tmp_path)
+
+    assert [Path(row["image"]).parent.name for row in rows] == ["SEM_8_fi_4"]
+
+
 def test_every_condition_can_be_exported_deliberately(tmp_path: Path):
     """Five conditions of one scene are five valid training pairs."""
     make_project(tmp_path)

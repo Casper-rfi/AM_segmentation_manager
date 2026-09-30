@@ -109,6 +109,29 @@ def test_the_primary_condition_is_the_one_predicted(tmp_path: Path):
     assert predicted == {None}
 
 
+def test_a_selection_of_variants_alone_is_predicted_from_the_primary(tmp_path: Path):
+    """The primary's record is built from disk, not scanned, and must say where
+    its prediction goes."""
+    dataset = build_dataset(tmp_path, sem_variants=("sem_fi_1",))
+    variants = [record for record in records_of(dataset.root) if record.variant == "fi_1"]
+
+    plan = plan_predictions(variants, MODEL)
+
+    assert {item.record.variant for item in plan.predictions} == {None}
+    assert all(item.destination.parent.name == "am_seg" for item in plan.predictions)
+
+
+def test_a_family_predicts_from_the_primary_its_project_names(tmp_path: Path):
+    dataset = build_dataset(tmp_path, sem_variants=("sem_fi_1",))
+    (dataset.project / "AM_families.yaml").write_text(
+        "primary:\n  sem: sem_fi_1\n", encoding="utf-8"
+    )
+
+    plan = plan_predictions(records_of(dataset.root), MODEL)
+
+    assert {item.record.variant for item in plan.predictions} == {"fi_1"}
+
+
 # --- one modality per run ---------------------------------------------------
 
 def test_a_selection_spanning_both_modalities_is_refused(tmp_path: Path):
@@ -204,6 +227,8 @@ def test_every_prediction_records_which_model_made_it(tmp_path: Path):
     assert entry["run"] == "run_epoch086"
     assert entry["generation"] == "1.0"
     assert entry["predicted_at"]
+    assert entry["image"] == item.record.image_path.name
+    assert entry["condition"] == item.record.image_path.parent.name
 
 
 def test_a_prediction_recorded_before_generations_is_still_up_to_date(tmp_path: Path):

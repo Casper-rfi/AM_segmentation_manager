@@ -21,7 +21,7 @@ The tab opens on the whole collection, and every control narrows it:
 - **Modality**, **State** and **Label**. *Label* chooses by what the label file
   holds: *annotated*, *empty*, *has a label*, or *no label yet*.
 - **One image per label** keeps one image of each label group rather than every
-  imaging condition, where several share a label.
+  imaging condition, where several share a label: the family's primary condition.
 - **Add filter** adds a filter on any other property: the microscope, the beam
   current, the sample, a milling task, and so on. Tick the values to keep;
   ticking none keeps them all. **Clear all filters** unticks every value and

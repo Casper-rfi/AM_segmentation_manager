@@ -3,7 +3,8 @@
 Nothing here imports torch: the model arrives as a callable and a
 :class:`PredictionSource`, so planning, resumption, provenance and writing test
 without the inference stack, :mod:`..ml.model` supplying them. One prediction is
-made per label group, from its primary image, and predictions are written only to
+made per label group, from its primary condition, and recorded with it, and
+predictions are written only to
 the directory this package owns, so a run never touches the pipeline's output.
 """
 from __future__ import annotations
@@ -23,6 +24,7 @@ from ..layout import (
     MODALITIES,
     OWN_PREDICTION_KIND,
     PREDICTION_PROVENANCE_FILENAME,
+    FamilyCorrections,
 )
 from ..models import ImageRecord
 from .label_groups import build_groups, primary_record
@@ -180,8 +182,9 @@ def plan_predictions(
     """Return what predicting *records* with *source* would do.
 
     Expands to label groups and keeps each group's primary image, so a scene
-    captured under several conditions is predicted once, from the image the
-    curation window shows. The whole set is resolved before any of it runs.
+    captured under several conditions is predicted once, from the condition
+    :func:`~.label_groups.primary_record` chooses. The whole set is resolved
+    before any of it runs.
 
     A selection spanning both modalities is refused rather than predicted.
     Nothing here knows which one the model was trained for -- a checkpoint does
@@ -205,8 +208,9 @@ def plan_predictions(
         # reads every stage directory for nothing.
         return PredictionPlan(modalities=modalities)
 
+    families: dict[Path, FamilyCorrections] = {}
     for group in build_groups(candidates):
-        chosen = primary_record(group.records)
+        chosen = primary_record(group.records, families)
         represented += len(group.records) - 1
 
         destination = prediction_destination(chosen)
@@ -292,6 +296,7 @@ def run_predictions(
             "generation": source.generation,
             "predicted_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "image": planned.record.image_path.name,
+            "condition": planned.record.image_path.parent.name,
         }
         write_provenance(directory, provenance[directory])
 

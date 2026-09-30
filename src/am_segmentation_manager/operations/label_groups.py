@@ -23,6 +23,7 @@ from ..layout import (
     image_files_by_name,
     resolve_labels_directory,
     resolve_loose_labels_directory,
+    resolve_predictions_directory,
     subdirectories_by_name,
 )
 from ..models import ImageRecord
@@ -155,7 +156,9 @@ def build_group(
     Sibling images are found by resolving which image sets in the same stage
     share this record's label directory, then looking for the same filename in
     each. Reading from disk rather than from a scanned index means a command
-    given one file path still expands to the whole group.
+    given one file path still expands to the whole group. A sibling carries its
+    stage, label and predictions directories and the group's state, as a
+    scanned record would, since any of them may be the one predicted.
 
     Args:
         families: Reused across a batch, as :func:`~..families.families_for`
@@ -175,6 +178,7 @@ def build_group(
 
     siblings: list[ImageRecord] = []
     corrections = families_for(stage_directory, families)
+    listing = subdirectories_by_name(stage_directory)
     for image_set in build_image_sets(stage_directory, corrections=corrections):
         if image_set.labels_directory != labels_directory:
             continue
@@ -184,6 +188,10 @@ def build_group(
         if found == record.image_path:
             siblings.append(record)
             continue
+        assert image_set.modality is not None, "a directory set names its modality"
+        predictions_directory, _, _ = resolve_predictions_directory(
+            image_set.directory, image_set.modality, listing, corrections=corrections
+        )
         siblings.append(
             ImageRecord(
                 image_path=found,
@@ -191,10 +199,15 @@ def build_group(
                 project=record.project,
                 lamella=record.lamella,
                 stage=record.stage,
+                stage_path=stage_directory,
                 modality=image_set.modality,
                 variant=image_set.variant,
                 family=image_set.family,
+                labels_directory=labels_directory,
+                predictions_directory=predictions_directory,
                 label_shared=image_set.labels_are_shared,
+                state=record.state,
+                task=record.task,
             )
         )
 
@@ -227,16 +240,32 @@ def condition_sort_key(record: ImageRecord) -> tuple[bool, str]:
     return (record.variant is not None, (record.variant or "").lower())
 
 
-def primary_record(records: Iterable[ImageRecord]) -> ImageRecord:
+def primary_record(
+    records: Iterable[ImageRecord], families: dict[Path, FamilyCorrections] | None = None
+) -> ImageRecord:
     """Return the record standing for a scene: its *primary* imaging condition.
 
-    The unsuffixed image directory where there is one, otherwise the
-    first-sorting variant -- the same image the curation window displays, and
-    the one a training export keeps. Choosing it this way rather than filtering
-    for the unsuffixed directory matters for the oldest layouts, which have no
-    unsuffixed directory at all: their SEM sets are ``SEM_8``, ``SEM_8_fi_1``
-    and so on.
+    The condition the project's ``AM_families.yaml`` names for the family where
+    it is among *records*; otherwise the base condition, otherwise the
+    first-sorting variant, which is what the oldest layouts need, having no base:
+    their SEM sets are ``SEM_8``, ``SEM_8_fi_1`` and so on. What is predicted,
+    measured and kept by a one-per-scene export; the corrections are looked up
+    here, so no caller can choose without them.
+
+    Args:
+        families: Reused across a batch, as :func:`~..families.families_for`
+            takes it.
+
+    Raises:
+        FamiliesFileError: If the project's families file will not read.
     """
+    records = list(records)
+    family = next((record.family for record in records if record.family), None)
+    if family is not None:
+        named = families_for(records[0].image_path, families).primary_of(family)
+        for record in records:
+            if named is not None and record.image_path.parent.name.lower() == named.lower():
+                return record
     return min(records, key=condition_sort_key)
 
 

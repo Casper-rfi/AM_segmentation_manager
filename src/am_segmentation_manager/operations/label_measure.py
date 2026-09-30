@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from ..config import BACKGROUND_CLASS, SegmentationConfig
 from ..image_metadata import read_records_metadata
 from ..io.image import has_image_stack_support, read_array, to_2d
+from ..layout import FamilyCorrections
 from ..parallel import map_in_processes
 from .csv import find_matching_label
 from .label_groups import group_key, primary_record
@@ -763,18 +764,17 @@ def measure_records(
     groups: dict[str, list[ImageRecord]] = {}
     for record in records:
         groups.setdefault(group_key(record), []).append(record)
+    families: dict[Path, FamilyCorrections] = {}
+    primaries = {key: primary_record(members, families) for key, members in groups.items()}
 
     if metadata is None:
 
         # Only the primary of each group is ever consulted for scale, so only
         # those headers are read. On a collection with five conditions per
         # scene that is a fifth of the reads.
-        primaries = [primary_record(members) for members in groups.values()]
-        metadata = read_records_metadata(primaries)
+        metadata = read_records_metadata(primaries.values())
 
-    labels = {
-        key: find_matching_label(primary_record(members)) for key, members in groups.items()
-    }
+    labels = {key: find_matching_label(primary) for key, primary in primaries.items()}
     counts = read_many_label_pixels(
         (label for label in labels.values() if label is not None),
         config.crack_class,
@@ -787,7 +787,7 @@ def measure_records(
         label = labels[key]
         if label is None or (pixels := counts.get(label)) is None:
             continue
-        primary = primary_record(members)
+        primary = primaries[key]
         _warn_on_inconsistent_scale(members, metadata)
         measured = _measurement_of(
             label, pixels, metadata.get(primary.image_path), config, min_crack_area_um2

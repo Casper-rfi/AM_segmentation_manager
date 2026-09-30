@@ -19,8 +19,9 @@ from pathlib import Path
 from ..frames import group_by_acquisition
 from ..io.path import exported_relative_path
 from ..io.tables import write_csv
+from ..layout import FamilyCorrections
 from ..models import ImageRecord
-from .label_groups import condition_sort_key
+from .label_groups import primary_record
 from .label_io import has_image_stack_support, is_label_file_empty
 from .training_manifest import manifest_path, write_training_manifest
 from .training_split import (
@@ -83,16 +84,13 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
     as sharing a scene with anything else.
     """
     candidates = list(records)
-    primary: dict[str, ImageRecord] = {}
+    scenes: dict[str, list[ImageRecord]] = {}
     for record in candidates:
-        if not record.labels:
-            continue
-        key = str(record.labels[0])
-        current = primary.get(key)
-        if current is None or condition_sort_key(record) < condition_sort_key(current):
-            primary[key] = record
+        if record.labels:
+            scenes.setdefault(str(record.labels[0]), []).append(record)
 
-    chosen = {id(record) for record in primary.values()}
+    families: dict[Path, FamilyCorrections] = {}
+    chosen = {id(primary_record(members, families)) for members in scenes.values()}
     kept = [
         record for record in candidates
         if not record.labels or id(record) in chosen

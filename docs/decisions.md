@@ -628,8 +628,8 @@ rather than appending to it.
   convenience and not a claim, but it stops the box offering the SEM model on a FIB frame.
 - **One prediction per label group, not per image.** The label is the unit of workflow state
   everywhere else, and a prediction exists to become a label, so a group gets one — from
-  `label_groups.primary_record`, the same image the curation window shows and a training export
-  keeps. Predicting the other conditions would spend inference on noisier pseudo-labels and removes
+  `label_groups.primary_record`, the condition a family's `primary:` names, else its base — the
+  image a training export keeps. Predicting the other conditions would spend inference on noisier pseudo-labels and removes
   a hazard rather than managing one: conditions carry identical filenames into a shared predictions
   directory, so predicting all of them has each write replace the last.
 - **Which prediction becomes a label is asked for, and the preview says which was used.** An image
