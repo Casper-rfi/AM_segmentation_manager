@@ -38,6 +38,7 @@ from datetime import datetime
 from pathlib import Path
 
 from am_segmentation_manager.discovery import discover_stages, find_project_roots
+from am_segmentation_manager.families import families_for
 from am_segmentation_manager.history import HistoryLog, Recorder, events_for, read_log
 from am_segmentation_manager.io.yaml import read_yaml
 from am_segmentation_manager.layout import (
@@ -144,7 +145,8 @@ def _plan_stage(
     """Return a repair for each family in conflict in one stage."""
     siblings = subdirectories_by_name(stage)
     families: dict[tuple[str, str], list[ImageSet]] = {}
-    for image_set in build_image_sets(stage):
+    corrections = families_for(stage)
+    for image_set in build_image_sets(stage, corrections=corrections):
         if image_set.modality is None or image_set.family is None:
             continue
         families.setdefault((image_set.modality, image_set.family.lower()), []).append(image_set)
@@ -153,8 +155,12 @@ def _plan_stage(
     for (modality, _), members in families.items():
         members.sort(key=lambda member: (member.variant is not None, member.directory.name.lower()))
         primary = members[0]
-        labels = conflicting_label_directories(primary.directory, modality, siblings)
-        predictions = conflicting_predictions_directories(primary.directory, modality, siblings)
+        labels = conflicting_label_directories(
+            primary.directory, modality, siblings, corrections=corrections
+        )
+        predictions = conflicting_predictions_directories(
+            primary.directory, modality, siblings, corrections=corrections
+        )
         if not labels and not predictions:
             continue
         repair = FamilyRepair(stage=stage, family=primary.family or primary.directory.name)

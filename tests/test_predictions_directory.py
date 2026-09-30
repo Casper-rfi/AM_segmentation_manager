@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from am_segmentation_manager.layout import (
+    NO_CORRECTIONS,
     resolve_labels_directory,
     resolve_predictions_directory,
     subdirectories_by_name,
@@ -31,7 +32,10 @@ def stage(tmp_path: Path, *directories: str) -> Path:
 
 def resolve(stage_path: Path, image_directory: str, modality: str):
     return resolve_predictions_directory(
-        stage_path / image_directory, modality, subdirectories_by_name(stage_path)
+        stage_path / image_directory,
+        modality,
+        subdirectories_by_name(stage_path),
+        corrections=NO_CORRECTIONS,
     )
 
 
@@ -110,7 +114,7 @@ def test_conditions_share_a_prediction_directory_as_they_share_a_label(tmp_path:
 
     predictions = {resolve(stage_path, name, "SEM")[0] for name in conditions}
     labels = {
-        resolve_labels_directory(stage_path / name, "SEM", siblings)[0]
+        resolve_labels_directory(stage_path / name, "SEM", siblings, corrections=NO_CORRECTIONS)[0]
         for name in conditions
     }
 

@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from am_segmentation_manager.families import families_for
 from am_segmentation_manager.io.path import make_path_relative
 from am_segmentation_manager.layout import (
     STATE_FOLDER_NAMES,
@@ -144,7 +145,7 @@ def stage_group_states(
     images contradict their label, or whose file sits in two state folders at
     once, is returned as a problem instead of as a state.
     """
-    image_sets = build_image_sets(stage_directory)
+    image_sets = build_image_sets(stage_directory, corrections=families_for(stage_directory))
     labels_by_directory = {
         image_set.labels_directory: _locations(image_set.labels_directory)
         for image_set in image_sets
@@ -407,7 +408,9 @@ def _state_folders(stage_directory: Path) -> list[Path]:
     """Return every state folder of every image and label directory."""
     directories = {
         directory
-        for image_set in build_image_sets(stage_directory)
+        for image_set in build_image_sets(
+            stage_directory, corrections=families_for(stage_directory)
+        )
         for directory in (image_set.directory, image_set.labels_directory)
     }
     return [

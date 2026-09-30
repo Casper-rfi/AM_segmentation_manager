@@ -24,13 +24,16 @@ from .discovery import (
     find_project_roots,
     group_stages_by_lamella,
 )
+from .families import FamiliesFileError, read_families
 from .image_metadata import ImageMetadata, header_reader
 from .io.path import make_path_relative, slashed
 from .io.yaml import read_yaml_or_problem
 from .layout import (
+    NO_CORRECTIONS,
     PREDICTION_KINDS,
     STAGE_SUMMARY_PLOTS,
     STAGE_TIMESTAMP,
+    FamilyCorrections,
     ImageSet,
     build_image_sets,
     build_loose_image_sets,
@@ -395,16 +398,35 @@ class Scanner:
         # Project numbers are scan-order identifiers, independent of the
         # project folder name, so users can select projects as 001, 002…
         project.number = f"{project_index:03d}"
+        project.families = self._families(project_root)
         project.lamellae = self._build_lamellae(
-            discovered, project_name, read_vocabularies(experiment_meta)
+            discovered, project_name, read_vocabularies(experiment_meta), project.families
         )
         return project
+
+    @staticmethod
+    def _families(project_root: Path) -> FamilyCorrections:
+        """Return a project's family corrections, or none if its file is damaged.
+
+        Read as none so that one damaged file does not stop a scan, as a damaged
+        state file does not. Nothing is written on that reading: every write path
+        reads the file itself and refuses, and ``inspect-layout`` names it.
+        """
+        try:
+            return read_families(project_root)
+        except FamiliesFileError as exc:
+            logger.error(
+                "%s; indexing this project by its directory names alone, and "
+                "refusing to write to it until the file is fixed", exc,
+            )
+            return NO_CORRECTIONS
 
     def _build_lamellae(
         self,
         discovered_stages: list[DiscoveredStage],
         project_name: str,
         vocabularies: dict[str, TaskVocabulary],
+        corrections: FamilyCorrections,
     ) -> list[Lamella]:
         """Build the lamellae of a project, synthesising absent levels.
 
@@ -438,6 +460,7 @@ class Scanner:
                 lamella_name=lamella_path.name,
                 lamella_path=lamella_path,
                 vocabulary=vocabularies.get(lamella_path.name, NO_TASKS),
+                corrections=corrections,
             )
             lamellae.append(lamella)
         # After every lamella is built: a copy is only recognisable against the
@@ -453,6 +476,7 @@ class Scanner:
         lamella_name: str,
         lamella_path: Path,
         vocabulary: TaskVocabulary,
+        corrections: FamilyCorrections,
     ) -> list[Stage]:
         """Build the stages of one lamella, ordered by acquisition time.
 
@@ -467,7 +491,7 @@ class Scanner:
                 path=item.path,
                 synthetic=item.stage_is_synthetic,
             )
-            stage.image_sets = self._stage_image_sets(item)
+            stage.image_sets = self._stage_image_sets(item, corrections)
             stage.images = self._discover_images_in_stage(
                 item.path,
                 stage.image_sets,
@@ -475,6 +499,7 @@ class Scanner:
                 lamella_name=lamella_name,
                 lamella_path=lamella_path,
                 vocabulary=vocabulary,
+                corrections=corrections,
             )
             stage.plots = self._discover_plots(item.path)
             stage.summary_plot = self._discover_summary_plot(item.path)
@@ -652,7 +677,9 @@ class Scanner:
             return None
         return stage_path.parent.parent
 
-    def _stage_image_sets(self, discovered: DiscoveredStage) -> list[ImageSet]:
+    def _stage_image_sets(
+        self, discovered: DiscoveredStage, corrections: FamilyCorrections
+    ) -> list[ImageSet]:
         """Return every image set in a stage, of both shapes.
 
         Adaptive Polishing sets first, then the loose reference and alignment
@@ -662,7 +689,7 @@ class Scanner:
         here and reported properly by ``inspect-layout``, which surveys the
         tree itself rather than reading this.
         """
-        sets = list(build_image_sets(discovered.path))
+        sets = list(build_image_sets(discovered.path, corrections=corrections))
         loose = build_loose_image_sets(
             discovered.path,
             in_alignment_run=discovered.in_alignment_run,
@@ -798,6 +825,7 @@ class Scanner:
         lamella_name: str,
         lamella_path: Path,
         vocabulary: TaskVocabulary,
+        corrections: FamilyCorrections,
     ) -> list[ImageRecord]:
         """Discover image files, predictions and labels inside a stage folder.
 
@@ -839,7 +867,9 @@ class Scanner:
             labels_map = (
                 image_files_by_name(labels_directory) if labels_directory else {}
             )
-            predictions_directory = self._predictions_directory(image_set, siblings)
+            predictions_directory = self._predictions_directory(
+                image_set, siblings, corrections
+            )
             predictions_map = (
                 self._collect_predictions(predictions_directory)
                 if predictions_directory
@@ -928,7 +958,7 @@ class Scanner:
 
     @staticmethod
     def _predictions_directory(
-        image_set: ImageSet, siblings: Mapping[str, Path]
+        image_set: ImageSet, siblings: Mapping[str, Path], corrections: FamilyCorrections
     ) -> Path | None:
         """Return where an image set's predictions live or would live.
 
@@ -960,7 +990,7 @@ class Scanner:
             )
             return directory
         directory, _, _ = resolve_predictions_directory(
-            image_set.directory, image_set.modality, siblings
+            image_set.directory, image_set.modality, siblings, corrections=corrections
         )
         return directory
 

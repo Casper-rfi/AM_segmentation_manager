@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.layout import (
+    NO_CORRECTIONS,
     resolve_labels_directory,
     subdirectories_by_name,
 )
@@ -152,7 +153,7 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
         # Resolved the way the scanner resolves it, so the shared-directory
         # rule is exercised here rather than asserted by construction.
         labels_directory, _, _ = resolve_labels_directory(
-            image.parent, "SEM", subdirectories_by_name(stage)
+            image.parent, "SEM", subdirectories_by_name(stage), corrections=NO_CORRECTIONS
         )
         records.append(
             ImageRecord(

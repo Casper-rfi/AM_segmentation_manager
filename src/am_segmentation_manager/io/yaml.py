@@ -73,6 +73,44 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
+class DuplicateKeyError(UnreadableYAMLError):
+    """A YAML mapping names one key twice."""
+
+
+_unique_loader: Any = None
+
+
+def load_unique_keys(stream: Any) -> Any:
+    """Parse YAML from *stream*, refusing a repeated key rather than keeping one.
+
+    ``SafeLoader`` keeps the last of a repeated key silently, which in a
+    hand-editable file is an edit read as its opposite.
+
+    Raises:
+        DuplicateKeyError: If a mapping repeats a key.
+    """
+    global _unique_loader
+    import yaml
+
+    if _unique_loader is None:
+
+        class _NoDuplicateKeys(yaml.SafeLoader):
+            """A loader for which a repeated key is an error."""
+
+            def construct_mapping(self, node, deep=False):  # type: ignore[no-untyped-def]
+                seen: set[Any] = set()
+                for key_node, _ in node.value:
+                    key = self.construct_object(key_node, deep=deep)
+                    if key in seen:
+                        raise DuplicateKeyError(f"Duplicate entry for {key!r}")
+                    seen.add(key)
+                return super().construct_mapping(node, deep)
+
+        _unique_loader = _NoDuplicateKeys
+
+    return yaml.load(stream, Loader=_unique_loader)
+
+
 def read_yaml_or_problem(path: Path) -> tuple[dict[str, Any], str | None]:
     """Read a YAML file as :func:`read_yaml` does, returning what is wrong rather than raising.
 

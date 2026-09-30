@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .layout import (
+    NO_CORRECTIONS,
     build_image_sets,
     directory_cache,
     directory_role,
@@ -128,7 +129,10 @@ def holds_images(directory: Path) -> bool:
     directory holding only alignment images is not a dataset anyone wants
     proposed as a new project.
     """
-    return any(image_files(image_set.directory) for image_set in build_image_sets(directory))
+    return any(
+        image_files(image_set.directory)
+        for image_set in build_image_sets(directory, corrections=NO_CORRECTIONS)
+    )
 
 
 def holds_loose_images(directory: Path) -> bool:
@@ -254,7 +258,8 @@ def describe_dataset_candidate(
     for stage in stages:
         depths.add(len(stage.relative_to(path).parts))
         images += sum(
-            len(image_files(image_set.directory)) for image_set in build_image_sets(stage)
+            len(image_files(image_set.directory))
+            for image_set in build_image_sets(stage, corrections=NO_CORRECTIONS)
         )
         lamella = lamella_directory_for(path, stage)
         if lamella not in seen:
@@ -351,7 +356,7 @@ def find_stage_directories(
         if directory != project_root and project_markers(directory):
             logger.debug("Not crossing into nested project %s", directory)
             return
-        if build_image_sets(directory):
+        if build_image_sets(directory, corrections=NO_CORRECTIONS):
             found.append(directory)
             return
         if holds_loose_images(directory):

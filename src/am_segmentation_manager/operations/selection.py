@@ -14,11 +14,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..families import families_for
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
 from ..layout import (
     classify_image_directory,
     classify_loose_image,
+    condition_of,
     image_files,
     resolve_labels_directory,
     resolve_loose_labels_directory,
@@ -477,8 +479,12 @@ def record_from_image_path(path: Path) -> ImageRecord:
     The image directory is found by walking up from the file. Resolution goes
     through :mod:`am_segmentation_manager.layout`, so a path in any supported
     layout -- including a variant directory such as ``sem_5kv/`` -- finds the
-    right label directory. An image sitting loose in its stage has no such
-    directory, and is read from its filename instead.
+    right label directory, under the family its project's corrections give. An
+    image sitting loose in its stage has no such directory, and is read from its
+    filename instead.
+
+    Raises:
+        FamiliesFileError: If the project's families file will not read.
     """
     image_path = path
     image_directory: Path | None = None
@@ -492,12 +498,14 @@ def record_from_image_path(path: Path) -> ImageRecord:
     if image_directory is None or classification is None:
         return _loose_record(image_path)
 
+    corrections = families_for(image_directory)
+    classification = condition_of(image_directory.name, corrections) or classification
     siblings = subdirectories_by_name(image_directory.parent)
     labels_directory, _, _ = resolve_labels_directory(
-        image_directory, classification.modality, siblings
+        image_directory, classification.modality, siblings, corrections=corrections
     )
     predictions_directory, _, _ = resolve_predictions_directory(
-        image_directory, classification.modality, siblings
+        image_directory, classification.modality, siblings, corrections=corrections
     )
     labels: list[Path] = []
     label_path = labels_directory / image_path.name

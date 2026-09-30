@@ -14,7 +14,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..families import families_for
 from ..layout import (
+    FamilyCorrections,
     build_image_sets,
     classify_image_directory,
     classify_loose_image,
@@ -64,9 +66,13 @@ def labels_directory_for(
 
     Args:
         cache: Reused across a batch. Resolution lists the stage's
-            subdirectories, which is one listing per image directory rather
-            than per image. Only the directory-based answer is cached: a loose
-            set is chosen by filename, and one directory holds several of them.
+            subdirectories and reads the project's family corrections, which is
+            once per image directory rather than per image. Only the
+            directory-based answer is cached: a loose set is chosen by filename,
+            and one directory holds several of them.
+
+    Raises:
+        FamiliesFileError: If the project's families file will not read.
     """
     image_directory = image_path.parent
     classification = classify_image_directory(image_directory.name)
@@ -79,6 +85,7 @@ def labels_directory_for(
         image_directory,
         classification.modality,
         subdirectories_by_name(image_directory.parent),
+        corrections=families_for(image_directory),
     )
     if cache is not None:
         cache[image_directory] = resolved
@@ -140,13 +147,22 @@ def group_key(
     return str(identity)
 
 
-def build_group(record: ImageRecord) -> LabelGroup:
+def build_group(
+    record: ImageRecord, families: dict[Path, FamilyCorrections] | None = None
+) -> LabelGroup:
     """Return the label group *record* belongs to, read from the filesystem.
 
     Sibling images are found by resolving which image sets in the same stage
     share this record's label directory, then looking for the same filename in
     each. Reading from disk rather than from a scanned index means a command
     given one file path still expands to the whole group.
+
+    Args:
+        families: Reused across a batch, as :func:`~..families.families_for`
+            takes it.
+
+    Raises:
+        FamiliesFileError: If the project's families file will not read.
     """
     identity = group_identity(record)
     if identity is None:
@@ -158,7 +174,8 @@ def build_group(record: ImageRecord) -> LabelGroup:
     label_path = identity if identity.exists() else None
 
     siblings: list[ImageRecord] = []
-    for image_set in build_image_sets(stage_directory):
+    corrections = families_for(stage_directory, families)
+    for image_set in build_image_sets(stage_directory, corrections=corrections):
         if image_set.labels_directory != labels_directory:
             continue
         found = image_files_by_name(image_set.directory).get(filename)
@@ -196,11 +213,12 @@ def build_groups(records: Iterable[ImageRecord]) -> list[LabelGroup]:
     """
     groups: dict[str, LabelGroup] = {}
     cache: dict[Path, Path | None] = {}
+    families: dict[Path, FamilyCorrections] = {}
     for record in records:
         key = group_key(record, cache)
         if key in groups:
             continue
-        groups[key] = build_group(record)
+        groups[key] = build_group(record, families)
     return list(groups.values())
 
 

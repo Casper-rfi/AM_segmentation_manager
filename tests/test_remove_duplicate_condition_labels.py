@@ -13,7 +13,7 @@ import pytest
 from remove_duplicate_condition_labels import main, plan_repairs
 
 from am_segmentation_manager.history import Recorder, read_log
-from am_segmentation_manager.layout import build_image_sets
+from am_segmentation_manager.layout import NO_CORRECTIONS, build_image_sets
 from am_segmentation_manager.operations.label_io import label_fields
 from am_segmentation_manager.state import read_state, write_state
 from conftest import start_history
@@ -219,7 +219,8 @@ def test_apply_leaves_one_directory_the_whole_family_reads(split: Path, tmp_path
 
     assert not (stage / "SEM_8_fi_1_labels").exists()
     assert not (stage / "SEM_8_fi_1_predictions").exists()
-    assert {image_set.labels_directory for image_set in build_image_sets(stage)} == {
+    image_sets = build_image_sets(stage, corrections=NO_CORRECTIONS)
+    assert {image_set.labels_directory for image_set in image_sets} == {
         stage / "SEM_8_labels"
     }
     assert read_state(stage).states == {"SEM_8_labels/img_0001.tif": "deselected"}

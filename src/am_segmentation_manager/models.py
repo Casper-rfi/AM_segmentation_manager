@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
+from .layout import NO_CORRECTIONS, FamilyCorrections
 from .state import DEFAULT_STATE, RecordState
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -201,6 +202,8 @@ class Project:
         metadata_problems: one message for each of experiment.yaml and
             AM_metadata.yaml that is there but would not read; both metadata
             views above then lack that file's values
+        families: the corrections its AM_families.yaml makes to the families
+            its image directories' names give
     """
 
     name: str
@@ -211,6 +214,7 @@ class Project:
     lamellae: list[Lamella] = field(default_factory=list)
     number: str | None = None
     metadata_problems: tuple[str, ...] = ()
+    families: FamilyCorrections = NO_CORRECTIONS
 
     @property
     def key(self) -> str:

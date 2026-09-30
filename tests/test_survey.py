@@ -316,6 +316,32 @@ def test_one_private_directory_standing_in_for_its_family_is_no_conflict(tmp_pat
     assert "shared-labels" in categories
 
 
+def test_a_conflict_is_judged_under_the_projects_corrections(tmp_path: Path):
+    """A condition corrected out of the family takes its directory with it."""
+    _family_stage(tmp_path, "sem", "sem_mag2", "sem_labels", "sem_mag2_labels")
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "families:\n  sem_mag2: sem-mag2\n", encoding="utf-8"
+    )
+
+    assert "family-label-conflict" not in _categories(survey_collection(tmp_path))
+
+
+def test_a_families_file_that_will_not_read_is_reported(tmp_path: Path):
+    _family_stage(tmp_path, "sem", "sem_mag2")
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "families:\n  sem_mag2: sem_other\n", encoding="utf-8"
+    )
+
+    findings = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "unreadable-families-file"
+    ]
+
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert "is not a family name" in findings[0].message
+
+
 def test_legacy_label_directories_are_reported_for_migration(tmp_path: Path):
     make_project(tmp_path, "no_stage_level")
     survey = survey_collection(tmp_path)

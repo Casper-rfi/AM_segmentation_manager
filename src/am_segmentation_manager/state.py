@@ -17,7 +17,7 @@ from typing import Any, Final, Literal, get_args
 
 from .io.atomic import Fingerprint, fingerprint_of
 from .io.path import checked_relative_key
-from .io.yaml import write_yaml
+from .io.yaml import DuplicateKeyError, load_unique_keys, write_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -195,41 +195,12 @@ def write_state(previous: StageState, states: Mapping[str, str]) -> StageState:
 # Reading
 # ---------------------------------------------------------------------------
 
-_loader_class: Any = None
-
-
 def _load(handle: Any) -> Any:
     """Parse a state file, refusing a duplicated key rather than picking one."""
-    global _loader_class
-    if _loader_class is None:
-        try:
-            import yaml
-        except Exception as exc:  # pragma: no cover - import error path
-            raise StateFileError(
-                "PyYAML is required to read state files: install pyyaml"
-            ) from exc
-
-        class _NoDuplicateKeys(yaml.SafeLoader):
-            """A loader for which a repeated key is an error.
-
-            ``SafeLoader`` keeps the last of a repeated key silently, which is
-            the same failure the one-state-per-path mapping exists to prevent.
-            """
-
-            def construct_mapping(self, node, deep=False):  # type: ignore[no-untyped-def]
-                seen: set[Any] = set()
-                for key_node, _ in node.value:
-                    key = self.construct_object(key_node, deep=deep)
-                    if key in seen:
-                        raise StateFileError(f"Duplicate entry for {key!r}")
-                    seen.add(key)
-                return super().construct_mapping(node, deep)
-
-        _loader_class = _NoDuplicateKeys
-
-    import yaml
-
-    return yaml.load(handle, Loader=_loader_class)
+    try:
+        return load_unique_keys(handle)
+    except DuplicateKeyError as error:
+        raise StateFileError(str(error)) from error
 
 
 def _check_version(version: Any, path: Path) -> None:

@@ -37,6 +37,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from am_segmentation_manager.families import families_for
 from am_segmentation_manager.image_metadata import FIBSEM_TAG
 from am_segmentation_manager.io.atomic import write_atomically
 from am_segmentation_manager.io.image import read_array, require_image_stack, to_2d
@@ -294,7 +295,7 @@ def source_pairs(source_root: Path) -> list[tuple[Path, Path]]:
             continue
         siblings = subdirectories_by_name(directory.parent)
         labels, exists, _ = resolve_labels_directory(
-            directory, classification.modality, siblings
+            directory, classification.modality, siblings, corrections=families_for(directory)
         )
         if exists:
             pairs.append((directory, labels))
@@ -470,7 +471,10 @@ def _destination_for(original: Path, conflicts: list[str]) -> Path | None:
 
     if classify_image_directory(original.parent.name) is not None:
         competing = conflicting_label_directories(
-            original.parent, record.modality, subdirectories_by_name(original.parent.parent)
+            original.parent,
+            record.modality,
+            subdirectories_by_name(original.parent.parent),
+            corrections=families_for(original.parent),
         )
         if competing:
             names = ", ".join(directory.name for directory in competing)

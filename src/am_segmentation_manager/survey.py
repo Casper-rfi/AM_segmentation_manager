@@ -29,6 +29,7 @@ from .discovery import (
     group_stages_by_lamella,
     project_markers,
 )
+from .families import FamiliesFileError, families_file_path, read_families
 from .image_metadata import header_reader
 from .io.long_paths import WINDOWS_MAX_PATH, explanation, long_paths_work, unreachable
 from .io.path import make_path_relative
@@ -36,7 +37,9 @@ from .io.yaml import read_yaml_or_problem
 from .layout import (
     IMAGE_EXTENSIONS,
     LABELS_EXPECTED,
+    NO_CORRECTIONS,
     SERIES,
+    FamilyCorrections,
     ImageSet,
     Series,
     build_image_sets,
@@ -369,6 +372,7 @@ def survey_project(
     stage_paths = frozenset(item.path for item in discovered_stages)
 
     findings: list[Finding] = []
+    corrections = _families_or_finding(project_root, findings)
     lamellae: list[LamellaSurvey] = []
     for lamella_path in sorted(grouped):
         discovered = grouped[lamella_path]
@@ -380,6 +384,7 @@ def survey_project(
                 check_labels,
                 in_alignment_run=item.in_alignment_run,
                 stage_paths=stage_paths,
+                corrections=corrections,
             )
             for item in sorted(discovered, key=lambda item: item.path)
         )
@@ -457,6 +462,28 @@ def survey_project(
         lamellae=tuple(lamellae),
         findings=tuple(findings),
     )
+
+
+def _families_or_finding(project_root: Path, findings: list[Finding]) -> FamilyCorrections:
+    """Return a project's family corrections, reporting a file that will not read.
+
+    Surveyed by directory names alone in that case, as the scan indexes it.
+    """
+    try:
+        return read_families(project_root)
+    except FamiliesFileError as error:
+        findings.append(
+            Finding(
+                severity="error",
+                category="unreadable-families-file",
+                path=families_file_path(project_root),
+                message=(
+                    f"{error}. The project is indexed by its directory names alone, "
+                    f"and nothing is written to it until the file is fixed"
+                ),
+            )
+        )
+        return NO_CORRECTIONS
 
 
 def _unreadable_yaml_findings(unreadable: Iterable[tuple[Path, str]]) -> list[Finding]:
@@ -585,6 +612,8 @@ def _survey_stage(
     check_labels: bool = True,
     in_alignment_run: bool = False,
     stage_paths: frozenset[Path] = frozenset(),
+    *,
+    corrections: FamilyCorrections,
 ) -> StageSurvey:
     """Survey one stage, appending any findings to *findings*.
 
@@ -597,8 +626,9 @@ def _survey_stage(
             filenames need that context to classify.
         stage_paths: Every stage in the project, so a subdirectory holding one
             is not reported as ignored -- it is descended into, not ignored.
+        corrections: The project's family corrections.
     """
-    directory_sets = build_image_sets(stage_path)
+    directory_sets = build_image_sets(stage_path, corrections=corrections)
     # Only the beam is wanted here. The survey reports what is on disk rather
     # than ordering it, so it opens a header only for a name that states no
     # beam, where the scanner opens one for every loose image.
@@ -631,7 +661,7 @@ def _survey_stage(
         )
 
     findings.extend(_loose_findings(stage_path, loose))
-    findings.extend(_family_conflict_findings(stage_path, directory_sets))
+    findings.extend(_family_conflict_findings(stage_path, directory_sets, corrections))
 
     for child in subdirectories_by_name(stage_path).values():
         if directory_role(child.name) != "unknown":
@@ -660,7 +690,7 @@ def _survey_stage(
 
 
 def _family_conflict_findings(
-    stage_path: Path, image_sets: Iterable[ImageSet]
+    stage_path: Path, image_sets: Iterable[ImageSet], corrections: FamilyCorrections
 ) -> list[Finding]:
     """Report each family whose conditions have more than one label or
     predictions directory between them.
@@ -681,7 +711,9 @@ def _family_conflict_findings(
             key = (image_set.modality, image_set.family.lower(), kind)
             if key in reported:
                 continue
-            competing = conflicting(image_set.directory, image_set.modality, siblings)
+            competing = conflicting(
+                image_set.directory, image_set.modality, siblings, corrections=corrections
+            )
             if not competing:
                 continue
             reported.add(key)

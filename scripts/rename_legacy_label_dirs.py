@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from am_segmentation_manager.discovery import discover_stages, find_project_roots
+from am_segmentation_manager.families import families_for
 from am_segmentation_manager.history import Recorder
 from am_segmentation_manager.io.path import make_path_relative
 from am_segmentation_manager.layout import (
@@ -109,7 +110,7 @@ def plan_label_migration(root: Path) -> list[LabelRename]:
 def _stage_renames(stage_path: Path, conflicts: list[str]) -> list[LabelRename]:
     """Return the renames for one stage, appending any conflicts."""
     siblings = subdirectories_by_name(stage_path)
-    image_sets = build_image_sets(stage_path)
+    image_sets = build_image_sets(stage_path, corrections=families_for(stage_path))
 
     renames: list[LabelRename] = []
     for legacy_name, modality in LEGACY_LABEL_DIRECTORIES.items():

@@ -1,9 +1,10 @@
 """Filesystem naming conventions for Autolamella and legacy datasets.
 
 The single source of truth for what directories and image files are called. An
-image directory is ``<family>[_<variant>]``, the family starting with its modality;
-a family's conditions share ``<family>_labels``, which a single older spelling may
-stand in for (:func:`resolve_labels_directory`). Loose images carry their series
+image directory is ``<family>[_<variant>]``, the family starting with its modality,
+unless a project's :class:`FamilyCorrections` say otherwise; a family's conditions
+share ``<family>_labels``, which a single older spelling may stand in for
+(:func:`resolve_labels_directory`). Loose images carry their series
 and beam in the filename, read by :func:`classify_loose_image`. Nothing here reads
 workflow state, but ``deselected/`` and ``corrected/`` stay reserved so an
 unmigrated dataset is never read as selected. Only the image-set builders and the
@@ -18,7 +19,7 @@ from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Literal
 
@@ -90,6 +91,12 @@ VARIANT_SEPARATOR: Final[str] = "_"
 #: directories (``test_a_modality_followed_by_a_letter_is_not_an_image_directory``).
 _MODALITY_PREFIX: Final[re.Pattern[str]] = re.compile(
     r"^(?P<modality>sem|fib)(?=$|[-._0-9])", re.IGNORECASE
+)
+
+#: A family name a correction may give: the modality, then only letters,
+#: digits, ``-`` and ``.``, every one in the BioImage Archive's allowed set.
+_FAMILY_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<modality>sem|fib)(?=$|[-.0-9])[A-Za-z0-9.-]*$", re.IGNORECASE
 )
 
 #: File extensions treated as images or labels.
@@ -195,6 +202,112 @@ class ImageDirectory:
     def display_variant(self) -> str:
         """Return the variant for display, naming the unsuffixed case."""
         return self.variant if self.variant is not None else "base"
+
+
+@dataclass(frozen=True)
+class FamilyCorrections:
+    """A project's corrections to the families its condition names give.
+
+    Plain data, read from ``AM_families.yaml`` by :mod:`.families` and passed
+    into resolution, so nothing here reads a project file. Names compare
+    case-insensitively, as a stage's directories do. Constructing one validates
+    it, so an instance never holds a correction resolution could misread.
+
+    Attributes:
+        families: Condition name to the family it belongs to instead of the one
+            its name gives.
+        primary: Family name to the condition standing for it.
+
+    Raises:
+        ValueError: Listing every entry that is not valid.
+    """
+
+    families: Mapping[str, str] = field(default_factory=dict)
+    primary: Mapping[str, str] = field(default_factory=dict)
+    _families: dict[str, str] = field(init=False, repr=False, compare=False)
+    _primary: dict[str, str] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        problems = correction_problems(self.families, self.primary)
+        if problems:
+            raise ValueError("; ".join(problems))
+        object.__setattr__(
+            self, "_families", {key.lower(): value for key, value in self.families.items()}
+        )
+        object.__setattr__(
+            self, "_primary", {key.lower(): value for key, value in self.primary.items()}
+        )
+
+    def family_of(self, condition: str) -> str | None:
+        """Return the family *condition* is corrected into, or None if it is not."""
+        return self._families.get(condition.lower())
+
+    def primary_of(self, family: str) -> str | None:
+        """Return the condition named as *family*'s primary, or None."""
+        return self._primary.get(family.lower())
+
+
+def is_family_name(name: str) -> bool:
+    """Return whether *name* may be given to a family by a correction."""
+    return _FAMILY_NAME.match(name) is not None
+
+
+def correction_problems(
+    families: Mapping[str, str], primary: Mapping[str, str]
+) -> list[str]:
+    """Return what is wrong with a set of family corrections, one line each.
+
+    A condition may move only to a family of its own modality, and a primary
+    must belong to the family it stands for once the corrections apply.
+    """
+    problems: list[str] = []
+    seen: dict[str, str] = {}
+    lowered = {key.lower(): value for key, value in families.items() if isinstance(key, str)}
+    for condition, family in families.items():
+        parsed = classify_image_directory(condition) if isinstance(condition, str) else None
+        if parsed is None:
+            problems.append(f"{condition!r} is not the name of an image directory")
+            continue
+        if condition.lower() in seen:
+            problems.append(f"{condition} is listed twice, as {seen[condition.lower()]} too")
+            continue
+        seen[condition.lower()] = condition
+        if not isinstance(family, str) or not is_family_name(family):
+            problems.append(
+                f"{condition}: {family!r} is not a family name -- it starts with sem "
+                f"or fib, and holds only letters, digits, '-' and '.'"
+            )
+        elif family[:3].upper() != parsed.modality:
+            problems.append(
+                f"{condition} is a {parsed.modality} condition and cannot join the "
+                f"{family[:3].upper()} family {family}"
+            )
+
+    seen = {}
+    for family, condition in primary.items():
+        if not isinstance(family, str) or not is_family_name(family):
+            problems.append(f"primary: {family!r} is not a family name")
+            continue
+        if family.lower() in seen:
+            problems.append(f"primary: {family} is listed twice, as {seen[family.lower()]} too")
+            continue
+        seen[family.lower()] = family
+        parsed = classify_image_directory(condition) if isinstance(condition, str) else None
+        if parsed is None:
+            problems.append(
+                f"primary: {family}: {condition!r} is not the name of an image directory"
+            )
+            continue
+        belongs_to = lowered.get(condition.lower(), parsed.family)
+        if not isinstance(belongs_to, str) or belongs_to.lower() != family.lower():
+            problems.append(
+                f"primary: {condition} belongs to family {belongs_to}, not {family}"
+            )
+    return problems
+
+
+#: No corrections: every condition in the family its name gives.
+NO_CORRECTIONS: Final[FamilyCorrections] = FamilyCorrections()
 
 
 @dataclass(frozen=True)
@@ -391,6 +504,28 @@ def classify_image_directory(name: str) -> ImageDirectory | None:
     return ImageDirectory(
         modality=match["modality"].upper(), variant=variant or None, family=family
     )
+
+
+def condition_of(name: str, corrections: FamilyCorrections) -> ImageDirectory | None:
+    """Return the family and variant *name* has once *corrections* apply.
+
+    :func:`classify_image_directory` says what a name gives; this says what the
+    project makes of it, and is what anything asking which label a condition
+    shares must use. **A condition is its family's base only when its name is
+    the family's**: one corrected into another family is a variant there, named
+    by its suffix, or by its whole name where it has none.
+    """
+    parsed = classify_image_directory(name)
+    if parsed is None:
+        return None
+    family = corrections.family_of(name)
+    if family is None:
+        return parsed
+    if family.lower() == name.lower():
+        variant = None
+    else:
+        variant = parsed.variant if parsed.variant is not None else name
+    return ImageDirectory(modality=parsed.modality, variant=variant, family=family)
 
 
 def directory_role(name: str) -> DirectoryRole:
@@ -752,42 +887,33 @@ def shared_labels_directory_name(modality: str) -> str:
     return f"{modality.lower()}{LABELS_SUFFIX}"
 
 
-def _family_of(image_directory: Path, modality: str) -> ImageDirectory:
-    """Return what *image_directory*'s name encodes, reading an unrecognised name
-    as a family of its own so resolution still has an answer for it."""
-    return classify_image_directory(image_directory.name) or ImageDirectory(
-        modality=modality, variant=None, family=image_directory.name
-    )
-
-
 def _family_members(
-    image_directory: Path, modality: str, siblings: Mapping[str, Path]
-) -> list[ImageDirectory]:
+    image_directory: Path,
+    modality: str,
+    siblings: Mapping[str, Path],
+    corrections: FamilyCorrections,
+) -> list[tuple[str, ImageDirectory]]:
     """Return the conditions of *image_directory*'s family in its stage, base first.
 
-    *image_directory* is always among them, whether or not it is in *siblings*.
+    Each is a ``(directory name, condition)`` pair. *image_directory* is always
+    among them, whether or not it is in *siblings*; an unrecognised name is read
+    as a family of its own, so resolution still has an answer for it.
     """
-    own = _family_of(image_directory, modality)
+    own = condition_of(image_directory.name, corrections) or ImageDirectory(
+        modality=modality, variant=None, family=image_directory.name
+    )
     members = {image_directory.name.lower(): (image_directory.name, own)}
     for key, sibling in siblings.items():
-        condition = classify_image_directory(sibling.name)
+        condition = condition_of(sibling.name, corrections)
         if (
             condition is not None
             and condition.modality == own.modality
             and condition.family.lower() == own.family.lower()
         ):
             members.setdefault(key, (sibling.name, condition))
-    ordered = sorted(
+    return sorted(
         members.values(), key=lambda item: (item[1].variant is not None, item[0].lower())
     )
-    return [condition for _, condition in ordered]
-
-
-def _condition_name(condition: ImageDirectory) -> str:
-    """Return the directory name a condition was classified from."""
-    if condition.variant is None:
-        return condition.family
-    return f"{condition.family}{VARIANT_SEPARATOR}{condition.variant}"
 
 
 def _family_directories(
@@ -796,6 +922,7 @@ def _family_directories(
     siblings: Mapping[str, Path],
     suffix: str,
     legacy: Mapping[str, str],
+    corrections: FamilyCorrections,
 ) -> tuple[list[Path], Path, list[Path]]:
     """Return a family's existing directories of one kind, and where a new one goes.
 
@@ -805,12 +932,12 @@ def _family_directories(
         takes; and the pre-convention directories present for the modality,
         which only the family named after the modality reads.
     """
-    members = _family_members(image_directory, modality, siblings)
-    family = members[0].family
+    members = _family_members(image_directory, modality, siblings, corrections)
+    family = members[0][1].family
     named_after_modality = family.lower() == modality.lower()
     new_name = f"{modality.lower() if named_after_modality else family}{suffix}"
 
-    candidates = [new_name, *(f"{_condition_name(member)}{suffix}" for member in members)]
+    candidates = [new_name, *(f"{name}{suffix}" for name, _ in members)]
     existing: list[Path] = []
     for name in dict.fromkeys(candidate.lower() for candidate in candidates):
         if name in siblings:
@@ -830,10 +957,11 @@ def _resolve_family_directory(
     siblings: Mapping[str, Path],
     suffix: str,
     legacy: Mapping[str, str],
+    corrections: FamilyCorrections,
 ) -> tuple[Path, bool, bool]:
     """Resolve one kind of family directory; see :func:`resolve_labels_directory`."""
     existing, new, legacy_existing = _family_directories(
-        image_directory, modality, siblings, suffix, legacy
+        image_directory, modality, siblings, suffix, legacy, corrections
     )
     if len(existing) > 1:
         own = siblings.get(f"{image_directory.name}{suffix}".lower())
@@ -849,6 +977,8 @@ def resolve_labels_directory(
     image_directory: Path,
     modality: str,
     siblings: Mapping[str, Path],
+    *,
+    corrections: FamilyCorrections,
 ) -> tuple[Path, bool, bool]:
     """Return where an image directory's labels live.
 
@@ -868,17 +998,24 @@ def resolve_labels_directory(
             Matching through this mapping rather than :meth:`Path.exists` keeps
             resolution case-insensitive on every platform, which matters for
             the legacy ``labels_FIB``.
+        corrections: The project's family corrections. Required, so that no
+            caller resolves by name alone by forgetting them.
 
     Returns:
         A tuple of ``(directory, exists, is_legacy)``.
     """
     return _resolve_family_directory(
-        image_directory, modality, siblings, LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES
+        image_directory, modality, siblings, LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES,
+        corrections,
     )
 
 
 def conflicting_label_directories(
-    image_directory: Path, modality: str, siblings: Mapping[str, Path]
+    image_directory: Path,
+    modality: str,
+    siblings: Mapping[str, Path],
+    *,
+    corrections: FamilyCorrections,
 ) -> tuple[Path, ...]:
     """Return the label directories competing for *image_directory*'s family.
 
@@ -886,7 +1023,8 @@ def conflicting_label_directories(
     each reading their own.
     """
     existing, _, _ = _family_directories(
-        image_directory, modality, siblings, LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES
+        image_directory, modality, siblings, LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES,
+        corrections,
     )
     return tuple(existing) if len(existing) > 1 else ()
 
@@ -954,6 +1092,8 @@ def resolve_predictions_directory(
     image_directory: Path,
     modality: str,
     siblings: Mapping[str, Path],
+    *,
+    corrections: FamilyCorrections,
 ) -> tuple[Path, bool, bool]:
     """Return where an image directory's predictions live.
 
@@ -968,21 +1108,28 @@ def resolve_predictions_directory(
         modality: ``"SEM"`` or ``"FIB"``.
         siblings: Existing sibling directories, keyed by lowercased name, as
             :func:`subdirectories_by_name` returns them.
+        corrections: The project's family corrections.
 
     Returns:
         A tuple of ``(directory, exists, is_legacy)``.
     """
     return _resolve_family_directory(
-        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES
+        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES,
+        corrections,
     )
 
 
 def conflicting_predictions_directories(
-    image_directory: Path, modality: str, siblings: Mapping[str, Path]
+    image_directory: Path,
+    modality: str,
+    siblings: Mapping[str, Path],
+    *,
+    corrections: FamilyCorrections,
 ) -> tuple[Path, ...]:
     """Return the predictions directories competing for *image_directory*'s family."""
     existing, _, _ = _family_directories(
-        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES
+        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES,
+        corrections,
     )
     return tuple(existing) if len(existing) > 1 else ()
 
@@ -1070,7 +1217,9 @@ def state_directories(directory: Path) -> list[Path]:
 # Image set assembly
 # ---------------------------------------------------------------------------
 
-def build_image_sets(stage_directory: Path) -> list[ImageSet]:
+def build_image_sets(
+    stage_directory: Path, *, corrections: FamilyCorrections
+) -> list[ImageSet]:
     """Return the image sets in a stage directory, ordered for display.
 
     Adaptive Polishing sets only -- the images loose in the same directory are
@@ -1085,16 +1234,18 @@ def build_image_sets(stage_directory: Path) -> list[ImageSet]:
 
     Ordering is by modality (SEM before FIB), then family, then the base
     condition first and variants by name, so output is stable across runs.
+    Families and variants are those *corrections* give, as
+    :func:`condition_of` reads them.
     """
     siblings = subdirectories_by_name(stage_directory)
 
     classified: list[tuple[Path, ImageDirectory, Path, bool, bool]] = []
     for directory in siblings.values():
-        image_directory = classify_image_directory(directory.name)
+        image_directory = condition_of(directory.name, corrections)
         if image_directory is None:
             continue
         labels_directory, labels_exist, labels_are_legacy = resolve_labels_directory(
-            directory, image_directory.modality, siblings
+            directory, image_directory.modality, siblings, corrections=corrections
         )
         classified.append(
             (directory, image_directory, labels_directory, labels_exist, labels_are_legacy)

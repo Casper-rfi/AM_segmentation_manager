@@ -17,10 +17,6 @@ from typing import TYPE_CHECKING
 from ..display import is_empty_label
 from ..history import pixel_digest
 from ..io.image import has_image_stack_support, read_array, to_2d
-from ..layout import (
-    resolve_labels_directory,
-    subdirectories_by_name,
-)
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     import numpy as np
