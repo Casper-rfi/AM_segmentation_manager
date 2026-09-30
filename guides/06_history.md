@@ -116,8 +116,10 @@ When the work is done, bring it home with *Merge a copy back...* on Export, or
 `am-seg merge`. The merge compares both sides against the moment the copy was
 taken, so a change made on only one side is simply taken. A **conflict** is
 something both sides changed differently since, and only a person decides it:
-the merge shows the metadata fields in conflict first, then the labels, and
-merges nothing until every conflict is answered. Decide one at a time, or a
+the merge shows the family corrections and metadata fields in conflict first,
+then the labels, and merges nothing until every conflict is answered. A
+project's labels wait until its families are decided, since which label an
+image shares depends on them. Decide one at a time, or a
 whole folder, project or lamella at once. A label's state travels with its
 pixels, and a label corrected here is never written over unless you choose it.
 Nothing is deleted, and both versions of a label in conflict stay in the

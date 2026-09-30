@@ -526,15 +526,15 @@ rather than appending to it.
 - **The log always travels with a copy, whole; the archive only when asked.** A merge cannot
   establish an ancestor without the log. The archive is a cache, so `--with-archive` is opt-in —
   and **a merged log names versions this collection does not hold**, which the version list says.
-- **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, the
-  same question deciding whose describing files travel. **Refused rather than half-read**, unlike a
-  log: the wrong ancestor discards work while reporting success.
+- **The fork point covers only the projects the copy holds**, from `copy_export.projects_of`, with
+  each one's `AM_families.yaml` as the ancestor its families merge against, so a hand edit is seen
+  (`test_the_fork_point_holds_the_families_as_they_stood`). **Refused rather than half-read**.
 - **A label and its workflow state are one decision.** Both resolve under the key
   `<project>/<target>`, so taking the copy's pixels takes its state with them. Deliberate: holding
   their label under a `corrected` claim made here would assert that somebody proofread pixels nobody
   here has seen. The resolver has one row per group because of this, and splitting the key would
   have to come first.
-- **One resolution function serves labels, states and metadata fields**, so three kinds of change
+- **One resolution function serves labels, states, fields and families**, so four kinds of change
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which
   tree wins. A conflict is decided by a person or not at all — by name, or by a folder, project or

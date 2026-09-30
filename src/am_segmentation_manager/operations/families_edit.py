@@ -66,7 +66,9 @@ __all__ = [
     "FamiliesValidationError",
     "FamilySummary",
     "apply_families_change",
+    "plan_corrections",
     "plan_families_change",
+    "refuse_stale_change",
     "summarise_families",
     "update_families",
 ]
@@ -280,15 +282,8 @@ def plan_families_change(
     Raises:
         FamiliesValidationError: Carrying every reason the change is refused.
     """
-    root = project.path
-    fingerprint = fingerprint_of(families_file_path(root))
-    try:
-        before = read_families(root)
-    except FamiliesFileError as error:
-        raise FamiliesValidationError([f"{error}; correct the file by hand first"]) from error
-
-    stages = [stage.path for lamella in project.lamellae for stage in lamella.stages]
-    listings = {stage: subdirectories_by_name(stage) for stage in stages}
+    before, _ = _read(project.path)
+    listings = _listings(project)
     conditions, spellings = _names(listings.values())
 
     problems: list[str] = []
@@ -302,8 +297,31 @@ def plan_families_change(
         problems.extend(correction_problems(after_families, after_primary))
     if problems:
         raise FamiliesValidationError(problems)
-    after = FamilyCorrections(families=after_families, primary=after_primary)
+    return plan_corrections(
+        project,
+        FamilyCorrections(families=after_families, primary=after_primary),
+        allow_leaving_corrected=allow_leaving_corrected,
+    )
 
+
+def plan_corrections(
+    project: Project,
+    after: FamilyCorrections,
+    *,
+    allow_leaving_corrected: bool = False,
+) -> FamiliesChange:
+    """Return what replacing *project*'s corrections with *after* would do.
+
+    What :func:`plan_families_change` does once it has the corrections it was
+    asked for, and what a merge does with the corrections it arrived at. A
+    condition *after* names that the project does not hold is not refused
+    here: in a copy holding part of a project, it is simply not there.
+
+    Raises:
+        FamiliesValidationError: Carrying every reason the change is refused.
+    """
+    root = project.path
+    before, fingerprint = _read(root)
     entries = _entry_changes(before, after)
     change = FamiliesChange(
         project_root=root, project=project.display_name,
@@ -312,19 +330,19 @@ def plan_families_change(
     if not entries:
         return change
 
+    listings = _listings(project)
     named = {entry.key.lower() for entry in entries if entry.section == FAMILIES_SECTION}
+    problems: list[str] = []
     moves: list[ConditionMove] = []
     regroupings: list[Regrouping] = []
     warnings: list[str] = []
     read = header_reader() if named else None
     if named and read is None:
         warnings.append("image headers were not compared: the image stack is not installed")
-    for stage in stages:
-        _check_stage(
-            stage, listings[stage], before, after, named, root, problems, moves, regroupings
-        )
+    for stage, siblings in listings.items():
+        _check_stage(stage, siblings, before, after, named, root, problems, moves, regroupings)
         if read is not None:
-            _check_headers(stage, listings[stage], after, named, root, read, problems, warnings)
+            _check_headers(stage, siblings, after, named, root, read, problems, warnings)
     if problems:
         raise FamiliesValidationError(problems)
 
@@ -343,6 +361,24 @@ def plan_families_change(
     return replace(change, moves=tuple(moves), states=states, warnings=tuple(warnings))
 
 
+def _read(root: Path) -> tuple[FamilyCorrections, Fingerprint | None]:
+    """Return a project's corrections and its file's fingerprint, taken first."""
+    fingerprint = fingerprint_of(families_file_path(root))
+    try:
+        return read_families(root), fingerprint
+    except FamiliesFileError as error:
+        raise FamiliesValidationError([f"{error}; correct the file by hand first"]) from error
+
+
+def _listings(project: Project) -> dict[Path, Mapping[str, Path]]:
+    """Return each stage of *project* and its subdirectories."""
+    return {
+        stage.path: subdirectories_by_name(stage.path)
+        for lamella in project.lamellae
+        for stage in lamella.stages
+    }
+
+
 def apply_families_change(
     change: FamiliesChange, *, recorder: Recorder | None = None
 ) -> FamiliesChange:
@@ -357,13 +393,8 @@ def apply_families_change(
     """
     if change.is_empty:
         return change
-    refuse_stale_regrouping(change.states)
+    refuse_stale_change(change)
     path = families_file_path(change.project_root)
-    if fingerprint_of(path) != change.fingerprint:
-        raise StaleFamilies(
-            f"{path} changed since this change was worked out; look again and repeat it"
-        )
-
     write_families(change.project_root, change.after, change.fingerprint)
     if recorder is not None:
         for entry in change.entries:
@@ -376,6 +407,21 @@ def apply_families_change(
         "Updated %s: %s", path, "; ".join(entry.describe() for entry in change.entries)
     )
     return replace(change, applied=True)
+
+
+def refuse_stale_change(change: FamiliesChange) -> None:
+    """Raise unless every file *change* writes is as it was read.
+
+    Raises:
+        StaleFamilies: If the families file changed since the plan read it.
+        StaleState: If a stage's state file did.
+    """
+    refuse_stale_regrouping(change.states)
+    path = families_file_path(change.project_root)
+    if fingerprint_of(path) != change.fingerprint:
+        raise StaleFamilies(
+            f"{path} changed since this change was worked out; look again and repeat it"
+        )
 
 
 def update_families(

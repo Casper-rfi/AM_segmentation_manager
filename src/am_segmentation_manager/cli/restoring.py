@@ -274,11 +274,14 @@ def _cmd_merge(args: argparse.Namespace) -> int:
     except (MergeRefused, StateFileError) as error:
         logger.error("Nothing was merged: %s", error)
         return 2
+    except PermissionError as error:
+        logger.error("Nothing was merged: %s Re-run with --allow-corrected to go ahead.", error)
+        return 2
     logger.info(
-        "Merged %d label(s), %d state(s) and %d field(s); %d version(s) kept, "
-        "%d history entr(ies) added",
-        report.labels_taken, report.states_taken, report.fields_taken,
-        len(report.archived), report.entries_added,
+        "Merged %d famil(y/ies), %d label(s), %d state(s) and %d field(s); "
+        "%d version(s) kept, %d history entr(ies) added",
+        report.families_taken, report.labels_taken, report.states_taken,
+        report.fields_taken, len(report.archived), report.entries_added,
     )
     return 0
 

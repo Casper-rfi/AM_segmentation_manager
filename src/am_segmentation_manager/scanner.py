@@ -166,8 +166,20 @@ class Scanner:
     PLOTS_DIRNAME = "plots"
     PLOT_EXTENSIONS = {".png"}
 
-    def __init__(self, start_path: Path) -> None:
+    def __init__(
+        self,
+        start_path: Path,
+        families: Mapping[Path, FamilyCorrections] | None = None,
+    ) -> None:
+        """Create a scanner of *start_path*.
+
+        Args:
+            families: Corrections to scan a project under in place of its own
+                ``AM_families.yaml``, keyed by project root. A merge plans a
+                tree under families that are on neither disk yet.
+        """
         self.start_path = start_path
+        self._families_given = dict(families or {})
         # One header read per loose image, memoised for the life of this scan.
         # The beam and the acquisition time come out of the same read but are
         # wanted at different moments -- the beam while image sets are built,
@@ -404,14 +416,15 @@ class Scanner:
         )
         return project
 
-    @staticmethod
-    def _families(project_root: Path) -> FamilyCorrections:
+    def _families(self, project_root: Path) -> FamilyCorrections:
         """Return a project's family corrections, or none if its file is damaged.
 
         Read as none so that one damaged file does not stop a scan, as a damaged
         state file does not. Nothing is written on that reading: every write path
         reads the file itself and refuses, and ``inspect-layout`` names it.
         """
+        if project_root in self._families_given:
+            return self._families_given[project_root]
         try:
             return read_families(project_root)
         except FamiliesFileError as exc:

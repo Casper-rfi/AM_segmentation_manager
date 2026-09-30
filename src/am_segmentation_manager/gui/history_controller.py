@@ -107,11 +107,24 @@ def _conflict_rows(plan) -> tuple[ConflictRow, ...]:
 
     A label and the workflow state of the same group resolve under one key, so
     they become one row with a line each. Metadata is keyed per field and is a
-    row of its own.
+    row of its own, as is each family correction.
     """
 
     rows: dict[str, ConflictRow] = {}
     for project in plan.projects:
+        for entry in project.families:
+            if entry.outcome != CONFLICT:
+                continue
+            key = field_key(project.key, entry.field)
+            rows[key] = ConflictRow(
+                key=key,
+                title=f"{project.key} — {entry.field}",
+                details=(entry.describe(),),
+                project=project.key,
+                metadata_field=entry.field,
+                our_value=entry.ours,
+                their_value=entry.theirs,
+            )
         for item in project.labels:
             if item.outcome != CONFLICT:
                 continue

@@ -141,6 +141,42 @@ def test_fields_are_a_tree_of_their_own_in_the_order_of_the_form():
 # Deciding
 # ---------------------------------------------------------------------------
 
+def test_family_corrections_come_before_the_fields_and_say_what_they_are():
+    """The labels still to be planned depend on them, so they are decided first."""
+    resolution = ConflictResolution(
+        [_field("P", "sample"), _field("P", "primary:sem"), _field("P", "family:sem_mag2")]
+    )
+
+    (project,) = resolution.fields
+
+    assert [child.caption for child in project.children] == [
+        "Family of sem_mag2", "Primary of sem", FIELDS_BY_NAME["sample"].label,
+    ]
+
+
+def test_a_family_in_conflict_becomes_a_row_beside_the_fields():
+    from am_segmentation_manager.gui.history_controller import _conflict_rows
+    from am_segmentation_manager.operations.merge import (
+        CONFLICT,
+        FamilyMerge,
+        MergePlan,
+        ProjectMerge,
+    )
+
+    entry = FamilyMerge("families", "sem_mag2", None, "sem-a", "sem-b", CONFLICT)
+    plan = MergePlan(
+        source=Path("copy"), destination=Path("collection"), record=None,
+        projects=(ProjectMerge(key=P, our_root=ROOT, their_root=ROOT, families=(entry,)),),
+    )
+
+    (row,) = _conflict_rows(plan)
+
+    assert (row.key, row.is_field, row.our_value, row.their_value) == (
+        f"{P}:family:sem_mag2", True, "sem-a", "sem-b",
+    )
+    assert row.details == ("family of sem_mag2: sem-a here, sem-b in the copy",)
+
+
 def test_nothing_is_decided_in_advance():
     rows = [_group(P, "01-cat", 1), _field(P, "description")]
     resolution = ConflictResolution(rows)

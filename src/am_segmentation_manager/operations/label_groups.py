@@ -218,15 +218,21 @@ def build_group(
     )
 
 
-def build_groups(records: Iterable[ImageRecord]) -> list[LabelGroup]:
+def build_groups(
+    records: Iterable[ImageRecord], families: dict[Path, FamilyCorrections] | None = None
+) -> list[LabelGroup]:
     """Return the distinct label groups the given records belong to.
 
     Records of the same group collapse into one entry, so a caller that passes
     all five conditions of a scene gets one group back, not five.
+
+    Args:
+        families: As :func:`build_group` takes it. Filled in advance, it groups
+            a stage under corrections other than its project's file holds.
     """
     groups: dict[str, LabelGroup] = {}
     cache: dict[Path, Path | None] = {}
-    families: dict[Path, FamilyCorrections] = {}
+    families = {} if families is None else families
     for record in records:
         key = group_key(record, cache)
         if key in groups:

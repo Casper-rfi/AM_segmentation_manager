@@ -53,6 +53,10 @@ _FIELD_ORDER: Final[dict[str, int]] = {
 }
 _FIELD_LABELS: Final[dict[str, str]] = {spec.name: spec.label for spec in FIELDS}
 
+#: What a family correction's row says, by the kind its key starts with.
+_FAMILY_CAPTIONS: Final[dict[str, str]] = {"family": "Family of", "primary": "Primary of"}
+_FAMILY_PREFIXES: Final[tuple[str, ...]] = tuple(f"{kind}:" for kind in _FAMILY_CAPTIONS)
+
 
 @dataclass(eq=False)
 class ConflictNode:
@@ -275,9 +279,11 @@ def _in_order(rows: Sequence[ConflictRow]) -> list[ConflictRow]:
     placed there -- no record, or no beam -- follows, by name.
     """
     if any(row.is_field for row in rows):
+        # Family corrections first: the labels still to be planned depend on them.
         return sorted(
             rows,
             key=lambda row: (
+                not row.metadata_field.startswith(_FAMILY_PREFIXES),
                 _FIELD_ORDER.get(row.metadata_field, len(_FIELD_ORDER)),
                 row.metadata_field,
             ),
@@ -304,6 +310,9 @@ def _leaf(row: ConflictRow) -> ConflictNode:
 def _caption(row: ConflictRow) -> str:
     """Return what one conflict's row says: the field, or the group's image."""
     if row.is_field:
+        kind, separator, name = row.metadata_field.partition(":")
+        if separator and kind in _FAMILY_CAPTIONS:
+            return f"{_FAMILY_CAPTIONS[kind]} {name}"
         return _FIELD_LABELS.get(row.metadata_field, row.metadata_field)
     if row.record is not None:
         return row.record.image_path.name

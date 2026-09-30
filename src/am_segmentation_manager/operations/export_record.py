@@ -4,8 +4,9 @@
 held when copied: the common ancestor a three-way merge needs. **The tip is an
 entry id, and a merge verifies it**: one missing from the collection's log means
 the fork point does not describe these two trees, and the merge is refused. The
-entry count lets a mismatch say which way the two have drifted. Nothing here reads
-or writes a label.
+entry count lets a mismatch say which way the two have drifted. **The project's
+family corrections are copied in as they stood**, being the ancestor a merge of
+``AM_families.yaml`` compares against. Nothing here reads or writes a label.
 """
 from __future__ import annotations
 
@@ -16,8 +17,10 @@ from pathlib import Path
 from typing import Any, Final
 
 from .. import __version__
+from ..families import read_families
 from ..history import declared_project_id, read_log, resolve_author
 from ..io.yaml import read_yaml, write_yaml
+from ..layout import NO_CORRECTIONS, FamilyCorrections
 from ..models import Project
 
 logger = logging.getLogger(__name__)
@@ -64,12 +67,16 @@ class ProjectFork:
         tip: The id of its last entry, or None where it has none.
         entries: How many entries it held, so a mismatch can say which way the
             two trees have drifted.
+        families: Its ``AM_families.yaml`` as it stood. A fork point written
+            before these were recorded holds none, which is exact: nothing
+            could write that file then.
     """
 
     key: str
     project_id: str | None = None
     tip: str | None = None
     entries: int = 0
+    families: FamilyCorrections = NO_CORRECTIONS
 
     @property
     def has_history(self) -> bool:
@@ -128,6 +135,10 @@ def build_export_record(
     from one the copy never held. **Pass only the projects the copy actually
     holds** -- a fork point naming one that is not there has a merge look for
     an ancestor in a tree that does not exist.
+
+    Raises:
+        FamiliesFileError: If a project's families file will not read, since a
+            copy whose ancestor is unknown could not be merged back exactly.
     """
     from datetime import UTC, datetime
 
@@ -141,6 +152,7 @@ def build_export_record(
             project_id=declared_project_id(log.events),
             tip=tip,
             entries=len(log.events),
+            families=read_families(project.path),
         )
     return ExportRecord(
         exported_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -167,6 +179,14 @@ def write_export_record(destination: Path, record: ExportRecord) -> Path:
                 "project_id": fork.project_id,
                 "tip": fork.tip,
                 "entries": fork.entries,
+                **(
+                    {"families": {
+                        "families": dict(fork.families.families),
+                        "primary": dict(fork.families.primary),
+                    }}
+                    if fork.families != NO_CORRECTIONS
+                    else {}
+                ),
             }
             for key, fork in sorted(record.projects.items())
         },
@@ -235,8 +255,27 @@ def _forks(block: Any, path: Path) -> dict[str, ProjectFork]:
             project_id=_optional_text(entry.get("project_id")),
             tip=_optional_text(entry.get("tip")),
             entries=entries if isinstance(entries, int) else 0,
+            families=_families(entry.get("families"), f"{path}: {key}"),
         )
     return forks
+
+
+def _families(block: Any, where: str) -> FamilyCorrections:
+    """Return a project's recorded family corrections, validated."""
+    if block is None:
+        return NO_CORRECTIONS
+    sections = block if isinstance(block, dict) else None
+    try:
+        if sections is None or not all(
+            isinstance(sections.get(name) or {}, dict) for name in ("families", "primary")
+        ):
+            raise ValueError("families must hold a families and a primary mapping")
+        return FamilyCorrections(
+            families=dict(sections.get("families") or {}),
+            primary=dict(sections.get("primary") or {}),
+        )
+    except ValueError as error:
+        raise ValueError(f"{where}: {error}") from error
 
 
 def _text(value: Any) -> str:

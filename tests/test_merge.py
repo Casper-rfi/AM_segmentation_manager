@@ -1005,3 +1005,134 @@ def test_merging_the_same_copy_twice_changes_nothing_the_second_time(forked, rec
 
     assert report.labels_taken == 0 and report.entries_added == 0
     assert fingerprint_of(forked.label(forked.main)) == after
+
+
+# ---------------------------------------------------------------------------
+# Family corrections
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def forked_families(tmp_path: Path, recorder):
+    """A collection whose SEM conditions ``sem`` and ``sem_fi_1`` share a label,
+    and a copy of it, as :func:`forked` builds them."""
+    main = tmp_path / "collection"
+    main.mkdir()
+    dataset = build_dataset(
+        main, lamellae=1, acquisitions=2, labels="annotated", sem_variants=("sem_fi_1",)
+    )
+    start_history(dataset.project)
+    _baseline(main, recorder)
+    copy = tmp_path / "copy"
+    _export(main, copy)
+    return _Forked(main=main, copy=copy, project=dataset.project)
+
+
+def _project_of(root: Path):
+    return Scanner(root).build_index().all_projects()[0]
+
+
+def _move(root: Path, recorder: Recorder, **families: str | None) -> None:
+    """Correct *root*'s families as ``edit-families`` would."""
+    from am_segmentation_manager.operations.families_edit import update_families
+
+    update_families(_project_of(root), families=families, recorder=recorder)
+
+
+def _stage_of(root: Path) -> Path:
+    return next(root.rglob("sem_fi_1")).parent
+
+
+def test_the_fork_point_holds_the_families_as_they_stood(tmp_path: Path, recorder):
+    main = tmp_path / "collection"
+    main.mkdir()
+    dataset = build_dataset(main, lamellae=1, labels="annotated", sem_variants=("sem_fi_1",))
+    (dataset.project / "AM_families.yaml").write_text(
+        "families:\n  sem_fi_1: sem-x\n", encoding="utf-8"
+    )
+
+    _export(main, tmp_path / "copy")
+
+    (fork,) = read_export_record(tmp_path / "copy").projects.values()
+    assert fork.families.family_of("sem_fi_1") == "sem-x"
+    assert (tmp_path / "copy" / "project" / "AM_families.yaml").is_file()
+
+
+def test_a_family_corrected_only_in_the_copy_is_taken(forked_families, recorder):
+    _move(forked_families.copy, recorder, sem_fi_1="sem-x")
+
+    plan = plan_merge(forked_families.copy, forked_families.main)
+    (entry,) = plan.projects[0].families
+    assert (entry.field, entry.outcome) == ("family:sem_fi_1", TAKE_THEIRS)
+
+    report = apply_merge(plan, recorder=recorder)
+
+    assert report.families_taken == 1
+    from am_segmentation_manager.families import read_families
+
+    assert read_families(forked_families.project).family_of("sem_fi_1") == "sem-x"
+    kinds = [event.kind for event in read_log(forked_families.project).events]
+    assert "family-changed" in kinds
+
+
+def test_a_label_the_copy_made_under_its_new_family_lands_there(forked_families, recorder):
+    _move(forked_families.copy, recorder, sem_fi_1="sem-x")
+    painted = _write(_stage_of(forked_families.copy) / "sem-x_labels" / "img_000_SEM.tif", 5)
+
+    apply_merge(plan_merge(forked_families.copy, forked_families.main), recorder=recorder)
+
+    landed = _stage_of(forked_families.main) / "sem-x_labels" / "img_000_SEM.tif"
+    assert _digest(landed) == _digest(painted)
+
+
+def test_a_family_corrected_differently_on_both_sides_is_decided_first(
+    forked_families, recorder
+):
+    _move(forked_families.copy, recorder, sem_fi_1="sem-x")
+    _move(forked_families.main, recorder, sem_fi_1="sem-y")
+
+    plan = plan_merge(forked_families.copy, forked_families.main)
+
+    assert plan.conflict_keys == ("project:family:sem_fi_1",)
+    assert plan.projects[0].deferred
+    assert plan.projects[0].labels == ()
+    decided = plan_merge(
+        forked_families.copy, forked_families.main,
+        resolutions=decisions_for(plan, {"project": THEIRS}),
+    )
+    assert not decided.is_refused
+    assert not decided.projects[0].deferred
+
+
+def test_families_leaving_the_copys_labels_unread_are_refused(forked_families, recorder):
+    _move(forked_families.copy, recorder, sem_fi_1="sem-x")
+    _write(_stage_of(forked_families.copy) / "sem-x_labels" / "img_000_SEM.tif", 5)
+    _move(forked_families.main, recorder, sem_fi_1="sem-y")
+
+    with pytest.raises(MergeRefused, match="would leave work in the copy unread"):
+        plan_merge(
+            forked_families.copy, forked_families.main,
+            resolutions={"project:family:sem_fi_1": OURS},
+        )
+
+
+def test_taking_a_condition_out_of_a_corrected_group_needs_confirming(
+    forked_families, recorder
+):
+    from am_segmentation_manager.operations.selection import transition_records
+
+    transition_records(
+        [r for r in _records(forked_families.main) if r.modality == "SEM"],
+        "corrected",
+        recorder=recorder,
+    )
+    _move(forked_families.copy, recorder, sem_fi_1="sem-x")
+    plan = plan_merge(forked_families.copy, forked_families.main)
+
+    with pytest.raises(PermissionError, match="corrected group"):
+        apply_merge(plan, recorder=recorder)
+
+    from am_segmentation_manager.families import families_file_path
+
+    assert not families_file_path(forked_families.project).exists()
+    apply_merge(plan, recorder=recorder, allow_corrected=True)
+    assert families_file_path(forked_families.project).exists()

@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..families import AM_FAMILIES_FILENAME
 from ..history import AM_HISTORY_FILENAME
 from ..io.atomic import fingerprint_of, write_atomically
 from ..io.long_paths import refuse_unreachable
@@ -45,8 +46,10 @@ __all__ = [
 #: The files describing a project that a copy takes along, tried in each
 #: project directory. ``AM_metadata.yaml`` and ``experiment.yaml`` are what make
 #: the copy indexable and carry its metadata; ``protocol.yaml`` records how the
-#: milling was set up. A project missing any of them is not a defect: the older
-#: datasets predate ``experiment.yaml``, and only this package writes the first.
+#: milling was set up; ``AM_families.yaml`` which label each image folder
+#: shares, where the folder names do not say. A project missing any of them is
+#: not a defect: the older datasets predate ``experiment.yaml``, and only this
+#: package writes the first and last.
 #:
 #: ``AM_history.jsonl`` always travels, and is the one that must: a merge back
 #: cannot establish a common ancestor without it, and at kilobytes there is
@@ -57,6 +60,7 @@ PROJECT_FILES: tuple[str, ...] = (
     AM_METADATA_FILENAME,
     EXPERIMENT_FILENAME,
     PROTOCOL_FILENAME,
+    AM_FAMILIES_FILENAME,
     AM_HISTORY_FILENAME,
 )
 

@@ -93,6 +93,8 @@ def test_the_files_describing_the_project_come_too(source: Path, tmp_path: Path)
     # The history must travel or a merge back has no common ancestor to
     # compare against, which is why it is among PROJECT_FILES at all.
     (source / "project" / "AM_history.jsonl").write_text("", encoding="utf-8")
+    # Which label each image folder shares, where the folder names do not say.
+    (source / "project" / "AM_families.yaml").write_text("version: 1\n", encoding="utf-8")
 
     plan = plan_for(source, tmp_path / "out")
 
