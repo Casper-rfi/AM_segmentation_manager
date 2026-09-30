@@ -24,7 +24,15 @@ from ..frames import (
     series_present,
 )
 from ..history import Recorder
-from ..layout import LABELLED_SERIES, LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
+from ..layout import (
+    LABELLED_SERIES,
+    LABELS_EXPECTED,
+    MODALITIES,
+    NO_CORRECTIONS,
+    SERIES,
+    SERIES_LABELS,
+    FamilyCorrections,
+)
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.init_history import writing_recorder
@@ -470,7 +478,7 @@ class CurationController:
         #: Whether the label is drawn over the acquisition or over a flat ground.
         self.show_image = True
         #: Which imaging condition is on screen for each modality, by its
-        #: directory's name. None means the frame's first. This is display state
+        #: directory's name. None means the frame's primary. This is display state
         #: only: a state change follows the label, so which condition is being
         #: viewed never decides what moves.
         self.condition: dict[str, str | None] = {modality: None for modality in MODALITIES}
@@ -809,7 +817,9 @@ class CurationController:
         self.grid.set_project(self.project)
         self.series = resolve_series(self.wanted_series, self.available_series())
         self._frames = (
-            build_lamella_frames(lamella, series=self.series)
+            build_lamella_frames(
+                lamella, series=self.series, corrections=self._corrections()
+            )
             if lamella is not None
             else []
         )
@@ -823,6 +833,11 @@ class CurationController:
             len(self._frames),
             self.series,
         )
+
+    def _corrections(self) -> FamilyCorrections:
+        """Return the family corrections of the project the lamella in view belongs to."""
+        project = self.project
+        return project.families if project is not None else NO_CORRECTIONS
 
     def select_frame(self, position: int) -> None:
         """Move to a frame by index, clamped to the lamella's range."""
@@ -976,12 +991,13 @@ class CurationController:
         if target is None:
             return
         self.condition[target] = condition
-        logger.debug("Viewing %s condition %s", target, condition or "(first)")
+        logger.debug("Viewing %s condition %s", target, condition or "(primary)")
 
     def current_condition(self, modality: str | None = None) -> str | None:
         """Return the imaging condition on screen for a modality, as its frame spells it.
 
-        The frame's first where it was not captured under the one chosen.
+        Where the frame was not captured under the one chosen, what
+        :meth:`~..frames.LamellaFrame.shown_record` falls back to.
         """
         record = self._shown_record(modality or MODE_MODALITIES.get(self.mode))
         return record.condition if record is not None else None
@@ -991,8 +1007,7 @@ class CurationController:
         frame = self.frame
         if frame is None or modality is None:
             return None
-        chosen = frame.record(modality, self.condition.get(modality))
-        return chosen if chosen is not None else frame.record(modality)
+        return frame.shown_record(modality, self.condition.get(modality))
 
     # -- curation progress, for the project and lamella lists --------------
 
@@ -1049,7 +1064,7 @@ class CurationController:
         """Return the absolute path of the image currently on screen.
 
         Follows the mode and the condition dropdown, so this is the file the user
-        is actually looking at rather than the frame's base image. Returns None
+        is actually looking at rather than the frame's primary. Returns None
         in plot mode, which has no single acquisition behind it.
         """
         modality = MODE_MODALITIES.get(self.mode)

@@ -94,6 +94,19 @@ def test_a_stage_holding_two_families_offers_each_base(tmp_path: Path):
     assert controller.current_image_path().parent.name == "sem-5kV"
 
 
+def test_the_view_opens_on_the_primary_the_project_names(tmp_path: Path):
+    project = make_project(tmp_path)
+    (project / "AM_families.yaml").write_text(
+        "version: 1\nprimary:\n  SEM: SEM_8_fi_4\n", encoding="utf-8"
+    )
+    controller = make_controller(tmp_path)
+
+    assert controller.current_condition("SEM") == "SEM_8_fi_4"
+    assert controller.condition_choices("SEM")[0] == ("8", "SEM_8")
+    controller.set_mode("sem")
+    assert controller.current_image_path().parent.name == "SEM_8_fi_4"
+
+
 def test_the_viewed_condition_does_not_change_what_a_state_change_moves(tmp_path: Path):
     """The whole point of the design: viewing is not targeting."""
     make_project(tmp_path)

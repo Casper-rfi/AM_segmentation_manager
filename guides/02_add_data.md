@@ -178,7 +178,7 @@ voltage is a warning that the conditions may not be one family.
 refusing a change of size and warning about the others.
 
 Each family has a **primary condition**: the one predicted from, measured at,
-and kept by *One image per label*. It is the base condition, or where a stage
+kept by *One image per label*, and shown first in the window. It is the base condition, or where a stage
 has none, the first variant by name. `--primary sem=sem_fi8` names another,
 for instance where the base is too noisy to predict on; `--clear-primary sem`
 returns to the default. It moves no label, and predictions already made stay

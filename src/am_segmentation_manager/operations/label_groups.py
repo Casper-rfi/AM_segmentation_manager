@@ -15,7 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..families import families_for
+from ..frames import primary_among
 from ..layout import (
+    NO_CORRECTIONS,
     FamilyCorrections,
     build_image_sets,
     classify_image_directory,
@@ -241,22 +243,14 @@ def build_groups(
     return list(groups.values())
 
 
-def condition_sort_key(record: ImageRecord) -> tuple[bool, str]:
-    """Order the unsuffixed image directory first, then variants by name."""
-    return (record.variant is not None, (record.variant or "").lower())
-
-
 def primary_record(
     records: Iterable[ImageRecord], families: dict[Path, FamilyCorrections] | None = None
 ) -> ImageRecord:
     """Return the record standing for a scene: its *primary* imaging condition.
 
-    The condition the project's ``AM_families.yaml`` names for the family where
-    it is among *records*; otherwise the base condition, otherwise the
-    first-sorting variant, which is what the oldest layouts need, having no base:
-    their SEM sets are ``SEM_8``, ``SEM_8_fi_1`` and so on. What is predicted,
-    measured and kept by a one-per-scene export; the corrections are looked up
-    here, so no caller can choose without them.
+    As :func:`~..frames.primary_among` chooses it, with the project's
+    ``AM_families.yaml`` looked up here, so no caller can choose without it.
+    What is predicted, measured and kept by a one-per-scene export.
 
     Args:
         families: Reused across a batch, as :func:`~..families.families_for`
@@ -266,13 +260,9 @@ def primary_record(
         FamiliesFileError: If the project's families file will not read.
     """
     records = list(records)
-    family = next((record.family for record in records if record.family), None)
-    if family is not None:
-        named = families_for(records[0].image_path, families).primary_of(family)
-        for record in records:
-            if named is not None and record.image_path.parent.name.lower() == named.lower():
-                return record
-    return min(records, key=condition_sort_key)
+    if not any(record.family for record in records):
+        return primary_among(records, NO_CORRECTIONS)
+    return primary_among(records, families_for(records[0].image_path, families))
 
 
 def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:

@@ -126,7 +126,7 @@ class LoadRequest:
 
     ``modality`` names the acquisition to prepare, or is None to request the
     frame's summary plot. ``condition`` names the imaging condition, or is None
-    for the frame's first of that modality.
+    for the frame's primary of that modality.
 
     ``detail`` asks for the plot at the resolution it was rendered at rather
     than at the size of the pane. Only ever asked for the frame being looked
@@ -623,20 +623,13 @@ class FrameCache:
         return None
 
     def _record(self, frame_index: int, modality: str, condition: str | None = None):
-        """Return the image record for a frame, modality and condition, if any.
+        """Return the image record shown for a frame, modality and condition, if any.
 
-        Falls back to the frame's first image when the requested condition is
-        not present: navigating through a lamella where only some acquisitions
-        were captured under a given condition should keep showing something
-        rather than blanking the pane.
+        As :meth:`~...frames.LamellaFrame.shown_record` falls back, so the
+        cache holds what the views show.
         """
         frame = self._frame(frame_index)
-        if frame is None:
-            return None
-        record = frame.record(modality, condition)
-        if record is None and condition is not None:
-            return frame.record(modality)
-        return record
+        return frame.shown_record(modality, condition) if frame is not None else None
 
     def _key(
         self, frame_index: int, modality: str, condition: str | None

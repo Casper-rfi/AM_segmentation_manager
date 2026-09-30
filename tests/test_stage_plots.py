@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.frames import build_lamella_frames
+from am_segmentation_manager.layout import NO_CORRECTIONS
 from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 from am_segmentation_manager.scanner import Scanner
 
@@ -28,7 +29,7 @@ def touch(directory: Path, *names: str) -> Path:
 
 def frames_of(stage: Stage) -> list:
     return build_lamella_frames(
-        Lamella(name="lam", path=Path("01-ruling-ibex"), stages=[stage])
+        Lamella(name="lam", path=Path("01-ruling-ibex"), stages=[stage]), corrections=NO_CORRECTIONS
     )
 
 

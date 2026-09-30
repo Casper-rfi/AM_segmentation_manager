@@ -24,7 +24,7 @@ from ..frames import (
 )
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
-from ..layout import LABELLED_SERIES, MODALITIES, SERIES
+from ..layout import LABELLED_SERIES, MODALITIES, NO_CORRECTIONS, SERIES, FamilyCorrections
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.csv import find_matching_label
@@ -237,11 +237,22 @@ class LabelController:
         """
         self._series = resolve_series(self._wanted_series, self.available_series())
         self._frames = (
-            tuple(build_lamella_frames(self._lamella, series=self._series))
+            tuple(
+                build_lamella_frames(
+                    self._lamella, series=self._series, corrections=self._corrections()
+                )
+            )
             if self._lamella else ()
         )
         self.cache.set_frames(self._frames)
         self._refresh_positions(keep_frame=keep_frame)
+
+    def _corrections(self) -> FamilyCorrections:
+        """Return the family corrections of the project holding the lamella in view."""
+        if self._lamella is None:
+            return NO_CORRECTIONS
+        holding = projects_holding([self._lamella.path], self.projects)
+        return holding[0].families if holding else NO_CORRECTIONS
 
     def available_series(self) -> list[str]:
         """Return the series this lamella holds images of, in display order.
@@ -399,20 +410,18 @@ class LabelController:
     def record(self):
         """Return the image record on screen, or None.
 
-        The frame's first image where this frame was not captured under the
-        chosen condition, on the same reasoning as the curation view: stepping
-        through a lamella where only some acquisitions have a condition should
-        keep showing something rather than blanking the pane.
+        Where this frame was not captured under the chosen condition, what
+        :meth:`~..frames.LamellaFrame.shown_record` falls back to, as in the
+        curation view.
         """
         frame = self.frame
         if frame is None:
             return None
-        record = frame.record(self._modality, self.condition)
-        return record if record is not None else frame.record(self._modality)
+        return frame.shown_record(self._modality, self.condition)
 
     @property
     def condition(self) -> str | None:
-        """Return the imaging condition chosen, or None for the frame's first."""
+        """Return the imaging condition chosen, or None for the frame's primary."""
         return self._conditions.get(self._modality)
 
     def set_condition(self, condition: str | None) -> None:
@@ -420,10 +429,10 @@ class LabelController:
 
         Which frames are worth proofreading is unchanged: the conditions of one
         acquisition share a label and therefore share its state, so the set is
-        read from the first image whichever condition is being looked at.
+        read from the frame's primary whichever condition is being looked at.
         """
         self._conditions[self._modality] = condition or None
-        logger.debug("Proofreading %s condition %s", self._modality, condition or "(first)")
+        logger.debug("Proofreading %s condition %s", self._modality, condition or "(primary)")
 
     def condition_choices(self) -> list[tuple[str, str | None]]:
         """Return a caption and a condition for each the frame on screen has."""

@@ -337,6 +337,24 @@ def test_re_pointing_picks_up_a_state_change_made_since(controller, tmp_path: Pa
 # Preparing frames
 # ---------------------------------------------------------------------------
 
+def test_proofreading_opens_on_the_primary_the_project_names(tmp_path: Path):
+    lamella_path = tmp_path / "project" / "lam_010"
+    for directory in ("SEM_8", "SEM_8_fi_1", "SEM_8_fi_4", "labels"):
+        (lamella_path / directory).mkdir(parents=True)
+        (lamella_path / directory / "img_0004.tif").write_bytes(b"")
+    (tmp_path / "project" / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "version: 1\nprimary:\n  SEM: SEM_8_fi_1\n", encoding="utf-8"
+    )
+    projects = Scanner(tmp_path).build_index().all_projects()
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_projects(projects)
+
+    controller.set_lamella(projects[0].lamellae[0])
+
+    assert controller.record.condition == "SEM_8_fi_1"
+
+
 def test_the_current_frame_is_requested_first(controller):
     controller.select(2)
     requests = controller.pending_loads()

@@ -12,15 +12,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from .layout import (
+    NO_CORRECTIONS,
     SERIES,
     UNSEQUENCED,
+    FamilyCorrections,
     acquisition_stem,
     alignment_run_order,
+    condition_of,
     condition_order,
     extract_image_number,
 )
@@ -56,7 +59,8 @@ class LamellaFrame:
     acquisition can be captured under several imaging conditions -- five SEM
     images of one scene at different frame-integration settings, for example.
     They are in :func:`~.layout.condition_order`: by family, each base before
-    its variants, so :meth:`record` returns the first family's base by default.
+    its variants. What a view opens on is the first family's primary, which the
+    project's corrections may name; see :meth:`shown_record`.
 
     Attributes:
         lamella: Name of the lamella the frame belongs to.
@@ -70,6 +74,9 @@ class LamellaFrame:
             Shared by every frame of that stage; see :attr:`displayed_plot`.
         series: What the images were taken for. One value for the frame: see
             :attr:`Acquisition.series`.
+        corrections: The project's family corrections, which say what family
+            a condition chosen by name belongs to and which condition is each
+            family's primary.
     """
 
     lamella: str
@@ -81,6 +88,9 @@ class LamellaFrame:
     plot_path: Path | None = None
     stage_plot: Path | None = None
     series: str = "adaptive"
+    corrections: FamilyCorrections = field(
+        default=NO_CORRECTIONS, compare=False, repr=False
+    )
 
     @property
     def displayed_plot(self) -> Path | None:
@@ -145,13 +155,16 @@ class LamellaFrame:
 
     @property
     def base_records(self) -> list[ImageRecord]:
-        """Return one record per modality: the first of each, SEM first.
+        """Return one record per modality, SEM first: the first family's primary.
 
-        The first family's base, which is what a single-image view opens on and
-        what an operation means by "this frame's SEM image" when it is not
-        condition-aware.
+        What a single-image view opens on, and what an operation means by "this
+        frame's SEM image" when it is not condition-aware.
         """
-        return [records[0] for records in (self.sem, self.fib) if records]
+        return [
+            record
+            for record in (self.primary("SEM"), self.primary("FIB"))
+            if record is not None
+        ]
 
     def modality_records(self, modality: str) -> tuple[ImageRecord, ...]:
         """Return every record for *modality*, in condition order."""
@@ -168,20 +181,61 @@ class LamellaFrame:
         Args:
             modality: ``'SEM'`` or ``'FIB'``.
             condition: The imaging condition to return, by its directory's name
-                in any case. ``None``, the default, returns the first record:
-                the base of the first family.
+                in any case. ``None``, the default, returns the first family's
+                primary.
 
         Returns:
             The matching record, or None when the frame has no such image.
         """
-        records = self.modality_records(modality)
         if condition is None:
-            return records[0] if records else None
+            return self.primary(modality)
         wanted = condition.lower()
         return next(
-            (record for record in records if (record.condition or "").lower() == wanted),
+            (
+                record
+                for record in self.modality_records(modality)
+                if (record.condition or "").lower() == wanted
+            ),
             None,
         )
+
+    def primary(self, modality: str, family: str | None = None) -> ImageRecord | None:
+        """Return the record standing for one family of *modality*.
+
+        Args:
+            family: The family, in any case. ``None`` means the first family.
+
+        Returns:
+            The family's primary, as :func:`primary_among` chooses it, or None
+            when the frame holds no image of that family.
+        """
+        records = self.modality_records(modality)
+        if not records:
+            return None
+        wanted = (family if family is not None else records[0].family or "").lower()
+        members = [record for record in records if (record.family or "").lower() == wanted]
+        return primary_among(members, self.corrections) if members else None
+
+    def shown_record(self, modality: str, condition: str | None = None) -> ImageRecord | None:
+        """Return the record a view shows for *modality* with *condition* chosen.
+
+        **The one fallback, for every view and the cache.** The chosen
+        condition; where this frame lacks it, the primary of the family it
+        belongs to, so stepping past an acquisition taken under fewer
+        conditions stays in the family; where the frame lacks the family too,
+        the first family's primary, so the pane is never blank while the
+        frame has an image of the beam.
+        """
+        if condition is not None:
+            exact = self.record(modality, condition)
+            if exact is not None:
+                return exact
+            parsed = condition_of(condition, self.corrections)
+            if parsed is not None and parsed.family is not None:
+                same_family = self.primary(modality, parsed.family)
+                if same_family is not None:
+                    return same_family
+        return self.primary(modality)
 
     def condition_choices(self, modality: str) -> list[tuple[str, str | None]]:
         """Return a caption and a condition for each record of *modality*, in order.
@@ -227,8 +281,40 @@ def resolve_series(wanted: str, present: Sequence[str]) -> str:
     return present[0]
 
 
+def primary_among(
+    records: Sequence[ImageRecord], corrections: FamilyCorrections
+) -> ImageRecord:
+    """Return the record standing for one family's *records*: its primary condition.
+
+    The condition *corrections* name for the family where it is among
+    *records*; otherwise the base condition, otherwise the first variant in
+    case-insensitive string order, which is what the oldest layouts need,
+    having no base: their SEM sets are ``SEM_8``, ``SEM_8_fi_1`` and so on.
+
+    Raises:
+        ValueError: If *records* is empty.
+    """
+    if not records:
+        raise ValueError("A family with no records has no primary")
+    family = next((record.family for record in records if record.family), None)
+    named = corrections.primary_of(family) if family is not None else None
+    if named is not None:
+        for record in records:
+            if (record.condition or "").lower() == named.lower():
+                return record
+    return min(records, key=_base_first)
+
+
+def _base_first(record: ImageRecord) -> tuple[bool, str]:
+    """Order one family's records: the base, then variants by name."""
+    return record.variant is not None, (record.variant or "").lower()
+
+
 def build_lamella_frames(
-    lamella: Lamella, series: str | None = None
+    lamella: Lamella,
+    series: str | None = None,
+    *,
+    corrections: FamilyCorrections,
 ) -> list[LamellaFrame]:
     """Return the lamella's acquisitions as one chronologically ordered list.
 
@@ -243,6 +329,8 @@ def build_lamella_frames(
             one. A 2026 lamella holds its reference images, its alignment runs
             and its Adaptive Polishing stages, which is one timeline of three
             unrelated things; anything reviewing it wants one at a time.
+        corrections: The corrections of the project holding *lamella*, which
+            every frame carries.
 
     Returns:
         One :class:`LamellaFrame` per acquisition, across all of the lamella's
@@ -250,7 +338,7 @@ def build_lamella_frames(
     """
     frames: list[LamellaFrame] = []
     for stage in lamella.stages:
-        frames.extend(_build_stage_frames(lamella, stage, series))
+        frames.extend(_build_stage_frames(lamella, stage, series, corrections))
     frames = _in_acquisition_order(frames)
     logger.debug("Built %d frames for lamella %s", len(frames), lamella.name)
     return frames
@@ -296,7 +384,10 @@ def _sequence(frame: LamellaFrame) -> int:
 
 
 def _build_stage_frames(
-    lamella: Lamella, stage: Stage, series: str | None = None
+    lamella: Lamella,
+    stage: Stage,
+    series: str | None,
+    corrections: FamilyCorrections,
 ) -> list[LamellaFrame]:
     """Return the frames for a single stage, ordered by acquisition number."""
     plots = _plots_by_image_number(stage.plots)
@@ -315,6 +406,7 @@ def _build_stage_frames(
             ),
             stage_plot=stage.summary_plot,
             series=acquisition.series,
+            corrections=corrections,
         )
         for acquisition in group_by_acquisition(stage.images)
         if series is None or acquisition.series == series
