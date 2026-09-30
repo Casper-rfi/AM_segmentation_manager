@@ -133,9 +133,6 @@ class ExperimentMetadata:
         gis_deposition_time_s: Seconds of GIS deposition. A number, so ``0.0``
             is a recorded value -- no deposition -- and not the same as unset.
         lamella_type: One of :data:`LAMELLA_TYPES`.
-        variants: Human-readable descriptions of imaging-condition variants,
-            keyed by the variant string in the image directory name. Variants
-            are opaque to the package, so this is purely for display.
         sources: Which file supplied each populated field, for tracing a value
             back when it looks wrong.
         todo_fields: Fields present in a file but still holding a ``TODO``
@@ -154,7 +151,6 @@ class ExperimentMetadata:
     grid_type: str | None = None
     gis_deposition_time_s: float | None = None
     lamella_type: str | None = None
-    variants: Mapping[str, str] = field(default_factory=dict)
     sources: Mapping[str, Path] = field(default_factory=dict)
     todo_fields: tuple[str, ...] = ()
 
@@ -169,12 +165,6 @@ class ExperimentMetadata:
             name for name in DESCRIPTIVE_FIELDS
             if not is_recorded(getattr(self, name))
         )
-
-    def variant_description(self, variant: str | None) -> str:
-        """Return a display label for a variant, falling back to the raw string."""
-        if variant is None:
-            return "base"
-        return self.variants.get(variant, variant)
 
 
 #: The headings the Add data tab gathers the fields under, in the order shown.
@@ -618,13 +608,8 @@ def build_experiment_metadata(
                 name, value, ", ".join(field_spec.choices),
             )
 
-    variants = am_metadata.get("variants")
-    if not isinstance(variants, Mapping):
-        variants = {}
-
     return ExperimentMetadata(
         **values,
-        variants={str(key): str(text) for key, text in variants.items()},
         sources=sources,
         todo_fields=tuple(sorted(todo)),
     )

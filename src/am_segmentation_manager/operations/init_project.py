@@ -146,6 +146,26 @@ def _derive_fields(project_root: Path) -> dict[str, str]:
     return derived
 
 
+def header_lines(project_name: str) -> list[str]:
+    """Return the comment lines heading an ``AM_metadata.yaml``.
+
+    It names the project, so a file separated from its directory is still
+    identifiable, and sends edits through the tools that record them: a merge
+    compares only recorded metadata changes, so one made by hand is invisible
+    to it.
+    """
+    return [
+        f"# Metadata for {project_name}",
+        "#",
+        "# Written by am-seg. Edit it in the Add data tab or with",
+        "# 'am-seg edit-metadata', which record each change in AM_history.jsonl.",
+        "# Merging a copy back compares only recorded changes, so it would miss an",
+        f"# edit made here by hand. A field reading {TODO_MARKER} has not been filled in.",
+        "# Values here override experiment.yaml, and nothing is inherited from",
+        "# parent directories, so this file is the whole story for this project.",
+    ]
+
+
 def render_template(
     project_root: Path,
     values: Mapping[str, str],
@@ -154,22 +174,13 @@ def render_template(
     """Return the text of an ``AM_metadata.yaml`` for a project.
 
     Args:
-        project_root: The project the file describes, named in a header comment
-            so a file separated from its directory is still identifiable.
+        project_root: The project the file describes, named in the header.
         values: Field values to write. Fields absent here are written as
             ``TODO`` placeholders.
         derived: Field names that were derived rather than supplied, noted in a
             trailing comment so a reader knows which values to double-check.
     """
-    lines = [
-        f"# Metadata for {project_root.name}",
-        "#",
-        "# Written by 'am-seg init-project'. Values here override experiment.yaml.",
-        f"# Replace every {TODO_MARKER} with a real value, or delete the line if it",
-        "# does not apply. Nothing is inherited from parent directories, so this",
-        "# file is the whole story for this project.",
-        "metadata:",
-    ]
+    lines = [*header_lines(project_root.name), "metadata:"]
     for entry in FIELDS:
         if entry.comment:
             lines.append(f"  # {entry.comment}")
@@ -180,17 +191,7 @@ def render_template(
         value = yaml_field_value(entry.name, values.get(entry.name, TODO_MARKER))
         suffix = "  # derived from experiment.yaml" if entry.name in derived else ""
         lines.append(f"  {entry.name}: {value}{suffix}")
-    lines.extend(
-        [
-            "",
-            "# Descriptions for imaging-condition variants, keyed by the suffix in the",
-            "# image directory name (sem_5kv -> 5kv). Display only; delete if unused.",
-            "# variants:",
-            "#   5kv: 5 kV landing energy",
-            "",
-        ]
-    )
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"
 
 
 def init_project(

@@ -420,7 +420,6 @@ class ImagePanel(QWidget):
         self,
         variants: list[str | None],
         current: str | None = None,
-        descriptions: dict[str, str] | None = None,
     ) -> None:
         """Offer the imaging conditions available for the current view.
 
@@ -432,17 +431,11 @@ class ImagePanel(QWidget):
         Args:
             variants: Conditions present, base first. ``None`` is the base.
             current: The condition on screen.
-            descriptions: Human-readable names from the project metadata, keyed
-                by variant. A variant with no description shows its raw name.
         """
         self._offer_overviews(False)
-        described = descriptions or {}
         fill_choice_combo(
             self.variant_combo,
-            [
-                ("base" if variant is None else described.get(variant, variant), variant)
-                for variant in variants
-            ],
+            [("base" if variant is None else variant, variant) for variant in variants],
             current,
         )
 

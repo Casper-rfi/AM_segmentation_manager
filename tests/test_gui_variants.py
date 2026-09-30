@@ -30,7 +30,7 @@ def make_project(root: Path) -> Path:
         (lamella / directory).mkdir(parents=True)
         (lamella / directory / "img_0004.tif").write_bytes(b"")
     (project / "AM_metadata.yaml").write_text(
-        "metadata:\n  sample: HeLa\nvariants:\n  8_fi_1: frame integration 1\n",
+        "metadata:\n  sample: HeLa\n",
         encoding="utf-8",
     )
     return project
@@ -217,23 +217,3 @@ def test_reach_is_always_available_even_with_nothing_selected():
         scan=lambda path, on_progress=None: Scanner(path).build_index(on_progress),
     )
     assert controller.reach().summary() == "Nothing selected"
-
-
-# ---------------------------------------------------------------------------
-# Mismatch reporting
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Variant descriptions from project metadata
-# ---------------------------------------------------------------------------
-
-def test_variant_descriptions_come_from_project_metadata(tmp_path: Path):
-    make_project(tmp_path)
-    controller = make_controller(tmp_path)
-
-    metadata = controller.project.experiment_metadata
-
-    assert metadata.variant_description("8_fi_1") == "frame integration 1"
-    assert metadata.variant_description("8_fi_4") == "8_fi_4"
-    assert metadata.variant_description(None) == "base"

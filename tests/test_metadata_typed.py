@@ -123,12 +123,13 @@ def test_an_unrecognised_lamella_type_is_kept_but_warned(caplog):
     assert "Unrecognised lamella_type" in caplog.text
 
 
-def test_variant_descriptions_are_read_and_fall_back():
-    resolved = build_experiment_metadata({}, {"variants": {"5kv": "5 kV landing energy"}})
+def test_a_leftover_variants_section_is_ignored():
+    """Files written before the section was dropped may still hold one."""
+    resolved = build_experiment_metadata(
+        {}, {"metadata": {"sample": "HeLa"}, "variants": {"5kv": "5 kV landing energy"}}
+    )
 
-    assert resolved.variant_description("5kv") == "5 kV landing energy"
-    assert resolved.variant_description("lowmag") == "lowmag"
-    assert resolved.variant_description(None) == "base"
+    assert resolved.sample == ("HeLa",)
 
 
 def test_empty_metadata_reports_itself_as_empty():

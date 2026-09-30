@@ -1648,7 +1648,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.image_panel.set_variants(
             self.controller.available_variants(),
             self.controller.current_variant(),
-            self._variant_descriptions(),
         )
         self.image_panel.set_status(self._status_text())
 
@@ -1758,19 +1757,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.controller.current_plot(),
             self.controller.cache.cached_plot_detail(position),
         )
-
-    def _variant_descriptions(self) -> dict[str, str]:
-        """Return human-readable names for the project's imaging conditions.
-
-        A variant is an opaque string taken from a directory name, so ``5kv``
-        is all the filesystem offers. A project may name them in its
-        ``AM_metadata.yaml``; where it does not, the raw name is shown.
-        """
-        project = self.controller.project
-        metadata = getattr(project, "experiment_metadata", None) if project else None
-        if metadata is None:
-            return {}
-        return dict(metadata.variants)
 
     def _status_text(self) -> str:
         frame = self.controller.frame

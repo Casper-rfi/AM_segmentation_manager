@@ -61,7 +61,7 @@ def variant_project(tmp_path: Path) -> Path:
 
     project.mkdir(parents=True, exist_ok=True)
     (project / "AM_metadata.yaml").write_text(
-        "metadata:\n  sample: HeLa\nvariants:\n  8_fi_1: frame integration 1\n",
+        "metadata:\n  sample: HeLa\n",
         encoding="utf-8",
     )
     return root
@@ -137,14 +137,12 @@ def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project
         destroy(window)
 
 
-def test_a_described_condition_shows_its_description(qt_app, variant_project: Path):
-    """A variant is an opaque directory suffix; metadata can name it."""
+def test_a_condition_is_captioned_by_its_directory_suffix(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
         combo = window.image_panel.variant_combo
         captions = [combo.itemText(i) for i in range(combo.count())]
-        assert "frame integration 1" in captions
-        assert "8_fi_4" in captions  # undescribed, so shown raw
+        assert captions == ["8", "8_fi_1", "8_fi_4"]
     finally:
         destroy(window)
 

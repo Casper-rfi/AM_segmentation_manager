@@ -80,7 +80,10 @@ Switch on **Enable editing** to change a field. am-seg writes only
 `AM_metadata.yaml`; `experiment.yaml` belongs to Autolamella and is never
 touched. A value in `AM_metadata.yaml` takes the place of the same field in
 `experiment.yaml`, field by field, so one can be corrected without restating
-the rest.
+the rest. Change metadata here or with `am-seg edit-metadata` rather than in
+the file itself: both record each change in the project's history, and
+merging a copy back compares only recorded changes, so it misses an edit made
+by hand.
 
 While you type, a field offers the values other projects in the collection
 already use, matching anywhere in the word: `foil` finds both `Quantifoil` and

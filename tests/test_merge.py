@@ -426,6 +426,15 @@ def test_the_same_field_edited_differently_is_a_conflict(forked, recorder):
     assert plan.is_refused
 
 
+def test_a_metadata_edit_nobody_recorded_is_not_merged(forked):
+    """What the AM_metadata.yaml header warns of: a hand edit leaves no event to compare."""
+    from am_segmentation_manager.operations.metadata_edit import update_project_metadata
+
+    update_project_metadata(forked.copy / "project", {"sample": "HeLa"}, recorder=None)
+
+    assert plan_merge(forked.copy, forked.main).projects[0].metadata == ()
+
+
 def test_a_state_changed_only_in_the_copy_is_taken(forked, recorder):
     from am_segmentation_manager.operations.selection import transition_records
 

@@ -244,9 +244,6 @@ class LabelPanel(QWidget):
         self._intensity_range = DEFAULT_INTENSITY_RANGE
         #: The classes to offer, in the order they are shown and keyed.
         self._classes = list(controller.config.classes)
-        #: Condition names from the project metadata; see
-        #: :meth:`set_variant_descriptions`.
-        self._variant_descriptions: dict[str, str] = {}
         #: The view to put back when the speck filter is switched off.
         self._view_before: tuple[bool, bool, int] | None = None
         #: Which speck the stepping key is on.
@@ -735,15 +732,6 @@ class LabelPanel(QWidget):
         self.controller.set_variant(self.variant_combo.itemData(index))
         self.refresh()
 
-    def set_variant_descriptions(self, descriptions: dict[str, str]) -> None:
-        """Take the human-readable condition names from the project metadata.
-
-        Handed in rather than read here: the panel has a controller, and the
-        controller has the scan, but neither reads project metadata -- the
-        window does, for the curation view, and this is the same answer.
-        """
-        self._variant_descriptions = descriptions
-
     def _overlay_toggled(self, shown: bool) -> None:
         self.controller.show_overlay = shown
         self.canvas.set_label_shown(shown)
@@ -1146,11 +1134,10 @@ class LabelPanel(QWidget):
         condition per modality is every Autolamella project so far, so hiding
         it moved this row on nearly every step.
         """
-        described = self._variant_descriptions
         fill_choice_combo(
             self.variant_combo,
             [
-                ("base" if variant is None else described.get(variant, variant), variant)
+                ("base" if variant is None else variant, variant)
                 for variant in self.controller.available_variants()
             ],
             self.controller.variant,

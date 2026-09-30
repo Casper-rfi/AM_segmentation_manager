@@ -95,6 +95,27 @@ def test_the_template_names_the_project_it_describes(tmp_path: Path):
     assert "AutoLamella-01" in (project / "AM_metadata.yaml").read_text()
 
 
+def test_the_template_sends_edits_through_the_tools_that_record_them(tmp_path: Path):
+    """A merge compares only recorded metadata edits, so a hand edit is lost to it."""
+    project = _make_project(tmp_path, "project")
+    init_project(project)
+
+    text = (project / "AM_metadata.yaml").read_text()
+    assert "am-seg edit-metadata" in text
+    assert "Add data tab" in text
+    assert "delete the line" not in text
+
+
+def test_the_template_holds_only_the_metadata_section(tmp_path: Path):
+    project = _make_project(tmp_path, "project")
+    init_project(project)
+
+    text = (project / "AM_metadata.yaml").read_text()
+    assert list(read_yaml(project / "AM_metadata.yaml")) == ["metadata"]
+    assert "variants" not in text
+    assert text.endswith("\n") and not text.endswith("\n\n")
+
+
 # ---------------------------------------------------------------------------
 # Not overwriting
 # ---------------------------------------------------------------------------
