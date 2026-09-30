@@ -350,6 +350,25 @@ def test_a_pruned_version_reads_as_lost_rather_than_as_present(collection, recor
     )
 
 
+def test_a_label_recorded_as_removed_is_not_named_by_a_later_savepoint(collection, recorder):
+    """A removal read as the label still being there would be reported as current."""
+    from am_segmentation_manager.operations.label_io import label_digest
+
+    label = _labels(collection)[0]
+    project = next(p for p in _projects(collection) if label.is_relative_to(p.path))
+    target = label.relative_to(project.path).as_posix()
+    removed_digest = label_digest(label)
+    label.unlink()
+    recorder.record(label, "label-removed", removed_digest=removed_digest, reason="duplicate")
+
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    point = find_savepoint(_projects(collection), "round 3")
+
+    carried = next(entry for entry in point.projects if entry.project.key == project.key)
+    named = {state.target for state in carried.targets}
+    assert named and target not in named
+
+
 def test_the_state_named_is_the_one_before_the_savepoint(collection, recorder):
     """Work done after it must not be read back as part of it."""
     label = _labels(collection)[0]

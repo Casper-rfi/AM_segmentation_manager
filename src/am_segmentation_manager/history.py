@@ -98,6 +98,7 @@ EventKind = Literal[
     "state-changed",
     "metadata-changed",
     "renamed",
+    "label-removed",
     "merged",
 ]
 
@@ -185,6 +186,10 @@ KINDS: Final[dict[str, KindSpec]] = {
     "state-changed": KindSpec(required=("old", "new")),
     "metadata-changed": KindSpec(required=("field", "old", "new")),
     "renamed": KindSpec(required=("renamed_from", "scope")),
+    # The digest is named ``removed_digest`` rather than ``digest``: a reader
+    # taking a target's latest ``digest`` as what it holds must not read a
+    # removal as the label still being there.
+    "label-removed": KindSpec(required=("removed_digest", "reason")),
     # A savepoint marks a round of model improvement. Per project, sharing one
     # ``savepoint`` id across the projects in scope: there is no such thing as
     # "the collection", so a collection-wide savepoint is a set of these.

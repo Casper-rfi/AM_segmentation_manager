@@ -252,6 +252,9 @@ def digests_before(log: HistoryLog, entry: Event | None) -> dict[str, str]:
 
     digests: dict[str, str] = {}
     for event in events:
+        if event.target and event.kind == "label-removed":
+            digests.pop(event.target, None)
+            continue
         digest = event.data.get("digest")
         if event.target and isinstance(digest, str) and digest:
             digests[event.target] = digest

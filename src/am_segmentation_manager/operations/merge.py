@@ -693,7 +693,9 @@ def _digests_at(events: Sequence[Event]) -> dict[str, str | None]:
     """Return what each target's label held at the end of *events*."""
     digests: dict[str, str | None] = {}
     for event in events:
-        if event.target and "digest" in event.data:
+        if event.target and event.kind == "label-removed":
+            digests[event.target] = None
+        elif event.target and "digest" in event.data:
             value = event.data["digest"]
             digests[event.target] = value if isinstance(value, str) else None
     return digests

@@ -426,6 +426,22 @@ def test_the_same_field_edited_differently_is_a_conflict(forked, recorder):
     assert plan.is_refused
 
 
+def test_a_label_removed_before_the_fork_was_absent_at_the_fork():
+    """So a label the copy writes there afterwards is new work, not a conflict."""
+    from am_segmentation_manager.history import Event
+    from am_segmentation_manager.operations.merge import _digests_at
+
+    events = [
+        Event(kind="label-converted", at="2026-09-28T10:00:00.000Z",
+              data={"digest": "aaaa"}, target="lam/SEM_8_fi_1_labels/img.tif"),
+        Event(kind="label-removed", at="2026-09-30T10:00:00.000Z",
+              data={"removed_digest": "aaaa", "reason": "duplicate"},
+              target="lam/SEM_8_fi_1_labels/img.tif"),
+    ]
+
+    assert _digests_at(events) == {"lam/SEM_8_fi_1_labels/img.tif": None}
+
+
 def test_a_metadata_edit_nobody_recorded_is_not_merged(forked):
     """What the AM_metadata.yaml header warns of: a hand edit leaves no event to compare."""
     from am_segmentation_manager.operations.metadata_edit import update_project_metadata

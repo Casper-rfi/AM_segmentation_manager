@@ -10,8 +10,9 @@ somewhere else.
 The first time anything changes a project, am-seg starts its record: an
 `AM_history.jsonl` in the project folder, beginning with what the project held
 at that moment. From then on every change is added to it: a state changed, a
-label saved, converted, restored or merged, a metadata field edited. Looking
-never writes; only a change does.
+label saved, converted, restored or merged, a metadata field edited, a
+duplicate label removed by `scripts/remove_duplicate_condition_labels.py`.
+Looking never writes; only a change does.
 
 On a collection that already holds work, run `init-history` once. It brings
 every project in at once, so a savepoint can cover the whole collection rather
