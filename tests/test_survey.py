@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.reporting import format_survey
 from am_segmentation_manager.survey import (
     find_project_roots,
@@ -340,6 +341,58 @@ def test_a_families_file_that_will_not_read_is_reported(tmp_path: Path):
     assert len(findings) == 1
     assert findings[0].severity == "error"
     assert "is not a family name" in findings[0].message
+
+
+def _headers_by_condition(monkeypatch, headers: dict[str, ImageMetadata]) -> None:
+    """Stand in for the header reader, answering by the image's condition."""
+    import am_segmentation_manager.survey as survey_module
+
+    monkeypatch.setattr(
+        survey_module, "header_reader",
+        lambda: lambda path: headers.get(path.parent.name),
+    )
+
+
+def test_conditions_of_one_family_with_two_image_sizes_are_an_error(tmp_path, monkeypatch):
+    _family_stage(tmp_path, "sem", "sem_mag2")
+    _headers_by_condition(monkeypatch, {
+        "sem": ImageMetadata(image_width=3072, image_height=2048),
+        "sem_mag2": ImageMetadata(image_width=1536, image_height=1024),
+    })
+
+    found = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "family-image-size-mismatch"
+    ]
+
+    assert [finding.severity for finding in found] == ["error"]
+    assert "sem 3072x2048, sem_mag2 1536x1024" in found[0].message
+
+
+def test_conditions_of_one_family_at_two_pixel_sizes_are_a_warning(tmp_path, monkeypatch):
+    _family_stage(tmp_path, "sem", "sem_mag2")
+    _headers_by_condition(monkeypatch, {
+        "sem": ImageMetadata(pixel_size_nm=13.49),
+        "sem_mag2": ImageMetadata(pixel_size_nm=26.98),
+    })
+
+    categories = _categories(survey_collection(tmp_path))
+
+    assert "family-header-mismatch" in categories
+    assert "family-image-size-mismatch" not in categories
+
+
+def test_the_header_check_follows_the_corrected_families(tmp_path, monkeypatch):
+    _family_stage(tmp_path, "sem", "sem_mag2")
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "families:\n  sem_mag2: sem-mag2\n", encoding="utf-8"
+    )
+    _headers_by_condition(monkeypatch, {
+        "sem": ImageMetadata(image_width=3072, image_height=2048),
+        "sem_mag2": ImageMetadata(image_width=1536, image_height=1024),
+    })
+
+    assert "family-image-size-mismatch" not in _categories(survey_collection(tmp_path))
 
 
 def test_legacy_label_directories_are_reported_for_migration(tmp_path: Path):

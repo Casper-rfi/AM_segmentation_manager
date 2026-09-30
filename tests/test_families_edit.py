@@ -19,6 +19,7 @@ from am_segmentation_manager.families import (
     read_families,
 )
 from am_segmentation_manager.history import Recorder, read_log
+from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.models import Project
 from am_segmentation_manager.operations.families_edit import (
     FamiliesValidationError,
@@ -292,6 +293,51 @@ def test_a_file_edited_after_the_preview_is_not_written_over(tmp_path: Path):
 
     assert (stage.parents[1] / AM_FAMILIES_FILENAME).read_text(encoding="utf-8") == edited
     assert (stage / "AM_state.yaml").read_text(encoding="utf-8") == before
+
+
+def _headers(monkeypatch, headers: dict[str, ImageMetadata] | None) -> None:
+    """Stand in for the header reader, answering by condition; None for no image stack."""
+    import am_segmentation_manager.operations.families_edit as edit_module
+
+    reader = None if headers is None else (lambda path: headers.get(path.parent.name))
+    monkeypatch.setattr(edit_module, "header_reader", lambda: reader)
+
+
+def test_joining_a_family_of_another_image_size_is_refused(tmp_path: Path, monkeypatch):
+    _stage(tmp_path, "sem-2kV", "sem2kVb", "sem-2kV_labels")
+    _headers(monkeypatch, {
+        "sem-2kV": ImageMetadata(image_width=3072, image_height=2048),
+        "sem2kVb": ImageMetadata(image_width=1536, image_height=1024),
+    })
+
+    assert "one label cannot fit both" in _refusal(tmp_path, families={"sem2kVb": "sem-2kV"})
+
+
+def test_joining_a_family_at_another_pixel_size_is_warned_about(tmp_path: Path, monkeypatch):
+    _stage(tmp_path, "sem-2kV", "sem2kVb", "sem-2kV_labels")
+    _headers(monkeypatch, {
+        "sem-2kV": ImageMetadata(pixel_size_nm=13.49),
+        "sem2kVb": ImageMetadata(pixel_size_nm=26.98),
+    })
+
+    change = plan_families_change(_project(tmp_path), families={"sem2kVb": "sem-2kV"})
+
+    assert change.warnings == (
+        f"lam_000/adaptive_polish_1: {IMAGE} differs in pixel size: "
+        "sem-2kV 13.49 nm, sem2kVb 26.98 nm",
+    )
+    assert any(line.startswith("  warning: ") for line in change.describe())
+
+
+def test_a_join_says_when_headers_could_not_be_compared(tmp_path: Path, monkeypatch):
+    _stage(tmp_path, "sem-2kV", "sem2kVb")
+    _headers(monkeypatch, None)
+
+    change = plan_families_change(_project(tmp_path), families={"sem2kVb": "sem-2kV"})
+
+    assert change.warnings == (
+        "image headers were not compared: the image stack is not installed",
+    )
 
 
 # ---------------------------------------------------------------------------

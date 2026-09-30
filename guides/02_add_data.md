@@ -170,6 +170,13 @@ from a condition you did not name, and one taking images out of a corrected
 group needs `--confirm-corrected`. `--clear` puts a condition back where its
 name places it.
 
+**Inspect layout** tells you when a correction is needed. It compares one
+image of each family's conditions: images of different sizes are an error,
+since one label cannot fit both, and a different pixel size or accelerating
+voltage is a warning that the conditions may not be one family.
+`edit-families` makes the same comparison for a condition joining a family,
+refusing a change of size and warning about the others.
+
 Each family has a **primary condition**: the one predicted from, measured at,
 and kept by *One image per label*. It is the base condition, or where a stage
 has none, the first variant by name. `--primary sem=sem_fi8` names another,

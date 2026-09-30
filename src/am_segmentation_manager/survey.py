@@ -12,7 +12,7 @@ unrecognised name produces a finding, never an exception.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -30,7 +30,12 @@ from .discovery import (
     project_markers,
 )
 from .families import FamiliesFileError, families_file_path, read_families
-from .image_metadata import header_reader
+from .image_metadata import (
+    ImageMetadata,
+    condition_disagreements,
+    header_reader,
+    read_condition_headers,
+)
 from .io.long_paths import WINDOWS_MAX_PATH, explanation, long_paths_work, unreachable
 from .io.path import make_path_relative
 from .io.yaml import read_yaml_or_problem
@@ -662,6 +667,8 @@ def _survey_stage(
 
     findings.extend(_loose_findings(stage_path, loose))
     findings.extend(_family_conflict_findings(stage_path, directory_sets, corrections))
+    if reader is not None:
+        findings.extend(_family_header_findings(stage_path, directory_sets, reader))
 
     for child in subdirectories_by_name(stage_path).values():
         if directory_role(child.name) != "unknown":
@@ -727,6 +734,55 @@ def _family_conflict_findings(
                         f"Family {image_set.family} has {len(competing)} {kind} "
                         f"directories ({names}); its conditions each read their own "
                         f"until these are merged into one"
+                    ),
+                )
+            )
+    return findings
+
+
+def _family_header_findings(
+    stage_path: Path,
+    image_sets: Iterable[ImageSet],
+    read: Callable[[Path], ImageMetadata | None],
+) -> list[Finding]:
+    """Report each family whose conditions' headers disagree about one acquisition.
+
+    One header per condition: the first filename they all hold. A different
+    image size is an error, since one label cannot fit both; a different pixel
+    size or voltage is a warning that the conditions may not be one family.
+    """
+    families: dict[tuple[str, str], list[ImageSet]] = {}
+    for image_set in image_sets:
+        if image_set.is_loose or image_set.modality is None or image_set.family is None:
+            continue
+        families.setdefault((image_set.modality, image_set.family.lower()), []).append(image_set)
+
+    findings: list[Finding] = []
+    for members in families.values():
+        if len(members) < 2:
+            continue
+        read_back = read_condition_headers(
+            {member.directory.name: image_files_by_name(member.directory) for member in members},
+            read,
+        )
+        if read_back is None:
+            continue
+        filename, headers = read_back
+        for disagreement in condition_disagreements(headers):
+            blocks = disagreement.blocks_sharing
+            findings.append(
+                Finding(
+                    severity="error" if blocks else "warning",
+                    category="family-image-size-mismatch" if blocks else "family-header-mismatch",
+                    path=stage_path,
+                    message=(
+                        f"Family {members[0].family} disagrees on {filename} about "
+                        f"{disagreement.describe()}; "
+                        + (
+                            "one label cannot fit both, so correct the family"
+                            if blocks
+                            else "check these conditions belong in one family"
+                        )
                     ),
                 )
             )

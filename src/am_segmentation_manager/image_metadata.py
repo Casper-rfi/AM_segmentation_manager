@@ -18,7 +18,7 @@ from dataclasses import fields as dataclass_fields
 from datetime import UTC as UTC_ZONE
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from .io.image import image_stack_problems, require_image_stack
 from .parallel import map_in_processes
@@ -989,3 +989,105 @@ def modality_disagreements(
         if entry.modality != record.modality:
             found.append((record.image_path, record.modality, entry.modality))
     return found
+
+
+#: What the conditions of one family must agree on, each read from a header as
+#: text, or None where the header does not say. **Only a difference in image
+#: size stops a label being shared**: one mask cannot fit two shapes. The others
+#: mean the conditions are likely not one acquisition.
+FAMILY_QUANTITIES: Final[tuple[tuple[str, Callable[[ImageMetadata], str | None]], ...]] = (
+    (
+        "image size",
+        lambda header: (
+            f"{header.image_width}x{header.image_height}"
+            if header.image_width is not None and header.image_height is not None
+            else None
+        ),
+    ),
+    (
+        "pixel size",
+        lambda header: f"{header.pixel_size_nm:g} nm" if header.pixel_size_nm is not None else None,
+    ),
+    (
+        "accelerating voltage",
+        lambda header: (
+            f"{header.acceleration_voltage_kv:g} kV"
+            if header.acceleration_voltage_kv is not None
+            else None
+        ),
+    ),
+)
+
+#: The quantity in :data:`FAMILY_QUANTITIES` whose disagreement a shared label cannot survive.
+IMAGE_SIZE: Final[str] = "image size"
+
+
+@dataclass(frozen=True)
+class ConditionDisagreement:
+    """One quantity the conditions of a family state differently.
+
+    Attributes:
+        quantity: A name from :data:`FAMILY_QUANTITIES`.
+        values: Each condition and what its header states, in condition order.
+    """
+
+    quantity: str
+    values: tuple[tuple[str, str], ...]
+
+    @property
+    def blocks_sharing(self) -> bool:
+        """Return whether one label cannot serve these conditions at all."""
+        return self.quantity == IMAGE_SIZE
+
+    def describe(self) -> str:
+        """Return e.g. ``'pixel size: sem 5.2 nm, sem_mag2 10.4 nm'``."""
+        listed = ", ".join(f"{condition} {value}" for condition, value in self.values)
+        return f"{self.quantity}: {listed}"
+
+
+def condition_disagreements(
+    headers: Mapping[str, ImageMetadata],
+) -> list[ConditionDisagreement]:
+    """Return what one acquisition's conditions state differently.
+
+    Args:
+        headers: Each condition's header for the same acquisition. A condition
+            whose header does not state a quantity takes no part in comparing it.
+    """
+    found = []
+    for quantity, read in FAMILY_QUANTITIES:
+        values = tuple(
+            (condition, value)
+            for condition, header in sorted(headers.items(), key=lambda item: item[0].lower())
+            if (value := read(header)) is not None
+        )
+        if len({value for _, value in values}) > 1:
+            found.append(ConditionDisagreement(quantity, values))
+    return found
+
+
+def read_condition_headers(
+    images: Mapping[str, Mapping[str, Path]],
+    read: Callable[[Path], ImageMetadata | None],
+) -> tuple[str, dict[str, ImageMetadata]] | None:
+    """Read one acquisition's header in each of a family's conditions.
+
+    Args:
+        images: Each condition's image files by filename.
+        read: How to read a header, as :func:`header_reader` returns it.
+
+    Returns:
+        The filename read -- the first every condition holds -- and each
+        condition's header, or None where no filename is common to them all.
+    """
+    listed = [set(files) for files in images.values()]
+    common = set.intersection(*listed) if listed else set()
+    if not common:
+        return None
+    name = min(common)
+    headers = {
+        condition: header
+        for condition, files in images.items()
+        if (header := read(files[name])) is not None
+    }
+    return name, headers

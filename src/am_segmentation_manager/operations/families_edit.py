@@ -4,9 +4,10 @@ A change is worked out in full before anything is written. Every condition in
 every stage is resolved under the corrections before and after, and the change
 is refused if a directory holding files would be read by no condition, a
 condition would read one such directory in place of another, a condition the
-change does not name would stop reading one, a family would gain a conflict, or
-two conditions of a family would share a variant name. Images whose label group
-changes keep their curation as :func:`~.selection.plan_regrouping` says.
+change does not name would stop reading one, a family would gain a conflict,
+two conditions of a family would share a variant name, or a family a condition
+joins would hold two image sizes. Images whose label group changes keep their
+curation as :func:`~.selection.plan_regrouping` says.
 """
 from __future__ import annotations
 
@@ -24,6 +25,12 @@ from ..families import (
     write_families,
 )
 from ..history import Recorder
+from ..image_metadata import (
+    ImageMetadata,
+    condition_disagreements,
+    header_reader,
+    read_condition_headers,
+)
 from ..io.atomic import Fingerprint, fingerprint_of
 from ..layout import (
     FamilyCorrections,
@@ -150,6 +157,9 @@ class FamiliesChange:
         entries: One per entry that changes.
         moves: One per condition and stage whose label directory changes.
         states: The state entries written so moved images keep their curation.
+        warnings: What the change allows but a person should look at: the
+            conditions of a family it enlarges disagreeing about pixel size or
+            voltage.
         applied: Whether it was written, as opposed to previewed.
     """
 
@@ -161,6 +171,7 @@ class FamiliesChange:
     entries: tuple[EntryChange, ...] = ()
     moves: tuple[ConditionMove, ...] = ()
     states: RegroupingPlan = field(default_factory=RegroupingPlan)
+    warnings: tuple[str, ...] = ()
     applied: bool = False
 
     @property
@@ -175,6 +186,7 @@ class FamiliesChange:
         lines = [f"{self.project}:"]
         lines.extend(f"  {entry.describe()}" for entry in self.entries)
         lines.extend(f"  {move.describe(self.project_root)}" for move in self.moves)
+        lines.extend(f"  warning: {warning}" for warning in self.warnings)
         lines.extend(
             f"  {effect.image.relative_to(self.project_root).as_posix()}: "
             f"{effect.old} -> {effect.new}"
@@ -303,10 +315,16 @@ def plan_families_change(
     named = {entry.key.lower() for entry in entries if entry.section == FAMILIES_SECTION}
     moves: list[ConditionMove] = []
     regroupings: list[Regrouping] = []
+    warnings: list[str] = []
+    read = header_reader() if named else None
+    if named and read is None:
+        warnings.append("image headers were not compared: the image stack is not installed")
     for stage in stages:
         _check_stage(
             stage, listings[stage], before, after, named, root, problems, moves, regroupings
         )
+        if read is not None:
+            _check_headers(stage, listings[stage], after, named, root, read, problems, warnings)
     if problems:
         raise FamiliesValidationError(problems)
 
@@ -322,7 +340,7 @@ def plan_families_change(
                 f"{leaving[0].image.relative_to(root).as_posix()}; confirm to go ahead"
             ]
         )
-    return replace(change, moves=tuple(moves), states=states)
+    return replace(change, moves=tuple(moves), states=states, warnings=tuple(warnings))
 
 
 def apply_families_change(
@@ -492,6 +510,45 @@ def _holds_files(directory: Path, cache: dict[Path, bool]) -> bool:
         except OSError:
             cache[directory] = True
     return cache[directory]
+
+
+def _check_headers(
+    stage: Path,
+    siblings: Mapping[str, Path],
+    after: FamilyCorrections,
+    named: set[str],
+    root: Path,
+    read: Callable[[Path], ImageMetadata | None],
+    problems: list[str],
+    warnings: list[str],
+) -> None:
+    """Compare the headers of each family in *stage* that a named condition joins.
+
+    A different image size is refused, since one label cannot fit both; a
+    different pixel size or voltage is allowed and warned about.
+    """
+    families: dict[tuple[str, str], list[Path]] = {}
+    for directory in sorted(siblings.values(), key=lambda path: path.name):
+        condition = condition_of(directory.name, after)
+        if condition is not None:
+            key = (condition.modality, condition.family.lower())
+            families.setdefault(key, []).append(directory)
+    where = stage.relative_to(root).as_posix() or "."
+    for members in families.values():
+        if len(members) < 2 or not any(member.name.lower() in named for member in members):
+            continue
+        read_back = read_condition_headers(
+            {member.name: image_files_by_name(member) for member in members}, read
+        )
+        if read_back is None:
+            continue
+        filename, headers = read_back
+        for disagreement in condition_disagreements(headers):
+            message = f"{where}: {filename} differs in {disagreement.describe()}"
+            if disagreement.blocks_sharing:
+                problems.append(f"{message}; one label cannot fit both")
+            else:
+                warnings.append(message)
 
 
 def _check_stage(

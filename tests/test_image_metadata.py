@@ -20,8 +20,10 @@ from am_segmentation_manager.image_metadata import (
     ELECTRON,
     ION,
     ImageMetadata,
+    condition_disagreements,
     extract_metadata,
     modality_disagreements,
+    read_condition_headers,
     read_image_metadata,
     read_records_metadata,
 )
@@ -769,3 +771,54 @@ def test_a_clock_time_is_left_as_written_and_names_no_zone():
     assert metadata.acquired_at == datetime(2026, 4, 8, 10, 40, 1)
     assert metadata.acquired_at_timezone is None
 
+
+
+# ---------------------------------------------------------------------------
+# Conditions of one family
+# ---------------------------------------------------------------------------
+
+def _header(width: int = 3072, pixel: float = 13.49, kv: float | None = 2.0) -> ImageMetadata:
+    return ImageMetadata(
+        image_width=width, image_height=2048, pixel_size_nm=pixel, acceleration_voltage_kv=kv
+    )
+
+
+def test_conditions_of_one_acquisition_agree():
+    assert condition_disagreements({"sem": _header(), "sem_fi8": _header()}) == []
+
+
+def test_each_quantity_a_family_disagrees_about_is_named():
+    found = condition_disagreements(
+        {"sem": _header(), "sem_mag2": _header(width=1536, pixel=26.98, kv=5.0)}
+    )
+
+    assert [(item.quantity, item.blocks_sharing) for item in found] == [
+        ("image size", True), ("pixel size", False), ("accelerating voltage", False),
+    ]
+    assert found[1].describe() == "pixel size: sem 13.49 nm, sem_mag2 26.98 nm"
+
+
+def test_a_header_that_does_not_state_a_quantity_takes_no_part_in_it():
+    assert condition_disagreements({"sem": _header(kv=None), "sem_fi8": _header(kv=5.0)}) == []
+
+
+def test_one_acquisition_is_read_in_every_condition(tmp_path: Path):
+    read: list[Path] = []
+    images = {
+        "sem": {"a.tif": tmp_path / "sem/a.tif", "b.tif": tmp_path / "sem/b.tif"},
+        "sem_fi8": {"b.tif": tmp_path / "sem_fi8/b.tif", "c.tif": tmp_path / "sem_fi8/c.tif"},
+    }
+
+    filename, headers = read_condition_headers(
+        images, lambda path: read.append(path) or _header()
+    )
+
+    assert filename == "b.tif"
+    assert sorted(read) == [tmp_path / "sem/b.tif", tmp_path / "sem_fi8/b.tif"]
+    assert set(headers) == {"sem", "sem_fi8"}
+
+
+def test_conditions_sharing_no_acquisition_are_not_read(tmp_path: Path):
+    images = {"sem": {"a.tif": tmp_path / "a.tif"}, "sem_fi8": {"b.tif": tmp_path / "b.tif"}}
+
+    assert read_condition_headers(images, lambda path: _header()) is None
