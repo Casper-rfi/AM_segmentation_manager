@@ -132,6 +132,26 @@ def test_a_family_predicts_from_the_primary_its_project_names(tmp_path: Path):
     assert {item.record.variant for item in plan.predictions} == {"fi_1"}
 
 
+def test_a_family_in_conflict_is_predicted_once_per_destination(tmp_path: Path):
+    """Two label directories make two groups, but one predictions directory
+    holds both: two writes there would leave only the second."""
+    stage = tmp_path / "project" / "lam_000" / "adaptive_polish_1"
+    for directory in ("sem", "sem_fi1", "sem_fi2", "sem_labels", "sem_fi1_labels"):
+        (stage / directory).mkdir(parents=True)
+        (stage / directory / "img_0000.tif").write_bytes(b"")
+    (tmp_path / "project" / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    # sem_fi1's group first, so the family's primary must win rather than the order.
+    records = sorted(records_of(tmp_path), key=lambda record: record.condition != "sem_fi1")
+
+    plan = plan_predictions(records, MODEL)
+
+    [planned] = plan.predictions
+    assert planned.record.condition == "sem"
+    assert planned.destination == stage / "sem_predictions" / "am_seg" / "img_0000.tif"
+    assert plan.represented == 2
+    assert planned.shared_with == 2
+
+
 # --- one modality per run ---------------------------------------------------
 
 def test_a_selection_spanning_both_modalities_is_refused(tmp_path: Path):

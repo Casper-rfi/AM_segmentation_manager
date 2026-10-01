@@ -76,8 +76,8 @@ class PlannedPrediction:
         record: The image to run the model over.
         destination: Where the prediction would be written.
         outcome: What running it would do to that destination.
-        shared_with: How many other images share this prediction's label, and
-            therefore benefit from it without being predicted themselves.
+        shared_with: How many other images this prediction serves without
+            their being predicted themselves.
     """
 
     record: ImageRecord
@@ -102,8 +102,9 @@ class PredictionPlan:
             than one refuses the run: nothing here knows which of them the
             model was trained for, so the selection has to say, and a selection
             saying both says nothing.
-        represented: Images not predicted because another image of their label
-            group is. Counted rather than listed, being the normal case.
+        represented: Images not predicted because another image's prediction
+            serves them: one of their label group, or of their family where its
+            labels are split. Counted rather than listed, being the normal case.
     """
 
     predictions: tuple[PlannedPrediction, ...] = ()
@@ -183,8 +184,10 @@ def plan_predictions(
 
     Expands to label groups and keeps each group's primary image, so a scene
     captured under several conditions is predicted once, from the condition
-    :func:`~.label_groups.primary_record` chooses. The whole set is resolved
-    before any of it runs.
+    :func:`~.label_groups.primary_record` chooses. **No destination is planned
+    twice**, so groups meeting at one file are predicted once, from their
+    primary (``test_a_family_in_conflict_is_predicted_once_per_destination``).
+    The whole set is resolved before any of it runs.
 
     A selection spanning both modalities is refused rather than predicted.
     Nothing here knows which one the model was trained for -- a checkpoint does
@@ -209,11 +212,20 @@ def plan_predictions(
         return PredictionPlan(modalities=modalities)
 
     families: dict[Path, FamilyCorrections] = {}
+    competing: dict[Path, list[tuple[ImageRecord, int]]] = {}
     for group in build_groups(candidates):
         chosen = primary_record(group.records, families)
-        represented += len(group.records) - 1
+        competing.setdefault(prediction_destination(chosen), []).append(
+            (chosen, len(group.records))
+        )
 
-        destination = prediction_destination(chosen)
+    for destination, groups in competing.items():
+        # Several groups meet at one file only where a family's labels are
+        # split across directories; one write serves them all.
+        chosen = primary_record([record for record, _ in groups], families)
+        covered = sum(size for _, size in groups)
+        represented += covered - 1
+
         if destination.parent not in provenance:
             provenance[destination.parent] = read_provenance(destination.parent)
         recorded = provenance[destination.parent].get(destination.name)
@@ -225,9 +237,7 @@ def plan_predictions(
         else:
             outcome = "replace"
 
-        planned = PlannedPrediction(
-            chosen, destination, outcome, shared_with=len(group.records) - 1
-        )
+        planned = PlannedPrediction(chosen, destination, outcome, shared_with=covered - 1)
         (up_to_date if outcome == "up-to-date" else predictions).append(planned)
 
     return PredictionPlan(

@@ -632,10 +632,11 @@ rather than appending to it.
 - **One prediction per label group, not per image.** The label is the unit of workflow state
   everywhere else, and a prediction exists to become a label, so a group gets one — from
   `label_groups.primary_record`, the condition a family's `primary:` names, else its base, else its
-  first variant by name — the
-  image a training export keeps. Predicting the other conditions would spend inference on noisier pseudo-labels and removes
-  a hazard rather than managing one: conditions carry identical filenames into a shared predictions
-  directory, so predicting all of them has each write replace the last.
+  first variant by name — the image a training export keeps. Predicting the other conditions would
+  spend inference on noisier pseudo-labels and removes a hazard rather than managing one: conditions
+  carry identical filenames into a shared predictions directory, so predicting all of them has each
+  write replace the last. **No file is planned twice**: a family whose labels are split is several
+  groups, met by one prediction from its primary (`test_a_family_in_conflict_is_predicted_once_per_destination`).
 - **Which prediction becomes a label is asked for, and the preview says which was used.** An image
   can hold am-seg's own and the microscope's; `prediction_precedence` takes the source chosen,
   am-seg unless told otherwise, and the other only where it is missing. That fallback is counted
