@@ -1406,8 +1406,27 @@ def _image_set_sort_key(image_set: ImageSet) -> tuple[int, tuple[str, bool, str]
 
 
 def condition_order(family: str | None, variant: str | None) -> tuple[str, bool, str]:
-    """Return where a condition sorts among its beam's: by family, base first, then variant."""
-    return (family or "").lower(), variant is not None, (variant or "").lower()
+    """Return where a condition sorts among its beam's: by family, then as :func:`primary_order`."""
+    return (family_key(family), *primary_order(variant))
+
+
+def family_key(family: str | None) -> str:
+    """Return what identifies a family in comparisons: its name in lower case.
+
+    Family names compare case-insensitively, as a stage's directories do; ``""``
+    for no family.
+    """
+    return (family or "").lower()
+
+
+def primary_order(variant: str | None) -> tuple[bool, str]:
+    """Return where a condition sorts within its family: the base, then variants by name.
+
+    **The default primary is the first in this order**, which is what the oldest
+    layouts need, having no base: their SEM sets are ``SEM_8``, ``SEM_8_fi_1``
+    and so on. A primary named in ``AM_families.yaml`` comes before it.
+    """
+    return variant is not None, (variant or "").lower()
 
 
 @dataclass(frozen=True)

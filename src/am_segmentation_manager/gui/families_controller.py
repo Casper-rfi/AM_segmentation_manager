@@ -21,6 +21,7 @@ from ..layout import (
     classify_image_directory,
     condition_of,
     correction_problems,
+    primary_order,
 )
 from ..models import Lamella, Project
 from ..operations.families_edit import (
@@ -267,7 +268,7 @@ class FamiliesController:
         named = self._named_primary(family)
         held = next((name for name in names if named and name.lower() == named.lower()), None)
         primary = held if held is not None else min(
-            names, key=lambda name: _base_first(self._variant_in(name, family))
+            names, key=lambda name: primary_order(self._variant_in(name, family))
         )
         return FamilyNode(
             modality=modality,
@@ -464,11 +465,6 @@ def _modality(condition: str) -> str | None:
     """Return the beam *condition*'s name gives it."""
     parsed = classify_image_directory(condition)
     return parsed.modality if parsed is not None else None
-
-
-def _base_first(variant: str | None) -> tuple[bool, str]:
-    """Order a family's conditions as the default primary rule does."""
-    return variant is not None, (variant or "").lower()
 
 
 def _same(first: str | None, second: str | None) -> bool:

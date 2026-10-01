@@ -27,6 +27,8 @@ from .layout import (
     condition_of,
     condition_order,
     extract_image_number,
+    family_key,
+    primary_order,
 )
 from .models import ImageRecord, Lamella, Stage
 
@@ -309,14 +311,6 @@ class ConditionChoice:
         return len(family) if not rest or rest.startswith(VARIANT_SEPARATOR) else 0
 
 
-def family_key(family: str | None) -> str:
-    """Return what identifies a family in comparisons: its name in lower case.
-
-    Family names compare case-insensitively, as a stage's directories do.
-    """
-    return (family or "").lower()
-
-
 def series_present(lamella: Lamella | None) -> list[str]:
     """Return the series *lamella* holds images of, in display order.
 
@@ -355,9 +349,7 @@ def primary_among(
     """Return the record standing for one family's *records*: its primary condition.
 
     The condition *corrections* name for the family where it is among
-    *records*; otherwise the base condition, otherwise the first variant in
-    case-insensitive string order, which is what the oldest layouts need,
-    having no base: their SEM sets are ``SEM_8``, ``SEM_8_fi_1`` and so on.
+    *records*; otherwise the first in :func:`~.layout.primary_order`.
 
     Raises:
         ValueError: If *records* is empty.
@@ -370,12 +362,7 @@ def primary_among(
         for record in records:
             if (record.condition or "").lower() == named.lower():
                 return record
-    return min(records, key=_base_first)
-
-
-def _base_first(record: ImageRecord) -> tuple[bool, str]:
-    """Order one family's records: the base, then variants by name."""
-    return record.variant is not None, (record.variant or "").lower()
+    return min(records, key=lambda record: primary_order(record.variant))
 
 
 def build_lamella_frames(

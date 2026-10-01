@@ -18,6 +18,7 @@ from am_segmentation_manager.gui.families_controller import (
 from am_segmentation_manager.history import Recorder, read_log
 from am_segmentation_manager.models import Project
 from am_segmentation_manager.operations.families_edit import FamiliesValidationError
+from am_segmentation_manager.operations.label_groups import primary_record
 from am_segmentation_manager.scanner import Scanner
 from am_segmentation_manager.state import read_state
 
@@ -74,6 +75,29 @@ def test_a_family_without_a_base_has_its_first_variant_as_primary(tmp_path: Path
     [(_, family, conditions)] = rows(controller)
     assert family == "SEM"
     assert conditions[0] == ("SEM_8", 1, "primary (default)")
+
+
+@pytest.mark.parametrize(
+    ("directories", "families"),
+    [
+        (("SEM_8_fi_4", "SEM_8", "SEM_8_fi_16"), None),
+        (("sem", "sem_b", "sem-5kV"), "families:\n  sem_b: sem-5kV\n"),
+        (("sem", "sem_b", "sem-5kV"), "families:\n  sem_b: sem-5kV\nprimary:\n  sem-5kV: sem_b\n"),
+    ],
+)
+def test_the_starred_primary_is_the_one_predicted(tmp_path: Path, directories, families):
+    """The tab and the operations choose a family's primary by one rule."""
+    projects = scan(tmp_path, families=families, lam_010=directories)
+    controller = FamiliesController()
+    controller.set_scope(projects)
+    by_family: dict[str, list] = {}
+    for record in projects[0].image_records:
+        by_family.setdefault(record.family.lower(), []).append(record)
+
+    for node in controller.tree():
+        predicted = primary_record(by_family[node.family.lower()])
+        assert node.primary is not None
+        assert node.primary.name == predicted.image_path.parent.name
 
 
 def test_the_file_moves_conditions_and_names_primaries(tmp_path: Path):

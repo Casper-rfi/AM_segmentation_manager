@@ -45,7 +45,8 @@ from qtpy.QtWidgets import (
 
 from ...config import SegmentationConfig
 from ...display import DEFAULT_INTENSITY_RANGE
-from ...frames import ConditionChoice, family_key
+from ...frames import ConditionChoice
+from ...layout import family_key
 from . import theme
 
 logger = logging.getLogger(__name__)

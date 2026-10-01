@@ -21,7 +21,6 @@ from ..frames import (
     ConditionChoice,
     LamellaFrame,
     build_lamella_frames,
-    family_key,
     primary_among,
     resolve_series,
     series_present,
@@ -36,6 +35,7 @@ from ..layout import (
     SERIES_LABELS,
     FamilyCorrections,
     condition_of,
+    family_key,
 )
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
