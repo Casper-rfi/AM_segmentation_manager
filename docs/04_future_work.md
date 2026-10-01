@@ -27,8 +27,8 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
   `GENERATIONS` held to a recapture of `adaptive_milling_gen1.npz`'s kind, or as a dependency on
   `adaptive-milling`, 27 packages beside `ml` and an API that renamed its generations once.
-- **Splitting the five classes that outgrew a screen** — `CurationWindow` (90 methods, 1671
-  lines), `CurationController` (82), `LabelPanel` (66), `ExportController` (49) and `ExportPanel`
+- **Splitting the five classes that outgrew a screen** — `CurationWindow` (90 methods, 1651
+  lines), `CurationController` (90), `LabelPanel` (65), `ExportController` (49) and `ExportPanel`
   (32). None is public API — that is six names and the `am-seg` entry point — so this is
   maintainability, not a break a user would see, and it is deliberately not done before a release.
   First: whether a split follows the tabs, the panels or the operations; and whether it removes

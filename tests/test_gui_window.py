@@ -3079,6 +3079,7 @@ def test_the_window_says_which_name_it_is_recording_under(window, monkeypatch):
 #: on an empty set; the search is what catches a *new* one.
 KNOWN_RECORDERS = frozenset({
     "controller",
+    "families_controller",
     "history_controller",
     "label_controller",
     "metadata_controller",

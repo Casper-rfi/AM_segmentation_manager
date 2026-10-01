@@ -276,7 +276,7 @@ of one of these files, is held by `test_docs.py`.
   *Field | Here | Copy* and a value is chosen by clicking it, so two values are compared side by side
   rather than read out of a sentence (`test_clicking_a_value_chooses_it_and_clicking_it_again_undecides`).
 - **Who changes are recorded under is a standing line in the corner, not a warning per action.**
-  Ten actions across all four tabs put a name into a log, and two exports write it into what they
+  Actions on all four tabs put a name into a log, and two exports write it into what they
   leave behind — a copy's fork point, a training set's manifest: there is no single tab to say it
   on and far too many places to warn at. It is muted, being a fact rather than a message.
 - **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
@@ -462,10 +462,6 @@ of one of these files, is held by `test_docs.py`.
   pan, zoom, save, copy and the table as CSV, pan and zoom still driven by a hidden toolbar
   (`test_the_chart_offers_no_way_to_edit_the_figure`). **A cell nothing was counted in is grey and
   unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
-- **A plot describes one acquisition or a whole stage, and the window says which**, for the reason
-  `displayed_plot` gives: every frame of an alignment run shows its one `figure.png` and carries a
-  badge saying so. `centring.png` is excluded as recording where the plugin looked rather than what
-  the run achieved.
 
 ## The binding
 

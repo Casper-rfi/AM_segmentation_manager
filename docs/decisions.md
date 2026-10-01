@@ -427,7 +427,9 @@ rather than appending to it.
   decided against can reach a training set, so the summary line counts those
   (`test_a_deselected_image_that_would_be_exported_is_counted`).
 - **Both modalities means side by side, not mixed together** (`test_both_modalities_put_the_two_beams_on_one_row`):
-  both write `sem_image, sem_label, fib_image, fib_label`, one row per acquisition; one beam writes
+  both write `sem_image, sem_label, fib_image, fib_label`, a row per pairing of an acquisition's SEM
+  and FIB images — one per acquisition where each beam has one, as *One image per label* leaves a
+  beam of one family; one beam writes
   `image, label`. A cell is blank where that beam has no image or no label worth pairing, and a row
   survives only if one beam has a label — the empty-label rule, **which takes a label that will not
   read with it**, blank being unknowable, drops a one-beam row and empties a cell where there are two
@@ -628,7 +630,8 @@ rather than appending to it.
   convenience and not a claim, but it stops the box offering the SEM model on a FIB frame.
 - **One prediction per label group, not per image.** The label is the unit of workflow state
   everywhere else, and a prediction exists to become a label, so a group gets one — from
-  `label_groups.primary_record`, the condition a family's `primary:` names, else its base — the
+  `label_groups.primary_record`, the condition a family's `primary:` names, else its base, else its
+  first variant by name — the
   image a training export keeps. Predicting the other conditions would spend inference on noisier pseudo-labels and removes
   a hazard rather than managing one: conditions carry identical filenames into a shared predictions
   directory, so predicting all of them has each write replace the last.

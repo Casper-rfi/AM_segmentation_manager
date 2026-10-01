@@ -38,7 +38,7 @@ TESTS = REPOSITORY / "tests"
 #: something being added. Over the ceiling with none of those available is a
 #: question for the scientist rather than a deletion to be chosen, and a raise
 #: is a commit of its own, made only after a `doc-audit` found nothing to move.
-MAX_DOC_LINES = 1293
+MAX_DOC_LINES = 1292
 
 #: The documents holding invariants rather than status. An entry in the roadmap
 #: or the future-work sketches describes what is unbuilt or unfinished and so
@@ -51,8 +51,8 @@ REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
 #: a docstring never fails here, while a new entry naming no test, or a test
 #: pointer traded for a weaker one, costs an existing entry its weakness.
 #: Neither ever forces a deletion -- a test-backed entry is free at any length.
-MAX_UNBACKED_ENTRIES = 27
-MAX_ENTRIES_WITHOUT_A_TEST = 82
+MAX_UNBACKED_ENTRIES = 26
+MAX_ENTRIES_WITHOUT_A_TEST = 77
 
 
 def _documents() -> list[Path]:
