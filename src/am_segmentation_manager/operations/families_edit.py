@@ -34,8 +34,10 @@ from ..image_metadata import (
 from ..io.atomic import Fingerprint, fingerprint_of
 from ..layout import (
     LABELS_SUFFIX,
+    NO_CORRECTIONS,
     PREDICTIONS_SUFFIX,
     FamilyCorrections,
+    FamilyEntries,
     ProjectFamilies,
     classify_image_directory,
     condition_of,
@@ -48,7 +50,7 @@ from ..layout import (
     resolve_predictions_directory,
     subdirectories_by_name,
 )
-from ..models import Project
+from ..models import Lamella, Project
 from ..state import StateFileError
 from .selection import (
     Regrouping,
@@ -70,6 +72,7 @@ __all__ = [
     "FamiliesValidationError",
     "FamilySummary",
     "apply_families_change",
+    "describe_lamella_sections",
     "plan_corrections",
     "plan_families_change",
     "refuse_stale_change",
@@ -108,20 +111,25 @@ class EntryChange:
         key: The condition, or the family, the entry is listed under.
         old: Its value before, or None where there was no entry.
         new: Its value after, or None where the entry is removed.
+        lamella: The lamella whose section holds it, by its path relative to
+            the project, or None for the project's own.
     """
 
     section: str
     key: str
     old: str | None
     new: str | None
+    lamella: str | None = None
 
     def describe(self) -> str:
         """Return a one-line description, for a preview or a log."""
         if self.section == FAMILIES_SECTION:
-            before = self.old or "as named"
-            after = self.new or "as named"
-            return f"{self.key}: family {before} -> {after}"
-        return f"primary of {self.key}: {self.old or 'default'} -> {self.new or 'default'}"
+            absent = "as the project has it" if self.lamella else "as named"
+            line = f"{self.key}: family {self.old or absent} -> {self.new or absent}"
+        else:
+            absent = "the project's" if self.lamella else "default"
+            line = f"primary of {self.key}: {self.old or absent} -> {self.new or absent}"
+        return f"{line}, in {self.lamella}" if self.lamella else line
 
 
 @dataclass(frozen=True)
@@ -252,6 +260,15 @@ def summarise_families(project: Project) -> tuple[FamilySummary, ...]:
 
     summaries = []
     corrections = project.families.project
+    # Placed by the file: by the project's entry, or by a lamella's naming this family.
+    sections: list[FamilyCorrections | FamilyEntries] = [
+        corrections, *project.families.lamellae.values()
+    ]
+    placed = {
+        (name.lower(), family.lower())
+        for section in sections
+        for name, family in section.families.items()
+    }
     for key in sorted(counts, key=lambda item: (item[0] != "SEM", item[1])):
         members = counts[key]
         ordered = sorted(members, key=lambda name: (name != base.get(key), name.lower()))
@@ -260,11 +277,25 @@ def summarise_families(project: Project) -> tuple[FamilySummary, ...]:
                 modality=key[0],
                 family=spelled[key],
                 conditions=tuple((name, members[name]) for name in ordered),
-                moved=tuple(name for name in ordered if corrections.family_of(name)),
+                moved=tuple(
+                    name for name in ordered
+                    if corrections.family_of(name) or (name.lower(), key[1]) in placed
+                ),
                 primary=corrections.primary_of(spelled[key]),
             )
         )
     return tuple(summaries)
+
+
+def describe_lamella_sections(project: Project) -> list[str]:
+    """Return each lamella's own entries, a line each, for ``show-families``."""
+    lines = []
+    for key, entries in sorted(project.families.lamellae.items()):
+        listed = [f"{name} in {family}" for name, family in sorted(entries.families.items())]
+        listed += [f"primary of {family}: {name}" for family, name in sorted(entries.primary.items())]
+        if listed:
+            lines.append(f"lamella {key}: {'; '.join(listed)}")
+    return lines
 
 
 def plan_families_change(
@@ -272,6 +303,7 @@ def plan_families_change(
     *,
     families: Mapping[str, str | None] | None = None,
     primary: Mapping[str, str | None] | None = None,
+    lamella: Lamella | None = None,
     allow_leaving_corrected: bool = False,
 ) -> FamiliesChange:
     """Return what changing *project*'s families would do, writing nothing.
@@ -279,43 +311,72 @@ def plan_families_change(
     Args:
         project: The project, as scanned; its stages are resolved again from disk.
         families: Condition name to the family it should belong to, or None to
-            return it to the family its name gives.
-        primary: Family name to its primary condition, or None for the default.
+            return it to the family its name gives -- or, in a lamella, the
+            one the project gives it.
+        primary: Family name to its primary condition, or None for the default
+            -- or, in a lamella, the project's.
+        lamella: One of *project*'s lamellae, to change its entries over the
+            project's (``test_a_lamella_entry_is_set_and_moves_that_lamella_alone``);
+            None for the project's own.
         allow_leaving_corrected: Confirm images leaving a corrected group.
 
     Raises:
         FamiliesValidationError: Carrying every reason the change is refused.
     """
     before, _ = _read(project.path)
-    if before.has_lamellae:
-        raise FamiliesValidationError(
-            [
-                f"{families_file_path(project.path)} has lamella sections, which cannot "
-                f"be changed here; change the file by hand"
-            ]
-        )
     listings = _listings(project)
-    conditions, spellings = _names(listings.values())
-
+    _, spellings = _names(listings.values())
     problems: list[str] = []
-    after_families = _requested_families(
-        before.project.families, families or {}, conditions, spellings, problems
-    )
-    after_primary = _requested_primary(
-        before.project.primary, primary or {}, conditions, spellings, problems
-    )
-    if not problems:
-        problems.extend(correction_problems(after_families, after_primary))
-    if problems:
-        raise FamiliesValidationError(problems)
-    return plan_corrections(
-        project,
-        ProjectFamilies(
-            project=FamilyCorrections(families=after_families, primary=after_primary),
-            lamellae=before.lamellae,
-        ),
-        allow_leaving_corrected=allow_leaving_corrected,
-    )
+    if lamella is None:
+        conditions, _ = _names(listings.values())
+        after_families = _requested_families(
+            before.project.families, families or {}, conditions, spellings, problems
+        )
+        after_primary = _requested_primary(
+            before.project.primary, primary or {}, conditions, spellings, problems
+        )
+        if not problems:
+            problems.extend(correction_problems(after_families, after_primary))
+        if problems:
+            raise FamiliesValidationError(problems)
+        project_after = FamilyCorrections(families=after_families, primary=after_primary)
+        lamellae_after = dict(before.lamellae)
+    else:
+        key = _lamella_key(project, lamella)
+        conditions, _ = _names(subdirectories_by_name(stage.path) for stage in lamella.stages)
+        entries = before.lamellae.get(key, FamilyEntries())
+        section = FamilyEntries(
+            families=_requested_families(
+                entries.families, families or {}, conditions, spellings, problems,
+                baseline=before.project, where=lamella.name,
+            ),
+            primary=_requested_primary(
+                entries.primary, primary or {}, conditions, spellings, problems,
+                baseline=before.project, where=lamella.name,
+            ),
+        )
+        if problems:
+            raise FamiliesValidationError(problems)
+        project_after = before.project
+        lamellae_after = {k: v for k, v in before.lamellae.items() if k != key}
+        if section.families or section.primary:
+            lamellae_after[key] = section
+    try:
+        after = ProjectFamilies(project=project_after, lamellae=lamellae_after)
+    except ValueError as error:
+        raise FamiliesValidationError([str(error)]) from error
+    return plan_corrections(project, after, allow_leaving_corrected=allow_leaving_corrected)
+
+
+def _lamella_key(project: Project, lamella: Lamella) -> str:
+    """Return *lamella*'s key in the file, refusing one that cannot have a section."""
+    if lamella.synthetic or not any(own is lamella for own in project.lamellae):
+        reason = (
+            "has no folder of its own; the project's entries already speak for it"
+            if lamella.synthetic else "is not one of this project's lamellae"
+        )
+        raise FamiliesValidationError([f"{lamella.name} {reason}"])
+    return lamella.path.relative_to(project.path).as_posix()
 
 
 def plan_corrections(
@@ -419,6 +480,7 @@ def apply_families_change(
             recorder.record(
                 path, "family-changed",
                 section=entry.section, key=entry.key, old=entry.old, new=entry.new,
+                **({"lamella": entry.lamella} if entry.lamella is not None else {}),
             )
     apply_regrouping(change.states, recorder=recorder)
     logger.info(
@@ -447,6 +509,7 @@ def update_families(
     *,
     families: Mapping[str, str | None] | None = None,
     primary: Mapping[str, str | None] | None = None,
+    lamella: Lamella | None = None,
     allow_leaving_corrected: bool = False,
     dry_run: bool = False,
     recorder: Recorder | None = None,
@@ -456,13 +519,14 @@ def update_families(
     Args:
         families: As :func:`plan_families_change`.
         primary: As :func:`plan_families_change`.
+        lamella: As :func:`plan_families_change`.
         recorder: Where to record the change, or None to record nothing.
 
     Raises:
         FamiliesValidationError: If the change is refused.
     """
     change = plan_families_change(
-        project, families=families, primary=primary,
+        project, families=families, primary=primary, lamella=lamella,
         allow_leaving_corrected=allow_leaving_corrected,
     )
     if dry_run:
@@ -499,25 +563,29 @@ def _requested_families(
     conditions: Mapping[str, str],
     spellings: Mapping[str, str],
     problems: list[str],
+    *,
+    baseline: FamilyCorrections = NO_CORRECTIONS,
+    where: str = "this project",
 ) -> dict[str, str]:
-    """Return the families section with *requested* applied.
+    """Return a families section with *requested* applied.
 
     A condition is named as it is spelled on disk, and a family as the project
-    already spells it. An entry giving the family the name already gives is no
-    entry.
+    already spells it. An entry giving the family *baseline* already gives --
+    the name's, or for a lamella the project's -- is no entry.
     """
     result = dict(current)
     for name, family in requested.items():
         condition = conditions.get(name.lower())
         if condition is None:
-            problems.append(f"{name} is not an image directory in any stage of this project")
+            problems.append(f"{name} is not an image directory in any stage of {where}")
             continue
         result = _without(result, condition)
         if family is None:
             continue
         parsed = classify_image_directory(condition)
         assert parsed is not None, "only image directories are conditions"
-        if family.lower() != parsed.family.lower():
+        given = baseline.family_of(condition) or parsed.family
+        if family.lower() != given.lower():
             result[condition] = spellings.get(family.lower(), family)
     return result
 
@@ -528,8 +596,11 @@ def _requested_primary(
     conditions: Mapping[str, str],
     spellings: Mapping[str, str],
     problems: list[str],
+    *,
+    baseline: FamilyCorrections = NO_CORRECTIONS,
+    where: str = "this project",
 ) -> dict[str, str]:
-    """Return the primary section with *requested* applied."""
+    """Return a primary section with *requested* applied, an entry *baseline* already makes being none."""
     result = dict(current)
     for family, name in requested.items():
         result = _without(result, family)
@@ -537,18 +608,34 @@ def _requested_primary(
             continue
         condition = conditions.get(name.lower())
         if condition is None:
-            problems.append(f"{name} is not an image directory in any stage of this project")
+            problems.append(f"{name} is not an image directory in any stage of {where}")
             continue
-        result[spellings.get(family.lower(), family)] = condition
+        if (baseline.primary_of(family) or "").lower() != condition.lower():
+            result[spellings.get(family.lower(), family)] = condition
     return result
 
 
 def _entry_changes(before: ProjectFamilies, after: ProjectFamilies) -> tuple[EntryChange, ...]:
-    """Return one change per project-wide entry that differs, families before primary."""
+    """Return one change per entry that differs: the project's, then each lamella's."""
+    changes = list(_section_changes(before.project, after.project, None))
+    empty = FamilyEntries()
+    for key in sorted(set(before.lamellae) | set(after.lamellae)):
+        changes += _section_changes(
+            before.lamellae.get(key, empty), after.lamellae.get(key, empty), key
+        )
+    return tuple(changes)
+
+
+def _section_changes(
+    before: FamilyCorrections | FamilyEntries,
+    after: FamilyCorrections | FamilyEntries,
+    lamella: str | None,
+) -> list[EntryChange]:
+    """Return one change per entry of one section that differs, families before primary."""
     changes: list[EntryChange] = []
     for section, old, new in (
-        (FAMILIES_SECTION, before.project.families, after.project.families),
-        (PRIMARY_SECTION, before.project.primary, after.project.primary),
+        (FAMILIES_SECTION, before.families, after.families),
+        (PRIMARY_SECTION, before.primary, after.primary),
     ):
         old_by_key = {key.lower(): (key, value) for key, value in old.items()}
         new_by_key = {key.lower(): (key, value) for key, value in new.items()}
@@ -558,8 +645,8 @@ def _entry_changes(before: ProjectFamilies, after: ProjectFamilies) -> tuple[Ent
             if old_value != new_value:
                 key = new_key or old_key
                 assert key is not None
-                changes.append(EntryChange(section, key, old_value, new_value))
-    return tuple(changes)
+                changes.append(EntryChange(section, key, old_value, new_value, lamella))
+    return changes
 
 
 # ---------------------------------------------------------------------------

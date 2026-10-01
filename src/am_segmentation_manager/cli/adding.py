@@ -13,13 +13,14 @@ from pathlib import Path
 
 from ..discovery import describe_dataset_candidates, find_project_roots, project_markers
 from ..families import StaleFamilies
-from ..filtering import matches_project
+from ..filtering import matches_lamella, matches_project
 from ..io.path import make_path_relative
 from ..metadata import DESCRIPTIVE_FIELDS, TODO_MARKER, VALUE_SEPARATOR, field_named
 from ..metadata import DESCRIPTIVE_FIELDS as FIELDS
 from ..operations.families_edit import (
     FamiliesValidationError,
     apply_families_change,
+    describe_lamella_sections,
     plan_families_change,
     summarise_families,
 )
@@ -198,7 +199,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "Print each project's families: the imaging conditions sharing one "
             "label, and how many stages hold each. A condition marked * is placed "
             "in its family by the project's AM_families.yaml rather than by its "
-            "folder name. Read-only."
+            "folder name, and a lamella's own entries are listed after. Read-only."
         ),
     )
     show_families.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
@@ -216,7 +217,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "stage first: it is refused if a label or prediction would be left "
             "unread, replaced by another, or taken from a condition the change "
             "does not name. A condition joining a family shares its labels and "
-            "state; one leaving starts unlabelled and keeps a deselection. "
+            "state; one leaving starts unlabelled and keeps a deselection. With "
+            "--lamella, the entries are that lamella's own, replacing the "
+            "project's there alone. "
             "Shows what would change; nothing is written without --apply."
         ),
     )
@@ -240,6 +243,13 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     edit_families.add_argument(
         "--clear-primary", action="append", default=[], metavar="FAMILY",
         help="Return a family to the default primary condition; repeatable",
+    )
+    edit_families.add_argument(
+        "--lamella", default=None, metavar="LAMELLA",
+        help=(
+            "Change one lamella's entries, by name or number, over the project's. "
+            "--clear and --clear-primary then return it to the project's entry"
+        ),
     )
     edit_families.add_argument(
         "--confirm-corrected", action="store_true",
@@ -478,6 +488,8 @@ def _cmd_show_families(args: argparse.Namespace) -> int:
         for summary in summaries:
             for line in summary.describe():
                 print(f"  {line}")
+        for line in describe_lamella_sections(project):
+            print(f"  {line}")
     return 0
 
 
@@ -521,10 +533,24 @@ def _cmd_edit_families(args: argparse.Namespace) -> int:
     changes = []
     refused = False
     for project in projects:
+        lamella = None
+        if args.lamella is not None:
+            matched = [
+                candidate for candidate in project.lamellae
+                if matches_lamella(candidate, [args.lamella])
+            ]
+            if len(matched) != 1:
+                refused = True
+                logger.error(
+                    "%s: --lamella %s matches %d lamellae, not one",
+                    project.display_name, args.lamella, len(matched),
+                )
+                continue
+            lamella = matched[0]
         try:
             changes.append(
                 plan_families_change(
-                    project, families=families, primary=primary,
+                    project, families=families, primary=primary, lamella=lamella,
                     allow_leaving_corrected=args.confirm_corrected,
                 )
             )

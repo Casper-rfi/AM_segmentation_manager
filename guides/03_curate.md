@@ -185,9 +185,12 @@ lamellae:
       sem_x: sem-2kV
 ```
 
-For now they are written by hand, and while a project has them, the Families
-tab, `edit-families` and a merge leave its file alone. **Inspect layout**
-reports a section naming no lamella of the project.
+`edit-families --lamella lam_003` changes that lamella's entries, by name or
+number: an entry the project already makes is none, and `--clear` returns the
+lamella to the project's. Each lamella is checked as a project-wide change is,
+and `show-families` lists each lamella's entries after the families. The
+Families tab and a merge still leave a file with lamella sections alone.
+**Inspect layout** reports a section naming no lamella of the project.
 
 ## Predict and convert
 

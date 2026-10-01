@@ -188,8 +188,11 @@ KINDS: Final[dict[str, KindSpec]] = {
     "metadata-changed": KindSpec(required=("field", "old", "new")),
     # One entry of AM_families.yaml: *section* is ``families`` (a condition's
     # family) or ``primary`` (a family's primary condition), *key* the name it
-    # is listed under, and None for *old* or *new* an entry absent.
-    "family-changed": KindSpec(required=("section", "key", "old", "new")),
+    # is listed under, and None for *old* or *new* an entry absent. *lamella*,
+    # a lamella's path in the project, where the entry is that lamella's own.
+    "family-changed": KindSpec(
+        required=("section", "key", "old", "new"), optional=("lamella",)
+    ),
     "renamed": KindSpec(required=("renamed_from", "scope")),
     # The digest is named ``removed_digest`` rather than ``digest``: a reader
     # taking a target's latest ``digest`` as what it holds must not read a

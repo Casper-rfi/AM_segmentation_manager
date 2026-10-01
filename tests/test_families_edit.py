@@ -291,16 +291,6 @@ def test_a_primary_outside_its_family_is_refused(tmp_path: Path):
     assert "belongs to family sem-2kV, not sem" in _refusal(tmp_path, primary={"sem": "sem-2kV"})
 
 
-def test_a_file_with_lamella_sections_is_refused_until_they_can_be_changed(tmp_path: Path):
-    stage = _stage(tmp_path, "sem", "sem_mag2")
-    (stage.parents[1] / AM_FAMILIES_FILENAME).write_text(
-        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem_mag2: sem-mag2\n",
-        encoding="utf-8",
-    )
-
-    assert "has lamella sections" in _refusal(tmp_path, primary={"sem": "sem_mag2"})
-
-
 def test_a_damaged_file_is_refused_until_corrected_by_hand(tmp_path: Path):
     _stage(tmp_path, "sem", "sem_mag2")
     (tmp_path / "project" / AM_FAMILIES_FILENAME).write_text("families: [\n", encoding="utf-8")
@@ -384,6 +374,132 @@ def test_a_join_says_when_headers_could_not_be_compared(tmp_path: Path, monkeypa
 
 
 # ---------------------------------------------------------------------------
+# A lamella's own entries
+# ---------------------------------------------------------------------------
+
+def _two_lamellae(root: Path, *directories: str) -> tuple[Path, Path]:
+    """Build lam_000 and lam_001, one stage each of *directories*."""
+    stages = []
+    for lamella in ("lam_000", "lam_001"):
+        stage = root / "project" / lamella / "adaptive_polish_1"
+        for directory in directories:
+            (stage / directory).mkdir(parents=True)
+            (stage / directory / IMAGE).write_bytes(b"")
+        stages.append(stage)
+    (root / "project" / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    return stages[0], stages[1]
+
+
+def _lamella(project: Project, name: str):
+    return next(lamella for lamella in project.lamellae if lamella.name == name)
+
+
+def _labels_by_lamella(root: Path) -> dict[tuple[str, str], Path | None]:
+    return {
+        (record.image_path.parents[2].name, record.image_path.parent.name): record.labels_directory
+        for record in _project(root).image_records
+    }
+
+
+def test_a_lamella_entry_is_set_and_moves_that_lamella_alone(tmp_path: Path):
+    first, second = _two_lamellae(tmp_path, "sem", "sem_mag2", "sem_labels")
+    project = _project(tmp_path)
+
+    change = update_families(
+        project, families={"sem_mag2": "sem-mag2"}, lamella=_lamella(project, "lam_001")
+    )
+
+    assert [move.image_directory for move in change.moves] == [second / "sem_mag2"]
+    assert change.entries[0].describe() == "sem_mag2: family as the project has it -> sem-mag2, in lam_001"
+    on_file = read_families(tmp_path / "project")
+    assert on_file.project.families == {}
+    assert dict(on_file.lamellae["lam_001"].families) == {"sem_mag2": "sem-mag2"}
+    labels = _labels_by_lamella(tmp_path)
+    assert labels[("lam_000", "sem_mag2")] == first / "sem_labels"
+    assert labels[("lam_001", "sem_mag2")] == second / "sem-mag2_labels"
+
+
+def test_a_lamella_undoes_a_project_move_and_clearing_returns_to_it(tmp_path: Path):
+    _, second = _two_lamellae(tmp_path, "sem", "sem_mag2", "sem_labels")
+    update_families(_project(tmp_path), families={"sem_mag2": "sem-mag2"})
+    project = _project(tmp_path)
+
+    update_families(project, families={"sem_mag2": "sem"}, lamella=_lamella(project, "lam_001"))
+    assert _labels_by_lamella(tmp_path)[("lam_001", "sem_mag2")] == second / "sem_labels"
+
+    project = _project(tmp_path)
+    update_families(project, families={"sem_mag2": None}, lamella=_lamella(project, "lam_001"))
+    assert _labels_by_lamella(tmp_path)[("lam_001", "sem_mag2")] == second / "sem-mag2_labels"
+    assert read_families(tmp_path / "project").lamellae == {}, "an emptied section goes"
+
+
+def test_a_lamella_entry_the_project_already_makes_is_no_entry(tmp_path: Path):
+    _two_lamellae(tmp_path, "sem", "sem_mag2")
+    update_families(_project(tmp_path), families={"sem_mag2": "sem-mag2"})
+    project = _project(tmp_path)
+
+    change = plan_families_change(
+        project, families={"sem_mag2": "sem-mag2"}, primary={"sem": None},
+        lamella=_lamella(project, "lam_001"),
+    )
+
+    assert change.is_empty
+
+
+def test_a_lamella_without_a_folder_or_the_condition_is_refused(tmp_path: Path):
+    _two_lamellae(tmp_path, "sem", "sem_mag2")
+    (tmp_path / "project" / "lam_001" / "adaptive_polish_1" / "sem_mag2" / IMAGE).unlink()
+    (tmp_path / "project" / "lam_001" / "adaptive_polish_1" / "sem_mag2").rmdir()
+    project = _project(tmp_path)
+
+    with pytest.raises(FamiliesValidationError, match="not an image directory in any stage of lam_001"):
+        plan_families_change(
+            project, families={"sem_mag2": "sem-mag2"}, lamella=_lamella(project, "lam_001")
+        )
+
+
+def test_a_lamella_with_no_folder_of_its_own_is_refused(tmp_path: Path):
+    project_root = tmp_path / "project"
+    for directory in ("sem", "sem_mag2"):
+        (project_root / directory).mkdir(parents=True)
+        (project_root / directory / IMAGE).write_bytes(b"")
+    (project_root / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    project = _project(tmp_path)
+    [lamella] = project.lamellae
+    assert lamella.synthetic
+
+    with pytest.raises(FamiliesValidationError, match="has no folder of its own"):
+        plan_families_change(project, families={"sem_mag2": "sem-mag2"}, lamella=lamella)
+
+
+def test_a_project_change_is_checked_in_each_lamella_over_its_own_entries(tmp_path: Path):
+    """lam_001 names sem_mag2 sem's primary; the project then moving it out breaks that."""
+    _two_lamellae(tmp_path, "sem", "sem_mag2")
+    project = _project(tmp_path)
+    update_families(project, primary={"sem": "sem_mag2"}, lamella=_lamella(project, "lam_001"))
+
+    problem = _refusal(tmp_path, families={"sem_mag2": "sem-mag2"})
+
+    assert "lamellae: lam_001: primary: sem_mag2 belongs to family sem-mag2, not sem" in problem
+
+
+def test_a_lamella_entry_is_recorded_with_its_lamella(tmp_path: Path):
+    _two_lamellae(tmp_path, "sem", "sem_mag2")
+    project = _project(tmp_path)
+    recorder = writing_recorder([project], Recorder())
+
+    update_families(
+        project, families={"sem_mag2": "sem-mag2"}, lamella=_lamella(project, "lam_001"),
+        recorder=recorder,
+    )
+
+    [event] = [e for e in read_log(tmp_path / "project").events if e.kind == "family-changed"]
+    assert (event.data["key"], event.data["new"], event.data["lamella"]) == (
+        "sem_mag2", "sem-mag2", "lam_001"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Command line
 # ---------------------------------------------------------------------------
 
@@ -431,3 +547,25 @@ def test_show_families_lists_each_family_and_its_conditions(tmp_path: Path, caps
     out = capsys.readouterr().out
     assert "SEM sem: sem (1), sem_fi8 (1)" in out
     assert "SEM sem-2kV: sem-2kV (1)" in out
+
+
+def test_the_command_changes_one_lamella_and_shows_it(tmp_path: Path, capsys):
+    _two_lamellae(tmp_path, "sem", "sem_mag2")
+    base = ["edit-families", str(tmp_path), "--project", "project"]
+
+    assert main([*base, "--lamella", "lam_001", "--set", "sem_mag2=sem-mag2", "--apply"]) == 0
+    capsys.readouterr()
+    assert main(["show-families", str(tmp_path)]) == 0
+
+    out = capsys.readouterr().out
+    assert "lamella lam_001: sem_mag2 in sem-mag2" in out
+    assert "sem_mag2* (1)" in out, "placed by a lamella's entry"
+
+
+def test_the_command_refuses_a_lamella_it_cannot_find(tmp_path: Path):
+    _two_lamellae(tmp_path, "sem", "sem_mag2")
+
+    assert main([
+        "edit-families", str(tmp_path), "--project", "project",
+        "--lamella", "lam_009", "--set", "sem_mag2=sem-mag2",
+    ]) == 2
