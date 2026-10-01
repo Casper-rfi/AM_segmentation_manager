@@ -116,10 +116,13 @@ stopped halfway carries on where it left off when run again. It checks first
 that there is room for it, and refuses a destination inside the folder it is
 copying from.
 
-The copy remembers where it came from. Work done on it, on another computer
-say, comes home with **Merge a copy back...**, which needs *Enable editing* on
-the Curate tab. Nothing is merged while a conflict stands, and a corrected label
-here is never written over unless you choose it.
+The copy remembers where it came from, in the `AM_export.yaml` at its top.
+Work done on it, on another computer say, comes home with **Merge a copy
+back...**: open the original collection, switch on *Enable editing* on the
+Curate tab, press the button and choose the copy's top folder. A merge goes one
+way only, from the copy into the original it was exported from. Nothing is
+merged while a conflict stands, and a corrected label here is never written
+over unless you choose it.
 
 ## Nothing is replaced unasked
 

@@ -1096,9 +1096,9 @@ class ExportPanel(QWidget):
         # read as one thing rather than two unrelated buttons.
         self.merge_button = QPushButton("Merge a copy back...")
         self.merge_button.setToolTip(
-            "Bring the work done in a copy back into this collection.\n"
-            "Nothing is merged while a conflict stands, and corrected labels "
-            "here are never written over unasked."
+            "Bring an exported copy's work into the collection open here: open "
+            "the original, switch on Enable editing on Curate, and choose the "
+            "copy's top folder, holding AM_export.yaml. One way only."
         )
         self.merge_button.clicked.connect(self._choose_copy)
         copies.addWidget(self.merge_button)
@@ -1234,7 +1234,8 @@ class ExportPanel(QWidget):
     def _choose_copy(self) -> None:
         """Ask which copy to bring back. It is read, not written to."""
         path = choose_directory(
-            self, "Choose the copy to merge back", self._last_directory
+            self, "Choose the copy's top folder (it holds AM_export.yaml)",
+            self._last_directory,
         )
         if path is not None:
             self._remember(path)

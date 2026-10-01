@@ -112,9 +112,11 @@ labels...* on the [Export](05_export.md#the-files-themselves) tab, or
 history of every project in it and an `AM_export.yaml` saying where it came
 from. Kept versions travel only if asked, with `--with-archive`.
 
-When the work is done, bring it home with *Merge a copy back...* on Export, or
-`am-seg merge`. The merge compares both sides against the moment the copy was
-taken, so a change made on only one side is simply taken. A **conflict** is
+When the work is done, open the original collection and bring the work home
+with *Merge a copy back...* on Export, choosing the copy's top folder, or
+`am-seg merge`. It goes one way only, from the copy into the original. The
+merge compares both sides against the moment the copy was taken, so a change
+made on only one side is simply taken. A **conflict** is
 something both sides changed differently since, and only a person decides it:
 the merge shows the family corrections and metadata fields in conflict first,
 then the labels, and merges nothing until every conflict is answered. A

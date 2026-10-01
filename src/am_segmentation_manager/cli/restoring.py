@@ -62,7 +62,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "merge",
         help="Bring a worked-on copy back into the collection it came from",
         description=(
-            "Merge a copy made by export-files back into its collection. Every "
+            "Merge a copy made by export-files back into its collection: one "
+            "way only, the copy into the original it was exported from. Every "
             "label is re-hashed on both sides and compared against the ancestor "
             "the copy's AM_export.yaml names, so what changed is read from the "
             "files rather than believed from a log. A target only one side "
@@ -73,7 +74,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "deletion, and no image is moved. Previews by default."
         ),
     )
-    merge_cmd.add_argument("source", help="The copy to merge back")
+    merge_cmd.add_argument(
+        "source", help="The copy's top folder, holding the AM_export.yaml export-files wrote"
+    )
     merge_cmd.add_argument(
         "--into", required=True, metavar="DIRECTORY",
         help="The collection it came from",
