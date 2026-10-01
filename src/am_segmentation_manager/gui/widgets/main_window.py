@@ -27,6 +27,8 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QStackedWidget,
+    QTabBar,
     QTabWidget,
     QToolButton,
     QToolTip,
@@ -71,6 +73,7 @@ from .busy_dialog import BusyDialog
 from .common import MAX_LISTED_FILES, vertical_rule
 from .controls import GripSplitter
 from .export_panel import ExportPanel
+from .families_panel import FamiliesPanel
 from .frame_strip import CURATE_BAND, FrameTimeline
 from .icons import settings_icon
 from .image_panel import ImagePanel
@@ -345,7 +348,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.label_controller, VersionController(self._attribution)
         )
         self.families_controller = FamiliesController(self._attribution)
-        self.metadata_panel = MetadataPanel(self.metadata_controller, self.families_controller)
+        self.families_panel = FamiliesPanel(self.families_controller)
+        #: The project and lamella the Families tab was last given, by identity:
+        #: a rescan makes new ones, and nothing else needs the tree rebuilt.
+        self._families_shown: tuple[object, object] = (None, None)
+        self.metadata_panel = MetadataPanel(self.metadata_controller)
 
         self._build_layout()
         self._connect()
@@ -420,11 +427,34 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # The state controls take the top of the right column and the operations
         # the bottom, with the free space between them: both act on the same
         # selection, and separating them puts the buttons that change files
-        # where nothing else is going to be clicked by accident.
+        # where nothing else is going to be clicked by accident. The families
+        # share the top, a tab apart, under the one switch that unlocks both;
+        # the operations stay in view under either, predicting being what a
+        # family's primary is chosen for.
+        self.side_tabs = QTabBar()
+        self.side_tabs.addTab("State")
+        self.side_tabs.addTab("Families")
+        self.side_tabs.setToolTip(
+            "State: what to keep and what was proofread. Families: which imaging "
+            "conditions share a label, and which one is predicted from."
+        )
+        self.side_pages = QStackedWidget()
+        self.side_pages.addWidget(self.state_panel)
+        self.side_pages.addWidget(self.families_panel)
+        self.side_tabs.currentChanged.connect(self.side_pages.setCurrentIndex)
+        guard = QWidget()
+        guard_row = QHBoxLayout(guard)
+        panel_layout = self.state_panel.layout()
+        assert panel_layout is not None, "the state panel lays itself out"
+        margins = panel_layout.contentsMargins()
+        guard_row.setContentsMargins(margins.left(), margins.top(), margins.right(), 0)
+        guard_row.addWidget(self.state_panel.enable_check)
         right = QWidget()
         right_column = QVBoxLayout(right)
         right_column.setContentsMargins(0, 0, 0, 0)
-        right_column.addWidget(self.state_panel, stretch=1)
+        right_column.addWidget(self.side_tabs)
+        right_column.addWidget(guard)
+        right_column.addWidget(self.side_pages, stretch=1)
         right_column.addWidget(self.operations_panel)
 
         self.curate = GripSplitter(Qt.Orientation.Horizontal)
@@ -636,8 +666,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # be told rather than left showing the previous sample name.
         self.metadata_panel.metadata_changed.connect(self.export_panel.refresh)
         # A family change regroups images, which only a scan can show.
-        self.metadata_panel.families_changed.connect(self.rescan)
-        self.metadata_panel.may_change_families = self._may_change_families
+        self.families_panel.families_changed.connect(self.rescan)
+        self.families_panel.may_change_families = self._may_change_families
+        self.families_panel.condition_chosen.connect(self._show_family_condition)
+        self.state_panel.editing_toggled.connect(self.families_panel.set_editing_enabled)
         self.metadata_panel.project_path_requested.connect(
             lambda row: self._copy_path(self.metadata_controller.project_path(row), "Project")
         )
@@ -1308,6 +1340,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller.set_condition(condition or None)
         self.refresh()
 
+    def _show_family_condition(self, modality: str, condition: str) -> None:
+        """Show a condition chosen in the Families tab, on its own beam."""
+        if MODE_MODALITIES.get(self.controller.mode) != modality:
+            self._set_mode("sem" if modality == "SEM" else "fib")
+        self.controller.set_condition(condition, modality)
+        self.refresh()
+
     def _choose_overview(self, index: int) -> None:
         """Show another of the project's grid overviews."""
         self.controller.grid.choose(index)
@@ -1506,7 +1545,21 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._refresh_timeline()
         self._render()
         self._refresh_state_panel()
+        self._refresh_families()
         self._schedule_loads()
+
+    def _refresh_families(self) -> None:
+        """Point the Families tab at the project in view, and at the condition shown."""
+        project, lamella = self.controller.project, self.controller.lamella
+        shown_project, shown_lamella = self._families_shown
+        if project is not shown_project or lamella is not shown_lamella:
+            self._families_shown = (project, lamella)
+            self.families_panel.show_scope([project] if project is not None else [], lamella)
+        if self.families_controller.editing_enabled != self.controller.editing_enabled:
+            self.families_panel.set_editing_enabled(self.controller.editing_enabled)
+        modality = MODE_MODALITIES.get(self.controller.mode)
+        if modality is not None:
+            self.families_panel.select_condition(self.controller.current_condition(modality))
 
     def _refresh_lists(self) -> None:
         """Rebuild both lists. What a scan, or a change of state, needs.

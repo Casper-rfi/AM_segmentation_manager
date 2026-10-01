@@ -365,7 +365,7 @@ def primary_star() -> QIcon:
 
 
 @functools.cache
-def _no_star() -> QIcon:
+def no_primary_star() -> QIcon:
     """Return a blank the star's size, so a row without it lines up with one that has it."""
     pixmap = QPixmap(_STAR_SIZE, _STAR_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -475,7 +475,7 @@ def fill_condition_combo(
                 item.setData(family_length, FAMILY_LENGTH_ROLE)
                 item.setData(starred, PRIMARY_ROLE)
                 if any_starred:
-                    item.setIcon(primary_star() if starred else _no_star())
+                    item.setIcon(primary_star() if starred else no_primary_star())
                 if family:
                     # A condition AM_families.yaml moved does not say its family by name.
                     item.setData(family, FAMILY_ROLE)

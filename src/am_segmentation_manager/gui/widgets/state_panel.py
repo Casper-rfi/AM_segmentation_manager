@@ -64,7 +64,11 @@ def breakable(text: str) -> str:
 
 
 class StatePanel(QWidget):
-    """The editing guard, the reach of the next change, and the state controls."""
+    """The editing guard, the reach of the next change, and the state controls.
+
+    The guard is the window's to place, above the State and Families tabs: it
+    unlocks both, and one switch per tab could disagree.
+    """
 
     #: Emitted when the editing guard is switched.
     editing_toggled = Signal(bool)
@@ -93,7 +97,6 @@ class StatePanel(QWidget):
             "cannot change it by accident."
         )
         self.enable_check.toggled.connect(self._editing_toggled)
-        layout.addWidget(self.enable_check)
 
         # -- what is selected ------------------------------------------------
         # The ticks and the timeline band are on the other side of the window,

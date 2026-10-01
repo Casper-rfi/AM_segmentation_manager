@@ -80,7 +80,7 @@ BioImage Archive accepts, and `_` only to start the condition: `sem-5kV_fi4`,
 never `sem_5kV_fi4`, which is condition `5kV_fi4` of `sem`. Folders named before families, such
 as `SEM_8` and `SEM_8_fi_1`, are one family, `SEM`. Where a name puts a
 condition in the wrong family, the project's `AM_families.yaml` corrects it
-without renaming a folder; see [Add data](02_add_data.md#correct-the-families).
+without renaming a folder; see [Curate](03_curate.md#correct-the-families).
 A prediction becomes a label only when you convert it, and that label is a
 first draft for a person to proofread.
 

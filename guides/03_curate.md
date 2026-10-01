@@ -80,8 +80,9 @@ Click or drag along it to move; **Left** and **Right** step a frame, **Up** and
 
 ![Curate with editing switched on, the state controls unlocked](images/curate-editing.png)
 
-The right-hand column changes the state of label groups. It waits for
-**Enable editing**, at its top.
+The right-hand column's **State** tab changes the state of label groups. It
+waits for **Enable editing**, under the tabs, which unlocks the **Families**
+tab too.
 
 1. **Choose what to change.** With nothing else chosen, a change applies to the
    frame on screen. To change more, either tick projects or lamellae in the
@@ -107,6 +108,69 @@ question where more is at stake:
 Under the state buttons, *SEM:* and *FIB:* show the state of the image on
 screen for each beam.
 
+## Correct the families
+
+A folder's name places it in a family, and a family shares one label. Where
+the names got it wrong -- `sem2kVb` showing the same scene as `sem-2kV`, or
+`sem_mag2` taken at another magnification than the rest of `sem` -- correct it
+here or from the command line. No folder is renamed: the correction is kept in
+the project's `AM_families.yaml`, which travels with the data.
+
+The **Families** tab, beside *State* at the top of the right-hand column,
+shows the families of the project in view: each beam's families and their
+conditions, a star on each family's primary, and *(moved)* on those the file
+places. It lists the whole project, a correction reaching every lamella of it,
+and greys a condition the lamella in view does not hold, *(not here)*; hover a
+row for how many stages hold it. Selecting a condition shows it in the view, on
+its own beam, so you can step through a family's conditions with the label on
+top and see whether one label fits them all; choosing one under **Variant**
+selects its row.
+
+With **Enable editing** on, select a condition and choose its **Family**: one
+of the beam's, the one its name gives, or *New family...* to name one. **Set
+primary** names the family's primary, and **Reset primary** goes back to the
+rule below. Changes show as *not saved* until **Save**, which checks them as
+`edit-families` does, asks before taking images out of a corrected group, and
+first asks you to save or discard label edits waiting in the project;
+**Preview** says what saving would do. The folder is read again afterwards.
+From the command line:
+
+```bash
+am-seg show-families /path/to/collection --project 003
+am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2
+am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2 --apply
+```
+
+`show-families` lists each family and its conditions, marking with `*` those
+the file places. `edit-families` shows which label each condition would read
+and every image whose state would change, and writes only with `--apply`. A
+condition joining a family shares its labels and its state; one leaving starts
+unlabelled, keeping a deselection but not a correction. A change is refused if
+it would leave a label unread, swap one label for another, take a label
+from a condition you did not name, or have two families read one label folder
+-- which moving a family's base condition, such as `sem`, out of it would do,
+its folder name being the family's own; move the family's other conditions
+out of it first. One taking images out of a corrected group needs
+`--confirm-corrected`. `--clear` puts a condition back where its
+name places it.
+
+**Inspect layout** tells you when a correction is needed. It compares every
+two conditions of a family that hold an image of the same name, which share
+that image's label: images of different sizes are an error,
+since one label cannot fit both, and a different pixel size or accelerating
+voltage is a warning that the conditions may not be one family.
+`edit-families` makes the same comparison for a condition joining a family,
+refusing a change of size and warning about the others. Two families reading
+one label folder, which a hand edit of `AM_families.yaml` can cause, is an
+error too.
+
+Each family has a **primary condition**: the one predicted from, measured at,
+kept by *One image per label*, and shown first in the window. It is the base condition, or where a stage
+has none, the first variant by name. `--primary sem=sem_fi8` names another,
+for instance where the base is too noisy to predict on; `--clear-primary sem`
+returns to the default. It moves no label, and predictions already made stay
+until you predict again. A stage without the named condition uses the default.
+
 ## Predict and convert
 
 *Operations on this frame*, at the bottom right, act on the same choice as the
@@ -122,7 +186,7 @@ Each one that writes shows what it would do before doing it, and waits for
   or names one; `cpu` always works, slowly.
 - A model predicts one beam, so a choice covering both SEM and FIB images is
   refused. One prediction is made per label group, from its primary condition
-  (see [Add data](02_add_data.md#correct-the-families)), which **Variant** marks
+  (see [Correct the families](#correct-the-families)), which **Variant** marks
   with a star and the preview names: *Would predict 12 SEM image(s) from sem*.
   An image this model has already predicted is passed over, so a run stopped
   halfway can be started again.

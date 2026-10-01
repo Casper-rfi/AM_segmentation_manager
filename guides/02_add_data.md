@@ -148,58 +148,8 @@ am-seg edit-metadata /path/to/collection --all --set organisation="Rosalind Fran
 
 ## Correct the families
 
-A folder's name places it in a family, and a family shares one label. Where
-the names got it wrong -- `sem2kVb` showing the same scene as `sem-2kV`, or
-`sem_mag2` taken at another magnification than the rest of `sem` -- correct it
-here or from the command line. No folder is renamed: the correction is kept in
-the project's `AM_families.yaml`, which travels with the data.
-
-**Families**, under a project's fields, shows them: each beam's families, their
-conditions, how many stages hold each, which one is primary, and which the file
-has moved. Choose one project to see it; a folder of several shows none. With
-**Enable editing** on, select a condition and choose its **Family**: one of the
-beam's, the one its name gives, or *New family...* to name one. **Make primary**
-names the family's primary, and **Default primary** goes back to the rule
-below. Changes show as *not saved* until **Save**, which checks them as
-`edit-families` does, asks before taking images out of a corrected group, and
-first asks you to save or discard label edits waiting in the project. The
-folder is read again afterwards. From the command line:
-
-```bash
-am-seg show-families /path/to/collection --project 003
-am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2
-am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2 --apply
-```
-
-`show-families` lists each family and its conditions, marking with `*` those
-the file places. `edit-families` shows which label each condition would read
-and every image whose state would change, and writes only with `--apply`. A
-condition joining a family shares its labels and its state; one leaving starts
-unlabelled, keeping a deselection but not a correction. A change is refused if
-it would leave a label unread, swap one label for another, take a label
-from a condition you did not name, or have two families read one label folder
--- which moving a family's base condition, such as `sem`, out of it would do,
-its folder name being the family's own; move the family's other conditions
-out of it first. One taking images out of a corrected group needs
-`--confirm-corrected`. `--clear` puts a condition back where its
-name places it.
-
-**Inspect layout** tells you when a correction is needed. It compares every
-two conditions of a family that hold an image of the same name, which share
-that image's label: images of different sizes are an error,
-since one label cannot fit both, and a different pixel size or accelerating
-voltage is a warning that the conditions may not be one family.
-`edit-families` makes the same comparison for a condition joining a family,
-refusing a change of size and warning about the others. Two families reading
-one label folder, which a hand edit of `AM_families.yaml` can cause, is an
-error too.
-
-Each family has a **primary condition**: the one predicted from, measured at,
-kept by *One image per label*, and shown first in the window. It is the base condition, or where a stage
-has none, the first variant by name. `--primary sem=sem_fi8` names another,
-for instance where the base is too noisy to predict on; `--clear-primary sem`
-returns to the default. It moves no label, and predictions already made stay
-until you predict again. A stage without the named condition uses the default.
+Which imaging conditions share a label is corrected on the Curate tab, beside
+the images it is judged by; see [Curate](03_curate.md#correct-the-families).
 
 ## Maintenance
 

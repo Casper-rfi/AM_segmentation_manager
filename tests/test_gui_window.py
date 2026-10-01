@@ -5882,14 +5882,13 @@ def test_a_series_name_too_long_for_its_box_ends_in_an_ellipsis(qt_app):
 
 
 # ---------------------------------------------------------------------------
-# The Families box
+# The Families tab
 # ---------------------------------------------------------------------------
 
-def _families_panel(root: Path, *, second: bool = False):
-    """Return a metadata panel over a scanned project holding two SEM families.
-
-    With *second*, a second project sits beside it in the folder ``batch``.
-    """
+def _families_panel(root: Path, *, second: bool = False, lamella: bool = False):
+    """Return a Families tab over one project, or two; *lamella* marks lam_010 as in view."""
+    from am_segmentation_manager.gui.families_controller import FamiliesController
+    from am_segmentation_manager.gui.widgets.families_panel import FamiliesPanel
     from am_segmentation_manager.scanner import Scanner
 
     names = ("20260930_adaptive_milling", "20261001_adaptive_milling")
@@ -5898,11 +5897,13 @@ def _families_panel(root: Path, *, second: bool = False):
         for directory in ("sem", "sem_fi4", "sem-5kV", "FIB"):
             (project / "lam_010" / directory).mkdir(parents=True)
             (project / "lam_010" / directory / "img_0004.tif").write_bytes(b"")
+        (project / "lam_011" / "sem").mkdir(parents=True)
+        (project / "lam_011" / "sem" / "img_0004.tif").write_bytes(b"")
         (project / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
-    controller = MetadataController()
-    controller.set_projects(Scanner(root).build_index().all_projects())
-    panel = MetadataPanel(controller)
-    panel.set_projects(controller.project_summaries())
+    projects = Scanner(root).build_index().all_projects()
+    panel = FamiliesPanel(FamiliesController())
+    shown = projects[0].lamellae[1] if lamella else None
+    panel.show_scope(projects, shown)
     return panel
 
 
@@ -5911,64 +5912,90 @@ def _tree_text(item) -> list:
     return [item.text(0), [_tree_text(item.child(i)) for i in range(item.childCount())]]
 
 
-def test_the_families_box_shows_the_projects_families(qt_app, tmp_path: Path):
+def _row(panel, condition: str):
+    """Return *condition*'s row, not the heading of a family it names."""
+    [item] = [
+        item for item in panel.tree.findItems(
+            condition, Qt.MatchFlag.MatchStartsWith | Qt.MatchFlag.MatchRecursive, 0
+        )
+        if item.data(0, Qt.ItemDataRole.UserRole) == condition
+    ]
+    return item
+
+
+def test_the_families_tab_shows_the_projects_families(qt_app, tmp_path: Path):
     panel = _families_panel(tmp_path)
     try:
-        tree = panel.families_tree
+        tree = panel.tree
         assert [_tree_text(tree.topLevelItem(i)) for i in range(tree.topLevelItemCount())] == [
             ["SEM", [["sem", [["sem", []], ["sem_fi4", []]]], ["sem-5kV", [["sem-5kV", []]]]]],
             ["FIB", [["FIB", [["FIB", []]]]]],
         ]
-        first = tree.topLevelItem(0).child(0).child(0)
-        assert (first.text(1), first.text(2)) == ("1", "primary (default)")
-        assert panel.families_box.title().endswith("20260930_adaptive_milling")
-        assert panel.families_status.isHidden()
+        assert _row(panel, "sem").toolTip(0) == "In 2 stage(s) of the project; primary (default)"
+        assert panel.title.text().endswith("20260930_adaptive_milling")
+        assert panel.status.isHidden()
     finally:
         destroy(panel)
 
 
-def test_the_families_box_asks_for_one_project_over_a_folder(qt_app, tmp_path: Path):
+def test_a_family_of_several_stars_its_primary(qt_app, tmp_path: Path):
+    from am_segmentation_manager.gui.widgets.common import primary_star
+
+    panel = _families_panel(tmp_path)
+    star = primary_star().pixmap(16, 16).toImage()
+    try:
+        assert _row(panel, "sem").icon(0).pixmap(16, 16).toImage() == star
+        assert _row(panel, "sem_fi4").icon(0).pixmap(16, 16).toImage() != star
+        assert _row(panel, "sem-5kV").icon(0).isNull(), "a family of one has nothing to choose"
+    finally:
+        destroy(panel)
+
+
+def test_conditions_the_lamella_in_view_lacks_are_greyed(qt_app, tmp_path: Path):
+    """lam_011 holds only sem: the others are still listed, a correction reaching
+    every lamella of the project."""
+    from qtpy.QtGui import QColor
+
+    from am_segmentation_manager.gui.widgets import theme
+
+    panel = _families_panel(tmp_path, lamella=True)
+    try:
+        assert _row(panel, "sem").text(0) == "sem"
+        assert _row(panel, "sem_fi4").text(0) == "sem_fi4 (not here)"
+        assert _row(panel, "sem_fi4").foreground(0).color().name() == QColor(theme.MUTED).name()
+        assert "not in this lamella" in _row(panel, "sem_fi4").toolTip(0)
+    finally:
+        destroy(panel)
+
+
+def test_the_families_tab_asks_for_one_project_over_a_folder(qt_app, tmp_path: Path):
     panel = _families_panel(tmp_path, second=True)
     try:
-        panel.controller.select_folder("batch")
-        panel.refresh()
-
-        assert panel.families_tree.topLevelItemCount() == 0
-        assert panel.families_status.text() == "Choose one project to see its families."
+        assert panel.tree.topLevelItemCount() == 0
+        assert panel.status.text() == "Choose one project to see its families."
     finally:
         destroy(panel)
 
 
 def _choose(panel, condition: str, family: str) -> None:
     """Select *condition* in the families tree and choose *family* for it."""
-    [item] = panel.families_tree.findItems(
-        condition, Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
-    )
-    panel.families_tree.setCurrentItem(item)
+    panel.tree.setCurrentItem(_row(panel, condition))
     combo = panel.family_combo
     index = next(row for row in range(combo.count()) if combo.itemData(row) == family)
     combo.setCurrentIndex(index)
     combo.activated.emit(index)
 
 
-def _note(panel, condition: str) -> str:
-    [item] = panel.families_tree.findItems(
-        condition, Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
-    )
-    return item.text(2)
-
-
-def test_one_switch_unlocks_the_fields_and_the_families(qt_app, tmp_path: Path):
+def test_changes_are_held_until_editing_is_on(qt_app, tmp_path: Path):
     panel = _families_panel(tmp_path)
     try:
-        assert not panel.fields_box.isAncestorOf(panel.enable)
         _choose(panel, "sem_fi4", "sem-5kV")
-        assert not panel.families_save_button.isEnabled(), "a change is held, not saved"
+        assert not panel.save_button.isEnabled(), "a change is held, not saved"
 
-        panel.enable.setChecked(True)
+        panel.set_editing_enabled(True)
 
         assert panel.family_combo.isEnabled()
-        assert panel.families_save_button.isEnabled()
+        assert panel.save_button.isEnabled()
     finally:
         destroy(panel)
 
@@ -5978,18 +6005,18 @@ def test_a_family_chosen_is_shown_and_written_on_save(qt_app, tmp_path: Path):
     saved: list[bool] = []
     panel.families_changed.connect(lambda: saved.append(True))
     try:
-        panel.enable.setChecked(True)
+        panel.set_editing_enabled(True)
         _choose(panel, "sem_fi4", "sem-5kV")
-        assert _note(panel, "sem_fi4") == "moved by AM_families.yaml, not saved"
+        assert _row(panel, "sem_fi4").text(0) == "sem_fi4 (moved, not saved)"
 
-        panel.families_preview_button.click()
-        assert "sem_fi4: family as named -> sem-5kV" in panel.families_message.text()
-        panel.families_save_button.click()
+        panel.preview_button.click()
+        assert "sem_fi4: family as named -> sem-5kV" in panel.message.text()
+        panel.save_button.click()
 
         project = tmp_path / "batch" / "20260930_adaptive_milling"
         assert "sem_fi4: sem-5kV" in (project / "AM_families.yaml").read_text()
         assert saved == [True], "the window reads the folder again"
-        assert panel.families_message.text().startswith("Saved.")
+        assert panel.message.text().startswith("Saved.")
     finally:
         destroy(panel)
 
@@ -5998,12 +6025,12 @@ def test_waiting_label_edits_can_stop_a_families_save(qt_app, tmp_path: Path):
     panel = _families_panel(tmp_path)
     panel.may_change_families = lambda project: False
     try:
-        panel.enable.setChecked(True)
+        panel.set_editing_enabled(True)
         _choose(panel, "sem_fi4", "sem-5kV")
 
-        panel.families_save_button.click()
+        panel.save_button.click()
 
-        assert panel.families_message.text() == "Not saved"
+        assert panel.message.text() == "Not saved"
         assert not (tmp_path / "batch" / "20260930_adaptive_milling" / "AM_families.yaml").exists()
     finally:
         destroy(panel)
@@ -6011,13 +6038,13 @@ def test_waiting_label_edits_can_stop_a_families_save(qt_app, tmp_path: Path):
 
 @pytest.mark.parametrize("answer, written", [("No", False), ("Yes", True)])
 def test_leaving_a_corrected_group_is_asked_first(qt_app, tmp_path: Path, monkeypatch, answer, written):
-    panel = _families_panel(tmp_path)
     stage = tmp_path / "batch" / "20260930_adaptive_milling" / "lam_010"
-    (stage / "sem_labels").mkdir()
+    (stage / "sem_labels").mkdir(parents=True)
     (stage / "sem_labels" / "img_0004.tif").write_bytes(b"")
     (stage / "AM_state.yaml").write_text(
         "version: 1\nstate:\n  sem_labels/img_0004.tif: corrected\n", encoding="utf-8"
     )
+    panel = _families_panel(tmp_path)
     asked: list[str] = []
 
     def question(parent, title, text, *args):
@@ -6026,18 +6053,30 @@ def test_leaving_a_corrected_group_is_asked_first(qt_app, tmp_path: Path, monkey
 
     from qtpy.QtWidgets import QInputDialog
 
-    from am_segmentation_manager.gui.widgets.metadata_panel import NEW_FAMILY
+    from am_segmentation_manager.gui.widgets.families_panel import NEW_FAMILY
 
     monkeypatch.setattr(QMessageBox, "question", question)
     monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("sem-fi4", True))
     try:
-        panel.enable.setChecked(True)
+        panel.set_editing_enabled(True)
         _choose(panel, "sem_fi4", NEW_FAMILY)
-        assert _note(panel, "sem_fi4").endswith("not saved"), "the new family is named"
+        assert _row(panel, "sem_fi4").text(0).endswith("not saved)"), "the new family is named"
 
-        panel.families_save_button.click()
+        panel.save_button.click()
 
         assert len(asked) == 1 and asked[0].startswith("1 image(s) would leave")
         assert (stage.parent / "AM_families.yaml").exists() is written
+    finally:
+        destroy(panel)
+
+
+def test_add_data_holds_no_families(qt_app, tmp_path: Path):
+    """They moved beside the images, on Curate."""
+    from am_segmentation_manager.gui.metadata_controller import MetadataController
+
+    panel = MetadataPanel(MetadataController())
+    try:
+        assert not hasattr(panel, "families_tree")
+        assert "AM_families.yaml" not in panel.enable.toolTip()
     finally:
         destroy(panel)

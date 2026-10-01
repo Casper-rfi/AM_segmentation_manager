@@ -7,14 +7,12 @@ how much of each project is described, so what is left to do is visible
 without opening every one.
 
 Editing is locked until switched on, matching the curation view, and a
-suggestion reaches a file only when the user saves. Under the fields, the
-project's families of imaging conditions, changed through
-:mod:`..families_controller` under the same switch.
+suggestion reaches a file only when the user saves. A project's families of
+imaging conditions are corrected beside its images, on Curate's Families tab.
 """
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import TypeAlias
 
@@ -25,25 +23,17 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from ...families import StaleFamilies
 from ...metadata import split_values
-from ...models import Project
-from ...operations.families_edit import FamiliesValidationError
-from ...state import StaleState
-from ..families_controller import FamiliesController, FamilyNode, leaving_corrected
 from ..metadata_controller import (
     FIELDS,
     SUGGESTED_FIELDS,
@@ -70,9 +60,6 @@ from .theme import (
 )
 
 logger = logging.getLogger(__name__)
-
-#: The Family dropdown's last entry, which asks for a name rather than being one.
-NEW_FAMILY = "\x00new family"
 
 #: How wide the completeness bar is. The same as a curation chip in the other
 #: list, so the two line up rather than each sitting at its own size.
@@ -354,19 +341,9 @@ class MetadataPanel(QWidget):
     reclaim_requested = Signal()
     #: Emitted when the user asks to put the whole collection back to a savepoint.
     restore_requested = Signal()
-    #: Emitted after a families change was written, or refused as stale: the
-    #: index the window holds describes families that are no longer so.
-    families_changed = Signal()
-
-    def __init__(
-        self, controller: MetadataController, families: FamiliesController | None = None
-    ) -> None:
+    def __init__(self, controller: MetadataController) -> None:
         super().__init__()
         self.controller = controller
-        self.families = families if families is not None else FamiliesController()
-        #: Asked before a families change is written, with its project; the
-        #: window answers whether label edits waiting there may be put aside.
-        self.may_change_families: Callable[[Project], bool] = lambda project: True
         self._loading = False
         self.root: Path | None = None
         #: Each field as last read: its saved value, the file behind it in each
@@ -382,18 +359,11 @@ class MetadataPanel(QWidget):
         # so the folder a row names is what tells you what to type.
         self.panes = GripSplitter(Qt.Orientation.Horizontal)
         self.panes.addWidget(self._build_projects())
-        # Stacked, so neither squeezes the fields' width; a splitter, so the
-        # families can be given the height a project with many conditions needs.
-        self.describing = GripSplitter(Qt.Orientation.Vertical)
-        self.describing.addWidget(self._build_fields())
-        self.describing.addWidget(self._build_families())
-        self.describing.setSizes([620, 340])
-        # One switch above both boxes: either writes the project's own files.
         right = QWidget()
         right_column = QVBoxLayout(right)
         right_column.setContentsMargins(0, 0, 0, 0)
         right_column.addWidget(self._build_enable())
-        right_column.addWidget(self.describing, stretch=1)
+        right_column.addWidget(self._build_fields(), stretch=1)
         self.panes.addWidget(right)
         self._set_editing(False)
         self.panes.setSizes([460, 900])
@@ -695,273 +665,18 @@ class MetadataPanel(QWidget):
         return box
 
     def _build_enable(self) -> QWidget:
-        """Return the switch unlocking the fields and the families.
+        """Return the switch unlocking the fields.
 
-        Above both rather than under them: it decides whether anything can be
+        Above them rather than under them: it decides whether anything can be
         changed, and a switch below a form is found last.
         """
         self.enable = ToggleSwitch("Enable editing")
         self.enable.setToolTip(
-            "Unlock the fields and the families. Only AM_metadata.yaml and "
-            "AM_families.yaml are written; experiment.yaml is never touched."
+            "Unlock the fields. Only AM_metadata.yaml is written; "
+            "experiment.yaml is never touched."
         )
         self.enable.toggled.connect(self._set_editing)
         return self.enable
-
-    def _build_families(self) -> QWidget:
-        """Return the box listing the project's families of imaging conditions."""
-        self.families_box = box = QGroupBox("Families")
-        box.setToolTip(
-            "Which imaging conditions share a label. A condition belongs to the "
-            "family its folder name gives, unless AM_families.yaml moves it."
-        )
-        column = QVBoxLayout(box)
-        self.families_status = QLabel("")
-        self.families_status.setWordWrap(True)
-        column.addWidget(self.families_status)
-        self.families_tree = QTreeWidget()
-        self.families_tree.setHeaderLabels(["Condition", "Stages", "Note"])
-        self.families_tree.setRootIsDecorated(True)
-        self.families_tree.setUniformRowHeights(True)
-        self.families_tree.currentItemChanged.connect(self._update_family_controls)
-        column.addWidget(self.families_tree, stretch=1)
-
-        # What the selected condition belongs to, under the tree that shows it.
-        moving = QHBoxLayout()
-        self.family_label = QLabel("Family")
-        self.family_combo = QComboBox()
-        self.family_combo.setMinimumWidth(160)
-        self.family_combo.setToolTip(
-            "Move the selected condition into another family, or a new one. "
-            "Its folder is not renamed: the move is kept in AM_families.yaml."
-        )
-        self.family_label.setToolTip(self.family_combo.toolTip())
-        self.family_combo.activated.connect(self._family_chosen)
-        self.primary_button = QPushButton("Make primary")
-        self.primary_button.setToolTip(
-            "Predict, measure and export the family from the selected condition, "
-            "and open frames on it"
-        )
-        self.primary_button.clicked.connect(self._make_primary)
-        self.default_primary_button = QPushButton("Default primary")
-        self.default_primary_button.setToolTip(
-            "Stand the family on its base condition again, or its first variant"
-        )
-        self.default_primary_button.clicked.connect(self._default_primary)
-        moving.addWidget(self.family_label)
-        moving.addWidget(self.family_combo)
-        moving.addWidget(self.primary_button)
-        moving.addWidget(self.default_primary_button)
-        moving.addStretch(1)
-        column.addLayout(moving)
-
-        buttons = QHBoxLayout()
-        self.families_preview_button = QPushButton("Preview changes")
-        self.families_preview_button.clicked.connect(self._preview_families)
-        self.families_save_button = QPushButton("Save")
-        self.families_save_button.clicked.connect(self._save_families)
-        self.families_discard_button = QPushButton("Discard changes")
-        self.families_discard_button.setToolTip(
-            "Put the families back to what is saved. Nothing is written."
-        )
-        self.families_discard_button.clicked.connect(self._discard_families)
-        for button in (
-            self.families_preview_button, self.families_save_button,
-            self.families_discard_button,
-        ):
-            buttons.addWidget(button)
-        buttons.addStretch(1)
-        column.addLayout(buttons)
-
-        self.families_message = QLabel("")
-        self.families_message.setWordWrap(True)
-        self.families_message.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        column.addWidget(self.families_message)
-        return box
-
-    def _refresh_families(self) -> None:
-        """Show the families of the project in scope, beam then family then condition.
-
-        Rebuilt whole: it changes only when the project does or a scan has
-        read the project again.
-        """
-        self.families.set_scope(self.controller.scope)
-        project = self.families.project
-        self.families_box.setTitle(
-            f"Families: {project.display_name}" if project is not None else "Families"
-        )
-        status = self.families.status()
-        self.families_status.setText(status)
-        self.families_status.setVisible(bool(status))
-        tree = self.families_tree
-        selected = self._selected_condition()
-        tree.blockSignals(True)
-        tree.clear()
-        beams: dict[str, QTreeWidgetItem] = {}
-        for node in self.families.tree():
-            beam = beams.get(node.modality)
-            if beam is None:
-                beam = beams[node.modality] = QTreeWidgetItem(tree, [node.modality])
-            family = QTreeWidgetItem(beam, [node.family])
-            for row in node.conditions:
-                item = QTreeWidgetItem(family, [row.name, str(row.stages), row.note])
-                item.setData(0, Qt.ItemDataRole.UserRole, row.name)
-                if row.name == selected:
-                    tree.setCurrentItem(item)
-        tree.expandAll()
-        tree.resizeColumnToContents(0)
-        tree.blockSignals(False)
-        self._update_family_controls()
-
-    def _selected_condition(self) -> str | None:
-        """Return the condition selected in the tree, or None for a heading or nothing."""
-        item = self.families_tree.currentItem()
-        return item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
-
-    def _selected_family(self) -> FamilyNode | None:
-        """Return the family the selected condition is in, as the tree shows it."""
-        condition = self._selected_condition()
-        return next(
-            (
-                node for node in self.families.tree()
-                if any(row.name == condition for row in node.conditions)
-            ),
-            None,
-        )
-
-    def _update_family_controls(self) -> None:
-        """Offer what can be done to the selected condition, and to the changes held."""
-        condition = self._selected_condition()
-        node = self._selected_family()
-        editing = self.families.editing_enabled and self.families.editable
-        chosen = editing and condition is not None and node is not None
-        self.family_combo.blockSignals(True)
-        self.family_combo.clear()
-        if condition is not None and node is not None:
-            for caption, family in self.families.family_options(condition):
-                self.family_combo.addItem(caption, family)
-            self.family_combo.addItem("New family...", NEW_FAMILY)
-            current = self.families.family_of(condition).lower()
-            values = [
-                str(self.family_combo.itemData(row)).lower()
-                for row in range(self.family_combo.count())
-            ]
-            self.family_combo.setCurrentIndex(values.index(current) if current in values else 0)
-        self.family_combo.blockSignals(False)
-        self.family_combo.setEnabled(chosen)
-        row = next((row for row in node.conditions if row.name == condition), None) if node else None
-        self.primary_button.setEnabled(chosen and row is not None and not row.named_primary)
-        self.default_primary_button.setEnabled(
-            chosen and node is not None and any(r.named_primary for r in node.conditions)
-        )
-        changed = self.families.has_changes
-        self.families_preview_button.setEnabled(changed)
-        self.families_save_button.setEnabled(editing and changed)
-        self.families_discard_button.setEnabled(changed)
-
-    def _family_chosen(self, index: int) -> None:
-        """Move the selected condition into the family chosen, or a new one named now."""
-        condition = self._selected_condition()
-        if condition is None or index < 0:
-            return
-        family = self.family_combo.itemData(index)
-        if family == NEW_FAMILY:
-            name, accepted = QInputDialog.getText(
-                self, "New family",
-                f"Name the family {condition} should form or join. It starts with "
-                "sem or fib and holds letters, digits, '-' and '.'.",
-            )
-            if not accepted or not name.strip():
-                self._update_family_controls()
-                return
-            family = name.strip()
-        try:
-            self.families.set_family(condition, family)
-        except ValueError as error:
-            QMessageBox.warning(self, "Cannot move it there", str(error))
-        self.families_message.setText("")
-        self._refresh_families()
-
-    def _make_primary(self) -> None:
-        """Name the selected condition as its family's primary, held until saved."""
-        node = self._selected_family()
-        condition = self._selected_condition()
-        if node is not None and condition is not None:
-            self.families.set_primary(node.family, condition)
-            self._refresh_families()
-
-    def _default_primary(self) -> None:
-        """Return the selected condition's family to its default primary, held until saved."""
-        node = self._selected_family()
-        if node is not None:
-            self.families.set_primary(node.family, None)
-            self._refresh_families()
-
-    def _discard_families(self) -> None:
-        """Forget the families changes held, writing nothing."""
-        self.families.discard()
-        self.families_message.setText("")
-        self._refresh_families()
-
-    def _preview_families(self) -> None:
-        """Say what saving the families changes would do, or why it cannot."""
-        try:
-            change = self.families.plan()
-        except (FamiliesValidationError, ValueError) as error:
-            self.families_message.setText(_refusal(error))
-            return
-        self.families_message.setText("\n".join(change.describe()))
-
-    def _save_families(self) -> None:
-        """Write the families changes, asking first where proofreading is at stake.
-
-        Planned again rather than taken from a preview, which may be stale.
-        Images leaving a corrected group lose the claim, so that is asked;
-        label edits waiting in the project are the window's to settle, a move
-        changing which label they belong to.
-        """
-        project = self.families.project
-        if project is None or not self.families.has_changes:
-            self.families_message.setText("No changes")
-            return
-        try:
-            change = self.families.plan()
-        except (FamiliesValidationError, ValueError) as error:
-            self.families_message.setText(_refusal(error))
-            QMessageBox.warning(self, "Cannot save", _refusal(error))
-            return
-        if not self.may_change_families(project):
-            self.families_message.setText("Not saved")
-            return
-        leaving = leaving_corrected(change)
-        if leaving and QMessageBox.question(
-            self,
-            "Leave a corrected group",
-            f"{leaving} image(s) would leave a label group declared corrected, "
-            "and lose that claim. The proofreading stays in the label itself.\n\n"
-            "Save the change?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) != QMessageBox.StandardButton.Yes:
-            self.families_message.setText("Not saved")
-            return
-        try:
-            applied = self.families.apply(change)
-        except (StaleFamilies, StaleState) as error:
-            QMessageBox.warning(
-                self, "Somebody else changed this project",
-                f"{error}\n\nNothing was changed. Reading the folder again now.",
-            )
-            self.families_message.setText("Not saved")
-            self.families_changed.emit()
-            return
-        except PermissionError as error:
-            self.families_message.setText(f"Not saved: {error}")
-            return
-        self.families_message.setText("Saved.\n" + "\n".join(applied.describe()))
-        self.families_changed.emit()
 
     # -- behaviour ---------------------------------------------------------
 
@@ -1017,13 +732,11 @@ class MetadataPanel(QWidget):
 
     def _set_editing(self, enabled: bool) -> None:
         self.controller.editing_enabled = enabled
-        self.families.editing_enabled = enabled
         for editor in self.editors.values():
             editor.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
         self.discard_button.setEnabled(enabled)
         self._update_collection_buttons()
-        self._update_family_controls()
 
     def _discard(self) -> None:
         """Put every field back to what is saved, writing nothing."""
@@ -1160,7 +873,6 @@ class MetadataPanel(QWidget):
         finally:
             self._loading = False
         self._show_states()
-        self._refresh_families()
 
 
 def field_dot_legend() -> list[tuple[QPixmap, str]]:
@@ -1194,9 +906,3 @@ def completeness_legend() -> list[tuple[QPixmap, str]]:
             "hover a row for what is missing",
         ),
     ]
-
-
-def _refusal(error: Exception) -> str:
-    """Return why a families change cannot be made, one reason a line."""
-    problems = getattr(error, "problems", None) or [str(error)]
-    return "Cannot save:\n" + "\n".join(problems)

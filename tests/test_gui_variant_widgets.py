@@ -262,6 +262,70 @@ def two_family_project(tmp_path: Path) -> Path:
     return root
 
 
+def _families_row(window, condition: str):
+    """Return *condition*'s row in the Families tab."""
+    [item] = [
+        item for item in window.families_panel.tree.findItems(
+            condition, Qt.MatchFlag.MatchStartsWith | Qt.MatchFlag.MatchRecursive, 0
+        )
+        if item.data(0, Qt.ItemDataRole.UserRole) == condition
+    ]
+    return item
+
+
+def test_one_switch_above_the_state_and_families_tabs_unlocks_both(
+    qt_app, two_family_project: Path
+):
+    window = _window(qt_app, two_family_project)
+    try:
+        assert window.side_tabs.tabText(window.side_tabs.currentIndex()) == "State"
+        assert window.side_pages.currentWidget() is window.state_panel
+        switch = window.state_panel.enable_check
+        assert not window.state_panel.isAncestorOf(switch)
+        assert not window.families_panel.isAncestorOf(switch)
+
+        switch.setChecked(True)
+
+        assert window.families_controller.editing_enabled
+        window.side_tabs.setCurrentIndex(1)
+        assert window.side_pages.currentWidget() is window.families_panel
+    finally:
+        destroy(window)
+
+
+def test_a_condition_chosen_in_the_families_tab_is_shown(qt_app, two_family_project: Path):
+    window = _window(qt_app, two_family_project)
+    try:
+        window.families_panel.tree.setCurrentItem(_families_row(window, "sem-5kV"))
+
+        assert window.controller.current_condition("SEM") == "sem-5kV"
+    finally:
+        destroy(window)
+
+
+def test_a_condition_of_the_other_beam_switches_the_view_to_it(qt_app, two_family_project: Path):
+    window = _window(qt_app, two_family_project)
+    try:
+        window.families_panel.tree.setCurrentItem(_families_row(window, "FIB"))
+
+        assert window.controller.mode == "fib"
+    finally:
+        destroy(window)
+
+
+def test_a_condition_chosen_in_the_view_is_selected_in_the_families_tab(
+    qt_app, two_family_project: Path
+):
+    window = _window(qt_app, two_family_project)
+    try:
+        window._set_mode("sem")
+        window._set_condition("sem_fi4")
+
+        assert window.families_panel.tree.currentItem() is _families_row(window, "sem_fi4")
+    finally:
+        destroy(window)
+
+
 def test_the_family_control_is_hidden_with_one_family_per_beam(qt_app, variant_project: Path):
     """No project in the collection holds two families of a beam."""
     window = _window(qt_app, variant_project)

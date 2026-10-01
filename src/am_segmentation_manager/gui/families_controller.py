@@ -5,7 +5,8 @@ which conditions form which family, collect changes, preview and apply them,
 without knowing how ``AM_families.yaml`` is read or written. Changes are held here
 until saved, and the tree shows them as if they were; every rule about whether one
 may be made is the operation's. Families are a project's, so a scope of several
-projects shows none. Qt-free, like the other controllers.
+projects shows none, and a lamella in view only marks which of them it holds.
+Qt-free, like the other controllers.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from ..layout import (
     condition_of,
     correction_problems,
 )
-from ..models import Project
+from ..models import Lamella, Project
 from ..operations.families_edit import (
     FamiliesChange,
     apply_families_change,
@@ -45,6 +46,7 @@ class ConditionRow:
         named_primary: Whether it is named as the primary.
         unsaved: Whether a change made here and not yet saved put it where it
             is, or made it the primary.
+        here: Whether the lamella in view holds it; True where none is.
     """
 
     name: str
@@ -53,6 +55,7 @@ class ConditionRow:
     primary: bool = False
     named_primary: bool = False
     unsaved: bool = False
+    here: bool = True
 
     @property
     def note(self) -> str:
@@ -64,6 +67,20 @@ class ConditionRow:
             parts.append("moved by AM_families.yaml")
         if self.unsaved:
             parts.append("not saved")
+        if not self.here:
+            parts.append("not in this lamella")
+        return ", ".join(parts)
+
+    @property
+    def marks(self) -> str:
+        """Return :attr:`note` in the fewest words, the primary being marked otherwise."""
+        parts = []
+        if self.moved:
+            parts.append("moved")
+        if self.unsaved:
+            parts.append("not saved")
+        if not self.here:
+            parts.append("not here")
         return ", ".join(parts)
 
 
@@ -88,7 +105,7 @@ class FamilyNode:
 
 
 class FamiliesController:
-    """Drives the Families box of the Add data tab."""
+    """Drives the Families tab beside the Curate view."""
 
     def __init__(self, attribution: Attribution | None = None) -> None:
         #: Who changes are recorded as, shared with every other view.
@@ -96,6 +113,8 @@ class FamiliesController:
         #: Whether changes may be saved; the tab's one switch sets it.
         self.editing_enabled = False
         self._project: Project | None = None
+        #: The lowercased conditions the lamella in view holds, or None for no lamella.
+        self._here: frozenset[str] | None = None
         self._several = False
         self._problem = ""
         #: Changes not yet saved: condition to family, None for the name's own.
@@ -110,12 +129,24 @@ class FamiliesController:
 
     # -- what is shown ------------------------------------------------------
 
-    def set_scope(self, projects: Sequence[Project]) -> None:
+    def set_scope(self, projects: Sequence[Project], lamella: Lamella | None = None) -> None:
         """Show the families of the one project in *projects*, or none where there are several.
 
         Unsaved changes are kept while the project stays the same one, as it
-        does when the folder is read again, and dropped when it changes.
+        does when the folder is read again or another of its lamellae comes
+        into view, and dropped when it changes.
+
+        Args:
+            lamella: The lamella in view, whose conditions are marked as here.
         """
+        self._here = (
+            None if lamella is None else frozenset(
+                image_set.directory.name.lower()
+                for stage in lamella.stages
+                for image_set in stage.image_sets
+                if not image_set.is_loose
+            )
+        )
         project = projects[0] if len(projects) == 1 else None
         if project is None or self._project is None or project.path != self._project.path:
             self.discard()
@@ -206,6 +237,7 @@ class FamiliesController:
                     named_primary=held is not None and name == held,
                     unsaved=_lookup(self._families, name) is not None
                     or (pending is not None and name == primary),
+                    here=self._here is None or name.lower() in self._here,
                 )
                 for name, stages in conditions
             ),
