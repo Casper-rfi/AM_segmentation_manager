@@ -44,10 +44,9 @@ from ..layout import (
     classify_image_directory,
     condition_in,
     condition_of,
-    conflicting_label_directories,
-    conflicting_predictions_directories,
     correction_problems,
-    families_claiming_one_directory,
+    families_of_stage,
+    family_directory_problems,
     family_key,
     image_files_by_name,
     primary_order,
@@ -86,13 +85,10 @@ __all__ = [
     "update_families",
 ]
 
-_Resolver = Callable[..., tuple[Path, bool, bool]]
-_Conflicts = Callable[..., tuple[Path, ...]]
-
 #: The two kinds of directory a family shares, and how each resolves.
-_SHARED: Final[tuple[tuple[str, _Resolver, _Conflicts], ...]] = (
-    ("labels", resolve_labels_directory, conflicting_label_directories),
-    ("predictions", resolve_predictions_directory, conflicting_predictions_directories),
+_SHARED: Final[tuple[tuple[str, Callable[..., tuple[Path, bool, bool]]], ...]] = (
+    ("labels", resolve_labels_directory),
+    ("predictions", resolve_predictions_directory),
 )
 
 
@@ -503,21 +499,20 @@ def _plan(
 
     listings = _listings(project)
     named = {entry.key.lower() for entry in entries if entry.section == FAMILIES_SECTION}
-    problems: list[str] = []
-    moves: list[ConditionMove] = []
-    regroupings: list[Regrouping] = []
-    warnings: list[str] = []
+    checked = _StageCheck()
     read = header_reader() if named else None
     if named and read is None:
-        warnings.append("image headers were not compared: the image stack is not installed")
+        checked.warnings.append("image headers were not compared: the image stack is not installed")
     for stage, siblings in listings.items():
-        where = stage.relative_to(root).as_posix()
-        stage_before, stage_after = before.at(where), after.at(where)
-        _check_stage(
-            stage, siblings, stage_before, stage_after, named, root, problems, moves, regroupings
-        )
+        relative = stage.relative_to(root).as_posix()
+        where = relative or "."
+        stage_before, stage_after = before.at(relative), after.at(relative)
+        checked.extend(_check_stage(stage, siblings, stage_before, stage_after, named, where))
         if read is not None:
-            _check_headers(stage, siblings, stage_after, named, root, read, problems, warnings)
+            checked.extend(_check_headers(siblings, stage_after, named, where, read))
+    problems, moves, regroupings, warnings = (
+        checked.problems, checked.moves, checked.regroupings, checked.warnings
+    )
     if problems:
         raise FamiliesValidationError(problems)
 
@@ -765,29 +760,37 @@ def _holds_files(directory: Path, cache: dict[Path, bool]) -> bool:
     return cache[directory]
 
 
+@dataclass
+class _StageCheck:
+    """What checking stages under a change found: refusals, moves, regroupings and warnings."""
+
+    problems: list[str] = field(default_factory=list)
+    moves: list[ConditionMove] = field(default_factory=list)
+    regroupings: list[Regrouping] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def extend(self, other: _StageCheck) -> None:
+        """Add what *other* found to this."""
+        self.problems += other.problems
+        self.moves += other.moves
+        self.regroupings += other.regroupings
+        self.warnings += other.warnings
+
+
 def _check_headers(
-    stage: Path,
     siblings: Mapping[str, Path],
     after: FamilyCorrections,
     named: set[str],
-    root: Path,
+    where: str,
     read: Callable[[Path], ImageMetadata | None],
-    problems: list[str],
-    warnings: list[str],
-) -> None:
-    """Compare the headers of each family in *stage* that a named condition joins.
+) -> _StageCheck:
+    """Compare the headers of each family in a stage that a named condition joins.
 
     A different image size is refused, since one label cannot fit both; a
     different pixel size or voltage is allowed and warned about.
     """
-    families: dict[tuple[str, str], list[Path]] = {}
-    for directory in sorted(siblings.values(), key=lambda path: path.name):
-        condition = condition_of(directory.name, after)
-        if condition is not None:
-            key = (condition.modality, condition.family.lower())
-            families.setdefault(key, []).append(directory)
-    where = stage.relative_to(root).as_posix() or "."
-    for members in families.values():
+    checked = _StageCheck()
+    for members in families_of_stage(siblings.values(), corrections=after):
         if len(members) < 2 or not any(member.name.lower() in named for member in members):
             continue
         readings = read_condition_headers(
@@ -797,9 +800,10 @@ def _check_headers(
             for disagreement in condition_disagreements(headers):
                 message = f"{where}: {filename} differs in {disagreement.describe()}"
                 if disagreement.blocks_sharing:
-                    problems.append(f"{message}; one label cannot fit both")
+                    checked.problems.append(f"{message}; one label cannot fit both")
                 else:
-                    warnings.append(message)
+                    checked.warnings.append(message)
+    return checked
 
 
 def _check_stage(
@@ -808,81 +812,70 @@ def _check_stage(
     before: FamilyCorrections,
     after: FamilyCorrections,
     named: set[str],
-    root: Path,
-    problems: list[str],
-    moves: list[ConditionMove],
-    regroupings: list[Regrouping],
-) -> None:
-    """Check one stage under the change, appending what it refuses and what moves."""
+    where: str,
+) -> _StageCheck:
+    """Check one stage under the change: what it refuses, and which conditions move."""
+    checked = _StageCheck()
     directories = [
         directory for directory in sorted(siblings.values(), key=lambda path: path.name)
         if classify_image_directory(directory.name) is not None
     ]
     if not directories:
-        return
-    where = stage.relative_to(root).as_posix() or "."
+        return checked
     holds: dict[Path, bool] = {}
     modality = {
         directory: classify_image_directory(directory.name).modality  # type: ignore[union-attr]
         for directory in directories
     }
 
-    labels: dict[str, dict[Path, Path]] = {}
-    for kind, resolve, conflicting in _SHARED:
-        old_of = {
-            directory: resolve(directory, modality[directory], siblings, corrections=before)[0]
+    def read_by(resolve, corrections: FamilyCorrections) -> dict[Path, Path]:
+        return {
+            directory: resolve(directory, modality[directory], siblings, corrections=corrections)[0]
             for directory in directories
         }
-        new_of = {
-            directory: resolve(directory, modality[directory], siblings, corrections=after)[0]
-            for directory in directories
-        }
-        if kind == "labels":
-            labels = {"before": old_of, "after": new_of}
 
+    resolved = {
+        kind: (read_by(resolve, before), read_by(resolve, after)) for kind, resolve in _SHARED
+    }
+    for kind, (old_of, new_of) in resolved.items():
         for unread in sorted(set(old_of.values()) - set(new_of.values())):
             if _holds_files(unread, holds):
-                problems.append(f"{where}: no condition would read {unread.name}/ any more")
+                checked.problems.append(f"{where}: no condition would read {unread.name}/ any more")
         for directory in directories:
             old, new = old_of[directory], new_of[directory]
             if old == new or not _holds_files(old, holds):
                 continue
             if _holds_files(new, holds):
-                problems.append(
+                checked.problems.append(
                     f"{where}: {directory.name} would read {new.name}/ in place of "
                     f"{old.name}/, and both hold {kind}; merging them is not supported"
                 )
             elif directory.name.lower() not in named:
-                problems.append(
+                checked.problems.append(
                     f"{where}: {directory.name} would stop reading its {kind} in "
                     f"{old.name}/ because another condition moves"
                 )
 
-        reported: set[frozenset[Path]] = set()
-        for directory in directories:
-            now, was = (
-                frozenset(conflicting(directory, modality[directory], siblings, corrections=c))
-                for c in (after, before)
-            )
-            if now and now != was and now not in reported:
-                reported.add(now)
-                listed = ", ".join(f"{path.name}/" for path in sorted(now))
-                problems.append(
-                    f"{where}: {directory.name}'s family would have {len(now)} {kind} "
-                    f"directories ({listed})"
-                )
-
-    claimed_before = {
-        stem.lower() for stem, _ in families_claiming_one_directory(directories, corrections=before)
+    existing = {
+        problem.key
+        for problem in family_directory_problems(directories, siblings, corrections=before)
     }
-    for stem, families in families_claiming_one_directory(directories, corrections=after):
-        if stem.lower() not in claimed_before:
-            problems.append(
-                f"{where}: families {' and '.join(families)} would both read "
-                f"{stem}{LABELS_SUFFIX}/ and {stem}{PREDICTIONS_SUFFIX}/, joining their labels. "
-                f"A condition moved out of a family keeps the folders named after it, "
-                f"here that family's own: move its other conditions out of it first, "
-                f"or rename the folder"
+    for problem in family_directory_problems(directories, siblings, corrections=after):
+        if problem.key in existing:
+            continue
+        if problem.kind == "shared":
+            checked.problems.append(
+                f"{where}: families {' and '.join(problem.families)} would both read "
+                f"{problem.stem}{LABELS_SUFFIX}/ and {problem.stem}{PREDICTIONS_SUFFIX}/, "
+                f"joining their labels. A condition moved out of a family keeps the "
+                f"folders named after it, here that family's own: move its other "
+                f"conditions out of it first, or rename the folder"
+            )
+        else:
+            listed = ", ".join(f"{path.name}/" for path in sorted(problem.directories))
+            checked.problems.append(
+                f"{where}: {problem.condition}'s family would have "
+                f"{len(problem.directories)} {problem.kind} directories ({listed})"
             )
 
     seen: dict[tuple[str, str, str | None], str] = {}
@@ -891,17 +884,17 @@ def _check_stage(
         assert condition is not None
         key = (
             condition.modality,
-            condition.family.lower(),
+            family_key(condition.family),
             condition.variant.lower() if condition.variant is not None else None,
         )
         if key in seen:
-            problems.append(
+            checked.problems.append(
                 f"{where}: {seen[key]} and {directory.name} would both be "
                 f"{condition.family} [{condition.display_variant}]"
             )
         seen[key] = directory.name
 
-    old_of, new_of = labels["before"], labels["after"]
+    old_of, new_of = resolved["labels"]
     readers_before: dict[Path, set[Path]] = {}
     readers_after: dict[Path, set[Path]] = {}
     for directory in directories:
@@ -915,14 +908,14 @@ def _check_stage(
         gained = 0
         if _holds_files(new, holds) and not _holds_files(old, holds):
             gained = len(set(images) & set(image_files_by_name(new)))
-        moves.append(
+        checked.moves.append(
             ConditionMove(
                 image_directory=directory, labels_before=old, labels_after=new,
                 labels_shared=gained,
             )
         )
         staying = readers_before.get(new, set()) & readers_after.get(new, set())
-        regroupings.append(
+        checked.regroupings.append(
             Regrouping(
                 image_directory=directory,
                 image_names=tuple(sorted(images)),
@@ -932,3 +925,4 @@ def _check_stage(
                 new_group_exists=bool(staying - {directory}),
             )
         )
+    return checked

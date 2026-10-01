@@ -52,11 +52,11 @@ from .layout import (
     Series,
     build_image_sets,
     build_loose_image_sets,
-    conflicting_label_directories,
-    conflicting_predictions_directories,
+    condition_of,
     directory_cache,
     directory_role,
-    families_claiming_one_directory,
+    families_of_stage,
+    family_directory_problems,
     image_files,
     image_files_by_name,
     image_files_of,
@@ -698,9 +698,9 @@ def _survey_stage(
         )
 
     findings.extend(_loose_findings(stage_path, loose))
-    findings.extend(_family_conflict_findings(stage_path, directory_sets, corrections))
+    findings.extend(_family_conflict_findings(stage_path, corrections))
     if reader is not None:
-        findings.extend(_family_header_findings(stage_path, directory_sets, reader))
+        findings.extend(_family_header_findings(stage_path, directory_sets, corrections, reader))
 
     for child in subdirectories_by_name(stage_path).values():
         if directory_role(child.name) != "unknown":
@@ -729,7 +729,7 @@ def _survey_stage(
 
 
 def _family_conflict_findings(
-    stage_path: Path, image_sets: Iterable[ImageSet], corrections: FamilyCorrections
+    stage_path: Path, corrections: FamilyCorrections
 ) -> list[Finding]:
     """Report each family whose conditions have more than one label or
     predictions directory between them, and each directory two families read.
@@ -737,60 +737,49 @@ def _family_conflict_findings(
     Such a family's conditions each keep reading their own, so they do not share
     a label -- see :func:`~am_segmentation_manager.layout.resolve_labels_directory`.
     Two families reading one directory share every label in it, which a hand
-    edit of ``AM_families.yaml`` can do and ``edit-families`` refuses.
+    edit of ``AM_families.yaml`` can do and ``edit-families`` refuses, finding
+    it by the same :func:`~.layout.family_directory_problems`.
     """
     siblings = subdirectories_by_name(stage_path)
-    findings: list[Finding] = [
-        Finding(
-            severity="error",
-            category="family-shared-label-directory",
-            path=stage_path,
-            message=(
-                f"Families {' and '.join(families)} both read {stem}{LABELS_SUFFIX}/ "
-                f"and {stem}{PREDICTIONS_SUFFIX}/, so their images share labels; "
-                f"correct AM_families.yaml"
-            ),
-        )
-        for stem, families in families_claiming_one_directory(
-            siblings.values(), corrections=corrections
-        )
-    ]
-    reported: set[tuple[str, str, str]] = set()
-    for image_set in image_sets:
-        if image_set.is_loose or image_set.modality is None or image_set.family is None:
-            continue
-        for kind, conflicting in (
-            ("label", conflicting_label_directories),
-            ("predictions", conflicting_predictions_directories),
-        ):
-            key = (image_set.modality, image_set.family.lower(), kind)
-            if key in reported:
-                continue
-            competing = conflicting(
-                image_set.directory, image_set.modality, siblings, corrections=corrections
-            )
-            if not competing:
-                continue
-            reported.add(key)
-            names = ", ".join(f"{directory.name}/" for directory in competing)
+    findings: list[Finding] = []
+    for problem in family_directory_problems(
+        siblings.values(), siblings, corrections=corrections
+    ):
+        if problem.kind == "shared":
             findings.append(
                 Finding(
-                    severity="warning",
-                    category=f"family-{kind}-conflict",
+                    severity="error",
+                    category="family-shared-label-directory",
                     path=stage_path,
                     message=(
-                        f"Family {image_set.family} has {len(competing)} {kind} "
-                        f"directories ({names}); its conditions each read their own "
-                        f"until these are merged into one"
+                        f"Families {' and '.join(problem.families)} both read "
+                        f"{problem.stem}{LABELS_SUFFIX}/ and {problem.stem}{PREDICTIONS_SUFFIX}/, "
+                        f"so their images share labels; correct AM_families.yaml"
                     ),
                 )
             )
+            continue
+        kind = "label" if problem.kind == "labels" else problem.kind
+        names = ", ".join(f"{directory.name}/" for directory in problem.directories)
+        findings.append(
+            Finding(
+                severity="warning",
+                category=f"family-{kind}-conflict",
+                path=stage_path,
+                message=(
+                    f"Family {problem.families[0]} has {len(problem.directories)} {kind} "
+                    f"directories ({names}); its conditions each read their own "
+                    f"until these are merged into one"
+                ),
+            )
+        )
     return findings
 
 
 def _family_header_findings(
     stage_path: Path,
     image_sets: Iterable[ImageSet],
+    corrections: FamilyCorrections,
     read: Callable[[Path], ImageMetadata | None],
 ) -> list[Finding]:
     """Report each family whose conditions' headers disagree about one acquisition.
@@ -800,19 +789,18 @@ def _family_header_findings(
     image size is an error, since one label cannot fit both; a different pixel
     size or voltage is a warning that the conditions may not be one family.
     """
-    families: dict[tuple[str, str], list[ImageSet]] = {}
-    for image_set in image_sets:
-        if image_set.is_loose or image_set.modality is None or image_set.family is None:
-            continue
-        families.setdefault((image_set.modality, image_set.family.lower()), []).append(image_set)
-
+    directories = [
+        image_set.directory for image_set in image_sets
+        if not image_set.is_loose and image_set.modality is not None
+    ]
     findings: list[Finding] = []
-    for members in families.values():
+    for members in families_of_stage(directories, corrections=corrections):
         if len(members) < 2:
             continue
+        condition = condition_of(members[0].name, corrections)
+        assert condition is not None, "a family's members are image directories"
         readings = read_condition_headers(
-            {member.directory.name: image_files_by_name(member.directory) for member in members},
-            read,
+            {member.name: image_files_by_name(member) for member in members}, read
         )
         for filename, headers in readings:
             for disagreement in condition_disagreements(headers):
@@ -825,7 +813,7 @@ def _family_header_findings(
                         ),
                         path=stage_path,
                         message=(
-                            f"Family {members[0].family} disagrees on {filename} about "
+                            f"Family {condition.family} disagrees on {filename} about "
                             f"{disagreement.describe()}; "
                             + (
                                 "one label cannot fit both, so correct the family"

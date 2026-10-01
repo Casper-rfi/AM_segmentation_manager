@@ -1053,6 +1053,104 @@ def families_claiming_one_directory(
     )
 
 
+#: How a stage's directories fail to give a family one label: two families
+#: reading one directory, or a family whose labels or predictions are split.
+FamilyProblemKind = Literal["shared", "labels", "predictions"]
+
+
+@dataclass(frozen=True)
+class FamilyDirectoryProblem:
+    """A stage's families failing to read one directory each, as :func:`family_directory_problems` finds it.
+
+    Attributes:
+        kind: Two families reading the directories named after *stem*, or
+            one family's ``labels`` or ``predictions`` split between
+            *directories*.
+        families: The families involved, as spelled.
+        stem: What both families' directories are named after, for ``shared``.
+        directories: The competing directories, for a split.
+        condition: A condition of the split family, for naming it.
+    """
+
+    kind: FamilyProblemKind
+    families: tuple[str, ...]
+    stem: str = ""
+    directories: tuple[Path, ...] = ()
+    condition: str = ""
+
+    @property
+    def key(self) -> tuple[str, frozenset[str]]:
+        """Return what identifies the problem across two readings of one stage."""
+        if self.kind == "shared":
+            return self.kind, frozenset({self.stem.lower()})
+        return self.kind, frozenset(path.name.lower() for path in self.directories)
+
+
+def family_directory_problems(
+    image_directories: Iterable[Path],
+    siblings: Mapping[str, Path],
+    *,
+    corrections: FamilyCorrections,
+) -> tuple[FamilyDirectoryProblem, ...]:
+    """Return each way *corrections* leave a stage's families not reading one directory each.
+
+    What ``inspect-layout`` reports and ``edit-families`` refuses to make, so
+    the two agree about what a conflict is: two families claiming one name,
+    as :func:`families_claiming_one_directory` judges it, and a family whose
+    labels or predictions lie in several existing directories.
+
+    Args:
+        image_directories: The stage's directories; any that is no image
+            directory is passed over.
+        siblings: The stage's subdirectories, as :func:`subdirectories_by_name`
+            returns them.
+    """
+    directories = sorted(
+        (path for path in image_directories if classify_image_directory(path.name) is not None),
+        key=lambda path: path.name,
+    )
+    problems = [
+        FamilyDirectoryProblem("shared", families, stem=stem)
+        for stem, families in families_claiming_one_directory(directories, corrections=corrections)
+    ]
+    for kind, suffix, legacy in (
+        ("labels", LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES),
+        ("predictions", PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES),
+    ):
+        seen: set[tuple[str, str]] = set()
+        for directory in directories:
+            condition = condition_of(directory.name, corrections)
+            assert condition is not None, "only image directories are kept"
+            family = (condition.modality, family_key(condition.family))
+            if family in seen:
+                continue
+            existing, _, _ = _family_directories(
+                directory, condition.modality, siblings, suffix, legacy, corrections
+            )
+            if len(existing) > 1:
+                seen.add(family)
+                problems.append(
+                    FamilyDirectoryProblem(
+                        kind, (condition.family,), directories=tuple(existing),
+                        condition=directory.name,
+                    )
+                )
+    return tuple(problems)
+
+
+def families_of_stage(
+    image_directories: Iterable[Path], *, corrections: FamilyCorrections
+) -> list[list[Path]]:
+    """Return a stage's image directories grouped into their families, each in name order."""
+    families: dict[tuple[str, str], list[Path]] = {}
+    for directory in sorted(image_directories, key=lambda path: path.name):
+        condition = condition_of(directory.name, corrections)
+        if condition is not None:
+            key = (condition.modality, family_key(condition.family))
+            families.setdefault(key, []).append(directory)
+    return list(families.values())
+
+
 def _family_directories(
     image_directory: Path,
     modality: str,

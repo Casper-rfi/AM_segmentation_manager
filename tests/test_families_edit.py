@@ -32,6 +32,7 @@ from am_segmentation_manager.operations.families_edit import (
 from am_segmentation_manager.operations.init_history import writing_recorder
 from am_segmentation_manager.scanner import Scanner
 from am_segmentation_manager.state import read_state
+from am_segmentation_manager.survey import survey_collection
 
 IMAGE = "img_0000.tif"
 
@@ -278,6 +279,34 @@ def test_two_families_may_not_claim_a_label_directory_not_yet_written(tmp_path: 
     _stage(tmp_path, "sem", "sem_fi1", "sem-2kV_fi1")
 
     assert "would both read sem_labels/" in _refusal(tmp_path, families={"sem": "sem-2kV"})
+
+
+@pytest.mark.parametrize(
+    ("directories", "families", "category", "refusal"),
+    [
+        (
+            ("sem", "sem_labels", "sem2kVb", "sem2kVb_labels"), {"sem2kVb": "sem"},
+            "family-label-conflict", "would have 2 labels directories",
+        ),
+        (
+            ("sem", "sem_fi1", "sem-2kV_fi1"), {"sem": "sem-2kV"},
+            "family-shared-label-directory", "would both read sem_labels/",
+        ),
+    ],
+)
+def test_inspect_layout_reports_what_edit_families_refuses(
+    tmp_path: Path, directories, families, category, refusal
+):
+    """Asked of one stage, the two find a conflict by one rule."""
+    stage = _stage(tmp_path, *directories)
+    for name in directories:
+        if name.endswith("_labels"):
+            (stage / name / IMAGE).write_bytes(b"x")
+
+    assert refusal in _refusal(tmp_path, families=families)
+    body = "".join(f"  {name}: {family}\n" for name, family in families.items())
+    (stage.parents[1] / AM_FAMILIES_FILENAME).write_text(f"families:\n{body}", encoding="utf-8")
+    assert category in {finding.category for finding in survey_collection(tmp_path).all_findings}
 
 
 def test_two_conditions_answering_to_one_variant_are_refused(tmp_path: Path):
