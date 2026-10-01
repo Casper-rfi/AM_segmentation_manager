@@ -704,14 +704,15 @@ def test_the_base_image_is_what_opens(tmp_path: Path):
     controller = variant_controller(tmp_path)
 
     assert controller.condition is None
-    assert controller.condition_choices()[0] == ("base", "sem")
+    first = controller.condition_choices()[0]
+    assert (first.label, first.condition) == ("base", "sem")
     assert controller.record.variant is None
 
 
 def test_every_condition_of_the_acquisition_is_offered(tmp_path: Path):
     controller = variant_controller(tmp_path)
 
-    assert [condition for _, condition in controller.condition_choices()] == [
+    assert [choice.condition for choice in controller.condition_choices()] == [
         "sem", "sem_8_fi_1", "sem_8_fi_4",
     ]
 

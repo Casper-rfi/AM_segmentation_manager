@@ -47,6 +47,7 @@ from .common import (
     chip_icon,
     choice_count_badge,
     fill_choice_combo,
+    fill_condition_combo,
     intensity_badge,
 )
 from .controls import (
@@ -1136,7 +1137,7 @@ class LabelPanel(QWidget):
         it moved this row on nearly every step.
         """
         record = self.controller.record
-        fill_choice_combo(
+        fill_condition_combo(
             self.variant_combo,
             self.controller.condition_choices(),
             record.condition if record is not None else None,

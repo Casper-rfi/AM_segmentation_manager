@@ -18,6 +18,7 @@ from typing import Final, Literal
 
 from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import (
+    ConditionChoice,
     LamellaFrame,
     build_lamella_frames,
     family_key,
@@ -997,8 +998,8 @@ class CurationController:
             return
         self._rebuild_frames()
 
-    def condition_choices(self, modality: str | None = None) -> list[tuple[str, str | None]]:
-        """Return a caption and a condition for each the current frame has.
+    def condition_choices(self, modality: str | None = None) -> list[ConditionChoice]:
+        """Return each condition the current frame has, of *modality* or the beam on screen.
 
         In condition order. A list of one -- the usual case -- means there is
         nothing to choose between, and the window greys the control.

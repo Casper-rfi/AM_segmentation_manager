@@ -37,9 +37,10 @@ Along the top:
   project's grid overview with every lamella marked on it (keys **3** and
   **4**). Each is greyed out where the project has none.
 - **Series** chooses which series the timeline is made of, and **Variant**
-  which imaging condition, where a frame was imaged under several. A frame
-  opens on its family's primary condition, and one not imaged under the
-  condition chosen shows another of the same family.
+  which imaging condition, where a frame was imaged under several. Where they
+  form several families, each family is a heading in the list, with its base
+  and variants beneath. A frame opens on its family's primary condition, and
+  one not imaged under the condition chosen shows another of the same family.
 - **Show label**, **Show image**, **Opacity** and **Min / max** change how the
   frame is drawn, and nothing else.
 

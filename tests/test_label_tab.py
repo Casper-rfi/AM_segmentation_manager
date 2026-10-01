@@ -358,6 +358,37 @@ def variants(qt_app, config, tmp_path: Path):
     destroy(window)
 
 
+def test_two_families_are_offered_under_their_headings(qt_app, config, tmp_path: Path):
+    """Choosing the other family proofreads its label, which the status line names."""
+    root = tmp_path / "families"
+    build_dataset(
+        root, acquisitions=2, modalities=("SEM",), sem_variants=("sem-5kV", "sem-5kV_fi4"),
+    )
+    for tiff in root.rglob("*.tif"):
+        tifffile.imwrite(str(tiff), np.zeros((32, 40), dtype=np.uint8))
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config),
+        settings=QSettings(str(tmp_path / "f.ini"), QSettings.IniFormat),
+    )
+    try:
+        window.scan(str(root))
+        window.tabs.setCurrentWidget(window.label_panel)
+        settle(qt_app, lambda: drawn(window))
+        panel = window.label_panel
+        combo = panel.variant_combo
+        assert [combo.itemText(row) for row in range(combo.count())] == [
+            "sem", "base", "sem-5kV", "base", "fi4",
+        ]
+
+        combo.setCurrentIndex(4)
+
+        assert window.label_controller.record.condition == "sem-5kV_fi4"
+        assert panel.status.full_text().endswith("label shared by sem-5kV, sem-5kV_fi4")
+    finally:
+        window.label_controller.discard_edits()
+        destroy(window)
+
+
 @pytest.fixture
 def three_series_window(qt_app, config, tmp_path: Path):
     """A window whose lamella holds reference and alignment images too."""

@@ -285,3 +285,58 @@ def test_choosing_every_family_recounts_the_reach(qt_app, two_family_project: Pa
         assert panel.family_control.isHidden() is True
     finally:
         destroy(window)
+
+
+# ---------------------------------------------------------------------------
+# Several families are offered under a heading each
+# ---------------------------------------------------------------------------
+
+def _rows(combo) -> list[tuple[str, bool]]:
+    """Return each row's text and whether it can be chosen."""
+    enabled = Qt.ItemFlag.ItemIsEnabled
+    return [
+        (combo.itemText(row), bool(combo.model().index(row, 0).flags() & enabled))
+        for row in range(combo.count())
+    ]
+
+
+def test_each_family_is_a_heading_that_cannot_be_chosen(qt_app, two_family_project: Path):
+    window = _window(qt_app, two_family_project)
+    try:
+        window._set_mode("sem")
+        combo = window.image_panel.variant_combo
+        assert _rows(combo) == [
+            ("sem", False), ("base", True), ("fi4", True),
+            ("sem-5kV", False), ("base", True),
+        ]
+        assert combo.count_badge.text() == "3", "the headings are not counted"
+        assert combo.currentIndex() == 1
+    finally:
+        destroy(window)
+
+
+def test_a_condition_chosen_under_a_heading_is_shown_by_its_whole_name(
+    qt_app, two_family_project: Path
+):
+    window = _window(qt_app, two_family_project)
+    try:
+        window._set_mode("sem")
+        combo = window.image_panel.variant_combo
+        combo.resize(300, combo.height())
+
+        combo.setCurrentIndex(4)
+
+        assert window.controller.current_condition("SEM") == "sem-5kV"
+        assert combo.shown_text() == "sem-5kV"
+        combo.setCurrentIndex(2)
+        assert combo.shown_text() == "sem [fi4]"
+    finally:
+        destroy(window)
+
+
+def test_one_family_is_offered_without_headings(qt_app, variant_project: Path):
+    window = _window(qt_app, variant_project)
+    try:
+        assert all(enabled for _, enabled in _rows(window.image_panel.variant_combo))
+    finally:
+        destroy(window)

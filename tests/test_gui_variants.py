@@ -56,7 +56,7 @@ def test_the_conditions_of_a_frame_are_offered_base_first(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    assert controller.condition_choices("SEM") == [
+    assert [(c.label, c.condition) for c in controller.condition_choices("SEM")] == [
         ("8", "SEM_8"), ("8_fi_1", "SEM_8_fi_1"), ("8_fi_4", "SEM_8_fi_4"),
     ]
 
@@ -65,7 +65,9 @@ def test_a_modality_with_one_condition_offers_no_choice(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    assert controller.condition_choices("FIB") == [("base", "FIB")]
+    assert [(c.label, c.condition) for c in controller.condition_choices("FIB")] == [
+        ("base", "FIB"),
+    ]
 
 
 def test_the_viewed_condition_can_be_changed(tmp_path: Path):
@@ -87,7 +89,7 @@ def test_a_stage_holding_two_families_offers_each_base(tmp_path: Path):
     (tmp_path / "project" / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
     controller = make_controller(tmp_path)
 
-    assert controller.condition_choices("SEM") == [
+    assert [(c.name, c.condition) for c in controller.condition_choices("SEM")] == [
         ("sem", "sem"), ("sem [fi4]", "sem_fi4"), ("sem-5kV", "sem-5kV"),
     ]
     controller.set_mode("sem")
@@ -103,7 +105,7 @@ def test_the_view_opens_on_the_primary_the_project_names(tmp_path: Path):
     controller = make_controller(tmp_path)
 
     assert controller.current_condition("SEM") == "SEM_8_fi_4"
-    assert controller.condition_choices("SEM")[0] == ("8", "SEM_8")
+    assert controller.condition_choices("SEM")[0].condition == "SEM_8"
     controller.set_mode("sem")
     assert controller.current_image_path().parent.name == "SEM_8_fi_4"
 

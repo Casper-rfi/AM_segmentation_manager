@@ -50,7 +50,7 @@ from qtpy.QtWidgets import (
 )
 
 from . import theme
-from .common import match_anywhere
+from .common import SHOWN_AS_ROLE, match_anywhere
 
 logger = logging.getLogger(__name__)
 
@@ -300,6 +300,9 @@ class ElidingCombo(QComboBox):
     Qt clips the shown entry at the edge of its field, which took the end off a
     series name with nothing to say it had; this ends it with an ellipsis. The open
     list still shows every entry whole.
+
+    An entry carrying :data:`~.common.SHOWN_AS_ROLE` is shown by that once chosen: a row
+    under a heading in the list loses the heading when the list closes.
     """
 
     def shown_text(self) -> str:
@@ -309,8 +312,9 @@ class ElidingCombo(QComboBox):
         field = self.style().subControlRect(
             QStyle.ComplexControl.CC_ComboBox, option, QStyle.SubControl.SC_ComboBoxEditField, self
         )
+        text = self.currentData(SHOWN_AS_ROLE) or option.currentText
         return self.fontMetrics().elidedText(
-            option.currentText, Qt.TextElideMode.ElideRight, max(field.width(), 0)
+            text, Qt.TextElideMode.ElideRight, max(field.width(), 0)
         )
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming

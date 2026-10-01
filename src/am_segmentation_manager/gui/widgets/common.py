@@ -39,6 +39,7 @@ from qtpy.QtWidgets import (
 
 from ...config import SegmentationConfig
 from ...display import DEFAULT_INTENSITY_RANGE
+from ...frames import ConditionChoice, family_key
 from . import theme
 
 logger = logging.getLogger(__name__)
@@ -315,6 +316,12 @@ class _CompleteOnTab(QObject):
         return completer.currentCompletion()
 
 
+#: The item role holding what a chosen entry is shown as in the closed field,
+#: where that differs from its row in the list; see
+#: :class:`~.controls.ElidingCombo`.
+SHOWN_AS_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
 def fill_choice_combo(
     combo: QComboBox,
     entries: Sequence[tuple[str, object]],
@@ -346,11 +353,76 @@ def fill_choice_combo(
     values = [value for _caption, value in entries]
     combo.setCurrentIndex(values.index(current) if current in values else 0)
     combo.blockSignals(False)
+    _show_choice_count(combo, len(entries))
+
+
+def fill_condition_combo(
+    combo: QComboBox, choices: Sequence[ConditionChoice], current: str | None
+) -> None:
+    """Offer imaging conditions, under a heading per family where there are several.
+
+    With one family, a row per condition named by its variant or ``base``, as
+    :func:`fill_choice_combo` offers anything else. With several, each family
+    is a heading that cannot be chosen, as the Export tab's grouped lists have,
+    and a row chosen under one is shown by its whole name once the list
+    closes. Rebuilt only when the rows change, for the reason
+    :func:`fill_choice_combo` gives.
+
+    Args:
+        choices: In condition order, so each family's are together.
+        current: The condition on screen. One not offered falls to the first.
+    """
+    choices = list(choices)
+    if len({family_key(choice.family) for choice in choices}) <= 1:
+        fill_choice_combo(combo, [(choice.label, choice.condition) for choice in choices], current)
+        return
+
+    # (text, condition, shown as); a heading is the row with nothing shown as.
+    rows: list[tuple[str, str | None, str | None]] = []
+    heading: str | None = None
+    for choice in choices:
+        if heading is None or family_key(heading) != family_key(choice.family):
+            heading = choice.family
+            rows.append((heading, None, None))
+        rows.append((choice.label, choice.condition, choice.name))
+
+    enabled = Qt.ItemFlag.ItemIsEnabled
+    held = [
+        (combo.itemText(i), combo.itemData(i), combo.itemData(i, SHOWN_AS_ROLE))
+        for i in range(combo.count())
+    ]
+    combo.blockSignals(True)
+    if held != rows:
+        model = QStandardItemModel(combo)
+        for text, condition, shown_as in rows:
+            item = QStandardItem(text)
+            if shown_as is None:
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            else:
+                item.setData(condition, Qt.ItemDataRole.UserRole)
+                item.setData(shown_as, SHOWN_AS_ROLE)
+            model.appendRow(item)
+        combo.setModel(model)
+    selectable = [
+        row for row in range(combo.count())
+        if combo.model().index(row, combo.modelColumn()).flags() & enabled
+    ]
+    chosen = next((row for row in selectable if combo.itemData(row) == current), None)
+    combo.setCurrentIndex(chosen if chosen is not None else selectable[0])
+    combo.blockSignals(False)
+    _show_choice_count(combo, len(selectable))
+
+
+def _show_choice_count(combo: QComboBox, count: int) -> None:
+    """Grey *combo* where it offers one entry, and keep its count badge in step."""
     # Greyed rather than hidden where there is nothing to choose: the control
     # still says what is on screen, and the row beside it does not move as the
     # reviewer steps onto a lamella that has only one.
-    combo.setEnabled(len(entries) > 1)
-    single = len(entries) <= 1
+    combo.setEnabled(count > 1)
+    single = count <= 1
     if combo.property("single") != single:
         # Re-polished, a stylesheet reading a property only when polished.
         combo.setProperty("single", single)
@@ -358,7 +430,7 @@ def fill_choice_combo(
         combo.style().polish(combo)
     badge = getattr(combo, "count_badge", None)
     if badge is not None:
-        badge.setText(str(len(entries)))
+        badge.setText(str(count))
         badge.setVisible(not single)
 
 

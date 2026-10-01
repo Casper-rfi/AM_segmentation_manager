@@ -292,7 +292,7 @@ def test_the_base_image_comes_first_and_variants_follow_in_name_order():
 
     frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
 
-    assert frames[0].condition_choices("SEM") == [
+    assert [(c.label, c.condition) for c in frames[0].condition_choices("SEM")] == [
         ("base", "sem"), ("fi_1", "sem_fi_1"), ("fi_16", "sem_fi_16"),
     ]
     assert frames[0].record("SEM").variant is None
@@ -321,7 +321,7 @@ def test_two_families_of_one_beam_each_offer_their_base():
 
     frame = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)[0]
 
-    assert frame.condition_choices("SEM") == [
+    assert [(c.name, c.condition) for c in frame.condition_choices("SEM")] == [
         ("sem", "sem"), ("sem [fi4]", "sem_fi4"),
         ("sem-5kV", "sem-5kV"), ("sem-5kV [fi4]", "sem-5kV_fi4"),
     ]
@@ -406,7 +406,7 @@ def test_a_named_primary_is_what_a_frame_opens_on():
     assert frame.base_records[0].condition == "sem_fi16"
     # Opening on it reorders nothing: the base still leads its family.
     assert [record.condition for record in frame.sem][:2] == ["sem", "sem_fi16"]
-    assert frame.condition_choices("SEM")[0] == ("sem", "sem")
+    assert frame.condition_choices("SEM")[0].condition == "sem"
 
 
 def test_each_family_has_its_own_primary():

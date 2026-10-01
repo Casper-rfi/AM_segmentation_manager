@@ -248,16 +248,47 @@ class LamellaFrame:
                     return same_family
         return self.primary(modality)
 
-    def condition_choices(self, modality: str) -> list[tuple[str, str | None]]:
-        """Return a caption and a condition for each record of *modality*, in order.
+    def condition_choices(self, modality: str) -> list[ConditionChoice]:
+        """Return each condition of *modality* a view can show, in condition order."""
+        return [
+            ConditionChoice(
+                family=record.family or "", variant=record.variant, condition=record.condition
+            )
+            for record in self.modality_records(modality)
+        ]
 
-        A caption names the variant, or ``base``; where the beam holds several
-        families it names the family too, as ``sem-5kV [fi4]``, since two
-        families would otherwise each offer a ``base``.
+
+@dataclass(frozen=True)
+class ConditionChoice:
+    """One imaging condition a view can show, as a control offers it.
+
+    Attributes:
+        family: The family it belongs to, as its records spell it; ``""`` for
+            an image of none.
+        variant: Its variant within the family, or None for the base.
+        condition: Its image directory's name, which choosing it passes on;
+            None for an image sitting directly in its stage.
+    """
+
+    family: str
+    variant: str | None
+    condition: str | None
+
+    @property
+    def label(self) -> str:
+        """Return what it is called within its family: its variant, or ``base``."""
+        return self.variant if self.variant is not None else "base"
+
+    @property
+    def name(self) -> str:
+        """Return what it is called among several families, as ``sem-5kV [fi4]``.
+
+        The family alone for its base, as two families would otherwise each
+        offer a ``base``.
         """
-        records = self.modality_records(modality)
-        several = len(self.families(modality)) > 1
-        return [(_condition_caption(record, several), record.condition) for record in records]
+        if not self.family:
+            return self.label
+        return self.family if self.variant is None else f"{self.family} [{self.variant}]"
 
 
 def family_key(family: str | None) -> str:
@@ -556,14 +587,6 @@ def group_by_acquisition(records: Iterable[ImageRecord]) -> list[Acquisition]:
 def _condition_sort_key(record: ImageRecord) -> tuple[tuple[str, bool, str], str]:
     """Order a beam's records by family, base first, then by variant."""
     return condition_order(record.family, record.variant), (record.condition or "").lower()
-
-
-def _condition_caption(record: ImageRecord, name_family: bool) -> str:
-    """Return how a condition is offered: its variant, with its family where asked."""
-    variant = record.variant if record.variant is not None else "base"
-    if not name_family or record.family is None:
-        return variant
-    return record.family if record.variant is None else f"{record.family} [{record.variant}]"
 
 
 def _plots_by_image_number(plots: Iterable[Path]) -> dict[int, Path]:

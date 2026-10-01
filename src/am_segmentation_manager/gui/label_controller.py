@@ -18,6 +18,7 @@ from pathlib import Path
 from ..config import SegmentationConfig
 from ..display import DisplayImage, prepare_display_image
 from ..frames import (
+    ConditionChoice,
     LamellaFrame,
     build_lamella_frames,
     resolve_series,
@@ -469,8 +470,8 @@ class LabelController:
         self._refresh_positions(keep_frame=self.frame_index)
         logger.debug("Proofreading %s condition %s", self._modality, condition or "(primary)")
 
-    def condition_choices(self) -> list[tuple[str, str | None]]:
-        """Return a caption and a condition for each the frame on screen has."""
+    def condition_choices(self) -> list[ConditionChoice]:
+        """Return each condition the frame on screen has, of the beam on screen."""
         frame = self.frame
         return frame.condition_choices(self._modality) if frame is not None else []
 

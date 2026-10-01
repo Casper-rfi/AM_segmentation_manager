@@ -31,6 +31,7 @@ from ...display import (
     apply_intensity_range,
     compose_overlay,
 )
+from ...frames import ConditionChoice
 from ...layout import SERIES_LABELS
 from ...overview import LamellaMarker
 from ..cache import FrameImage, FramePlot
@@ -42,6 +43,7 @@ from .common import (
     choice_count_badge,
     class_legend_html,
     fill_choice_combo,
+    fill_condition_combo,
     intensity_badge,
 )
 from .controls import (
@@ -418,7 +420,7 @@ class ImagePanel(QWidget):
 
     def set_conditions(
         self,
-        choices: list[tuple[str, str | None]],
+        choices: Sequence[ConditionChoice],
         current: str | None = None,
     ) -> None:
         """Offer the imaging conditions available for the current view.
@@ -429,11 +431,12 @@ class ImagePanel(QWidget):
         step between projects.
 
         Args:
-            choices: A caption and a condition for each present, in order.
+            choices: Each condition present, in condition order; grouped by
+                family where there are several.
             current: The condition on screen.
         """
         self._offer_overviews(False)
-        fill_choice_combo(self.variant_combo, choices, current)
+        fill_condition_combo(self.variant_combo, choices, current)
 
     def set_overviews(self, captions: list[str], current: int) -> None:
         """Offer the project's grid overviews in the imaging condition's place.
