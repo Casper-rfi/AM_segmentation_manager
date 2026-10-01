@@ -1112,10 +1112,11 @@ def family_directory_problems(
         FamilyDirectoryProblem("shared", families, stem=stem)
         for stem, families in families_claiming_one_directory(directories, corrections=corrections)
     ]
-    for kind, suffix, legacy in (
+    shared: tuple[tuple[FamilyProblemKind, str, Mapping[str, str]], ...] = (
         ("labels", LABELS_SUFFIX, LEGACY_LABEL_DIRECTORIES),
         ("predictions", PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES),
-    ):
+    )
+    for kind, suffix, legacy in shared:
         seen: set[tuple[str, str]] = set()
         for directory in directories:
             condition = condition_of(directory.name, corrections)

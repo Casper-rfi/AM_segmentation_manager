@@ -129,7 +129,9 @@ selects its row.
 With **Enable editing** on, select a condition and choose its **Family**: one
 of the beam's, the one its name gives, or *New family...* to name one. **Set
 primary** names the family's primary, and **Reset primary** goes back to the
-rule below. Changes show as *not saved* until **Save**, which checks them as
+rule below. One the file could not hold -- a family name it cannot take, a
+condition the lamella does not have -- is refused as you make it. Changes show
+as *not saved* until **Save**, which checks them as
 `edit-families` does, asks before taking images out of a corrected group, and
 first asks you to save or discard label edits waiting in the project;
 **Preview** says what saving would do. The folder is read again afterwards.

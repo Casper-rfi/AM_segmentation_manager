@@ -281,9 +281,12 @@ def summarise_families(
             members[name] = members.get(name, 0) + 1
 
     # Placed by the file: by the project's entry, or by a lamella's naming this family.
+    sections: list[FamilyCorrections | FamilyEntries] = [
+        corrections.project, *corrections.lamellae.values()
+    ]
     placed = {
         (name.lower(), family_key(family))
-        for section in (corrections.project, *corrections.lamellae.values())
+        for section in sections
         for name, family in section.families.items()
     }
     named_in = corrections.at(lamella) if lamella is not None else corrections.project
