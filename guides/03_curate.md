@@ -189,7 +189,8 @@ lamellae:
 number: an entry the project already makes is none, and `--clear` returns the
 lamella to the project's. Each lamella is checked as a project-wide change is,
 and `show-families` lists each lamella's entries after the families. The
-Families tab and a merge still leave a file with lamella sections alone.
+Families tab still leaves a file with lamella sections alone; a merge brings
+each lamella's entries across as it does the project's.
 **Inspect layout** reports a section naming no lamella of the project.
 
 ## Predict and convert

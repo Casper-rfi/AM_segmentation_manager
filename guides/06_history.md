@@ -129,9 +129,11 @@ archive whichever way it goes.
 
 From the command line, `merge` reports what it would do until given
 `--apply`, and `--resolve` decides conflicts: one by its path, or every one
-under a folder, project or lamella. A label conflict waiting on a family
-decision does not exist until that decision is made, so decide the family,
-run the merge again, and then decide the labels:
+under a folder, project or lamella. A family correction is named after its
+project, as `<project>:family:sem_x`, or `<project>:family:lam_003/sem_x` for
+a lamella's own entry; deciding the project decides both. A label conflict
+waiting on a family decision does not exist until that decision is made, so
+decide the family, run the merge again, and then decide the labels:
 
 ```bash
 am-seg merge /path/to/copy --into /path/to/collection

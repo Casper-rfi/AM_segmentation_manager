@@ -154,6 +154,14 @@ def test_family_corrections_come_before_the_fields_and_say_what_they_are():
     ]
 
 
+def test_a_lamellas_family_correction_says_which_lamella():
+    resolution = ConflictResolution([_field("P", "family:lam_003/sem_mag2")])
+
+    (project,) = resolution.fields
+
+    assert [child.caption for child in project.children] == ["Family of sem_mag2 in lam_003"]
+
+
 def test_a_family_in_conflict_becomes_a_row_beside_the_fields():
     from am_segmentation_manager.gui.history_controller import _conflict_rows
     from am_segmentation_manager.operations.merge import (

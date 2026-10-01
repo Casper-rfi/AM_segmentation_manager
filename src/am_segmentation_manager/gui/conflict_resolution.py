@@ -312,7 +312,9 @@ def _caption(row: ConflictRow) -> str:
     if row.is_field:
         kind, separator, name = row.metadata_field.partition(":")
         if separator and kind in _FAMILY_CAPTIONS:
-            return f"{_FAMILY_CAPTIONS[kind]} {name}"
+            lamella, _, entry = name.rpartition("/")
+            where = f" in {lamella}" if lamella else ""
+            return f"{_FAMILY_CAPTIONS[kind]} {entry}{where}"
         return _FIELD_LABELS.get(row.metadata_field, row.metadata_field)
     if row.record is not None:
         return row.record.image_path.name

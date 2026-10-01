@@ -1057,14 +1057,64 @@ def test_the_fork_point_holds_the_families_as_they_stood(tmp_path: Path, recorde
     assert (tmp_path / "copy" / "project" / "AM_families.yaml").is_file()
 
 
-def test_lamella_sections_are_refused_rather_than_dropped(forked_families):
-    (forked_families.copy / "project" / "AM_families.yaml").write_text(
-        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem_fi_1: sem-x\n",
-        encoding="utf-8",
+def _move_in_lamella(root: Path, recorder: Recorder, **families: str | None) -> str:
+    """Correct the one lamella's own families as ``edit-families --lamella`` would; return its key."""
+    from am_segmentation_manager.operations.families_edit import update_families
+
+    project = _project_of(root)
+    [lamella] = project.lamellae
+    update_families(project, families=families, lamella=lamella, recorder=recorder)
+    return lamella.path.relative_to(project.path).as_posix()
+
+
+def test_a_lamella_entry_changed_only_in_the_copy_is_taken(forked_families, recorder):
+    lamella = _move_in_lamella(forked_families.copy, recorder, sem_fi_1="sem-x")
+
+    plan = plan_merge(forked_families.copy, forked_families.main)
+    (entry,) = plan.projects[0].families
+    assert (entry.field, entry.outcome) == (f"family:{lamella}/sem_fi_1", TAKE_THEIRS)
+    assert entry.describe() == (
+        f"family of sem_fi_1 in {lamella}: as the project has it here, sem-x in the copy"
     )
 
-    with pytest.raises(MergeRefused, match="has lamella sections"):
-        plan_merge(forked_families.copy, forked_families.main)
+    apply_merge(plan, recorder=recorder)
+
+    from am_segmentation_manager.families import read_families
+
+    merged = read_families(forked_families.project)
+    assert merged.project.family_of("sem_fi_1") is None
+    assert merged.at(lamella).family_of("sem_fi_1") == "sem-x"
+
+
+def test_a_lamella_entry_changed_on_both_sides_is_a_conflict_decided_by_its_name(
+    forked_families, recorder
+):
+    lamella = _move_in_lamella(forked_families.copy, recorder, sem_fi_1="sem-x")
+    _move_in_lamella(forked_families.main, recorder, sem_fi_1="sem-y")
+
+    plan = plan_merge(forked_families.copy, forked_families.main)
+    (entry,) = plan.projects[0].families
+    assert entry.outcome == CONFLICT
+
+    name = f"{plan.projects[0].key}:family:{lamella}/sem_fi_1"
+    decided = plan_merge(forked_families.copy, forked_families.main, resolutions={name: THEIRS})
+    apply_merge(decided, recorder=recorder)
+
+    from am_segmentation_manager.families import read_families
+
+    assert read_families(forked_families.project).at(lamella).family_of("sem_fi_1") == "sem-x"
+
+
+def test_a_lamella_section_only_here_is_kept(forked_families, recorder):
+    lamella = _move_in_lamella(forked_families.main, recorder, sem_fi_1="sem-x")
+
+    plan = plan_merge(forked_families.copy, forked_families.main)
+    apply_merge(plan, recorder=recorder)
+
+    assert [entry.outcome for entry in plan.projects[0].families] == [KEEP_OURS]
+    from am_segmentation_manager.families import read_families
+
+    assert read_families(forked_families.project).at(lamella).family_of("sem_fi_1") == "sem-x"
 
 
 def test_a_family_corrected_only_in_the_copy_is_taken(forked_families, recorder):

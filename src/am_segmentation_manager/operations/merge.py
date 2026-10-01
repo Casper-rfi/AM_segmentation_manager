@@ -30,7 +30,7 @@ from ..history import (
 )
 from ..io.atomic import Fingerprint, fingerprint_of
 from ..io.image import read_array
-from ..layout import FamilyCorrections, ProjectFamilies
+from ..layout import FamilyCorrections, FamilyEntries, ProjectFamilies
 from ..models import ImageRecord, Project
 from ..scanner import Scanner
 from ..state import DEFAULT_STATE, RecordState
@@ -194,6 +194,8 @@ class FamilyMerge:
         ancestor: Its value at the fork, None where there was no entry.
         ours: Its value here now.
         theirs: Its value in the copy now.
+        lamella: The lamella whose section holds it, by its path in the
+            project, or None for the project's own.
     """
 
     section: str
@@ -203,19 +205,28 @@ class FamilyMerge:
     theirs: str | None
     outcome: str
     reason: str = ""
+    lamella: str | None = None
 
     @property
     def field(self) -> str:
-        """Return the name a decision about this entry is keyed by, after the project."""
+        """Return the name a decision about this entry is keyed by, after the project.
+
+        ``family:sem_x``, or ``family:lam_003/sem_x`` for a lamella's: a
+        condition's name holds no ``/``, so the two cannot be confused.
+        """
         kind = "family" if self.section == FAMILIES_SECTION else "primary"
-        return f"{kind}:{self.key}"
+        return f"{kind}:{self.lamella}/{self.key}" if self.lamella else f"{kind}:{self.key}"
 
     def describe(self) -> str:
         """Return a one-line description, naming what each side holds."""
         what = "family of" if self.section == FAMILIES_SECTION else "primary of"
-        default = "as named" if self.section == FAMILIES_SECTION else "default"
+        if self.lamella:
+            default = "as the project has it" if self.section == FAMILIES_SECTION else "the project's"
+        else:
+            default = "as named" if self.section == FAMILIES_SECTION else "default"
+        where = f" in {self.lamella}" if self.lamella else ""
         return (
-            f"{what} {self.key}: {self.ours or default} here, "
+            f"{what} {self.key}{where}: {self.ours or default} here, "
             f"{self.theirs or default} in the copy"
         )
 
@@ -696,7 +707,8 @@ def _plan_families(
     Three-way per entry, as a metadata field is, but **the ancestor is the fork
     point's copy of the file** rather than one recovered from the log, and each
     side is read from its file, so an edit by hand is seen. Names compare
-    whatever their case.
+    whatever their case. Each lamella's section merges as the project's does,
+    its entries its own (``test_a_lamella_entry_changed_only_in_the_copy_is_taken``).
 
     Returns:
         The entries either side changed, and the corrections the merge arrives
@@ -706,18 +718,59 @@ def _plan_families(
         MergeRefused: If either file will not read, or the entries taken
             together do not make valid corrections.
     """
-    every = _families_of(our_root, "here"), _families_of(their_root, "in the copy"), fork.families
-    if any(families.has_lamellae for families in every):
-        raise MergeRefused(
-            f"{key}: AM_families.yaml has lamella sections, which a merge cannot "
-            f"bring across; settle them by hand on one side first"
-        )
-    ours, theirs, ancestor_families = (families.project for families in every)
-    merged = {FAMILIES_SECTION: dict(ours.families), PRIMARY_SECTION: dict(ours.primary)}
+    ours = _families_of(our_root, "here")
+    theirs = _families_of(their_root, "in the copy")
+    ancestor = fork.families
     entries: list[FamilyMerge] = []
+    project_section = _merge_section(
+        (ancestor.project, ours.project, theirs.project), None, key, decided, entries
+    )
+    empty = FamilyEntries()
+    lamellae: dict[str, FamilyEntries] = {}
+    for lamella in sorted(set(ancestor.lamellae) | set(ours.lamellae) | set(theirs.lamellae)):
+        sections = tuple(
+            side.lamellae.get(lamella, empty) for side in (ancestor, ours, theirs)
+        )
+        families, primary = _merge_section(sections, lamella, key, decided, entries)
+        if families or primary:
+            lamellae[lamella] = FamilyEntries(families=families, primary=primary)
+
+    if any(entry.outcome == CONFLICT for entry in entries):
+        return tuple(entries), None
+    try:
+        corrections = ProjectFamilies(
+            project=FamilyCorrections(families=project_section[0], primary=project_section[1]),
+            lamellae=lamellae,
+        )
+    except ValueError as error:
+        raise MergeRefused(
+            f"{key}: the family corrections the two sides make do not fit together: {error}"
+        ) from error
+    return tuple(entries), corrections
+
+
+def _merge_section(
+    sides: tuple[FamilyCorrections | FamilyEntries, ...],
+    lamella: str | None,
+    key: str,
+    decided: Mapping[str, str],
+    entries: list[FamilyMerge],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Merge one section, the project's or a lamella's, entry by entry.
+
+    Args:
+        sides: The section at the fork, here and in the copy, in that order.
+        entries: Appended with each entry either side changed.
+
+    Returns:
+        The families and primary mappings the merge arrives at, ours where
+        an entry is in conflict.
+    """
+    ancestor_side, our_side, their_side = sides
+    merged = {FAMILIES_SECTION: dict(our_side.families), PRIMARY_SECTION: dict(our_side.primary)}
     for section, ancestor_map, our_map, their_map in (
-        (FAMILIES_SECTION, ancestor_families.families, ours.families, theirs.families),
-        (PRIMARY_SECTION, ancestor_families.primary, ours.primary, theirs.primary),
+        (FAMILIES_SECTION, ancestor_side.families, our_side.families, their_side.families),
+        (PRIMARY_SECTION, ancestor_side.primary, our_side.primary, their_side.primary),
     ):
         maps = [
             {name.lower(): (name, value) for name, value in mapping.items()}
@@ -726,7 +779,9 @@ def _plan_families(
         for lowered in sorted(set().union(*maps)):
             spelled = next(m[lowered][0] for m in (maps[1], maps[2], maps[0]) if lowered in m)
             ancestor, mine, other = (m.get(lowered, (None, None))[1] for m in maps)
-            entry = FamilyMerge(section, spelled, ancestor, mine, other, UNCHANGED)
+            entry = FamilyMerge(
+                section, spelled, ancestor, mine, other, UNCHANGED, lamella=lamella
+            )
             outcome, reason = _resolve(
                 _lowered(ancestor), _lowered(mine), _lowered(other),
                 decided.get(field_key(key, entry.field)),
@@ -739,18 +794,7 @@ def _plan_families(
                 if other is not None:
                     taken[maps[2][lowered][0]] = other
                 merged[section] = taken
-
-    if any(entry.outcome == CONFLICT for entry in entries):
-        return tuple(entries), None
-    try:
-        corrections = FamilyCorrections(
-            families=merged[FAMILIES_SECTION], primary=merged[PRIMARY_SECTION]
-        )
-    except ValueError as error:
-        raise MergeRefused(
-            f"{key}: the family corrections the two sides make do not fit together: {error}"
-        ) from error
-    return tuple(entries), ProjectFamilies(project=corrections)
+    return merged[FAMILIES_SECTION], merged[PRIMARY_SECTION]
 
 
 def _lowered(value: str | None) -> str | None:
