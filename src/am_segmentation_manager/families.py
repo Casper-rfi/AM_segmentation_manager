@@ -16,8 +16,13 @@ from pathlib import Path
 from typing import Any, Final
 
 from .discovery import project_markers
-from .io.atomic import Fingerprint, fingerprint_of
-from .io.yaml import DuplicateKeyError, load_unique_keys, write_yaml
+from .io.atomic import Fingerprint
+from .io.yaml import (
+    DuplicateKeyError,
+    load_unique_keys,
+    version_problem,
+    write_yaml_unchanged,
+)
 from .layout import (
     NO_PROJECT_FAMILIES,
     FamilyCorrections,
@@ -204,14 +209,10 @@ def write_families(
     stale = StaleFamilies(
         f"{path} changed since this change was worked out; look again and repeat it"
     )
-    if fingerprint_of(path) != expected:
-        raise stale
     document = document_of(corrections)
     version = FILE_VERSION if _LAMELLAE_KEY in document else _FIRST_VERSION
-    body = {_VERSION_KEY: version, **document}
-    if not write_yaml(
-        path, body, header=_HEADER,
-        commit_if=lambda _temporary: fingerprint_of(path) == expected,
+    if not write_yaml_unchanged(
+        path, {_VERSION_KEY: version, **document}, header=_HEADER, expected=expected
     ):
         raise stale
     return path
@@ -253,15 +254,9 @@ def families_for(
 
 def _check_version(version: Any, path: Path) -> None:
     """Reject a file written by a later am-seg; accept one that omits it."""
-    if version is None:
-        return
-    if not isinstance(version, int) or isinstance(version, bool):
-        raise FamiliesFileError(f"{path}: {_VERSION_KEY} must be a whole number")
-    if version > FILE_VERSION:
-        raise FamiliesFileError(
-            f"{path} was written by a later version of am-seg "
-            f"(file version {version}, this reads up to {FILE_VERSION})"
-        )
+    problem = version_problem(version, path, FILE_VERSION)
+    if problem is not None:
+        raise FamiliesFileError(problem)
 
 
 def _lamellae(block: Any, where: str) -> dict[str, FamilyEntries]:

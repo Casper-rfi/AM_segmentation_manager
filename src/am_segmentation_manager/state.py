@@ -17,7 +17,12 @@ from typing import Any, Final, Literal, get_args
 
 from .io.atomic import Fingerprint, fingerprint_of
 from .io.path import checked_relative_key
-from .io.yaml import DuplicateKeyError, load_unique_keys, write_yaml
+from .io.yaml import (
+    DuplicateKeyError,
+    load_unique_keys,
+    version_problem,
+    write_yaml_unchanged,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,18 +178,14 @@ def write_state(previous: StageState, states: Mapping[str, str]) -> StageState:
     stale = StaleState(
         f"{path} changed since it was read; re-read it and apply the change again"
     )
-    if fingerprint_of(path) != previous.fingerprint:
-        raise stale
-
     declared = _checked_states(dict(states), path, path.parent)
     kept = {key: value for key, value in declared.items() if value != DEFAULT_STATE}
     # Sorted, so two runs producing the same states produce the same file.
-    # Checked again just before the rename, which is as late as it can be asked.
-    if not write_yaml(
+    if not write_yaml_unchanged(
         path,
         {_VERSION_KEY: FILE_VERSION, _STATE_KEY: dict(sorted(kept.items()))},
         header=_HEADER,
-        commit_if=lambda _temporary: fingerprint_of(path) == previous.fingerprint,
+        expected=previous.fingerprint,
     ):
         raise stale
     logger.debug("Wrote %s declared states to %s", len(kept), path)
@@ -205,15 +206,9 @@ def _load(handle: Any) -> Any:
 
 def _check_version(version: Any, path: Path) -> None:
     """Reject a file written by a later am-seg; accept one that omits it."""
-    if version is None:
-        return
-    if not isinstance(version, int) or isinstance(version, bool):
-        raise StateFileError(f"{path}: {_VERSION_KEY} must be a whole number")
-    if version > FILE_VERSION:
-        raise StateFileError(
-            f"{path} was written by a later version of am-seg "
-            f"(file version {version}, this reads up to {FILE_VERSION})"
-        )
+    problem = version_problem(version, path, FILE_VERSION)
+    if problem is not None:
+        raise StateFileError(problem)
 
 
 def _checked_states(

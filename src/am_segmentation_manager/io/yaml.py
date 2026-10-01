@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .atomic import write_atomically
+from .atomic import Fingerprint, fingerprint_of, write_atomically
 
 logger = logging.getLogger(__name__)
 
@@ -150,3 +150,49 @@ def write_yaml(
     return write_atomically(
         path, lambda temporary: temporary.write_text(text, encoding="utf-8"), commit_if=commit_if
     )
+
+
+def write_yaml_unchanged(
+    path: Path, body: Mapping[str, Any], *, header: str, expected: Fingerprint | None
+) -> bool:
+    """Write *body* as :func:`write_yaml` does, only while *path* is as *expected*.
+
+    Asked before anything is encoded and again just before the rename, which is
+    as late as it can be asked.
+
+    Args:
+        expected: The file's fingerprint when it was read, None if it did not exist.
+
+    Returns:
+        Whether *path* was replaced; False where it changed since it was read.
+    """
+    if fingerprint_of(path) != expected:
+        return False
+    return write_yaml(
+        path, body, header=header,
+        commit_if=lambda _temporary: fingerprint_of(path) == expected,
+    )
+
+
+def version_problem(
+    version: Any, path: Path, latest: int, *, required: bool = False
+) -> str | None:
+    """Return why a file's ``version`` cannot be read by this am-seg, or None if it can.
+
+    A version above *latest* was written by a later am-seg, which is a refusal
+    rather than a misreading. Each reader raises its own error with the message.
+
+    Args:
+        required: Refuse a file that states no version, rather than reading it
+            as the first.
+    """
+    if version is None and not required:
+        return None
+    if not isinstance(version, int) or isinstance(version, bool):
+        return f"{path}: version must be a whole number"
+    if version > latest:
+        return (
+            f"{path} was written by a later version of am-seg "
+            f"(file version {version}, this reads up to {latest})"
+        )
+    return None

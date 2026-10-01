@@ -19,7 +19,7 @@ from typing import Any, Final
 from .. import __version__
 from ..families import FamiliesFileError, document_of, families_from_document, read_families
 from ..history import declared_project_id, read_log, resolve_author
-from ..io.yaml import read_yaml, write_yaml
+from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..layout import NO_PROJECT_FAMILIES, ProjectFamilies
 from ..models import Project
 
@@ -213,14 +213,9 @@ def read_export_record(destination: Path) -> ExportRecord | None:
     if not isinstance(document, dict):
         raise ValueError(f"{path} does not hold a mapping")
 
-    version = document.get("version")
-    if not isinstance(version, int) or isinstance(version, bool):
-        raise ValueError(f"{path}: version must be a whole number")
-    if version > FILE_VERSION:
-        raise ValueError(
-            f"{path} was written by a later version of am-seg "
-            f"(file version {version}, this reads up to {FILE_VERSION})"
-        )
+    problem = version_problem(document.get("version"), path, FILE_VERSION, required=True)
+    if problem is not None:
+        raise ValueError(problem)
 
     return ExportRecord(
         exported_at=_text(document.get("exported_at")),

@@ -10,7 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.io.yaml import read_yaml, write_yaml
+from am_segmentation_manager.io.atomic import fingerprint_of
+from am_segmentation_manager.io.yaml import (
+    read_yaml,
+    version_problem,
+    write_yaml,
+    write_yaml_unchanged,
+)
 
 
 def test_a_written_file_opens_with_its_header_and_reads_back(tmp_path: Path):
@@ -62,3 +68,32 @@ def _fail_writes_half_way(monkeypatch) -> None:
         raise OSError("No space left on device")
 
     monkeypatch.setattr(Path, "write_text", half)
+
+
+@pytest.mark.parametrize(
+    ("version", "required", "problem"),
+    [
+        (None, False, None),
+        (None, True, "whole number"),
+        (1, False, None),
+        (2, False, None),
+        (3, False, "later version of am-seg (file version 3, this reads up to 2)"),
+        ("2", False, "whole number"),
+        (True, False, "whole number"),
+    ],
+)
+def test_a_version_this_am_seg_cannot_read_is_named(version, required, problem):
+    found = version_problem(version, Path("f.yaml"), 2, required=required)
+
+    assert found is None if problem is None else problem in found
+
+
+def test_a_file_changed_since_it_was_read_is_not_written_over(tmp_path: Path):
+    path = tmp_path / "state.yaml"
+    path.write_text("version: 1\n", encoding="utf-8")
+    expected = fingerprint_of(path)
+    path.write_text("version: 1\nedited: by hand\n", encoding="utf-8")
+
+    assert not write_yaml_unchanged(path, {"version": 1}, header="", expected=expected)
+    assert read_yaml(path) == {"version": 1, "edited": "by hand"}
+    assert write_yaml_unchanged(path, {"version": 1}, header="", expected=fingerprint_of(path))
