@@ -19,7 +19,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
-from ..families import FamiliesFileError, read_families
+from ..families import (
+    FAMILIES_SECTION,
+    PRIMARY_SECTION,
+    FamiliesFileError,
+    read_families,
+    sections_of,
+)
 from ..history import (
     Event,
     HistoryLog,
@@ -41,8 +47,6 @@ from .export_record import (
     read_export_record,
 )
 from .families_edit import (
-    FAMILIES_SECTION,
-    PRIMARY_SECTION,
     FamiliesChange,
     FamiliesValidationError,
     apply_families_change,
@@ -766,11 +770,10 @@ def _merge_section(
         The families and primary mappings the merge arrives at, ours where
         an entry is in conflict.
     """
-    ancestor_side, our_side, their_side = sides
-    merged = {FAMILIES_SECTION: dict(our_side.families), PRIMARY_SECTION: dict(our_side.primary)}
-    for section, ancestor_map, our_map, their_map in (
-        (FAMILIES_SECTION, ancestor_side.families, our_side.families, their_side.families),
-        (PRIMARY_SECTION, ancestor_side.primary, our_side.primary, their_side.primary),
+    ancestor_side, our_side, their_side = (sections_of(side) for side in sides)
+    merged = {section: dict(entries) for section, entries in our_side}
+    for (section, ancestor_map), (_, our_map), (_, their_map) in zip(
+        ancestor_side, our_side, their_side, strict=True
     ):
         maps = [
             {name.lower(): (name, value) for name, value in mapping.items()}

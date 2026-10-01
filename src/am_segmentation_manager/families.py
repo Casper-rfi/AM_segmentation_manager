@@ -11,6 +11,7 @@ labels elsewhere. Only :mod:`.operations.families_edit` writes it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final
 
@@ -28,11 +29,16 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "AM_FAMILIES_FILENAME",
+    "FAMILIES_SECTION",
+    "PRIMARY_SECTION",
     "FamiliesFileError",
     "StaleFamilies",
+    "document_of",
     "families_file_path",
     "families_for",
+    "families_from_document",
     "read_families",
+    "sections_of",
     "write_families",
 ]
 
@@ -45,14 +51,15 @@ AM_FAMILIES_FILENAME: Final[str] = "AM_families.yaml"
 FILE_VERSION: Final[int] = 2
 _FIRST_VERSION: Final[int] = 1
 
+#: The two sections of a project's or a lamella's corrections, as the file
+#: names them: condition to family, and family to its primary condition.
+FAMILIES_SECTION: Final[str] = "families"
+PRIMARY_SECTION: Final[str] = "primary"
+
 _VERSION_KEY: Final[str] = "version"
-_FAMILIES_KEY: Final[str] = "families"
-_PRIMARY_KEY: Final[str] = "primary"
 _LAMELLAE_KEY: Final[str] = "lamellae"
-_KEYS: Final[frozenset[str]] = frozenset(
-    {_VERSION_KEY, _FAMILIES_KEY, _PRIMARY_KEY, _LAMELLAE_KEY}
-)
-_SECTION_KEYS: Final[frozenset[str]] = frozenset({_FAMILIES_KEY, _PRIMARY_KEY})
+_SECTION_KEYS: Final[frozenset[str]] = frozenset({FAMILIES_SECTION, PRIMARY_SECTION})
+_DOCUMENT_KEYS: Final[frozenset[str]] = _SECTION_KEYS | {_LAMELLAE_KEY}
 
 _HEADER: Final[str] = """\
 # Families of imaging conditions in this project, written by am-seg.
@@ -102,31 +109,80 @@ def read_families(project_root: Path) -> ProjectFamilies:
     except Exception as error:
         raise FamiliesFileError(f"Failed to parse {path}: {error}") from error
 
+    if isinstance(document, dict):
+        _check_version(document.get(_VERSION_KEY), path)
+        document = {key: value for key, value in document.items() if key != _VERSION_KEY}
+    corrections = families_from_document(document, str(path))
+    logger.debug(
+        "Read %d family correction(s), %d primary condition(s) and %d lamella "
+        "section(s) from %s", len(corrections.project.families),
+        len(corrections.project.primary), len(corrections.lamellae), path,
+    )
+    return corrections
+
+
+def document_of(corrections: ProjectFamilies) -> dict[str, Any]:
+    """Return *corrections* as the mapping the file holds below its version.
+
+    What an export record copies too, so the two are written alike. A lamella
+    section with no entries is left out.
+    """
+    document: dict[str, Any] = {
+        section: dict(sorted(entries.items(), key=_lowered))
+        for section, entries in sections_of(corrections.project)
+    }
+    lamellae = {
+        key: {
+            section: dict(sorted(entries.items(), key=_lowered))
+            for section, entries in sections_of(own)
+        }
+        for key, own in sorted(corrections.lamellae.items())
+        if own.families or own.primary
+    }
+    if lamellae:
+        document[_LAMELLAE_KEY] = lamellae
+    return document
+
+
+def families_from_document(document: Any, where: str) -> ProjectFamilies:
+    """Return the corrections :func:`document_of` wrote, refusing anything else.
+
+    None reads as no corrections.
+
+    Raises:
+        FamiliesFileError: Prefixed with *where*, if *document* holds an unknown
+            section or anything that is not a name mapped to a name, or an
+            entry :func:`~.layout.correction_problems` refuses.
+    """
     if document is None:
         return NO_PROJECT_FAMILIES
     if not isinstance(document, dict):
-        raise FamiliesFileError(f"Expected a mapping at the top level of {path}")
-    unknown = sorted(str(key) for key in document if key not in _KEYS)
+        raise FamiliesFileError(f"Expected a mapping at the top level of {where}")
+    unknown = sorted(str(key) for key in document if key not in _DOCUMENT_KEYS)
     if unknown:
         raise FamiliesFileError(
-            f"{path}: unknown section {', '.join(unknown)}; a families file holds "
-            f"{', '.join(sorted(_KEYS))}"
+            f"{where}: unknown section {', '.join(unknown)}; a families file holds "
+            f"{', '.join(sorted({*_DOCUMENT_KEYS, _VERSION_KEY}))}"
         )
-    _check_version(document.get(_VERSION_KEY), path)
-    families = _mapping(document.get(_FAMILIES_KEY), _FAMILIES_KEY, path)
-    primary = _mapping(document.get(_PRIMARY_KEY), _PRIMARY_KEY, path)
-    lamellae = _lamellae(document.get(_LAMELLAE_KEY), path)
+    families = _mapping(document.get(FAMILIES_SECTION), FAMILIES_SECTION, where)
+    primary = _mapping(document.get(PRIMARY_SECTION), PRIMARY_SECTION, where)
+    lamellae = _lamellae(document.get(_LAMELLAE_KEY), where)
     try:
-        corrections = ProjectFamilies(
+        return ProjectFamilies(
             project=FamilyCorrections(families=families, primary=primary), lamellae=lamellae
         )
     except ValueError as error:
-        raise FamiliesFileError(f"{path}: {error}") from error
-    logger.debug(
-        "Read %d family correction(s), %d primary condition(s) and %d lamella "
-        "section(s) from %s", len(families), len(primary), len(lamellae), path,
+        raise FamiliesFileError(f"{where}: {error}") from error
+
+
+def sections_of(
+    corrections: FamilyCorrections | FamilyEntries,
+) -> tuple[tuple[str, Mapping[str, str]], ...]:
+    """Return a project's or a lamella's two sections, each named as the file names it."""
+    return (
+        (FAMILIES_SECTION, corrections.families),
+        (PRIMARY_SECTION, corrections.primary),
     )
-    return corrections
 
 
 def write_families(
@@ -150,23 +206,9 @@ def write_families(
     )
     if fingerprint_of(path) != expected:
         raise stale
-    sections = {
-        key: entries for key, entries in sorted(corrections.lamellae.items())
-        if entries.families or entries.primary
-    }
-    body: dict[str, Any] = {
-        _VERSION_KEY: FILE_VERSION if sections else _FIRST_VERSION,
-        _FAMILIES_KEY: dict(sorted(corrections.project.families.items(), key=_lowered)),
-        _PRIMARY_KEY: dict(sorted(corrections.project.primary.items(), key=_lowered)),
-    }
-    if sections:
-        body[_LAMELLAE_KEY] = {
-            key: {
-                _FAMILIES_KEY: dict(sorted(entries.families.items(), key=_lowered)),
-                _PRIMARY_KEY: dict(sorted(entries.primary.items(), key=_lowered)),
-            }
-            for key, entries in sections.items()
-        }
+    document = document_of(corrections)
+    version = FILE_VERSION if _LAMELLAE_KEY in document else _FIRST_VERSION
+    body = {_VERSION_KEY: version, **document}
     if not write_yaml(
         path, body, header=_HEADER,
         commit_if=lambda _temporary: fingerprint_of(path) == expected,
@@ -222,39 +264,43 @@ def _check_version(version: Any, path: Path) -> None:
         )
 
 
-def _lamellae(block: Any, path: Path) -> dict[str, FamilyEntries]:
+def _lamellae(block: Any, where: str) -> dict[str, FamilyEntries]:
     """Return each lamella's section, refusing anything else."""
     if block is None:
         return {}
     if not isinstance(block, dict):
-        raise FamiliesFileError(f"{path}: {_LAMELLAE_KEY} must be a mapping of lamella to sections")
+        raise FamiliesFileError(f"{where}: {_LAMELLAE_KEY} must be a mapping of lamella to sections")
     sections: dict[str, FamilyEntries] = {}
     for key, section in block.items():
-        where = f"{_LAMELLAE_KEY}: {key}"
+        section_name = f"{_LAMELLAE_KEY}: {key}"
         if not isinstance(key, str) or not isinstance(section, dict):
-            raise FamiliesFileError(f"{path}: {where} must be a lamella's path holding sections")
+            raise FamiliesFileError(f"{where}: {section_name} must be a lamella's path holding sections")
         unknown = sorted(str(name) for name in section if name not in _SECTION_KEYS)
         if unknown:
             raise FamiliesFileError(
-                f"{path}: {where}: unknown section {', '.join(unknown)}; a lamella holds "
+                f"{where}: {section_name}: unknown section {', '.join(unknown)}; a lamella holds "
                 f"{', '.join(sorted(_SECTION_KEYS))}"
             )
         sections[key] = FamilyEntries(
-            families=_mapping(section.get(_FAMILIES_KEY), f"{where}: {_FAMILIES_KEY}", path),
-            primary=_mapping(section.get(_PRIMARY_KEY), f"{where}: {_PRIMARY_KEY}", path),
+            families=_mapping(
+                section.get(FAMILIES_SECTION), f"{section_name}: {FAMILIES_SECTION}", where
+            ),
+            primary=_mapping(
+                section.get(PRIMARY_SECTION), f"{section_name}: {PRIMARY_SECTION}", where
+            ),
         )
     return sections
 
 
-def _mapping(block: Any, name: str, path: Path) -> dict[str, str]:
+def _mapping(block: Any, name: str, where: str) -> dict[str, str]:
     """Return a section of names to names, refusing anything else."""
     if block is None:
         return {}
     if not isinstance(block, dict):
-        raise FamiliesFileError(f"{path}: {name} must be a mapping of name to name")
+        raise FamiliesFileError(f"{where}: {name} must be a mapping of name to name")
     for key, value in block.items():
         if not isinstance(key, str) or not isinstance(value, str):
             raise FamiliesFileError(
-                f"{path}: {name}: {key!r}: {value!r} is not a name mapped to a name"
+                f"{where}: {name}: {key!r}: {value!r} is not a name mapped to a name"
             )
     return dict(block)

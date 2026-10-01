@@ -206,6 +206,29 @@ def test_a_fork_point_keeps_a_projects_lamella_sections(source: Path, tmp_path: 
     assert fork.families == record.projects[projects[0].key].families
 
 
+@pytest.mark.parametrize(
+    ("families", "problem"),
+    [
+        ("variants: {}", "unknown section variants"),
+        ("families:\n        sem_mag2: 5", "not a name mapped to a name"),
+        ("families:\n        sem_mag2: sem_other", "is not a family name"),
+        ("lamellae:\n        lam_000:\n          moves: {}", "unknown section moves"),
+    ],
+)
+def test_a_fork_points_families_are_refused_as_their_file_would_be(
+    tmp_path: Path, families: str, problem: str
+):
+    """The ancestor of a families merge is read by the file's own reader."""
+    export_record_path(tmp_path).write_text(
+        f"version: {FILE_VERSION}\nprojects:\n  p:\n    tip: null\n"
+        f"    families:\n      {families}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=problem):
+        read_export_record(tmp_path)
+
+
 def test_a_copy_with_no_fork_point_reads_as_none(tmp_path: Path):
     assert read_export_record(tmp_path) is None
 

@@ -18,10 +18,12 @@ from pathlib import Path
 from typing import Final
 
 from ..families import (
+    FAMILIES_SECTION,
     FamiliesFileError,
     StaleFamilies,
     families_file_path,
     read_families,
+    sections_of,
     write_families,
 )
 from ..history import Recorder
@@ -64,8 +66,6 @@ from .selection import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "FAMILIES_SECTION",
-    "PRIMARY_SECTION",
     "ConditionMove",
     "EntryChange",
     "FamiliesChange",
@@ -79,10 +79,6 @@ __all__ = [
     "summarise_families",
     "update_families",
 ]
-
-#: The two sections of the file, as a ``family-changed`` entry names them.
-FAMILIES_SECTION: Final[str] = "families"
-PRIMARY_SECTION: Final[str] = "primary"
 
 _Resolver = Callable[..., tuple[Path, bool, bool]]
 _Conflicts = Callable[..., tuple[Path, ...]]
@@ -649,10 +645,7 @@ def _section_changes(
 ) -> list[EntryChange]:
     """Return one change per entry of one section that differs, families before primary."""
     changes: list[EntryChange] = []
-    for section, old, new in (
-        (FAMILIES_SECTION, before.families, after.families),
-        (PRIMARY_SECTION, before.primary, after.primary),
-    ):
+    for (section, old), (_, new) in zip(sections_of(before), sections_of(after), strict=True):
         old_by_key = {key.lower(): (key, value) for key, value in old.items()}
         new_by_key = {key.lower(): (key, value) for key, value in new.items()}
         for lowered in sorted(set(old_by_key) | set(new_by_key)):

@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Any, Final
 
 from .. import __version__
-from ..families import read_families
+from ..families import FamiliesFileError, document_of, families_from_document, read_families
 from ..history import declared_project_id, read_log, resolve_author
 from ..io.yaml import read_yaml, write_yaml
-from ..layout import NO_PROJECT_FAMILIES, FamilyCorrections, FamilyEntries, ProjectFamilies
+from ..layout import NO_PROJECT_FAMILIES, ProjectFamilies
 from ..models import Project
 
 logger = logging.getLogger(__name__)
@@ -180,7 +180,7 @@ def write_export_record(destination: Path, record: ExportRecord) -> Path:
                 "tip": fork.tip,
                 "entries": fork.entries,
                 **(
-                    {"families": _families_body(fork.families)}
+                    {"families": document_of(fork.families)}
                     if fork.families != NO_PROJECT_FAMILIES
                     else {}
                 ),
@@ -257,47 +257,12 @@ def _forks(block: Any, path: Path) -> dict[str, ProjectFork]:
     return forks
 
 
-def _families_body(families: ProjectFamilies) -> dict[str, Any]:
-    """Return a project's family corrections as the fork point records them."""
-    body: dict[str, Any] = {
-        "families": dict(families.project.families),
-        "primary": dict(families.project.primary),
-    }
-    if families.lamellae:
-        body["lamellae"] = {
-            key: {"families": dict(entries.families), "primary": dict(entries.primary)}
-            for key, entries in sorted(families.lamellae.items())
-        }
-    return body
-
-
 def _families(block: Any, where: str) -> ProjectFamilies:
-    """Return a project's recorded family corrections, validated."""
-    if block is None:
-        return NO_PROJECT_FAMILIES
+    """Return a project's recorded family corrections, refused as its file would be."""
     try:
-        families, primary = _sections(block)
-        lamellae_block = block.get("lamellae") or {}
-        if not isinstance(lamellae_block, dict):
-            raise ValueError("lamellae must map a lamella to its sections")
-        lamellae = {}
-        for key, section in lamellae_block.items():
-            lamella_families, lamella_primary = _sections(section)
-            lamellae[str(key)] = FamilyEntries(families=lamella_families, primary=lamella_primary)
-        return ProjectFamilies(
-            project=FamilyCorrections(families=families, primary=primary), lamellae=lamellae
-        )
-    except ValueError as error:
-        raise ValueError(f"{where}: {error}") from error
-
-
-def _sections(block: Any) -> tuple[dict[str, str], dict[str, str]]:
-    """Return the families and primary mappings of one recorded section."""
-    if not isinstance(block, dict) or not all(
-        isinstance(block.get(name) or {}, dict) for name in ("families", "primary")
-    ):
-        raise ValueError("families must hold a families and a primary mapping")
-    return dict(block.get("families") or {}), dict(block.get("primary") or {})
+        return families_from_document(block, where)
+    except FamiliesFileError as error:
+        raise ValueError(str(error)) from error
 
 
 def _text(value: Any) -> str:
