@@ -23,16 +23,20 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QColor,
+    QFont,
     QFontMetrics,
     QPainter,
+    QPalette,
     QPen,
 )
 from qtpy.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
+    QItemDelegate,
     QLabel,
     QLayout,
     QLayoutItem,
@@ -50,7 +54,7 @@ from qtpy.QtWidgets import (
 )
 
 from . import theme
-from .common import SHOWN_AS_ROLE, match_anywhere
+from .common import FAMILY_LENGTH_ROLE, match_anywhere
 
 logger = logging.getLogger(__name__)
 
@@ -294,36 +298,169 @@ class ElidingLabel(QLabel):
         )
 
 
+#: The ellipsis Qt shortens text with, kept beside the ends a name keeps.
+_ELLIPSIS = "\u2026"
+
+
+def condition_runs(text: str, family_length: int, font: QFont, width: int) -> tuple[str, str]:
+    """Return *text* as its family, drawn bold, and the rest, made to fit *width*.
+
+    The family stays whole and the rest loses its middle, so both ends of
+    ``SEM-test_8_fi_16`` survive and ``fi_1`` cannot pass for ``fi_16``. Where
+    even the family does not fit, the whole name loses its middle, none of it
+    bold (``test_a_long_condition_keeps_its_family_and_its_end``).
+    """
+    regular = QFontMetrics(font)
+    head, tail = text[:family_length], text[family_length:]
+    head_width = QFontMetrics(_bold(font)).horizontalAdvance(head)
+    if head_width + regular.horizontalAdvance(tail) <= width:
+        return head, tail
+    room = width - head_width
+    if head and tail and room >= regular.horizontalAdvance(tail[:1] + _ELLIPSIS + tail[-2:]):
+        return head, regular.elidedText(tail, Qt.TextElideMode.ElideMiddle, room)
+    return "", regular.elidedText(text, Qt.TextElideMode.ElideMiddle, max(width, 0))
+
+
+def _bold(font: QFont) -> QFont:
+    """Return *font* in bold."""
+    bold = QFont(font)
+    bold.setBold(True)
+    return bold
+
+
+def _draw_runs(
+    painter: QPainter, rect: QRect, head: str, tail: str, font: QFont, colour: QColor
+) -> None:
+    """Draw *head* in bold and *tail* after it, left-aligned and centred in *rect*."""
+    painter.save()
+    painter.setPen(colour)
+    align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    painter.setFont(_bold(font))
+    painter.drawText(rect, align, head)
+    offset = QFontMetrics(_bold(font)).horizontalAdvance(head)
+    painter.setFont(font)
+    painter.drawText(rect.adjusted(offset, 0, 0, 0), align, tail)
+    painter.restore()
+
+
+class _FamilyDelegate(QItemDelegate):
+    """Draw a condition's family bold in an open list, and any other row as Qt does.
+
+    A :class:`QItemDelegate` because the one a combo installs is: only the
+    text of a condition's row is drawn differently, so every other row, and
+    the selection fill under this one, stay what they were.
+    """
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._family_length: int | None = None
+
+    def paint(self, painter, option, index) -> None:
+        self._family_length = index.data(FAMILY_LENGTH_ROLE)
+        try:
+            super().paint(painter, option, index)
+        finally:
+            self._family_length = None
+
+    def drawDisplay(self, painter, option, rect, text) -> None:  # noqa: N802 - Qt naming
+        length = self._family_length
+        if not length or not text:
+            super().drawDisplay(painter, option, rect, text)
+            return
+        # Given no text, Qt's own still fills a selected row's highlight.
+        super().drawDisplay(painter, option, rect, "")
+        group = (
+            QPalette.ColorGroup.Normal
+            if option.state & QStyle.StateFlag.State_Enabled
+            else QPalette.ColorGroup.Disabled
+        )
+        role = (
+            QPalette.ColorRole.HighlightedText
+            if option.state & QStyle.StateFlag.State_Selected
+            else QPalette.ColorRole.Text
+        )
+        style = option.widget.style() if option.widget is not None else QApplication.style()
+        margin = style.pixelMetric(QStyle.PixelMetric.PM_FocusFrameHMargin, None, option.widget) + 1
+        _draw_runs(
+            painter, rect.adjusted(margin, 0, -margin, 0), text[:length], text[length:],
+            option.font, option.palette.color(group, role),
+        )
+
+    def sizeHint(self, option, index) -> QSize:  # noqa: N802 - Qt naming
+        hint = super().sizeHint(option, index)
+        length = index.data(FAMILY_LENGTH_ROLE)
+        if length:
+            head = str(index.data())[:length]
+            extra = (
+                QFontMetrics(_bold(option.font)).horizontalAdvance(head)
+                - QFontMetrics(option.font).horizontalAdvance(head)
+            )
+            hint.setWidth(hint.width() + extra)
+        return hint
+
+
 class ElidingCombo(QComboBox):
     """A combo box that shortens the entry it shows to fit, rather than cutting it off.
 
     Qt clips the shown entry at the edge of its field, which took the end off a
-    series name with nothing to say it had; this ends it with an ellipsis. The open
-    list still shows every entry whole.
+    series name with nothing to say it had; this ends it with an ellipsis.
 
-    An entry carrying :data:`~.common.SHOWN_AS_ROLE` is shown by that once chosen: a row
-    under a heading in the list loses the heading when the list closes.
+    **An imaging condition is drawn differently**: an entry carrying
+    :data:`~.common.FAMILY_LENGTH_ROLE` shows its family in bold, in the field
+    and the open list, and loses its middle rather than its end, as
+    :func:`condition_runs` says. The open list is as wide as its widest entry.
     """
 
-    def shown_text(self) -> str:
-        """Return the current entry as it fits the field it is drawn in."""
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setItemDelegate(_FamilyDelegate(self))
+
+    def _field(self) -> tuple[QStyleOptionComboBox, QRect]:
+        """Return the style option and the rectangle the shown entry is drawn in."""
         option = QStyleOptionComboBox()
         self.initStyleOption(option)
         field = self.style().subControlRect(
             QStyle.ComplexControl.CC_ComboBox, option, QStyle.SubControl.SC_ComboBoxEditField, self
         )
-        text = self.currentData(SHOWN_AS_ROLE) or option.currentText
-        return self.fontMetrics().elidedText(
-            text, Qt.TextElideMode.ElideRight, max(field.width(), 0)
-        )
+        return option, field
+
+    def shown_runs(self) -> tuple[str, str]:
+        """Return the current entry as it fits its field: the part drawn bold, and the rest."""
+        option, field = self._field()
+        width = max(field.width(), 0)
+        length = self.currentData(FAMILY_LENGTH_ROLE)
+        if length is None:
+            return "", self.fontMetrics().elidedText(
+                option.currentText, Qt.TextElideMode.ElideRight, width
+            )
+        return condition_runs(option.currentText, length, self.font(), width)
+
+    def shown_text(self) -> str:
+        """Return the current entry as it fits the field it is drawn in."""
+        return "".join(self.shown_runs())
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
         painter = QStylePainter(self)
-        option = QStyleOptionComboBox()
-        self.initStyleOption(option)
-        option.currentText = self.shown_text()
+        option, field = self._field()
+        head, tail = self.shown_runs()
+        condition = self.currentData(FAMILY_LENGTH_ROLE) is not None
+        option.currentText = "" if condition else tail
         painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, option)
         painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, option)
+        if condition:
+            group = (
+                QPalette.ColorGroup.Normal if self.isEnabled() else QPalette.ColorGroup.Disabled
+            )
+            _draw_runs(
+                painter, field, head, tail, self.font(),
+                option.palette.color(group, QPalette.ColorRole.Text),
+            )
+
+    def showPopup(self) -> None:  # noqa: N802 - Qt naming
+        view = self.view()
+        view.setMinimumWidth(view.sizeHintForColumn(0) + 2 * view.frameWidth())
+        super().showPopup()
+
 
 class StepCombo(QComboBox):
     """A combo box whose Up and Down keys always move through the list.

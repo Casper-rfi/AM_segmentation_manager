@@ -56,7 +56,7 @@ def test_the_conditions_of_a_frame_are_offered_base_first(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    assert [(c.label, c.condition) for c in controller.condition_choices("SEM")] == [
+    assert [(c.variant, c.condition) for c in controller.condition_choices("SEM")] == [
         ("8", "SEM_8"), ("8_fi_1", "SEM_8_fi_1"), ("8_fi_4", "SEM_8_fi_4"),
     ]
 
@@ -65,8 +65,8 @@ def test_a_modality_with_one_condition_offers_no_choice(tmp_path: Path):
     make_project(tmp_path)
     controller = make_controller(tmp_path)
 
-    assert [(c.label, c.condition) for c in controller.condition_choices("FIB")] == [
-        ("base", "FIB"),
+    assert [(c.variant, c.condition) for c in controller.condition_choices("FIB")] == [
+        (None, "FIB"),
     ]
 
 
@@ -89,8 +89,8 @@ def test_a_stage_holding_two_families_offers_each_base(tmp_path: Path):
     (tmp_path / "project" / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
     controller = make_controller(tmp_path)
 
-    assert [(c.name, c.condition) for c in controller.condition_choices("SEM")] == [
-        ("sem", "sem"), ("sem [fi4]", "sem_fi4"), ("sem-5kV", "sem-5kV"),
+    assert [(c.family, c.condition) for c in controller.condition_choices("SEM")] == [
+        ("sem", "sem"), ("sem", "sem_fi4"), ("sem-5kV", "sem-5kV"),
     ]
     controller.set_mode("sem")
     controller.set_condition("sem-5kV", "SEM")

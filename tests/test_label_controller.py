@@ -705,7 +705,7 @@ def test_the_base_image_is_what_opens(tmp_path: Path):
 
     assert controller.condition is None
     first = controller.condition_choices()[0]
-    assert (first.label, first.condition) == ("base", "sem")
+    assert (first.text, first.condition) == ("sem", "sem")
     assert controller.record.variant is None
 
 

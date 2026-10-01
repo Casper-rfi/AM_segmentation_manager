@@ -20,6 +20,7 @@ from .layout import (
     NO_CORRECTIONS,
     SERIES,
     UNSEQUENCED,
+    VARIANT_SEPARATOR,
     FamilyCorrections,
     acquisition_stem,
     alignment_run_order,
@@ -275,20 +276,27 @@ class ConditionChoice:
     condition: str | None
 
     @property
-    def label(self) -> str:
-        """Return what it is called within its family: its variant, or ``base``."""
-        return self.variant if self.variant is not None else "base"
+    def text(self) -> str:
+        """Return what a control calls it: its directory's name as on disk.
+
+        ``base`` for an image sitting directly in its stage, which has none.
+        """
+        return self.condition if self.condition is not None else "base"
 
     @property
-    def name(self) -> str:
-        """Return what it is called among several families, as ``sem-5kV [fi4]``.
+    def family_length(self) -> int:
+        """Return how many leading characters of :attr:`text` name its family.
 
-        The family alone for its base, as two families would otherwise each
-        offer a ``base``.
+        Zero where they do not: a condition ``AM_families.yaml`` moved keeps a
+        name that may begin with another family's, so the family counts only
+        where it ends the name or a ``_`` follows it -- ``sem-x`` moved into
+        ``sem`` is not ``sem`` and ``-x``.
         """
-        if not self.family:
-            return self.label
-        return self.family if self.variant is None else f"{self.family} [{self.variant}]"
+        family = self.family
+        if not family or not self.text.lower().startswith(family.lower()):
+            return 0
+        rest = self.text[len(family):]
+        return len(family) if not rest or rest.startswith(VARIANT_SEPARATOR) else 0
 
 
 def family_key(family: str | None) -> str:

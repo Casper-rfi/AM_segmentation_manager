@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.frames import LamellaFrame, build_lamella_frames
+from am_segmentation_manager.frames import ConditionChoice, LamellaFrame, build_lamella_frames
 from am_segmentation_manager.layout import NO_CORRECTIONS, FamilyCorrections
 from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 
@@ -292,10 +292,28 @@ def test_the_base_image_comes_first_and_variants_follow_in_name_order():
 
     frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
 
-    assert [(c.label, c.condition) for c in frames[0].condition_choices("SEM")] == [
-        ("base", "sem"), ("fi_1", "sem_fi_1"), ("fi_16", "sem_fi_16"),
+    assert [(c.variant, c.condition) for c in frames[0].condition_choices("SEM")] == [
+        (None, "sem"), ("fi_1", "sem_fi_1"), ("fi_16", "sem_fi_16"),
     ]
     assert frames[0].record("SEM").variant is None
+
+
+@pytest.mark.parametrize(
+    ("family", "condition", "length"),
+    [
+        ("SEM-test", "SEM-test_8_fi_16", 8),
+        ("sem", "sem", 3),
+        ("SEM", "SEM_8_fi_1", 3),
+        ("sem-2kV", "sem2kVb", 0),     # moved by AM_families.yaml
+        ("sem", "sem-x", 0),           # moved, and only seeming to begin with its family
+        ("", None, 0),                 # an image sitting directly in its stage
+    ],
+)
+def test_a_condition_is_named_by_its_folder_with_its_family_marked(family, condition, length):
+    choice = ConditionChoice(family=family, variant=None, condition=condition)
+
+    assert choice.text == (condition or "base")
+    assert choice.family_length == length
 
 
 def test_a_condition_is_requested_by_its_directory_in_any_case():
@@ -321,9 +339,9 @@ def test_two_families_of_one_beam_each_offer_their_base():
 
     frame = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)[0]
 
-    assert [(c.name, c.condition) for c in frame.condition_choices("SEM")] == [
-        ("sem", "sem"), ("sem [fi4]", "sem_fi4"),
-        ("sem-5kV", "sem-5kV"), ("sem-5kV [fi4]", "sem-5kV_fi4"),
+    assert [(c.family, c.condition) for c in frame.condition_choices("SEM")] == [
+        ("sem", "sem"), ("sem", "sem_fi4"),
+        ("sem-5kV", "sem-5kV"), ("sem-5kV", "sem-5kV_fi4"),
     ]
     assert frame.record("SEM", "sem-5kV").family == "sem-5kV"
     assert frame.record("SEM").image_path.parent.name == "sem"

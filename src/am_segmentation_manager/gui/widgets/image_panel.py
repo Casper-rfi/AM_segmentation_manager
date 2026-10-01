@@ -37,6 +37,7 @@ from ...overview import LamellaMarker
 from ..cache import FrameImage, FramePlot
 from ..controller import DisplayMode
 from .common import (
+    CONDITION_FIELD_WIDTH,
     LABEL_BADGES,
     VIEW_ONLY_BADGE,
     badge_markup,
@@ -209,11 +210,11 @@ class ImagePanel(QWidget):
         self.series_combo.currentIndexChanged.connect(self._series_chosen)
 
         # -- imaging condition ---------------------------------------------
-        # A dropdown rather than buttons: variant names run long
-        # (``8_fi_16``) and a stage can hold five of them.
+        # A dropdown rather than buttons: condition names run long
+        # (``SEM-test_8_fi_16``) and a stage can hold five of them.
         self.variant_label = QLabel("Variant")
         self.variant_combo = ElidingCombo()
-        self.variant_combo.setMinimumWidth(110)
+        self.variant_combo.setMinimumWidth(CONDITION_FIELD_WIDTH)
         self.variant_combo.setToolTip(VARIANT_HINT)
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._condition_chosen)

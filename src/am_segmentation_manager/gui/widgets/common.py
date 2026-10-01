@@ -316,10 +316,20 @@ class _CompleteOnTab(QObject):
         return completer.currentCompletion()
 
 
-#: The item role holding what a chosen entry is shown as in the closed field,
-#: where that differs from its row in the list; see
+#: The item role holding how many leading characters of a condition's name
+#: are its family, drawn bold; a row without it is not a condition. See
 #: :class:`~.controls.ElidingCombo`.
-SHOWN_AS_ROLE = Qt.ItemDataRole.UserRole + 1
+FAMILY_LENGTH_ROLE = Qt.ItemDataRole.UserRole + 1
+
+#: The item role holding the family a condition's row belongs to.
+FAMILY_ROLE = Qt.ItemDataRole.UserRole + 2
+
+#: How wide a Variant dropdown is, in both views. Fixed rather than following
+#: its entries, which would move the row on each step to a lamella imaged under
+#: other conditions. Wide enough for ``SEM-test_8_fi_16`` whole, and no wider:
+#: at 155 the Curate controls wrap on the smallest screen supported
+#: (``test_the_view_controls_are_one_block_on_the_smallest_screen_supported``).
+CONDITION_FIELD_WIDTH = 150
 
 
 def fill_choice_combo(
@@ -359,51 +369,56 @@ def fill_choice_combo(
 def fill_condition_combo(
     combo: QComboBox, choices: Sequence[ConditionChoice], current: str | None
 ) -> None:
-    """Offer imaging conditions, under a heading per family where there are several.
+    """Offer imaging conditions by folder name, under a heading per family where there are several.
 
-    With one family, a row per condition named by its variant or ``base``, as
-    :func:`fill_choice_combo` offers anything else. With several, each family
-    is a heading that cannot be chosen, as the Export tab's grouped lists have,
-    and a row chosen under one is shown by its whole name once the list
-    closes. Rebuilt only when the rows change, for the reason
-    :func:`fill_choice_combo` gives.
+    A row is the name as on disk, ``SEM-test_8_fi_16``, with its family
+    marked by :data:`FAMILY_LENGTH_ROLE`, so the closed field needs no
+    other name for it. Where a beam holds several families each is a heading
+    that cannot be chosen, as the Export tab's grouped lists have, which is
+    what says which conditions share a label. Rebuilt only when the rows
+    change, for the reason :func:`fill_choice_combo` gives.
 
     Args:
         choices: In condition order, so each family's are together.
         current: The condition on screen. One not offered falls to the first.
     """
     choices = list(choices)
-    if len({family_key(choice.family) for choice in choices}) <= 1:
-        fill_choice_combo(combo, [(choice.label, choice.condition) for choice in choices], current)
-        return
+    several = len({family_key(choice.family) for choice in choices}) > 1
 
-    # (text, condition, shown as); a heading is the row with nothing shown as.
-    rows: list[tuple[str, str | None, str | None]] = []
+    # (text, condition, family length, family); a heading is the row with no length.
+    rows: list[tuple[str, str | None, int | None, str]] = []
     heading: str | None = None
     for choice in choices:
-        if heading is None or family_key(heading) != family_key(choice.family):
+        if several and (heading is None or family_key(heading) != family_key(choice.family)):
             heading = choice.family
-            rows.append((heading, None, None))
-        rows.append((choice.label, choice.condition, choice.name))
+            rows.append((heading, None, None, ""))
+        rows.append((choice.text, choice.condition, choice.family_length, choice.family))
 
     enabled = Qt.ItemFlag.ItemIsEnabled
     held = [
-        (combo.itemText(i), combo.itemData(i), combo.itemData(i, SHOWN_AS_ROLE))
+        (
+            combo.itemText(i), combo.itemData(i), combo.itemData(i, FAMILY_LENGTH_ROLE),
+            combo.itemData(i, FAMILY_ROLE) or "",
+        )
         for i in range(combo.count())
     ]
     combo.blockSignals(True)
     if held != rows:
         model = QStandardItemModel(combo)
-        for text, condition, shown_as in rows:
+        for text, condition, family_length, family in rows:
             item = QStandardItem(text)
-            if shown_as is None:
+            if family_length is None:
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
                 font = item.font()
                 font.setBold(True)
                 item.setFont(font)
             else:
                 item.setData(condition, Qt.ItemDataRole.UserRole)
-                item.setData(shown_as, SHOWN_AS_ROLE)
+                item.setData(family_length, FAMILY_LENGTH_ROLE)
+                if family:
+                    # A condition AM_families.yaml moved does not say its family by name.
+                    item.setData(family, FAMILY_ROLE)
+                    item.setToolTip(f"Family {family}")
             model.appendRow(item)
         combo.setModel(model)
     selectable = [
@@ -411,7 +426,9 @@ def fill_condition_combo(
         if combo.model().index(row, combo.modelColumn()).flags() & enabled
     ]
     chosen = next((row for row in selectable if combo.itemData(row) == current), None)
-    combo.setCurrentIndex(chosen if chosen is not None else selectable[0])
+    if chosen is None:
+        chosen = selectable[0] if selectable else -1
+    combo.setCurrentIndex(chosen)
     combo.blockSignals(False)
     _show_choice_count(combo, len(selectable))
 

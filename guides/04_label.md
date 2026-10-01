@@ -15,7 +15,7 @@ one you decided against.
 
 **SEM** and **FIB** choose the beam, and **Series** the series, each with its own
 frames. Where an acquisition was imaged under several conditions, **Variant**
-chooses which to draw on. The conditions of one family share one label, so an
+chooses which to draw on, named by folder as on Curate. The conditions of one family share one label, so an
 edit reaches all of them. Choosing a condition of another family proofreads
 that family's label instead: the frames visited become the ones its state says
 are worth it, and the status line says which conditions the label on screen

@@ -33,6 +33,7 @@ if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
     from qtpy.QtCore import QSettings, Qt
+    from qtpy.QtGui import QFont, QFontMetrics
 
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.cache import FrameCache
@@ -137,12 +138,12 @@ def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project
         destroy(window)
 
 
-def test_a_condition_is_captioned_by_its_directory_suffix(qt_app, variant_project: Path):
+def test_a_condition_is_captioned_by_its_directory_name(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
         combo = window.image_panel.variant_combo
         captions = [combo.itemText(i) for i in range(combo.count())]
-        assert captions == ["8", "8_fi_1", "8_fi_4"]
+        assert captions == ["SEM_8", "SEM_8_fi_1", "SEM_8_fi_4"]
     finally:
         destroy(window)
 
@@ -306,8 +307,8 @@ def test_each_family_is_a_heading_that_cannot_be_chosen(qt_app, two_family_proje
         window._set_mode("sem")
         combo = window.image_panel.variant_combo
         assert _rows(combo) == [
-            ("sem", False), ("base", True), ("fi4", True),
-            ("sem-5kV", False), ("base", True),
+            ("sem", False), ("sem", True), ("sem_fi4", True),
+            ("sem-5kV", False), ("sem-5kV", True),
         ]
         assert combo.count_badge.text() == "3", "the headings are not counted"
         assert combo.currentIndex() == 1
@@ -315,7 +316,7 @@ def test_each_family_is_a_heading_that_cannot_be_chosen(qt_app, two_family_proje
         destroy(window)
 
 
-def test_a_condition_chosen_under_a_heading_is_shown_by_its_whole_name(
+def test_a_condition_is_shown_by_its_folder_name_with_its_family_bold(
     qt_app, two_family_project: Path
 ):
     window = _window(qt_app, two_family_project)
@@ -325,13 +326,82 @@ def test_a_condition_chosen_under_a_heading_is_shown_by_its_whole_name(
         combo.resize(300, combo.height())
 
         combo.setCurrentIndex(4)
-
         assert window.controller.current_condition("SEM") == "sem-5kV"
-        assert combo.shown_text() == "sem-5kV"
+        assert combo.shown_runs() == ("sem-5kV", "")
         combo.setCurrentIndex(2)
-        assert combo.shown_text() == "sem [fi4]"
+        assert combo.shown_runs() == ("sem", "_fi4")
     finally:
         destroy(window)
+
+
+def _condition_combo(names: tuple[str, ...], family: str):
+    """Return an ElidingCombo offering *names*, all of *family*, the last one chosen."""
+    from am_segmentation_manager.frames import ConditionChoice
+    from am_segmentation_manager.gui.widgets.common import fill_condition_combo
+    from am_segmentation_manager.gui.widgets.controls import ElidingCombo
+
+    combo = ElidingCombo()
+    choices = [ConditionChoice(family=family, variant=None, condition=name) for name in names]
+    fill_condition_combo(combo, choices, names[-1])
+    return combo
+
+
+def test_a_moved_condition_names_its_family_on_hover(qt_app):
+    """sem2kVb does not begin with sem-2kV, so nothing in it is bold to say so."""
+    combo = _condition_combo(("sem-2kV", "sem2kVb"), "sem-2kV")
+
+    assert combo.itemData(1, Qt.ItemDataRole.ToolTipRole) == "Family sem-2kV"
+    assert combo.shown_runs() == ("", "sem2kVb")
+    destroy(combo)
+
+
+def test_a_long_condition_keeps_its_family_and_its_end(qt_app):
+    """Cut at the end, as before, SEM-test_8_fi_16 read SEM-test [8_fi_... and
+    could not be told from SEM-test_8_fi_1."""
+    from am_segmentation_manager.gui.widgets.controls import condition_runs
+
+    combo = _condition_combo(("SEM-test", "SEM-test_8_fi_1", "SEM-test_8_fi_16"), "SEM-test")
+    font = combo.font()
+    whole = condition_runs("SEM-test_8_fi_16", 8, font, 1000)
+    assert whole == ("SEM-test", "_8_fi_16")
+
+    narrow = QFontMetrics(font)
+    bold = QFont(font)
+    bold.setBold(True)
+    whole_width = QFontMetrics(bold).horizontalAdvance("SEM-test") + narrow.horizontalAdvance(
+        "_8_fi_16"
+    )
+    head, tail = condition_runs("SEM-test_8_fi_16", 8, font, whole_width - 2)
+    assert head == "SEM-test"
+    assert "…" in tail and tail.endswith("6"), "the middle goes, not the end"
+
+    head, tail = condition_runs("SEM-test_8_fi_16", 8, font, narrow.horizontalAdvance("SE…6"))
+    assert head == "" and "…" in tail, "too narrow for the family: nothing bold"
+    destroy(combo)
+
+
+def test_the_variant_field_fits_a_long_condition_whole(qt_app):
+    from am_segmentation_manager.gui.widgets.common import CONDITION_FIELD_WIDTH
+
+    combo = _condition_combo(("SEM-test", "SEM-test_8_fi_16"), "SEM-test")
+    combo.resize(CONDITION_FIELD_WIDTH, combo.sizeHint().height())
+
+    assert combo.shown_text() == "SEM-test_8_fi_16"
+    destroy(combo)
+
+
+def test_the_open_list_is_as_wide_as_its_widest_condition(qt_app):
+    combo = _condition_combo(("SEM-test", "SEM-test_8_fi_16"), "SEM-test")
+    combo.resize(60, combo.sizeHint().height())
+
+    combo.showPopup()
+    try:
+        view = combo.view()
+        assert view.width() >= view.sizeHintForColumn(0)
+        assert view.sizeHintForColumn(0) > 60
+    finally:
+        combo.hidePopup()
+        destroy(combo)
 
 
 def test_one_family_is_offered_without_headings(qt_app, variant_project: Path):

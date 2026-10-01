@@ -432,8 +432,9 @@ of one of these files, is held by `test_docs.py`.
   its conditions changes nothing (`test_a_state_change_acts_on_the_family_on_screen`).
   **The family choice is hidden, not greyed**: no scope in the collection holds two families of a
   beam, images of no family never counting as one (`test_the_family_control_is_hidden_with_one_family_per_beam`).
-  Several families are listed under headings, as Export's grouped lists are, and the closed field
-  names a row by `SHOWN_AS_ROLE` (`test_a_condition_chosen_under_a_heading_is_shown_by_its_whole_name`).
+  A condition is named by its folder, its family bold, losing its middle rather than its end to fit
+  (`test_a_long_condition_keeps_its_family_and_its_end`); several families are listed under headings,
+  as Export's grouped lists are (`test_each_family_is_a_heading_that_cannot_be_chosen`).
 - **A series with no labels is shown and not acted on.** The timeline shows `other`, opening one to
   judge whether the rule or the data is wrong being why they are indexed, while the state buttons
   and every operation button are withheld, each reading or writing a label the series lacks

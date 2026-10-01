@@ -41,6 +41,7 @@ from ..label_controller import LabelController
 from ..preferences import DEFAULT_BRUSH_RADIUS
 from ..version_controller import VersionController
 from .common import (
+    CONDITION_FIELD_WIDTH,
     LABEL_BADGES,
     VIEW_ONLY_BADGE,
     badge_markup,
@@ -367,7 +368,7 @@ class LabelPanel(QWidget):
         # run long, and most projects have none to choose between.
         self.variant_label = QLabel("Variant")
         self.variant_combo = ElidingCombo()
-        self.variant_combo.setMinimumWidth(110)
+        self.variant_combo.setMinimumWidth(CONDITION_FIELD_WIDTH)
         self.variant_combo.setToolTip(
             "Which imaging condition of this acquisition to proofread on.\n"
             "The conditions of one family share one label, so an edit reaches "

@@ -377,7 +377,7 @@ def test_two_families_are_offered_under_their_headings(qt_app, config, tmp_path:
         panel = window.label_panel
         combo = panel.variant_combo
         assert [combo.itemText(row) for row in range(combo.count())] == [
-            "sem", "base", "sem-5kV", "base", "fi4",
+            "sem", "sem", "sem-5kV", "sem-5kV", "sem-5kV_fi4",
         ]
 
         combo.setCurrentIndex(4)
@@ -471,7 +471,7 @@ def test_the_conditions_of_an_acquisition_are_offered(variants):
 
     assert combo.isHidden() is False
     assert [combo.itemData(i) for i in range(combo.count())] == ["sem", "sem_8_fi_1"]
-    assert combo.itemText(0) == "base"
+    assert combo.itemText(0) == "sem"
 
 
 def test_choosing_a_condition_draws_it(qt_app, variants):
