@@ -77,9 +77,9 @@ class LamellaFrame:
             Shared by every frame of that stage; see :attr:`displayed_plot`.
         series: What the images were taken for. One value for the frame: see
             :attr:`Acquisition.series`.
-        corrections: The project's family corrections, which say what family
-            a condition chosen by name belongs to and which condition is each
-            family's primary.
+        corrections: The family corrections in force in its lamella, which
+            say what family a condition chosen by name belongs to and which
+            condition is each family's primary.
     """
 
     lamella: str
@@ -365,12 +365,7 @@ def primary_among(
     return min(records, key=lambda record: primary_order(record.variant))
 
 
-def build_lamella_frames(
-    lamella: Lamella,
-    series: str | None = None,
-    *,
-    corrections: FamilyCorrections,
-) -> list[LamellaFrame]:
+def build_lamella_frames(lamella: Lamella, series: str | None = None) -> list[LamellaFrame]:
     """Return the lamella's acquisitions as one chronologically ordered list.
 
     Frames follow the order of ``lamella.stages`` -- which the scanner has
@@ -384,8 +379,6 @@ def build_lamella_frames(
             one. A 2026 lamella holds its reference images, its alignment runs
             and its Adaptive Polishing stages, which is one timeline of three
             unrelated things; anything reviewing it wants one at a time.
-        corrections: The corrections of the project holding *lamella*, which
-            every frame carries.
 
     Returns:
         One :class:`LamellaFrame` per acquisition, across all of the lamella's
@@ -393,7 +386,7 @@ def build_lamella_frames(
     """
     frames: list[LamellaFrame] = []
     for stage in lamella.stages:
-        frames.extend(_build_stage_frames(lamella, stage, series, corrections))
+        frames.extend(_build_stage_frames(lamella, stage, series))
     frames = _in_acquisition_order(frames)
     logger.debug("Built %d frames for lamella %s", len(frames), lamella.name)
     return frames
@@ -442,7 +435,6 @@ def _build_stage_frames(
     lamella: Lamella,
     stage: Stage,
     series: str | None,
-    corrections: FamilyCorrections,
 ) -> list[LamellaFrame]:
     """Return the frames for a single stage, ordered by acquisition number."""
     plots = _plots_by_image_number(stage.plots)
@@ -461,7 +453,7 @@ def _build_stage_frames(
             ),
             stage_plot=stage.summary_plot,
             series=acquisition.series,
-            corrections=corrections,
+            corrections=lamella.families,
         )
         for acquisition in group_by_acquisition(stage.images)
         if series is None or acquisition.series == series

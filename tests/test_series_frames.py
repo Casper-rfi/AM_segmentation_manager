@@ -18,7 +18,6 @@ from am_segmentation_manager.frames import (
     resolve_series,
     series_present,
 )
-from am_segmentation_manager.layout import NO_CORRECTIONS
 from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 
 STAGE = Path("/p/01-ruling-ibex")
@@ -141,7 +140,7 @@ def lamella() -> Lamella:
 
 
 def test_the_whole_timeline_holds_every_series(lamella: Lamella):
-    frames = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella)
 
     assert [frame.series for frame in frames] == ["reference", "alignment", "adaptive"]
 
@@ -150,7 +149,7 @@ def test_the_whole_timeline_holds_every_series(lamella: Lamella):
     "series, expected", [("adaptive", 1), ("reference", 1), ("alignment", 1)]
 )
 def test_a_timeline_can_be_taken_one_series_at_a_time(lamella, series, expected):
-    frames = build_lamella_frames(lamella, series=series, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella, series=series)
 
     assert len(frames) == expected
     assert all(frame.series == series for frame in frames)
@@ -159,7 +158,7 @@ def test_a_timeline_can_be_taken_one_series_at_a_time(lamella, series, expected)
 def test_asking_for_a_series_a_lamella_lacks_gives_no_frames(lamella: Lamella):
     lamella.stages = lamella.stages[1:]
 
-    assert build_lamella_frames(lamella, series="reference", corrections=NO_CORRECTIONS) == []
+    assert build_lamella_frames(lamella, series="reference") == []
 
 
 # ---------------------------------------------------------------------------

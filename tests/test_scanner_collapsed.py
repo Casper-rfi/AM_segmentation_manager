@@ -101,12 +101,11 @@ def test_the_sem_conditions_share_one_label_and_are_marked_as_such(tmp_path: Pat
 
 def test_the_conditions_of_one_acquisition_form_a_single_frame(tmp_path: Path):
     from am_segmentation_manager.frames import build_lamella_frames
-    from am_segmentation_manager.layout import NO_CORRECTIONS
 
     make_collapsed_stage(tmp_path)
     lamella = _only_project(tmp_path).lamellae[0]
 
-    frames = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella)
 
     assert len(frames) == 2  # img_0000 and img_0004
     assert [record.variant for record in frames[0].sem] == ["8", "8_fi_1"]

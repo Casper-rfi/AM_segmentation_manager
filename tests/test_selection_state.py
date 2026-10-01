@@ -198,11 +198,10 @@ def test_a_stage_still_keeping_state_in_folders_is_refused(dataset, record: Imag
 def test_curating_a_frame_from_a_scanned_project(tmp_path: Path):
     """Scan -> frame -> transition, without re-scanning in between."""
     from am_segmentation_manager.frames import build_lamella_frames
-    from am_segmentation_manager.layout import NO_CORRECTIONS
 
     dataset = build_dataset(tmp_path, acquisitions=1)
     lamella = Scanner(dataset.root).build_index().all_projects()[0].lamellae[0]
-    frame = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)[0]
+    frame = build_lamella_frames(lamella)[0]
     assert frame.record("SEM") is not None and frame.record("FIB") is not None
 
     # Deselect only the SEM side, as the "apply to: SEM" control will.

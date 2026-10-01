@@ -20,8 +20,11 @@ from am_segmentation_manager.families import (
     read_families,
 )
 from am_segmentation_manager.layout import NO_CORRECTIONS, NO_PROJECT_FAMILIES
-from am_segmentation_manager.operations.label_groups import build_group, build_groups
-from am_segmentation_manager.operations.label_groups import record_from_image_path
+from am_segmentation_manager.operations.label_groups import (
+    build_group,
+    build_groups,
+    record_from_image_path,
+)
 from am_segmentation_manager.scanner import Scanner
 
 
@@ -279,6 +282,22 @@ def test_a_scan_resolves_each_lamella_under_its_own_corrections(tmp_path: Path):
 
     assert by_lamella[("lam_000", "sem_mag2")].labels_directory == first / "sem-mag2_labels"
     assert by_lamella[("lam_001", "sem_mag2")].labels_directory == second / "sem_labels"
+
+
+def test_a_lamella_carries_its_corrections_to_its_frames(tmp_path: Path):
+    """The timeline asks the lamella, not its project, which family a condition is in."""
+    from am_segmentation_manager.frames import build_lamella_frames
+
+    _two_lamellae(tmp_path, LAMELLA_FILE)
+    first, second = Scanner(tmp_path).build_index().all_projects()[0].lamellae
+
+    assert first.families.family_of("sem_mag2") == "sem-mag2"
+    assert second.families.family_of("sem_mag2") == "sem", "its section undoes the move"
+    assert [
+        {(choice.family, choice.condition) for choice in build_lamella_frames(own)[0].condition_choices("SEM")}
+        & {("sem-mag2", "sem_mag2"), ("sem", "sem_mag2")}
+        for own in (first, second)
+    ] == [{("sem-mag2", "sem_mag2")}, {("sem", "sem_mag2")}]
 
 
 def test_an_image_path_alone_finds_its_lamellas_corrections(tmp_path: Path):

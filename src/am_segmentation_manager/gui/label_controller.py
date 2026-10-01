@@ -26,7 +26,7 @@ from ..frames import (
 )
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
-from ..layout import LABELLED_SERIES, MODALITIES, NO_CORRECTIONS, SERIES, FamilyCorrections
+from ..layout import LABELLED_SERIES, MODALITIES, SERIES
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.csv import find_matching_label
@@ -244,20 +244,13 @@ class LabelController:
         self._frames = (
             tuple(
                 build_lamella_frames(
-                    self._lamella, series=self._series, corrections=self._corrections()
+                    self._lamella, series=self._series
                 )
             )
             if self._lamella else ()
         )
         self.cache.set_frames(self._frames)
         self._refresh_positions(keep_frame=keep_frame)
-
-    def _corrections(self) -> FamilyCorrections:
-        """Return the family corrections in force in the lamella in view."""
-        if self._lamella is None:
-            return NO_CORRECTIONS
-        holding = projects_holding([self._lamella.path], self.projects)
-        return holding[0].families_at(self._lamella.path) if holding else NO_CORRECTIONS
 
     def available_series(self) -> list[str]:
         """Return the series this lamella holds images of, in display order.

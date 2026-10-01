@@ -464,6 +464,7 @@ class Scanner:
                 name=lamella_path.name,
                 path=lamella_path,
                 synthetic=synthetic,
+                families=project.families_at(lamella_path),
             )
             # A synthesised lamella is the project's only one, so numbering it
             # 01 keeps `--lamella 1` working across every layout.

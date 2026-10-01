@@ -36,8 +36,11 @@ def make_stage(
     )
 
 
-def make_lamella(stages: list[Stage]) -> Lamella:
-    return Lamella(name="01-alive-muskox", path=Path("01-alive-muskox"), number="01", stages=stages)
+def make_lamella(stages: list[Stage], corrections: FamilyCorrections = NO_CORRECTIONS) -> Lamella:
+    return Lamella(
+        name="01-alive-muskox", path=Path("01-alive-muskox"), number="01", stages=stages,
+        families=corrections,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +53,7 @@ def test_sem_and_fib_of_one_acquisition_share_a_frame():
         make_record("lam_AP_img_000_FIB.tif", "FIB"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
     assert frames[0].record("SEM").image_path.name == "lam_AP_img_000_SEM.tif"
@@ -65,7 +68,7 @@ def test_pairing_uses_image_number_not_filename():
         make_record("09-modern-dove_AP_img_004_SEM.tif", "FIB"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
     assert frames[0].record("SEM") is not None
@@ -78,7 +81,7 @@ def test_frame_with_only_one_modality():
         make_record("lam_AP_img_001_FIB.tif", "FIB"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert [(f.image_number, f.record("SEM") is None, f.record("FIB") is None) for f in frames] == [
         (0, False, True),
@@ -99,7 +102,7 @@ def test_modalities_in_different_states_still_share_a_frame():
         ),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
     assert frames[0].record("SEM").state == "deselected"
@@ -136,7 +139,7 @@ def test_frames_ordered_by_image_number_within_a_stage():
         make_record("lam_AP_img_001_SEM.tif", "SEM"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert [frame.image_number for frame in frames] == [1, 2, 10]
 
@@ -150,7 +153,7 @@ def test_frames_follow_stage_order_across_the_lamella():
         make_record("lam_AP_img_000_SEM.tif", "SEM"),
     ])
 
-    frames = build_lamella_frames(make_lamella([first, second]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([first, second]))
 
     assert [(f.stage_number, f.image_number) for f in frames] == [("01", 5), ("02", 0)]
 
@@ -162,7 +165,7 @@ def test_unnumbered_images_come_last_ordered_by_name():
         make_record("lam_AP_img_003_SEM.tif", "SEM"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert [f.image_number for f in frames] == [3, None, None]
     assert [f.record("SEM").image_path.name for f in frames[1:]] == [
@@ -184,7 +187,7 @@ def test_the_2023_beam_form_pairs_across_its_differing_filenames():
         make_record("Image_2_001.tif", "FIB"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert [frame.image_number for frame in frames] == [0, 1]
     assert all(frame.record("SEM") and frame.record("FIB") for frame in frames)
@@ -197,7 +200,7 @@ def test_unnumbered_sem_and_fib_pair_by_filename_stem():
         make_record("centring.tif", "FIB"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
     assert frames[0].record("SEM") is not None and frames[0].record("FIB") is not None
@@ -215,7 +218,7 @@ def test_plots_matched_to_frames_by_image_number():
         plots=["lam_AP_img_001_plot.png", "lam_AP_img_000_plot.png"],
     )
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert frames[0].plot_path.name == "lam_AP_img_000_plot.png"
     assert frames[1].plot_path.name == "lam_AP_img_001_plot.png"
@@ -230,7 +233,7 @@ def test_missing_plot_is_normal():
         plots=["lam_AP_img_000_plot.png"],
     )
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert frames[0].plot_path is not None
     assert frames[1].plot_path is None
@@ -243,7 +246,7 @@ def test_plot_without_an_image_is_ignored():
         plots=["lam_AP_img_000_plot.png", "lam_AP_img_099_plot.png"],
     )
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
 
@@ -276,7 +279,7 @@ def test_every_imaging_condition_of_one_acquisition_is_kept():
         make_variant_record("img_0004.tif", "FIB", None),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
     assert len(frames[0].sem) == 3
@@ -290,7 +293,7 @@ def test_the_base_image_comes_first_and_variants_follow_in_name_order():
         make_variant_record("img_0004.tif", "SEM", None),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert [(c.variant, c.condition) for c in frames[0].condition_choices("SEM")] == [
         (None, "sem"), ("fi_1", "sem_fi_1"), ("fi_16", "sem_fi_16"),
@@ -322,7 +325,7 @@ def test_a_condition_is_requested_by_its_directory_in_any_case():
         make_variant_record("img_0004.tif", "SEM", "5kv"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert frames[0].record("SEM", "SEM_5KV").image_path.parent.name == "sem_5kv"
     assert frames[0].record("SEM", "nonexistent") is None
@@ -337,7 +340,7 @@ def test_two_families_of_one_beam_each_offer_their_base():
         make_variant_record("img_0004.tif", "SEM", None, family="sem"),
     ])
 
-    frame = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)[0]
+    frame = build_lamella_frames(make_lamella([stage]))[0]
 
     assert [(c.family, c.condition) for c in frame.condition_choices("SEM")] == [
         ("sem", "sem"), ("sem", "sem_fi4"),
@@ -356,7 +359,7 @@ def test_each_familys_primary_is_marked_among_the_choices():
     ])
     corrections = FamilyCorrections(primary={"sem": "sem_fi4"})
 
-    frame = build_lamella_frames(make_lamella([stage]), corrections=corrections)[0]
+    frame = build_lamella_frames(make_lamella([stage], corrections))[0]
 
     assert [(c.condition, c.primary) for c in frame.condition_choices("SEM")] == [
         ("sem", False), ("sem_fi4", True), ("sem-5kV", True), ("sem-5kV_fi4", False),
@@ -378,7 +381,7 @@ def test_base_records_returns_one_image_per_modality():
         make_variant_record("img_0004.tif", "FIB", None),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert [record.modality for record in frames[0].base_records] == ["SEM", "FIB"]
     assert all(record.variant is None for record in frames[0].base_records)
@@ -391,7 +394,7 @@ def test_a_frame_of_only_variants_still_has_a_primary_image():
         make_variant_record("img_0004.tif", "SEM", "8"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert frames[0].record("SEM").variant == "8"
     assert len(frames[0].base_records) == 1
@@ -422,7 +425,7 @@ def two_family_frames(
         if (f"{family}_{variant}" if variant else family) in later
     ]
     stage = make_stage("adaptive_polish_1", "01", records)
-    return build_lamella_frames(make_lamella([stage]), corrections=corrections)
+    return build_lamella_frames(make_lamella([stage], corrections))
 
 
 def test_a_frame_opens_on_its_first_familys_base():
@@ -485,7 +488,7 @@ def test_a_corrected_condition_falls_back_to_the_family_it_joined():
     ]
     stage = make_stage("adaptive_polish_1", "01", [record, *others])
     corrections = FamilyCorrections(families={"sem_b": "sem-5kV"})
-    later = build_lamella_frames(make_lamella([stage]), corrections=corrections)[1]
+    later = build_lamella_frames(make_lamella([stage], corrections))[1]
 
     assert later.shown_record("SEM", "sem_b").condition == "sem-5kV"
 
@@ -503,14 +506,14 @@ def test_record_with_unknown_modality_is_skipped(caplog):
     ])
 
     with caplog.at_level("WARNING"):
-        frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+        frames = build_lamella_frames(make_lamella([stage]))
 
     assert len(frames) == 1
     assert frames[0].record("SEM") is not None
 
 
 def test_lamella_with_no_stages_yields_no_frames():
-    assert build_lamella_frames(make_lamella([]), corrections=NO_CORRECTIONS) == []
+    assert build_lamella_frames(make_lamella([])) == []
 
 
 def test_empty_stage_yields_no_frames():
@@ -520,7 +523,7 @@ def test_empty_stage_yields_no_frames():
         make_stage("adaptive_polish_2", "02", [make_record("lam_AP_img_000_SEM.tif", "SEM")]),
     ]
 
-    frames = build_lamella_frames(make_lamella(stages), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella(stages))
 
     assert [f.stage_number for f in frames] == ["02"]
 
@@ -534,7 +537,7 @@ def test_display_name_uses_stage_and_image_number():
         make_record("lam_AP_img_013_SEM.tif", "SEM"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert frames[0].display_name == "stage 02 - img 013"
 
@@ -544,6 +547,6 @@ def test_display_name_falls_back_to_filename_when_unnumbered():
         make_record("centring.tif", "SEM"),
     ])
 
-    frames = build_lamella_frames(make_lamella([stage]), corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(make_lamella([stage]))
 
     assert frames[0].display_name == "stage 02 - centring"

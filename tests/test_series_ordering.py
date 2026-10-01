@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.frames import build_lamella_frames, group_by_acquisition
-from am_segmentation_manager.layout import NO_CORRECTIONS, UNSEQUENCED, alignment_run_order
+from am_segmentation_manager.layout import UNSEQUENCED, alignment_run_order
 from am_segmentation_manager.models import ImageRecord, Lamella, Stage
 
 LAMELLA = Path("01-ruling-ibex")
@@ -53,7 +53,7 @@ def test_reference_images_follow_the_workflow_not_the_alphabet():
     ]
     lamella = Lamella(name="lam", path=LAMELLA, stages=[stage(LAMELLA, images, "01")])
 
-    frames = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella)
     order = [f.records[0].image_path.name for f in frames]
 
     assert order == [
@@ -72,7 +72,7 @@ def test_a_start_image_comes_before_the_task_finishes():
     ]
     lamella = Lamella(name="lam", path=LAMELLA, stages=[stage(LAMELLA, images, "01")])
 
-    frames = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella)
     order = [f.records[0].image_path.name for f in frames]
 
     assert order[0] == "ref_Polishing_start_ib.tif"
@@ -114,7 +114,7 @@ def test_a_series_is_ordered_across_its_stages():
         ],
     )
 
-    times = [f.acquired_at for f in build_lamella_frames(lamella, corrections=NO_CORRECTIONS)]
+    times = [f.acquired_at for f in build_lamella_frames(lamella)]
 
     assert times == sorted(times)
 
@@ -132,10 +132,10 @@ def test_adaptive_frames_keep_the_order_their_numbers_give_them():
     ]
     lamella = Lamella(name="lam", path=LAMELLA, stages=[stage(LAMELLA, images, "01")])
 
-    numbers = [f.image_number for f in build_lamella_frames(lamella, corrections=NO_CORRECTIONS)]
+    numbers = [f.image_number for f in build_lamella_frames(lamella)]
 
     assert numbers == [0, 1, 2]
-    frames = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella)
     assert all(f.acquired_at is None for f in frames)
 
 
@@ -172,7 +172,7 @@ def test_images_taken_in_one_second_keep_the_run_order():
     ]
     lamella = Lamella(name="lam", path=LAMELLA, stages=[stage(RUN, images, "01")])
 
-    frames = build_lamella_frames(lamella, corrections=NO_CORRECTIONS)
+    frames = build_lamella_frames(lamella)
     order = [f.records[0].image_path.name for f in frames]
 
     assert order == [

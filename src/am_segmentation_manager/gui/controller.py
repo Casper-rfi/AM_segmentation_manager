@@ -33,7 +33,6 @@ from ..layout import (
     NO_CORRECTIONS,
     SERIES,
     SERIES_LABELS,
-    FamilyCorrections,
     condition_of,
     family_key,
 )
@@ -848,7 +847,7 @@ class CurationController:
         self.series = resolve_series(self.wanted_series, self.available_series())
         self._frames = (
             build_lamella_frames(
-                lamella, series=self.series, corrections=self._corrections()
+                lamella, series=self.series
             )
             if lamella is not None
             else []
@@ -863,13 +862,6 @@ class CurationController:
             len(self._frames),
             self.series,
         )
-
-    def _corrections(self) -> FamilyCorrections:
-        """Return the family corrections in force in the lamella in view."""
-        project, lamella = self.project, self.lamella
-        if project is None or lamella is None:
-            return NO_CORRECTIONS
-        return project.families_at(lamella.path)
 
     def select_frame(self, position: int) -> None:
         """Move to a frame by index, clamped to the lamella's range."""
@@ -1275,7 +1267,9 @@ class CurationController:
         if record is not None:
             return record.family or None
         chosen = self.condition.get(modality)
-        parsed = condition_of(chosen, self._corrections()) if chosen else None
+        lamella = self.lamella
+        corrections = lamella.families if lamella is not None else NO_CORRECTIONS
+        parsed = condition_of(chosen, corrections) if chosen else None
         return parsed.family if parsed is not None else None
 
     # -- what a state change applies to ------------------------------------

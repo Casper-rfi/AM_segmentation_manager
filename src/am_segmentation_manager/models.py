@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
-from .layout import NO_PROJECT_FAMILIES, FamilyCorrections, ProjectFamilies
+from .layout import NO_CORRECTIONS, NO_PROJECT_FAMILIES, FamilyCorrections, ProjectFamilies
 from .state import DEFAULT_STATE, RecordState
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -179,6 +179,9 @@ class Lamella:
         number: zero-padded lamella number parsed from the folder prefix
         synthetic: True when the dataset has no lamella directories and the
             project directory stands in for one.
+        families: the family corrections in force in it, its own section of
+            the project's AM_families.yaml over the project's, as the scan
+            read its stages
     """
 
     name: str
@@ -186,6 +189,7 @@ class Lamella:
     stages: list[Stage] = field(default_factory=list)
     number: str | None = None
     synthetic: bool = False
+    families: FamilyCorrections = NO_CORRECTIONS
 
     @property
     def display_name(self) -> str:
