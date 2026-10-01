@@ -1073,25 +1073,50 @@ def condition_disagreements(
 def read_condition_headers(
     images: Mapping[str, Mapping[str, Path]],
     read: Callable[[Path], ImageMetadata | None],
-) -> tuple[str, dict[str, ImageMetadata]] | None:
-    """Read one acquisition's header in each of a family's conditions.
+) -> list[tuple[str, dict[str, ImageMetadata]]]:
+    """Read the headers that compare every two conditions sharing an acquisition.
+
+    **Every pair of conditions holding one filename is compared**, since such a
+    pair shares that acquisition's label; a pair holding none shares no label
+    and is not (``test_conditions_lacking_a_common_acquisition_are_still_compared``).
+    Each reading takes the filename covering the most pairs not yet compared,
+    so a family whose conditions all hold one is read once, on the first such.
 
     Args:
         images: Each condition's image files by filename.
         read: How to read a header, as :func:`header_reader` returns it.
 
     Returns:
-        The filename read -- the first every condition holds -- and each
-        condition's header, or None where no filename is common to them all.
+        Each filename read and the headers of the conditions holding it.
     """
-    listed = [set(files) for files in images.values()]
-    common = set.intersection(*listed) if listed else set()
-    if not common:
-        return None
-    name = min(common)
-    headers = {
-        condition: header
-        for condition, files in images.items()
-        if (header := read(files[name])) is not None
+    holders: dict[str, list[str]] = {}
+    for condition, files in images.items():
+        for name in files:
+            holders.setdefault(name, []).append(condition)
+    uncompared = {
+        pair for conditions in holders.values() for pair in _pairs(conditions)
     }
-    return name, headers
+    readings: list[tuple[str, dict[str, ImageMetadata]]] = []
+    while uncompared:
+        name = min(
+            holders,
+            key=lambda candidate: (-len(_pairs(holders[candidate]) & uncompared), candidate),
+        )
+        uncompared -= _pairs(holders[name])
+        headers = {
+            condition: header
+            for condition in holders[name]
+            if (header := read(images[condition][name])) is not None
+        }
+        readings.append((name, headers))
+    return readings
+
+
+def _pairs(conditions: Iterable[str]) -> set[frozenset[str]]:
+    """Return every two of *conditions*, unordered."""
+    listed = sorted(conditions)
+    return {
+        frozenset((first, second))
+        for index, first in enumerate(listed)
+        for second in listed[index + 1:]
+    }

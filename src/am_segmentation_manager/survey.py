@@ -766,7 +766,8 @@ def _family_header_findings(
 ) -> list[Finding]:
     """Report each family whose conditions' headers disagree about one acquisition.
 
-    One header per condition: the first filename they all hold. A different
+    Every two conditions sharing a filename are compared on one, as
+    :func:`~.image_metadata.read_condition_headers` chooses. A different
     image size is an error, since one label cannot fit both; a different pixel
     size or voltage is a warning that the conditions may not be one family.
     """
@@ -780,31 +781,31 @@ def _family_header_findings(
     for members in families.values():
         if len(members) < 2:
             continue
-        read_back = read_condition_headers(
+        readings = read_condition_headers(
             {member.directory.name: image_files_by_name(member.directory) for member in members},
             read,
         )
-        if read_back is None:
-            continue
-        filename, headers = read_back
-        for disagreement in condition_disagreements(headers):
-            blocks = disagreement.blocks_sharing
-            findings.append(
-                Finding(
-                    severity="error" if blocks else "warning",
-                    category="family-image-size-mismatch" if blocks else "family-header-mismatch",
-                    path=stage_path,
-                    message=(
-                        f"Family {members[0].family} disagrees on {filename} about "
-                        f"{disagreement.describe()}; "
-                        + (
-                            "one label cannot fit both, so correct the family"
-                            if blocks
-                            else "check these conditions belong in one family"
-                        )
-                    ),
+        for filename, headers in readings:
+            for disagreement in condition_disagreements(headers):
+                blocks = disagreement.blocks_sharing
+                findings.append(
+                    Finding(
+                        severity="error" if blocks else "warning",
+                        category=(
+                            "family-image-size-mismatch" if blocks else "family-header-mismatch"
+                        ),
+                        path=stage_path,
+                        message=(
+                            f"Family {members[0].family} disagrees on {filename} about "
+                            f"{disagreement.describe()}; "
+                            + (
+                                "one label cannot fit both, so correct the family"
+                                if blocks
+                                else "check these conditions belong in one family"
+                            )
+                        ),
+                    )
                 )
-            )
     return findings
 
 

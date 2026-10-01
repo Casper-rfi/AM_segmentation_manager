@@ -586,18 +586,16 @@ def _check_headers(
     for members in families.values():
         if len(members) < 2 or not any(member.name.lower() in named for member in members):
             continue
-        read_back = read_condition_headers(
+        readings = read_condition_headers(
             {member.name: image_files_by_name(member) for member in members}, read
         )
-        if read_back is None:
-            continue
-        filename, headers = read_back
-        for disagreement in condition_disagreements(headers):
-            message = f"{where}: {filename} differs in {disagreement.describe()}"
-            if disagreement.blocks_sharing:
-                problems.append(f"{message}; one label cannot fit both")
-            else:
-                warnings.append(message)
+        for filename, headers in readings:
+            for disagreement in condition_disagreements(headers):
+                message = f"{where}: {filename} differs in {disagreement.describe()}"
+                if disagreement.blocks_sharing:
+                    problems.append(f"{message}; one label cannot fit both")
+                else:
+                    warnings.append(message)
 
 
 def _check_stage(

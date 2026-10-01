@@ -385,6 +385,24 @@ def test_conditions_of_one_family_with_two_image_sizes_are_an_error(tmp_path, mo
     assert "sem 3072x2048, sem_mag2 1536x1024" in found[0].message
 
 
+def test_a_size_mismatch_is_reported_when_no_filename_is_common_to_all(tmp_path, monkeypatch):
+    _family_stage(tmp_path, "sem", "sem_mag2")
+    _write_image(tmp_path / "project" / "lam_000" / "sem_fi1", "img_0002.tif")
+    _headers_by_condition(monkeypatch, {
+        "sem": ImageMetadata(image_width=3072, image_height=2048),
+        "sem_fi1": ImageMetadata(image_width=3072, image_height=2048),
+        "sem_mag2": ImageMetadata(image_width=1536, image_height=1024),
+    })
+
+    found = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "family-image-size-mismatch"
+    ]
+
+    assert len(found) == 1
+    assert "sem 3072x2048, sem_mag2 1536x1024" in found[0].message
+
+
 def test_conditions_of_one_family_at_two_pixel_sizes_are_a_warning(tmp_path, monkeypatch):
     _family_stage(tmp_path, "sem", "sem_mag2")
     _headers_by_condition(monkeypatch, {

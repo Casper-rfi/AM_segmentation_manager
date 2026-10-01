@@ -330,6 +330,22 @@ def test_joining_a_family_of_another_image_size_is_refused(tmp_path: Path, monke
     assert "one label cannot fit both" in _refusal(tmp_path, families={"sem2kVb": "sem-2kV"})
 
 
+def test_a_size_mismatch_is_found_when_no_filename_is_common_to_all(
+    tmp_path: Path, monkeypatch
+):
+    """sem-2kV_fi1 was imaged on another acquisition, so no file is held by all three."""
+    stage = _stage(tmp_path, "sem-2kV", "sem-2kV_fi1", "sem2kVb", "sem-2kV_labels")
+    (stage / "sem-2kV_fi1" / IMAGE).rename(stage / "sem-2kV_fi1" / "img_0002.tif")
+    (stage / "sem-2kV_labels" / IMAGE).write_bytes(b"x")
+    _headers(monkeypatch, {
+        "sem-2kV": ImageMetadata(image_width=3072, image_height=2048),
+        "sem-2kV_fi1": ImageMetadata(image_width=3072, image_height=2048),
+        "sem2kVb": ImageMetadata(image_width=1536, image_height=1024),
+    })
+
+    assert "one label cannot fit both" in _refusal(tmp_path, families={"sem2kVb": "sem-2kV"})
+
+
 def test_joining_a_family_at_another_pixel_size_is_warned_about(tmp_path: Path, monkeypatch):
     _stage(tmp_path, "sem-2kV", "sem2kVb", "sem-2kV_labels")
     _headers(monkeypatch, {

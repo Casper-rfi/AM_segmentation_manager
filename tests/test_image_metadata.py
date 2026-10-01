@@ -814,7 +814,7 @@ def test_one_acquisition_is_read_in_every_condition(tmp_path: Path):
         "sem_fi8": {"b.tif": tmp_path / "sem_fi8/b.tif", "c.tif": tmp_path / "sem_fi8/c.tif"},
     }
 
-    filename, headers = read_condition_headers(
+    [(filename, headers)] = read_condition_headers(
         images, lambda path: read.append(path) or _header()
     )
 
@@ -826,4 +826,31 @@ def test_one_acquisition_is_read_in_every_condition(tmp_path: Path):
 def test_conditions_sharing_no_acquisition_are_not_read(tmp_path: Path):
     images = {"sem": {"a.tif": tmp_path / "a.tif"}, "sem_fi8": {"b.tif": tmp_path / "b.tif"}}
 
-    assert read_condition_headers(images, lambda path: _header()) is None
+    assert read_condition_headers(images, lambda path: _header()) == []
+
+
+def test_conditions_lacking_a_common_acquisition_are_still_compared(tmp_path: Path):
+    """No filename is held by all three, yet each pair sharing one shares a label."""
+    images = {
+        "sem": {name: tmp_path / "sem" / name for name in ("a.tif", "b.tif")},
+        "sem_fi1": {"c.tif": tmp_path / "sem_fi1/c.tif"},
+        "sem2kVb": {name: tmp_path / "sem2kVb" / name for name in ("a.tif", "c.tif")},
+    }
+
+    readings = read_condition_headers(images, lambda path: _header())
+
+    assert [(name, sorted(headers)) for name, headers in readings] == [
+        ("a.tif", ["sem", "sem2kVb"]),
+        ("c.tif", ["sem2kVb", "sem_fi1"]),
+    ]
+
+
+def test_one_filename_held_by_every_condition_is_read_once(tmp_path: Path):
+    images = {
+        condition: {name: tmp_path / condition / name for name in ("a.tif", "b.tif")}
+        for condition in ("sem", "sem_fi1", "sem_fi4")
+    }
+
+    readings = read_condition_headers(images, lambda path: _header())
+
+    assert [name for name, _ in readings] == ["a.tif"]

@@ -184,8 +184,9 @@ out of it first. One taking images out of a corrected group needs
 `--confirm-corrected`. `--clear` puts a condition back where its
 name places it.
 
-**Inspect layout** tells you when a correction is needed. It compares one
-image of each family's conditions: images of different sizes are an error,
+**Inspect layout** tells you when a correction is needed. It compares every
+two conditions of a family that hold an image of the same name, which share
+that image's label: images of different sizes are an error,
 since one label cannot fit both, and a different pixel size or accelerating
 voltage is a warning that the conditions may not be one family.
 `edit-families` makes the same comparison for a condition joining a family,
