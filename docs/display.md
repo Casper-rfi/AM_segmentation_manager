@@ -419,10 +419,20 @@ of one of these files, is held by `test_docs.py`.
   `resolve_series` falls back to a series the lamella holds without touching the choice, or a
   lamella showing an empty timeline has no way back. A dropdown of one entry is drawn as text and
   one of several carries its count (`test_a_dropdown_with_one_entry_reads_as_text`). **The beam follows the same rule** in `_settle_mode`, asked of the whole stack rather than
-  the frame on screen; both settle in `_rebuild_frames`. **Which series are covered at all is a
+  the frame on screen; both settle in `_rebuild_frames`. So does the Label tab's family, in
+  `_settled_condition` (`test_a_family_with_nothing_to_proofread_shows_one_that_has`). **Which series are covered at all is a
   second choice**, the *Series shown* switches: a lamella holding only series switched off leaves
   the list, counted in its title, and reaches no change
   (`test_the_residue_opens_switched_off_and_counted`); `other` opens off.
+- **What a view shows of a beam is `LamellaFrame.shown_record`, and state follows it.** The chosen
+  condition, else its family's primary, else the first family's: the cache and both controllers ask
+  it, so the image held, drawn and counted cannot disagree. A family is one label, so the State
+  buttons, chips and proofread frames read the family on screen through each frame's primary of it,
+  and viewing another of its conditions changes nothing (`test_a_state_change_acts_on_the_family_on_screen`).
+  **The family choice is hidden, not greyed**: no scope in the collection holds two families of a
+  beam, images of no family never counting as one (`test_the_family_control_is_hidden_with_one_family_per_beam`).
+  Several families are listed under headings, as Export's grouped lists are, and the closed field
+  names a row by `SHOWN_AS_ROLE` (`test_a_condition_chosen_under_a_heading_is_shown_by_its_whole_name`).
 - **A series with no labels is shown and not acted on.** The timeline shows `other`, opening one to
   judge whether the rule or the data is wrong being why they are indexed, while the state buttons
   and every operation button are withheld, each reading or writing a label the series lacks
