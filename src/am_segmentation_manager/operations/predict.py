@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from ..families import FamiliesLookup
 from ..io.atomic import write_atomically
 from ..io.image import read_array, to_2d
 from ..io.long_paths import refuse_unreachable
@@ -24,7 +25,6 @@ from ..layout import (
     MODALITIES,
     OWN_PREDICTION_KIND,
     PREDICTION_PROVENANCE_FILENAME,
-    FamilyCorrections,
 )
 from ..models import ImageRecord
 from .label_groups import build_groups, primary_record
@@ -224,7 +224,7 @@ def plan_predictions(
         # reads every stage directory for nothing.
         return PredictionPlan(modalities=modalities)
 
-    families: dict[Path, FamilyCorrections] = {}
+    families = FamiliesLookup()
     competing: dict[Path, list[tuple[ImageRecord, int]]] = {}
     for group in build_groups(candidates):
         chosen = primary_record(group.records, families)

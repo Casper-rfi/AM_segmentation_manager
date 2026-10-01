@@ -14,11 +14,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..families import families_for
+from ..families import FamiliesLookup, families_for
 from ..frames import primary_among
 from ..layout import (
     NO_CORRECTIONS,
-    FamilyCorrections,
     build_image_sets,
     classify_image_directory,
     classify_loose_image,
@@ -201,7 +200,7 @@ def group_key(
 
 
 def build_group(
-    record: ImageRecord, families: dict[Path, FamilyCorrections] | None = None
+    record: ImageRecord, families: FamiliesLookup | None = None
 ) -> LabelGroup:
     """Return the label group *record* belongs to, read from the filesystem.
 
@@ -213,8 +212,7 @@ def build_group(
     scanned record would, since any of them may be the one predicted.
 
     Args:
-        families: Reused across a batch, as :func:`~..families.families_for`
-            takes it.
+        families: Reused across a batch, so each project's file is read once.
 
     Raises:
         FamiliesFileError: If the project's families file will not read.
@@ -229,7 +227,7 @@ def build_group(
     label_path = identity if identity.exists() else None
 
     siblings: list[ImageRecord] = []
-    corrections = families_for(stage_directory, families)
+    corrections = (families or FamiliesLookup()).at(stage_directory)
     listing = subdirectories_by_name(stage_directory)
     for image_set in build_image_sets(stage_directory, corrections=corrections):
         if image_set.labels_directory != labels_directory:
@@ -271,7 +269,7 @@ def build_group(
 
 
 def build_groups(
-    records: Iterable[ImageRecord], families: dict[Path, FamilyCorrections] | None = None
+    records: Iterable[ImageRecord], families: FamiliesLookup | None = None
 ) -> list[LabelGroup]:
     """Return the distinct label groups the given records belong to.
 
@@ -279,12 +277,12 @@ def build_groups(
     all five conditions of a scene gets one group back, not five.
 
     Args:
-        families: As :func:`build_group` takes it. Filled in advance, it groups
+        families: As :func:`build_group` takes it. Given corrections, it groups
             a stage under corrections other than its project's file holds.
     """
     groups: dict[str, LabelGroup] = {}
     cache: dict[Path, Path | None] = {}
-    families = {} if families is None else families
+    families = FamiliesLookup() if families is None else families
     for record in records:
         key = group_key(record, cache)
         if key in groups:
@@ -294,7 +292,7 @@ def build_groups(
 
 
 def primary_record(
-    records: Iterable[ImageRecord], families: dict[Path, FamilyCorrections] | None = None
+    records: Iterable[ImageRecord], families: FamiliesLookup | None = None
 ) -> ImageRecord:
     """Return the record standing for a scene: its *primary* imaging condition.
 
@@ -303,8 +301,7 @@ def primary_record(
     What is predicted, measured and kept by a one-per-scene export.
 
     Args:
-        families: Reused across a batch, as :func:`~..families.families_for`
-            takes it.
+        families: Reused across a batch, so each project's file is read once.
 
     Raises:
         FamiliesFileError: If the project's families file will not read.
@@ -312,7 +309,7 @@ def primary_record(
     records = list(records)
     if not any(record.family for record in records):
         return primary_among(records, NO_CORRECTIONS)
-    return primary_among(records, families_for(records[0].image_path, families))
+    return primary_among(records, (families or FamiliesLookup()).at(records[0].image_path))
 
 
 def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:

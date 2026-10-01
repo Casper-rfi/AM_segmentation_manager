@@ -23,6 +23,7 @@ from ..families import (
     FAMILIES_SECTION,
     PRIMARY_SECTION,
     FamiliesFileError,
+    FamiliesLookup,
     read_families,
     sections_of,
 )
@@ -917,10 +918,7 @@ def _groups_of(project: Project) -> dict[str, _Group]:
     groups = {}
     # Grouped under the families the project was scanned with, which in a merge
     # can be ones on neither disk yet.
-    families = {
-        stage.path: project.families_at(stage.path)
-        for lamella in project.lamellae for stage in lamella.stages
-    }
+    families = FamiliesLookup({project.path: project.families})
     for group in build_groups(project.image_records, families):
         identity = group.label_path or group.identity
         if identity is None:

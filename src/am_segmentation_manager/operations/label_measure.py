@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import BACKGROUND_CLASS, SegmentationConfig
+from ..families import FamiliesLookup
 from ..image_metadata import PIXEL_SIZE, condition_disagreements, read_records_metadata
 from ..io.image import has_image_stack_support, read_array, to_2d
-from ..layout import FamilyCorrections
 from ..parallel import map_in_processes
 from .csv import find_matching_label
 from .label_groups import group_key, primary_record
@@ -764,7 +764,7 @@ def measure_records(
     groups: dict[str, list[ImageRecord]] = {}
     for record in records:
         groups.setdefault(group_key(record), []).append(record)
-    families: dict[Path, FamilyCorrections] = {}
+    families = FamiliesLookup()
     primaries = {key: primary_record(members, families) for key, members in groups.items()}
 
     if metadata is None:

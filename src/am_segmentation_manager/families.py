@@ -37,6 +37,7 @@ __all__ = [
     "FAMILIES_SECTION",
     "PRIMARY_SECTION",
     "FamiliesFileError",
+    "FamiliesLookup",
     "StaleFamilies",
     "document_of",
     "families_file_path",
@@ -222,34 +223,60 @@ def _lowered(item: tuple[str, str]) -> str:
     return item[0].lower()
 
 
-def families_for(
-    path: Path, cache: dict[Path, FamilyCorrections] | None = None
-) -> FamilyCorrections:
+def families_for(path: Path) -> FamilyCorrections:
     """Return the corrections in force at *path*: its project's, and its lamella's over them.
 
     Lets an image path alone find its label. The project is the nearest
     directory at or above *path* marked as one; outside any project there are
-    none.
-
-    Args:
-        cache: Reused across a batch, keyed by the directory asked about, so a
-            batch reads each project's file once. Hold it no longer than the
-            batch: nothing notices the file changing.
+    none. A batch asks a :class:`FamiliesLookup` instead.
 
     Raises:
         FamiliesFileError: As :func:`read_families`.
     """
-    start = path if path.is_dir() else path.parent
-    if cache is not None and start in cache:
-        return cache[start]
-    corrections = NO_PROJECT_FAMILIES.project
-    for directory in (start, *start.parents):
-        if project_markers(directory):
-            corrections = read_families(directory).at(start.relative_to(directory).as_posix())
-            break
-    if cache is not None:
-        cache[start] = corrections
-    return corrections
+    return FamiliesLookup().at(path)
+
+
+class FamiliesLookup:
+    """The corrections in force anywhere, each project's file read once.
+
+    Hold one no longer than a batch: nothing notices a file changing.
+
+    Args:
+        given: Corrections to use for a project in place of its file, keyed by
+            its root, as a merge plans a tree under families on neither disk
+            yet. Honoured whichever directory below the root is asked about
+            (``test_a_project_given_corrections_is_never_read``).
+    """
+
+    def __init__(self, given: Mapping[Path, ProjectFamilies] | None = None) -> None:
+        self._projects: dict[Path, ProjectFamilies] = dict(given or {})
+        self._roots: dict[Path, Path | None] = {}
+
+    def at(self, path: Path) -> FamilyCorrections:
+        """Return the corrections in force at *path*, as :func:`families_for` does.
+
+        Raises:
+            FamiliesFileError: As :func:`read_families`.
+        """
+        start = path if path.is_dir() else path.parent
+        root = self._root_of(start)
+        if root is None:
+            return NO_PROJECT_FAMILIES.project
+        if root not in self._projects:
+            self._projects[root] = read_families(root)
+        return self._projects[root].at(start.relative_to(root).as_posix())
+
+    def _root_of(self, start: Path) -> Path | None:
+        """Return the project root at or above *start*, or None outside any project."""
+        if start not in self._roots:
+            self._roots[start] = next(
+                (
+                    directory for directory in (start, *start.parents)
+                    if directory in self._projects or project_markers(directory)
+                ),
+                None,
+            )
+        return self._roots[start]
 
 
 def _check_version(version: Any, path: Path) -> None:

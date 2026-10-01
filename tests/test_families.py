@@ -16,10 +16,16 @@ from am_segmentation_manager import families as families_module
 from am_segmentation_manager.families import (
     AM_FAMILIES_FILENAME,
     FamiliesFileError,
+    FamiliesLookup,
     families_for,
     read_families,
 )
-from am_segmentation_manager.layout import NO_CORRECTIONS, NO_PROJECT_FAMILIES
+from am_segmentation_manager.layout import (
+    NO_CORRECTIONS,
+    NO_PROJECT_FAMILIES,
+    FamilyCorrections,
+    ProjectFamilies,
+)
 from am_segmentation_manager.operations.label_groups import (
     build_group,
     build_groups,
@@ -109,12 +115,27 @@ def test_a_batch_reads_each_projects_file_once(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         families_module, "read_families", lambda root: reads.append(root) or real(root)
     )
-    cache: dict = {}
+    families = FamiliesLookup()
 
-    families_for(stage, cache)
-    families_for(stage, cache)
+    families.at(stage)
+    families.at(stage / "sem")
+    families.at(tmp_path)
 
     assert reads == [tmp_path]
+
+
+def test_a_project_given_corrections_is_never_read(tmp_path: Path, monkeypatch):
+    """Whichever directory below its root is asked about, as a merge needs."""
+    _write(tmp_path, "families:\n  sem_mag2: [\n")
+    (tmp_path / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    image = tmp_path / "lam_000" / "adaptive_polish" / "sem_mag2" / "img.tif"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"")
+    given = ProjectFamilies(project=FamilyCorrections(families={"sem_mag2": "sem-mag2"}))
+    families = FamiliesLookup({tmp_path: given})
+
+    assert families.at(image).family_of("sem_mag2") == "sem-mag2"
+    assert families.at(image.parents[1]).family_of("sem_mag2") == "sem-mag2"
 
 
 # ---------------------------------------------------------------------------

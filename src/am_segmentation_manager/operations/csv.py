@@ -16,10 +16,10 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..families import FamiliesLookup
 from ..frames import group_by_acquisition
 from ..io.path import exported_relative_path
 from ..io.tables import write_csv
-from ..layout import FamilyCorrections
 from ..models import ImageRecord
 from .label_groups import primary_record
 from .label_io import has_image_stack_support, is_label_file_empty
@@ -89,7 +89,7 @@ def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRe
         if record.labels:
             scenes.setdefault(str(record.labels[0]), []).append(record)
 
-    families: dict[Path, FamilyCorrections] = {}
+    families = FamiliesLookup()
     chosen = {id(primary_record(members, families)) for members in scenes.values()}
     kept = [
         record for record in candidates
