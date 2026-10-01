@@ -21,7 +21,7 @@ from am_segmentation_manager.families import (
 )
 from am_segmentation_manager.layout import NO_CORRECTIONS, NO_PROJECT_FAMILIES
 from am_segmentation_manager.operations.label_groups import build_group, build_groups
-from am_segmentation_manager.operations.selection import record_from_image_path
+from am_segmentation_manager.operations.label_groups import record_from_image_path
 from am_segmentation_manager.scanner import Scanner
 
 

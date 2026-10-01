@@ -22,9 +22,11 @@ from ..layout import (
     build_image_sets,
     classify_image_directory,
     classify_loose_image,
+    condition_of,
     image_files_by_name,
     resolve_labels_directory,
     resolve_loose_labels_directory,
+    resolve_loose_predictions_directory,
     resolve_predictions_directory,
     subdirectories_by_name,
 )
@@ -78,41 +80,89 @@ def labels_directory_for(
         FamiliesFileError: If the project's families file will not read.
     """
     image_directory = image_path.parent
-    classification = classify_image_directory(image_directory.name)
-    if classification is None:
-        return _loose_labels_directory_for(image_path)
-
     if cache is not None and image_directory in cache:
         return cache[image_directory]
-    resolved, _, _ = resolve_labels_directory(
-        image_directory,
-        classification.modality,
-        subdirectories_by_name(image_directory.parent),
-        corrections=families_for(image_directory),
+    labels_directory = record_from_image_path(image_path, check_label=False).labels_directory
+    if cache is not None and classify_image_directory(image_directory.name) is not None:
+        cache[image_directory] = labels_directory
+    return labels_directory
+
+
+def record_from_image_path(path: Path, *, check_label: bool = True) -> ImageRecord:
+    """Return a record for an image named by its path alone, with its label if there is one.
+
+    **Only the image's own directory is read as an imaging condition**: nothing
+    sits below an image directory, so an ancestor named like one -- a collection
+    folder called ``sem_runs`` -- says nothing about the image
+    (``test_an_ancestor_named_like_a_condition_is_not_one``). An image filling a
+    condition's directory resolves under its project's family corrections; one
+    sitting loose is read from its filename, as its set is, and carries its
+    stage; one whose name says nothing gets a bare record.
+
+    Args:
+        check_label: Look for the label file; off where only its directory is
+            wanted.
+
+    Raises:
+        FamiliesFileError: If the project's families file will not read.
+    """
+    image_directory = path.parent
+    classification = classify_image_directory(image_directory.name)
+    if classification is None:
+        return _loose_record(path, check_label)
+
+    corrections = families_for(image_directory)
+    condition = condition_of(image_directory.name, corrections) or classification
+    siblings = subdirectories_by_name(image_directory.parent)
+    labels_directory, _, _ = resolve_labels_directory(
+        image_directory, condition.modality, siblings, corrections=corrections
     )
-    if cache is not None:
-        cache[image_directory] = resolved
-    return resolved
+    predictions_directory, _, _ = resolve_predictions_directory(
+        image_directory, condition.modality, siblings, corrections=corrections
+    )
+    label_path = labels_directory / path.name
+    return ImageRecord(
+        image_path=path,
+        labels=[label_path] if check_label and label_path.exists() else [],
+        modality=condition.modality,
+        variant=condition.variant,
+        family=condition.family,
+        labels_directory=labels_directory,
+        predictions_directory=predictions_directory,
+    )
 
 
-def _loose_labels_directory_for(image_path: Path) -> Path | None:
-    """Return where a loose image's label lives or would live.
+def _loose_record(image_path: Path, check_label: bool) -> ImageRecord:
+    """Return a record for an image sitting loose in its stage directory.
 
     The set is named by the image's series and modality, both of which its
     filename states, so two images in one directory can belong to different
     sets -- an Adaptive Polishing pair is ``adaptive_sem_labels`` and
-    ``adaptive_fib_labels``, never one directory shared.
+    ``adaptive_fib_labels``, never one directory shared. An image whose name
+    says neither gets a bare record: nothing here would be a fact rather than a
+    guess.
     """
     classified = classify_loose_image(image_path.name)
     if classified is None or classified.modality is None:
-        return None
-    resolved, _ = resolve_loose_labels_directory(
-        image_path.parent,
-        classified.series,
-        classified.modality,
-        subdirectories_by_name(image_path.parent),
+        return ImageRecord(image_path=image_path)
+
+    siblings = subdirectories_by_name(image_path.parent)
+    labels_directory, _ = resolve_loose_labels_directory(
+        image_path.parent, classified.series, classified.modality, siblings
     )
-    return resolved
+    predictions_directory, _ = resolve_loose_predictions_directory(
+        image_path.parent, classified.series, classified.modality, siblings
+    )
+    label_path = labels_directory / image_path.name
+    return ImageRecord(
+        image_path=image_path,
+        labels=[label_path] if check_label and label_path.exists() else [],
+        modality=classified.modality,
+        series=classified.series,
+        labels_directory=labels_directory,
+        predictions_directory=predictions_directory,
+        stage_path=image_path.parent,
+    )
 
 
 def group_identity(

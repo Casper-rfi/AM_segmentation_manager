@@ -17,13 +17,14 @@ from am_segmentation_manager.operations.label_groups import (
     build_groups,
     expand_to_groups,
     group_key,
+    labels_directory_for,
     primary_record,
+    record_from_image_path,
 )
 from am_segmentation_manager.operations.selection import (
     deselect_records,
     mark_corrected_records,
     plan_transition,
-    record_from_image_path,
     select_records,
     transition_records,
 )
@@ -415,6 +416,24 @@ def test_a_loose_image_whose_name_says_nothing_still_gets_a_bare_record(
 
     assert record.labels_directory is None
     assert group_key(record) == str(lamella / "something_else.tif")
+
+
+@pytest.mark.parametrize("name", ["ref_trench_finished_eb.tif", "notes_image.tif"])
+def test_an_ancestor_named_like_a_condition_is_not_one(tmp_path: Path, name: str) -> None:
+    """A collection folder called ``sem_runs`` never makes a loose image a condition's.
+
+    Only the image's own directory is read as one, as the scan reads it, so the
+    record and its group agree and neither points outside the lamella.
+    """
+    lamella = tmp_path / "sem_runs" / "project" / "lamella-01"
+    lamella.mkdir(parents=True)
+    (lamella.parent / "AM_metadata.yaml").write_text("", encoding="utf-8")
+    (lamella / name).write_bytes(b"")
+    record = record_from_image_path(lamella / name)
+
+    assert record.family is None
+    assert record.labels_directory in (None, lamella / "reference_sem_labels")
+    assert record.labels_directory == labels_directory_for(lamella / name)
 
 
 def test_a_loose_group_can_be_declared_corrected(tmp_path: Path) -> None:

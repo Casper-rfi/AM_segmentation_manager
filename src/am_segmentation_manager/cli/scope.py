@@ -23,7 +23,7 @@ from ..io.tables import refuse_existing
 from ..layout import LABELLED_SERIES
 from ..models import Project
 from ..operations.init_history import writing_recorder
-from ..operations.selection import record_from_image_path
+from ..operations.label_groups import record_from_image_path
 from ..scanner import Scanner
 
 logger = logging.getLogger(__name__)

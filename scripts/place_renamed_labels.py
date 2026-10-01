@@ -54,10 +54,8 @@ from am_segmentation_manager.layout import (
 )
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_io import save_label_image
-from am_segmentation_manager.operations.selection import (
-    mark_corrected_records,
-    record_from_image_path,
-)
+from am_segmentation_manager.operations.label_groups import record_from_image_path
+from am_segmentation_manager.operations.selection import mark_corrected_records
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +448,7 @@ def _destination_for(original: Path, conflicts: list[str]) -> Path | None:
     """Return where *original*'s label belongs, or None having said why not.
 
     Resolution goes through
-    :func:`~am_segmentation_manager.operations.selection.record_from_image_path`,
+    :func:`~am_segmentation_manager.operations.label_groups.record_from_image_path`,
     so the label lands where the package will look for it, whether the image
     fills an image directory -- where its family's conditions share one -- or
     sits loose in its stage. A pre-convention label directory is refused rather
