@@ -323,7 +323,7 @@ def plan_families_change(
     Raises:
         FamiliesValidationError: Carrying every reason the change is refused.
     """
-    before, _ = _read(project.path)
+    before, fingerprint = _read(project.path)
     listings = _listings(project)
     _, spellings = _names(listings.values())
     problems: list[str] = []
@@ -365,7 +365,7 @@ def plan_families_change(
         after = ProjectFamilies(project=project_after, lamellae=lamellae_after)
     except ValueError as error:
         raise FamiliesValidationError([str(error)]) from error
-    return plan_corrections(project, after, allow_leaving_corrected=allow_leaving_corrected)
+    return _plan(project, before, fingerprint, after, allow_leaving_corrected)
 
 
 def _lamella_key(project: Project, lamella: Lamella) -> str:
@@ -395,8 +395,24 @@ def plan_corrections(
     Raises:
         FamiliesValidationError: Carrying every reason the change is refused.
     """
+    before, fingerprint = _read(project.path)
+    return _plan(project, before, fingerprint, after, allow_leaving_corrected)
+
+
+def _plan(
+    project: Project,
+    before: ProjectFamilies,
+    fingerprint: Fingerprint | None,
+    after: ProjectFamilies,
+    allow_leaving_corrected: bool,
+) -> FamiliesChange:
+    """Return what replacing *before*, read with *fingerprint*, by *after* would do.
+
+    The file is read once per plan, so the fingerprint a write is checked
+    against is that of the corrections the change was worked out from
+    (``test_a_file_changed_while_a_change_is_planned_is_not_written_over``).
+    """
     root = project.path
-    before, fingerprint = _read(root)
     entries = _entry_changes(before, after)
     change = FamiliesChange(
         project_root=root, project=project.display_name,

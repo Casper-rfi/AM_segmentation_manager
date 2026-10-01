@@ -21,6 +21,7 @@ from am_segmentation_manager.families import (
 from am_segmentation_manager.history import Recorder, read_log
 from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.models import Project
+from am_segmentation_manager.operations import families_edit
 from am_segmentation_manager.operations.families_edit import (
     FamiliesValidationError,
     apply_families_change,
@@ -310,6 +311,28 @@ def test_a_file_edited_after_the_preview_is_not_written_over(tmp_path: Path):
 
     assert (stage.parents[1] / AM_FAMILIES_FILENAME).read_text(encoding="utf-8") == edited
     assert (stage / "AM_state.yaml").read_text(encoding="utf-8") == before
+
+
+def test_a_file_changed_while_a_change_is_planned_is_not_written_over(
+    tmp_path: Path, monkeypatch
+):
+    """The file is read once, so an edit landing mid-plan makes the plan stale."""
+    stage = _stage(tmp_path, "sem", "sem_mag2")
+    path = stage.parents[1] / AM_FAMILIES_FILENAME
+    edited = "families:\n  sem_mag2: sem-other\n"
+
+    def read_then_edit(root: Path):
+        corrections = read_families(root)
+        if not path.exists():
+            path.write_text(edited, encoding="utf-8")
+        return corrections
+
+    monkeypatch.setattr(families_edit, "read_families", read_then_edit)
+    change = plan_families_change(_project(tmp_path), families={"sem_mag2": "sem-mag2"})
+
+    with pytest.raises(StaleFamilies):
+        apply_families_change(change)
+    assert path.read_text(encoding="utf-8") == edited
 
 
 def _headers(monkeypatch, headers: dict[str, ImageMetadata] | None) -> None:
