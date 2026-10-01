@@ -344,7 +344,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.label_panel = LabelPanel(
             self.label_controller, VersionController(self._attribution)
         )
-        self.families_controller = FamiliesController()
+        self.families_controller = FamiliesController(self._attribution)
         self.metadata_panel = MetadataPanel(self.metadata_controller, self.families_controller)
 
         self._build_layout()
@@ -635,6 +635,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # Editing metadata changes what the export view groups by, so it has to
         # be told rather than left showing the previous sample name.
         self.metadata_panel.metadata_changed.connect(self.export_panel.refresh)
+        # A family change regroups images, which only a scan can show.
+        self.metadata_panel.families_changed.connect(self.rescan)
+        self.metadata_panel.may_change_families = self._may_change_families
         self.metadata_panel.project_path_requested.connect(
             lambda row: self._copy_path(self.metadata_controller.project_path(row), "Project")
         )

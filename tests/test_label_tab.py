@@ -2421,3 +2421,25 @@ def test_every_class_button_is_named_for_the_ink_ring(window):
     buttons = window.label_panel.paint_buttons.values()
     assert buttons
     assert all(button.objectName() == CLASS_BUTTON for button in buttons)
+
+
+def test_a_families_change_asks_about_label_edits_waiting_in_its_project(
+    window, monkeypatch, tmp_path: Path
+):
+    """A move can change which label a condition reads, so they are settled first."""
+    paint_on(window)
+    asked: list[str] = []
+
+    def warning(parent, title, text, *args):
+        asked.append(title)
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(QMessageBox, "warning", warning)
+    project = window.controller.project
+    elsewhere = type(project)(name="other", path=tmp_path / "elsewhere")
+
+    assert window._may_change_families(elsewhere) is True
+    assert asked == []
+    assert window._may_change_families(project) is False
+    assert asked == ["Unsaved label edits"]
+    assert window.label_controller.pending_count() == 1, "cancelled, so kept"

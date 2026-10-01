@@ -1,8 +1,10 @@
-"""The families view model: one project's families of imaging conditions, as a tree.
+"""The families view model: one project's families of imaging conditions, and changes to them.
 
 Wraps :mod:`am_segmentation_manager.operations.families_edit` so a widget can show
-which conditions form which family, and which stands for each, without knowing how
-``AM_families.yaml`` is read. Families are a project's, so a scope of several
+which conditions form which family, collect changes, preview and apply them,
+without knowing how ``AM_families.yaml`` is read or written. Changes are held here
+until saved, and the tree shows them as if they were; every rule about whether one
+may be made is the operation's. Families are a project's, so a scope of several
 projects shows none. Qt-free, like the other controllers.
 """
 from __future__ import annotations
@@ -11,9 +13,23 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ..families import FamiliesFileError, read_families
-from ..layout import condition_of
+from ..history import Recorder
+from ..layout import (
+    NO_CORRECTIONS,
+    FamilyCorrections,
+    classify_image_directory,
+    condition_of,
+    correction_problems,
+)
 from ..models import Project
-from ..operations.families_edit import FamilySummary, summarise_families
+from ..operations.families_edit import (
+    FamiliesChange,
+    apply_families_change,
+    plan_families_change,
+    summarise_families,
+)
+from ..operations.init_history import writing_recorder
+from .attribution import Attribution
 
 
 @dataclass(frozen=True)
@@ -23,10 +39,12 @@ class ConditionRow:
     Attributes:
         name: The image directory's name.
         stages: How many of the project's stages hold it.
-        moved: Whether the project's ``AM_families.yaml`` places it in this family.
-        primary: Whether it stands for the family: named so in the file, or
-            chosen by the default rule where the file names none.
-        named_primary: Whether the file names it as the primary.
+        moved: Whether it sits in another family than its name gives.
+        primary: Whether it stands for the family: named so, or chosen by the
+            default rule where none is named.
+        named_primary: Whether it is named as the primary.
+        unsaved: Whether a change made here and not yet saved put it where it
+            is, or made it the primary.
     """
 
     name: str
@@ -34,6 +52,7 @@ class ConditionRow:
     moved: bool = False
     primary: bool = False
     named_primary: bool = False
+    unsaved: bool = False
 
     @property
     def note(self) -> str:
@@ -43,6 +62,8 @@ class ConditionRow:
             parts.append("primary" if self.named_primary else "primary (default)")
         if self.moved:
             parts.append("moved by AM_families.yaml")
+        if self.unsaved:
+            parts.append("not saved")
         return ", ".join(parts)
 
 
@@ -60,23 +81,50 @@ class FamilyNode:
     family: str
     conditions: tuple[ConditionRow, ...]
 
+    @property
+    def primary(self) -> ConditionRow | None:
+        """Return the condition standing for the family."""
+        return next((row for row in self.conditions if row.primary), None)
+
 
 class FamiliesController:
     """Drives the Families box of the Add data tab."""
 
-    def __init__(self) -> None:
+    def __init__(self, attribution: Attribution | None = None) -> None:
+        #: Who changes are recorded as, shared with every other view.
+        self.attribution = attribution if attribution is not None else Attribution()
+        #: Whether changes may be saved; the tab's one switch sets it.
+        self.editing_enabled = False
         self._project: Project | None = None
         self._several = False
         self._problem = ""
+        #: Changes not yet saved: condition to family, None for the name's own.
+        self._families: dict[str, str | None] = {}
+        #: Changes not yet saved: family to primary, None for the default.
+        self._primary: dict[str, str | None] = {}
+
+    @property
+    def recorder(self) -> Recorder:
+        """Where this view's changes are recorded."""
+        return self.attribution.recorder
+
+    # -- what is shown ------------------------------------------------------
 
     def set_scope(self, projects: Sequence[Project]) -> None:
-        """Show the families of the one project in *projects*, or none where there are several."""
+        """Show the families of the one project in *projects*, or none where there are several.
+
+        Unsaved changes are kept while the project stays the same one, as it
+        does when the folder is read again, and dropped when it changes.
+        """
+        project = projects[0] if len(projects) == 1 else None
+        if project is None or self._project is None or project.path != self._project.path:
+            self.discard()
         self._several = len(projects) > 1
-        self._project = projects[0] if len(projects) == 1 else None
+        self._project = project
         self._problem = ""
-        if self._project is not None:
+        if project is not None:
             try:
-                read_families(self._project.path)
+                read_families(project.path)
             except FamiliesFileError as error:
                 self._problem = f"{error}; correct the file by hand first"
 
@@ -84,6 +132,11 @@ class FamiliesController:
     def project(self) -> Project | None:
         """Return the project whose families are shown, or None."""
         return self._project
+
+    @property
+    def editable(self) -> bool:
+        """Return whether this project's families can be changed here at all."""
+        return self._project is not None and not self._problem
 
     def status(self) -> str:
         """Return the line above the tree: why nothing is shown, or what is.
@@ -102,46 +155,228 @@ class FamiliesController:
         return ""
 
     def tree(self) -> tuple[FamilyNode, ...]:
-        """Return the project's families as its scan resolved them, SEM first."""
+        """Return the project's families, with the changes not yet saved, SEM first."""
         if self._project is None:
             return ()
-        return tuple(
-            self._node(summary) for summary in summarise_families(self._project)
-        )
+        corrections = self._project.families
+        members: dict[tuple[str, str], list[tuple[str, int]]] = {}
+        spelled: dict[tuple[str, str], str] = {}
+        for summary in summarise_families(self._project):
+            spelled[(summary.modality, summary.family.lower())] = summary.family
+            for name, stages in summary.conditions:
+                family = self.family_of(name)
+                key = (summary.modality, family.lower())
+                spelled.setdefault(key, family)
+                members.setdefault(key, []).append((name, stages))
 
-    def _node(self, summary: FamilySummary) -> FamilyNode:
+        nodes = []
+        for key in sorted(members, key=lambda item: (item[0] != "SEM", item[1])):
+            family = spelled[key]
+            conditions = sorted(
+                members[key],
+                key=lambda item: (item[0].lower() != family.lower(), item[0].lower()),
+            )
+            nodes.append(self._node(key[0], family, conditions, corrections))
+        return tuple(nodes)
+
+    def _node(
+        self,
+        modality: str,
+        family: str,
+        conditions: Sequence[tuple[str, int]],
+        corrections: FamilyCorrections,
+    ) -> FamilyNode:
         """Return one family, marking the condition that stands for it."""
-        names = [name for name, _ in summary.conditions]
-        named = summary.primary
+        names = [name for name, _ in conditions]
+        pending = _lookup(self._primary, family)
+        named = pending[1] if pending is not None else corrections.primary_of(family)
         held = next((name for name in names if named and name.lower() == named.lower()), None)
-        primary = held if held is not None else self._default_primary(names)
+        primary = held if held is not None else min(
+            names, key=lambda name: _base_first(self._variant_in(name, family))
+        )
         return FamilyNode(
-            modality=summary.modality,
-            family=summary.family,
+            modality=modality,
+            family=family,
             conditions=tuple(
                 ConditionRow(
                     name=name,
                     stages=stages,
-                    moved=name in summary.moved,
+                    moved=self.family_of(name).lower() != _name_family(name).lower(),
                     primary=name == primary,
                     named_primary=held is not None and name == held,
+                    unsaved=_lookup(self._families, name) is not None
+                    or (pending is not None and name == primary),
                 )
-                for name, stages in summary.conditions
+                for name, stages in conditions
             ),
         )
 
-    def _default_primary(self, names: Sequence[str]) -> str | None:
-        """Return the condition the default rule chooses: the base, else the first variant.
+    def family_of(self, condition: str) -> str:
+        """Return the family *condition* is in, counting changes not yet saved."""
+        pending = _lookup(self._families, condition)
+        if pending is not None:
+            return pending[1] if pending[1] is not None else _name_family(condition)
+        assert self._project is not None, "only asked of a project's conditions"
+        moved = self._project.families.family_of(condition)
+        return moved if moved is not None else _name_family(condition)
 
-        By the variant each has in its family, as
-        :func:`~...frames.primary_among` orders them.
+    def family_options(self, condition: str) -> list[tuple[str, str]]:
+        """Return ``(caption, family)`` for each family *condition* could join.
+
+        Its beam's families, as the tree shows them, and the family its name
+        gives, captioned as such, whether or not anything else is in it.
         """
+        own = _name_family(condition)
+        modality = _modality(condition)
+        families = [node.family for node in self.tree() if node.modality == modality]
+        if not any(family.lower() == own.lower() for family in families):
+            families.append(own)
+        return [
+            (f"{family} (its name)" if family.lower() == own.lower() else family, family)
+            for family in families
+        ]
+
+    # -- changing -----------------------------------------------------------
+
+    @property
+    def has_changes(self) -> bool:
+        """Return whether anything is changed here and not saved."""
+        return bool(self._families or self._primary)
+
+    def family_problem(self, condition: str, family: str) -> str:
+        """Return why *condition* cannot join *family*, or an empty string if it can."""
+        return "; ".join(correction_problems({condition: family}, {}))
+
+    def set_family(self, condition: str, family: str) -> None:
+        """Place *condition* in *family*, held until saved.
+
+        Its name's own family clears any correction. A condition named as its
+        family's primary gives that up as it leaves, since a primary must
+        belong to the family it stands for.
+
+        Raises:
+            ValueError: If *family* is no family *condition* may join.
+        """
+        problem = self.family_problem(condition, family)
+        if problem:
+            raise ValueError(problem)
+        before = self.family_of(condition)
+        if before.lower() == family.lower():
+            return
+        target = None if family.lower() == _name_family(condition).lower() else family
+        assert self._project is not None, "only asked of a project's conditions"
+        on_file = self._project.families.family_of(condition)
+        _set(self._families, condition, target, unchanged=_same(on_file, target))
+
+        named = self._named_primary(before)
+        if named is not None and named.lower() == condition.lower():
+            self.set_primary(before, None)
+
+    def set_primary(self, family: str, condition: str | None) -> None:
+        """Name *condition* as *family*'s primary, or None for the default, held until saved."""
         assert self._project is not None, "only asked of a project's families"
-        corrections = self._project.families
+        on_file = self._project.families.primary_of(family)
+        _set(self._primary, family, condition, unchanged=_same(on_file, condition))
 
-        def order(name: str) -> tuple[bool, str]:
-            parsed = condition_of(name, corrections)
-            variant = parsed.variant if parsed is not None else name
-            return variant is not None, (variant or "").lower()
+    def discard(self) -> None:
+        """Forget every change not yet saved."""
+        self._families.clear()
+        self._primary.clear()
 
-        return min(names, key=order) if names else None
+    def _named_primary(self, family: str) -> str | None:
+        """Return the condition named as *family*'s primary, counting unsaved changes."""
+        pending = _lookup(self._primary, family)
+        if pending is not None:
+            return pending[1]
+        assert self._project is not None, "only asked of a project's families"
+        return self._project.families.primary_of(family)
+
+    def _variant_in(self, condition: str, family: str) -> str | None:
+        """Return *condition*'s variant in *family*, as resolution would give it."""
+        if family.lower() == _name_family(condition).lower():
+            corrections = NO_CORRECTIONS
+        else:
+            corrections = FamilyCorrections(families={condition: family})
+        parsed = condition_of(condition, corrections)
+        return parsed.variant if parsed is not None else condition
+
+    # -- saving -------------------------------------------------------------
+
+    def plan(self) -> FamiliesChange:
+        """Return what saving the changes would do, writing nothing.
+
+        Planned with leaving a corrected group allowed: the window counts
+        those with :func:`leaving_corrected` and asks before saving.
+
+        Raises:
+            FamiliesValidationError: Carrying every reason the change is refused.
+            ValueError: If no project is in scope.
+        """
+        if self._project is None:
+            raise ValueError("Choose one project to change its families")
+        return plan_families_change(
+            self._project,
+            families=self._families,
+            primary=self._primary,
+            allow_leaving_corrected=True,
+        )
+
+    def apply(self, change: FamiliesChange) -> FamiliesChange:
+        """Write a planned change, and forget the changes it carried.
+
+        Raises:
+            PermissionError: If editing has not been enabled.
+            StaleFamilies: If the families file changed since the plan read it.
+            StaleState: If a stage's state file did.
+        """
+        if not self.editing_enabled:
+            raise PermissionError("Editing is disabled")
+        assert self._project is not None, "a change is planned for a project"
+        batch = writing_recorder([self._project], self.recorder)
+        applied = apply_families_change(change, recorder=batch)
+        self.discard()
+        return applied
+
+
+def leaving_corrected(change: FamiliesChange) -> int:
+    """Return how many images *change* takes out of a corrected group."""
+    return sum(1 for effect in change.states.effects if effect.old == "corrected")
+
+
+def _name_family(condition: str) -> str:
+    """Return the family *condition*'s name gives it."""
+    parsed = classify_image_directory(condition)
+    return parsed.family if parsed is not None else condition
+
+
+def _modality(condition: str) -> str | None:
+    """Return the beam *condition*'s name gives it."""
+    parsed = classify_image_directory(condition)
+    return parsed.modality if parsed is not None else None
+
+
+def _base_first(variant: str | None) -> tuple[bool, str]:
+    """Order a family's conditions as the default primary rule does."""
+    return variant is not None, (variant or "").lower()
+
+
+def _same(first: str | None, second: str | None) -> bool:
+    """Return whether two names, either absent, are the same whatever the case."""
+    return (first or "").lower() == (second or "").lower()
+
+
+def _lookup(entries: dict[str, str | None], key: str) -> tuple[str, str | None] | None:
+    """Return ``(key as held, value)`` for *key* in any case, or None if absent."""
+    return next(
+        ((held, value) for held, value in entries.items() if held.lower() == key.lower()),
+        None,
+    )
+
+
+def _set(entries: dict[str, str | None], key: str, value: str | None, *, unchanged: bool) -> None:
+    """Hold *value* for *key*, or forget the key where it matches what is saved."""
+    held = _lookup(entries, key)
+    if held is not None:
+        del entries[held[0]]
+    if not unchanged:
+        entries[key] = value

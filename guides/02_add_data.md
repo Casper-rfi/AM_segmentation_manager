@@ -151,12 +151,19 @@ am-seg edit-metadata /path/to/collection --all --set organisation="Rosalind Fran
 A folder's name places it in a family, and a family shares one label. Where
 the names got it wrong -- `sem2kVb` showing the same scene as `sem-2kV`, or
 `sem_mag2` taken at another magnification than the rest of `sem` -- correct it
-from the command line. No folder is renamed: the correction is kept in the
-project's `AM_families.yaml`, which travels with the data.
+here or from the command line. No folder is renamed: the correction is kept in
+the project's `AM_families.yaml`, which travels with the data.
 
 **Families**, under a project's fields, shows them: each beam's families, their
 conditions, how many stages hold each, which one is primary, and which the file
-has moved. Choose one project to see it; a folder of several shows none.
+has moved. Choose one project to see it; a folder of several shows none. With
+**Enable editing** on, select a condition and choose its **Family**: one of the
+beam's, the one its name gives, or *New family...* to name one. **Make primary**
+names the family's primary, and **Default primary** goes back to the rule
+below. Changes show as *not saved* until **Save**, which checks them as
+`edit-families` does, asks before taking images out of a corrected group, and
+first asks you to save or discard label edits waiting in the project. The
+folder is read again afterwards. From the command line:
 
 ```bash
 am-seg show-families /path/to/collection --project 003

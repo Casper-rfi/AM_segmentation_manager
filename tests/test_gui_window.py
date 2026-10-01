@@ -5936,3 +5936,107 @@ def test_the_families_box_asks_for_one_project_over_a_folder(qt_app, tmp_path: P
         assert panel.families_status.text() == "Choose one project to see its families."
     finally:
         destroy(panel)
+
+
+def _choose(panel, condition: str, family: str) -> None:
+    """Select *condition* in the families tree and choose *family* for it."""
+    [item] = panel.families_tree.findItems(
+        condition, Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
+    )
+    panel.families_tree.setCurrentItem(item)
+    combo = panel.family_combo
+    index = next(row for row in range(combo.count()) if combo.itemData(row) == family)
+    combo.setCurrentIndex(index)
+    combo.activated.emit(index)
+
+
+def _note(panel, condition: str) -> str:
+    [item] = panel.families_tree.findItems(
+        condition, Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
+    )
+    return item.text(2)
+
+
+def test_one_switch_unlocks_the_fields_and_the_families(qt_app, tmp_path: Path):
+    panel = _families_panel(tmp_path)
+    try:
+        assert not panel.fields_box.isAncestorOf(panel.enable)
+        _choose(panel, "sem_fi4", "sem-5kV")
+        assert not panel.families_save_button.isEnabled(), "a change is held, not saved"
+
+        panel.enable.setChecked(True)
+
+        assert panel.family_combo.isEnabled()
+        assert panel.families_save_button.isEnabled()
+    finally:
+        destroy(panel)
+
+
+def test_a_family_chosen_is_shown_and_written_on_save(qt_app, tmp_path: Path):
+    panel = _families_panel(tmp_path)
+    saved: list[bool] = []
+    panel.families_changed.connect(lambda: saved.append(True))
+    try:
+        panel.enable.setChecked(True)
+        _choose(panel, "sem_fi4", "sem-5kV")
+        assert _note(panel, "sem_fi4") == "moved by AM_families.yaml, not saved"
+
+        panel.families_preview_button.click()
+        assert "sem_fi4: family as named -> sem-5kV" in panel.families_message.text()
+        panel.families_save_button.click()
+
+        project = tmp_path / "batch" / "20260930_adaptive_milling"
+        assert "sem_fi4: sem-5kV" in (project / "AM_families.yaml").read_text()
+        assert saved == [True], "the window reads the folder again"
+        assert panel.families_message.text().startswith("Saved.")
+    finally:
+        destroy(panel)
+
+
+def test_waiting_label_edits_can_stop_a_families_save(qt_app, tmp_path: Path):
+    panel = _families_panel(tmp_path)
+    panel.may_change_families = lambda project: False
+    try:
+        panel.enable.setChecked(True)
+        _choose(panel, "sem_fi4", "sem-5kV")
+
+        panel.families_save_button.click()
+
+        assert panel.families_message.text() == "Not saved"
+        assert not (tmp_path / "batch" / "20260930_adaptive_milling" / "AM_families.yaml").exists()
+    finally:
+        destroy(panel)
+
+
+@pytest.mark.parametrize("answer, written", [("No", False), ("Yes", True)])
+def test_leaving_a_corrected_group_is_asked_first(qt_app, tmp_path: Path, monkeypatch, answer, written):
+    panel = _families_panel(tmp_path)
+    stage = tmp_path / "batch" / "20260930_adaptive_milling" / "lam_010"
+    (stage / "sem_labels").mkdir()
+    (stage / "sem_labels" / "img_0004.tif").write_bytes(b"")
+    (stage / "AM_state.yaml").write_text(
+        "version: 1\nstate:\n  sem_labels/img_0004.tif: corrected\n", encoding="utf-8"
+    )
+    asked: list[str] = []
+
+    def question(parent, title, text, *args):
+        asked.append(text)
+        return getattr(QMessageBox.StandardButton, answer)
+
+    from qtpy.QtWidgets import QInputDialog
+
+    from am_segmentation_manager.gui.widgets.metadata_panel import NEW_FAMILY
+
+    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("sem-fi4", True))
+    try:
+        panel.enable.setChecked(True)
+        _choose(panel, "sem_fi4", NEW_FAMILY)
+        assert _note(panel, "sem_fi4").endswith("not saved"), "the new family is named"
+
+        panel.families_save_button.click()
+
+        assert len(asked) == 1 and asked[0].startswith("1 image(s) would leave")
+        assert (stage.parent / "AM_families.yaml").exists() is written
+    finally:
+        destroy(panel)

@@ -7,9 +7,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from am_segmentation_manager.gui.families_controller import FamiliesController
+import pytest
+
+from am_segmentation_manager.families import AM_FAMILIES_FILENAME, StaleFamilies, read_families
+from am_segmentation_manager.gui.attribution import Attribution
+from am_segmentation_manager.gui.families_controller import (
+    FamiliesController,
+    leaving_corrected,
+)
+from am_segmentation_manager.history import Recorder, read_log
 from am_segmentation_manager.models import Project
+from am_segmentation_manager.operations.families_edit import FamiliesValidationError
 from am_segmentation_manager.scanner import Scanner
+from am_segmentation_manager.state import read_state
 
 
 def scan(root: Path, families: str | None = None, **stages: tuple[str, ...]) -> list[Project]:
@@ -114,3 +124,188 @@ def test_nothing_selected_says_so():
     controller.set_scope([])
 
     assert controller.status() == "No project selected."
+
+
+# ---------------------------------------------------------------------------
+# Changes held until saved
+# ---------------------------------------------------------------------------
+
+def two_families(tmp_path: Path, families: str | None = None) -> FamiliesController:
+    """Return a controller on a project of the sem and sem-5kV families, editing on."""
+    projects = scan(tmp_path, families, lam_010=("sem", "sem_fi4", "sem_b", "sem-5kV", "FIB"))
+    controller = FamiliesController(Attribution(Recorder()))
+    controller.set_scope(projects)
+    controller.editing_enabled = True
+    return controller
+
+
+def members(controller: FamiliesController, family: str) -> list[tuple[str, str]]:
+    """Return ``(condition, note)`` for each condition of *family* in the tree."""
+    node = next(node for node in controller.tree() if node.family == family)
+    return [(row.name, row.note) for row in node.conditions]
+
+
+def test_a_moved_condition_shows_in_its_new_family_until_saved(tmp_path: Path):
+    controller = two_families(tmp_path)
+
+    controller.set_family("sem_b", "sem-5kV")
+
+    assert members(controller, "sem-5kV") == [
+        ("sem-5kV", "primary (default)"),
+        ("sem_b", "moved by AM_families.yaml, not saved"),
+    ]
+    assert [name for name, _ in members(controller, "sem")] == ["sem", "sem_fi4"]
+    assert controller.has_changes
+    assert not (tmp_path / "project" / AM_FAMILIES_FILENAME).exists(), "nothing written"
+
+
+def test_a_condition_can_form_a_family_of_its_own(tmp_path: Path):
+    controller = two_families(tmp_path)
+
+    controller.set_family("sem_b", "sem-b")
+
+    assert members(controller, "sem-b") == [
+        ("sem_b", "primary (default), moved by AM_families.yaml, not saved"),
+    ]
+
+
+def test_moving_back_to_where_it_is_saved_is_no_change(tmp_path: Path):
+    controller = two_families(tmp_path)
+    controller.set_family("sem_b", "sem-5kV")
+
+    controller.set_family("sem_b", "SEM")
+
+    assert not controller.has_changes
+    assert controller.family_of("sem_b") == "sem"
+
+
+def test_a_saved_move_is_undone_by_choosing_the_names_own_family(tmp_path: Path):
+    controller = two_families(tmp_path, "version: 1\nfamilies:\n  sem_b: sem-5kV\n")
+
+    controller.set_family("sem_b", "sem")
+
+    assert ("sem_b", "not saved") in members(controller, "sem")
+    assert controller.plan().after.families == {}
+
+
+def test_a_family_a_condition_cannot_join_is_refused(tmp_path: Path):
+    controller = two_families(tmp_path)
+
+    with pytest.raises(ValueError, match="cannot join the FIB family"):
+        controller.set_family("sem_b", "fib-x")
+    with pytest.raises(ValueError, match="not a family name"):
+        controller.set_family("sem_b", "sem_x")
+    assert not controller.has_changes
+
+
+def test_the_options_are_the_beams_families_and_the_names_own(tmp_path: Path):
+    controller = two_families(tmp_path)
+
+    assert controller.family_options("sem_b") == [("sem (its name)", "sem"), ("sem-5kV", "sem-5kV")]
+
+
+def test_a_primary_named_here_shows_until_saved(tmp_path: Path):
+    controller = two_families(tmp_path)
+
+    controller.set_primary("sem", "sem_fi4")
+
+    assert members(controller, "sem") == [
+        ("sem", ""), ("sem_b", ""), ("sem_fi4", "primary, not saved"),
+    ]
+    controller.set_primary("sem", None)
+    assert not controller.has_changes
+
+
+def test_moving_a_named_primary_out_gives_up_its_primary(tmp_path: Path):
+    controller = two_families(tmp_path, "version: 1\nprimary:\n  sem: sem_fi4\n")
+
+    controller.set_family("sem_fi4", "sem-5kV")
+
+    assert controller.plan().after.primary == {}
+
+
+def test_changes_are_kept_while_the_project_stays_and_dropped_when_it_changes(tmp_path: Path):
+    controller = two_families(tmp_path)
+    controller.set_family("sem_b", "sem-5kV")
+    project = controller.project
+    assert project is not None
+
+    controller.set_scope([project])
+    assert controller.has_changes
+    controller.set_scope([])
+    assert not controller.has_changes
+
+
+# ---------------------------------------------------------------------------
+# Saving
+# ---------------------------------------------------------------------------
+
+def test_saving_writes_the_file_records_it_and_forgets_the_changes(tmp_path: Path):
+    controller = two_families(tmp_path)
+    controller.set_family("sem_b", "sem-5kV")
+
+    change = controller.apply(controller.plan())
+
+    assert change.applied
+    project = tmp_path / "project"
+    assert read_families(project).families == {"sem_b": "sem-5kV"}
+    assert [
+        (event.data["key"], event.data["new"])
+        for event in read_log(project).events if event.kind == "family-changed"
+    ] == [("sem_b", "sem-5kV")]
+    assert not controller.has_changes
+
+
+def test_saving_is_refused_until_editing_is_enabled(tmp_path: Path):
+    controller = two_families(tmp_path)
+    controller.set_family("sem_b", "sem-5kV")
+    change = controller.plan()
+    controller.editing_enabled = False
+
+    with pytest.raises(PermissionError):
+        controller.apply(change)
+
+
+def test_a_file_changed_since_the_plan_is_not_overwritten(tmp_path: Path):
+    controller = two_families(tmp_path)
+    controller.set_family("sem_b", "sem-5kV")
+    change = controller.plan()
+    (tmp_path / "project" / AM_FAMILIES_FILENAME).write_text(
+        "version: 1\nfamilies:\n  sem_fi4: sem-fi4\n", encoding="utf-8"
+    )
+
+    with pytest.raises(StaleFamilies):
+        controller.apply(change)
+    assert read_families(tmp_path / "project").families == {"sem_fi4": "sem-fi4"}
+
+
+def test_a_refused_change_carries_every_reason(tmp_path: Path):
+    """Swapping one labelled directory for another is the planner's to refuse."""
+    controller = two_families(tmp_path)
+    for name in ("sem_labels", "sem-5kV_labels"):
+        labels = tmp_path / "project" / "lam_010" / name
+        labels.mkdir()
+        (labels / "img_0004.tif").write_bytes(b"")
+    controller.set_family("sem_b", "sem-5kV")
+
+    with pytest.raises(FamiliesValidationError) as refused:
+        controller.plan()
+    assert refused.value.problems
+
+
+def test_images_leaving_a_corrected_group_are_counted(tmp_path: Path):
+    controller = two_families(tmp_path)
+    stage = tmp_path / "project" / "lam_010"
+    (stage / "sem_labels").mkdir()
+    (stage / "sem_labels" / "img_0004.tif").write_bytes(b"")
+    (stage / "AM_state.yaml").write_text(
+        "version: 1\nstate:\n  sem_labels/img_0004.tif: corrected\n", encoding="utf-8"
+    )
+    controller.set_scope(Scanner(tmp_path).build_index().all_projects())
+    controller.set_family("sem_b", "sem-b")
+
+    change = controller.plan()
+
+    assert leaving_corrected(change) == 1
+    controller.apply(change)
+    assert read_state(stage).states == {"sem_labels/img_0004.tif": "corrected"}

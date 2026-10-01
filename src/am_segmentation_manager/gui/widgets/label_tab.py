@@ -87,6 +87,21 @@ class LabelTab(_Window):
         return True
 
 
+    def _may_change_families(self, project) -> bool:
+        """Ask before a families change where label edits wait in *project*.
+
+        A move can change which label a condition reads, and an edit waiting
+        under the old one would be saved where that condition no longer looks.
+        The question is the one a change of lamella asks.
+        """
+        lamella = self.label_controller.lamella
+        if lamella is None or not self.label_controller.pending_count():
+            return True
+        root = project.path.resolve()
+        if root != lamella.path.resolve() and root not in lamella.path.resolve().parents:
+            return True
+        return self._may_discard_label_edits()
+
     def restore_label_version(self) -> None:
         """Put the chosen earlier version of this label back, having asked.
 
