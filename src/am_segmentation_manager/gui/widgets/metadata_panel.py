@@ -2,13 +2,10 @@
 
 A dot beside each field says whether it is filled in, and whether a change to
 it is still only in the window; hovering it names the YAML file the value came
-from, which is what explains a value that looks wrong. The project list marks
-how much of each project is described, so what is left to do is visible
-without opening every one.
-
-Editing is locked until switched on, matching the curation view, and a
-suggestion reaches a file only when the user saves. A project's families of
-imaging conditions are corrected beside its images, on Curate's Families tab.
+from. The project list marks how much of each project is described. Editing is
+locked until switched on, matching the curation view, and a suggestion reaches a
+file only when the user saves. A project's families of imaging conditions are
+corrected on Curate's Families tab.
 """
 from __future__ import annotations
 

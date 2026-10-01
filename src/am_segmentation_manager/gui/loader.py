@@ -1,14 +1,12 @@
 """Background preparation of frames.
 
-Reading an acquisition takes ~200 ms cold and a summary plot ~575 ms, and a
-cloud-synced folder can block for far longer. Doing any of that on the thread
-that draws the interface would freeze the window, so all of it happens here, on
-a worker thread that does nothing else.
-
-The worker is a thin shell: it takes requests, hands them to the cache, and
-reports what finished. Deciding *what* to prepare belongs to the controller.
-Requests reach it through a queue and its signals carry numbers and text, so no
-Python object rides a queued signal; ``gui/worker.py`` says why.
+Reading an acquisition or a summary plot is slow, and a cloud-synced folder can
+block for far longer, so none of it happens on the thread that draws the
+interface: it happens here, on a worker thread that does nothing else. The
+worker takes requests, hands them to the cache, and reports what finished;
+deciding *what* to prepare belongs to the controller. Requests reach it through
+a queue and its signals carry numbers and text, so no Python object rides a
+queued signal; ``gui/worker.py`` says why.
 """
 from __future__ import annotations
 

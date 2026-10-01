@@ -387,20 +387,6 @@ class StateChangeReach:
         return f"{self.shared} more share a label with this one"
 
 
-#: How a label's state is drawn on the timeline. A display decision, and the
-#: only place the two vocabularies meet: :mod:`.operations.label_io` says what
-#: a label *is*, and the timeline has three marks for it. UNREADABLE draws as
-#: annotated because the file does exist -- what is unknown is what is inside
-#: it, and drawing it as a placeholder would assert the one thing nobody could
-#: check.
-LABEL_DISPLAY: dict[str, str] = {
-    label_io.ANNOTATED: "present",
-    label_io.UNREADABLE: "present",
-    label_io.EMPTY: "empty",
-    label_io.MISSING: "missing",
-}
-
-
 class EditingDisabled(RuntimeError):
     """Raised when a state change is attempted while editing is switched off.
 
@@ -1230,16 +1216,10 @@ class CurationController:
         """
         return {
             modality: [
-                self._label_state(self._shown_in(frame, modality)) for frame in self._frames
+                self.known_labels.drawn(self._shown_in(frame, modality)) for frame in self._frames
             ]
             for modality in MODALITIES
         }
-
-    def _label_state(self, record) -> str | None:
-        """Return one record's label state as the timeline draws it."""
-        if record is None:
-            return None
-        return LABEL_DISPLAY[self.known_labels.state(record)]
 
     def set_target(self, target: EditTarget) -> None:
         """Choose whether state changes apply to SEM, FIB, or both."""

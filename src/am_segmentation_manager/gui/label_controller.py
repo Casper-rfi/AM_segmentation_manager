@@ -43,7 +43,7 @@ from ..operations.label_save import (
 from ..operations.selection import RecordState, current_state, transition_records
 from .attribution import Attribution
 from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
-from .controller import DEFAULT_SERIES, LABEL_DISPLAY
+from .controller import DEFAULT_SERIES
 from .known_labels import KnownLabels
 from .label_session import LabelSession
 
@@ -918,7 +918,7 @@ class LabelController:
         """Return each proofreadable frame's label state, for the timeline."""
         return {
             self._modality: [
-                self._label_state(self._shown_in(self._frames[index]))
+                self.known_labels.drawn(self._shown_in(self._frames[index]))
                 for index in self._positions
             ]
         }
@@ -1004,12 +1004,6 @@ class LabelController:
         record = self._shown_in(self._frames[index])
         assert record is not None, "a proofreadable frame has an image of its modality"
         return record
-
-    def _label_state(self, record) -> str | None:
-        """Return one record's label state as the timeline draws it."""
-        if record is None:
-            return None
-        return LABEL_DISPLAY[self.known_labels.state(record)]
 
     def label_sharers(self) -> list[str]:
         """Return the conditions of the frame on screen proofread through its label.

@@ -2,13 +2,11 @@
 
 Everything visual that carries no information is set here, so the window looks
 the same wherever it runs; see `docs/display.md` for why the style is set rather
-than inherited, and why a stylesheet rule beats a palette. It is kept short
-because Qt re-evaluates it whenever a widget is polished. The accent is one of
-:data:`ACCENTS`; every other colour is shared by all of them.
-
-Colours that carry *meaning* are not here: the workflow states and label lines
-live in :mod:`frame_strip`, and the class colours come from the segmentation
-config. Those are data, this is chrome.
+than inherited. It is kept short because Qt re-evaluates it whenever a widget is
+polished. The accent is one of :data:`ACCENTS`; every other colour is shared by
+all of them. Colours that carry *meaning* -- workflow states, label lines, class
+colours -- live in :mod:`frame_strip` and the segmentation config: those are
+data, this is chrome.
 """
 from __future__ import annotations
 

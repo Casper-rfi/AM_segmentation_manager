@@ -12,8 +12,22 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from ..models import ImageRecord
+from ..operations import label_io
 from ..operations.csv import find_matching_label
 from ..operations.label_io import classify_label, is_label_file_empty
+
+#: How a label's state is drawn on the timeline. A display decision, and the
+#: only place the two vocabularies meet: :mod:`.operations.label_io` says what
+#: a label *is*, and the timeline has three marks for it. UNREADABLE draws as
+#: annotated because the file does exist -- what is unknown is what is inside
+#: it, and drawing it as a placeholder would assert the one thing nobody could
+#: check.
+LABEL_DISPLAY: dict[str, str] = {
+    label_io.ANNOTATED: "present",
+    label_io.UNREADABLE: "present",
+    label_io.EMPTY: "empty",
+    label_io.MISSING: "missing",
+}
 
 
 class KnownLabels:
@@ -27,6 +41,10 @@ class KnownLabels:
         #: Each image's state and the label it was worked out from, **keyed by
         #: the image**, so forgetting a label reaches every image sharing it.
         self._states: dict[Path, tuple[Path | None, str]] = {}
+
+    def drawn(self, record: ImageRecord | None) -> str | None:
+        """Return *record*'s label state as the timeline draws it, None for no record."""
+        return LABEL_DISPLAY[self.state(record)] if record is not None else None
 
     def state(self, record: ImageRecord) -> str:
         """Return what *record*'s label holds, opening it only if nothing has."""

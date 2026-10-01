@@ -1,15 +1,12 @@
 """Bringing a worked-on copy back into the collection it came from.
 
 The copy's ``AM_export.yaml`` proves where it came from; **the common ancestor
-is the history the two logs share**, which a copy merged back before holds more
-of than its fork point names. **Every label is re-hashed on both sides**, never
-read from a log, since anything can edit a file without recording it. **A merge
-is additive and never guesses**: a target the copy lacks is not a deletion, no
-image moves, a target both sides changed differently is a conflict a person
-resolves, and both versions survive in the archive. **Family corrections are
-merged first**, per entry, against the fork point's copy of them, and labels are
-planned under the families the merge arrives at; a project with an undecided
-family is not planned further until it is decided.
+is the history the two logs share**. **Every label is re-hashed on both sides**,
+never read from a log. **A merge is additive and never guesses**: a target the
+copy lacks is not a deletion, no image moves, a target both sides changed
+differently is a conflict a person resolves, and both versions survive in the
+archive. **Family corrections are merged first**, against the fork point's copy,
+and labels are planned under the families the merge arrives at.
 """
 from __future__ import annotations
 

@@ -1,14 +1,13 @@
 """Filesystem naming conventions for Autolamella and legacy datasets.
 
 The single source of truth for what directories and image files are called. An
-image directory is ``<family>[_<variant>]``, the family starting with its modality,
-unless a project's :class:`FamilyCorrections` say otherwise; a family's conditions
-share ``<family>_labels``, which a single older spelling may stand in for
-(:func:`resolve_labels_directory`). Loose images carry their series
-and beam in the filename, read by :func:`classify_loose_image`. Nothing here reads
-workflow state, but ``deselected/`` and ``corrected/`` stay reserved so an
-unmigrated dataset is never read as selected. Only the image-set builders and the
-helpers at the end touch the filesystem, through :func:`directory_cache`'s listings.
+image directory is ``<family>[_<variant>]`` unless a project's
+:class:`FamilyCorrections` say otherwise; a family's conditions share
+``<family>_labels`` (:func:`resolve_labels_directory`). Loose images carry their
+series and beam in the filename (:func:`classify_loose_image`). Nothing here reads
+workflow state, but ``deselected/`` and ``corrected/`` stay reserved. Only the
+image-set builders and the helpers at the end touch the filesystem, through
+:func:`directory_cache`'s listings.
 """
 from __future__ import annotations
 

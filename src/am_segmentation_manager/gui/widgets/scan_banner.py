@@ -1,15 +1,12 @@
 """The panel shown over the window while the collection is being read.
 
-A scan holds the interface thread, so this says what is happening and how far it
-has got. **Each update turns the event loop once**, a repaint reaching the screen
-only when the main thread returns to the loop, which a blocking scan never does.
-**So input is stopped by this widget**: ``ExcludeUserInputEvents`` delivers a press
-already posted, so the banner filters the application and swallows every press,
-key and wheel meant for the window while it is up, and every request to close it
--- what makes turning the loop safe where ``busy_dialog.py`` says it is not.
-Timers and queued signals still run, so a modal dialog can open during a scan,
-and it alone is let through. An overlay rather than a dialog, a modal dialog
-needing the event loop to appear at all.
+A scan holds the interface thread, so **each update turns the event loop once**
+to reach the screen, and **this widget stops input** while it does: it filters
+the application, swallowing every press, key and wheel meant for the window and
+every request to close it -- what makes turning the loop safe where
+``busy_dialog.py`` says it is not. Timers and queued signals still run, so a
+modal dialog can open during a scan, and it alone is let through. An overlay
+rather than a dialog, a modal dialog needing the event loop to appear at all.
 """
 from __future__ import annotations
 
