@@ -36,6 +36,7 @@ from ..layout import (
     LABELS_SUFFIX,
     PREDICTIONS_SUFFIX,
     FamilyCorrections,
+    ProjectFamilies,
     classify_image_directory,
     condition_of,
     conflicting_label_directories,
@@ -156,7 +157,7 @@ class FamiliesChange:
     Attributes:
         project_root: The project.
         project: Its identity, for reporting.
-        before: The corrections as read.
+        before: The corrections as read, lamella sections included.
         after: The corrections as they would be written.
         fingerprint: The file as read, so a write over a later edit is refused.
         entries: One per entry that changes.
@@ -170,8 +171,8 @@ class FamiliesChange:
 
     project_root: Path
     project: str
-    before: FamilyCorrections
-    after: FamilyCorrections
+    before: ProjectFamilies
+    after: ProjectFamilies
     fingerprint: Fingerprint | None
     entries: tuple[EntryChange, ...] = ()
     moves: tuple[ConditionMove, ...] = ()
@@ -250,7 +251,7 @@ def summarise_families(project: Project) -> tuple[FamilySummary, ...]:
                 members[name] = members.get(name, 0) + 1
 
     summaries = []
-    corrections = project.families
+    corrections = project.families.project
     for key in sorted(counts, key=lambda item: (item[0] != "SEM", item[1])):
         members = counts[key]
         ordered = sorted(members, key=lambda name: (name != base.get(key), name.lower()))
@@ -286,15 +287,22 @@ def plan_families_change(
         FamiliesValidationError: Carrying every reason the change is refused.
     """
     before, _ = _read(project.path)
+    if before.has_lamellae:
+        raise FamiliesValidationError(
+            [
+                f"{families_file_path(project.path)} has lamella sections, which cannot "
+                f"be changed here; change the file by hand"
+            ]
+        )
     listings = _listings(project)
     conditions, spellings = _names(listings.values())
 
     problems: list[str] = []
     after_families = _requested_families(
-        before.families, families or {}, conditions, spellings, problems
+        before.project.families, families or {}, conditions, spellings, problems
     )
     after_primary = _requested_primary(
-        before.primary, primary or {}, conditions, spellings, problems
+        before.project.primary, primary or {}, conditions, spellings, problems
     )
     if not problems:
         problems.extend(correction_problems(after_families, after_primary))
@@ -302,14 +310,17 @@ def plan_families_change(
         raise FamiliesValidationError(problems)
     return plan_corrections(
         project,
-        FamilyCorrections(families=after_families, primary=after_primary),
+        ProjectFamilies(
+            project=FamilyCorrections(families=after_families, primary=after_primary),
+            lamellae=before.lamellae,
+        ),
         allow_leaving_corrected=allow_leaving_corrected,
     )
 
 
 def plan_corrections(
     project: Project,
-    after: FamilyCorrections,
+    after: ProjectFamilies,
     *,
     allow_leaving_corrected: bool = False,
 ) -> FamiliesChange:
@@ -343,9 +354,13 @@ def plan_corrections(
     if named and read is None:
         warnings.append("image headers were not compared: the image stack is not installed")
     for stage, siblings in listings.items():
-        _check_stage(stage, siblings, before, after, named, root, problems, moves, regroupings)
+        where = stage.relative_to(root).as_posix()
+        stage_before, stage_after = before.at(where), after.at(where)
+        _check_stage(
+            stage, siblings, stage_before, stage_after, named, root, problems, moves, regroupings
+        )
         if read is not None:
-            _check_headers(stage, siblings, after, named, root, read, problems, warnings)
+            _check_headers(stage, siblings, stage_after, named, root, read, problems, warnings)
     if problems:
         raise FamiliesValidationError(problems)
 
@@ -364,7 +379,7 @@ def plan_corrections(
     return replace(change, moves=tuple(moves), states=states, warnings=tuple(warnings))
 
 
-def _read(root: Path) -> tuple[FamilyCorrections, Fingerprint | None]:
+def _read(root: Path) -> tuple[ProjectFamilies, Fingerprint | None]:
     """Return a project's corrections and its file's fingerprint, taken first."""
     fingerprint = fingerprint_of(families_file_path(root))
     try:
@@ -528,12 +543,12 @@ def _requested_primary(
     return result
 
 
-def _entry_changes(before: FamilyCorrections, after: FamilyCorrections) -> tuple[EntryChange, ...]:
-    """Return one change per entry that differs, families before primary."""
+def _entry_changes(before: ProjectFamilies, after: ProjectFamilies) -> tuple[EntryChange, ...]:
+    """Return one change per project-wide entry that differs, families before primary."""
     changes: list[EntryChange] = []
     for section, old, new in (
-        (FAMILIES_SECTION, before.families, after.families),
-        (PRIMARY_SECTION, before.primary, after.primary),
+        (FAMILIES_SECTION, before.project.families, after.project.families),
+        (PRIMARY_SECTION, before.project.primary, after.project.primary),
     ):
         old_by_key = {key.lower(): (key, value) for key, value in old.items()}
         new_by_key = {key.lower(): (key, value) for key, value in new.items()}

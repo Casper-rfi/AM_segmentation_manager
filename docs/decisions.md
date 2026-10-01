@@ -33,6 +33,8 @@ rather than appending to it.
   serves two families**, as a base moved out of its family would (`test_two_families_never_read_one_label_directory`).
   **Only label directories are renamed**, a correction going in that file: merge pairs a copy by relative path, and
   manifests, CSVs and the history name image paths; fibsem 0.5.2 reopens from `experiment.yaml`, naming no image folder.
+  **A lamella's section replaces the project's entries there** (`test_a_lamella_entry_replaces_the_projects_there_only`),
+  in the one file, not one per lamella: merge, a copy and the history each carry a project's corrections whole.
 - **A copy is paired back to its original by what the acquisition software recorded, never by name
   or order**, both of which survive a copy unchanged. `scripts/place_renamed_labels.py` names the
   header facts that do and reads them itself, `image_metadata.py` having no use for an identity.

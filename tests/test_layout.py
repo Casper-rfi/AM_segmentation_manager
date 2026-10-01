@@ -1265,3 +1265,60 @@ def test_the_preferred_source_ranks_first_and_post_processed_last():
     assert sorted(
         [clean, am_seg, raw], key=lambda path: prediction_precedence(path, "microscope")
     ) == [raw, am_seg, clean]
+
+
+# ---------------------------------------------------------------------------
+# A lamella's corrections over its project's
+# ---------------------------------------------------------------------------
+
+def test_a_lamella_entry_replaces_the_projects_there_only():
+    from am_segmentation_manager.layout import FamilyEntries, ProjectFamilies
+
+    families = ProjectFamilies(
+        project=FamilyCorrections(families={"sem_x": "sem-5kV"}),
+        lamellae={"lam_003": FamilyEntries(families={"sem_x": "sem-2kV"})},
+    )
+
+    assert families.at("lam_003/adaptive_polish_1").family_of("sem_x") == "sem-2kV"
+    assert families.at("lam_003").family_of("sem_x") == "sem-2kV"
+    assert families.at("lam_0031/adaptive_polish_1").family_of("sem_x") == "sem-5kV"
+    assert families.at(".").family_of("sem_x") == "sem-5kV"
+
+
+def test_a_lamella_undoes_a_project_move_by_naming_the_family_its_name_gives():
+    from am_segmentation_manager.layout import FamilyEntries, ProjectFamilies
+
+    families = ProjectFamilies(
+        project=FamilyCorrections(families={"sem_x": "sem-5kV"}),
+        lamellae={"lam_003": FamilyEntries(families={"SEM_X": "sem"})},
+    )
+
+    assert condition_of("sem_x", families.at("lam_003")) == ImageDirectory("SEM", "x", "sem")
+
+
+def test_a_lamella_primary_may_rest_on_the_projects_move():
+    """Valid only combined: sem2kVb is in sem-2kV by the project's entry."""
+    from am_segmentation_manager.layout import FamilyEntries, ProjectFamilies
+
+    families = ProjectFamilies(
+        project=FamilyCorrections(families={"sem2kVb": "sem-2kV"}),
+        lamellae={"lam_003": FamilyEntries(primary={"sem-2kV": "sem2kVb"})},
+    )
+
+    assert families.at("lam_003").primary_of("sem-2kV") == "sem2kVb"
+
+
+@pytest.mark.parametrize(
+    ("key", "entries", "problem"),
+    [
+        ("lam_003", {"families": {"sem_x": "fib-x"}}, "lamellae: lam_003: sem_x is a SEM condition"),
+        ("../elsewhere", {}, "is not a path below the project root"),
+        (".", {}, "is not a path below the project root"),
+        ("/lam_003", {}, "is not a path below the project root"),
+    ],
+)
+def test_a_lamella_section_that_cannot_hold_is_refused(key, entries, problem):
+    from am_segmentation_manager.layout import FamilyEntries, ProjectFamilies
+
+    with pytest.raises(ValueError, match=problem.replace(".", r"\.")):
+        ProjectFamilies(lamellae={key: FamilyEntries(**entries)})

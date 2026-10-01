@@ -77,7 +77,7 @@ def test_a_condition_leaving_its_family_starts_unlabelled(tmp_path: Path):
 
     assert change.applied
     assert [move.image_directory.name for move in change.moves] == ["sem_mag2"]
-    assert read_families(stage.parents[1]).family_of("sem_mag2") == "sem-mag2"
+    assert read_families(stage.parents[1]).project.family_of("sem_mag2") == "sem-mag2"
     labels = _labels_of(tmp_path)
     assert labels["sem_mag2"] == stage / "sem-mag2_labels"
     assert labels["sem_fi8"] == stage / "sem_labels"
@@ -150,7 +150,7 @@ def test_names_are_matched_whatever_their_case_and_kept_as_on_disk(tmp_path: Pat
 
     update_families(_project(tmp_path), families={"SEM2KVB": "SEM-2KV"})
 
-    assert read_families(stage.parents[1]).families == {"sem2kVb": "sem-2kV"}
+    assert read_families(stage.parents[1]).project.families == {"sem2kVb": "sem-2kV"}
 
 
 def test_clearing_returns_a_condition_to_the_family_its_name_gives(tmp_path: Path):
@@ -178,10 +178,10 @@ def test_a_primary_is_set_and_cleared_without_moving_a_label(tmp_path: Path):
 
     change = update_families(_project(tmp_path), primary={"SEM": "SEM_FI8"})
     assert change.moves == ()
-    assert read_families(project_root).primary == {"sem": "sem_fi8"}
+    assert read_families(project_root).project.primary == {"sem": "sem_fi8"}
 
     update_families(_project(tmp_path), primary={"sem": None})
-    assert read_families(project_root).primary == {}
+    assert read_families(project_root).project.primary == {}
 
 
 def test_each_entry_is_recorded(tmp_path: Path):
@@ -291,6 +291,16 @@ def test_a_primary_outside_its_family_is_refused(tmp_path: Path):
     assert "belongs to family sem-2kV, not sem" in _refusal(tmp_path, primary={"sem": "sem-2kV"})
 
 
+def test_a_file_with_lamella_sections_is_refused_until_they_can_be_changed(tmp_path: Path):
+    stage = _stage(tmp_path, "sem", "sem_mag2")
+    (stage.parents[1] / AM_FAMILIES_FILENAME).write_text(
+        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem_mag2: sem-mag2\n",
+        encoding="utf-8",
+    )
+
+    assert "has lamella sections" in _refusal(tmp_path, primary={"sem": "sem_mag2"})
+
+
 def test_a_damaged_file_is_refused_until_corrected_by_hand(tmp_path: Path):
     _stage(tmp_path, "sem", "sem_mag2")
     (tmp_path / "project" / AM_FAMILIES_FILENAME).write_text("families: [\n", encoding="utf-8")
@@ -386,7 +396,7 @@ def test_the_command_previews_unless_told_to_apply(tmp_path: Path, capsys):
     assert not (project_root / AM_FAMILIES_FILENAME).exists()
 
     assert main([*command, "--apply"]) == 0
-    assert read_families(project_root).family_of("sem_mag2") == "sem-mag2"
+    assert read_families(project_root).project.family_of("sem_mag2") == "sem-mag2"
 
 
 def test_the_command_refuses_and_writes_nothing(tmp_path: Path, capsys):
@@ -409,7 +419,7 @@ def test_the_command_clears_an_entry_and_a_primary(tmp_path: Path):
 
     assert main([*base, "--clear", "sem_mag2", "--clear-primary", "sem"]) == 0
 
-    corrections = read_families(project_root)
+    corrections = read_families(project_root).project
     assert (corrections.families, corrections.primary) == ({}, {})
 
 

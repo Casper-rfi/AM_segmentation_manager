@@ -253,11 +253,11 @@ class LabelController:
         self._refresh_positions(keep_frame=keep_frame)
 
     def _corrections(self) -> FamilyCorrections:
-        """Return the family corrections of the project holding the lamella in view."""
+        """Return the family corrections in force in the lamella in view."""
         if self._lamella is None:
             return NO_CORRECTIONS
         holding = projects_holding([self._lamella.path], self.projects)
-        return holding[0].families if holding else NO_CORRECTIONS
+        return holding[0].families_at(self._lamella.path) if holding else NO_CORRECTIONS
 
     def available_series(self) -> list[str]:
         """Return the series this lamella holds images of, in display order.

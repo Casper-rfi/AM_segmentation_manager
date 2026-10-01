@@ -29,12 +29,13 @@ from .image_metadata import ImageMetadata, header_reader
 from .io.path import make_path_relative, slashed
 from .io.yaml import read_yaml_or_problem
 from .layout import (
-    NO_CORRECTIONS,
+    NO_PROJECT_FAMILIES,
     PREDICTION_KINDS,
     STAGE_SUMMARY_PLOTS,
     STAGE_TIMESTAMP,
     FamilyCorrections,
     ImageSet,
+    ProjectFamilies,
     build_image_sets,
     build_loose_image_sets,
     directory_cache,
@@ -169,7 +170,7 @@ class Scanner:
     def __init__(
         self,
         start_path: Path,
-        families: Mapping[Path, FamilyCorrections] | None = None,
+        families: Mapping[Path, ProjectFamilies] | None = None,
     ) -> None:
         """Create a scanner of *start_path*.
 
@@ -412,11 +413,11 @@ class Scanner:
         project.number = f"{project_index:03d}"
         project.families = self._families(project_root)
         project.lamellae = self._build_lamellae(
-            discovered, project_name, read_vocabularies(experiment_meta), project.families
+            discovered, project_name, read_vocabularies(experiment_meta), project
         )
         return project
 
-    def _families(self, project_root: Path) -> FamilyCorrections:
+    def _families(self, project_root: Path) -> ProjectFamilies:
         """Return a project's family corrections, or none if its file is damaged.
 
         Read as none so that one damaged file does not stop a scan, as a damaged
@@ -432,14 +433,14 @@ class Scanner:
                 "%s; indexing this project by its directory names alone, and "
                 "refusing to write to it until the file is fixed", exc,
             )
-            return NO_CORRECTIONS
+            return NO_PROJECT_FAMILIES
 
     def _build_lamellae(
         self,
         discovered_stages: list[DiscoveredStage],
         project_name: str,
         vocabularies: dict[str, TaskVocabulary],
-        corrections: FamilyCorrections,
+        project: Project,
     ) -> list[Lamella]:
         """Build the lamellae of a project, synthesising absent levels.
 
@@ -473,7 +474,7 @@ class Scanner:
                 lamella_name=lamella_path.name,
                 lamella_path=lamella_path,
                 vocabulary=vocabularies.get(lamella_path.name, NO_TASKS),
-                corrections=corrections,
+                project=project,
             )
             lamellae.append(lamella)
         # After every lamella is built: a copy is only recognisable against the
@@ -489,16 +490,18 @@ class Scanner:
         lamella_name: str,
         lamella_path: Path,
         vocabulary: TaskVocabulary,
-        corrections: FamilyCorrections,
+        project: Project,
     ) -> list[Stage]:
         """Build the stages of one lamella, ordered by acquisition time.
 
         Built before they are ordered, because a stage whose folder name
         carries no timestamp is placed by the images inside it, and those are
-        not known until it has been built.
+        not known until it has been built. Each is read under the corrections
+        in force there, its lamella's over its project's.
         """
         stages: list[Stage] = []
         for item in discovered:
+            corrections = project.families_at(item.path)
             stage = Stage(
                 name=item.path.name,
                 path=item.path,

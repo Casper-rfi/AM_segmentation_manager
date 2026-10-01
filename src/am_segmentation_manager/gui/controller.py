@@ -865,9 +865,11 @@ class CurationController:
         )
 
     def _corrections(self) -> FamilyCorrections:
-        """Return the family corrections of the project the lamella in view belongs to."""
-        project = self.project
-        return project.families if project is not None else NO_CORRECTIONS
+        """Return the family corrections in force in the lamella in view."""
+        project, lamella = self.project, self.lamella
+        if project is None or lamella is None:
+            return NO_CORRECTIONS
+        return project.families_at(lamella.path)
 
     def select_frame(self, position: int) -> None:
         """Move to a frame by index, clamped to the lamella's range."""

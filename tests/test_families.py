@@ -19,7 +19,7 @@ from am_segmentation_manager.families import (
     families_for,
     read_families,
 )
-from am_segmentation_manager.layout import NO_CORRECTIONS
+from am_segmentation_manager.layout import NO_CORRECTIONS, NO_PROJECT_FAMILIES
 from am_segmentation_manager.operations.label_groups import build_group, build_groups
 from am_segmentation_manager.operations.selection import record_from_image_path
 from am_segmentation_manager.scanner import Scanner
@@ -35,13 +35,13 @@ def _write(project: Path, text: str) -> None:
 # ---------------------------------------------------------------------------
 
 def test_a_project_without_the_file_has_no_corrections(tmp_path: Path):
-    assert read_families(tmp_path) is NO_CORRECTIONS
+    assert read_families(tmp_path) is NO_PROJECT_FAMILIES
 
 
 def test_an_empty_file_has_no_corrections(tmp_path: Path):
     _write(tmp_path, "# nothing yet\n")
 
-    assert read_families(tmp_path) is NO_CORRECTIONS
+    assert read_families(tmp_path) is NO_PROJECT_FAMILIES
 
 
 def test_the_file_is_read_into_corrections(tmp_path: Path):
@@ -55,7 +55,7 @@ def test_the_file_is_read_into_corrections(tmp_path: Path):
         "  SEM: SEM_8_fi_16\n",
     )
 
-    corrections = read_families(tmp_path)
+    corrections = read_families(tmp_path).project
 
     assert corrections.family_of("SEM_MAG2") == "sem-mag2"
     assert corrections.family_of("sem2kvb") == "sem-2kV"
@@ -68,7 +68,7 @@ def test_the_file_is_read_into_corrections(tmp_path: Path):
     [
         ("families:\n  sem_mag2: sem-a\n  sem_mag2: sem-b\n", "Duplicate entry"),
         ("families: {}\nvariants: {}\n", "unknown section variants"),
-        ("version: 2\n", "later version"),
+        ("version: 3\n", "later version"),
         ("version: one\n", "whole number"),
         ("families:\n  - sem_mag2\n", "must be a mapping"),
         ("families:\n  sem_mag2: 5\n", "not a name mapped to a name"),
@@ -119,6 +119,68 @@ def test_a_batch_reads_each_projects_file_once(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 CONDITIONS = ("sem", "sem_fi8", "sem_mag2")
+
+
+LAMELLA_FILE = (
+    "version: 2\n"
+    "families:\n  sem_mag2: sem-mag2\n"
+    "lamellae:\n"
+    "  lam_001:\n"
+    "    families:\n      sem_mag2: sem\n"
+    "    primary:\n      sem: sem_fi8\n"
+)
+
+
+def test_a_lamella_section_is_read_over_the_projects(tmp_path: Path):
+    _write(tmp_path, LAMELLA_FILE)
+
+    families = read_families(tmp_path)
+
+    assert families.at("lam_000").family_of("sem_mag2") == "sem-mag2"
+    assert families.at("lam_001/adaptive_polish_1").family_of("sem_mag2") == "sem"
+    assert families.at("lam_001").primary_of("sem") == "sem_fi8"
+
+
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ("lamellae: [lam_001]\n", "lamellae must be a mapping"),
+        ("lamellae:\n  lam_001:\n    moves: {}\n", "unknown section moves"),
+        ("lamellae:\n  lam_001:\n    families:\n      sem_x: fib-x\n", "lam_001: sem_x is a SEM"),
+    ],
+)
+def test_a_lamella_section_that_is_wrong_is_refused_and_named(
+    tmp_path: Path, text: str, problem: str
+):
+    _write(tmp_path, text)
+
+    with pytest.raises(FamiliesFileError, match=problem):
+        read_families(tmp_path)
+
+
+def test_a_file_without_lamella_sections_stays_version_1(tmp_path: Path):
+    """An am-seg that knows no lamella sections still reads it."""
+    from am_segmentation_manager.families import write_families
+    from am_segmentation_manager.layout import FamilyCorrections, ProjectFamilies
+
+    write_families(
+        tmp_path, ProjectFamilies(project=FamilyCorrections(families={"sem_mag2": "sem-mag2"})), None
+    )
+
+    assert "version: 1" in (tmp_path / AM_FAMILIES_FILENAME).read_text(encoding="utf-8")
+
+
+def test_lamella_sections_are_written_as_version_2_and_read_back(tmp_path: Path):
+    from am_segmentation_manager.families import write_families
+
+    _write(tmp_path, LAMELLA_FILE)
+    families = read_families(tmp_path)
+    (tmp_path / AM_FAMILIES_FILENAME).unlink()
+
+    write_families(tmp_path, families, None)
+
+    assert "version: 2" in (tmp_path / AM_FAMILIES_FILENAME).read_text(encoding="utf-8")
+    assert read_families(tmp_path) == families
 
 
 def _project(root: Path, families: str | None) -> Path:
@@ -190,3 +252,39 @@ def test_an_image_path_alone_resolves_under_the_corrections(tmp_path: Path):
     assert record.labels == []
     assert record.labels_directory == stage / "sem-mag2_labels"
     assert record.predictions_directory == stage / "sem-mag2_predictions"
+
+
+def _two_lamellae(root: Path, families: str) -> tuple[Path, Path]:
+    """Build lam_000 and lam_001, each one stage of CONDITIONS sharing sem_labels."""
+    stages = []
+    for lamella in ("lam_000", "lam_001"):
+        stage = root / "project" / lamella / "adaptive_polish_1"
+        for directory in (*CONDITIONS, "sem_labels"):
+            (stage / directory).mkdir(parents=True)
+            (stage / directory / "img_0000.tif").write_bytes(b"")
+        stages.append(stage)
+    (root / "project" / "experiment.yaml").write_text("name: p\n", encoding="utf-8")
+    _write(root / "project", families)
+    return stages[0], stages[1]
+
+
+def test_a_scan_resolves_each_lamella_under_its_own_corrections(tmp_path: Path):
+    first, second = _two_lamellae(tmp_path, LAMELLA_FILE)
+
+    project = Scanner(tmp_path).build_index().all_projects()[0]
+    by_lamella = {
+        (record.image_path.parents[2].name, record.image_path.parent.name): record
+        for record in project.image_records
+    }
+
+    assert by_lamella[("lam_000", "sem_mag2")].labels_directory == first / "sem-mag2_labels"
+    assert by_lamella[("lam_001", "sem_mag2")].labels_directory == second / "sem_labels"
+
+
+def test_an_image_path_alone_finds_its_lamellas_corrections(tmp_path: Path):
+    first, second = _two_lamellae(tmp_path, LAMELLA_FILE)
+
+    assert families_for(first / "sem_mag2").family_of("sem_mag2") == "sem-mag2"
+    assert families_for(second / "sem_mag2").family_of("sem_mag2") == "sem"
+    record = record_from_image_path(second / "sem_mag2" / "img_0000.tif")
+    assert record.labels_directory == second / "sem_labels"

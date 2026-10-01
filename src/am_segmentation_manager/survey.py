@@ -43,11 +43,12 @@ from .layout import (
     IMAGE_EXTENSIONS,
     LABELS_EXPECTED,
     LABELS_SUFFIX,
-    NO_CORRECTIONS,
+    NO_PROJECT_FAMILIES,
     PREDICTIONS_SUFFIX,
     SERIES,
     FamilyCorrections,
     ImageSet,
+    ProjectFamilies,
     Series,
     build_image_sets,
     build_loose_image_sets,
@@ -380,7 +381,7 @@ def survey_project(
     stage_paths = frozenset(item.path for item in discovered_stages)
 
     findings: list[Finding] = []
-    corrections = _families_or_finding(project_root, findings)
+    families = _families_or_finding(project_root, findings)
     lamellae: list[LamellaSurvey] = []
     for lamella_path in sorted(grouped):
         discovered = grouped[lamella_path]
@@ -392,7 +393,7 @@ def survey_project(
                 check_labels,
                 in_alignment_run=item.in_alignment_run,
                 stage_paths=stage_paths,
-                corrections=corrections,
+                corrections=families.at(item.path.relative_to(project_root).as_posix()),
             )
             for item in sorted(discovered, key=lambda item: item.path)
         )
@@ -404,6 +405,7 @@ def survey_project(
             )
         )
 
+    findings.extend(_lamella_section_findings(project_root, families, lamellae))
     if not lamellae:
         findings.append(
             Finding(
@@ -472,7 +474,34 @@ def survey_project(
     )
 
 
-def _families_or_finding(project_root: Path, findings: list[Finding]) -> FamilyCorrections:
+def _lamella_section_findings(
+    project_root: Path, families: ProjectFamilies, lamellae: Iterable[LamellaSurvey]
+) -> list[Finding]:
+    """Report each lamella section of ``AM_families.yaml`` naming no lamella here.
+
+    Kept, never removed: a copy holding part of a project carries the whole
+    file, and a lamella renamed by hand leaves its section behind.
+    """
+    known = {
+        lamella.path.relative_to(project_root).as_posix()
+        for lamella in lamellae if not lamella.synthetic
+    }
+    return [
+        Finding(
+            severity="warning",
+            category="families-lamella-not-found",
+            path=families_file_path(project_root),
+            message=(
+                f"AM_families.yaml has a section for {key}, which is not a lamella of "
+                f"this project, so its entries apply nowhere"
+            ),
+        )
+        for key in sorted(families.lamellae)
+        if key not in known
+    ]
+
+
+def _families_or_finding(project_root: Path, findings: list[Finding]) -> ProjectFamilies:
     """Return a project's family corrections, reporting a file that will not read.
 
     Surveyed by directory names alone in that case, as the scan indexes it.
@@ -491,7 +520,7 @@ def _families_or_finding(project_root: Path, findings: list[Finding]) -> FamilyC
                 ),
             )
         )
-        return NO_CORRECTIONS
+        return NO_PROJECT_FAMILIES
 
 
 def _unreadable_yaml_findings(unreadable: Iterable[tuple[Path, str]]) -> list[Finding]:

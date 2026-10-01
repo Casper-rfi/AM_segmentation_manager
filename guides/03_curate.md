@@ -171,6 +171,24 @@ for instance where the base is too noisy to predict on; `--clear-primary sem`
 returns to the default. It moves no label, and predictions already made stay
 until you predict again. A stage without the named condition uses the default.
 
+A lamella can have entries of its own, under `lamellae:` in the file, which
+replace the project's in that lamella alone: for a folder name meaning one
+family in one lamella and another elsewhere.
+
+```yaml
+version: 2
+families:
+  sem_x: sem-5kV
+lamellae:
+  lam_003:
+    families:
+      sem_x: sem-2kV
+```
+
+For now they are written by hand, and while a project has them, the Families
+tab, `edit-families` and a merge leave its file alone. **Inspect layout**
+reports a section naming no lamella of the project.
+
 ## Predict and convert
 
 *Operations on this frame*, at the bottom right, act on the same choice as the

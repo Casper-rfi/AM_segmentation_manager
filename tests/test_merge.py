@@ -1053,8 +1053,18 @@ def test_the_fork_point_holds_the_families_as_they_stood(tmp_path: Path, recorde
     _export(main, tmp_path / "copy")
 
     (fork,) = read_export_record(tmp_path / "copy").projects.values()
-    assert fork.families.family_of("sem_fi_1") == "sem-x"
+    assert fork.families.project.family_of("sem_fi_1") == "sem-x"
     assert (tmp_path / "copy" / "project" / "AM_families.yaml").is_file()
+
+
+def test_lamella_sections_are_refused_rather_than_dropped(forked_families):
+    (forked_families.copy / "project" / "AM_families.yaml").write_text(
+        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem_fi_1: sem-x\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MergeRefused, match="has lamella sections"):
+        plan_merge(forked_families.copy, forked_families.main)
 
 
 def test_a_family_corrected_only_in_the_copy_is_taken(forked_families, recorder):
@@ -1069,7 +1079,7 @@ def test_a_family_corrected_only_in_the_copy_is_taken(forked_families, recorder)
     assert report.families_taken == 1
     from am_segmentation_manager.families import read_families
 
-    assert read_families(forked_families.project).family_of("sem_fi_1") == "sem-x"
+    assert read_families(forked_families.project).project.family_of("sem_fi_1") == "sem-x"
     kinds = [event.kind for event in read_log(forked_families.project).events]
     assert "family-changed" in kinds
 

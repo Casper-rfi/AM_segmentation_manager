@@ -155,9 +155,18 @@ class FamiliesController:
         self._problem = ""
         if project is not None:
             try:
-                read_families(project.path)
+                on_file = read_families(project.path)
             except FamiliesFileError as error:
-                self._problem = f"{error}; correct the file by hand first"
+                self._problem = (
+                    f"Shown as the folder names give them. {error}; correct the file "
+                    f"by hand first"
+                )
+            else:
+                if on_file.has_lamellae:
+                    self._problem = (
+                        "AM_families.yaml has lamella sections, which cannot be "
+                        "changed here; change the file by hand"
+                    )
 
     @property
     def project(self) -> Project | None:
@@ -180,7 +189,7 @@ class FamiliesController:
         if self._project is None:
             return "No project selected."
         if self._problem:
-            return f"Shown as the folder names give them. {self._problem}"
+            return self._problem
         if not self.tree():
             return "No imaging conditions in this project."
         return ""
@@ -189,13 +198,15 @@ class FamiliesController:
         """Return the project's families, with the changes not yet saved, SEM first."""
         if self._project is None:
             return ()
-        corrections = self._project.families
+        corrections = self._project.families.project
         members: dict[tuple[str, str], list[tuple[str, int]]] = {}
         spelled: dict[tuple[str, str], str] = {}
         for summary in summarise_families(self._project):
             spelled[(summary.modality, summary.family.lower())] = summary.family
             for name, stages in summary.conditions:
-                family = self.family_of(name)
+                # Where the scan read it, the file applied; a change not yet saved moves it.
+                pending = _lookup(self._families, name) is not None
+                family = self.family_of(name) if pending else summary.family
                 key = (summary.modality, family.lower())
                 spelled.setdefault(key, family)
                 members.setdefault(key, []).append((name, stages))
@@ -249,7 +260,7 @@ class FamiliesController:
         if pending is not None:
             return pending[1] if pending[1] is not None else _name_family(condition)
         assert self._project is not None, "only asked of a project's conditions"
-        moved = self._project.families.family_of(condition)
+        moved = self._project.families.project.family_of(condition)
         return moved if moved is not None else _name_family(condition)
 
     def family_options(self, condition: str) -> list[tuple[str, str]]:
@@ -297,7 +308,7 @@ class FamiliesController:
             return
         target = None if family.lower() == _name_family(condition).lower() else family
         assert self._project is not None, "only asked of a project's conditions"
-        on_file = self._project.families.family_of(condition)
+        on_file = self._project.families.project.family_of(condition)
         _set(self._families, condition, target, unchanged=_same(on_file, target))
 
         named = self._named_primary(before)
@@ -307,7 +318,7 @@ class FamiliesController:
     def set_primary(self, family: str, condition: str | None) -> None:
         """Name *condition* as *family*'s primary, or None for the default, held until saved."""
         assert self._project is not None, "only asked of a project's families"
-        on_file = self._project.families.primary_of(family)
+        on_file = self._project.families.project.primary_of(family)
         _set(self._primary, family, condition, unchanged=_same(on_file, condition))
 
     def discard(self) -> None:
@@ -321,7 +332,7 @@ class FamiliesController:
         if pending is not None:
             return pending[1]
         assert self._project is not None, "only asked of a project's families"
-        return self._project.families.primary_of(family)
+        return self._project.families.project.primary_of(family)
 
     def _variant_in(self, condition: str, family: str) -> str | None:
         """Return *condition*'s variant in *family*, as resolution would give it."""

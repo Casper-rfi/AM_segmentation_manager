@@ -343,6 +343,36 @@ def test_two_families_reading_one_label_directory_are_an_error(tmp_path: Path):
     assert "Families sem and sem-2kV both read sem_labels/" in found[0].message
 
 
+def test_a_lamella_section_naming_no_lamella_is_reported(tmp_path: Path):
+    _family_stage(tmp_path, "sem", "sem_mag2")
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem_mag2: sem-mag2\n"
+        "  lam_009:\n    families:\n      sem_mag2: sem-mag2\n",
+        encoding="utf-8",
+    )
+
+    found = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "families-lamella-not-found"
+    ]
+
+    assert [finding.message.split(",")[0] for finding in found] == [
+        "AM_families.yaml has a section for lam_009"
+    ]
+
+
+def test_a_lamella_section_is_judged_in_that_lamella(tmp_path: Path):
+    """lam_000's own entry moves sem out of sem_fi1's family, joining two there."""
+    _family_stage(tmp_path, "sem", "sem_fi1", "sem-2kV_fi1")
+    (tmp_path / "project" / "lam_000" / "sem_labels").mkdir()
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem: sem-2kV\n",
+        encoding="utf-8",
+    )
+
+    assert "family-shared-label-directory" in _categories(survey_collection(tmp_path))
+
+
 def test_a_families_file_that_will_not_read_is_reported(tmp_path: Path):
     _family_stage(tmp_path, "sem", "sem_mag2")
     (tmp_path / "project" / "AM_families.yaml").write_text(

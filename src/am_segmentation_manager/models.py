@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
-from .layout import NO_CORRECTIONS, FamilyCorrections
+from .layout import NO_PROJECT_FAMILIES, FamilyCorrections, ProjectFamilies
 from .state import DEFAULT_STATE, RecordState
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -217,7 +217,8 @@ class Project:
             AM_metadata.yaml that is there but would not read; both metadata
             views above then lack that file's values
         families: the corrections its AM_families.yaml makes to the families
-            its image directories' names give
+            its image directories' names give, its own and each lamella's;
+            :meth:`families_at` says which hold where
     """
 
     name: str
@@ -228,7 +229,18 @@ class Project:
     lamellae: list[Lamella] = field(default_factory=list)
     number: str | None = None
     metadata_problems: tuple[str, ...] = ()
-    families: FamilyCorrections = NO_CORRECTIONS
+    families: ProjectFamilies = NO_PROJECT_FAMILIES
+
+    def families_at(self, path: Path) -> FamilyCorrections:
+        """Return the family corrections in force at *path*, its lamella's over the project's.
+
+        The project's own for a path outside it, where no lamella's can apply.
+        """
+        try:
+            relative = path.relative_to(self.path)
+        except ValueError:
+            return self.families.project
+        return self.families.at(relative.as_posix())
 
     @property
     def key(self) -> str:

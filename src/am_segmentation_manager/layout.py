@@ -313,6 +313,92 @@ NO_CORRECTIONS: Final[FamilyCorrections] = FamilyCorrections()
 
 
 @dataclass(frozen=True)
+class FamilyEntries:
+    """One lamella's section of ``AM_families.yaml``, as written.
+
+    Not validated alone: an entry may mean something only over its project's,
+    as a primary named for a family a project-wide entry moves a condition into.
+
+    Attributes:
+        families: Condition name to family. Naming the family the condition's
+            name gives is an entry, undoing a project-wide move here.
+        primary: Family name to the condition standing for it.
+    """
+
+    families: Mapping[str, str] = field(default_factory=dict)
+    primary: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ProjectFamilies:
+    """A project's family corrections: its own, and each lamella's over them.
+
+    Plain data, read by :mod:`.families`; resolution takes only what :meth:`at`
+    returns. **A lamella's entries replace the project's entry by entry**, in
+    every stage beneath it. Constructing one validates each lamella's entries
+    combined with the project's (``test_a_lamella_entry_replaces_the_projects_there_only``).
+
+    Attributes:
+        project: The project-wide corrections.
+        lamellae: A lamella's path relative to the project root, POSIX, to its
+            entries.
+
+    Raises:
+        ValueError: Naming the lamella whose combined entries are not valid, or
+            a key that is not a path below the project root.
+    """
+
+    project: FamilyCorrections = field(default_factory=FamilyCorrections)
+    lamellae: Mapping[str, FamilyEntries] = field(default_factory=dict)
+    _combined: dict[str, FamilyCorrections] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        combined: dict[str, FamilyCorrections] = {}
+        for key, entries in self.lamellae.items():
+            parts = key.split("/")
+            if not key or key.startswith("/") or any(part in ("", ".", "..") for part in parts):
+                raise ValueError(f"lamellae: {key!r} is not a path below the project root")
+            try:
+                combined[key] = FamilyCorrections(
+                    families=_over(self.project.families, entries.families),
+                    primary=_over(self.project.primary, entries.primary),
+                )
+            except ValueError as error:
+                raise ValueError(f"lamellae: {key}: {error}") from error
+        object.__setattr__(self, "_combined", combined)
+
+    @property
+    def has_lamellae(self) -> bool:
+        """Return whether any lamella has entries of its own."""
+        return any(entries.families or entries.primary for entries in self.lamellae.values())
+
+    def at(self, relative: str) -> FamilyCorrections:
+        """Return the corrections in force at *relative*, a POSIX path below the project root.
+
+        The lamella's own over the project's where *relative* lies in a lamella
+        with a section, the project's alone anywhere else.
+        """
+        within = [
+            key for key in self._combined
+            if relative == key or relative.startswith(f"{key}/")
+        ]
+        return self._combined[max(within, key=len)] if within else self.project
+
+
+def _over(below: Mapping[str, str], above: Mapping[str, str]) -> dict[str, str]:
+    """Return *below* with each of *above*'s entries in place of its own, keys compared whatever their case."""
+    replaced = {key.lower() for key in above}
+    return {
+        **{key: value for key, value in below.items() if key.lower() not in replaced},
+        **above,
+    }
+
+
+#: No corrections anywhere in a project.
+NO_PROJECT_FAMILIES: Final[ProjectFamilies] = ProjectFamilies(project=NO_CORRECTIONS)
+
+
+@dataclass(frozen=True)
 class ImageSet:
     """Images of one series, modality and imaging condition, in one directory.
 

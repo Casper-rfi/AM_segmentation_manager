@@ -118,6 +118,21 @@ def test_a_damaged_file_is_named_and_the_folder_names_shown(tmp_path: Path):
     assert [node.family for node in controller.tree()] == ["sem"]
 
 
+def test_a_file_with_lamella_sections_is_shown_and_not_changed_here(tmp_path: Path):
+    projects = scan(
+        tmp_path,
+        families="version: 2\nlamellae:\n  lam_010:\n    families:\n      sem_fi4: sem-x\n",
+        lam_010=("sem", "sem_fi4"),
+    )
+    controller = FamiliesController()
+
+    controller.set_scope(projects)
+
+    assert not controller.editable
+    assert controller.status().startswith("AM_families.yaml has lamella sections")
+    assert {node.family for node in controller.tree()} == {"sem", "sem-x"}, "as the scan read it"
+
+
 def test_nothing_selected_says_so():
     controller = FamiliesController()
 
@@ -185,7 +200,7 @@ def test_a_saved_move_is_undone_by_choosing_the_names_own_family(tmp_path: Path)
     controller.set_family("sem_b", "sem")
 
     assert ("sem_b", "not saved") in members(controller, "sem")
-    assert controller.plan().after.families == {}
+    assert controller.plan().after.project.families == {}
 
 
 def test_a_family_a_condition_cannot_join_is_refused(tmp_path: Path):
@@ -221,7 +236,7 @@ def test_moving_a_named_primary_out_gives_up_its_primary(tmp_path: Path):
 
     controller.set_family("sem_fi4", "sem-5kV")
 
-    assert controller.plan().after.primary == {}
+    assert controller.plan().after.project.primary == {}
 
 
 def test_changes_are_kept_while_the_project_stays_and_dropped_when_it_changes(tmp_path: Path):
@@ -248,7 +263,7 @@ def test_saving_writes_the_file_records_it_and_forgets_the_changes(tmp_path: Pat
 
     assert change.applied
     project = tmp_path / "project"
-    assert read_families(project).families == {"sem_b": "sem-5kV"}
+    assert read_families(project).project.families == {"sem_b": "sem-5kV"}
     assert [
         (event.data["key"], event.data["new"])
         for event in read_log(project).events if event.kind == "family-changed"
@@ -276,7 +291,7 @@ def test_a_file_changed_since_the_plan_is_not_overwritten(tmp_path: Path):
 
     with pytest.raises(StaleFamilies):
         controller.apply(change)
-    assert read_families(tmp_path / "project").families == {"sem_fi4": "sem-fi4"}
+    assert read_families(tmp_path / "project").project.families == {"sem_fi4": "sem-fi4"}
 
 
 def test_a_refused_change_carries_every_reason(tmp_path: Path):

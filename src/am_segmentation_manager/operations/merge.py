@@ -30,7 +30,7 @@ from ..history import (
 )
 from ..io.atomic import Fingerprint, fingerprint_of
 from ..io.image import read_array
-from ..layout import FamilyCorrections
+from ..layout import FamilyCorrections, ProjectFamilies
 from ..models import ImageRecord, Project
 from ..scanner import Scanner
 from ..state import DEFAULT_STATE, RecordState
@@ -503,8 +503,8 @@ def plan_merge(
         our.key: _plan_families(our.path, their.path, fork, our.key, decided)
         for our, their, fork in pairs
     }
-    our_given: dict[Path, FamilyCorrections] = {}
-    their_given: dict[Path, FamilyCorrections] = {}
+    our_given: dict[Path, ProjectFamilies] = {}
+    their_given: dict[Path, ProjectFamilies] = {}
     for our, their, _ in pairs:
         merged = families[our.key][1]
         if merged is None:
@@ -676,7 +676,7 @@ def _plan_state(
     )
 
 
-def _families_of(root: Path, side: str) -> FamilyCorrections:
+def _families_of(root: Path, side: str) -> ProjectFamilies:
     """Return a project's family corrections, refusing a file that will not read."""
     try:
         return read_families(root)
@@ -690,7 +690,7 @@ def _plan_families(
     fork: ProjectFork,
     key: str,
     decided: Mapping[str, str],
-) -> tuple[tuple[FamilyMerge, ...], FamilyCorrections | None]:
+) -> tuple[tuple[FamilyMerge, ...], ProjectFamilies | None]:
     """Return what becomes of each family correction, and the corrections merged.
 
     Three-way per entry, as a metadata field is, but **the ancestor is the fork
@@ -706,13 +706,18 @@ def _plan_families(
         MergeRefused: If either file will not read, or the entries taken
             together do not make valid corrections.
     """
-    ours = _families_of(our_root, "here")
-    theirs = _families_of(their_root, "in the copy")
+    every = _families_of(our_root, "here"), _families_of(their_root, "in the copy"), fork.families
+    if any(families.has_lamellae for families in every):
+        raise MergeRefused(
+            f"{key}: AM_families.yaml has lamella sections, which a merge cannot "
+            f"bring across; settle them by hand on one side first"
+        )
+    ours, theirs, ancestor_families = (families.project for families in every)
     merged = {FAMILIES_SECTION: dict(ours.families), PRIMARY_SECTION: dict(ours.primary)}
     entries: list[FamilyMerge] = []
     for section, ancestor_map, our_map, their_map in (
-        (FAMILIES_SECTION, fork.families.families, ours.families, theirs.families),
-        (PRIMARY_SECTION, fork.families.primary, ours.primary, theirs.primary),
+        (FAMILIES_SECTION, ancestor_families.families, ours.families, theirs.families),
+        (PRIMARY_SECTION, ancestor_families.primary, ours.primary, theirs.primary),
     ):
         maps = [
             {name.lower(): (name, value) for name, value in mapping.items()}
@@ -745,7 +750,7 @@ def _plan_families(
         raise MergeRefused(
             f"{key}: the family corrections the two sides make do not fit together: {error}"
         ) from error
-    return tuple(entries), corrections
+    return tuple(entries), ProjectFamilies(project=corrections)
 
 
 def _lowered(value: str | None) -> str | None:
@@ -753,7 +758,7 @@ def _lowered(value: str | None) -> str | None:
 
 
 def _check_families(
-    our_project: Project, their_project: Project, merged: FamilyCorrections
+    our_project: Project, their_project: Project, merged: ProjectFamilies
 ) -> FamiliesChange | None:
     """Return what the merged corrections do here, having checked both trees.
 
@@ -866,7 +871,8 @@ def _groups_of(project: Project) -> dict[str, _Group]:
     # Grouped under the families the project was scanned with, which in a merge
     # can be ones on neither disk yet.
     families = {
-        stage.path: project.families for lamella in project.lamellae for stage in lamella.stages
+        stage.path: project.families_at(stage.path)
+        for lamella in project.lamellae for stage in lamella.stages
     }
     for group in build_groups(project.image_records, families):
         identity = group.label_path or group.identity

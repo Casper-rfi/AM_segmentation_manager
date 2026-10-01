@@ -188,6 +188,24 @@ def test_a_fork_point_round_trips(source: Path, tmp_path: Path):
     assert read_back.with_archive is True
 
 
+def test_a_fork_point_keeps_a_projects_lamella_sections(source: Path, tmp_path: Path):
+    """The ancestor a later merge works from, so it is recorded whole."""
+    _, projects = scanned(source)
+    (projects[0].path / "AM_families.yaml").write_text(
+        "version: 2\nlamellae:\n  lam_000:\n    families:\n      sem: sem-x\n",
+        encoding="utf-8",
+    )
+    record = build_export_record(projects, source, scope="lam_000", with_archive=False)
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    write_export_record(destination, record)
+    fork = read_export_record(destination).projects[projects[0].key]
+
+    assert fork.families.at("lam_000").family_of("sem") == "sem-x"
+    assert fork.families == record.projects[projects[0].key].families
+
+
 def test_a_copy_with_no_fork_point_reads_as_none(tmp_path: Path):
     assert read_export_record(tmp_path) is None
 
