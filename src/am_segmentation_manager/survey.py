@@ -42,7 +42,9 @@ from .io.yaml import read_yaml_or_problem
 from .layout import (
     IMAGE_EXTENSIONS,
     LABELS_EXPECTED,
+    LABELS_SUFFIX,
     NO_CORRECTIONS,
+    PREDICTIONS_SUFFIX,
     SERIES,
     FamilyCorrections,
     ImageSet,
@@ -53,6 +55,7 @@ from .layout import (
     conflicting_predictions_directories,
     directory_cache,
     directory_role,
+    families_claiming_one_directory,
     image_files,
     image_files_by_name,
     image_files_of,
@@ -700,13 +703,29 @@ def _family_conflict_findings(
     stage_path: Path, image_sets: Iterable[ImageSet], corrections: FamilyCorrections
 ) -> list[Finding]:
     """Report each family whose conditions have more than one label or
-    predictions directory between them.
+    predictions directory between them, and each directory two families read.
 
     Such a family's conditions each keep reading their own, so they do not share
     a label -- see :func:`~am_segmentation_manager.layout.resolve_labels_directory`.
+    Two families reading one directory share every label in it, which a hand
+    edit of ``AM_families.yaml`` can do and ``edit-families`` refuses.
     """
     siblings = subdirectories_by_name(stage_path)
-    findings: list[Finding] = []
+    findings: list[Finding] = [
+        Finding(
+            severity="error",
+            category="family-shared-label-directory",
+            path=stage_path,
+            message=(
+                f"Families {' and '.join(families)} both read {stem}{LABELS_SUFFIX}/ "
+                f"and {stem}{PREDICTIONS_SUFFIX}/, so their images share labels; "
+                f"correct AM_families.yaml"
+            ),
+        )
+        for stem, families in families_claiming_one_directory(
+            siblings.values(), corrections=corrections
+        )
+    ]
     reported: set[tuple[str, str, str]] = set()
     for image_set in image_sets:
         if image_set.is_loose or image_set.modality is None or image_set.family is None:

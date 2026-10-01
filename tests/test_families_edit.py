@@ -2,8 +2,8 @@
 
 Each refusal is the one way a correction could silently cost labels: one left
 unread, one swapped for another, one taken from a condition the change never
-named, a family split into two directories, or two conditions of a family
-answering to one name. The rest pins what a change that goes ahead does to the
+named, a family split into two directories, two families joined in one, or two
+conditions of a family answering to one name. The rest pins what a change that goes ahead does to the
 file, the labels each condition reads, the state its images are in, and the log.
 """
 from __future__ import annotations
@@ -260,6 +260,23 @@ def test_a_family_split_between_two_directories_is_refused(tmp_path: Path):
     _stage(tmp_path, "sem", "sem_labels", "sem2kVb", "sem2kVb_labels")
 
     assert "would have 2 labels directories" in _refusal(tmp_path, families={"sem2kVb": "sem"})
+
+
+def test_moving_a_base_into_another_family_cannot_join_two_families(tmp_path: Path):
+    stage = _stage(tmp_path, "sem", "sem_fi1", "sem-2kV_fi1", "sem_labels")
+    (stage / "sem_labels" / IMAGE).write_bytes(b"x")
+
+    refusal = _refusal(tmp_path, families={"sem": "sem-2kV"})
+
+    assert "families sem and sem-2kV would both read sem_labels/" in refusal
+    assert not (stage.parents[1] / AM_FAMILIES_FILENAME).exists()
+
+
+def test_two_families_may_not_claim_a_label_directory_not_yet_written(tmp_path: Path):
+    """Allowed, the first label written for sem_fi1 would join the two families."""
+    _stage(tmp_path, "sem", "sem_fi1", "sem-2kV_fi1")
+
+    assert "would both read sem_labels/" in _refusal(tmp_path, families={"sem": "sem-2kV"})
 
 
 def test_two_conditions_answering_to_one_variant_are_refused(tmp_path: Path):

@@ -16,7 +16,7 @@ import logging
 import os
 import re
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -918,6 +918,46 @@ def _family_members(
     )
 
 
+def _family_stem(family: str, modality: str) -> str:
+    """Return what a family's own directories are named after: ``sem`` for the modality's."""
+    return modality.lower() if family.lower() == modality.lower() else family
+
+
+def families_claiming_one_directory(
+    image_directories: Iterable[Path], *, corrections: FamilyCorrections
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return each directory name two families of one stage could both read.
+
+    A family reads ``<family>_labels`` and its conditions' private
+    ``<condition>_labels``, so a base corrected into another family keeps a
+    name that is still its old family's own; whichever of them exists, both
+    families read it, and two segmentations become one. **Judged by name,
+    whether or not the directory exists**: one not yet written would join them
+    the moment it is (``test_two_families_never_read_one_label_directory``).
+
+    Args:
+        image_directories: The image directories of one stage.
+
+    Returns:
+        ``(stem, families)`` per name claimed twice, the stem being what
+        :data:`LABELS_SUFFIX` and :data:`PREDICTIONS_SUFFIX` are appended to.
+    """
+    claims: dict[str, tuple[str, dict[tuple[str, str], str]]] = {}
+    for directory in image_directories:
+        condition = condition_of(directory.name, corrections)
+        if condition is None:
+            continue
+        family = (condition.modality, condition.family.lower())
+        for stem in (_family_stem(condition.family, condition.modality), directory.name):
+            spelled, families = claims.setdefault(stem.lower(), (stem, {}))
+            families.setdefault(family, condition.family)
+    return tuple(
+        (spelled, tuple(sorted(families.values(), key=str.lower)))
+        for spelled, families in (claims[key] for key in sorted(claims))
+        if len(families) > 1
+    )
+
+
 def _family_directories(
     image_directory: Path,
     modality: str,
@@ -937,7 +977,7 @@ def _family_directories(
     members = _family_members(image_directory, modality, siblings, corrections)
     family = members[0][1].family
     named_after_modality = family.lower() == modality.lower()
-    new_name = f"{modality.lower() if named_after_modality else family}{suffix}"
+    new_name = f"{_family_stem(family, modality)}{suffix}"
 
     candidates = [new_name, *(f"{name}{suffix}" for name, _ in members)]
     existing: list[Path] = []

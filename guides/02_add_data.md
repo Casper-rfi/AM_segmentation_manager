@@ -176,9 +176,12 @@ the file places. `edit-families` shows which label each condition would read
 and every image whose state would change, and writes only with `--apply`. A
 condition joining a family shares its labels and its state; one leaving starts
 unlabelled, keeping a deselection but not a correction. A change is refused if
-it would leave a label unread, swap one label for another, or take a label
-from a condition you did not name, and one taking images out of a corrected
-group needs `--confirm-corrected`. `--clear` puts a condition back where its
+it would leave a label unread, swap one label for another, take a label
+from a condition you did not name, or have two families read one label folder
+-- which moving a family's base condition, such as `sem`, out of it would do,
+its folder name being the family's own; move the family's other conditions
+out of it first. One taking images out of a corrected group needs
+`--confirm-corrected`. `--clear` puts a condition back where its
 name places it.
 
 **Inspect layout** tells you when a correction is needed. It compares one
@@ -186,7 +189,9 @@ image of each family's conditions: images of different sizes are an error,
 since one label cannot fit both, and a different pixel size or accelerating
 voltage is a warning that the conditions may not be one family.
 `edit-families` makes the same comparison for a condition joining a family,
-refusing a change of size and warning about the others.
+refusing a change of size and warning about the others. Two families reading
+one label folder, which a hand edit of `AM_families.yaml` can cause, is an
+error too.
 
 Each family has a **primary condition**: the one predicted from, measured at,
 kept by *One image per label*, and shown first in the window. It is the base condition, or where a stage

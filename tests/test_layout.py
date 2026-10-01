@@ -28,6 +28,7 @@ from am_segmentation_manager.layout import (
     conflicting_label_directories,
     directory_cache,
     directory_role,
+    families_claiming_one_directory,
     image_files,
     image_files_by_name,
     image_files_of,
@@ -366,6 +367,31 @@ def test_corrections_decide_which_directories_are_in_conflict(tmp_path: Path):
     assert conflicting_label_directories(
         stage / "sem", "SEM", siblings, corrections=MAG2_OWN_FAMILY
     ) == ()
+
+
+def test_two_families_never_read_one_label_directory():
+    """A base moved out keeps its own name, which is still its old family's."""
+    stage = Path("stage")
+    directories = [stage / name for name in ("sem", "sem_fi1", "sem-2kV_fi1")]
+
+    assert families_claiming_one_directory(directories, corrections=NO_CORRECTIONS) == ()
+    assert families_claiming_one_directory(
+        directories, corrections=FamilyCorrections(families={"sem": "sem-2kV"})
+    ) == (("sem", ("sem", "sem-2kV")),)
+
+
+def test_a_variant_moved_out_claims_no_other_familys_directory():
+    directories = [Path("stage") / name for name in ("sem", "sem_fi8", "sem_mag2")]
+
+    assert families_claiming_one_directory(directories, corrections=MAG2_OWN_FAMILY) == ()
+
+
+def test_a_base_moved_out_alone_claims_nothing_twice():
+    """With no condition left in its old family, nobody else reads its name."""
+    directories = [Path("stage") / name for name in ("sem", "sem-2kV_fi1")]
+    corrections = FamilyCorrections(families={"sem": "sem-2kV"})
+
+    assert families_claiming_one_directory(directories, corrections=corrections) == ()
 
 
 def test_image_sets_carry_the_corrected_family(tmp_path: Path):

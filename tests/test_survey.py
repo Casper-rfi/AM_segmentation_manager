@@ -327,6 +327,22 @@ def test_a_conflict_is_judged_under_the_projects_corrections(tmp_path: Path):
     assert "family-label-conflict" not in _categories(survey_collection(tmp_path))
 
 
+def test_two_families_reading_one_label_directory_are_an_error(tmp_path: Path):
+    """A hand edit can do what edit-families refuses."""
+    _family_stage(tmp_path, "sem", "sem_fi1", "sem-2kV_fi1")
+    (tmp_path / "project" / "AM_families.yaml").write_text(
+        "families:\n  sem: sem-2kV\n", encoding="utf-8"
+    )
+
+    found = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "family-shared-label-directory"
+    ]
+
+    assert [finding.severity for finding in found] == ["error"]
+    assert "Families sem and sem-2kV both read sem_labels/" in found[0].message
+
+
 def test_a_families_file_that_will_not_read_is_reported(tmp_path: Path):
     _family_stage(tmp_path, "sem", "sem_mag2")
     (tmp_path / "project" / "AM_families.yaml").write_text(

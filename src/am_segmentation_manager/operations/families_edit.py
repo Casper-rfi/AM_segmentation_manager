@@ -33,12 +33,15 @@ from ..image_metadata import (
 )
 from ..io.atomic import Fingerprint, fingerprint_of
 from ..layout import (
+    LABELS_SUFFIX,
+    PREDICTIONS_SUFFIX,
     FamilyCorrections,
     classify_image_directory,
     condition_of,
     conflicting_label_directories,
     conflicting_predictions_directories,
     correction_problems,
+    families_claiming_one_directory,
     image_files_by_name,
     resolve_labels_directory,
     resolve_predictions_directory,
@@ -666,6 +669,19 @@ def _check_stage(
                     f"{where}: {directory.name}'s family would have {len(now)} {kind} "
                     f"directories ({listed})"
                 )
+
+    claimed_before = {
+        stem.lower() for stem, _ in families_claiming_one_directory(directories, corrections=before)
+    }
+    for stem, families in families_claiming_one_directory(directories, corrections=after):
+        if stem.lower() not in claimed_before:
+            problems.append(
+                f"{where}: families {' and '.join(families)} would both read "
+                f"{stem}{LABELS_SUFFIX}/ and {stem}{PREDICTIONS_SUFFIX}/, joining their labels. "
+                f"A condition moved out of a family keeps the folders named after it, "
+                f"here that family's own: move its other conditions out of it first, "
+                f"or rename the folder"
+            )
 
     seen: dict[tuple[str, str, str | None], str] = {}
     for directory in directories:
