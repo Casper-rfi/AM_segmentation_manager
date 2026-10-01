@@ -154,11 +154,11 @@ whole collection:
 | See how a folder is interpreted | `inspect-layout` |
 | Make a pre-Autolamella dataset indexable | `init-project` |
 | Read or edit project metadata | `show-metadata` / `edit-metadata` |
-| See or correct which imaging conditions share a label | `show-families` / `edit-families` |
 | Scan a directory and list the projects found | `list-projects` |
 | Predict labels with a trained model | `predict` |
 | Turn predictions into labels for proofreading | `convert-predictions` |
 | Choose what gets proofread | `deselect` / `select` / `correct` |
+| See or correct which imaging conditions share a label | `show-families` / `edit-families` |
 | Find stray spots and holes likely to be too small to be real | `find-specks` |
 | Shrink label files on disk | `compress-labels` |
 | Count images by one or two properties, and chart them | `stats` |

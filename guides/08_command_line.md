@@ -59,8 +59,6 @@ am-seg create-training-csv --start-path /path/to/collection --state corrected --
 | `am-seg init-project` | Write an AM_metadata.yaml template into a project |
 | `am-seg show-metadata` | Show each project's resolved metadata, and where each value came from |
 | `am-seg edit-metadata` | Set or clear fields in a project's AM_metadata.yaml |
-| `am-seg show-families` | Show each project's families of imaging conditions |
-| `am-seg edit-families` | Move imaging conditions between families in AM_families.yaml |
 | `am-seg list-projects` | Scan a directory and list discovered projects |
 
 ### Curate it, and prepare labels
@@ -73,6 +71,8 @@ am-seg create-training-csv --start-path /path/to/collection --state corrected --
 | `am-seg deselect` | Declare label groups to be in the deselected state |
 | `am-seg select` | Declare label groups to be in the selected state |
 | `am-seg correct` | Declare label groups to be in the corrected state |
+| `am-seg show-families` | Show each project's families of imaging conditions |
+| `am-seg edit-families` | Move imaging conditions between families in AM_families.yaml |
 | `am-seg find-specks` | Find labels holding components likely to be too small to be real |
 | `am-seg compress-labels` | Recompress on-disk label files to reduce storage size |
 
