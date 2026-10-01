@@ -1,4 +1,4 @@
-"""Tests for the families view model behind the Add data tab's Families box.
+"""Tests for the families view model behind Curate's Families tab.
 
 Driven against scanned projects on disk, as the window drives it: what the tree
 shows is what the scan and ``AM_families.yaml`` say, and nothing else.
@@ -418,3 +418,40 @@ def test_images_leaving_a_corrected_group_are_counted(tmp_path: Path):
     assert leaving_corrected(change) == 1
     controller.apply(change)
     assert read_state(stage).states == {"sem_labels/img_0004.tif": "corrected"}
+
+
+def _shown(controller: FamiliesController) -> list[tuple[str, str, list[tuple[str, bool]]]]:
+    """Return the tree as ``(beam, family, [(condition, stands for it)])``."""
+    return [
+        (node.modality, node.family, [(row.name, row.primary) for row in node.conditions])
+        for node in controller.tree()
+    ]
+
+
+@pytest.mark.parametrize(
+    ("in_lamella", "families", "primary"),
+    [
+        (False, {"sem_b": "sem-5kV"}, {}),
+        (False, {"sem_b": "sem-b", "sem_fi4": "sem-b"}, {"sem-b": "sem_fi4"}),
+        (False, {}, {"sem": "sem_b"}),
+        (True, {"sem_b": "sem-5kV"}, {"sem-5kV": "sem_b"}),
+        (True, {"sem_fi4": "sem-x"}, {}),
+    ],
+)
+def test_the_tree_before_saving_is_the_tree_after(tmp_path: Path, in_lamella, families, primary):
+    """What the tab shows of a change is what saving it writes, read back by a scan."""
+    controller, project = two_lamellae(tmp_path)
+    controller.set_target(in_lamella)
+    for condition, family in families.items():
+        controller.set_family(condition, family)
+    for family, condition in primary.items():
+        controller.set_primary(family, condition)
+    shown = _shown(controller)
+
+    controller.apply(controller.plan())
+    rescanned = Scanner(tmp_path).build_index().all_projects()
+    controller.set_scope(rescanned, rescanned[0].lamellae[1])
+    controller.set_target(in_lamella)
+
+    assert not controller.has_changes
+    assert _shown(controller) == shown

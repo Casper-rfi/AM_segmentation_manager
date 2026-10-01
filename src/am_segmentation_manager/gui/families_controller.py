@@ -10,24 +10,27 @@ one of the two at a time. Qt-free, like the other controllers.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from ..families import FamiliesFileError, read_families
+from ..families import FAMILIES_SECTION, FamiliesFileError, read_families
 from ..history import Recorder
 from ..layout import (
-    NO_CORRECTIONS,
     FamilyCorrections,
+    ProjectFamilies,
     classify_image_directory,
     condition_of,
-    correction_problems,
-    primary_order,
+    family_key,
 )
 from ..models import Lamella, Project
 from ..operations.families_edit import (
     FamiliesChange,
+    FamiliesValidationError,
+    FamilySummary,
     apply_families_change,
+    entry_changes,
     plan_families_change,
+    requested_corrections,
     summarise_families,
 )
 from ..operations.init_history import writing_recorder
@@ -121,11 +124,10 @@ class FamiliesController:
         self._target: Lamella | None = None
         self._several = False
         self._problem = ""
-        #: Changes not yet saved: condition to family, None for what the
-        #: project gives it -- its name's, or for a lamella the project's entry.
+        #: Changes not yet saved, as :func:`requested_corrections` takes them:
+        #: condition to family, and family to primary. Only entries that
+        #: change the file are held.
         self._families: dict[str, str | None] = {}
-        #: Changes not yet saved: family to primary, None for the default, or
-        #: for a lamella the project's.
         self._primary: dict[str, str | None] = {}
 
     @property
@@ -147,13 +149,8 @@ class FamiliesController:
         Args:
             lamella: The lamella in view, whose conditions are marked as here.
         """
-        self._here = (
-            None if lamella is None else frozenset(
-                image_set.directory.name.lower()
-                for stage in lamella.stages
-                for image_set in stage.image_sets
-                if not image_set.is_loose
-            )
+        self._here = None if lamella is None else frozenset(
+            name.lower() for name in _condition_names([lamella])
         )
         project = projects[0] if len(projects) == 1 else None
         if project is None or self._project is None or project.path != self._project.path:
@@ -231,94 +228,66 @@ class FamiliesController:
         return ""
 
     def tree(self) -> tuple[FamilyNode, ...]:
-        """Return the project's families, with the changes not yet saved, SEM first."""
+        """Return the project's families, with the changes not yet saved, SEM first.
+
+        The families :func:`summarise_families` finds under the corrections a
+        save would write, so the tree shows what saving does; a row differing
+        from the same summary of the file is not saved.
+        """
         if self._project is None:
             return ()
-        members: dict[tuple[str, str], list[tuple[str, int]]] = {}
-        spelled: dict[tuple[str, str], str] = {}
-        for summary in summarise_families(self._project):
-            spelled[(summary.modality, summary.family.lower())] = summary.family
-            for name, stages in summary.conditions:
-                # Where the scan read it, the file applied; a change not yet saved moves it.
-                pending = _lookup(self._families, name) is not None
-                family = self.family_of(name) if pending else summary.family
-                key = (summary.modality, family.lower())
-                spelled.setdefault(key, family)
-                members.setdefault(key, []).append((name, stages))
-
-        nodes = []
-        for key in sorted(members, key=lambda item: (item[0] != "SEM", item[1])):
-            family = spelled[key]
-            conditions = sorted(
-                members[key],
-                key=lambda item: (item[0].lower() != family.lower(), item[0].lower()),
+        key = self._section_key()
+        saved = summarise_families(self._project, lamella=key)
+        shown = summarise_families(self._project, self._after(), lamella=key)
+        saved_families = {
+            (name.lower(), family_key(summary.family))
+            for summary in saved for name, _ in summary.conditions
+        }
+        saved_primary = {
+            (summary.modality, family_key(summary.family)): (summary.primary or "").lower()
+            for summary in saved
+        }
+        return tuple(
+            FamilyNode(
+                modality=summary.modality,
+                family=summary.family,
+                conditions=tuple(
+                    self._row(summary, name, stages, saved_families, saved_primary)
+                    for name, stages in summary.conditions
+                ),
             )
-            nodes.append(self._node(key[0], family, conditions))
-        return tuple(nodes)
-
-    def _node(
-        self,
-        modality: str,
-        family: str,
-        conditions: Sequence[tuple[str, int]],
-    ) -> FamilyNode:
-        """Return one family, marking the condition that stands for it."""
-        names = [name for name, _ in conditions]
-        pending = _lookup(self._primary, family)
-        named = self._named_primary(family)
-        held = next((name for name in names if named and name.lower() == named.lower()), None)
-        primary = held if held is not None else min(
-            names, key=lambda name: primary_order(self._variant_in(name, family))
+            for summary in shown
         )
-        return FamilyNode(
-            modality=modality,
-            family=family,
-            conditions=tuple(
-                ConditionRow(
-                    name=name,
-                    stages=stages,
-                    moved=family.lower() != _name_family(name).lower(),
-                    primary=name == primary,
-                    named_primary=held is not None and name == held,
-                    unsaved=_lookup(self._families, name) is not None
-                    or (pending is not None and name == primary),
-                    here=self._here is None or name.lower() in self._here,
-                )
-                for name, stages in conditions
-            ),
+
+    def _row(
+        self,
+        summary: FamilySummary,
+        name: str,
+        stages: int,
+        saved_families: set[tuple[str, str]],
+        saved_primary: Mapping[tuple[str, str], str],
+    ) -> ConditionRow:
+        """Return one condition of *summary* as the tree lists it."""
+        family = family_key(summary.family)
+        primary = name == summary.standing
+        named = primary and summary.primary is not None
+        primary_changed = (summary.primary or "").lower() != saved_primary.get(
+            (summary.modality, family), ""
+        )
+        return ConditionRow(
+            name=name,
+            stages=stages,
+            moved=family != family_key(_name_family(name)),
+            primary=primary,
+            named_primary=named,
+            unsaved=(name.lower(), family) not in saved_families or (primary and primary_changed),
+            here=self._here is None or name.lower() in self._here,
         )
 
     def family_of(self, condition: str) -> str:
         """Return the family *condition* is in where a change applies, counting changes not yet saved."""
-        pending = _lookup(self._families, condition)
-        if pending is not None:
-            return pending[1] if pending[1] is not None else self._given(condition)
-        moved = self._in_force().family_of(condition)
-        return moved if moved is not None else _name_family(condition)
-
-    def _given(self, condition: str) -> str:
-        """Return the family *condition* has where no entry of the chosen section moves it."""
-        if self._target is None:
-            return _name_family(condition)
-        assert self._project is not None, "a lamella is chosen within a project"
-        return self._project.families.project.family_of(condition) or _name_family(condition)
-
-    def _in_force(self) -> FamilyCorrections:
-        """Return the corrections on file where a change applies."""
-        assert self._project is not None, "only asked of a project's conditions"
-        if self._target is None:
-            return self._project.families.project
-        return self._project.families_at(self._target.path)
-
-    def _section(self) -> tuple[Mapping[str, str], Mapping[str, str]]:
-        """Return the chosen section's families and primary entries as on file."""
-        assert self._project is not None, "only asked of a project's conditions"
-        families = self._project.families
-        if self._target is None:
-            return families.project.families, families.project.primary
-        key = self._target.path.relative_to(self._project.path).as_posix()
-        own = families.lamellae.get(key)
-        return (own.families, own.primary) if own is not None else ({}, {})
+        parsed = condition_of(condition, self._in_force(self._after()))
+        return parsed.family if parsed is not None else condition
 
     def family_options(self, condition: str) -> list[tuple[str, str]]:
         """Return ``(caption, family)`` for each family *condition* could join.
@@ -327,12 +296,13 @@ class FamiliesController:
         gives, captioned as such, whether or not anything else is in it.
         """
         own = _name_family(condition)
-        modality = _modality(condition)
+        parsed = classify_image_directory(condition)
+        modality = parsed.modality if parsed is not None else None
         families = [node.family for node in self.tree() if node.modality == modality]
-        if not any(family.lower() == own.lower() for family in families):
+        if not any(family_key(family) == family_key(own) for family in families):
             families.append(own)
         return [
-            (f"{family} (its name)" if family.lower() == own.lower() else family, family)
+            (f"{family} (its name)" if family_key(family) == family_key(own) else family, family)
             for family in families
         ]
 
@@ -345,71 +315,109 @@ class FamiliesController:
 
     def family_problem(self, condition: str, family: str) -> str:
         """Return why *condition* cannot join *family*, or an empty string if it can."""
-        return "; ".join(correction_problems({condition: family}, {}))
+        try:
+            self._request({**self._families, condition: family}, self._primary)
+        except FamiliesValidationError as error:
+            return "; ".join(error.problems)
+        return ""
 
     def set_family(self, condition: str, family: str) -> None:
         """Place *condition* in *family*, held until saved.
 
-        Its name's own family clears any correction. A condition named as its
-        family's primary gives that up as it leaves, since a primary must
-        belong to the family it stands for.
+        The family it would have anyway clears any change. A condition named
+        as its family's primary gives that up as it leaves, since a primary
+        must belong to the family it stands for.
 
         Raises:
-            ValueError: If *family* is no family *condition* may join.
+            ValueError: If the change is one :func:`requested_corrections` refuses.
         """
-        problem = self.family_problem(condition, family)
-        if problem:
-            raise ValueError(problem)
         before = self.family_of(condition)
-        if before.lower() == family.lower():
+        if family_key(before) == family_key(family):
             return
-        target = None if family.lower() == self._given(condition).lower() else family
-        on_file = _lookup(dict(self._section()[0]), condition)
-        _set(
-            self._families, condition, target,
-            unchanged=_same(on_file[1] if on_file else None, target),
-        )
-
-        named = self._named_primary(before)
+        primary = dict(self._primary)
+        named = self._in_force(self._after()).primary_of(before)
         if named is not None and named.lower() == condition.lower():
-            self.set_primary(before, None)
+            primary[before] = None
+        self._hold({**self._families, condition: family}, primary)
 
     def set_primary(self, family: str, condition: str | None) -> None:
         """Name *condition* as *family*'s primary, held until saved.
 
         None returns it to the default, or for a lamella to the project's.
+
+        Raises:
+            ValueError: If the change is one :func:`requested_corrections` refuses.
         """
-        on_file = _lookup(dict(self._section()[1]), family)
-        _set(
-            self._primary, family, condition,
-            unchanged=_same(on_file[1] if on_file else None, condition),
-        )
+        self._hold(self._families, {**self._primary, family: condition})
 
     def discard(self) -> None:
         """Forget every change not yet saved."""
         self._families.clear()
         self._primary.clear()
 
-    def _named_primary(self, family: str) -> str | None:
-        """Return the condition named as *family*'s primary, counting unsaved changes."""
-        pending = _lookup(self._primary, family)
-        if pending is not None and pending[1] is not None:
-            return pending[1]
-        if pending is not None and self._target is None:
-            return None
-        if pending is not None:
-            assert self._project is not None, "a lamella is chosen within a project"
-            return self._project.families.project.primary_of(family)
-        return self._in_force().primary_of(family)
+    def _hold(
+        self, families: Mapping[str, str | None], primary: Mapping[str, str | None]
+    ) -> None:
+        """Hold the entries a request changes, refusing one the operation refuses."""
+        try:
+            after = self._request(families, primary)
+        except FamiliesValidationError as error:
+            raise ValueError("; ".join(error.problems)) from error
+        assert self._project is not None, "a request is made of a project"
+        key = self._section_key()
+        self.discard()
+        for entry in entry_changes(self._project.families, after):
+            if entry.lamella == key:
+                held = self._families if entry.section == FAMILIES_SECTION else self._primary
+                held[entry.key] = entry.new
 
-    def _variant_in(self, condition: str, family: str) -> str | None:
-        """Return *condition*'s variant in *family*, as resolution would give it."""
-        if family.lower() == _name_family(condition).lower():
-            corrections = NO_CORRECTIONS
-        else:
-            corrections = FamilyCorrections(families={condition: family})
-        parsed = condition_of(condition, corrections)
-        return parsed.variant if parsed is not None else condition
+    def _request(
+        self, families: Mapping[str, str | None], primary: Mapping[str, str | None]
+    ) -> ProjectFamilies:
+        """Return the corrections *families* and *primary* would make where a change applies.
+
+        Raises:
+            FamiliesValidationError: As :func:`requested_corrections` does.
+        """
+        if self._project is None:
+            raise FamiliesValidationError(["Choose one project to change its families"])
+        target = self._target
+        return requested_corrections(
+            self._project.families,
+            _condition_names(self._project.lamellae),
+            _condition_names([target] if target is not None else self._project.lamellae),
+            families=families,
+            primary=primary,
+            lamella=self._section_key(),
+            where=target.name if target is not None else "this project",
+        )
+
+    def _after(self) -> ProjectFamilies:
+        """Return the corrections saving would write.
+
+        The file's where the changes held no longer apply, as when a rescan
+        no longer finds a condition they name: the plan says why.
+        """
+        assert self._project is not None, "only asked of a project"
+        if not self.has_changes:
+            return self._project.families
+        try:
+            return self._request(self._families, self._primary)
+        except FamiliesValidationError:
+            return self._project.families
+
+    def _in_force(self, corrections: ProjectFamilies) -> FamilyCorrections:
+        """Return *corrections* where a change applies: the lamella chosen, or the project."""
+        assert self._project is not None, "only asked of a project"
+        if self._target is None:
+            return corrections.project
+        return self._project.families_at(self._target.path, corrections)
+
+    def _section_key(self) -> str | None:
+        """Return the key of the section a change is made to, None for the project's."""
+        if self._project is None or self._target is None:
+            return None
+        return self._target.path.relative_to(self._project.path).as_posix()
 
     # -- saving -------------------------------------------------------------
 
@@ -455,35 +463,18 @@ def leaving_corrected(change: FamiliesChange) -> int:
     return sum(1 for effect in change.states.effects if effect.old == "corrected")
 
 
+def _condition_names(lamellae: Iterable[Lamella]) -> list[str]:
+    """Return the names of the image directories the scan found in *lamellae*."""
+    return [
+        image_set.directory.name
+        for lamella in lamellae
+        for stage in lamella.stages
+        for image_set in stage.image_sets
+        if not image_set.is_loose
+    ]
+
+
 def _name_family(condition: str) -> str:
     """Return the family *condition*'s name gives it."""
     parsed = classify_image_directory(condition)
     return parsed.family if parsed is not None else condition
-
-
-def _modality(condition: str) -> str | None:
-    """Return the beam *condition*'s name gives it."""
-    parsed = classify_image_directory(condition)
-    return parsed.modality if parsed is not None else None
-
-
-def _same(first: str | None, second: str | None) -> bool:
-    """Return whether two names, either absent, are the same whatever the case."""
-    return (first or "").lower() == (second or "").lower()
-
-
-def _lookup(entries: dict[str, str | None], key: str) -> tuple[str, str | None] | None:
-    """Return ``(key as held, value)`` for *key* in any case, or None if absent."""
-    return next(
-        ((held, value) for held, value in entries.items() if held.lower() == key.lower()),
-        None,
-    )
-
-
-def _set(entries: dict[str, str | None], key: str, value: str | None, *, unchanged: bool) -> None:
-    """Hold *value* for *key*, or forget the key where it matches what is saved."""
-    held = _lookup(entries, key)
-    if held is not None:
-        del entries[held[0]]
-    if not unchanged:
-        entries[key] = value

@@ -231,16 +231,23 @@ class Project:
     metadata_problems: tuple[str, ...] = ()
     families: ProjectFamilies = NO_PROJECT_FAMILIES
 
-    def families_at(self, path: Path) -> FamilyCorrections:
+    def families_at(
+        self, path: Path, families: ProjectFamilies | None = None
+    ) -> FamilyCorrections:
         """Return the family corrections in force at *path*, its lamella's over the project's.
 
         The project's own for a path outside it, where no lamella's can apply.
+
+        Args:
+            families: Corrections to ask in place of :attr:`families`, as a
+                change not yet written would make them.
         """
+        families = self.families if families is None else families
         try:
             relative = path.relative_to(self.path)
         except ValueError:
-            return self.families.project
-        return self.families.at(relative.as_posix())
+            return families.project
+        return families.at(relative.as_posix())
 
     @property
     def key(self) -> str:

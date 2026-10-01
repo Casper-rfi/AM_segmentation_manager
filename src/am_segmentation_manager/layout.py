@@ -603,13 +603,22 @@ def condition_of(name: str, corrections: FamilyCorrections) -> ImageDirectory | 
     the family's**: one corrected into another family is a variant there, named
     by its suffix, or by its whole name where it has none.
     """
+    family = corrections.family_of(name)
+    if family is None:
+        return classify_image_directory(name)
+    return condition_in(name, family)
+
+
+def condition_in(name: str, family: str) -> ImageDirectory | None:
+    """Return what the condition *name* is as a member of *family*, corrected there.
+
+    Its family's base where *family* is its whole name, otherwise a variant
+    named by its suffix, or by its whole name where it has none.
+    """
     parsed = classify_image_directory(name)
     if parsed is None:
         return None
-    family = corrections.family_of(name)
-    if family is None:
-        return parsed
-    if family.lower() == name.lower():
+    if family_key(family) == family_key(name):
         variant = None
     else:
         variant = parsed.variant if parsed.variant is not None else name

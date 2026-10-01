@@ -367,15 +367,21 @@ class FamiliesPanel(QWidget):
         node = self._selected_family()
         condition = self._selected_condition()
         if node is not None and condition is not None:
-            self.families.set_primary(node.family, condition)
-            self.refresh()
+            self._set_primary(node.family, condition)
 
     def _default_primary(self) -> None:
         """Return the selected condition's family to its default primary, held until saved."""
         node = self._selected_family()
         if node is not None:
-            self.families.set_primary(node.family, None)
-            self.refresh()
+            self._set_primary(node.family, None)
+
+    def _set_primary(self, family: str, condition: str | None) -> None:
+        """Hold *condition* as *family*'s primary, saying why where it cannot be."""
+        try:
+            self.families.set_primary(family, condition)
+        except ValueError as error:
+            QMessageBox.warning(self, "Cannot make it the primary", str(error))
+        self.refresh()
 
     def _discard(self) -> None:
         """Forget the changes held, writing nothing."""
