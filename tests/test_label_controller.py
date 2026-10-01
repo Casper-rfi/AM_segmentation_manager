@@ -1028,3 +1028,104 @@ def test_labels_saved_but_not_marked_corrected_are_settled_and_say_why(
     assert "not marked corrected" in saved.headline
     assert not controller.session.edited_keys()
     assert read_state(dataset.stage).states == {}
+
+
+# ---------------------------------------------------------------------------
+# Families: proofreading follows the family on screen
+# ---------------------------------------------------------------------------
+
+#: The conditions each acquisition of the two-family lamella was imaged under.
+TWO_FAMILIES = {
+    "img_0004.tif": ("sem", "sem_fi4", "sem-5kV", "sem-5kV_fi4"),
+    "img_0005.tif": ("sem", "sem-5kV"),
+    "img_0006.tif": ("sem", "sem-5kV"),
+}
+
+
+def two_family_controller(tmp_path: Path, deselect_5kv: tuple[str, ...] = ()) -> LabelController:
+    """Return a controller on a lamella of the sem and sem-5kV families.
+
+    The sem-5kV groups of the images named in *deselect_5kv* are deselected.
+    """
+    from am_segmentation_manager.operations.selection import transition_records
+
+    lamella = tmp_path / "project" / "lam_010"
+    for name, conditions in TWO_FAMILIES.items():
+        for directory in (*conditions, "sem_labels", "sem-5kV_labels"):
+            (lamella / directory).mkdir(parents=True, exist_ok=True)
+            tifffile.imwrite(str(lamella / directory / name), np.zeros((8, 8), np.uint8))
+    (tmp_path / "project" / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    records = scan_lamella(tmp_path).image_records
+    transition_records(
+        [
+            record for record in records
+            if record.condition == "sem-5kV" and record.image_path.name in deselect_5kv
+        ],
+        "deselected",
+    )
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+    return controller
+
+
+def test_the_frames_to_proofread_follow_the_family_on_screen(tmp_path: Path):
+    controller = two_family_controller(tmp_path, deselect_5kv=("img_0005.tif",))
+    assert controller.count == 3
+
+    controller.set_condition("sem-5kV_fi4")
+
+    assert controller.count == 2
+    assert controller.record.condition == "sem-5kV_fi4", "stays on the acquisition"
+    controller.step(1)
+    assert controller.record.image_path.name == "img_0006.tif"
+    assert controller.record.condition == "sem-5kV", "the family's own, where fi4 is absent"
+
+
+def test_a_family_with_nothing_to_proofread_shows_one_that_has(tmp_path: Path):
+    """Otherwise no frame would be left, and no control to choose another with."""
+    controller = two_family_controller(
+        tmp_path, deselect_5kv=("img_0004.tif", "img_0005.tif", "img_0006.tif")
+    )
+
+    controller.set_condition("sem-5kV")
+
+    assert controller.count == 3
+    assert controller.record.family == "sem"
+    assert controller.condition == "sem-5kV", "the choice is kept"
+
+
+def test_switching_family_keeps_the_other_familys_edits(tmp_path: Path):
+    """Edits are held by label, so this is no different from changing frame."""
+    controller = two_family_controller(tmp_path)
+    annotate(controller)
+
+    controller.set_condition("sem-5kV")
+    annotate(controller)
+
+    assert controller.pending_count() == 2
+    assert {save.destination.parent.name for save in controller.pending_saves()} == {
+        "sem_labels", "sem-5kV_labels",
+    }
+
+
+def test_the_status_names_the_conditions_sharing_the_label(tmp_path: Path):
+    controller = two_family_controller(tmp_path)
+
+    controller.set_condition("sem-5kV_fi4")
+
+    assert controller.label_sharers() == ["sem-5kV", "sem-5kV_fi4"]
+    assert controller.status_text().endswith("label shared by sem-5kV, sem-5kV_fi4")
+
+
+def test_one_family_per_beam_names_no_sharers(tmp_path: Path):
+    """Every condition shares the label then, as the Variant tooltip says."""
+    lamella = tmp_path / "project" / "lam_010"
+    for directory in ("SEM_8", "SEM_8_fi_1", "labels"):
+        (lamella / directory).mkdir(parents=True)
+        tifffile.imwrite(str(lamella / directory / "img_0004.tif"), np.zeros((8, 8), np.uint8))
+    (tmp_path / "project" / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    controller = LabelController(CONFIG, cache=stub_cache())
+    controller.set_lamella(scan_lamella(tmp_path))
+
+    assert controller.label_sharers() == ["SEM_8", "SEM_8_fi_1"]
+    assert "label shared by" not in controller.status_text()

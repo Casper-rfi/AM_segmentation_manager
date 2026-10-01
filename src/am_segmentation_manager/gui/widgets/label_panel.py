@@ -369,7 +369,8 @@ class LabelPanel(QWidget):
         self.variant_combo.setMinimumWidth(110)
         self.variant_combo.setToolTip(
             "Which imaging condition of this acquisition to proofread on.\n"
-            "They share one label, so an edit reaches all of them."
+            "The conditions of one family share one label, so an edit reaches "
+            "all of them; another family has a label of its own."
         )
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._condition_chosen)

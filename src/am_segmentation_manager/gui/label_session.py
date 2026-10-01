@@ -4,8 +4,8 @@ The session holds every label touched since the last save, a lamella being
 proofread at a time. Only the label being worked on is held as an array; the rest
 are PNG-encoded in memory, keeping a lamella of pending work under a megabyte.
 Nothing here touches the filesystem. A label is identified by the path it will be
-written to, so the imaging conditions of one scene share one pending edit, as they
-share one label.
+written to, so the imaging conditions of one family share one pending edit, as they
+share one label, and another family's edits wait under their own.
 """
 from __future__ import annotations
 

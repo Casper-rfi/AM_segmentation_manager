@@ -5,7 +5,8 @@ the edits waiting to be written, and draws nothing. Two things separate it from
 the curation view: frames are read at full resolution, proofreading a boundary
 meaning seeing the pixels it runs through, so the cache holds a handful of frames
 rather than a lamella; and only frames worth proofreading are visited, a
-deselected image being one that was decided against.
+deselected image being one that was decided against -- read from the family on
+screen, each family being its own label.
 """
 from __future__ import annotations
 
@@ -161,11 +162,14 @@ class LabelController:
         #: The series the Curate tab's switches leave on; see
         #: :meth:`set_shown_series`.
         self._shown_series: tuple[str, ...] = SERIES
-        #: The imaging condition on screen, per modality, by its directory's
-        #: name. Purely a view choice: the conditions of one acquisition share a
-        #: label, so which one is being looked at never decides what an edit or
-        #: a state change touches.
+        #: The imaging condition chosen, per modality, by its directory's name.
+        #: Its family decides which label is proofread; which of the family's
+        #: conditions is looked at decides nothing, as they share the label.
         self._conditions: dict[str, str | None] = {}
+        #: The condition the view shows for the beam on screen: the chosen one
+        #: where its family has anything to proofread. See
+        #: :meth:`_settled_condition`.
+        self._shown_condition: str | None = None
         self.known_labels = known_labels if known_labels is not None else KnownLabels()
         self.session = LabelSession()
         self._keys: dict[Path, Path] = {}
@@ -338,10 +342,14 @@ class LabelController:
         self._refresh_positions(keep_frame=self.frame_index)
 
     def available_modalities(self) -> list[str]:
-        """Return the modalities with anything to proofread in this series."""
+        """Return the modalities with anything to proofread in this series, in any family."""
         return [
             modality for modality in MODALITIES
-            if any(self._is_proofreadable(frame, modality) for frame in self._frames)
+            if any(
+                current_state(record) in PROOFREADABLE
+                for frame in self._frames
+                for record in frame.modality_records(modality)
+            )
         ]
 
     def _settled_modality(self) -> str:
@@ -356,17 +364,39 @@ class LabelController:
             return self._wanted_modality
         return available[0]
 
-    def _is_proofreadable(self, frame: LamellaFrame, modality: str) -> bool:
-        """Return whether *frame* has an image of *modality* worth opening."""
-        record = frame.record(modality)
+    def _is_proofreadable(
+        self, frame: LamellaFrame, modality: str, condition: str | None
+    ) -> bool:
+        """Return whether the image a view of *condition* shows in *frame* is worth opening."""
+        record = frame.shown_record(modality, condition)
         return record is not None and current_state(record) in PROOFREADABLE
+
+    def _settled_condition(self, modality: str) -> str | None:
+        """Return the condition to show: the chosen one where its family has work.
+
+        **What was chosen and what can be shown are two things**, as with the
+        series and the beam. A family with nothing selected in this beam would
+        leave no frame to stand on, and so no control to choose another; the
+        first family that does have work is shown instead, by its name, and
+        the choice is untouched for the next lamella.
+        """
+        chosen = self._conditions.get(modality)
+        if any(self._is_proofreadable(frame, modality, chosen) for frame in self._frames):
+            return chosen
+        for frame in self._frames:
+            for family in frame.families(modality):
+                record = frame.primary(modality, family)
+                if record is not None and current_state(record) in PROOFREADABLE:
+                    return family
+        return chosen
 
     def _refresh_positions(self, *, keep_frame: int | None) -> None:
         """Recompute the visitable frames, staying as near *keep_frame* as possible."""
         self._modality = self._settled_modality()
+        self._shown_condition = self._settled_condition(self._modality)
         self._positions = tuple(
             index for index, frame in enumerate(self._frames)
-            if self._is_proofreadable(frame, self._modality)
+            if self._is_proofreadable(frame, self._modality, self._shown_condition)
         )
         if not self._positions:
             self._cursor = 0
@@ -415,9 +445,11 @@ class LabelController:
         curation view.
         """
         frame = self.frame
-        if frame is None:
-            return None
-        return frame.shown_record(self._modality, self.condition)
+        return self._shown_in(frame) if frame is not None else None
+
+    def _shown_in(self, frame: LamellaFrame) -> ImageRecord | None:
+        """Return the record the view shows in *frame*, of the beam on screen."""
+        return frame.shown_record(self._modality, self._shown_condition)
 
     @property
     def condition(self) -> str | None:
@@ -427,11 +459,14 @@ class LabelController:
     def set_condition(self, condition: str | None) -> None:
         """Show *condition* of the modality on screen, by its directory's name.
 
-        Which frames are worth proofreading is unchanged: the conditions of one
-        acquisition share a label and therefore share its state, so the set is
-        read from the frame's primary whichever condition is being looked at.
+        One of another family proofreads that family's label, so the frames
+        worth visiting are recomputed, staying on this acquisition where it has
+        work; between one family's conditions nothing else changes, the label
+        and its state being shared. Pending edits are kept either way, being
+        held by label.
         """
         self._conditions[self._modality] = condition or None
+        self._refresh_positions(keep_frame=self.frame_index)
         logger.debug("Proofreading %s condition %s", self._modality, condition or "(primary)")
 
     def condition_choices(self) -> list[tuple[str, str | None]]:
@@ -460,7 +495,7 @@ class LabelController:
         prepared = self.cached_image()
         if prepared is not None:
             return prepared
-        return self.cache.image(index, self._modality, self.condition)
+        return self.cache.image(index, self._modality, self._shown_condition)
 
     def cached_image(self) -> FrameImage | None:
         """Return the prepared frame only if it is already held and still current.
@@ -473,13 +508,13 @@ class LabelController:
         index = self.frame_index
         if index is None:
             return None
-        prepared = self.cache.cached_image(index, self._modality, self.condition)
+        prepared = self.cache.cached_image(index, self._modality, self._shown_condition)
         if prepared is not None and self._read_before_rewrite(prepared):
             logger.info(
                 "Label of %s changed on disk since it was read; reading it again",
                 self.record.image_path.name,
             )
-            self.cache.drop_image(index, self._modality, self.condition)
+            self.cache.drop_image(index, self._modality, self._shown_condition)
             return None
         return prepared
 
@@ -512,9 +547,9 @@ class LabelController:
         requests = []
         for cursor in prefetch_order(self._cursor, len(self._positions), radius):
             index = self._positions[cursor]
-            if self.cache.holds(index, self._modality, self.condition):
+            if self.cache.holds(index, self._modality, self._shown_condition):
                 continue
-            requests.append(LoadRequest(index, self._modality, self.condition))
+            requests.append(LoadRequest(index, self._modality, self._shown_condition))
         return requests
 
     # -- editing ------------------------------------------------------------
@@ -688,7 +723,7 @@ class LabelController:
         return {
             position
             for position, index in enumerate(self._positions)
-            if self.key_for(self._frames[index].record(self._modality)) in edited
+            if self.key_for(self._shown_in(self._frames[index])) in edited
         }
 
     def pending_count(self) -> int:
@@ -889,7 +924,7 @@ class LabelController:
         """Return each proofreadable frame's label state, for the timeline."""
         return {
             self._modality: [
-                self._label_state(self._frames[index].record(self._modality))
+                self._label_state(self._shown_in(self._frames[index]))
                 for index in self._positions
             ]
         }
@@ -945,7 +980,7 @@ class LabelController:
                 # No stored copy means it is the label open on screen, which
                 # `specks` answers for directly.
                 continue
-            record = self._frames[index].record(self._modality)
+            record = self._shown_in(self._frames[index])
             label = None if record is None else find_matching_label(record)
             if label is not None:
                 wanted.append((key, label))
@@ -967,12 +1002,12 @@ class LabelController:
 
     def _key_at(self, index: int) -> Path | None:
         """Return the label key of the frame at *index* in the current view."""
-        record = self._frames[index].record(self._modality)
+        record = self._shown_in(self._frames[index])
         return None if record is None else self.key_for(record)
 
     def _record_at(self, index: int) -> ImageRecord:
         """Return the current modality's record of the proofreadable frame at *index*."""
-        record = self._frames[index].record(self._modality)
+        record = self._shown_in(self._frames[index])
         assert record is not None, "a proofreadable frame has an image of its modality"
         return record
 
@@ -982,8 +1017,27 @@ class LabelController:
             return None
         return LABEL_DISPLAY[self.known_labels.state(record)]
 
+    def label_sharers(self) -> list[str]:
+        """Return the conditions of the frame on screen proofread through its label.
+
+        In condition order, by directory name: what an edit on screen reaches.
+        """
+        frame = self.frame
+        key = self.current_key
+        if frame is None or key is None:
+            return []
+        return [
+            record.condition
+            for record in frame.modality_records(self._modality)
+            if record.condition is not None and self.key_for(record) == key
+        ]
+
     def status_text(self) -> str:
-        """Return the line describing where the reviewer is."""
+        """Return the line describing where the reviewer is.
+
+        Where the beam holds several families it names the conditions sharing
+        the label on screen, an edit reaching those and no others.
+        """
         if self._lamella is None:
             return "No lamella selected"
         if not self._positions:
@@ -1003,4 +1057,7 @@ class LabelController:
         record = self.record
         if record is not None:
             parts.append(current_state(record))
+        sharers = self.label_sharers()
+        if frame is not None and len(frame.families(self._modality)) > 1 and len(sharers) > 1:
+            parts.append("label shared by " + ", ".join(sharers))
         return " · ".join(parts)
