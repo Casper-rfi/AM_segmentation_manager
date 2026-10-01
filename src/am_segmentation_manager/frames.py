@@ -251,9 +251,15 @@ class LamellaFrame:
 
     def condition_choices(self, modality: str) -> list[ConditionChoice]:
         """Return each condition of *modality* a view can show, in condition order."""
+        primaries = {
+            id(record)
+            for family in self.families(modality)
+            if (record := self.primary(modality, family)) is not None
+        }
         return [
             ConditionChoice(
-                family=record.family or "", variant=record.variant, condition=record.condition
+                family=record.family or "", variant=record.variant, condition=record.condition,
+                primary=id(record) in primaries,
             )
             for record in self.modality_records(modality)
         ]
@@ -269,11 +275,15 @@ class ConditionChoice:
         variant: Its variant within the family, or None for the base.
         condition: Its image directory's name, which choosing it passes on;
             None for an image sitting directly in its stage.
+        primary: Whether it stands for its family here, as
+            :func:`primary_among` chooses: the image predicted, measured and
+            exported from.
     """
 
     family: str
     variant: str | None
     condition: str | None
+    primary: bool = False
 
     @property
     def text(self) -> str:

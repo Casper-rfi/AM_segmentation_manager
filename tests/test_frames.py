@@ -347,6 +347,22 @@ def test_two_families_of_one_beam_each_offer_their_base():
     assert frame.record("SEM").image_path.parent.name == "sem"
 
 
+def test_each_familys_primary_is_marked_among_the_choices():
+    stage = make_stage("adaptive_polish_1", "01", [
+        make_variant_record("img_0004.tif", "SEM", "fi4", family="sem-5kV"),
+        make_variant_record("img_0004.tif", "SEM", None, family="sem-5kV"),
+        make_variant_record("img_0004.tif", "SEM", "fi4", family="sem"),
+        make_variant_record("img_0004.tif", "SEM", None, family="sem"),
+    ])
+    corrections = FamilyCorrections(primary={"sem": "sem_fi4"})
+
+    frame = build_lamella_frames(make_lamella([stage]), corrections=corrections)[0]
+
+    assert [(c.condition, c.primary) for c in frame.condition_choices("SEM")] == [
+        ("sem", False), ("sem_fi4", True), ("sem-5kV", True), ("sem-5kV_fi4", False),
+    ]
+
+
 def test_an_image_sitting_in_its_stage_has_no_condition(tmp_path: Path):
     record = ImageRecord(image_path=tmp_path / "ref_SEM.tif", stage_path=tmp_path)
 

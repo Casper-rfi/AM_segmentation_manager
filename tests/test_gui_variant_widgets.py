@@ -334,16 +334,57 @@ def test_a_condition_is_shown_by_its_folder_name_with_its_family_bold(
         destroy(window)
 
 
-def _condition_combo(names: tuple[str, ...], family: str):
+def _condition_combo(names: tuple[str, ...], family: str, primary: str | None = None):
     """Return an ElidingCombo offering *names*, all of *family*, the last one chosen."""
     from am_segmentation_manager.frames import ConditionChoice
     from am_segmentation_manager.gui.widgets.common import fill_condition_combo
     from am_segmentation_manager.gui.widgets.controls import ElidingCombo
 
     combo = ElidingCombo()
-    choices = [ConditionChoice(family=family, variant=None, condition=name) for name in names]
+    choices = [
+        ConditionChoice(family=family, variant=None, condition=name, primary=name == primary)
+        for name in names
+    ]
     fill_condition_combo(combo, choices, names[-1])
     return combo
+
+
+def _starred(combo) -> list[bool]:
+    """Return whether each row carries the primary star rather than a blank."""
+    from am_segmentation_manager.gui.widgets.common import primary_star
+
+    star = primary_star().pixmap(16, 16).toImage()
+    return [
+        combo.itemIcon(row).pixmap(16, 16).toImage() == star for row in range(combo.count())
+    ]
+
+
+def test_the_primary_of_a_family_of_several_is_starred(qt_app):
+    combo = _condition_combo(("sem", "sem_fi1", "sem_fi4"), "sem", primary="sem_fi1")
+
+    assert _starred(combo) == [False, True, False]
+    assert all(not combo.itemIcon(row).isNull() for row in range(3)), "kept in line"
+    assert "its primary" in combo.itemData(1, Qt.ItemDataRole.ToolTipRole)
+    destroy(combo)
+
+
+def test_a_family_of_one_carries_no_star(qt_app):
+    """Nothing to choose between, so nothing to say which is chosen."""
+    combo = _condition_combo(("sem",), "sem", primary="sem")
+
+    assert combo.itemIcon(0).isNull()
+    destroy(combo)
+
+
+def test_the_field_keeps_room_for_the_star_only_where_it_shows_it(qt_app):
+    """The blank that lines the open list up would cost a long name its end."""
+    from am_segmentation_manager.gui.widgets.common import CONDITION_FIELD_WIDTH
+
+    combo = _condition_combo(("SEM-test", "SEM-test_8_fi_16"), "SEM-test", primary="SEM-test")
+    combo.resize(CONDITION_FIELD_WIDTH, combo.sizeHint().height())
+
+    assert combo.shown_text() == "SEM-test_8_fi_16"
+    destroy(combo)
 
 
 def test_a_moved_condition_names_its_family_on_hover(qt_app):

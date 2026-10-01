@@ -27,6 +27,7 @@ from ..operations.label_measure import (
 from ..operations.predict import (
     PlannedPrediction,
     PredictionSource,
+    describe_conditions,
     plan_predictions,
     run_predictions,
 )
@@ -325,8 +326,9 @@ def _cmd_predict(args: argparse.Namespace) -> int:
                 make_path_relative(item.destination, start_path),
             )
         logger.info(
-            "Would predict: %d %s image(s) (dry run, nothing written and no "
+            "Would predict: %d %s image(s)%s (dry run, nothing written and no "
             "model loaded)", len(plan.predictions), plan.modality,
+            describe_conditions(plan.conditions),
         )
         return 0
     if not plan.predictions:
@@ -368,7 +370,8 @@ def _cmd_predict(args: argparse.Namespace) -> int:
         # what finished is kept and the next run resumes from it.
         logger.warning("Interrupted. Re-run to continue where this stopped")
         return 130
-    logger.info("Total predicted: %d %s image(s) in %s", written, plan.modality,
+    logger.info("Total predicted: %d %s image(s)%s in %s", written, plan.modality,
+                describe_conditions(plan.conditions),
                 _format_duration(time.monotonic() - started))
     return 0
 

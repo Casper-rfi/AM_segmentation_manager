@@ -118,6 +118,19 @@ class PredictionPlan:
         return self.modalities[0] if len(self.modalities) == 1 else None
 
     @property
+    def conditions(self) -> tuple[tuple[str, int], ...]:
+        """Return each imaging condition predicted from and how many times, most first.
+
+        What says which image of a family the model sees; an image sitting
+        directly in its stage has no condition and is not counted.
+        """
+        counts: dict[str, int] = {}
+        for item in self.predictions:
+            if item.record.condition is not None:
+                counts[item.record.condition] = counts.get(item.record.condition, 0) + 1
+        return tuple(sorted(counts.items(), key=lambda entry: (-entry[1], entry[0].lower())))
+
+    @property
     def is_refused(self) -> bool:
         """Return whether the run must not proceed: it spans both modalities."""
         return len(self.modalities) > 1
@@ -243,6 +256,20 @@ def plan_predictions(
     return PredictionPlan(
         tuple(predictions), tuple(up_to_date), modalities, represented
     )
+
+
+def describe_conditions(conditions: Iterable[tuple[str, int]]) -> str:
+    """Return ``" from sem"``, or ``" from sem (412) and sem-2kV (38)"``, or ``""`` for none.
+
+    Counted only where there are several, one condition needing no count.
+    """
+    listed = list(conditions)
+    if not listed:
+        return ""
+    if len(listed) == 1:
+        return f" from {listed[0][0]}"
+    named = [f"{condition} ({count})" for condition, count in listed]
+    return f" from {', '.join(named[:-1])} and {named[-1]}"
 
 
 def run_predictions(

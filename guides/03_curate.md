@@ -41,7 +41,8 @@ Along the top:
   condition is named by its folder, with its family in bold; a name too long
   for the box loses its middle, so its end still tells `fi_1` from `fi_16`.
   Where they form several families, each family is a heading in the list, with
-  its conditions beneath. A frame opens on its family's primary condition, and
+  its conditions beneath. A star marks a family's primary, the image predicted
+  from, where the family has more than one condition. A frame opens on its family's primary condition, and
   one not imaged under the condition chosen shows another of the same family.
 - **Show label**, **Show image**, **Opacity** and **Min / max** change how the
   frame is drawn, and nothing else.
@@ -121,9 +122,10 @@ Each one that writes shows what it would do before doing it, and waits for
   or names one; `cpu` always works, slowly.
 - A model predicts one beam, so a choice covering both SEM and FIB images is
   refused. One prediction is made per label group, from its primary condition
-  (see [Add data](02_add_data.md#correct-the-families)), and an image this model has
-  already predicted is passed over, so a run stopped halfway can be started
-  again.
+  (see [Add data](02_add_data.md#correct-the-families)), which **Variant** marks
+  with a star and the preview names: *Would predict 12 SEM image(s) from sem*.
+  An image this model has already predicted is passed over, so a run stopped
+  halfway can be started again.
 - Predictions go in the image folder's `_predictions` folder, never into a label.
 
 The models Adaptive Milling was trained with are published on Zenodo

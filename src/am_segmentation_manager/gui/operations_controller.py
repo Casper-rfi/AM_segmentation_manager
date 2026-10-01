@@ -47,7 +47,7 @@ from ..operations.label_compression import (
     existing_labels,
 )
 from ..operations.label_measure import records_with_specks
-from ..operations.predict import PredictionSource, plan_predictions
+from ..operations.predict import PredictionSource, describe_conditions, plan_predictions
 from ..operations.predict_process import ProcessOutcome, predict_out_of_process
 from ..operations.predictions import (
     SKIP_DESCRIPTIONS,
@@ -481,8 +481,8 @@ class OperationsController:
             if not plan.predictions:
                 return OperationReport("Nothing to predict.", context)
             return OperationReport(
-                f"Would predict {len(plan.predictions)} {plan.modality} image(s) "
-                f"with {weights.name}.",
+                f"Would predict {len(plan.predictions)} {plan.modality} image(s)"
+                f"{describe_conditions(plan.conditions)} with {weights.name}.",
                 tuple(
                     f"{self._relative(item.destination)}: {item.describe()}"
                     for item in plan.predictions
@@ -531,8 +531,8 @@ class OperationsController:
                 written=created,
             )
         return OperationReport(
-            f"Predicted {outcome.written} {outcome.modality} image(s) with "
-            f"{weights.name}.",
+            f"Predicted {outcome.written} {outcome.modality} image(s)"
+            f"{describe_conditions(outcome.conditions)} with {weights.name}.",
             lines + context,
             outcome.written,
             applied=True,

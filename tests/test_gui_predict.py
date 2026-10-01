@@ -101,6 +101,17 @@ def test_a_preview_writes_nothing_and_loads_no_model(controller, tmp_path: Path)
     assert "Would predict" in report.headline
 
 
+def test_the_preview_names_the_condition_predicted_from(controller, tmp_path: Path):
+    """Nothing else on screen said which of a family's images the model sees."""
+    dataset = build_dataset(tmp_path, sem_variants=("sem_fi_1",))
+
+    report = controller.predict(
+        records_of(dataset.root), weights_file(tmp_path), dry_run=True
+    )
+
+    assert " SEM image(s) from sem with " in report.headline
+
+
 def test_a_missing_model_is_reported_with_nothing_to_apply(controller, tmp_path: Path):
     dataset = build_dataset(tmp_path)
 
@@ -237,6 +248,19 @@ def test_a_run_reports_what_the_child_wrote(controller, tmp_path: Path):
     assert report.applied
     assert report.count == 3
     assert "Predicted 3 SEM image(s)" in report.headline
+
+
+def test_a_run_names_the_conditions_it_predicted_from(controller, tmp_path: Path):
+    report = controller.predict(
+        real_images(records_of(build_dataset(tmp_path).root)),
+        weights_file(tmp_path),
+        run=ran(ProcessOutcome(
+            written=3, total=3, modality="SEM", destinations=("a.tif", "b.tif", "c.tif"),
+            conditions=(("sem", 2), ("sem-5kV", 1)),
+        )),
+    )
+
+    assert "Predicted 3 SEM image(s) from sem (2) and sem-5kV (1) with " in report.headline
 
 
 def test_a_stopped_run_keeps_what_it_wrote_and_says_so(controller, tmp_path: Path):

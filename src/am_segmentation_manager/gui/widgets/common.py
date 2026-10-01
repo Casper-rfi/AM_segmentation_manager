@@ -11,7 +11,9 @@ and anything only one panel uses belongs in that panel.
 from __future__ import annotations
 
 import base64
+import functools
 import logging
+import math
 from collections.abc import Sequence
 
 from qtpy.QtCore import (
@@ -19,12 +21,16 @@ from qtpy.QtCore import (
     QByteArray,
     QEvent,
     QObject,
+    QPointF,
     Qt,
 )
 from qtpy.QtGui import (
+    QColor,
     QFont,
     QIcon,
+    QPainter,
     QPixmap,
+    QPolygonF,
     QStandardItem,
     QStandardItemModel,
 )
@@ -324,6 +330,47 @@ FAMILY_LENGTH_ROLE = Qt.ItemDataRole.UserRole + 1
 #: The item role holding the family a condition's row belongs to.
 FAMILY_ROLE = Qt.ItemDataRole.UserRole + 2
 
+#: The item role holding whether a condition's row carries the primary star.
+PRIMARY_ROLE = Qt.ItemDataRole.UserRole + 3
+
+#: Side of the primary star's square, in logical pixels: a combo's icon size.
+_STAR_SIZE = 16
+
+
+@functools.cache
+def primary_star() -> QIcon:
+    """Return the star marking a family's primary: the image predicted, measured and exported.
+
+    Drawn rather than typed, a typed star resting on whichever fonts a
+    platform has. The text colour rather than the accent, which a preference
+    changes under a list that is not refilled for it.
+    """
+    pixmap = QPixmap(_STAR_SIZE, _STAR_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(theme.TEXT))
+    centre, outer, inner = _STAR_SIZE / 2, _STAR_SIZE * 0.42, _STAR_SIZE * 0.17
+    painter.drawPolygon(QPolygonF([
+        QPointF(
+            centre + radius * math.sin(math.pi * point / 5),
+            centre + 0.5 - radius * math.cos(math.pi * point / 5),
+        )
+        for point in range(10)
+        for radius in ((outer if point % 2 == 0 else inner),)
+    ]))
+    painter.end()
+    return chip_icon(pixmap)
+
+
+@functools.cache
+def _no_star() -> QIcon:
+    """Return a blank the star's size, so a row without it lines up with one that has it."""
+    pixmap = QPixmap(_STAR_SIZE, _STAR_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    return chip_icon(pixmap)
+
 #: How wide a Variant dropdown is, in both views. Fixed rather than following
 #: its entries, which would move the row on each step to a lamella imaged under
 #: other conditions. Wide enough for ``SEM-test_8_fi_16`` whole, and no wider:
@@ -373,10 +420,13 @@ def fill_condition_combo(
 
     A row is the name as on disk, ``SEM-test_8_fi_16``, with its family
     marked by :data:`FAMILY_LENGTH_ROLE`, so the closed field needs no
-    other name for it. Where a beam holds several families each is a heading
-    that cannot be chosen, as the Export tab's grouped lists have, which is
-    what says which conditions share a label. Rebuilt only when the rows
-    change, for the reason :func:`fill_choice_combo` gives.
+    other name for it. A family's primary carries :func:`primary_star` where
+    the family offers more than one condition
+    (``test_the_primary_of_a_family_of_several_is_starred``). Where a beam
+    holds several families each is a heading that cannot be chosen, as the
+    Export tab's grouped lists have, which is what says which conditions share
+    a label. Rebuilt only when the rows change, for the reason
+    :func:`fill_choice_combo` gives.
 
     Args:
         choices: In condition order, so each family's are together.
@@ -384,28 +434,36 @@ def fill_condition_combo(
     """
     choices = list(choices)
     several = len({family_key(choice.family) for choice in choices}) > 1
+    sizes: dict[str, int] = {}
+    for choice in choices:
+        sizes[family_key(choice.family)] = sizes.get(family_key(choice.family), 0) + 1
 
-    # (text, condition, family length, family); a heading is the row with no length.
-    rows: list[tuple[str, str | None, int | None, str]] = []
+    # (text, condition, family length, family, starred); a heading has no length.
+    rows: list[tuple[str, str | None, int | None, str, bool]] = []
     heading: str | None = None
     for choice in choices:
         if several and (heading is None or family_key(heading) != family_key(choice.family)):
             heading = choice.family
-            rows.append((heading, None, None, ""))
-        rows.append((choice.text, choice.condition, choice.family_length, choice.family))
+            rows.append((heading, None, None, "", False))
+        # A family of one has nothing to choose between, so no star to say which.
+        starred = choice.primary and sizes[family_key(choice.family)] > 1
+        rows.append(
+            (choice.text, choice.condition, choice.family_length, choice.family, starred)
+        )
+    any_starred = any(row[4] for row in rows)
 
     enabled = Qt.ItemFlag.ItemIsEnabled
     held = [
         (
             combo.itemText(i), combo.itemData(i), combo.itemData(i, FAMILY_LENGTH_ROLE),
-            combo.itemData(i, FAMILY_ROLE) or "",
+            combo.itemData(i, FAMILY_ROLE) or "", bool(combo.itemData(i, PRIMARY_ROLE)),
         )
         for i in range(combo.count())
     ]
     combo.blockSignals(True)
     if held != rows:
         model = QStandardItemModel(combo)
-        for text, condition, family_length, family in rows:
+        for text, condition, family_length, family, starred in rows:
             item = QStandardItem(text)
             if family_length is None:
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -415,10 +473,16 @@ def fill_condition_combo(
             else:
                 item.setData(condition, Qt.ItemDataRole.UserRole)
                 item.setData(family_length, FAMILY_LENGTH_ROLE)
+                item.setData(starred, PRIMARY_ROLE)
+                if any_starred:
+                    item.setIcon(primary_star() if starred else _no_star())
                 if family:
                     # A condition AM_families.yaml moved does not say its family by name.
                     item.setData(family, FAMILY_ROLE)
-                    item.setToolTip(f"Family {family}")
+                    item.setToolTip(
+                        f"Family {family}; its primary, predicted, measured and exported from"
+                        if starred else f"Family {family}"
+                    )
             model.appendRow(item)
         combo.setModel(model)
     selectable = [

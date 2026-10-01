@@ -51,6 +51,7 @@ class ProcessOutcome:
         destinations: Where each prediction went, relative paths as given.
         up_to_date: Images this model had already predicted.
         represented: Images covered by another image's prediction.
+        conditions: Each imaging condition predicted from, and how often.
         stopped: Whether the run was asked to stop before it finished.
         error: Why nothing ran, or "" when it did.
     """
@@ -62,6 +63,7 @@ class ProcessOutcome:
     destinations: tuple[str, ...] = ()
     up_to_date: int = 0
     represented: int = 0
+    conditions: tuple[tuple[str, int], ...] = ()
     stopped: bool = False
     error: str = ""
 
@@ -137,6 +139,7 @@ def _child(records: Sequence[ImageRecord], weights: str, device: str, queue) -> 
             "destinations": destinations,
             "up_to_date": len(plan.up_to_date),
             "represented": plan.represented,
+            "conditions": plan.conditions,
         }
         if plan.is_refused or not plan.predictions:
             queue.put(("done", ProcessOutcome(**common)))

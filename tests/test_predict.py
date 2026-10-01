@@ -13,6 +13,7 @@ import pytest
 
 from am_segmentation_manager.operations.predict import (
     PredictionSource,
+    describe_conditions,
     plan_predictions,
     prediction_destination,
     read_provenance,
@@ -150,6 +151,30 @@ def test_a_family_in_conflict_is_predicted_once_per_destination(tmp_path: Path):
     assert planned.destination == stage / "sem_predictions" / "am_seg" / "img_0000.tif"
     assert plan.represented == 2
     assert planned.shared_with == 2
+
+
+def test_the_plan_counts_the_conditions_it_predicts_from(tmp_path: Path):
+    dataset = build_dataset(tmp_path, sem_variants=("sem_fi_1",))
+    (dataset.project / "AM_families.yaml").write_text(
+        "primary:\n  sem: sem_fi_1\n", encoding="utf-8"
+    )
+
+    plan = plan_predictions(records_of(dataset.root), MODEL)
+
+    assert plan.conditions == (("sem_fi_1", len(plan.predictions)),)
+
+
+@pytest.mark.parametrize(
+    ("conditions", "phrase"),
+    [
+        ((), ""),
+        ((("sem", 4),), " from sem"),
+        ((("sem", 4), ("sem-5kV", 1)), " from sem (4) and sem-5kV (1)"),
+        ((("a", 3), ("b", 2), ("c", 1)), " from a (3), b (2) and c (1)"),
+    ],
+)
+def test_conditions_are_named_and_counted_only_where_several(conditions, phrase):
+    assert describe_conditions(conditions) == phrase
 
 
 # --- one modality per run ---------------------------------------------------

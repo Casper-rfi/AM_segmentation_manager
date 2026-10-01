@@ -25,6 +25,7 @@ from qtpy.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QIcon,
     QPainter,
     QPalette,
     QPen,
@@ -54,7 +55,7 @@ from qtpy.QtWidgets import (
 )
 
 from . import theme
-from .common import FAMILY_LENGTH_ROLE, match_anywhere
+from .common import FAMILY_LENGTH_ROLE, PRIMARY_ROLE, match_anywhere
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,9 @@ class ElidingLabel(QLabel):
 #: The ellipsis Qt shortens text with, kept beside the ends a name keeps.
 _ELLIPSIS = "\u2026"
 
+#: The gap a stylesheet's combo box leaves between the shown entry's icon and its text.
+_ICON_GAP = 6
+
 
 def condition_runs(text: str, family_length: int, font: QFont, width: int) -> tuple[str, str]:
     """Return *text* as its family, drawn bold, and the rest, made to fit *width*.
@@ -416,12 +420,21 @@ class ElidingCombo(QComboBox):
         self.setItemDelegate(_FamilyDelegate(self))
 
     def _field(self) -> tuple[QStyleOptionComboBox, QRect]:
-        """Return the style option and the rectangle the shown entry is drawn in."""
+        """Return the style option and the rectangle the shown entry's text is drawn in.
+
+        After the entry's icon where it has one, at the gap a stylesheet's
+        combo leaves there. A condition without the primary star has only a
+        blank keeping the open list aligned, which the field leaves out.
+        """
         option = QStyleOptionComboBox()
         self.initStyleOption(option)
+        if self.currentData(FAMILY_LENGTH_ROLE) is not None and not self.currentData(PRIMARY_ROLE):
+            option.currentIcon = QIcon()
         field = self.style().subControlRect(
             QStyle.ComplexControl.CC_ComboBox, option, QStyle.SubControl.SC_ComboBoxEditField, self
         )
+        if not option.currentIcon.isNull():
+            field.setLeft(field.left() + option.iconSize.width() + _ICON_GAP)
         return option, field
 
     def shown_runs(self) -> tuple[str, str]:
