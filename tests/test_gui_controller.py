@@ -637,17 +637,17 @@ def test_state_of_a_missing_modality_is_none():
 # Edit targeting
 # ---------------------------------------------------------------------------
 
-def test_target_records_for_each_target():
+def test_the_current_frame_scopes_each_target():
     controller = make_controller()
 
     controller.set_target("SEM")
-    assert [r.modality for r in controller.target_records()] == ["SEM"]
+    assert [r.modality for r in controller.scoped_records()] == ["SEM"]
 
     controller.set_target("FIB")
-    assert [r.modality for r in controller.target_records()] == ["FIB"]
+    assert [r.modality for r in controller.scoped_records()] == ["FIB"]
 
     controller.set_target("both")
-    assert [r.modality for r in controller.target_records()] == ["SEM", "FIB"]
+    assert [r.modality for r in controller.scoped_records()] == ["SEM", "FIB"]
 
 
 def test_unknown_target_raises():

@@ -243,3 +243,45 @@ def test_the_reach_line_follows_the_selection(qt_app, variant_project: Path):
 # ---------------------------------------------------------------------------
 
 
+
+
+# ---------------------------------------------------------------------------
+# The family control appears only where there is a family to choose
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def two_family_project(tmp_path: Path) -> Path:
+    """One lamella whose SEM images come in two families, sem and sem-5kV."""
+    root = tmp_path / "scan"
+    project = root / "20260930_adaptive_milling"
+    image = np.full((64, 96), 100, dtype=np.uint8)
+    for directory in ("sem", "sem_fi4", "sem-5kV", "FIB"):
+        _write(project / "lam_010" / directory / "img_0000.tif", image)
+    (project / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    return root
+
+
+def test_the_family_control_is_hidden_with_one_family_per_beam(qt_app, variant_project: Path):
+    """No project in the collection holds two families of a beam."""
+    window = _window(qt_app, variant_project)
+    try:
+        assert window.state_panel.family_control.isHidden() is True
+    finally:
+        destroy(window)
+
+
+def test_choosing_every_family_recounts_the_reach(qt_app, two_family_project: Path):
+    window = _window(qt_app, two_family_project)
+    try:
+        panel = window.state_panel
+        assert panel.family_control.isHidden() is False
+        assert panel.reach.text().startswith("sem family: covers")
+
+        panel.family_control.buttons["every"].click()
+
+        assert window.controller.family_scope == "every"
+        assert panel.reach.text().startswith("Every family: covers")
+        window.state_panel.target_control.buttons["FIB"].click()
+        assert panel.family_control.isHidden() is True
+    finally:
+        destroy(window)

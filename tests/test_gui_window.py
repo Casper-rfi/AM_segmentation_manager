@@ -642,7 +642,7 @@ def test_mixed_state_shows_no_option_selected(qt_app, window):
     assert not any(
         button.isChecked() for button in window.state_panel.state_buttons.values()
     )
-    assert "modalities differ" in window.state_panel.readout.text()
+    assert "the images it covers differ" in window.state_panel.readout.text()
 
 
 # ---------------------------------------------------------------------------

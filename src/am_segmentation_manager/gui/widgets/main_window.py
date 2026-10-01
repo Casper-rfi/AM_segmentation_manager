@@ -53,6 +53,7 @@ from ..controller import (
     DisplayMode,
     EditingDisabled,
     EditTarget,
+    FamilyScope,
     ScanProgress,
 )
 from ..export_controller import ExportController
@@ -602,6 +603,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.state_panel.editing_toggled.connect(self.controller.set_editing_enabled)
         self.state_panel.state_requested.connect(self.apply_state)
         self.state_panel.target_changed.connect(self._set_target)
+        self.state_panel.family_scope_changed.connect(self._set_family_scope)
 
         self.operations_panel.predict_requested.connect(self._predict)
         self.operations_panel.devices_requested.connect(self._offer_devices)
@@ -1214,6 +1216,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller.set_target(target)
         self._refresh_state_panel()
 
+    def _set_family_scope(self, scope: FamilyScope) -> None:
+        self.controller.set_family_scope(scope)
+        self._refresh_state_panel()
+
     # -- choosing what a change applies to ---------------------------------
     #
     # Every one of these ends in a refresh of the state panel, because the
@@ -1291,8 +1297,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
     def _set_condition(self, condition: str) -> None:
         """Show a different imaging condition.
 
-        A view change only: which condition is on screen never decides what a
-        state change moves, because the change follows the label.
+        One of another family also moves what a state change acts on, and the
+        timeline's chips with it; see :meth:`CurationController.set_condition`.
         """
         self.controller.set_condition(condition or None)
         self.refresh()
@@ -1795,6 +1801,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.operations_panel.show_selection(self.controller.describe_selection())
         self._refresh_prediction_summary()
         self.state_panel.set_target(self.controller.target)
+        self.state_panel.show_family_choice(reach.family_choice, self.controller.family_scope)
         self.state_panel.set_editing_enabled(self.controller.editing_enabled)
         # Asked of the series being shown rather than the one chosen: a lamella
         # holding only unclassified images resolves to `other` on its own.

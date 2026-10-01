@@ -199,6 +199,17 @@ class LamellaFrame:
             None,
         )
 
+    def families(self, modality: str) -> list[str]:
+        """Return the families *modality* was imaged under here, in condition order.
+
+        Each once, however its conditions spell it; ``""`` for records naming
+        no family.
+        """
+        seen: dict[str, str] = {}
+        for record in self.modality_records(modality):
+            seen.setdefault(family_key(record.family), record.family or "")
+        return list(seen.values())
+
     def primary(self, modality: str, family: str | None = None) -> ImageRecord | None:
         """Return the record standing for one family of *modality*.
 
@@ -212,8 +223,8 @@ class LamellaFrame:
         records = self.modality_records(modality)
         if not records:
             return None
-        wanted = (family if family is not None else records[0].family or "").lower()
-        members = [record for record in records if (record.family or "").lower() == wanted]
+        wanted = family_key(family if family is not None else records[0].family)
+        members = [record for record in records if family_key(record.family) == wanted]
         return primary_among(members, self.corrections) if members else None
 
     def shown_record(self, modality: str, condition: str | None = None) -> ImageRecord | None:
@@ -245,8 +256,16 @@ class LamellaFrame:
         families would otherwise each offer a ``base``.
         """
         records = self.modality_records(modality)
-        several = len({(record.family or "").lower() for record in records}) > 1
+        several = len(self.families(modality)) > 1
         return [(_condition_caption(record, several), record.condition) for record in records]
+
+
+def family_key(family: str | None) -> str:
+    """Return what identifies a family in comparisons: its name in lower case.
+
+    Family names compare case-insensitively, as a stage's directories do.
+    """
+    return (family or "").lower()
 
 
 def series_present(lamella: Lamella | None) -> list[str]:

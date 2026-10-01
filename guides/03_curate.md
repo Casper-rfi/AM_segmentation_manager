@@ -60,7 +60,8 @@ or one resized to fit.
 
 The strip at the bottom is the lamella's frames in order, SEM above and FIB
 below. Each column is coloured by its state, and a thin line under it shows its
-label: annotated, an empty file, or none.
+label: annotated, an empty file, or none. Both are of the family of conditions
+on screen, where a beam was imaged under several.
 
 | Colour | State |
 |---|---|
@@ -84,7 +85,11 @@ The right-hand column changes the state of label groups. It waits for
    **Shift-click** to extend a run; **Esc** drops them. Only one of these is
    used at a time, so what is ticked on screen is the whole of what will change.
    *Applies to* and *Covers*, at the top of the column, say how much that is.
-2. **Choose the beam** under *Apply to*: SEM, FIB or both.
+2. **Choose the beam** under *Apply to*: SEM, FIB or both. Where what you
+   chose holds several families of conditions of a beam, a second choice
+   appears: **This family**, the one **Variant** shows, or **Every family**.
+   Each family has its own label, so changing one leaves the others alone;
+   *Covers* names the family it reaches.
 3. **Choose the state**, or press **D**, **S** or **C**.
 
 The change is written at once to the stage's `AM_state.yaml`, after a
@@ -95,7 +100,7 @@ question where more is at stake:
 - marking a group corrected that has no label, or an empty one, asks first;
 - taking a group out of *corrected* asks first.
 
-Under the state buttons, *SEM:* and *FIB:* show the state of the frame on
+Under the state buttons, *SEM:* and *FIB:* show the state of the image on
 screen for each beam.
 
 ## Predict and convert

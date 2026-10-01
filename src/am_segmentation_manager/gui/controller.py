@@ -20,6 +20,7 @@ from ..config import SegmentationConfig, load_segmentation_config
 from ..frames import (
     LamellaFrame,
     build_lamella_frames,
+    family_key,
     resolve_series,
     series_present,
 )
@@ -32,6 +33,7 @@ from ..layout import (
     SERIES,
     SERIES_LABELS,
     FamilyCorrections,
+    condition_of,
 )
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
@@ -69,6 +71,10 @@ DisplayMode = Literal["sem", "fib", "plot", "grid"]
 
 #: What a state change applies to.
 EditTarget = Literal["SEM", "FIB", "both"]
+
+#: Whether a state change reaches the family on screen or every family of a
+#: beam; see :meth:`CurationController.set_family_scope`.
+FamilyScope = Literal["this", "every"]
 
 #: The state of a frame whose two acquisitions disagree.
 MIXED: Final = "mixed"
@@ -323,6 +329,12 @@ class StateChangeReach:
         shared_images: The images counted in *shared*, as ``directory/file``:
             conditions sharing a label often share a file name, so the
             directory is what tells them apart.
+        family_choice: Whether the scope holds several families of a
+            targeted beam, and so whether there is a family to choose.
+        families: The families on screen the change is confined to, named
+            only where there was that choice.
+        every_family: Whether there was that choice and the change reaches
+            every family.
     """
 
     images: int
@@ -331,17 +343,31 @@ class StateChangeReach:
     lamellae: int
     modalities: tuple[tuple[str, int], ...] = ()
     shared_images: tuple[str, ...] = ()
+    family_choice: bool = False
+    families: tuple[str, ...] = ()
+    every_family: bool = False
 
     def summary(self) -> str:
         """Return the description shown above the state controls."""
         if not self.images:
             return "Nothing selected"
-        parts = [
+        parts = ", ".join([
             self._image_part(),
             counted(self.labels, "label", "labels") if self.labels else "no label yet",
             counted(self.lamellae, "lamella", "lamellae"),
-        ]
-        return "Covers " + ", ".join(parts)
+        ])
+        family = self._family_part()
+        return f"{family}: covers {parts}" if family else f"Covers {parts}"
+
+    def _family_part(self) -> str:
+        """Return which families the change reaches, or empty where there was no choice."""
+        if self.every_family:
+            return "Every family"
+        if len(self.families) == 1:
+            return f"{self.families[0]} family"
+        if self.families:
+            return " + ".join(self.families) + " families"
+        return ""
 
     def _image_part(self) -> str:
         """Return the image count, split by modality where both are present."""
@@ -478,10 +504,12 @@ class CurationController:
         #: Whether the label is drawn over the acquisition or over a flat ground.
         self.show_image = True
         #: Which imaging condition is on screen for each modality, by its
-        #: directory's name. None means the frame's primary. This is display state
-        #: only: a state change follows the label, so which condition is being
-        #: viewed never decides what moves.
+        #: directory's name. None means the frame's primary. Its *family* is
+        #: what a state change acts on; which of the family's conditions is
+        #: viewed never decides what moves, the change following the label.
         self.condition: dict[str, str | None] = {modality: None for modality in MODALITIES}
+        #: Whether a state change reaches the family on screen or every one.
+        self.family_scope: FamilyScope = "this"
         self.editing_enabled = False
         # Starts matching the initial view, for the same reason the target
         # follows the view thereafter: the modality on screen is the one a
@@ -955,7 +983,7 @@ class CurationController:
     def set_series(self, series: str) -> None:
         """Show one series' timeline, rebuilding the frame stack.
 
-        Unlike the condition, this is not only a view choice: it decides which
+        More than a view choice: it decides which
         frames exist, so what is ticked and where the view sits go with it.
 
         Remembered whether or not this lamella can show it, so that moving
@@ -984,8 +1012,9 @@ class CurationController:
     def set_condition(self, condition: str | None, modality: str | None = None) -> None:
         """Choose which imaging condition to display for a modality, by name.
 
-        Purely a view choice. State changes follow the label, so the condition
-        on screen never decides what a state change moves.
+        Choosing one of another family also chooses what a state change acts
+        on, a family being one label; between the conditions of one family it
+        is a view choice only.
         """
         target = modality or MODE_MODALITIES.get(self.mode)
         if target is None:
@@ -1122,12 +1151,20 @@ class CurationController:
     # -- workflow state ----------------------------------------------------
 
     def state_of(self, modality: str, frame: LamellaFrame | None = None) -> RecordState | None:
-        """Return a frame's on-disk state for one modality, or None if absent."""
-        frame = frame if frame is not None else self.frame
+        """Return the state of the image a view shows for one modality, or None if absent.
+
+        The family on screen, where the frame has it, and whatever the frame
+        would show in its place where it does not: the timeline previews what
+        stepping onto a frame shows.
+        """
+        record = self._shown_in(frame if frame is not None else self.frame, modality)
+        return current_state(record) if record is not None else None
+
+    def _shown_in(self, frame: LamellaFrame | None, modality: str) -> ImageRecord | None:
+        """Return the record a view shows for *modality* in *frame*."""
         if frame is None:
             return None
-        record = frame.record(modality)
-        return current_state(record) if record is not None else None
+        return frame.shown_record(modality, self.condition.get(modality))
 
     def combined_state(
         self, frame: LamellaFrame | None = None
@@ -1138,25 +1175,26 @@ class CurationController:
         which the window shows as no selection rather than picking a side. This
         is a normal situation: curation deselects one modality at a time.
 
-        Read from the base image of each modality, which is what the window
-        displays. Variants are not consulted here; once state changes expand
-        across shared labels, a variant's state will follow its group.
+        Read from the image a view shows for each modality, as
+        :meth:`state_of` is.
         """
         frame = frame if frame is not None else self.frame
-        if frame is None:
-            return None
-        states = {current_state(record) for record in frame.base_records}
-        if not states:
-            return None
-        if len(states) > 1:
-            return MIXED
-        return states.pop()
+        return _combined(
+            record
+            for record in (self._shown_in(frame, modality) for modality in MODALITIES)
+            if record is not None
+        )
 
     def target_state(self) -> RecordState | Literal["mixed"] | None:
-        """Return the state that the current edit target is in."""
-        if self.target == "both":
-            return self.combined_state()
-        return self.state_of(self.target)
+        """Return the state the current frame's share of a change is in.
+
+        Over the images a change on this frame would declare, so under *Every
+        family* two families in different states read as :data:`MIXED`.
+        """
+        frame = self.frame
+        if frame is None:
+            return None
+        return _combined(self._narrowed(self._frame_candidates(frame)))
 
     def frame_states(self) -> list[RecordState | Literal["mixed"] | None]:
         """Return the combined state of every frame in the lamella.
@@ -1196,7 +1234,7 @@ class CurationController:
         """
         return {
             modality: [
-                self._label_state(frame.record(modality)) for frame in self._frames
+                self._label_state(self._shown_in(frame, modality)) for frame in self._frames
             ]
             for modality in MODALITIES
         }
@@ -1212,6 +1250,29 @@ class CurationController:
         if target not in ("SEM", "FIB", "both"):
             raise ValueError(f"Unknown edit target: {target}")
         self.target = target
+
+    def set_family_scope(self, scope: FamilyScope) -> None:
+        """Choose whether state changes reach the family on screen or every family.
+
+        Consulted only where the scope holds several families of a targeted
+        beam: with one there is nothing to choose between.
+        """
+        if scope not in ("this", "every"):
+            raise ValueError(f"Unknown family scope: {scope}")
+        self.family_scope = scope
+
+    def viewed_family(self, modality: str) -> str | None:
+        """Return the family on screen for *modality*, as its records spell it.
+
+        The chosen condition's where the frame on screen has no image of the
+        beam, and None where nothing says which family is meant.
+        """
+        record = self._shown_record(modality)
+        if record is not None:
+            return record.family or None
+        chosen = self.condition.get(modality)
+        parsed = condition_of(chosen, self._corrections()) if chosen else None
+        return parsed.family if parsed is not None else None
 
     # -- what a state change applies to ------------------------------------
     #
@@ -1276,20 +1337,51 @@ class CurationController:
         """Return a phrase naming what a state change would apply to."""
         return self.selection.describe()
 
-    def target_records(self, frame: LamellaFrame | None = None) -> list:
-        """Return the image records a state change would apply to in one frame.
+    def _targeted(self) -> tuple[str, ...]:
+        """Return the modalities the edit target names."""
+        return MODALITIES if self.target == "both" else (self.target,)
 
-        The base image of each targeted modality. A frame with several imaging
-        conditions reaches its variants through their shared label rather than
-        through this list.
+    def _frame_candidates(self, frame: LamellaFrame) -> list[ImageRecord]:
+        """Return each family's primary, for each targeted beam in *frame*.
+
+        One per family rather than every condition: the others are reached
+        through the label they share, which is what lets the reach line say
+        how many were pulled in that way, and keeps which of a family's
+        conditions is on screen from changing what a change covers.
         """
-        frame = frame if frame is not None else self.frame
-        if frame is None:
-            return []
-        if self.target == "both":
-            return frame.base_records
-        record = frame.record(self.target)
-        return [record] if record is not None else []
+        return [
+            record
+            for modality in self._targeted()
+            for family in frame.families(modality)
+            if (record := frame.primary(modality, family)) is not None
+        ]
+
+    def _narrowed(self, records: list) -> list:
+        """Return *records* confined to the family on screen, where that is asked.
+
+        Only beams holding several families are narrowed, and each to the
+        family on screen by name, so a frame without it contributes nothing
+        of that beam. Deciding one family never decides another: they are
+        separate segmentations. An image of no family -- a reference or
+        alignment image, which no directory names -- is never narrowed away,
+        a ticked lamella holding only those contributing them as it did.
+        """
+        if self.family_scope == "every":
+            return records
+        several = _beams_with_several_families(records)
+        if not several:
+            return records
+        wanted = {modality: self.viewed_family(modality) for modality in several}
+        return [
+            record
+            for record in records
+            if record.modality not in several
+            or not record.family
+            or (
+                wanted[record.modality] is not None
+                and family_key(record.family) == family_key(wanted[record.modality])
+            )
+        ]
 
     def attach_written(self, written: Iterable[Path]) -> int:
         """Name newly written predictions and labels on the records they belong to.
@@ -1375,6 +1467,9 @@ class CurationController:
     def scoped_records(self) -> list:
         """Return every record a state change would apply to.
 
+        What the scope holds, confined to the family on screen unless every
+        family was asked for; see :meth:`set_family_scope`.
+
         Only one level is ever picked out at a time -- see :mod:`.selection` --
         so this reads whichever one holds anything. Everything downstream
         (:meth:`expanded_records`, :meth:`reach`, :meth:`apply_state`) reads
@@ -1392,9 +1487,14 @@ class CurationController:
         when the tab is showing a labelled series, one that holds no other
         resolving to ``other`` on its own.
         """
+        return self._narrowed(self._candidate_records())
+
+    def _candidate_records(self) -> list:
+        """Return what the scope holds of the edit target, in every family."""
         level = self.selection.level
         if level == LEVEL_CURRENT_FRAME:
-            chosen = self.target_records()
+            frame = self.frame
+            chosen = self._frame_candidates(frame) if frame is not None else []
         elif level in (LEVEL_PROJECTS, LEVEL_LAMELLAE):
             chosen = self._records_of(self._checked_lamellae())
         else:
@@ -1402,7 +1502,7 @@ class CurationController:
                 record
                 for position in sorted(self.selection.frames)
                 if 0 <= position < len(self._frames)
-                for record in self.target_records(self._frames[position])
+                for record in self._frame_candidates(self._frames[position])
             ]
         return [record for record in chosen if record.series in LABELLED_SERIES]
 
@@ -1445,7 +1545,7 @@ class CurationController:
         than nothing at all. One holding only series switched off contributes
         nothing, not being on the list -- see :meth:`set_shown_series`.
         """
-        modalities = ("SEM", "FIB") if self.target == "both" else (self.target,)
+        modalities = self._targeted()
         records: list = []
         for lamella in lamellae:
             present = [
@@ -1523,9 +1623,22 @@ class CurationController:
         Counted from the same expansion the operation performs, so the number
         shown cannot drift from the number of records declared.
         """
-        scoped = self.scoped_records()
+        candidates = self._candidate_records()
+        scoped = self._narrowed(candidates)
+        several = _beams_with_several_families(candidates)
         if not scoped:
-            return StateChangeReach(images=0, labels=0, shared=0, lamellae=0)
+            return StateChangeReach(
+                images=0, labels=0, shared=0, lamellae=0, family_choice=bool(several)
+            )
+        confined = bool(several) and self.family_scope == "this"
+        families = (
+            tuple(dict.fromkeys(
+                family
+                for modality in MODALITIES
+                if modality in several and (family := self.viewed_family(modality))
+            ))
+            if confined else ()
+        )
         expanded = self.expanded_records(scoped)
         requested = {str(record.image_path) for record in scoped}
         labels = {
@@ -1550,6 +1663,9 @@ class CurationController:
                 for record in expanded
                 if str(record.image_path) not in requested
             ),
+            family_choice=bool(several),
+            families=families,
+            every_family=bool(several) and self.family_scope == "every",
         )
 
     def apply_state(self, state: RecordState, *, confirm_corrected: bool = False) -> int:
@@ -1622,3 +1738,26 @@ def _clamp(position: int, length: int) -> int:
     if length <= 0:
         return 0
     return max(0, min(position, length - 1))
+
+
+def _combined(records: Iterable[ImageRecord]) -> RecordState | Literal["mixed"] | None:
+    """Return the state *records* share, :data:`MIXED` where they differ, None if none."""
+    states = {current_state(record) for record in records}
+    if not states:
+        return None
+    if len(states) > 1:
+        return MIXED
+    return states.pop()
+
+
+def _beams_with_several_families(records: Iterable[ImageRecord]) -> set[str]:
+    """Return the modalities whose images among *records* span more than one family.
+
+    Images of no family are not counted as one: there is nothing to choose
+    them by.
+    """
+    families: dict[str, set[str]] = {}
+    for record in records:
+        if record.modality is not None and record.family:
+            families.setdefault(record.modality, set()).add(family_key(record.family))
+    return {modality for modality, names in families.items() if len(names) > 1}

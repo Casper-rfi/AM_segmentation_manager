@@ -1,12 +1,13 @@
 """Right panel: which images to change, to which state, and how far that reaches.
 
-*Which rows* are chosen on the left; this panel chooses the modality and the state
-and reports the reach before a change is made, beside the buttons that act.
+*Which rows* are chosen on the left; this panel chooses the modality, the family
+where there are several, and the state, and reports the reach before a change is
+made, beside the buttons that act.
 Everything that *writes* stays disabled until editing is on, and a series whose
 images carry no labels stays disabled regardless, the two reasons held apart so
 lifting one cannot lift the other. States are mutually exclusive, a group having
-one entry in its stage's state file, so a frame whose acquisitions disagree shows
-no option chosen.
+one entry in its stage's state file, so a frame whose images disagree shows no
+option chosen.
 """
 from __future__ import annotations
 
@@ -71,6 +72,8 @@ class StatePanel(QWidget):
     state_requested = Signal(str)
     #: Emitted with the modality a state change applies to.
     target_changed = Signal(str)
+    #: Emitted with ``"this"`` or ``"every"``: which families a change reaches.
+    family_scope_changed = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -176,19 +179,23 @@ class StatePanel(QWidget):
         self.set_editing_enabled(False)
 
     def _build_target(self) -> QWidget:
-        """Return the modality control.
+        """Return the modality control, and the family control beneath it.
 
         Above the state buttons, in the order the two are read: which images,
         then which state. It stays usable with editing off, because choosing
         what *would* move changes nothing on disk and the reach line above
         recounts as you go.
+
+        The family control is shown only where the scope holds several
+        families of a beam: every other scope has nothing for it to choose.
         """
         box = QGroupBox("Apply to")
         box.setToolTip(
             "Which images a state change moves. The two modalities can be in "
             "different states."
         )
-        row = QHBoxLayout(box)
+        rows = QVBoxLayout(box)
+        row = QHBoxLayout()
         self.target_control = SegmentedControl([
             ("SEM", "SEM", "Change the SEM image only"),
             ("FIB", "FIB", "Change the FIB image only"),
@@ -199,12 +206,32 @@ class StatePanel(QWidget):
         self.target_buttons = self.target_control.buttons
         row.addWidget(self.target_control)
         row.addStretch()
+        rows.addLayout(row)
         self.target_buttons["SEM"].setChecked(True)
+
+        self.family_control = SegmentedControl([
+            (
+                "this", "This family",
+                "Change only the family on screen. Each family of imaging "
+                "conditions has its own label, so deciding one never decides "
+                "another.",
+            ),
+            ("every", "Every family", "Change every family of the beam"),
+        ])
+        self.family_control.chosen.connect(self.family_scope_changed.emit)
+        self.family_control.set_current("this")
+        self.family_control.setVisible(False)
+        rows.addWidget(self.family_control)
         return box
 
     def set_target(self, target: str) -> None:
         """Reflect the current modality without re-emitting a change."""
         self.target_control.set_current(target)
+
+    def show_family_choice(self, offered: bool, scope: str) -> None:
+        """Show the family control where there is a choice, reflecting *scope*."""
+        self.family_control.setVisible(offered)
+        self.family_control.set_current(scope)
 
     def _editing_toggled(self, enabled: bool) -> None:
         self.set_editing_enabled(enabled)
@@ -248,8 +275,9 @@ class StatePanel(QWidget):
     def show_state(self, target_state, sem_state, fib_state) -> None:
         """Reflect the current state of the frame.
 
-        A frame whose acquisitions disagree shows no option chosen, rather than
-        implying a state it is not in.
+        A frame whose images disagree -- its two beams, or under *Every
+        family* two families -- shows no option chosen, rather than implying a
+        state it is not in.
         """
         for state, button in self.state_buttons.items():
             button.blockSignals(True)
@@ -261,7 +289,7 @@ class StatePanel(QWidget):
             f"FIB: {fib_state or 'not present'}",
         ]
         if target_state == MIXED:
-            parts.append("(modalities differ)")
+            parts.append("(the images it covers differ)")
         self.readout.setText("\n".join(parts))
 
     def show_last_change(self, description: str) -> None:

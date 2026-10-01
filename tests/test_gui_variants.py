@@ -1,8 +1,9 @@
 """Tests for imaging conditions and shared labels in the curation view model.
 
 Two properties matter here and both are about honesty rather than mechanics:
-the variant on screen must never decide what a state change moves, and the
-window must be able to say how much will move before it moves.
+a state change moves the family on screen and nothing more -- which of the
+family's conditions is viewed never decides it -- and the window must be able
+to say how much will move before it moves.
 """
 from __future__ import annotations
 
@@ -253,3 +254,196 @@ def test_reach_is_always_available_even_with_nothing_selected():
         scan=lambda path, on_progress=None: Scanner(path).build_index(on_progress),
     )
     assert controller.reach().summary() == "Nothing selected"
+
+
+# ---------------------------------------------------------------------------
+# Families: state acts on the family on screen
+# ---------------------------------------------------------------------------
+
+#: The conditions each acquisition of the two-family lamella was imaged under.
+TWO_FAMILIES = {
+    "img_0004.tif": ("sem", "sem_fi4", "sem-5kV", "sem-5kV_fi4", "FIB"),
+    "img_0005.tif": ("sem", "sem-5kV", "FIB"),
+    "img_0006.tif": ("sem", "FIB"),
+}
+
+
+def make_two_family_project(root: Path, *, second: tuple[str, ...] = ()) -> Path:
+    """Build lam_010 holding the sem and sem-5kV families; *second* fills lam_011."""
+    project = root / "project"
+    for name, conditions in TWO_FAMILIES.items():
+        for directory in conditions:
+            (project / "lam_010" / directory).mkdir(parents=True, exist_ok=True)
+            (project / "lam_010" / directory / name).write_bytes(b"")
+    for directory in second:
+        (project / "lam_011" / directory).mkdir(parents=True)
+        (project / "lam_011" / directory / "img_0004.tif").write_bytes(b"")
+    (project / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    return project
+
+
+def conditions(records) -> list[str]:
+    """Return the conditions of *records*, sorted, for comparing scopes.
+
+    An image sitting directly in its stage has no condition, and is named
+    ``"(loose)"``.
+    """
+    return sorted(record.condition or "(loose)" for record in records)
+
+
+def test_a_state_change_acts_on_the_family_on_screen(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_editing_enabled(True)
+    controller.set_condition("sem-5kV_fi4", "SEM")
+
+    controller.apply_state("deselected")
+    controller.rescan()
+
+    assert controller.state_of("SEM") == "deselected"
+    controller.set_condition("sem_fi4", "SEM")
+    assert controller.state_of("SEM") == "selected", "deciding one family never decides another"
+
+
+def test_the_chips_follow_the_family_on_screen(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_editing_enabled(True)
+    controller.set_condition("sem-5kV", "SEM")
+    controller.apply_state("deselected")
+
+    assert controller.modality_states()["SEM"][0] == "deselected"
+    # img_0006 has no sem-5kV image; its chip is what stepping there shows.
+    assert controller.modality_states()["SEM"][2] == "selected"
+    controller.set_condition("sem", "SEM")
+    assert controller.modality_states()["SEM"][0] == "selected"
+
+
+def test_switching_within_a_family_does_not_change_what_a_change_covers(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_condition("sem-5kV", "SEM")
+    before = controller.reach()
+
+    controller.set_condition("sem-5kV_fi4", "SEM")
+
+    assert controller.reach() == before
+
+
+def test_the_family_choice_is_offered_only_where_a_beam_holds_several(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+
+    assert controller.reach().family_choice is True
+    controller.set_target("FIB")
+    assert controller.reach().family_choice is False
+
+
+def test_one_family_per_beam_offers_no_family_choice(tmp_path: Path):
+    make_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_target("both")
+
+    reach = controller.reach()
+
+    assert reach.family_choice is False
+    assert reach.summary().startswith("Covers ")
+
+
+def test_every_family_on_the_current_frame_reaches_both(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_condition("sem-5kV", "SEM")
+
+    assert conditions(controller.scoped_records()) == ["sem-5kV"]
+    controller.set_family_scope("every")
+    assert conditions(controller.scoped_records()) == ["sem", "sem-5kV"]
+
+
+def test_every_family_reads_as_mixed_where_the_families_differ(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_editing_enabled(True)
+    controller.set_condition("sem-5kV", "SEM")
+    controller.apply_state("deselected")
+
+    assert controller.target_state() == "deselected"
+    controller.set_family_scope("every")
+    assert controller.target_state() == "mixed"
+
+
+def test_this_family_skips_picked_frames_without_it(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_condition("sem-5kV", "SEM")
+    controller.selection.toggle(0)
+    controller.selection.toggle(2)
+
+    assert conditions(controller.scoped_records()) == ["sem-5kV"]
+    controller.set_family_scope("every")
+    assert conditions(controller.scoped_records()) == ["sem", "sem", "sem-5kV"]
+
+
+def test_this_family_matches_ticked_lamellae_by_name_in_any_case(tmp_path: Path):
+    make_two_family_project(tmp_path, second=("sem", "SEM-5KV", "FIB"))
+    controller = make_controller(tmp_path)
+    controller.set_condition("sem-5kV", "SEM")
+    controller.check_all_lamellae(True)
+
+    assert conditions(controller.scoped_records()) == [
+        "SEM-5KV", "sem-5kV", "sem-5kV", "sem-5kV_fi4",
+    ]
+
+
+def test_this_family_keeps_images_of_no_family(tmp_path: Path):
+    """A lamella holding only reference images contributes them to a ticked scope.
+
+    They sit directly in the lamella, so no directory names a family for them
+    and there is none to choose them by.
+    """
+    project = make_two_family_project(tmp_path)
+    (project / "lam_011").mkdir()
+    (project / "lam_011" / "ref_Polishing_start_eb.tif").write_bytes(b"")
+    controller = make_controller(tmp_path)
+    controller.set_condition("sem-5kV", "SEM")
+    controller.check_all_lamellae(True)
+
+    assert conditions(controller.scoped_records()) == [
+        "(loose)", "sem-5kV", "sem-5kV", "sem-5kV_fi4",
+    ]
+
+
+def test_the_reach_line_names_the_family(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_condition("sem-5kV_fi4", "SEM")
+
+    assert controller.reach().summary() == (
+        "sem-5kV family: covers 2 images, no label yet, 1 lamella"
+    )
+    controller.set_family_scope("every")
+    assert controller.reach().summary().startswith("Every family: covers 4 images")
+
+
+def test_an_unknown_family_scope_is_refused(tmp_path: Path):
+    make_two_family_project(tmp_path)
+    controller = make_controller(tmp_path)
+
+    with pytest.raises(ValueError):
+        controller.set_family_scope("all")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "families, every, expected",
+    [
+        (("sem-5kV",), False, "sem-5kV family: covers 1 image, 1 label, 1 lamella"),
+        (("sem-5kV", "fib"), False, "sem-5kV + fib families: covers 1 image, 1 label, 1 lamella"),
+        ((), True, "Every family: covers 1 image, 1 label, 1 lamella"),
+    ],
+)
+def test_reach_summary_names_the_families(families, every, expected):
+    reach = StateChangeReach(
+        images=1, labels=1, shared=0, lamellae=1, family_choice=True,
+        families=families, every_family=every,
+    )
+    assert reach.summary() == expected
