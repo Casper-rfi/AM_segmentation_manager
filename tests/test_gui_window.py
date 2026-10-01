@@ -5878,3 +5878,61 @@ def test_a_series_name_too_long_for_its_box_ends_in_an_ellipsis(qt_app):
     shown = combo.shown_text()
     assert shown.endswith("…")
     assert "Adaptive Polishing".startswith(shown[:-1])
+
+
+# ---------------------------------------------------------------------------
+# The Families box
+# ---------------------------------------------------------------------------
+
+def _families_panel(root: Path, *, second: bool = False):
+    """Return a metadata panel over a scanned project holding two SEM families.
+
+    With *second*, a second project sits beside it in the folder ``batch``.
+    """
+    from am_segmentation_manager.scanner import Scanner
+
+    names = ("20260930_adaptive_milling", "20261001_adaptive_milling")
+    for name in names[: 2 if second else 1]:
+        project = root / "batch" / name
+        for directory in ("sem", "sem_fi4", "sem-5kV", "FIB"):
+            (project / "lam_010" / directory).mkdir(parents=True)
+            (project / "lam_010" / directory / "img_0004.tif").write_bytes(b"")
+        (project / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    controller = MetadataController()
+    controller.set_projects(Scanner(root).build_index().all_projects())
+    panel = MetadataPanel(controller)
+    panel.set_projects(controller.project_summaries())
+    return panel
+
+
+def _tree_text(item) -> list:
+    """Return an item's first column and its children's, as nested lists."""
+    return [item.text(0), [_tree_text(item.child(i)) for i in range(item.childCount())]]
+
+
+def test_the_families_box_shows_the_projects_families(qt_app, tmp_path: Path):
+    panel = _families_panel(tmp_path)
+    try:
+        tree = panel.families_tree
+        assert [_tree_text(tree.topLevelItem(i)) for i in range(tree.topLevelItemCount())] == [
+            ["SEM", [["sem", [["sem", []], ["sem_fi4", []]]], ["sem-5kV", [["sem-5kV", []]]]]],
+            ["FIB", [["FIB", [["FIB", []]]]]],
+        ]
+        first = tree.topLevelItem(0).child(0).child(0)
+        assert (first.text(1), first.text(2)) == ("1", "primary (default)")
+        assert panel.families_box.title().endswith("20260930_adaptive_milling")
+        assert panel.families_status.isHidden()
+    finally:
+        destroy(panel)
+
+
+def test_the_families_box_asks_for_one_project_over_a_folder(qt_app, tmp_path: Path):
+    panel = _families_panel(tmp_path, second=True)
+    try:
+        panel.controller.select_folder("batch")
+        panel.refresh()
+
+        assert panel.families_tree.topLevelItemCount() == 0
+        assert panel.families_status.text() == "Choose one project to see its families."
+    finally:
+        destroy(panel)

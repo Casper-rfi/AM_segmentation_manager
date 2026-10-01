@@ -154,6 +154,10 @@ the names got it wrong -- `sem2kVb` showing the same scene as `sem-2kV`, or
 from the command line. No folder is renamed: the correction is kept in the
 project's `AM_families.yaml`, which travels with the data.
 
+**Families**, under a project's fields, shows them: each beam's families, their
+conditions, how many stages hold each, which one is primary, and which the file
+has moved. Choose one project to see it; a folder of several shows none.
+
 ```bash
 am-seg show-families /path/to/collection --project 003
 am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2

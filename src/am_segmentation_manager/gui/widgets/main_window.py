@@ -57,6 +57,7 @@ from ..controller import (
     ScanProgress,
 )
 from ..export_controller import ExportController
+from ..families_controller import FamiliesController
 from ..history_controller import HistoryController
 from ..label_controller import LabelController
 from ..loader import BackgroundLoader
@@ -343,7 +344,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.label_panel = LabelPanel(
             self.label_controller, VersionController(self._attribution)
         )
-        self.metadata_panel = MetadataPanel(self.metadata_controller)
+        self.families_controller = FamiliesController()
+        self.metadata_panel = MetadataPanel(self.metadata_controller, self.families_controller)
 
         self._build_layout()
         self._connect()

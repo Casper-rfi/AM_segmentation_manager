@@ -7,7 +7,8 @@ how much of each project is described, so what is left to do is visible
 without opening every one.
 
 Editing is locked until switched on, matching the curation view, and a
-suggestion reaches a file only when the user saves.
+suggestion reaches a file only when the user saves. Under the fields, the
+project's families of imaging conditions, from :mod:`..families_controller`.
 """
 from __future__ import annotations
 
@@ -28,11 +29,14 @@ from qtpy.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from ...metadata import split_values
+from ..families_controller import FamiliesController
 from ..metadata_controller import (
     FIELDS,
     SUGGESTED_FIELDS,
@@ -341,9 +345,12 @@ class MetadataPanel(QWidget):
     #: Emitted when the user asks to put the whole collection back to a savepoint.
     restore_requested = Signal()
 
-    def __init__(self, controller: MetadataController) -> None:
+    def __init__(
+        self, controller: MetadataController, families: FamiliesController | None = None
+    ) -> None:
         super().__init__()
         self.controller = controller
+        self.families = families if families is not None else FamiliesController()
         self._loading = False
         self.root: Path | None = None
         #: Each field as last read: its saved value, the file behind it in each
@@ -359,7 +366,13 @@ class MetadataPanel(QWidget):
         # so the folder a row names is what tells you what to type.
         self.panes = GripSplitter(Qt.Orientation.Horizontal)
         self.panes.addWidget(self._build_projects())
-        self.panes.addWidget(self._build_fields())
+        # Stacked, so neither squeezes the fields' width; a splitter, so the
+        # families can be given the height a project with many conditions needs.
+        self.describing = GripSplitter(Qt.Orientation.Vertical)
+        self.describing.addWidget(self._build_fields())
+        self.describing.addWidget(self._build_families())
+        self.describing.setSizes([700, 260])
+        self.panes.addWidget(self.describing)
         self.panes.setSizes([460, 900])
         layout.addWidget(self.panes)
 
@@ -670,6 +683,51 @@ class MetadataPanel(QWidget):
         self._set_editing(False)
         return box
 
+    def _build_families(self) -> QWidget:
+        """Return the box listing the project's families of imaging conditions."""
+        self.families_box = box = QGroupBox("Families")
+        box.setToolTip(
+            "Which imaging conditions share a label. A condition belongs to the "
+            "family its folder name gives, unless AM_families.yaml moves it."
+        )
+        column = QVBoxLayout(box)
+        self.families_status = QLabel("")
+        self.families_status.setWordWrap(True)
+        column.addWidget(self.families_status)
+        self.families_tree = QTreeWidget()
+        self.families_tree.setHeaderLabels(["Condition", "Stages", "Note"])
+        self.families_tree.setRootIsDecorated(True)
+        self.families_tree.setUniformRowHeights(True)
+        column.addWidget(self.families_tree, stretch=1)
+        return box
+
+    def _refresh_families(self) -> None:
+        """Show the families of the project in scope, beam then family then condition.
+
+        Rebuilt whole: it changes only when the project does or a scan has
+        read the project again.
+        """
+        self.families.set_scope(self.controller.scope)
+        project = self.families.project
+        self.families_box.setTitle(
+            f"Families: {project.display_name}" if project is not None else "Families"
+        )
+        status = self.families.status()
+        self.families_status.setText(status)
+        self.families_status.setVisible(bool(status))
+        tree = self.families_tree
+        tree.clear()
+        beams: dict[str, QTreeWidgetItem] = {}
+        for node in self.families.tree():
+            beam = beams.get(node.modality)
+            if beam is None:
+                beam = beams[node.modality] = QTreeWidgetItem(tree, [node.modality])
+            family = QTreeWidgetItem(beam, [node.family])
+            for row in node.conditions:
+                QTreeWidgetItem(family, [row.name, str(row.stages), row.note])
+        tree.expandAll()
+        tree.resizeColumnToContents(0)
+
     # -- behaviour ---------------------------------------------------------
 
     def set_projects(self, summaries: list[ProjectSummary]) -> None:
@@ -865,6 +923,7 @@ class MetadataPanel(QWidget):
         finally:
             self._loading = False
         self._show_states()
+        self._refresh_families()
 
 
 def field_dot_legend() -> list[tuple[QPixmap, str]]:
