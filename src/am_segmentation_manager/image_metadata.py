@@ -991,13 +991,20 @@ def modality_disagreements(
     return found
 
 
+#: The quantity in :data:`FAMILY_QUANTITIES` whose disagreement a shared label cannot survive.
+IMAGE_SIZE: Final[str] = "image size"
+
+#: The quantity in :data:`FAMILY_QUANTITIES` a measurement in physical units scales by.
+PIXEL_SIZE: Final[str] = "pixel size"
+
 #: What the conditions of one family must agree on, each read from a header as
-#: text, or None where the header does not say. **Only a difference in image
+#: text, or None where the header does not say, and compared as that text: two
+#: values agree when they print alike. **Only a difference in image
 #: size stops a label being shared**: one mask cannot fit two shapes. The others
 #: mean the conditions are likely not one acquisition.
 FAMILY_QUANTITIES: Final[tuple[tuple[str, Callable[[ImageMetadata], str | None]], ...]] = (
     (
-        "image size",
+        IMAGE_SIZE,
         lambda header: (
             f"{header.image_width}x{header.image_height}"
             if header.image_width is not None and header.image_height is not None
@@ -1005,7 +1012,7 @@ FAMILY_QUANTITIES: Final[tuple[tuple[str, Callable[[ImageMetadata], str | None]]
         ),
     ),
     (
-        "pixel size",
+        PIXEL_SIZE,
         lambda header: f"{header.pixel_size_nm:g} nm" if header.pixel_size_nm is not None else None,
     ),
     (
@@ -1017,9 +1024,6 @@ FAMILY_QUANTITIES: Final[tuple[tuple[str, Callable[[ImageMetadata], str | None]]
         ),
     ),
 )
-
-#: The quantity in :data:`FAMILY_QUANTITIES` whose disagreement a shared label cannot survive.
-IMAGE_SIZE: Final[str] = "image size"
 
 
 @dataclass(frozen=True)

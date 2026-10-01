@@ -8,6 +8,7 @@ constant factor, in a direction nothing in the output would reveal.
 from __future__ import annotations
 
 import importlib.util
+import logging
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from am_segmentation_manager.operations.label_measure import (
     find_specks,
     label_pixel_size_nm,
     measure_label,
+    measure_records,
     read_label_pixels,
     read_many_label_pixels,
     records_with_specks,
@@ -493,6 +495,72 @@ def test_a_record_with_no_label_is_absent(tmp_path: Path):
     ]
 
     assert records_with_specks(records) == {}
+
+
+# ---------------------------------------------------------------------------
+# Conditions sharing a label
+# ---------------------------------------------------------------------------
+
+def _measure_shared_label(
+    tmp_path: Path, config: SegmentationConfig, variant: ImageMetadata, caplog
+) -> list[str]:
+    """Measure one SEM scene whose variant condition carries *variant*'s header.
+
+    Returns the warnings logged.
+    """
+    dataset = build_dataset(
+        tmp_path, acquisitions=1, modalities=("SEM",), sem_variants=("sem_8_fi_1",)
+    )
+    write_label(dataset.label("SEM", 0), label_with_squares(shape=(32, 40)))
+    records = [
+        record for project in Scanner(tmp_path).build_index().all_projects()
+        for lamella in project.lamellae
+        for stage in lamella.stages
+        for record in stage.images
+    ]
+    base = ImageMetadata(image_width=40, image_height=32, pixel_size_nm=13.49)
+    metadata = {
+        record.image_path: variant if record.variant else base for record in records
+    }
+    assert len(records) == 2 and any(record.variant for record in records)
+
+    with caplog.at_level(logging.WARNING, logger=label_measure.__name__):
+        measure_records(records, config, metadata, use_cache=False)
+    return [
+        entry.getMessage()
+        for entry in caplog.records
+        if entry.name == label_measure.__name__ and entry.levelno >= logging.WARNING
+    ]
+
+
+def test_conditions_sharing_a_label_with_different_pixel_sizes_are_warned_about(
+    tmp_path: Path, config: SegmentationConfig, caplog
+):
+    variant = ImageMetadata(image_width=40, image_height=32, pixel_size_nm=26.98)
+
+    warnings = _measure_shared_label(tmp_path, config, variant, caplog)
+
+    assert len(warnings) == 1
+    assert "disagree about pixel size: sem 13.49 nm, sem_8_fi_1 26.98 nm;" in warnings[0]
+
+
+def test_pixel_sizes_that_print_alike_are_not_a_disagreement(
+    tmp_path: Path, config: SegmentationConfig, caplog
+):
+    """Compared as the survey compares a family, not as raw floats."""
+    variant = ImageMetadata(image_width=40, image_height=32, pixel_size_nm=13.49 + 1e-9)
+
+    assert _measure_shared_label(tmp_path, config, variant, caplog) == []
+
+
+def test_only_pixel_size_concerns_a_measurement(
+    tmp_path: Path, config: SegmentationConfig, caplog
+):
+    variant = ImageMetadata(
+        image_width=40, image_height=32, pixel_size_nm=13.49, acceleration_voltage_kv=5.0
+    )
+
+    assert _measure_shared_label(tmp_path, config, variant, caplog) == []
 
 
 # ---------------------------------------------------------------------------

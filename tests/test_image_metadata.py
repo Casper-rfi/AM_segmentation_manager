@@ -802,6 +802,11 @@ def test_a_header_that_does_not_state_a_quantity_takes_no_part_in_it():
     assert condition_disagreements({"sem": _header(kv=None), "sem_fi8": _header(kv=5.0)}) == []
 
 
+def test_values_that_print_alike_agree():
+    """Rounding noise in a header is not a different acquisition."""
+    assert condition_disagreements({"sem": _header(), "sem_fi8": _header(pixel=13.49 + 1e-9)}) == []
+
+
 def test_one_acquisition_is_read_in_every_condition(tmp_path: Path):
     read: list[Path] = []
     images = {

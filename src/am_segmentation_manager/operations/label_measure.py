@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import BACKGROUND_CLASS, SegmentationConfig
-from ..image_metadata import read_records_metadata
+from ..image_metadata import PIXEL_SIZE, condition_disagreements, read_records_metadata
 from ..io.image import has_image_stack_support, read_array, to_2d
 from ..layout import FamilyCorrections
 from ..parallel import map_in_processes
@@ -807,18 +807,19 @@ def _warn_on_inconsistent_scale(
     measurement takes the primary's. A disagreement means the group's areas are
     right for one condition and wrong for the others -- worth saying out loud
     rather than resolving silently, since which one is correct is a question
-    about the data, not about this code.
+    about the data, not about this code. Compared as
+    :func:`~..image_metadata.condition_disagreements` compares a family's conditions.
     """
-    sizes = {
-        size
+    headers = {
+        record.condition or record.image_path.name: metadata[record.image_path]
         for record in members
         if record.image_path in metadata
-        and (size := metadata[record.image_path].pixel_size_nm) is not None
     }
-    if len(sizes) > 1:
-        logger.warning(
-            "Images sharing one label disagree about pixel size (%s nm); "
-            "measuring at the primary condition's scale: %s",
-            ", ".join(f"{size:g}" for size in sorted(sizes)),
-            members[0].image_path.parent.parent,
-        )
+    for disagreement in condition_disagreements(headers):
+        if disagreement.quantity == PIXEL_SIZE:
+            logger.warning(
+                "Images sharing one label disagree about %s; "
+                "measuring at the primary condition's scale: %s",
+                disagreement.describe(),
+                members[0].image_path.parent.parent,
+            )
