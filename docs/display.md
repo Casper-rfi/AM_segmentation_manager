@@ -426,9 +426,10 @@ of one of these files, is held by `test_docs.py`.
   (`test_the_residue_opens_switched_off_and_counted`); `other` opens off.
 - **What a view shows of a beam is `LamellaFrame.shown_record`, and state follows it.** The chosen
   condition, else its family's primary, else the first family's: the cache and both controllers ask
-  it, so the image held, drawn and counted cannot disagree. A family is one label, so the State
-  buttons, chips and proofread frames read the family on screen through each frame's primary of it,
-  and viewing another of its conditions changes nothing (`test_a_state_change_acts_on_the_family_on_screen`).
+  it, so the image held, drawn and counted cannot disagree. A family is one label, so a State change
+  reaches the family on screen through each frame's primary of each label it holds — two while its labels
+  are split (`test_a_state_change_reaches_every_label_of_a_family_in_conflict`) — and viewing another of
+  its conditions changes nothing (`test_a_state_change_acts_on_the_family_on_screen`).
   **The family choice is hidden, not greyed**: no scope in the collection holds two families of a
   beam, images of no family never counting as one (`test_the_family_control_is_hidden_with_one_family_per_beam`).
   Several families are listed under headings, as Export's grouped lists are, and the closed field

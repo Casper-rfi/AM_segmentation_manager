@@ -307,6 +307,25 @@ def test_a_state_change_acts_on_the_family_on_screen(tmp_path: Path):
     assert controller.state_of("SEM") == "selected", "deciding one family never decides another"
 
 
+def test_a_state_change_reaches_every_label_of_a_family_in_conflict(tmp_path: Path):
+    """Two label directories make the family two groups; the one on screen is sem_fi1's."""
+    project = tmp_path / "project"
+    for directory in ("sem", "sem_fi1", "sem_fi2", "sem_labels", "sem_fi1_labels"):
+        (project / "lam_010" / directory).mkdir(parents=True)
+        (project / "lam_010" / directory / "img_0004.tif").write_bytes(b"")
+    (project / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    controller = make_controller(tmp_path)
+    controller.set_editing_enabled(True)
+    controller.set_condition("sem_fi1", "SEM")
+
+    controller.apply_state("deselected")
+    controller.rescan()
+
+    for condition in ("sem", "sem_fi1", "sem_fi2"):
+        controller.set_condition(condition, "SEM")
+        assert controller.state_of("SEM") == "deselected", condition
+
+
 def test_the_chips_follow_the_family_on_screen(tmp_path: Path):
     make_two_family_project(tmp_path)
     controller = make_controller(tmp_path)

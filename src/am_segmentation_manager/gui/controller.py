@@ -22,6 +22,7 @@ from ..frames import (
     LamellaFrame,
     build_lamella_frames,
     family_key,
+    primary_among,
     resolve_series,
     series_present,
 )
@@ -39,7 +40,7 @@ from ..layout import (
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
 from ..operations.init_history import writing_recorder
-from ..operations.label_groups import expand_to_groups
+from ..operations.label_groups import expand_to_groups, group_key
 from ..operations.label_io import LabelReadiness, classify_labels
 from ..operations.predict import prediction_destination
 from ..operations.selection import RecordState, current_state, transition_records
@@ -1343,19 +1344,26 @@ class CurationController:
         return MODALITIES if self.target == "both" else (self.target,)
 
     def _frame_candidates(self, frame: LamellaFrame) -> list[ImageRecord]:
-        """Return each family's primary, for each targeted beam in *frame*.
+        """Return the primary of each label group, for each targeted beam in *frame*.
 
-        One per family rather than every condition: the others are reached
+        One per label rather than every condition: the others are reached
         through the label they share, which is what lets the reach line say
         how many were pulled in that way, and keeps which of a family's
-        conditions is on screen from changing what a change covers.
+        conditions is on screen from changing what a change covers. A family
+        is one label except while its labels are split across directories,
+        when a change reaches each of them
+        (``test_a_state_change_reaches_every_label_of_a_family_in_conflict``).
         """
-        return [
-            record
-            for modality in self._targeted()
-            for family in frame.families(modality)
-            if (record := frame.primary(modality, family)) is not None
-        ]
+        candidates: list[ImageRecord] = []
+        for modality in self._targeted():
+            groups: dict[tuple[str, str], list[ImageRecord]] = {}
+            for record in frame.modality_records(modality):
+                key = (family_key(record.family), group_key(record))
+                groups.setdefault(key, []).append(record)
+            candidates.extend(
+                primary_among(members, frame.corrections) for members in groups.values()
+            )
+        return candidates
 
     def _narrowed(self, records: list) -> list:
         """Return *records* confined to the family on screen, where that is asked.
