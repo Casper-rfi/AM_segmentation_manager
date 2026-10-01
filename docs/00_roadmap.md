@@ -18,7 +18,8 @@ and every layout era the collection holds. Add data, Curate, Label and Export ar
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
 Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
 need the `ml` extra, or `ml-cuda13` where the card is newer than its torch. Imaging conditions form
-**families**, each sharing one label: a folder's name gives the family and `AM_families.yaml` corrects it.
+**families**, each sharing one label: a folder's name gives the family and `AM_families.yaml` corrects it,
+for the project or for one lamella over it, from Curate's Families tab or `edit-families`.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its
@@ -38,8 +39,6 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   Linux run on request and have not run yet. **Long paths off stays unchecked on a real machine**,
   `test_long_paths.py` forcing the probe's answer. **The Windows suite crashed once in five runs** of
   2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged; CI now names each test.
-- **Families follow-up** (`plans/families_followup.md`): gaps found testing families, then Curate's Families tab
-  and per-lamella corrections. Steps 1–8 of 9 are done; lamella sections are read, changed by `edit-families` and merged.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
   taken 2026-09-11 over all 123 projects with 3,236/3,236 labels reachable. Close **one whole
   round** from there with a real training run in the middle: the parts have each been rehearsed,

@@ -185,12 +185,15 @@ lamellae:
       sem_x: sem-2kV
 ```
 
-`edit-families --lamella lam_003` changes that lamella's entries, by name or
-number: an entry the project already makes is none, and `--clear` returns the
-lamella to the project's. Each lamella is checked as a project-wide change is,
-and `show-families` lists each lamella's entries after the families. The
-Families tab still leaves a file with lamella sections alone; a merge brings
-each lamella's entries across as it does the project's.
+On the Families tab, **Applies to** chooses whether a change is the whole
+project's or the lamella in view's own; it is fixed while changes are unsaved,
+which belong to the choice they were made under. Within a lamella, the family
+the project gives a condition is its starting point, and choosing it again
+removes the lamella's entry. From the command line, `edit-families --lamella
+lam_003` does the same, `--clear` returning the lamella to the project's. Each
+lamella is checked as a project-wide change is, `show-families` lists each
+lamella's entries after the families, and a merge brings them across as it
+does the project's.
 **Inspect layout** reports a section naming no lamella of the project.
 
 ## Predict and convert

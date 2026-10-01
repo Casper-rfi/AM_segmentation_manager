@@ -34,6 +34,7 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
   First: whether a split follows the tabs, the panels or the operations; and whether it removes
   state rather than only moving methods behind another reference, which costs readability and buys
   nothing.
+- **Family corrections for one stage**, keyed by its path. First: whether a lamella's steps ever need them.
 - **Several families of a beam in real data**: a model per family (a 5kV model for 5kV images), and a scene
   holding two families, each exported and measured as its own label group today. First: whether such data
   arrives, and whether a model is chosen per family, per series and beam as now, or both.

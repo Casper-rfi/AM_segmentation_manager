@@ -118,7 +118,7 @@ def test_a_damaged_file_is_named_and_the_folder_names_shown(tmp_path: Path):
     assert [node.family for node in controller.tree()] == ["sem"]
 
 
-def test_a_file_with_lamella_sections_is_shown_and_not_changed_here(tmp_path: Path):
+def test_a_file_with_lamella_sections_is_shown_as_the_scan_read_it(tmp_path: Path):
     projects = scan(
         tmp_path,
         families="version: 2\nlamellae:\n  lam_010:\n    families:\n      sem_fi4: sem-x\n",
@@ -128,9 +128,79 @@ def test_a_file_with_lamella_sections_is_shown_and_not_changed_here(tmp_path: Pa
 
     controller.set_scope(projects)
 
-    assert not controller.editable
-    assert controller.status().startswith("AM_families.yaml has lamella sections")
-    assert {node.family for node in controller.tree()} == {"sem", "sem-x"}, "as the scan read it"
+    assert controller.editable
+    assert {node.family for node in controller.tree()} == {"sem", "sem-x"}
+
+
+# ---------------------------------------------------------------------------
+# A change confined to the lamella in view
+# ---------------------------------------------------------------------------
+
+def two_lamellae(tmp_path: Path, families: str | None = None) -> tuple[FamiliesController, Project]:
+    """Return a controller with lam_011 in view, editing on, and the project."""
+    projects = scan(
+        tmp_path, families,
+        lam_010=("sem", "sem_fi4", "sem_b"), lam_011=("sem", "sem_fi4", "sem_b"),
+    )
+    [project] = projects
+    controller = FamiliesController(Attribution(Recorder()))
+    controller.set_scope(projects, project.lamellae[1])
+    controller.editing_enabled = True
+    return controller, project
+
+
+def test_a_change_confined_to_the_lamella_in_view_writes_its_section(tmp_path: Path):
+    controller, project = two_lamellae(tmp_path)
+
+    controller.set_target(True)
+    controller.set_family("sem_b", "sem-5kV")
+    controller.apply(controller.plan())
+
+    on_file = read_families(project.path)
+    assert on_file.project.families == {}
+    assert dict(on_file.lamellae["lam_011"].families) == {"sem_b": "sem-5kV"}
+
+
+def test_in_a_lamella_the_projects_entry_is_what_a_condition_is_given(tmp_path: Path):
+    controller, project = two_lamellae(tmp_path, "version: 1\nfamilies:\n  sem_b: sem-5kV\n")
+    controller.set_target(True)
+
+    assert controller.family_of("sem_b") == "sem-5kV", "the project's, not the name's"
+    controller.set_family("sem_b", "sem")
+    assert controller.has_changes, "undoing the project's move here is an entry"
+    controller.set_family("sem_b", "sem-5kV")
+    assert not controller.has_changes, "back to the project's is none"
+
+
+def test_held_changes_keep_their_choice(tmp_path: Path):
+    controller, project = two_lamellae(tmp_path)
+    controller.set_target(True)
+    controller.set_family("sem_b", "sem-5kV")
+
+    with pytest.raises(ValueError, match="Save or discard"):
+        controller.set_target(False)
+    controller.set_scope([project], project.lamellae[0])
+    assert controller.target is project.lamellae[1], "the lamella they were made in"
+
+    controller.discard()
+    controller.set_scope([project], project.lamellae[0])
+    assert controller.target is project.lamellae[0], "with none held it follows the view"
+
+
+def test_a_lamella_with_no_folder_offers_no_choice(tmp_path: Path):
+    project_root = tmp_path / "project"
+    for directory in ("sem", "sem_b"):
+        (project_root / directory).mkdir(parents=True)
+        (project_root / directory / "img_0004.tif").write_bytes(b"")
+    (project_root / "AM_metadata.yaml").write_text("metadata:\n", encoding="utf-8")
+    [project] = Scanner(tmp_path).build_index().all_projects()
+    controller = FamiliesController()
+
+    controller.set_scope([project], project.lamellae[0])
+
+    assert controller.lamella_choice is None
+    with pytest.raises(ValueError, match="no folder of its own"):
+        controller.set_target(True)
 
 
 def test_nothing_selected_says_so():

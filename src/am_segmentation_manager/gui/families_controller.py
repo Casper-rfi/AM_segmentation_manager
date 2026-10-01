@@ -5,12 +5,12 @@ which conditions form which family, collect changes, preview and apply them,
 without knowing how ``AM_families.yaml`` is read or written. Changes are held here
 until saved, and the tree shows them as if they were; every rule about whether one
 may be made is the operation's. Families are a project's, so a scope of several
-projects shows none, and a lamella in view only marks which of them it holds.
-Qt-free, like the other controllers.
+projects shows none. A change is the project's or the lamella in view's own,
+one of the two at a time. Qt-free, like the other controllers.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..families import FamiliesFileError, read_families
@@ -115,11 +115,16 @@ class FamiliesController:
         self._project: Project | None = None
         #: The lowercased conditions the lamella in view holds, or None for no lamella.
         self._here: frozenset[str] | None = None
+        self._in_view: Lamella | None = None
+        #: The lamella whose own entries a change is made to, or None for the project's.
+        self._target: Lamella | None = None
         self._several = False
         self._problem = ""
-        #: Changes not yet saved: condition to family, None for the name's own.
+        #: Changes not yet saved: condition to family, None for what the
+        #: project gives it -- its name's, or for a lamella the project's entry.
         self._families: dict[str, str | None] = {}
-        #: Changes not yet saved: family to primary, None for the default.
+        #: Changes not yet saved: family to primary, None for the default, or
+        #: for a lamella the project's.
         self._primary: dict[str, str | None] = {}
 
     @property
@@ -134,7 +139,9 @@ class FamiliesController:
 
         Unsaved changes are kept while the project stays the same one, as it
         does when the folder is read again or another of its lamellae comes
-        into view, and dropped when it changes.
+        into view, and dropped when it changes. A change confined to a lamella
+        follows the lamella in view while none is held, and stays with its own
+        while one is.
 
         Args:
             lamella: The lamella in view, whose conditions are marked as here.
@@ -150,23 +157,51 @@ class FamiliesController:
         project = projects[0] if len(projects) == 1 else None
         if project is None or self._project is None or project.path != self._project.path:
             self.discard()
+            self._target = None
         self._several = len(projects) > 1
         self._project = project
+        self._in_view = lamella
+        if self._target is not None and not self.has_changes:
+            self._target = self.lamella_choice
+        if self._target is not None and project is not None:
+            # A rescan makes new lamellae; the one changes are held for is found again.
+            self._target = next(
+                (own for own in project.lamellae if own.path == self._target.path), None
+            )
         self._problem = ""
         if project is not None:
             try:
-                on_file = read_families(project.path)
+                read_families(project.path)
             except FamiliesFileError as error:
                 self._problem = (
                     f"Shown as the folder names give them. {error}; correct the file "
                     f"by hand first"
                 )
-            else:
-                if on_file.has_lamellae:
-                    self._problem = (
-                        "AM_families.yaml has lamella sections, which cannot be "
-                        "changed here; change the file by hand"
-                    )
+
+    @property
+    def lamella_choice(self) -> Lamella | None:
+        """Return the lamella a change could be confined to: the one in view, with a folder of its own."""
+        if self._in_view is None or self._in_view.synthetic:
+            return None
+        return self._in_view
+
+    @property
+    def target(self) -> Lamella | None:
+        """Return the lamella whose own entries a change is made to, or None for the project's."""
+        return self._target
+
+    def set_target(self, lamella_only: bool) -> None:
+        """Make changes the project's, or the lamella in view's own.
+
+        Raises:
+            ValueError: If changes are held, which belong to the choice they
+                were made under, or there is no lamella to confine them to.
+        """
+        if self.has_changes:
+            raise ValueError("Save or discard the changes first")
+        if lamella_only and self.lamella_choice is None:
+            raise ValueError("This lamella has no folder of its own")
+        self._target = self.lamella_choice if lamella_only else None
 
     @property
     def project(self) -> Project | None:
@@ -198,7 +233,6 @@ class FamiliesController:
         """Return the project's families, with the changes not yet saved, SEM first."""
         if self._project is None:
             return ()
-        corrections = self._project.families.project
         members: dict[tuple[str, str], list[tuple[str, int]]] = {}
         spelled: dict[tuple[str, str], str] = {}
         for summary in summarise_families(self._project):
@@ -218,7 +252,7 @@ class FamiliesController:
                 members[key],
                 key=lambda item: (item[0].lower() != family.lower(), item[0].lower()),
             )
-            nodes.append(self._node(key[0], family, conditions, corrections))
+            nodes.append(self._node(key[0], family, conditions))
         return tuple(nodes)
 
     def _node(
@@ -226,12 +260,11 @@ class FamiliesController:
         modality: str,
         family: str,
         conditions: Sequence[tuple[str, int]],
-        corrections: FamilyCorrections,
     ) -> FamilyNode:
         """Return one family, marking the condition that stands for it."""
         names = [name for name, _ in conditions]
         pending = _lookup(self._primary, family)
-        named = pending[1] if pending is not None else corrections.primary_of(family)
+        named = self._named_primary(family)
         held = next((name for name in names if named and name.lower() == named.lower()), None)
         primary = held if held is not None else min(
             names, key=lambda name: _base_first(self._variant_in(name, family))
@@ -243,7 +276,7 @@ class FamiliesController:
                 ConditionRow(
                     name=name,
                     stages=stages,
-                    moved=self.family_of(name).lower() != _name_family(name).lower(),
+                    moved=family.lower() != _name_family(name).lower(),
                     primary=name == primary,
                     named_primary=held is not None and name == held,
                     unsaved=_lookup(self._families, name) is not None
@@ -255,13 +288,36 @@ class FamiliesController:
         )
 
     def family_of(self, condition: str) -> str:
-        """Return the family *condition* is in, counting changes not yet saved."""
+        """Return the family *condition* is in where a change applies, counting changes not yet saved."""
         pending = _lookup(self._families, condition)
         if pending is not None:
-            return pending[1] if pending[1] is not None else _name_family(condition)
-        assert self._project is not None, "only asked of a project's conditions"
-        moved = self._project.families.project.family_of(condition)
+            return pending[1] if pending[1] is not None else self._given(condition)
+        moved = self._in_force().family_of(condition)
         return moved if moved is not None else _name_family(condition)
+
+    def _given(self, condition: str) -> str:
+        """Return the family *condition* has where no entry of the chosen section moves it."""
+        if self._target is None:
+            return _name_family(condition)
+        assert self._project is not None, "a lamella is chosen within a project"
+        return self._project.families.project.family_of(condition) or _name_family(condition)
+
+    def _in_force(self) -> FamilyCorrections:
+        """Return the corrections on file where a change applies."""
+        assert self._project is not None, "only asked of a project's conditions"
+        if self._target is None:
+            return self._project.families.project
+        return self._project.families_at(self._target.path)
+
+    def _section(self) -> tuple[Mapping[str, str], Mapping[str, str]]:
+        """Return the chosen section's families and primary entries as on file."""
+        assert self._project is not None, "only asked of a project's conditions"
+        families = self._project.families
+        if self._target is None:
+            return families.project.families, families.project.primary
+        key = self._target.path.relative_to(self._project.path).as_posix()
+        own = families.lamellae.get(key)
+        return (own.families, own.primary) if own is not None else ({}, {})
 
     def family_options(self, condition: str) -> list[tuple[str, str]]:
         """Return ``(caption, family)`` for each family *condition* could join.
@@ -306,20 +362,27 @@ class FamiliesController:
         before = self.family_of(condition)
         if before.lower() == family.lower():
             return
-        target = None if family.lower() == _name_family(condition).lower() else family
-        assert self._project is not None, "only asked of a project's conditions"
-        on_file = self._project.families.project.family_of(condition)
-        _set(self._families, condition, target, unchanged=_same(on_file, target))
+        target = None if family.lower() == self._given(condition).lower() else family
+        on_file = _lookup(dict(self._section()[0]), condition)
+        _set(
+            self._families, condition, target,
+            unchanged=_same(on_file[1] if on_file else None, target),
+        )
 
         named = self._named_primary(before)
         if named is not None and named.lower() == condition.lower():
             self.set_primary(before, None)
 
     def set_primary(self, family: str, condition: str | None) -> None:
-        """Name *condition* as *family*'s primary, or None for the default, held until saved."""
-        assert self._project is not None, "only asked of a project's families"
-        on_file = self._project.families.project.primary_of(family)
-        _set(self._primary, family, condition, unchanged=_same(on_file, condition))
+        """Name *condition* as *family*'s primary, held until saved.
+
+        None returns it to the default, or for a lamella to the project's.
+        """
+        on_file = _lookup(dict(self._section()[1]), family)
+        _set(
+            self._primary, family, condition,
+            unchanged=_same(on_file[1] if on_file else None, condition),
+        )
 
     def discard(self) -> None:
         """Forget every change not yet saved."""
@@ -329,10 +392,14 @@ class FamiliesController:
     def _named_primary(self, family: str) -> str | None:
         """Return the condition named as *family*'s primary, counting unsaved changes."""
         pending = _lookup(self._primary, family)
-        if pending is not None:
+        if pending is not None and pending[1] is not None:
             return pending[1]
-        assert self._project is not None, "only asked of a project's families"
-        return self._project.families.project.primary_of(family)
+        if pending is not None and self._target is None:
+            return None
+        if pending is not None:
+            assert self._project is not None, "a lamella is chosen within a project"
+            return self._project.families.project.primary_of(family)
+        return self._in_force().primary_of(family)
 
     def _variant_in(self, condition: str, family: str) -> str | None:
         """Return *condition*'s variant in *family*, as resolution would give it."""
@@ -361,6 +428,7 @@ class FamiliesController:
             self._project,
             families=self._families,
             primary=self._primary,
+            lamella=self._target,
             allow_leaving_corrected=True,
         )
 

@@ -3,10 +3,11 @@
 Beside the images because whether one label fits every condition of a family, and
 which condition to predict from, are judged by looking at them: choosing a
 condition in the tree shows it in the view, and choosing one there selects it
-here. The tree lists the whole project of the lamella in view, a correction
-reaching every lamella of it, and greys the conditions this lamella does not hold.
-Every rule is :mod:`..families_controller`'s or the operation's, and the editing
-switch above the tabs locks it.
+here. The tree lists the whole project of the lamella in view and greys the
+conditions this lamella does not hold; *Applies to* says whether a change is the
+project's, reaching every lamella, or this lamella's own. Every rule is
+:mod:`..families_controller`'s or the operation's, and the editing switch above
+the tabs locks it.
 """
 from __future__ import annotations
 
@@ -85,6 +86,21 @@ class FamiliesPanel(QWidget):
         self.status = QLabel("")
         self.status.setWordWrap(True)
         column.addWidget(self.status)
+
+        self.applies_row = QWidget()
+        applies = QHBoxLayout(self.applies_row)
+        applies.setContentsMargins(0, 0, 0, 0)
+        self.applies_label = QLabel("Applies to")
+        self.applies_combo = QComboBox()
+        # A lamella's name is long, and the column is narrow: shortened, not widened.
+        self.applies_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.applies_combo.setMinimumContentsLength(10)
+        self.applies_combo.activated.connect(self._target_chosen)
+        applies.addWidget(self.applies_label)
+        applies.addWidget(self.applies_combo, stretch=1)
+        column.addWidget(self.applies_row)
 
         # One column, its notes after the name: the column is narrow, and a
         # second one scrolled sideways.
@@ -253,8 +269,41 @@ class FamiliesPanel(QWidget):
         if condition and modality:
             self.condition_chosen.emit(modality, condition)
 
+    def _show_target(self) -> None:
+        """Offer the project or the lamella in view, naming the lamella changes are held for."""
+        lamella = self.families.target or self.families.lamella_choice
+        self.applies_row.setVisible(lamella is not None)
+        self.applies_combo.blockSignals(True)
+        self.applies_combo.clear()
+        if lamella is not None:
+            self.applies_combo.addItem("Whole project", False)
+            self.applies_combo.addItem(f"{lamella.name} only", True)
+            self.applies_combo.setCurrentIndex(1 if self.families.target is not None else 0)
+        self.applies_combo.blockSignals(False)
+        held = self.families.has_changes
+        self.applies_combo.setEnabled(
+            self.families.editing_enabled and self.families.editable and not held
+        )
+        hint = (
+            "Whether a change is the project's, reaching every lamella, or this "
+            "lamella's own, replacing the project's here alone."
+        )
+        if held:
+            hint += "\nSave or discard the changes first: they belong to this choice."
+        self.applies_combo.setToolTip(hint)
+        self.applies_label.setToolTip(hint)
+
+    def _target_chosen(self, index: int) -> None:
+        """Make changes the project's or this lamella's own, and show the families as they stand there."""
+        try:
+            self.families.set_target(bool(self.applies_combo.itemData(index)))
+        except ValueError as error:
+            QMessageBox.warning(self, "Cannot change it now", str(error))
+        self.refresh()
+
     def _update_controls(self) -> None:
         """Offer what can be done to the selected condition, and to the changes held."""
+        self._show_target()
         condition = self._selected_condition()
         node = self._selected_family()
         editing = self.families.editing_enabled and self.families.editable

@@ -6070,6 +6070,38 @@ def test_leaving_a_corrected_group_is_asked_first(qt_app, tmp_path: Path, monkey
         destroy(panel)
 
 
+def test_applies_to_is_offered_only_with_a_lamella_in_view(qt_app, tmp_path: Path):
+    panel = _families_panel(tmp_path)
+    try:
+        assert panel.applies_row.isHidden()
+    finally:
+        destroy(panel)
+
+
+def test_a_change_applied_to_one_lamella_is_written_to_its_section(qt_app, tmp_path: Path):
+    from am_segmentation_manager.families import read_families
+
+    panel = _families_panel(tmp_path, lamella=True)
+    try:
+        assert not panel.applies_row.isHidden()
+        assert [panel.applies_combo.itemText(i) for i in range(2)] == [
+            "Whole project", "lam_011 only",
+        ]
+        panel.set_editing_enabled(True)
+        panel.applies_combo.setCurrentIndex(1)
+        panel.applies_combo.activated.emit(1)
+        _choose(panel, "sem", "sem-5kV")
+        assert not panel.applies_combo.isEnabled(), "changes belong to the choice held"
+
+        panel.save_button.click()
+
+        on_file = read_families(tmp_path / "batch" / "20260930_adaptive_milling")
+        assert on_file.project.families == {}
+        assert dict(on_file.lamellae["lam_011"].families) == {"sem": "sem-5kV"}
+    finally:
+        destroy(panel)
+
+
 def test_add_data_holds_no_families(qt_app, tmp_path: Path):
     """They moved beside the images, on Curate."""
     from am_segmentation_manager.gui.metadata_controller import MetadataController
