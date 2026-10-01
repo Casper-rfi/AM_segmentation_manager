@@ -5,7 +5,9 @@ A condition whose files repeat the variant in their filename --
 ``SEM_TLD/Image_000_TLD.tif`` beside ``SEM_8/Image_000.tif`` -- pairs with no
 label, because a label is found by its image's filename. This drops that
 suffix, and moves the acquisition's labels from the private label directory
-into the modality's shared one, which every condition resolves to. Workflow
+into its family's, ``sem_labels``, which every condition of it resolves to. Only
+the family named after the beam is handled, the one every such layout has; a
+stage holding another stops the batch. Workflow
 state moves with them: a label directory's name is part of its group's key, so
 renaming one without rewriting the keys drops every group back to *selected*.
 
@@ -31,10 +33,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from am_segmentation_manager.families import families_for
 from am_segmentation_manager.history import Recorder
 from am_segmentation_manager.io.path import make_path_relative
 from am_segmentation_manager.layout import (
     classify_image_directory,
+    condition_of,
     image_files,
     labels_directory_name,
     shared_labels_directory_name,
@@ -163,7 +167,9 @@ def _plan_shares(
 
     Only those stages: a private label directory elsewhere in the project has no
     second condition to share with, and moving it would be a change nothing here
-    asked for.
+    asked for. A beam holding a family other than the one named after it stops
+    the batch: ``sem_labels`` is that family's, and another's labels moved there
+    would join a different segmentation.
     """
     shares: list[LabelShare] = []
     for stage_directory, modalities in sorted(stages.items()):
@@ -172,8 +178,23 @@ def _plan_shares(
             directory for name, directory in sorted(siblings.items())
             if classify_image_directory(directory.name) is not None
         ]
+        corrections = families_for(stage_directory)
         for modality in sorted(modalities):
             wanted = shared_labels_directory_name(modality)
+            others = sorted({
+                parsed.family
+                for directory in image_directories
+                if (parsed := condition_of(directory.name, corrections)) is not None
+                and parsed.modality == modality
+                and parsed.family.lower() != modality.lower()
+            })
+            if others:
+                conflicts.append(
+                    f"{stage_directory}: {modality} holds the family "
+                    f"{', '.join(others)} beside {modality}; this shares labels only "
+                    f"within the family named after the beam"
+                )
+                continue
             private = [
                 siblings[labels_directory_name(directory.name).lower()]
                 for directory in image_directories

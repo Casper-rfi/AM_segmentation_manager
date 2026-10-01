@@ -17,7 +17,8 @@ Every main function `CLAUDE.md` names is built, across the three series of image
 and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
 Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
-need the `ml` extra, or `ml-cuda13` where the card is newer than its torch.
+need the `ml` extra, or `ml-cuda13` where the card is newer than its torch. Imaging conditions form
+**families**, each sharing one label: a folder's name gives the family and `AM_families.yaml` corrects it.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its
@@ -37,7 +38,6 @@ control opens at, the last two declared in `gui/preferences.py` and reaching no 
   Linux run on request and have not run yet. **Long paths off stays unchecked on a real machine**,
   `test_long_paths.py` forcing the probe's answer. **The Windows suite crashed once in five runs** of
   2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged; CI now names each test.
-- **Families of imaging conditions** (`plans/variant_families.md`): phases 0–5 built and the repair run — `AM_families.yaml` corrects families and merges, conditions are keyed by directory name, and `family` filters, breaks down and heads a CSV column; the window opens on each family's primary, lists a beam's conditions under a heading per family, changes state for the family on screen or every family, and proofreads the family on screen. Phase 6 built: the Add data tab shows a project's families and changes them as `edit-families` does. Next: the documentation and scripts pass.
 - **Close one round on the real collection.** Its record starts at savepoint `proofreading001`,
   taken 2026-09-11 over all 123 projects with 3,236/3,236 labels reachable. Close **one whole
   round** from there with a real training run in the middle: the parts have each been rehearsed,

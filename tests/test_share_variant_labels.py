@@ -144,6 +144,14 @@ def test_two_private_directories_becoming_one_stop_the_batch(project: Path) -> N
                for line in caught.value.conflicts)
 
 
+def test_a_stage_holding_another_family_stops_the_batch(project: Path) -> None:
+    """sem_labels is the SEM family's; sem-5kV's labels moved there would join it."""
+    touch(project / "lam_016" / "sem-5kV" / "Image_000.tif")
+    with pytest.raises(ShareConflict) as caught:
+        plan_sharing(project, "_TLD")
+    assert any("holds the family sem-5kV beside SEM" in line for line in caught.value.conflicts)
+
+
 def test_a_suffix_nothing_carries_is_refused(project: Path) -> None:
     with pytest.raises(ShareConflict) as caught:
         plan_sharing(project, "_T2")

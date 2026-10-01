@@ -24,14 +24,14 @@ rather than appending to it.
 
 ## Filesystem and identity
 
-- **An image directory is `<family>[_<variant>]`, split at the first `_`; a family shares
-  `<family>_labels`, and the project's `AM_families.yaml` may move a condition into another.** A first
-  label goes where the family looks afterwards (`test_resolution_does_not_change_once_the_first_label_is_written`).
-  **Corrections reach `layout.py` as a required argument**, so no caller resolves by name alone by
-  forgetting them, and a damaged file is never read as none: a scan indexes by name, writes refuse
-  (`test_a_label_group_is_refused_while_the_file_is_damaged`). **One private directory stands in for
-  its family**, several being a reported conflict (`test_several_directories_for_one_family_are_a_conflict`).
-  **Only label directories are renamed**; legacy `labels`, `labels_FIB` stay readable indefinitely.
+- **An image directory is `<family>[_<variant>]`, split at the first `_`; a family shares `<family>_labels`,
+  and the project's `AM_families.yaml` may move a condition into another.** A first label goes where the family
+  looks afterwards (`test_resolution_does_not_change_once_the_first_label_is_written`). Corrections reach
+  `layout.py` as a required argument, and a damaged file is never read as none: a scan indexes by name, writes
+  refuse (`test_a_label_group_is_refused_while_the_file_is_damaged`). **One private directory stands in for its
+  family**, several being a reported conflict (`test_several_directories_for_one_family_are_a_conflict`). **Only
+  label directories are renamed**, a correction going in that file: merge pairs a copy by relative path, and manifests,
+  CSVs and the history name image paths; fibsem 0.5.2 reopens from `experiment.yaml`, naming no image folder.
 - **A copy is paired back to its original by what the acquisition software recorded, never by name
   or order**, both of which survive a copy unchanged. `scripts/place_renamed_labels.py` names the
   header facts that do and reads them itself, `image_metadata.py` having no use for an identity.

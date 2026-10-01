@@ -73,8 +73,11 @@ them, since they show one scene. A folder's name says which it shares:
 everything before the first `_` names its **family**, and what follows names
 the condition. `sem_fi4` beside `sem` shares `sem_labels/`; a separate series,
 such as `sem-5kV` and `sem-5kV_fi4`, shares `sem-5kV_labels/` of its own. A
-family's name starts with `sem` or `fib` and then a digit, `-`, `.` or `_`,
-and may use anything but `_` after that. Folders named before families, such
+family's name starts with `sem` or `fib`, then a digit, `-`, `.`, `_` or
+nothing, so `semi-thin` is not one. When naming folders at acquisition, use
+only letters, digits, `-` and `.` in a family's name, the characters the
+BioImage Archive accepts, and `_` only to start the condition: `sem-5kV_fi4`,
+never `sem_5kV_fi4`, which is condition `5kV_fi4` of `sem`. Folders named before families, such
 as `SEM_8` and `SEM_8_fi_1`, are one family, `SEM`. Where a name puts a
 condition in the wrong family, the project's `AM_families.yaml` corrects it
 without renaming a folder; see [Add data](02_add_data.md#correct-the-families).
