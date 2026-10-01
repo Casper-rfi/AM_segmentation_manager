@@ -18,7 +18,7 @@ pytest.importorskip("numpy")
 import numpy as np
 import tifffile
 
-from am_segmentation_manager import state as state_module
+from am_segmentation_manager.io import yaml as yaml_module
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations import label_save, predictions
@@ -94,13 +94,13 @@ def test_a_conversion_leaves_a_label_that_appeared_while_it_ran(tmp_path: Path, 
 
 def test_a_state_file_rewritten_while_it_was_written_is_left(tmp_path: Path, monkeypatch):
     previous = read_state(tmp_path)
-    real = state_module.write_yaml
+    real = yaml_module.write_yaml
 
     def written_elsewhere_first(path, *args, **kwargs):
         state_file_path(tmp_path).write_text("state:\n  sem_labels/b.tif: corrected\n")
         return real(path, *args, **kwargs)
 
-    monkeypatch.setattr(state_module, "write_yaml", written_elsewhere_first)
+    monkeypatch.setattr(yaml_module, "write_yaml", written_elsewhere_first)
 
     with pytest.raises(StaleState):
         write_state(previous, {"sem_labels/a.tif": "deselected"})
