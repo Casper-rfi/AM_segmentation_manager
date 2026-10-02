@@ -96,10 +96,28 @@ is now there.
 
 ### A folder is not read as expected
 
-Run **Inspect layout** on the Add data tab, or `am-seg inspect-layout <folder>`.
-It says how every project was read, which images went under *other* and why,
-and which images sit in the folder but inside no project. A dataset that is not
-a project yet is named with *Add projects*; see [Add data](02_add_data.md).
+Press **Inspect layout** on the Add data tab, or run `am-seg inspect-layout
+<folder>`. It changes nothing. For each project it gives the lamellae, stages,
+images and labels found, and how many images fall in each series; then what
+does not fit, from errors down to notes:
+
+```text
+AutoLamella-2024-07-05-12-53  [experiment.yaml, AM_metadata.yaml]
+  18 lamella(e), 18 stage(s), 1012 image(s), 241 label(s)
+  series: 544 Adaptive Polishing, 342 reference, 126 alignment
+  metadata: 4 field(s) still marked TODO
+
+Findings
+  warn  images-without-labels: AutoLamella-2024-07-05-12-53/07-brief-oryx
+         16 of 31 images have no label
+```
+
+It also names every image it filed under *other*, and why, and every image
+sitting in the folder but inside no project. A dataset that is not a project
+yet is added with *Add projects*; see the
+[user guide](user_guide.md#add-projects-that-are-not-from-autolamella). Where
+the conditions of one family differ in size, see
+[Background](background.md#families-of-imaging-conditions).
 
 ### A scan is slow, or takes over a shared machine
 

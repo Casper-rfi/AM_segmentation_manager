@@ -44,14 +44,17 @@ environment having no torch.
 | [`docs/decisions.md`](docs/decisions.md) | why the software is the way it is; read before changing `operations/` |
 | [`docs/display.md`](docs/display.md) | the same for the window, and the Qt traps behind it; read before changing `gui/` |
 | [`docs/04_future_work.md`](docs/04_future_work.md) | what is not built, and what to answer before designing it |
-| [`guides/`](guides/README.md) | how to use it |
+| [`guides/`](guides/user_guide.md) | how to use it: the user guide, background, the command line, troubleshooting |
 
 ## The user guide's generated parts
 
-The guide's tables of fields, commands and keys are generated from the code,
-and its pictures are taken of the window:
+The guide's tables of metadata fields and commands are generated from the code,
+and its pictures are taken of the window, cropped and numbered as
+`scripts/guide_screenshots.py` lists them. The keys are not tabled: F1 lists
+them in the window.
 
     uv run python scripts/guide_tables.py
     uv run python scripts/guide_screenshots.py <folder holding the Zenodo projects>
 
-`tests/test_guides.py` fails when a table has fallen behind the code.
+`tests/test_guides.py` fails when a table has fallen behind the code, a link
+points nowhere, or a picture is shown on no page.

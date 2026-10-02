@@ -521,13 +521,8 @@ def bindings_for(window) -> list[Binding]:
         ),
     ]
 
-def menu_rows(
-    window, spelling=QKeySequence.SequenceFormat.NativeText
-) -> tuple[tuple[str, str], ...]:
+def menu_rows(window) -> tuple[tuple[str, str], ...]:
     """Return the File menu's keys as ``(key, what it does)``, platform-spelled.
-
-    *spelling* ``PortableText`` spells them alike on every platform instead,
-    for a page read on any of them.
 
     Empty entries are left out: an action with no shortcut is one the list has
     no key to teach, and a platform that gives a standard key no sequence --
@@ -538,7 +533,7 @@ def menu_rows(
         sequence = action.shortcut()
         if sequence.isEmpty():
             continue
-        rows.append((sequence.toString(spelling), name))
+        rows.append((sequence.toString(QKeySequence.SequenceFormat.NativeText), name))
     return tuple(rows)
 
 
@@ -708,26 +703,6 @@ class Shortcuts:
                 "<i>Enable editing</i> switched on.</p>"
             )
         return help_text
-
-
-
-    def reference_rows(self, tab: str) -> dict[str, list[tuple[str, str]]]:
-        """Return what F1 lists for *tab* as words alone, under its headings.
-
-        For the user guide, read on any platform: keys spelled portably, and
-        the legend's pictures left out, being pictures.
-        """
-        applicable = [b for b in self.bindings if b.tab in (tab, ANY_TAB)]
-        return _grouped_rows(
-            applicable,
-            TAB_GESTURES.get(tab, ()),
-            tuple(
-                (GROUP_MENU, key, description)
-                for key, description in menu_rows(
-                    self._window, QKeySequence.SequenceFormat.PortableText
-                )
-            ),
-        )
 
     def toggle(self) -> None:
         """List the keys for the tab now showing, or put the list away.

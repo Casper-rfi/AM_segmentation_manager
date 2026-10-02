@@ -13,6 +13,19 @@ it outgrows a spreadsheet: which images are worth labelling, which labels have
 been proofread, what the labels contain, and which subset should go into a
 training run or a public data deposit.
 
+The work runs in four steps, a tab of the window for each, and a model trained
+on the result makes the next round of labels quicker to prepare:
+
+```mermaid
+flowchart LR
+    A["<b>Add data</b><br/>find the projects,<br/>describe them"] --> B["<b>Curate</b><br/>choose what to label,<br/>predict"]
+    B --> C["<b>Label</b><br/>proofread,<br/>mark corrected"]
+    C --> D["<b>Export</b><br/>count, measure,<br/>write training sets"]
+    D --> E["<b>Train a model</b><br/>in AM-model-training"]
+    E -. a better model .-> B
+    style E stroke-dasharray: 5 5
+```
+
 What it does
 ------------
 
@@ -89,10 +102,10 @@ On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
 desktop install has it; a server or a minimal install may not, and adding it
 takes an administrator: `sudo apt install libxcb-cursor0`.
 `scripts/check_environment.py` says whether the window can open, and
-[Troubleshooting](guides/07_troubleshooting.md) has a way round it without one.
+[Troubleshooting](guides/troubleshooting.md) has a way round it without one.
 
 If something will not install or start, see
-[Troubleshooting](guides/07_troubleshooting.md).
+[Troubleshooting](guides/troubleshooting.md).
 
 Uninstalling
 ------------
@@ -112,71 +125,33 @@ Three steps remove everything am-seg put on this computer outside your data:
 
 uv keeps the packages it downloaded, torch among them, for any project to reuse;
 `uv cache clean` frees that space. Your collections keep the files am-seg wrote
-beside the data, [listed in the user guide](guides/01_concepts.md#what-am-seg-writes):
+beside the data, [listed in Background](guides/background.md#what-am-seg-writes):
 they are part of the data, not of the install.
 
 Getting started
 ---------------
 
     am-seg create-shortcut            # once: start the window like any other application
-    am-seg gui <folder>               # the window, on a folder of your data
-    am-seg inspect-layout <folder>    # read-only: how is this folder read?
+    am-seg gui                        # or start it from the command line
 
 From a checkout, put `uv run` in front of each. `create-shortcut` adds the
 window to the Applications folder on macOS, the applications menu on Linux, and
 the Start menu and Desktop on Windows; the window's File menu offers the same.
 
-The window has a tab for each phase of the work:
-
-| Tab | For |
-|---|---|
-| **Add data** | naming which folders are projects, and describing them |
-| **Curate** | looking through the frames, setting their state, predicting and converting labels |
-| **Label** | proofreading one lamella's labels at full resolution |
-| **Export** | choosing a subset, counting and measuring it, and writing it out |
-
-Nothing on Curate writes until *Enable editing* is switched on. **F1** lists the
-keys and gestures of the tab you are on.
+Then follow [the user guide](guides/user_guide.md), which goes through the
+window a step at a time. In the window, hovering over a control says what it
+does, and **F1** lists the keys of the tab you are on.
 
 Documentation
 -------------
 
-[The user guide](guides/README.md) explains the concepts, each tab, the history
-am-seg keeps, and what to do when something goes wrong, with pictures of the
-window. `am-seg --help` lists every command, and `am-seg <command> --help`
-explains one.
-
-The command line does everything the window does, and holds the reports on a
-whole collection:
-
-| To do this | Run |
-| --- | --- |
-| See how a folder is interpreted | `inspect-layout` |
-| Make a pre-Autolamella dataset indexable | `init-project` |
-| Read or edit project metadata | `show-metadata` / `edit-metadata` |
-| Scan a directory and list the projects found | `list-projects` |
-| Predict labels with a trained model | `predict` |
-| Turn predictions into labels for proofreading | `convert-predictions` |
-| Choose what gets proofread | `deselect` / `select` / `correct` |
-| See or correct which imaging conditions share a label | `show-families` / `edit-families` |
-| Find stray spots and holes likely to be too small to be real | `find-specks` |
-| Shrink label files on disk | `compress-labels` |
-| Count images by one or two properties, and chart them | `stats` |
-| Measure what the labels contain, in um^2 | `quantify-labels` |
-| Export metadata and training lists | `export-*-csv` / `create-training-csv` |
-| Export a selection of images and labels into a folder of its own, ready to merge back | `export-files` |
-| Check an exported CSV still resolves | `check-training-csv` |
-| Record the history of a collection already holding work, all at once | `init-history` |
-| Name the state of the data, so a round of work can be undone | `savepoint` |
-| See the savepoints here, what each covers and what it still reaches | `list-savepoints` |
-| Read what has been recorded about a project or a label | `history` |
-| Merge a worked-on copy back into the collection | `merge` |
-| Put labels back to what they held before a conversion or a merge | `revert` |
-| See the label versions a project has kept | `archive` |
-| Remove surplus kept versions | `prune-archive` |
-| Add the window to this computer's applications, or take it away again | `create-shortcut` |
-
-[`CHANGELOG.md`](CHANGELOG.md) says what each release changed.
+| Document | For |
+|---|---|
+| [User guide](guides/user_guide.md) | getting started: the window, a step at a time |
+| [Background](guides/background.md) | how am-seg reads your data, what it keeps safe, and its history |
+| [The command line](guides/command_line.md) | every command, for scripting and for reports on a whole collection |
+| [Troubleshooting](guides/troubleshooting.md) | when something will not install, start or read as expected |
+| [`CHANGELOG.md`](CHANGELOG.md) | what each release changed |
 
 Models and data
 ---------------
@@ -184,7 +159,8 @@ Models and data
 The models Adaptive Milling was trained with, and the data they were trained
 on, are published on Zenodo:
 [doi:10.5281/zenodo.21804785](https://doi.org/10.5281/zenodo.21804785). The
-pictures in the user guide are of two of its projects.
+pictures in the user guide are of two of its projects. The models were trained
+with [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-training), which reads the training CSVs am-seg writes.
 
 Contributing
 ------------
