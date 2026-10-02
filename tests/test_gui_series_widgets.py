@@ -495,6 +495,9 @@ def test_the_residue_is_badged_view_only_rather_than_unlabelled(
             qt_app,
             lambda: "view only" in window.image_panel.badges.text(),
             what="the residue frame to be drawn",
+            found=lambda: (
+                window.image_panel.status.text(), window.image_panel.badges.text()
+            ),
         )
 
         assert "no label" not in window.image_panel.badges.text()

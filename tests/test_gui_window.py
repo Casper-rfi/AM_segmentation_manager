@@ -5535,10 +5535,19 @@ def test_the_view_controls_are_one_block_on_the_smallest_screen_supported(
             qt_app.processEvents()
             window.grab()
             heights.append(window.image_panel.controls.height())
+            if width == SMALLEST_SUPPORTED_SCREEN[0]:
+                controls = window.image_panel.controls
+                flow = controls.layout()
+                has = controls.contentsRect().width()
+                needs = flow.sizeHint().width()
+                blocks = [flow.itemAt(i).sizeHint().width() for i in range(flow.count())]
 
+        # The widths say how far over the row is, and each block's which of
+        # them grew, where the heights alone say only that it wrapped.
         assert heights[0] == heights[1], (
             f"the row wraps differently at {SMALLEST_SUPPORTED_SCREEN[0]} "
-            f"than at 1920: {heights}"
+            f"than at 1920: {heights}; it needs {needs}px of the {has}px the "
+            f"pane has there, in blocks and gaps of {blocks}"
         )
     finally:
         destroy(window)

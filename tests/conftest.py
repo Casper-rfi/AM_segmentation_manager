@@ -15,6 +15,7 @@ import os
 import sys
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -255,7 +256,14 @@ def qt_app():
     return app
 
 
-def settle(app, condition, *, timeout: float = 10.0, what: str = "the window") -> None:
+def settle(
+    app,
+    condition,
+    *,
+    timeout: float = 10.0,
+    what: str = "the window",
+    found: Callable[[], object] | None = None,
+) -> None:
     """Run the event loop until *condition* holds.
 
     Args:
@@ -263,6 +271,8 @@ def settle(app, condition, *, timeout: float = 10.0, what: str = "the window") -
             to wait for cannot tell the work finishing from the time running
             out, so it sleeps for the whole timeout and then asserts nothing.
         what: Named in the failure, so a timeout says which wait gave up.
+        found: Asked once on timeout, and its answer named in the failure, so
+            a wait that fails only on CI says what it saw instead.
 
     Raises:
         Failed: when *condition* has not come true within *timeout* seconds.
@@ -273,7 +283,8 @@ def settle(app, condition, *, timeout: float = 10.0, what: str = "the window") -
         if condition():
             return
         if time.monotonic() >= deadline:
-            pytest.fail(f"Timed out waiting for {what}")
+            seen = f"; found {found()!r}" if found is not None else ""
+            pytest.fail(f"Timed out waiting for {what}{seen}")
         time.sleep(0.01)
 
 
