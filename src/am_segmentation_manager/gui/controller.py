@@ -1546,6 +1546,19 @@ class CurationController:
             )
         return records
 
+    def _held_records(self) -> list[ImageRecord]:
+        """Return every record of the lamellae a state change can reach.
+
+        The scope holds one record per label group; the conditions sharing it
+        are these, and a change must update them rather than copies of them
+        (``test_a_state_change_shows_on_every_condition_without_a_rescan``).
+        """
+        if self.selection.level in (LEVEL_PROJECTS, LEVEL_LAMELLAE):
+            lamellae = self._checked_lamellae()
+        else:
+            lamellae = [self.lamella] if self.lamella is not None else []
+        return [record for lamella in lamellae for record in lamella.image_records]
+
     def corrected_records(self, records: list | None = None) -> list:
         """Return those records currently in the corrected state.
 
@@ -1696,7 +1709,8 @@ class CurationController:
             self.recorder,
         )
         changed = transition_records(
-            records, state, allow_leaving_corrected=confirm_corrected, recorder=batch
+            records, state, allow_leaving_corrected=confirm_corrected, recorder=batch,
+            known=self._held_records(),
         )
         logger.info(
             "Declared %d record(s) %s across %s",

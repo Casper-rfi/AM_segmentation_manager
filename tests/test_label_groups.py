@@ -180,6 +180,28 @@ def test_expansion_preserves_the_objects_it_was_given(tmp_path: Path):
     assert any(record is original for record in expanded)
 
 
+def test_expansion_reaches_siblings_through_the_records_the_caller_holds(tmp_path: Path):
+    """A sibling the caller already holds is that record, so a change shows on it."""
+    make_project(tmp_path)
+    records = scan(tmp_path)
+
+    expanded = expand_to_groups([records["SEM_8"]], known=records.values())
+
+    for name in SEM_VARIANTS:
+        assert any(record is records[name] for record in expanded), name
+
+
+def test_a_transition_updates_the_siblings_the_caller_holds(tmp_path: Path):
+    make_project(tmp_path)
+    records = scan(tmp_path)
+
+    deselect = transition_records([records["SEM_8"]], "deselected", known=records.values())
+
+    assert deselect == len(SEM_VARIANTS)
+    assert {records[name].state for name in SEM_VARIANTS} == {"deselected"}
+    assert records["FIB"].state == "selected"
+
+
 def test_expansion_does_not_duplicate_records_already_supplied(tmp_path: Path):
     make_project(tmp_path)
     records = scan(tmp_path)

@@ -312,18 +312,26 @@ def primary_record(
     return primary_among(records, (families or FamiliesLookup()).at(records[0].image_path))
 
 
-def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
+def expand_to_groups(
+    records: Iterable[ImageRecord], known: Iterable[ImageRecord] = ()
+) -> list[ImageRecord]:
     """Return the given records plus every image sharing a label with them.
 
     The records passed in are preserved as the objects they are, so a caller
     holding them -- a long-running UI, for example -- sees its own records
-    updated when a transition succeeds. Siblings discovered on disk are added as
-    new records.
+    updated when a transition succeeds. **A sibling found on disk is the
+    caller's own record where *known* holds one for its image**, and a new
+    record only where it does not; membership is decided by the disk either way.
 
     Deduplication is by image path, so a file named twice -- once directly and
     once through its group -- is declared once.
+
+    Args:
+        known: Records the caller holds and wants kept in step, such as every
+            record of the lamellae a change touches.
     """
     supplied = list(records)
+    held = {str(record.image_path): record for record in known}
     seen: set[str] = set()
     expanded: list[ImageRecord] = []
 
@@ -338,7 +346,7 @@ def expand_to_groups(records: Iterable[ImageRecord]) -> list[ImageRecord]:
             key = str(record.image_path)
             if key not in seen:
                 seen.add(key)
-                expanded.append(record)
+                expanded.append(held.get(key, record))
 
     if len(expanded) > len(supplied):
         logger.info(

@@ -228,6 +228,7 @@ def plan_transition(
     state: RecordState,
     *,
     allow_leaving_corrected: bool = False,
+    known: Iterable[ImageRecord] = (),
 ) -> TransitionPlan:
     """Validate a state change without performing it.
 
@@ -238,7 +239,8 @@ def plan_transition(
 
     Records are expanded across shared labels first. Declaring a state for a
     shared label without covering the images that share it would silently
-    change their state too.
+    change their state too. An image reached that way is the record in *known*
+    for it, where there is one, so the caller's own copy is the one updated.
 
     Raises:
         ValueError: If *state* is not a workflow state, or a record belongs to
@@ -251,7 +253,7 @@ def plan_transition(
         raise ValueError(f"Unknown workflow state: {state}")
 
     requested = list(records)
-    expanded = expand_to_groups(requested)
+    expanded = expand_to_groups(requested, known)
     requested_paths = {str(record.image_path) for record in requested}
     added = tuple(
         record for record in expanded
@@ -320,6 +322,7 @@ def transition_records(
     allow_leaving_corrected: bool = False,
     dry_run: bool = False,
     recorder: Recorder | None = None,
+    known: Iterable[ImageRecord] = (),
 ) -> int:
     """Declare *records* to be in ``state`` after validating the whole batch.
 
@@ -332,9 +335,10 @@ def transition_records(
     The return value counts the expanded set, which can exceed what was asked
     for; use :func:`plan_transition` when the difference needs reporting first.
 
-    On success each record is updated, so callers that keep records alive across
-    several operations -- a long-running UI, for example -- stay in step. No
-    file moves, so the paths a record holds stay valid either way.
+    On success each record is updated, and each of *known* that a shared label
+    reached, so callers that keep records alive across several operations -- a
+    long-running UI, for example -- stay in step. No file moves, so the paths a
+    record holds stay valid either way.
 
     Args:
         records: The records to change.
@@ -343,9 +347,11 @@ def transition_records(
             state.
         dry_run: Validate everything and report the count without writing.
         recorder: Where to record the changes, or None to record nothing.
+        known: Records the caller holds besides *records*, updated too where
+            a shared label reaches them; see :func:`plan_transition`.
     """
     plan = plan_transition(
-        records, state, allow_leaving_corrected=allow_leaving_corrected
+        records, state, allow_leaving_corrected=allow_leaving_corrected, known=known
     )
     if dry_run:
         for line in plan.describe():

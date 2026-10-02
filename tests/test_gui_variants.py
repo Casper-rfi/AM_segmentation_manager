@@ -307,6 +307,33 @@ def test_a_state_change_acts_on_the_family_on_screen(tmp_path: Path):
     assert controller.state_of("SEM") == "selected", "deciding one family never decides another"
 
 
+def test_a_state_change_shows_on_every_condition_without_a_rescan(tmp_path: Path):
+    """The variant on screen is reached through the primary's label, and must read it."""
+    make_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_editing_enabled(True)
+    controller.set_condition("SEM_8_fi_1", "SEM")
+
+    controller.apply_state("deselected")
+
+    for condition in SEM_VARIANTS:
+        controller.set_condition(condition, "SEM")
+        assert controller.state_of("SEM") == "deselected", condition
+
+
+def test_a_state_change_on_a_ticked_lamella_shows_on_every_condition(tmp_path: Path):
+    make_project(tmp_path)
+    controller = make_controller(tmp_path)
+    controller.set_editing_enabled(True)
+    controller.set_lamella_checked(0, True)
+
+    controller.apply_state("deselected")
+
+    for condition in SEM_VARIANTS:
+        controller.set_condition(condition, "SEM")
+        assert controller.state_of("SEM") == "deselected", condition
+
+
 def test_a_state_change_reaches_every_label_of_a_family_in_conflict(tmp_path: Path):
     """Two label directories make the family two groups; the one on screen is sem_fi1's."""
     project = tmp_path / "project"
