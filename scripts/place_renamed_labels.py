@@ -53,8 +53,8 @@ from am_segmentation_manager.layout import (
     subdirectories_by_name,
 )
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.label_io import save_label_image
 from am_segmentation_manager.operations.label_groups import record_from_image_path
+from am_segmentation_manager.operations.label_io import save_label_image
 from am_segmentation_manager.operations.selection import mark_corrected_records
 
 logger = logging.getLogger(__name__)
