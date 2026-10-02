@@ -384,12 +384,12 @@ class LabelPanel(QWidget):
         ))
 
         controls.addSpacing(GROUP_GAP)
-        self.overlay_check = ToggleSwitch("Show label")
+        self.overlay_check = ToggleSwitch("Label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip("Draw the label over the image\nShortcut: V")
         self.overlay_check.toggled.connect(self._overlay_toggled)
 
-        self.image_check = ToggleSwitch("Show image")
+        self.image_check = ToggleSwitch("Image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
             "Draw the acquisition under the label, or leave it alone against "

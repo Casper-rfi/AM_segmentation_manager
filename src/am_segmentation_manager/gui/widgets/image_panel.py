@@ -226,14 +226,14 @@ class ImagePanel(QWidget):
         ))
 
         controls.addSpacing(GROUP_GAP)
-        self.overlay_check = ToggleSwitch("Show label")
+        self.overlay_check = ToggleSwitch("Label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip(
             "Draw the label over the right-hand image\nShortcut: V"
         )
         self.overlay_check.toggled.connect(self.overlay_toggled.emit)
 
-        self.image_check = ToggleSwitch("Show image")
+        self.image_check = ToggleSwitch("Image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
             "Draw the label over the acquisition, or over a flat dark "

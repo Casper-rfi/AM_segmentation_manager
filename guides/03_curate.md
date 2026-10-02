@@ -44,7 +44,7 @@ Along the top:
   its conditions beneath. A star marks a family's primary, the image predicted
   from, where the family has more than one condition. A frame opens on its family's primary condition, and
   one not imaged under the condition chosen shows another of the same family.
-- **Show label**, **Show image**, **Opacity** and **Min / max** change how the
+- **Label**, **Image**, **Opacity** and **Min / max** change how the
   frame is drawn, and nothing else.
 
 The **Grid** view is the one that is not of the frame: it shows where on the

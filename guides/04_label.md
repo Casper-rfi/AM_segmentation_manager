@@ -27,9 +27,9 @@ Where a family has nothing selected in the beam, the tab shows one that has.
 Scroll to zoom about the pointer, and hold **Space** or drag with the middle
 button to pan. **G** fits the image to the pane again.
 
-- **Show label** (**V**) draws the label over the image, or not; **Opacity**
+- **Label** (**V**) draws the label over the image, or not; **Opacity**
   sets how strongly.
-- **Show image** draws the image under the label, or leaves a flat dark ground
+- **Image** draws the image under the label, or leaves a flat dark ground
   instead. Against that ground, an annotation a few pixels across is easy to
   see, and so is the edge of the frame.
 - **Min / max** sets the image's contrast, and nothing else.
