@@ -10,6 +10,7 @@ list carries ticks at a time, so everything a change will touch is visible.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from itertools import zip_longest
 
 from qtpy.QtCore import QSize, Qt, Signal
 from qtpy.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -25,7 +26,7 @@ from qtpy.QtWidgets import (
 from ...layout import LABELS_EXPECTED, MODALITIES, SERIES, SERIES_LABELS
 from ..controller import CurationStatus
 from .common import caption_for, chip_icon, ticked_caption
-from .controls import FlowArea, FlowLayout, GripSplitter, ToggleSwitch
+from .controls import FlowArea, FlowLayout, GripSplitter, ToggleSwitch, keep_paired
 from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import add_path_menu
 from .theme import (
@@ -90,7 +91,10 @@ class ProjectPanel(QWidget):
         # Switches, as the Export tab's series are: independent, and several at
         # once is the ordinary case. In a flow under their caption rather than
         # beside it, so the column can still be narrowed: a row that cannot
-        # wrap is a floor under the whole panel.
+        # wrap is a floor under the whole panel. Two to a column, so at the
+        # width the column opens at they stand in an aligned grid, where loose
+        # they wrapped wherever their captions happened to fall
+        # (`test_the_series_switches_open_two_above_two`).
         self.shown_boxes: dict[str, ToggleSwitch] = {}
         for name in SERIES:
             switch = ToggleSwitch(SERIES_LABELS[name])
@@ -102,8 +106,11 @@ class ProjectPanel(QWidget):
         self.shown_flow = FlowArea()
         flow = FlowLayout(spacing=6)
         self.shown_flow.setLayout(flow)
-        for name in SERIES:
-            flow.addWidget(self.shown_boxes[name])
+        half = (len(SERIES) + 1) // 2
+        left = {(0, 0): Qt.AlignmentFlag.AlignLeft, (1, 0): Qt.AlignmentFlag.AlignLeft}
+        for top, below in zip_longest(SERIES[:half], SERIES[half:]):
+            bottom = (self.shown_boxes[below],) if below is not None else ()
+            flow.addWidget(keep_paired((self.shown_boxes[top],), bottom, align=left))
         layout.addWidget(caption_for("Series shown", self.shown_flow, SHOWN_HINT))
         layout.addWidget(self.shown_flow)
 

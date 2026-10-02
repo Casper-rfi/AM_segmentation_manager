@@ -5553,6 +5553,39 @@ def test_the_view_controls_are_one_block_on_the_smallest_screen_supported(
         destroy(window)
 
 
+def test_the_series_switches_open_two_above_two(qt_app, settings):
+    """Loose, they wrapped wherever their captions fell, and the second row
+    lined up with nothing above it."""
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    config = SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0)},
+        class_labels={0: "background", 1: "GIS"},
+    )
+    window = CurationWindow(
+        CurationController(cache=FrameCache(), config=config), settings=settings
+    )
+    try:
+        window.tabs.setCurrentWidget(window.curate)
+        window.resize(*SMALLEST_SUPPORTED_SCREEN)
+        window.show()
+        qt_app.processEvents()
+        window.grab()
+        boxes = window.project_panel.shown_boxes
+        at = {
+            name: box.mapTo(window.project_panel, box.rect().topLeft())
+            for name, box in boxes.items()
+        }
+
+        assert at["adaptive"].y() == at["reference"].y()
+        assert at["alignment"].y() == at["other"].y() > at["adaptive"].y()
+        assert at["adaptive"].x() == at["alignment"].x()
+        assert at["reference"].x() == at["other"].x() > at["adaptive"].x()
+    finally:
+        destroy(window)
+
+
 def test_a_view_that_cannot_be_chosen_says_why(window):
     panel = window.image_panel
 
