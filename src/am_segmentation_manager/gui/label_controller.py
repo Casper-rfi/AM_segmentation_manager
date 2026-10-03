@@ -46,6 +46,7 @@ from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
 from .controller import DEFAULT_SERIES
 from .known_labels import KnownLabels
 from .label_session import LabelSession
+from .proofreading import Checklist
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,9 @@ class LabelController:
         self._shown_condition: str | None = None
         self.known_labels = known_labels if known_labels is not None else KnownLabels()
         self.session = LabelSession()
+        #: How far through proofreading each label is. Outlives the session,
+        #: which a save or a lamella change empties, and the lamella.
+        self.checklist = Checklist()
         self._keys: dict[Path, Path] = {}
 
     @property
@@ -783,9 +787,59 @@ class LabelController:
         """Return the records whose label the reviewer has passed.
 
         What "mark corrected" would cover. Edited and approved-unchanged alike:
-        both are a judgement that the label is right.
+        both are a judgement that the label is right, and so is a label whose
+        checklist is ticked to the save, unless it is corrected already.
         """
-        return self.records_for(self.session.reviewed_keys())
+        return self.records_for(self.session.reviewed_keys() | self.checked_keys())
+
+    @property
+    def checklist_key(self) -> Path | None:
+        """Return the label the checklist is about: the one on screen, where it can be painted."""
+        return self.current_key if self.editable else None
+
+    def advance_checklist(self) -> bool:
+        """Tick the current step of the label on screen; return whether saving is next.
+
+        True where the step not yet ticked is the save, which a save ticks
+        rather than this.
+        """
+        key = self.checklist_key
+        if key is None or self.checklist.advance(key):
+            return False
+        return self.checklist.current(key) == self.checklist.save_step
+
+    def retreat_checklist(self) -> None:
+        """Untick the step before the current one, for the label on screen."""
+        key = self.checklist_key
+        if key is not None:
+            self.checklist.retreat(key)
+
+    def tick_step(self, step: int, ticked: bool) -> None:
+        """Tick or untick *step* for the label on screen."""
+        key = self.checklist_key
+        if key is not None:
+            self.checklist.set_ticked(key, step, ticked)
+
+    def checked_keys(self) -> set[Path]:
+        """Return this lamella's labels ticked to the save and not yet corrected."""
+        return {
+            key
+            for frame in self._frames
+            for record in frame.records
+            if (key := self.key_for(record)) is not None
+            and self.checklist.is_checked(key)
+            and not self._is_corrected(key)
+        }
+
+    def unfinished_checklists(self) -> int:
+        """Return how many edited labels have a checklist started and not ticked through."""
+        return sum(
+            1
+            for entry, _ in self.session.labels()
+            if entry.edited
+            and self.checklist.is_started(entry.key)
+            and not self.checklist.is_checked(entry.key)
+        )
 
     def save(
         self, *, mark_corrected: bool = False, allow_corrected: bool = False
@@ -821,9 +875,13 @@ class LabelController:
         saved and settled, and :attr:`SavedLabels.problem` says why.
         """
         pending = self.pending_saves()
+        # Taken before the session goes, which is what knows what was reviewed.
+        approved = self.approved_records() if mark_corrected else []
         batch = writing_recorder(
             projects_holding(
-                (item.destination for item in pending), self.projects
+                [item.destination for item in pending]
+                + [record.image_path for record in approved],
+                self.projects,
             ),
             self.recorder,
         )
@@ -842,9 +900,8 @@ class LabelController:
             self._refresh_positions(keep_frame=self.frame_index)
             raise
         self._attach_created_labels(report.created)
-        headline = report.headline()
-        # Taken before the session goes, which is what knows what was reviewed.
-        approved = self.approved_records() if mark_corrected else []
+        # A save can be only a marking, of labels checked and left unchanged.
+        headline = report.headline() if pending else "no label changed"
 
         # Settled before marking corrected, so a state change that fails leaves
         # the labels saved rather than pending over files they now match.
@@ -868,6 +925,7 @@ class LabelController:
                 headline += ", not marked corrected"
             else:
                 headline += f", marked {declared} image(s) corrected"
+                self.checklist.mark_saved({self.key_for(record) for record in approved})
         # The frames worth visiting are recomputed here rather than by a
         # rescan: marking corrected moves the state this reads, and a label
         # written where there was none changes what a frame's line reports.
@@ -896,9 +954,14 @@ class LabelController:
                 record.labels = [self.key_for(record)]
 
     def discard_edits(self) -> None:
-        """Throw away every pending edit in this lamella."""
+        """Throw away every pending edit in this lamella.
+
+        The checklist of an edited label goes with its edits, the steps it
+        records being the work thrown away.
+        """
         if self.session:
             logger.info("Discarding %d pending label edit(s)", len(self.session))
+        self.checklist.forget(self.session.edited_keys())
         self.session.discard()
 
     def timeline_states(self) -> dict[str, list[RecordState | None]]:

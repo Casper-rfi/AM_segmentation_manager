@@ -73,6 +73,7 @@ GROUP_STATE = "Set the segmentation state"
 GROUP_TOOLS = "Choose a tool"
 GROUP_CLASSES = "Choose a class"
 GROUP_SPECKS = "Find specks"
+GROUP_CHECKLIST = "Proofreading checklist"
 GROUP_EDITS = "Save and undo"
 GROUP_ELSEWHERE = "Elsewhere in the window"
 #: The File menu's keys. Listed rather than bound here: the menu's own actions
@@ -500,6 +501,16 @@ def bindings_for(window) -> list[Binding]:
         Binding(
             "N", "Go to the next speck",
             lambda: window.label_panel.step_speck(1), TAB_LABEL, GROUP_SPECKS,
+        ),
+        # Between X and V, the two keys the steps name most, so stepping on
+        # needs no change of hand.
+        Binding(
+            "C", "Tick the current step of the checklist; at the last, save",
+            window.label_panel.next_step, TAB_LABEL, GROUP_CHECKLIST,
+        ),
+        Binding(
+            "Shift+C", "Untick the step before the current one",
+            window.label_panel.previous_step, TAB_LABEL, GROUP_CHECKLIST,
         ),
         Binding(
             "Ctrl+S", "Save this lamella's labels", window.save_labels,

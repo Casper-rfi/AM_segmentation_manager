@@ -229,6 +229,17 @@ to correct its labels. It visits only the frames still worth proofreading.
    *Enable editing* on, on Curate, **Save and mark corrected** also marks the
    frames you reviewed as corrected.
 
+### Follow the checklist
+
+Switch on **Checklist**, or press **C**, to list the steps of proofreading a
+label beside the image. Press **C** to tick the step you are on and move to the
+next, and **Shift+C** to go back. Select a step to read what to do in it;
+**How to do this step...** explains how. Each label keeps its own progress
+while the window is open. A label ticked through to the last step counts as
+checked, so saving can mark it corrected even if it needed no change.
+
+![The proofreading checklist, three steps ticked](images/checklist.png)
+
 ## 6. Export
 
 The **Export** tab chooses a subset of your collection, counts it, and writes it

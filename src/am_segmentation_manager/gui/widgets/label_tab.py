@@ -150,8 +150,16 @@ class LabelTab(_Window):
     def save_labels(self) -> None:
         """Write this lamella's edited labels, after asking what to do with them."""
         if not self.label_controller.pending_count():
-            self._flash("No label edits to save")
-            return
+            if not self.label_controller.checked_keys():
+                self._flash("No label edits to save")
+                return
+            if not self.controller.editing_enabled:
+                # Checked and unchanged, so marking it is all a save could do.
+                self._flash(
+                    "Nothing to write. To mark the checked labels corrected, "
+                    "switch on Enable editing in the Curate tab", 6000,
+                )
+                return
 
         try:
             plan = self.label_controller.save_plan()
@@ -198,7 +206,10 @@ class LabelTab(_Window):
         three questions at once.
         """
         editing = self.controller.editing_enabled
-        lines = [f"Save {plan.summary()} in this lamella?"]
+        lines = [
+            f"Save {plan.summary()} in this lamella?" if plan.count
+            else "No label in this lamella was changed."
+        ]
         spread = self._modality_note()
         if spread:
             lines.append(spread)
@@ -213,13 +224,19 @@ class LabelTab(_Window):
                 f"Marking corrected would cover {approved} image(s), and the "
                 "labels they share."
             )
+        unfinished = self.label_controller.unfinished_checklists()
+        if unfinished:
+            lines.append(
+                f"{unfinished} of the labels have checklist steps not yet ticked."
+            )
 
         note = "" if editing else (
             "To set their state to corrected as well, switch on Enable editing "
             "in the Curate tab."
         )
         dialog = SaveLabelsDialog(
-            self, "\n\n".join(lines), note, offer_corrected=editing
+            self, "\n\n".join(lines), note, offer_corrected=editing,
+            writes=bool(plan.count),
         )
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return None

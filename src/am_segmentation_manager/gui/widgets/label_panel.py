@@ -40,6 +40,7 @@ from ...operations.label_measure import (
 from ..label_controller import LabelController
 from ..preferences import DEFAULT_BRUSH_RADIUS
 from ..version_controller import VersionController
+from .checklist_panel import ChecklistPanel
 from .common import (
     CONDITION_FIELD_WIDTH,
     LABEL_BADGES,
@@ -265,7 +266,16 @@ class LabelPanel(QWidget):
         self.canvas.edited.connect(self._stroke_finished)
         self.canvas.brush_stepped.connect(self.step_brush)
         self.canvas.compare_held.connect(self._compare_key_held)
-        layout.addWidget(self.canvas, stretch=1)
+        # Beside the canvas rather than over it, so no step covers the image.
+        self.checklist = ChecklistPanel(controller.checklist.steps)
+        self.checklist.step_toggled.connect(self._step_toggled)
+        self.checklist.setVisible(False)
+        beside = QHBoxLayout()
+        beside.setContentsMargins(0, 0, 0, 0)
+        beside.setSpacing(3)
+        beside.addWidget(self.canvas, stretch=1)
+        beside.addWidget(self.checklist)
+        layout.addLayout(beside, stretch=1)
 
         self.versions = VersionsBar()
         self.versions.selected.connect(self._version_chosen)
@@ -470,6 +480,18 @@ class LabelPanel(QWidget):
             (self.speck_check, self.speck_slider),
             (self.versions_check,),
         ))
+
+        # Off by default and per session, like the versions: an aid somebody
+        # turns to, which C opens as well as stepping through.
+        controls.addSpacing(GROUP_GAP)
+        self.checklist_check = ToggleSwitch("Checklist")
+        self.checklist_check.setToolTip(
+            "The steps of proofreading a label, ticked off for each label as "
+            "you go. Kept only while the window is open."
+            "\nShortcut: C ticks the current step; Shift+C goes back"
+        )
+        self.checklist_check.toggled.connect(self._checklist_toggled)
+        controls.addWidget(self.checklist_check)
 
         row.addWidget(self.controls, stretch=1)
 
@@ -1098,6 +1120,50 @@ class LabelPanel(QWidget):
             self._showing_differences = False
             self.draw_current()
 
+    # -- the checklist -------------------------------------------------------
+
+    def _checklist_toggled(self, shown: bool) -> None:
+        self.checklist.setVisible(shown)
+        self._refresh_checklist()
+
+    def next_step(self) -> None:
+        """Tick the current step, from the keyboard; open the checklist first if closed.
+
+        At the save step, ask for the save, which is what ticks it.
+        """
+        if not self.checklist_check.isChecked():
+            self.checklist_check.setChecked(True)
+            return
+        if self.controller.advance_checklist():
+            self.save_requested.emit()
+        self._refresh_checklist()
+        self._refresh_edit_state()
+
+    def previous_step(self) -> None:
+        """Untick the step before the current one, from the keyboard."""
+        if not self.checklist_check.isChecked():
+            self.checklist_check.setChecked(True)
+            return
+        self.controller.retreat_checklist()
+        self._refresh_checklist()
+        self._refresh_edit_state()
+
+    def _step_toggled(self, step: int, ticked: bool) -> None:
+        self.controller.tick_step(step, ticked)
+        self._refresh_checklist()
+        self._refresh_edit_state()
+
+    def _refresh_checklist(self) -> None:
+        """Show the progress of the label on screen."""
+        if not self.checklist_check.isChecked():
+            return
+        key = self.controller.checklist_key
+        checklist = self.controller.checklist
+        if key is None:
+            self.checklist.show_progress(None, 0)
+        else:
+            self.checklist.show_progress(checklist.ticked(key), checklist.current(key))
+
     @property
     def showing_a_version(self) -> bool:
         """Return whether the canvas holds something other than the label."""
@@ -1109,7 +1175,8 @@ class LabelPanel(QWidget):
         self.undo_button.setEnabled(session.can_undo)
         self.redo_button.setEnabled(session.can_redo)
         pending = self.controller.pending_count()
-        self.save_button.setEnabled(bool(pending))
+        # A label ticked through its checklist can be marked corrected unchanged.
+        self.save_button.setEnabled(bool(pending or self.controller.checked_keys()))
         # Marked while anything waits, its caption being gone; re-polished, a
         # stylesheet reading a property only when a widget is polished.
         if self.save_button.property("pending") != bool(pending):
@@ -1215,6 +1282,7 @@ class LabelPanel(QWidget):
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_image_shown(self.controller.show_image)
         self._refresh_specks()
+        self._refresh_checklist()
         # Never while an earlier version is on the canvas: a stroke would be
         # recorded against the label underneath, which is not what is being
         # looked at.

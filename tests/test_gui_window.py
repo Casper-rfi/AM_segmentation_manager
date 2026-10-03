@@ -1447,6 +1447,7 @@ def _headings() -> set[str]:
         shortcuts_module.GROUP_TOOLS,
         shortcuts_module.GROUP_CLASSES,
         shortcuts_module.GROUP_SPECKS,
+        shortcuts_module.GROUP_CHECKLIST,
         shortcuts_module.GROUP_EDITS,
         shortcuts_module.GROUP_ELSEWHERE,
         shortcuts_module.GROUP_HELP,

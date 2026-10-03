@@ -2443,3 +2443,150 @@ def test_a_families_change_asks_about_label_edits_waiting_in_its_project(
     assert window._may_change_families(project) is False
     assert asked == ["Unsaved label edits"]
     assert window.label_controller.pending_count() == 1, "cancelled, so kept"
+
+
+# ---------------------------------------------------------------------------
+# The proofreading checklist
+# ---------------------------------------------------------------------------
+
+def press(window, key):
+    """Do what the Label tab's *key* does."""
+    binding = next(b for b in window._keys.bindings if b.tab == TAB_LABEL and b.key == key)
+    binding.action()
+
+
+def test_the_first_c_opens_the_checklist_and_the_next_ticks_a_step(window):
+    panel = window.label_panel
+    assert not panel.checklist_check.isChecked(), "an aid somebody turns to, not a default"
+
+    press(window, "C")
+    assert panel.checklist_check.isChecked()
+    assert panel.checklist.current == 0, "opening it ticks nothing"
+
+    press(window, "C")
+    assert panel.checklist.is_ticked(0)
+    assert panel.checklist.current == 1
+
+
+def test_shift_c_unticks_the_step_before(window):
+    panel = window.label_panel
+    panel.checklist_check.setChecked(True)
+    press(window, "C")
+    press(window, "C")
+
+    press(window, "Shift+C")
+
+    assert [panel.checklist.is_ticked(step) for step in (0, 1)] == [True, False]
+    assert panel.checklist.current == 1
+
+
+def test_the_current_step_shows_what_to_do_in_it(window):
+    panel = window.label_panel
+    panel.checklist_check.setChecked(True)
+    press(window, "C")
+
+    said = panel.checklist.instructions.text()
+
+    assert "Step 2" in said
+    assert panel.checklist.steps[1].instructions[0] in said
+
+
+def test_any_step_can_be_read_by_selecting_it(window):
+    checklist = window.label_panel.checklist
+
+    checklist.list.setCurrentRow(5)
+
+    assert checklist.steps[5].instructions[0] in checklist.instructions.text()
+
+
+def test_ticking_a_row_ticks_its_step(window):
+    panel = window.label_panel
+    panel.checklist_check.setChecked(True)
+
+    panel.checklist.list.item(3).setCheckState(Qt.CheckState.Checked)
+
+    assert window.label_controller.checklist.ticked(window.label_controller.current_key) == {3}
+
+
+def test_the_save_step_cannot_be_ticked_by_hand(window):
+    checklist = window.label_panel.checklist
+    last = checklist.list.item(len(checklist.steps) - 1)
+
+    assert not last.flags() & Qt.ItemFlag.ItemIsUserCheckable, (
+        "a tick there would claim a save nothing made"
+    )
+
+
+def test_the_checklist_follows_the_frame_on_screen(qt_app, window):
+    panel = window.label_panel
+    panel.checklist_check.setChecked(True)
+    press(window, "C")
+
+    panel.step_frame(1)
+    settle(qt_app, lambda: window.label_controller.checklist_key is not None and drawn(window))
+    assert not panel.checklist.is_ticked(0), "each label has its own progress"
+
+    panel.step_frame(-1)
+    settle(qt_app, lambda: window.label_controller.checklist_key is not None and drawn(window))
+    assert panel.checklist.is_ticked(0)
+
+
+def test_c_at_the_save_step_asks_how_to_save(window, monkeypatch):
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(True)
+    panel = window.label_panel
+    panel.checklist_check.setChecked(True)
+    for _ in range(window.label_controller.checklist.save_step):
+        press(window, "C")
+    assert not opened
+
+    press(window, "C")
+
+    assert len(opened) == 1
+    assert button_texts(opened[0]) == ["Cancel", "Mark corrected"], (
+        "nothing was painted, so marking is the whole of the save"
+    )
+
+
+def test_a_checked_label_cannot_be_marked_with_editing_off(window, monkeypatch):
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(False)
+    window.label_panel.checklist_check.setChecked(True)
+    for _ in range(window.label_controller.checklist.save_step):
+        press(window, "C")
+
+    window.save_labels()
+
+    assert not opened, "with nothing to write and no marking allowed, there is nothing to ask"
+
+
+def test_the_save_dialog_names_labels_with_steps_not_ticked(window, monkeypatch):
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(True)
+    window.label_panel.checklist_check.setChecked(True)
+    press(window, "C")
+    paint_on(window)
+
+    window._ask_how_to_save(window.label_controller.save_plan())
+
+    said = " ".join(label.text() for label in opened[0].findChildren(QLabel))
+    assert "checklist steps not yet ticked" in said
+    assert button_texts(opened[0])[-1] == "Save and mark corrected", "a reminder, not a block"
+
+
+def test_a_step_s_help_explains_it(window):
+    checklist = window.label_panel.checklist
+    checklist.list.setCurrentRow(2)
+
+    checklist.help_button.click()
+
+    assert checklist.help.isVisible()
+    assert checklist.steps[2].title in checklist.help.title.text()
+    assert checklist.steps[2].explanation == checklist.help.explanation.text()
+
+
+def test_f1_lists_the_checklist_keys(window):
+    help_text = window._keys.help_html(TAB_LABEL)
+
+    assert "Proofreading checklist" in help_text
+    assert "Tick the current step of the checklist" in help_text

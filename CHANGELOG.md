@@ -48,6 +48,10 @@ The first public release, to be published as 0.1.0.
   corrected.
 - A speck finder rings components too small to be likely real, in the window
   and with `find-specks`.
+- A proofreading checklist on the Label tab walks each label through the
+  steps of proofreading it, with a short explanation of each. C ticks the
+  current step, and a label ticked through can be marked corrected without
+  an edit. Progress is kept only while the window is open.
 - `compress-labels` shrinks label files on disk without changing a pixel.
 
 **Quantifying and exporting**

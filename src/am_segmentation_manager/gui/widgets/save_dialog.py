@@ -36,7 +36,8 @@ class SaveLabelsDialog(QDialog):
     """
 
     def __init__(
-        self, parent, message: str, note: str, *, offer_corrected: bool
+        self, parent, message: str, note: str, *, offer_corrected: bool,
+        writes: bool = True,
     ) -> None:
         """Ask how to save.
 
@@ -47,6 +48,8 @@ class SaveLabelsDialog(QDialog):
                 offer when *offer_corrected* is False.
             offer_corrected: Whether marking the reviewed set corrected is
                 available, which follows the editing guard.
+            writes: Whether there is anything to write. Without, marking is
+                the whole of the save, and is all that is offered.
         """
         super().__init__(parent)
         self.setWindowTitle(SAVE_TITLE)
@@ -76,10 +79,11 @@ class SaveLabelsDialog(QDialog):
         # "Save only" only means something against a second way of saving.
         save_only = QPushButton("Save only" if offer_corrected else "Save")
         save_only.clicked.connect(self.accept)
-        buttons.addWidget(save_only)
+        if writes or not offer_corrected:
+            buttons.addWidget(save_only)
 
         if offer_corrected:
-            mark = QPushButton("Save and mark corrected")
+            mark = QPushButton("Save and mark corrected" if writes else "Mark corrected")
             mark.clicked.connect(self._mark_and_accept)
             mark.setDefault(True)
             buttons.addWidget(mark)
