@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from ..families import StaleFamilies
 from ..filtering import matches_lamella, matches_project
 from ..io.path import make_path_relative
 from ..layout import DEFAULT_PREDICTION_ORIGIN, PREDICTION_ORIGINS, other_prediction_origin
+from ..models import projects_holding
 from ..operations.csv import find_matching_label
 from ..operations.families_edit import (
     FamiliesValidationError,
@@ -45,6 +47,7 @@ from ..operations.predictions import (
     ConversionStopped,
     convert_record_predictions,
     plan_conversions,
+    what_replacing_leaves,
 )
 from ..operations.selection import StaleState, apply_plan, plan_transition
 from ..reporting import format_speck_report
@@ -457,7 +460,7 @@ def _cmd_predict(args: argparse.Namespace) -> int:
 
 def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     """Handle ``am-seg convert-predictions``."""
-    records, start_path = _resolve_records(args)
+    records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.info("No matching images found to convert")
         return 2
@@ -475,18 +478,26 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
         for item in plan.conversions:
             logger.info("%s %s", item.describe(), item.destination)
     for item in plan.refused:
-        logger.warning("Refused %s: a corrected label is already there", item.destination)
-    if plan.replaceable:
+        logger.warning("Left untouched, corrected: %s", item.destination)
+    if plan.refused:
         logger.warning(
-            "%d label(s) already exist and were kept; pass --overwrite to replace them",
-            len(plan.replaceable),
+            "%d corrected label(s) left untouched: converting never replaces one",
+            len(plan.refused),
         )
+    replacing = [
+        item for item in (*plan.conversions, *plan.replaceable) if item.existing != "none"
+    ]
+    if replacing:
+        _log_replacements(replacing, _recorder(args), overwrite=args.overwrite)
     if args.dry_run:
         logger.info("Would convert: %d (dry run, nothing written)", len(plan.conversions))
         return 0
+    recorder = _writing_recorder(
+        args, projects_holding([record.image_path for record in records], projects)
+    )
     try:
         converted = len(convert_record_predictions(
-            records, overwrite=args.overwrite, recorder=_recorder(args),
+            records, overwrite=args.overwrite, recorder=recorder,
             prefer=args.prefer,
         ))
     except ConversionStopped as stopped:
@@ -496,6 +507,25 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     logger.info("Total converted: %d", converted)
     return 0
 
+
+
+def _log_replacements(replacing, recorder, *, overwrite: bool) -> None:
+    """Say what converting over the labels already there does, or would, to them."""
+    leaves = Counter(what_replacing_leaves(replacing, recorder).values())
+    described = "; ".join(
+        f"{count} {text}" for count, text in (
+            (leaves["placeholder"], "empty placeholder(s), nothing lost"),
+            (leaves["kept"], "holding annotation not marked corrected, kept in AM_archive/"),
+            (leaves["reconvertible"], "earlier conversion(s) never edited, not kept"),
+        ) if count
+    )
+    if overwrite:
+        logger.info("Replacing %d label(s) already there: %s", len(replacing), described)
+    else:
+        logger.warning(
+            "%d label(s) already there were left as they are (%s); pass --overwrite "
+            "to replace them", len(replacing), described,
+        )
 
 
 def _cmd_state(args: argparse.Namespace) -> int:

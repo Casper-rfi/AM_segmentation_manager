@@ -131,3 +131,44 @@ def test_cli_converts_the_prediction_source_asked_for(tmp_path: Path) -> None:
 
     assert _convert(tmp_path, "FIB", "--overwrite") == 0
     assert label.read_bytes() == b"am-seg prediction"
+
+
+def _annotated_fib_label(tmp_path: Path) -> Path:
+    """A project with no history yet, whose FIB image has a label holding annotation."""
+    import numpy as np
+    import pytest
+
+    tifffile = pytest.importorskip("tifffile")
+    stage, _, fib_image = _build_project(tmp_path)
+    blank = np.zeros((8, 8), dtype=np.uint8)
+    for path in (fib_image, stage / "predictions_fib" / "raw" / fib_image.name):
+        tifffile.imwrite(path, blank)
+    label = stage / "fib_labels" / fib_image.name
+    label.parent.mkdir(parents=True)
+    annotated = blank.copy()
+    annotated[2:4, 2:4] = 2
+    tifffile.imwrite(label, annotated)
+    return label
+
+
+def test_cli_keeps_a_replaced_label_where_the_project_had_no_history(tmp_path: Path) -> None:
+    """A conversion brings its projects into the record before writing, as the
+    window does, so what it replaces reaches the archive."""
+    label = _annotated_fib_label(tmp_path)
+    before = label.read_bytes()
+
+    assert _convert(tmp_path, "FIB", "--overwrite") == 0
+
+    archived = list((tmp_path / "project" / "AM_archive").rglob("*.tif"))
+    assert len(archived) == 1 and archived[0].read_bytes() == before
+
+
+def test_cli_says_what_a_replaced_label_comes_to(tmp_path: Path, capsys) -> None:
+    _annotated_fib_label(tmp_path)
+
+    _convert(tmp_path, "FIB")
+
+    assert (
+        "1 label(s) already there were left as they are (1 holding annotation not "
+        "marked corrected, kept in AM_archive/); pass --overwrite to replace them"
+    ) in capsys.readouterr().out

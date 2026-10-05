@@ -56,6 +56,7 @@ from ..operations.predictions import (
     convert_record_predictions,
     count_convertible,
     plan_conversions,
+    what_replacing_leaves,
 )
 from ..progress import Cancellation, timed
 from ..reporting import format_bytes, format_survey
@@ -263,18 +264,75 @@ class OperationsController:
         return f"{leading}. {described}." if described else f"{leading}."
 
     def _refusal_summary(self, plan: ConversionPlan) -> tuple[str, ...]:
-        """Return the lines naming proofread labels that stopped a conversion.
+        """Return the lines naming the corrected labels a conversion leaves alone.
 
         Named individually rather than counted: this is the one outcome the user
-        cannot unblock from the dialog, so it has to say which groups to set
+        cannot change from the dialog, so it has to say which groups to set
         back to selected if they really are to be re-converted.
         """
         if not plan.refused:
             return ()
         return (
-            f"{len(plan.refused)} image(s) refused: a corrected label is already "
-            f"there. Set the group back to selected to re-convert it.",
-        ) + tuple(f"  {self._relative(item.destination)}" for item in plan.refused)
+            f"{len(plan.refused)} corrected label(s) left untouched: converting "
+            f"never replaces one. Set a group back to selected to re-convert it.",
+            *capped(f"  {self._relative(item.destination)}" for item in plan.refused),
+        )
+
+    def _replacement_report(
+        self, plan: ConversionPlan, context: tuple[str, ...]
+    ) -> OperationReport:
+        """Return what converting over the labels already there would do, to confirm.
+
+        **Counts first, one line per outcome**, because a large selection
+        mixes outcomes that cost nothing with the one that does: annotation
+        that is not marked corrected. Corrected labels are counted as left
+        alone, so nobody reads the button as reaching them.
+        """
+        leaves = what_replacing_leaves(plan.replaceable, self.recorder)
+        fates = Counter(leaves.values())
+        replaced, untouched = len(plan.replaceable), len(plan.refused)
+        outcomes = (
+            (len(plan.conversions), "new label, none there yet"),
+            (fates["placeholder"], "empty placeholder replaced, nothing lost"),
+            (fates["kept"], "label holding annotation replaced, not marked corrected: "
+                            "kept in AM_archive/, restorable"),
+            (fates["reconvertible"], "earlier conversion replaced, never edited: not "
+                                     "kept, its prediction converts it again"),
+            (untouched, "corrected label left untouched: converting never replaces one"),
+        )
+
+        def listed(heading: str, items) -> tuple[str, ...]:
+            paths = [self._relative(item.destination) for item in items]
+            return ("", heading, *capped(f"  {path}" for path in paths)) if paths else ()
+
+        replaced_by_fate = {
+            fate: [item for item in plan.replaceable if leaves.get(item.destination) == fate]
+            for fate in ("kept", "reconvertible")
+        }
+        headline = f"Converting replaces {replaced} label(s) already there."
+        if untouched:
+            headline += f" {untouched} corrected label(s) are left untouched."
+        return OperationReport(
+            headline,
+            (
+                "",
+                *(f"{count:>5}  {text}" for count, text in outcomes if count),
+                *listed("Holding annotation, kept in AM_archive/:", replaced_by_fate["kept"]),
+                *listed(
+                    "Earlier conversions never edited, not kept:",
+                    replaced_by_fate["reconvertible"],
+                ),
+                *listed(
+                    "Corrected, left untouched (set the group back to selected to "
+                    "re-convert one):",
+                    plan.refused,
+                ),
+                *(("", *context) if context else ()),
+            ),
+            replaced + len(plan.conversions),
+            blocked="existing",
+            action=f"Replace {replaced}" + (f", keep {untouched} corrected" if untouched else ""),
+        )
 
     def convert_predictions(
         self,
@@ -303,15 +361,8 @@ class OperationsController:
         if plan.replaceable and not allow_overwrite:
             # Asked before applying, so the window can say how much is at stake
             # and which files. The refusal itself lives in plan_conversions.
-            return OperationReport(
-                f"{len(plan.replaceable)} of these image(s) already have a label. "
-                f"Converting replaces the file.",
-                tuple(
-                    f"{self._relative(item.destination)}: {item.describe()}"
-                    for item in plan.replaceable
-                ) + context,
-                len(plan.replaceable) + len(plan.conversions),
-                blocked="existing",
+            return self._replacement_report(
+                plan, _fallback_summary(plan, prefer) + _skip_summary(plan)
             )
 
         lines = tuple(

@@ -17,7 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Final, Literal
 
-from ..history import Recorder
+from ..history import Recorder, containing_project
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
 from ..io.image import to_2d
 from ..io.long_paths import refuse_unreachable
@@ -422,6 +422,47 @@ def plan_conversions(
     return ConversionPlan(
         tuple(planned), tuple(replaceable), tuple(refused), tuple(skipped)
     )
+
+
+#: What a conversion leaves of a label it replaces: nothing worth keeping, a
+#: copy in the archive, or nothing kept because its prediction can make it again.
+Replaced = Literal["placeholder", "kept", "reconvertible"]
+
+
+def what_replacing_leaves(
+    conversions: Iterable[PlannedConversion], recorder: Recorder
+) -> dict[Path, Replaced]:
+    """Return what replacing each existing label in *conversions* leaves of it.
+
+    Decided as the run's :class:`~.archive.Archivist` decides at the write, so a
+    preview cannot promise a copy the run will not keep. Assumes the run
+    records, as every writing run does through ``writing_recorder``; a label
+    that will not open is kept as its bytes, so it counts as kept.
+    """
+    archivist = Archivist(recorder)
+    found: dict[Path, Replaced] = {}
+    for conversion in conversions:
+        if conversion.existing == "placeholder":
+            found[conversion.destination] = "placeholder"
+        elif conversion.existing == "annotated":
+            kept = _would_keep(archivist, conversion.destination)
+            found[conversion.destination] = "kept" if kept else "reconvertible"
+    return found
+
+
+def _would_keep(archivist: Archivist, destination: Path) -> bool:
+    """Return whether replacing the label at *destination* would archive it."""
+    root = containing_project(destination)
+    previous = read_label(destination)
+    if root is None or previous is None:
+        return True
+    try:
+        target = destination.resolve().relative_to(root).as_posix()
+        digest = str(label_fields(previous)["digest"])
+    except ValueError:
+        return True
+    keep, _reason = archivist.decision(root, target, digest, False)
+    return keep
 
 
 def convert_record_predictions(

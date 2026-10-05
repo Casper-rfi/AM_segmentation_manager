@@ -27,12 +27,11 @@ else:
 
 logger = logging.getLogger(__name__)
 
-#: What the confirm button says for each thing an operation can be blocked on.
-#: The generic wording is right for including corrected files in a batch;
-#: replacing a label needs the destructive word, because it is one.
+#: What the confirm button says for each thing an operation can be blocked on,
+#: where the report does not name its own. Replacing labels does, its button
+#: carrying the counts: "them" read as reaching the corrected labels too.
 BLOCKED_ACTIONS: dict[str, str] = {
     "corrected": "Include them",
-    "existing": "Replace them",
     "conflicts": "Decide each...",
 }
 
@@ -168,7 +167,7 @@ class OperationRunner(_Window):
 
         def previewed(report: OperationReport, allowed: bool = False) -> None:
             if report.blocked and not allowed:
-                action = BLOCKED_ACTIONS.get(report.blocked, "Include them")
+                action = report.action or BLOCKED_ACTIONS.get(report.blocked, "Include them")
                 if not ask(title, report, action):
                     return
                 self._run_operation(

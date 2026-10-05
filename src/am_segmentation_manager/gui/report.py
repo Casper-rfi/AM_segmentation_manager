@@ -103,6 +103,8 @@ class OperationReport:
             is not expressible this way. **Only what was written**, never what
             was planned: a stopped run plans more than it creates, and a record
             claiming a prediction that is not there offers to convert nothing.
+        action: What the button confirming a blocked report says, where the
+            generic wording for *blocked* would not say what it does.
     """
 
     headline: str
@@ -112,6 +114,7 @@ class OperationReport:
     blocked: str = ""
     written: tuple[Path, ...] = ()
     conflicts: tuple[ConflictRow, ...] = ()
+    action: str = ""
 
     def text(self) -> list[str]:
         """Return the report as displayable lines, headline first."""

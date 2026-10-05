@@ -198,7 +198,12 @@ and also wait for *Enable editing*. Each shows what it would do before doing it.
   they never replace one. Predicting needs the `ml` extra installed.
 - **Convert predictions...** turns predictions into labels for you to proofread.
   **From** chooses between am-seg's predictions and those the microscope made
-  while milling. A corrected label is never replaced.
+  while milling. A corrected label is never replaced. Where a label is
+  already there it asks first, counting what replacing comes to: an empty
+  placeholder loses nothing; a label you edited but did not mark corrected is
+  replaced, and kept under `AM_archive/` so **Revert...** or *Compare
+  versions* can put it back; an earlier conversion nobody edited is not kept,
+  since converting its prediction makes it again.
 - **Revert...** puts labels back to what they held before the last conversion
   or merge, or at a savepoint.
 

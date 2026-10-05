@@ -438,7 +438,8 @@ def test_an_existing_label_blocks_until_replacing_is_confirmed(controller, tmp_p
 
     assert report.blocked == "existing"
     assert report.applied is False
-    assert any("replace (holds annotation)" in line for line in report.lines)
+    assert any("label holding annotation replaced" in line for line in report.lines)
+    assert "  project/01-lamella/stage/sem_labels/img.tif" in report.lines
     assert record.labels[0].read_bytes() == original
 
 
@@ -454,7 +455,7 @@ def test_an_empty_placeholder_is_named_as_costing_nothing(controller, tmp_path: 
     report = controller.convert_predictions([record], dry_run=True)
 
     assert report.blocked == "existing"
-    assert any("replace (empty placeholder)" in line for line in report.lines)
+    assert "    1  empty placeholder replaced, nothing lost" in report.lines
 
 
 def test_confirming_replaces_the_label_in_place(controller, tmp_path: Path):
@@ -488,8 +489,134 @@ def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
 
     assert report.count == 0
     assert record.labels[0].read_bytes() == original
-    assert any("refused" in line for line in report.lines)
+    assert any("left untouched" in line for line in report.lines)
     assert any("back to selected" in line for line in report.lines)
+
+
+def _mixed_selection(tmp_path: Path) -> list[ImageRecord]:
+    """One image for each thing a conversion can find where its label goes.
+
+    Without a label; with an empty placeholder; with annotation nobody marked
+    corrected; with an earlier conversion never edited; and corrected.
+    """
+    from am_segmentation_manager.history import Recorder
+    from am_segmentation_manager.operations.label_io import label_fields
+    from conftest import start_history
+
+    project = tmp_path / "project"
+    stage = project / "01-lamella" / "stage"
+    start_history(project)
+    records = []
+    contents = {
+        "new": None,
+        "placeholder": np.zeros((4, 4), dtype=np.uint8),
+        "annotated": _sparse_label(),
+        "converted": _sparse_label() * 2,
+        "corrected": _sparse_label(),
+    }
+    for name, content in contents.items():
+        image = stage / "sem" / f"{name}.tif"
+        prediction = stage / "predictions" / "raw" / f"{name}.tif"
+        for path in (image, prediction):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tifffile.imwrite(str(path), _sparse_label())
+        labels = []
+        if content is not None:
+            label = stage / "sem_labels" / f"{name}.tif"
+            label.parent.mkdir(parents=True, exist_ok=True)
+            tifffile.imwrite(str(label), content)
+            labels = [label]
+        if name == "converted":
+            fields = label_fields(content)
+            Recorder(by="casper", by_source="flag").record(
+                label, "label-converted", **fields,
+                model="fpn", prediction_kind="raw",
+            )
+        records.append(ImageRecord(
+            image_path=image, modality="SEM", labels=labels,
+            labels_directory=stage / "sem_labels",
+            predictions=[prediction],
+            state="corrected" if name == "corrected" else "selected",
+        ))
+    return records
+
+
+def test_replacing_says_what_each_label_there_comes_to(controller, tmp_path: Path):
+    """A large selection mixes what costs nothing with what costs annotation, and
+    the dialog has to separate them before anyone presses the button."""
+    report = controller.convert_predictions(_mixed_selection(tmp_path), dry_run=True)
+
+    assert report.headline == (
+        "Converting replaces 3 label(s) already there. "
+        "1 corrected label(s) are left untouched."
+    )
+    counts = [line for line in report.lines if line[:5].strip().isdigit()]
+    assert counts == [
+        "    1  new label, none there yet",
+        "    1  empty placeholder replaced, nothing lost",
+        "    1  label holding annotation replaced, not marked corrected: "
+        "kept in AM_archive/, restorable",
+        "    1  earlier conversion replaced, never edited: not kept, its "
+        "prediction converts it again",
+        "    1  corrected label left untouched: converting never replaces one",
+    ]
+
+
+def test_the_button_says_how_many_are_replaced_and_kept(controller, tmp_path: Path):
+    """"Replace them" read as reaching the corrected labels too."""
+    report = controller.convert_predictions(_mixed_selection(tmp_path), dry_run=True)
+
+    assert report.action == "Replace 3, keep 1 corrected"
+
+
+def test_each_kind_of_replaced_label_is_named_under_its_heading(controller, tmp_path: Path):
+    report = controller.convert_predictions(_mixed_selection(tmp_path), dry_run=True)
+    lines = list(report.lines)
+
+    def under(heading: str) -> str:
+        start = next(i for i, line in enumerate(lines) if line.startswith(heading))
+        return lines[start + 1].strip()
+
+    assert under("Holding annotation").endswith("annotated.tif")
+    assert under("Earlier conversions").endswith("converted.tif")
+    assert under("Corrected, left untouched").endswith("corrected.tif")
+    assert not any(line.strip().endswith("placeholder.tif") for line in lines), (
+        "a placeholder costs nothing, so it is counted and not listed"
+    )
+
+
+def test_what_the_preview_promises_kept_is_kept(controller, tmp_path: Path):
+    """The preview decides as the write does, so 'kept' is not a hope."""
+    records = _mixed_selection(tmp_path)
+
+    controller.convert_predictions(records, allow_overwrite=True)
+
+    archived = sorted(
+        path.name.split("__")[0]
+        for path in (tmp_path / "project" / "AM_archive").rglob("*.tif")
+    )
+    assert archived == ["annotated"]
+
+
+def test_a_long_list_of_labels_to_replace_is_cut_short(controller, tmp_path: Path):
+    from am_segmentation_manager.gui.report import MAX_REPORTED_FILES
+
+    stage, _image = _project_with_prediction(tmp_path)
+    records = []
+    for index in range(MAX_REPORTED_FILES + 5):
+        image = stage / "sem" / f"img{index:02d}.tif"
+        tifffile.imwrite(str(image), _sparse_label())
+        label = stage / "sem_labels" / f"img{index:02d}.tif"
+        label.parent.mkdir(parents=True, exist_ok=True)
+        tifffile.imwrite(str(label), _sparse_label())
+        records.append(ImageRecord(
+            image_path=image, modality="SEM", labels=[label],
+            predictions=[stage / "predictions" / "raw" / "img.tif"],
+        ))
+
+    report = controller.convert_predictions(records, dry_run=True)
+
+    assert "... and 5 more" in report.lines
 
 
 # ---------------------------------------------------------------------------
