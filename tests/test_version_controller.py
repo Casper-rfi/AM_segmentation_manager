@@ -672,6 +672,42 @@ def test_a_comparison_does_not_start_on_a_version_it_cannot_show(
     assert controller.rows[controller.default_index].source == "prediction"
 
 
+def test_unsaved_edits_list_the_label_as_saved_first(label, recorder, tmp_path):
+    """What the edits started from is newer than any version, and is where B starts."""
+    saved = _pixels(3)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [_newer_prediction(tmp_path)], saved=saved)
+
+    first = controller.rows[0]
+    assert first.source == "saved" and controller.default_index == 0
+    assert "on disk now" in first.describe() and "changed" not in first.describe()
+    controller.select(0)
+    assert controller.comparison_pixels() is saved
+    assert controller.difference(_pixels(4)).sum() == 16
+
+
+def test_without_unsaved_edits_nothing_is_listed_as_saved(label, recorder):
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label)
+
+    assert controller.saved is None
+    assert all(row.source != "saved" for row in controller.rows)
+
+
+def test_the_saved_label_is_gone_back_to_by_undoing_not_restoring(label, recorder):
+    from am_segmentation_manager.gui.version_controller import comparison_badge
+
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, saved=_pixels(3))
+    controller.select(0)
+    row = controller.selected
+
+    assert not row.restorable and "Undo" in row.not_restorable_because
+    assert comparison_badge(row) == "showing the label as saved, without your edits"
+    with pytest.raises(ValueError, match="undoing"):
+        controller.restore_selected()
+
+
 def test_a_label_with_no_versions_has_nothing_to_start_on(tmp_path: Path, recorder):
     start_history(tmp_path)
     controller = VersionController(Attribution(recorder))

@@ -31,7 +31,7 @@ if HAS_QT and HAS_IMAGES:
     from am_segmentation_manager.config import SegmentationConfig
     from am_segmentation_manager.gui.attribution import Attribution
     from am_segmentation_manager.gui.label_controller import LabelController
-    from am_segmentation_manager.gui.version_controller import VersionController
+    from am_segmentation_manager.gui.version_controller import VersionController, VersionRow
     from am_segmentation_manager.gui.widgets.label_panel import LabelPanel
     from am_segmentation_manager.gui.widgets.versions_bar import (
         DIFFERENCE_CLASS,
@@ -137,7 +137,12 @@ def test_closing_the_strip_stops_showing_the_version(qt_app, label, recorder):
 def test_a_prediction_is_offered_to_compare_but_not_to_restore(qt_app):
     bar = VersionsBar()
     try:
-        bar.set_available(True, restorable=False)
+        bar.set_available(
+            True,
+            refusal=VersionRow(
+                Path("p.tif"), "prediction", "", "", "", None, True
+            ).not_restorable_because,
+        )
 
         assert bar.compare_button.isEnabled()
         assert bar.difference_check.isEnabled()

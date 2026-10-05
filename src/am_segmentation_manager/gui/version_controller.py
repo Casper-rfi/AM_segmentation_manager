@@ -33,7 +33,7 @@ from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["KEPT", "PREDICTION", "VersionController", "VersionRow", "comparison_badge"]
+__all__ = ["KEPT", "PREDICTION", "SAVED", "VersionController", "VersionRow", "comparison_badge"]
 
 #: A version kept when something replaced the label. Can be put back.
 KEPT: str = "kept"
@@ -42,6 +42,10 @@ KEPT: str = "kept"
 #: one in place is a conversion, which is a different act with its own
 #: confirmation.
 PREDICTION: str = "prediction"
+
+#: The label as it is on disk, listed while the window holds unsaved edits to
+#: it. Compared against, never restored -- undoing the edits is how to go back.
+SAVED: str = "saved"
 
 #: What a row says produced a version, by the entry kind that recorded it.
 _PRODUCED_BY: dict[str, str] = {
@@ -87,6 +91,18 @@ class VersionRow:
         """Return whether this version can be put back where the label is."""
         return self.source == KEPT and self.version is not None and self.available
 
+    @property
+    def not_restorable_because(self) -> str:
+        """Return why this version is not put back, or empty where it can be."""
+        if self.source == PREDICTION:
+            return (
+                "A prediction is not put back but converted, which writes a label "
+                "from it and records the model. Convert from the Curate tab."
+            )
+        if self.source == SAVED:
+            return "This is the label as saved. Undo your edits to go back to it."
+        return "" if self.restorable else "Its pixels are not here."
+
     def describe(self) -> str:
         """Return the one line a list shows for this version.
 
@@ -94,8 +110,8 @@ class VersionRow:
         so the list can be read down its second column. A row that says what it
         is before saying when defeats the ordering it is listed in.
         """
-        kind = "predict" if self.source == PREDICTION else "kept"
-        when = _shown(self.when) or "(not recorded)"
+        kind = {PREDICTION: "predict", SAVED: SAVED}.get(self.source, "kept")
+        when = "on disk now" if self.source == SAVED else _shown(self.when) or "(not recorded)"
         # The first two columns are fixed width so the date can be read down
         # the list; a row with nobody's name simply has one fewer column, most
         # rows having no name at all.
@@ -104,7 +120,7 @@ class VersionRow:
             columns.append(self.who)
         columns.append(_short(self.produced_by))
         line = "  ".join(columns)
-        if self.source != PREDICTION:
+        if self.source == KEPT:
             line += f"  {_share(self.changed)}"
         if self.available:
             return line
@@ -131,6 +147,7 @@ class VersionController:
         self._pixels: dict[tuple[Path, tuple[int, int] | None], object] = {}
         self._log: tuple[object, HistoryLog] | None = None
         self._provenance: dict[Path, dict] = {}
+        self._saved = None
 
     @property
     def recorder(self) -> Recorder:
@@ -145,7 +162,7 @@ class VersionController:
     # -- what is being looked at -------------------------------------------
 
     def set_label(
-        self, key: Path | None, predictions: Sequence[Path] = ()
+        self, key: Path | None, predictions: Sequence[Path] = (), saved=None
     ) -> None:
         """Point the controller at the label on screen and its predictions.
 
@@ -157,9 +174,12 @@ class VersionController:
         Args:
             key: Where the label is, or would be written.
             predictions: The prediction files for the frame on screen.
+            saved: The label as it is on disk, where the window holds unsaved
+                edits to it; listed first, as what those edits started from.
         """
         self._selected = None
         self._pixels.clear()
+        self._saved = saved
         if key is None:
             self._key, self._project, self._target, self._rows = None, None, "", ()
             return
@@ -173,7 +193,10 @@ class VersionController:
             except ValueError:
                 self._target = ""
 
-        self._rows = tuple([*self._kept_rows(), *self._prediction_rows(predictions)])
+        saved_rows = [_saved_row(key)] if saved is not None else []
+        self._rows = tuple(
+            [*saved_rows, *self._kept_rows(), *self._prediction_rows(predictions)]
+        )
 
     def refresh(self, predictions: Sequence[Path] = ()) -> None:
         """Read the versions again, after something changed the label."""
@@ -255,12 +278,17 @@ class VersionController:
         One order rather than two groups: a prediction made this morning
         belongs above a version kept last week, and what each row *is* the
         first word of the row already says. A row whose time nothing recorded
-        sorts last, having nothing to place it by.
+        sorts last, having nothing to place it by; the saved label sorts first,
+        being newer than anything else listed.
         """
         return tuple(
             sorted(
                 self._rows,
-                key=lambda row: (_moment(row.when) is not None, _moment(row.when)),
+                key=lambda row: (
+                    row.source == SAVED,
+                    _moment(row.when) is not None,
+                    _moment(row.when),
+                ),
                 reverse=True,
             )
         )
@@ -272,14 +300,20 @@ class VersionController:
         **The newest version of the label that can be shown, before any
         prediction**, however recent the prediction: what the label held is
         what a reviewer looks back at, and a newer model's guess is one
-        choice away. A prediction only where no kept version can be shown.
+        choice away. The saved label first, where there are unsaved edits; a
+        prediction only where no version of the label can be shown.
         """
         rows = self.rows
-        for source in (KEPT, PREDICTION):
+        for source in (SAVED, KEPT, PREDICTION):
             for index, row in enumerate(rows):
                 if row.source == source and row.available:
                     return index
         return 0 if rows else -1
+
+    @property
+    def saved(self):
+        """Return the label as saved, where it is listed, or None."""
+        return self._saved
 
     @property
     def has_versions(self) -> bool:
@@ -326,6 +360,8 @@ class VersionController:
         row = self.selected
         if row is None or not row.available:
             return None
+        if row.source == SAVED:
+            return self._saved
         key = (row.path, shape if row.source == PREDICTION else None)
         if key not in self._pixels:
             pixels = _read(row.path)
@@ -365,9 +401,9 @@ class VersionController:
         so a restore is itself reversible.
 
         Raises:
-            ValueError: If no version is selected, its pixels are not here, or
-                it is a prediction -- which is put in place by converting it,
-                not by restoring it.
+            ValueError: If no version is selected, its pixels are not here, it
+                is a prediction -- which is put in place by converting it --
+                or it is the saved label, which undoing the edits goes back to.
             PermissionError: If the group is corrected and *confirmed* is not
                 set.
         """
@@ -379,6 +415,11 @@ class VersionController:
                 "A prediction is put in place by converting it, which writes a "
                 "label from it and records which model made it. Restoring is "
                 "for versions this label already held."
+            )
+        if row.source == SAVED:
+            raise ValueError(
+                "This is the label as it is saved; undoing the edits goes back "
+                "to it, and restoring would write over nothing."
             )
         if not row.available or row.version is None:
             raise ValueError(
@@ -408,6 +449,8 @@ def comparison_badge(row: VersionRow) -> str:
     if row.source == PREDICTION:
         when = _shown(row.when)
         return f"showing the prediction as converted{f', from {when}' if when else ''}"
+    if row.source == SAVED:
+        return "showing the label as saved, without your edits"
     return f"showing the version from {row.when[:16]}"
 
 
@@ -506,6 +549,14 @@ def _marked_corrected(log: HistoryLog, target: str, writer) -> bool:
         and event.batch == writer.batch
         and event.data.get("new") == "corrected"
         for event in events_for(log, target)
+    )
+
+
+def _saved_row(key: Path) -> VersionRow:
+    """Return the row for the label as it is on disk."""
+    return VersionRow(
+        path=key, source=SAVED, when="", who="",
+        produced_by="before your unsaved edits", changed=None, available=True,
     )
 
 

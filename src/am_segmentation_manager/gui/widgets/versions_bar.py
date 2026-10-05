@@ -67,9 +67,9 @@ class VersionsBar(QWidget):
         self.chooser = QComboBox()
         self.chooser.setMinimumWidth(320)
         self.chooser.setToolTip(
-            "Versions of this segmentation, newest by when each was written: "
-            "kept labels, and predictions shown as converted.\n"
-            "The percentage is how much the next version changed it."
+            "Versions of this segmentation, newest first: the label as saved "
+            "while you have edits, kept labels, and predictions shown as "
+            "converted.\nThe percentage is how much the next version changed it."
         )
         self.chooser.currentIndexChanged.connect(self._chosen)
         row.addWidget(self.chooser, stretch=1)
@@ -138,24 +138,21 @@ class VersionsBar(QWidget):
             self.difference_check.setChecked(False)
         self.setVisible(open_)
 
-    def set_available(self, available: bool, *, restorable: bool = True) -> None:
+    def set_available(self, available: bool, *, refusal: str = "") -> None:
         """Say whether the chosen version can be looked at, and put back.
 
         Args:
             available: Whether its pixels are here to be drawn.
-            restorable: Whether putting it back is the right way to use it. A
-                prediction is not: it becomes a label by being converted, which
-                records which model made it.
+            refusal: Why putting it back is not the way to use it, or empty
+                where it is. Shown on the button it disables.
         """
         self.compare_button.setEnabled(available)
         self.difference_check.setEnabled(available)
-        self.restore_button.setEnabled(available and restorable)
+        self.restore_button.setEnabled(available and not refusal)
         self.restore_button.setToolTip(
+            refusal or
             "Put the chosen version back. What is here now is kept first, so "
             "this can itself be undone."
-            if restorable else
-            "A prediction is not put back but converted, which writes a label "
-            "from it and records the model. Convert from the Curate tab."
         )
         if not available:
             self.stop_comparing()

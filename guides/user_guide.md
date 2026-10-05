@@ -225,9 +225,10 @@ to correct its labels. It visits only the frames still worth proofreading.
 
 4. **Compare versions** lists the earlier versions of this label, and the
    predictions for this image, so you can flick between them (hold **B**) or
-   restore one. It starts on the label's most recent earlier version, even
-   when a prediction is newer. A prediction is shown as the label converting
-   it would write.
+   restore one. While you have unsaved edits it starts on the label as saved,
+   so **B** shows what your edits changed; otherwise on the label's most recent
+   earlier version, even when a prediction is newer. A prediction is shown as
+   the label converting it would write.
 5. **Save** writes your edits. Until then they are held in the window. With
    *Enable editing* on, on Curate, **Save and mark corrected** also marks the
    frames you reviewed as corrected.

@@ -978,6 +978,10 @@ class LabelPanel(QWidget):
         """
         self._refresh_timeline()
         self._refresh_edit_state()
+        if (self._saved_label() is None) != (self.versions_controller.saved is None):
+            # The first edit lists the label as saved, and undoing the last
+            # takes it off again; every stroke in between leaves the list be.
+            self.refresh_versions()
         if self.controller.finding_specks:
             # Counting takes tens of milliseconds, which is nothing in a pause
             # and everything mid-drag, so it waits for the drawing to stop.
@@ -1066,16 +1070,23 @@ class LabelPanel(QWidget):
         return prepared.display.image.shape[:2]
 
     def _version_chosen(self, index: int) -> None:
-        """Note which version is being offered, and whether it can be shown."""
+        """Note which version is being offered, and whether it can be shown.
+
+        Redrawn only where a version was on the canvas: otherwise it holds the
+        label already, and a stroke that lists the saved label would count its
+        specks mid-edit, ahead of the pause the recount waits for.
+        """
         self.versions_controller.select(None if index < 0 else index)
         chosen = self.versions_controller.selected
         self.versions.set_available(
             bool(chosen and chosen.available),
-            restorable=bool(chosen and chosen.restorable),
+            refusal=chosen.not_restorable_because if chosen else "",
         )
+        showing = self.showing_a_version
         self._comparing = False
         self._showing_differences = False
-        self.draw_current()
+        if showing:
+            self.draw_current()
 
     def _set_comparing(self, comparing: bool) -> None:
         """Put an earlier version on the canvas, or take it off again."""
@@ -1106,11 +1117,26 @@ class LabelPanel(QWidget):
         self.versions_controller.set_label(
             self.controller.current_key,
             record.predictions if record is not None else (),
+            saved=self._saved_label(),
         )
         self.versions.set_rows(
             self.versions_controller.rows, self.versions_controller.default_index
         )
         self._refresh_versions_switch()
+
+    def _saved_label(self):
+        """Return the label as it is on disk, where it has unsaved edits, or None.
+
+        The prepared frame's own array, which painting never writes through to,
+        so listing it reads no file.
+        """
+        key = self.controller.current_key
+        if key is None or not self.controller.session.is_edited(key):
+            return None
+        prepared = self.controller.cached_image()
+        if prepared is None or prepared.display is None:
+            return None
+        return prepared.display.label
 
     def _refresh_versions_switch(self) -> None:
         """Say how many versions this label has, without the strip being open.

@@ -889,6 +889,32 @@ def test_painting_out_the_last_speck_takes_its_mark_away(window):
     assert panel.timeline._specks[modality][position] == 0
 
 
+def test_an_edit_lists_the_label_as_saved_until_undone(window):
+    """Holding B mid-edit shows what the edits started from, which until a save
+    is in no other row."""
+    from am_segmentation_manager.operations.label_edit import paint
+
+    panel = window.label_panel
+    controller = panel.controller
+    on_disk = controller.working_label().copy()
+    assert panel.versions_controller.saved is None
+
+    panel._stroke_finished(paint(controller.working_label(), [(30, 30)], 0, 1))
+
+    assert panel.versions_controller.rows[0].source == "saved"
+    assert panel.versions.chosen == 0, "a comparison starts on the label as saved"
+    assert not panel.versions.restore_button.isEnabled()
+    panel._compare_key_held(True)
+    assert np.array_equal(panel._label_to_draw(), on_disk)
+    assert not np.array_equal(controller.working_label(), on_disk)
+    panel._compare_key_held(False)
+
+    panel.undo()
+
+    assert panel.versions_controller.saved is None
+    assert all(row.source != "saved" for row in panel.versions_controller.rows)
+
+
 def test_leaving_a_frame_before_the_recount_still_fixes_its_mark(window):
     """The reported fault. A stroke defers the recount by 400ms so it does not
     run mid-drag; move on inside that window and the recount fires for the
