@@ -15,7 +15,7 @@ from am_segmentation_manager.layout import (
     subdirectories_by_name,
 )
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.predictions import prediction_to_label
+from am_segmentation_manager.operations.predictions import as_converted, prediction_to_label
 
 
 @pytest.mark.skipif(
@@ -57,6 +57,29 @@ needs_image_stack = pytest.mark.skipif(
     ),
     reason="Optional image libs not installed",
 )
+
+
+@needs_image_stack
+def test_a_conversion_writes_what_a_comparison_shows(tmp_path: Path):
+    """The version strip draws a prediction through as_converted; a conversion
+    that wrote anything else would make that picture a lie."""
+    import numpy as np
+    import tifffile
+
+    prediction = tmp_path / "pred.tif"
+    target = tmp_path / "target.tif"
+    out = tmp_path / "label.tif"
+    classes = np.zeros((32, 32), dtype=np.uint8)
+    classes[3:9, 5:20] = 2
+    classes[20:31, 0:7] = 4
+    tifffile.imwrite(prediction, classes)
+    tifffile.imwrite(target, np.zeros((61, 64), dtype=np.uint8))
+
+    prediction_to_label(prediction, out, target_image_path=target)
+
+    assert np.array_equal(
+        tifffile.imread(out), as_converted(classes, (61, 64), prediction)
+    )
 
 
 def _convert(tmp_path: Path, prediction) -> Path:

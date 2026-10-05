@@ -101,9 +101,6 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
         shutil.copy2(str(prediction_path), str(label_path))
         return
 
-    # perform resizing using tifffile + numpy + cv2
-    import cv2  # type: ignore
-    import numpy as np  # type: ignore
     import tifffile  # type: ignore
 
     # read images
@@ -120,24 +117,34 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
         return
 
     # handle multi-page or channel dimensions: reduce to 2D if necessary
-    pred2 = _class_indices(to_2d(pred), prediction_path)
+    pred2 = to_2d(pred)
     target2 = to_2d(target)
-
+    label = as_converted(pred2, target2.shape[:2], prediction_path)
+    save_label_image(label, label_path, label.dtype)
     if pred2.shape == target2.shape:
-        # shapes already match; write prediction directly
-        save_label_image(pred2, label_path, pred2.dtype)
         logger.info("Wrote label %s (shapes matched)", label_path)
-        return
+    else:
+        logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, label.shape)
 
-    # resize prediction to match target shape (nearest neighbour)
-    target_h, target_w = target2.shape[:2]
-    resized = cv2.resize(pred2, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
-    # ensure integer type for labels
-    if not np.issubdtype(resized.dtype, np.integer):
-        resized = resized.astype(np.uint8)
 
-    save_label_image(resized, label_path, resized.dtype)
-    logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, resized.shape)
+def as_converted(prediction, shape: tuple[int, int], prediction_path: Path):
+    """Return *prediction* as the label converting it to *shape* would write.
+
+    Class indices, resized by nearest neighbour where the shapes differ. The one
+    resize a conversion and a comparison against a prediction share, so what is
+    compared is pixel for pixel what converting would write.
+
+    Raises:
+        ValueError: As :func:`_class_indices`, for values that are not class
+            indices.
+    """
+    import cv2  # type: ignore
+
+    indices = _class_indices(to_2d(prediction), prediction_path)
+    if indices.shape == tuple(shape):
+        return indices
+    height, width = shape
+    return cv2.resize(indices, (width, height), interpolation=cv2.INTER_NEAREST)
 
 
 def _class_indices(prediction, prediction_path: Path):

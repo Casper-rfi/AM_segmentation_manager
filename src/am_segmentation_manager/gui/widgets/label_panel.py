@@ -39,7 +39,7 @@ from ...operations.label_measure import (
 )
 from ..label_controller import LabelController
 from ..preferences import DEFAULT_BRUSH_RADIUS
-from ..version_controller import VersionController
+from ..version_controller import VersionController, comparison_badge
 from .checklist_panel import ChecklistPanel
 from .common import (
     CONDITION_FIELD_WIDTH,
@@ -1051,10 +1051,19 @@ class LabelPanel(QWidget):
 
                 return np.where(mask, DIFFERENCE_CLASS, 0).astype(np.uint8)
         if self._comparing:
-            other = self.versions_controller.comparison_pixels()
+            other = self.versions_controller.comparison_pixels(self._frame_shape(working))
             if other is not None:
                 return other
         return working
+
+    def _frame_shape(self, working) -> tuple[int, int] | None:
+        """Return the shape a label on this frame has, the one a conversion writes."""
+        if working is not None:
+            return working.shape[:2]
+        prepared = self.controller.cached_image()
+        if prepared is None or prepared.display is None:
+            return None
+        return prepared.display.image.shape[:2]
 
     def _version_chosen(self, index: int) -> None:
         """Note which version is being offered, and whether it can be shown."""
@@ -1303,7 +1312,7 @@ class LabelPanel(QWidget):
         if self._showing_differences:
             badges.append(("showing what changed, not a label", "warning"))
         elif self._comparing and chosen is not None:
-            badges.append((f"showing the version from {chosen.when[:16]}", "warning"))
+            badges.append((comparison_badge(chosen), "warning"))
         if not self.controller.series_is_labelled:
             badges.append(VIEW_ONLY_BADGE)
         else:

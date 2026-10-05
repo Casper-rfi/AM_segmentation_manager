@@ -22,11 +22,12 @@ from ..io.image import read_array, to_2d
 from ..layout import is_convertible_prediction, prediction_precedence
 from ..operations.archive import ArchivedVersion, label_versions, restore
 from ..operations.predict import read_provenance
+from ..operations.predictions import as_converted
 from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["KEPT", "PREDICTION", "VersionController", "VersionRow"]
+__all__ = ["KEPT", "PREDICTION", "VersionController", "VersionRow", "comparison_badge"]
 
 #: A version kept when something replaced the label. Can be put back.
 KEPT: str = "kept"
@@ -122,7 +123,7 @@ class VersionController:
         self._target: str = ""
         self._rows: tuple[VersionRow, ...] = ()
         self._selected: int | None = None
-        self._pixels: dict[Path, object] = {}
+        self._pixels: dict[tuple[Path, tuple[int, int] | None], object] = {}
         self._log: tuple[object, HistoryLog] | None = None
         self._provenance: dict[Path, dict] = {}
 
@@ -293,34 +294,42 @@ class VersionController:
         if 0 <= index < len(self.rows):
             self._selected = index
 
-    def comparison_pixels(self):
+    def comparison_pixels(self, shape: tuple[int, int] | None = None):
         """Return the selected version's array, or None.
 
-        Read once and kept, because flicking between this and the label on
-        screen is the point and re-reading a file each time would make it
-        stutter.
+        **A prediction is returned as the label converting it would write**,
+        resized to *shape*, the label on screen's; a kept version is returned
+        as it is, its size being part of what is compared. Read once and kept,
+        because flicking between this and the label on screen is the point and
+        re-reading a file each time would make it stutter.
         """
         row = self.selected
         if row is None or not row.available:
             return None
-        if row.path not in self._pixels:
-            self._pixels[row.path] = _read(row.path)
-        return self._pixels[row.path]
+        key = (row.path, shape if row.source == PREDICTION else None)
+        if key not in self._pixels:
+            pixels = _read(row.path)
+            if pixels is not None and key[1] is not None:
+                pixels = _as_converted(pixels, key[1], row.path)
+            self._pixels[key] = pixels
+        return self._pixels[key]
 
     def difference(self, current) -> object | None:
         """Return where the label on screen and the selected version disagree.
 
         Returns:
             A boolean array, True where they differ, or None where there is
-            nothing to compare or the two are not the same size -- a prediction
-            is made at model resolution, and a mask across a resize would mark
-            every pixel.
+            nothing to compare or the two are not the same size -- a kept
+            version of another size has no pixel to pair with.
         """
-        other = self.comparison_pixels()
-        if other is None or current is None:
+        if current is None:
+            return None
+        mine = to_2d(current)
+        other = self.comparison_pixels(mine.shape)
+        if other is None:
             return None
 
-        mine, theirs = to_2d(current), to_2d(other)
+        theirs = to_2d(other)
         if mine.shape != theirs.shape:
             return None
         return mine != theirs
@@ -368,6 +377,18 @@ class VersionController:
         )
         self.refresh()
         return restored
+
+
+def comparison_badge(row: VersionRow) -> str:
+    """Return what the canvas says while *row* is shown in place of the label.
+
+    A prediction says it is shown as converted: it is drawn at the label's size,
+    not the model's, and a reviewer who did not know would misread its edges.
+    """
+    if row.source == PREDICTION:
+        when = _shown(row.when)
+        return f"showing the prediction as converted{f', from {when}' if when else ''}"
+    return f"showing the version from {row.when[:16]}"
 
 
 def _moment(stamp: str):
@@ -441,6 +462,19 @@ def _kept_row(version: ArchivedVersion) -> VersionRow:
         available=version.present and version.path.is_file(),
         version=version,
     )
+
+
+def _as_converted(pixels, shape: tuple[int, int], path: Path):
+    """Return a prediction as converting it would write it, or as read.
+
+    As read where its values are not class indices: converting refuses it, so
+    there is no converted label to show, and what is in the file is the truth.
+    """
+    try:
+        return as_converted(pixels, shape, path)
+    except ValueError as error:
+        logger.warning("Showing %s as read: %s", path, error)
+        return pixels
 
 
 def _read(path: Path):

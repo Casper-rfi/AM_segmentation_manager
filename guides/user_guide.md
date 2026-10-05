@@ -223,8 +223,9 @@ to correct its labels. It visits only the frames still worth proofreading.
 
    ![Find specks, ringing three specks](images/specks.png)
 
-4. **Compare versions** lists the earlier versions of this label, so you can
-   flick between them or restore one.
+4. **Compare versions** lists the earlier versions of this label, and the
+   predictions for this image, so you can flick between them (hold **B**) or
+   restore one. A prediction is shown as the label converting it would write.
 5. **Save** writes your edits. Until then they are held in the window. With
    *Enable editing* on, on Curate, **Save and mark corrected** also marks the
    frames you reviewed as corrected.

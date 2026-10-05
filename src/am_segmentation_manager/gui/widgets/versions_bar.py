@@ -67,8 +67,8 @@ class VersionsBar(QWidget):
         self.chooser = QComboBox()
         self.chooser.setMinimumWidth(320)
         self.chooser.setToolTip(
-            "Versions of this segmentation: those kept when the label was "
-            "replaced, newest first, then the predictions beside the image.\n"
+            "Versions of this segmentation, newest first: those kept when the "
+            "label was replaced, and predictions, shown as converted.\n"
             "The percentage is how much a kept version differs from the one "
             "before it."
         )

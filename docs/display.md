@@ -327,8 +327,8 @@ of one of these files, is held by `test_docs.py`.
   with a class value no configuration defines, so it appears in the colour reserved for an
   unconfigured class rather than as a segmentation; **flat, one colour**, since with several classes
   on both sides colouring by what each holds has no readable scheme and the mask becomes the thing
-  being deciphered. Two labels of different sizes are still both shown — that one is the wrong size
-  is the finding — and only the mask goes, there being no pixel to pair.
+  being deciphered. A label of another size is shown as it is, that size being the finding, with no
+  mask; **a prediction is shown as converted** (`test_a_conversion_writes_what_a_comparison_shows`).
 - **With the acquisition hidden, something still says where the frame ends.** Over the pane's own
   black, the label's transparent background and the emptiness past the frame's edge are one
   surface, so a label a row short along an edge looks like one that runs to it — which is the

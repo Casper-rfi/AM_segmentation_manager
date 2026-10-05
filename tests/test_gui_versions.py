@@ -226,6 +226,30 @@ def test_the_panel_marks_only_the_pixels_that_differ(
         destroy(panel)
 
 
+def test_the_panel_draws_a_prediction_at_the_labels_size(
+    qt_app, config, label, recorder, tmp_path, monkeypatch
+):
+    """A model predicts on a binned image; what is drawn is the label it becomes."""
+    import tifffile
+
+    prediction = tmp_path / "sem_predictions" / "am_seg" / "img_000.tif"
+    prediction.parent.mkdir(parents=True)
+    tifffile.imwrite(prediction, np.ones((8, 8), dtype=np.uint8))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
+    try:
+        panel.versions_controller.set_label(label, [prediction])
+        sources = [row.source for row in panel.versions_controller.rows]
+        panel.versions_controller.select(sources.index("prediction"))
+        monkeypatch.setattr(panel.controller, "working_label", lambda: _pixels(3))
+
+        panel._set_comparing(True)
+        drawn = panel._label_to_draw()
+
+        assert drawn.shape == (16, 16) and (drawn == 1).all()
+    finally:
+        destroy(panel)
+
+
 def test_the_difference_class_is_one_no_configuration_defines(config):
     """So it draws in the colour reserved for a class nothing defines, and what
     is on screen is plainly not a segmentation class."""

@@ -171,11 +171,9 @@ def test_the_difference_marks_only_where_they_disagree(label, recorder):
     assert difference[2:6, 2:6].all()
 
 
-def test_a_version_of_another_size_has_no_difference_to_show(
-    tmp_path: Path, recorder
-):
-    """A conversion writes at model resolution; a mask across a resize would
-    mark every pixel, which says nothing."""
+def test_a_kept_version_of_another_size_is_shown_as_it_is(tmp_path: Path, recorder):
+    """Its size is part of what is compared, so nothing resizes it, and a mask
+    across a resize would mark every pixel, which says nothing."""
     start_history(tmp_path)
     path = tmp_path / "sem_labels" / "img.tif"
     _write(path, 2)
@@ -185,6 +183,7 @@ def test_a_version_of_another_size_has_no_difference_to_show(
     controller.set_label(path)
     controller.select(0)
 
+    assert controller.comparison_pixels((32, 32)).shape == (16, 16)
     assert controller.difference(_pixels(3, shape=(32, 32))) is None
 
 
@@ -356,6 +355,79 @@ def test_comparing_against_a_prediction_writes_nothing(label, recorder, tmp_path
         for path in sorted(tmp_path.rglob("*")) if path.is_file()
     }
     assert after == before, "comparing may not touch the tree"
+
+
+def _binned_prediction(tmp_path: Path) -> Path:
+    """A prediction at half the label's size, as a model writes one."""
+    import tifffile
+
+    path = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+    binned = np.zeros((8, 8), dtype=np.uint8)
+    binned[1:3, 1:3] = 1
+    tifffile.imwrite(path, binned)
+    return path
+
+
+def test_a_prediction_is_compared_as_converting_it_would_write(label, recorder, tmp_path):
+    """The comparison is the label the prediction would become, not the model's grid."""
+    from am_segmentation_manager.operations.predictions import as_converted
+
+    prediction = _binned_prediction(tmp_path)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [prediction])
+    controller.select([row.source for row in controller.rows].index("prediction"))
+
+    shown = controller.comparison_pixels((16, 16))
+
+    import tifffile
+
+    expected = as_converted(tifffile.imread(prediction), (16, 16), prediction)
+    assert shown.shape == (16, 16)
+    assert np.array_equal(shown, expected)
+    assert (shown[2:6, 2:6] == 1).all(), "each model pixel covers two by two"
+
+
+def test_differences_against_a_binned_prediction_are_drawn(label, recorder, tmp_path):
+    prediction = _binned_prediction(tmp_path)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [prediction])
+    controller.select([row.source for row in controller.rows].index("prediction"))
+
+    mask = controller.difference(_pixels(3))
+
+    assert mask is not None and mask.shape == (16, 16)
+    assert mask[2:6, 2:6].all() and mask.sum() == 16
+
+
+def test_a_prediction_that_holds_no_class_indices_is_shown_as_read(
+    label, recorder, tmp_path
+):
+    """Converting would refuse it, so there is no converted label to show."""
+    import tifffile
+
+    prediction = _binned_prediction(tmp_path)
+    tifffile.imwrite(prediction, np.full((8, 8), 0.5, dtype=np.float32))
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [prediction])
+    controller.select([row.source for row in controller.rows].index("prediction"))
+
+    assert controller.comparison_pixels((16, 16)).shape == (8, 8)
+
+
+def test_the_canvas_says_a_prediction_is_shown_as_converted(label, recorder, tmp_path):
+    from am_segmentation_manager.gui.version_controller import comparison_badge
+
+    prediction = _binned_prediction(tmp_path)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [prediction])
+    rows = {row.source: row for row in controller.rows}
+
+    assert comparison_badge(rows["prediction"]) == (
+        "showing the prediction as converted, from 2026-09-02 10:04"
+    )
+    assert comparison_badge(rows["kept"]).startswith("showing the version from ")
 
 
 def test_a_prediction_is_converted_rather_than_restored(label, recorder, tmp_path):
