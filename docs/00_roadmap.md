@@ -29,6 +29,9 @@ conflicts decided one at a time or a folder, project or lamella at once.
 **Settings** (F2) hold the name changes are recorded under, the window's accent and what each
 control opens at, the last two declared in `gui/preferences.py` and reaching no write path.
 
+**The viewer**, `am-seg gui --viewer`, is Curate alone for looking at a collection on the microscope:
+its controller is built read-only, so nothing in it can switch editing on.
+
 ## What to pick up next
 
 - **Cross-platform readiness**: CI passes on Linux and Windows at every push, and passed on macOS

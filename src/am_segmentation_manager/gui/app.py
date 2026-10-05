@@ -252,6 +252,8 @@ def build_window(
     start_path: Path | None = None,
     config_path: Path | None = None,
     settings=None,
+    *,
+    viewer: bool = False,
 ):
     """Build and show the curation window, queuing a scan of *start_path*.
 
@@ -264,6 +266,7 @@ def build_window(
         config_path: Segmentation config to use, overriding the usual search.
         settings: Where the window keeps its own preferences, the accent it is
             drawn in among them; the user's configuration area where None.
+        viewer: Open a window that only looks, and cannot be made to edit.
 
     Returns:
         ``(application, window)``.
@@ -296,7 +299,7 @@ def build_window(
     config = load_segmentation_config(explicit_path=config_path, start_path=start_path)
     logger.info("Using segmentation config: %s", config.source)
 
-    controller = CurationController(cache=FrameCache(), config=config)
+    controller = CurationController(cache=FrameCache(), config=config, read_only=viewer)
 
     _enable_high_dpi()
     application = QApplication.instance() or QApplication(sys.argv)
@@ -328,13 +331,19 @@ def build_window(
     return application, window
 
 
-def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
+def run(
+    start_path: Path | None = None,
+    config_path: Path | None = None,
+    *,
+    viewer: bool = False,
+) -> int:
     """Open the curation window and run until it is closed.
 
     Args:
         start_path: Directory to scan on startup. The window opens without
             scanning if this is None.
         config_path: Segmentation config to use, overriding the usual search.
+        viewer: Open a window that only looks, and cannot be made to edit.
 
     Returns:
         The Qt application's exit code.
@@ -343,5 +352,5 @@ def run(start_path: Path | None = None, config_path: Path | None = None) -> int:
         RuntimeError: If no Qt binding is installed.
     """
     # The window is held for as long as the loop runs: nothing else refers to it.
-    application, _window = build_window(start_path, config_path)
+    application, _window = build_window(start_path, config_path, viewer=viewer)
     return application.exec_() if hasattr(application, "exec_") else application.exec()

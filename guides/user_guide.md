@@ -155,6 +155,11 @@ are worth labelling, and predict labels for them.
 Each frame is shown twice, as the image alone and with its label on top, so you
 can judge the label against what it covers.
 
+To look through a collection where nothing should change, such as on the
+microscope's computer, start the window with `am-seg gui --viewer`. The viewer
+is this tab alone, without its right-hand column: no other tab, no state or
+families, no operations, and no *Enable editing* to switch on.
+
 ### Decide what gets labelled
 
 Every image is in one of three states, shown by its colour on the timeline:

@@ -1,12 +1,11 @@
 """The window: four tabs, the controllers behind them, and what joins them.
 
-*Add data*, *Curate*, *Label* and *Export* each have a controller holding no Qt;
-this module holds no decisions of its own, asking a controller what to show and
-telling it what the user did. It builds and owns the controllers, the Curate tab
-and the window itself. Three subjects are mixins beside it --
-:mod:`.operation_runner`, :mod:`.operation_actions` and :mod:`.label_tab` -- and
-the keys are :mod:`.shortcuts`, held rather than inherited. Why the window looks
-and behaves as it does, and every Qt trap in it, is ``docs/display.md``.
+Each tab has a controller holding no Qt; this module decides nothing, asking one
+what to show and telling it what the user did, and builds them, the Curate tab
+and the window. **Over a read-only controller it is a viewer**: Curate alone,
+with nothing that writes. :mod:`.operation_runner`, :mod:`.operation_actions` and
+:mod:`.label_tab` are mixins beside it, and the keys are :mod:`.shortcuts`, held
+rather than inherited. ``docs/display.md`` holds why, and every Qt trap in it.
 """
 from __future__ import annotations
 
@@ -38,7 +37,7 @@ from qtpy.QtWidgets import (
 
 from ... import __version__
 from ...history import clear_author, set_author
-from ...identity import PRODUCT_NAME
+from ...identity import PRODUCT_NAME, VIEWER_NAME
 from ...launcher import LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
@@ -115,6 +114,8 @@ SETTING_LEGACY_MODEL = "model_directory"
 SETTING_DEVICE = "predict_device"
 SETTING_GEOMETRY = "geometry"
 SETTING_SPLITTER = "splitter"
+#: The group a viewer keeps its own geometry and splitters under.
+SETTING_VIEWER = "viewer"
 
 AUTHOR_TITLE = "Settings"
 
@@ -288,7 +289,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         """
         super().__init__()
         self.controller = controller
-        self.setWindowTitle(PRODUCT_NAME)
+        self.setWindowTitle(self._name)
         self.resize(*DEFAULT_SIZE)
 
         self.settings = settings if settings is not None else user_settings()
@@ -460,21 +461,27 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.curate = GripSplitter(Qt.Orientation.Horizontal)
         self.curate.addWidget(self.project_panel)
         self.curate.addWidget(centre)
-        self.curate.addWidget(right)
+        # A viewer has nothing to change and nothing to run, which is all the
+        # right column holds; the timeline already shows each frame's state.
+        if not self.read_only:
+            self.curate.addWidget(right)
         self.curate.setStretchFactor(1, 1)
         # The left column opens wide enough for the project box's four
         # buttons to sit on one line; narrower and they wrap, which is the
         # reader's call rather than the default.
-        self.curate.setSizes([330, 1050, 260])
+        self.curate.setSizes([330, 1050, 260][: self.curate.count()])
 
         # Left to right in workflow order: describe the data, curate it,
         # proofread its labels, export it. Curate opens, because it is where the
         # repeated work starts and the outer two are visited once per collection.
+        # A viewer holds Curate alone: every other tab exists to change files.
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.metadata_panel, "Add data")
+        if not self.read_only:
+            self.tabs.addTab(self.metadata_panel, "Add data")
         self.tabs.addTab(self.curate, "Curate")
-        self.tabs.addTab(self.label_panel, "Label")
-        self.tabs.addTab(self.export_panel, "Export")
+        if not self.read_only:
+            self.tabs.addTab(self.label_panel, "Label")
+            self.tabs.addTab(self.export_panel, "Export")
         # Chosen before the signal is connected: _tab_changed switches the
         # keyboard shortcuts, which do not exist until _add_shortcuts runs.
         self.tabs.setCurrentWidget(self.curate)
@@ -485,13 +492,56 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # are segmentation class colours, so a use beyond the logo and the
         # accent on controls would be read as data.
         self._corner = _corner(self.scan_bar, self.show_shortcuts, self.show_settings)
-        self.tabs.setCornerWidget(self._corner, Qt.Corner.TopRightCorner)
-        self.setCentralWidget(self.tabs)
+        if self.read_only:
+            self.setCentralWidget(self._viewer_page())
+            # Built all the same, so nothing that refreshes them has to know
+            # about a viewer; held by a page never shown, so each has an owner
+            # and none becomes a window of its own.
+            unshown = QWidget(self)
+            unshown.hide()
+            for widget in (right, self.metadata_panel, self.label_panel, self.export_panel):
+                widget.setParent(unshown)
+        else:
+            self.tabs.setCornerWidget(self._corner, Qt.Corner.TopRightCorner)
+            self.setCentralWidget(self.tabs)
         self._build_menus()
 
         # Parented to the window rather than to a tab: a scan can be asked for
         # from any of them, and what it holds up is the whole window.
         self.banner = ScanBanner(self)
+
+    def _viewer_page(self) -> QWidget:
+        """Return the viewer's one page: the corner's row above Curate.
+
+        **The corner cannot stay a corner widget once the tab bar is hidden**:
+        `QTabWidget` bounds a corner to the bar's height, and a hidden bar has
+        none. The tabs stay, holding the one page, so nothing asking which tab
+        is in front needs to know there is a viewer. Nothing records in a
+        viewer, so the corner does not say who would.
+        """
+        self.tabs.tabBar().hide()
+        self.tabs.setDocumentMode(True)
+        self._corner.author.hide()
+        page = QWidget()
+        column = QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(self._corner)
+        column.addLayout(row)
+        column.addWidget(self.tabs, stretch=1)
+        return page
+
+    @property
+    def read_only(self) -> bool:
+        """Whether this window is a viewer, as its controller was built."""
+        return self.controller.read_only
+
+    @property
+    def _name(self) -> str:
+        """What the window calls itself, which says whether it can edit."""
+        return VIEWER_NAME if self.read_only else PRODUCT_NAME
 
     def _build_menus(self) -> None:
         """Build the menu bar.
@@ -528,8 +578,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._add_action(
             file_menu, "Settings...", self.show_settings, QKeySequence("F2")
         )
+        # Not in a viewer: what it adds is a launcher for the window that edits.
         label = menu_label()
-        if label is not None:
+        if label is not None and not self.read_only:
             self._add_action(file_menu, label, self.show_launcher_dialog)
         file_menu.addSeparator()
         self._add_action(file_menu, "Quit", self.close, QKeySequence.StandardKey.Quit)
@@ -571,11 +622,14 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         row.setContentsMargins(2, 0, 2, 0)
         row.setSpacing(6)
 
-        self.timeline = FrameTimeline(band=CURATE_BAND)
+        self.timeline = FrameTimeline(band=None if self.read_only else CURATE_BAND)
         self.timeline.frame_selected.connect(self._seek_frame)
-        self.timeline.frame_toggled.connect(self._toggle_frame)
-        self.timeline.extend_started.connect(self._begin_extend)
-        self.timeline.extend_reached.connect(self._extend_frames)
+        # Frames are picked out only for a change to act on, which a viewer
+        # cannot make; unconnected, a Ctrl-click there picks nothing.
+        if not self.read_only:
+            self.timeline.frame_toggled.connect(self._toggle_frame)
+            self.timeline.extend_started.connect(self._begin_extend)
+            self.timeline.extend_reached.connect(self._extend_frames)
         row.addWidget(self.timeline, stretch=1)
 
         self.frame_label = QLabel("0 / 0")
@@ -684,7 +738,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         what it is called, and a title long enough to be elided in the window
         switcher says nothing at all there.
         """
-        self.setWindowTitle(f"{PRODUCT_NAME}{TITLE_SEPARATOR}{directory.name}")
+        self.setWindowTitle(f"{self._name}{TITLE_SEPARATOR}{directory.name}")
 
     def _show_about(self) -> None:
         """Say what this is, which version, and where its log is going.
@@ -762,15 +816,28 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         """Return the resizable divisions, keyed by the name they persist under.
 
         Keyed by name rather than by position so that adding a splitter, or
-        moving one, cannot silently restore the wrong sizes into it.
+        moving one, cannot silently restore the wrong sizes into it. A viewer
+        has only the two it shows.
         """
-        return {
-            "curate": self.curate,
-            "lists": self.project_panel.lists,
+        shown: dict[str, QSplitter] = {
+            "curate": self.curate, "lists": self.project_panel.lists
+        }
+        if self.read_only:
+            return shown
+        return shown | {
             "add_data": self.metadata_panel.panes,
             "export": self.export_panel.columns,
             "export_filters": self.export_panel.filters,
         }
+
+    def _layout_key(self, name: str) -> str:
+        """Return where the layout setting *name* is kept.
+
+        **A viewer keeps its own layout**: its Curate splitter holds two panes
+        to the full window's three, and either restoring the other's would
+        put a divider somewhere nobody left it.
+        """
+        return f"{SETTING_VIEWER}/{name}" if self.read_only else name
 
     def _apply_defaults(self) -> None:
         """Open every control at what the settings say it should open at.
@@ -794,11 +861,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
     def _restore_layout(self) -> None:
         """Put the window back the size and shape it was left in, on this screen."""
-        geometry = _setting_bytes(self.settings, SETTING_GEOMETRY)
+        geometry = _setting_bytes(self.settings, self._layout_key(SETTING_GEOMETRY))
         if geometry:
             self.restoreGeometry(geometry)
         for name, splitter in self._splitters().items():
-            state = _setting_bytes(self.settings, f"{SETTING_SPLITTER}/{name}")
+            state = _setting_bytes(
+                self.settings, self._layout_key(f"{SETTING_SPLITTER}/{name}")
+            )
             if state:
                 splitter.restoreState(state)
         self.fit_to_screen()
@@ -841,11 +910,17 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.move(left, top)
 
     def _save_layout(self) -> None:
-        """Record the window's size, its splitter positions and its model box."""
-        self.settings.setValue(SETTING_GEOMETRY, self.saveGeometry())
+        """Record the window's size, its splitter positions and its model box.
+
+        A viewer shows no model box, so it leaves the remembered model alone.
+        """
+        self.settings.setValue(self._layout_key(SETTING_GEOMETRY), self.saveGeometry())
         for name, splitter in self._splitters().items():
-            self.settings.setValue(f"{SETTING_SPLITTER}/{name}", splitter.saveState())
-        self._remember_model()
+            self.settings.setValue(
+                self._layout_key(f"{SETTING_SPLITTER}/{name}"), splitter.saveState()
+            )
+        if not self.read_only:
+            self._remember_model()
 
     # -- the model to predict with -----------------------------------------
 

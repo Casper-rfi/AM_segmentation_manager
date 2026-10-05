@@ -103,6 +103,10 @@ added later arrive selected.
 
 - **Nothing on Curate changes a file until you switch on *Enable editing*.**
   The same goes for the fields on Add data, which have a switch of their own.
+- **The viewer cannot change anything.** `am-seg gui --viewer` opens Curate
+  alone, without the switch, and nothing in it writes into the collection. For a
+  guarantee that holds whatever is run, give that computer the collection
+  read-only; the viewer reads it all the same.
 - **A batch is checked whole before any of it is written.** If one file in a
   hundred has changed since you looked, none is written, and you are told which.
 - **You see what will happen first.** Operations that change files show what

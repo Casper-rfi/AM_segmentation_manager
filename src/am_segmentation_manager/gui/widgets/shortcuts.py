@@ -97,12 +97,15 @@ class Gesture:
     Attributes:
         keys: Key names as the diagram spells them, lit beside the bound keys:
             a key held for a gesture is a key somebody has to find too.
+        edits: Whether it serves only a change, and so is not offered by a
+            viewer.
     """
 
     group: str
     action: str
     description: str
     keys: tuple[str, ...] = ()
+    edits: bool = False
 
 
 #: Mouse gestures worth listing beside the keys, per tab.
@@ -119,19 +122,20 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
         Gesture(
             GROUP_CHOOSE, "Ctrl-click a frame",
             "Pick it out for a state change, or drop it again", ("Ctrl",),
+            edits=True,
         ),
         Gesture(
             GROUP_CHOOSE, "Shift-click a frame",
             "Extend the picked run from the last frame you pointed at",
-            ("Shift",),
+            ("Shift",), edits=True,
         ),
         Gesture(
             GROUP_CHOOSE, "Ctrl or Shift + drag", "Sweep a run of frames",
-            ("Ctrl", "Shift"),
+            ("Ctrl", "Shift"), edits=True,
         ),
         Gesture(
             GROUP_CHOOSE, "Tick a project or lamella",
-            "Apply a state change to the whole of it",
+            "Apply a state change to the whole of it", edits=True,
         ),
         Gesture(
             GROUP_ELSEWHERE, "Right-click a row or an image",
@@ -140,6 +144,7 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
         Gesture(
             GROUP_ELSEWHERE, "Operations",
             "Act on the same selection; each previews before it applies",
+            edits=True,
         ),
     ),
     TAB_ADD_DATA: (
@@ -241,6 +246,8 @@ class Binding:
             than only the one it is bound to. A window-scoped shortcut is dead
             while a second top-level window holds the keyboard, and a dialog --
             even a parented one -- is a second top-level window.
+        edits: Whether the key serves only a change, and so is not bound in a
+            viewer.
     """
 
     key: str
@@ -250,6 +257,7 @@ class Binding:
     group: str
     scope: QWidget | None = None
     anywhere: bool = False
+    edits: bool = False
 
 
 #: Kept clear of the screen edges when the list is capped to fit, so it still
@@ -407,19 +415,19 @@ def bindings_for(window) -> list[Binding]:
         ),
         Binding(
             "Esc", "Clear the picked-out frames", window._clear_frame_selection,
-            curate, GROUP_CHOOSE,
+            curate, GROUP_CHOOSE, edits=True,
         ),
         Binding(
             "D", "Set state: deselected", lambda: window.apply_state("deselected"),
-            curate, GROUP_STATE,
+            curate, GROUP_STATE, edits=True,
         ),
         Binding(
             "S", "Set state: selected", lambda: window.apply_state("selected"),
-            curate, GROUP_STATE,
+            curate, GROUP_STATE, edits=True,
         ),
         Binding(
             "C", "Set state: corrected", lambda: window.apply_state("corrected"),
-            curate, GROUP_STATE,
+            curate, GROUP_STATE, edits=True,
         ),
         # -- add data ------------------------------------------------
         # Scoped to the project list: the fields beside it include editable
@@ -576,14 +584,15 @@ def _grouped_rows(
         grouped[GROUP_HELP] = grouped.pop(GROUP_HELP)
     return grouped
 
-def _tab_marks(tab: str) -> tuple[tuple[str, str, str], ...]:
+def _tab_marks(tab: str, *, read_only: bool = False) -> tuple[tuple[str, str, str], ...]:
     """Return the legend for *tab*, as ``(heading, picture, meaning)``.
 
     Every picture is drawn by the module that draws the real mark, so the
     list cannot explain one thing and the window show another. Only the
     marks on the tab are listed: the white band means frames picked out
     while curating and unsaved edits while proofreading, which is one mark
-    with two meanings and no way to say both at once.
+    with two meanings and no way to say both at once -- and in a viewer,
+    where nothing is picked out, it is not listed at all.
     """
     rows: list[tuple[str, list[tuple[QPixmap, str]]]] = []
     if tab == TAB_CURATE:
@@ -591,7 +600,7 @@ def _tab_marks(tab: str) -> tuple[tuple[str, str, str], ...]:
             (GROUP_ROW_MARK, status_legend()),
             (
                 GROUP_STRIP_MARK,
-                timeline_legend(CURATE_BAND),
+                timeline_legend(None if read_only else CURATE_BAND),
             ),
         ]
     elif tab == TAB_LABEL:
@@ -621,13 +630,19 @@ class Shortcuts:
 
     Built with the window, and calls back into it for the two things only the
     window can answer: which tab is in front, and what that tab is called.
+    **A viewer neither binds nor lists a key or gesture that serves a change.**
     """
 
     def __init__(self, window) -> None:
         """Bind every key *window* offers and switch on the tab in front."""
         self._window = window
+        #: Whether rows marked as serving a change are left out.
+        self._read_only = window.read_only
         #: The table, in the order F1 reads it.
-        self.bindings = bindings_for(window)
+        self.bindings = [
+            binding for binding in bindings_for(window)
+            if not (binding.edits and self._read_only)
+        ]
         #: One per binding, in the same order -- zipped in several places, so
         #: a shortcut that did not line up with its binding would switch the
         #: wrong key on.
@@ -677,10 +692,14 @@ class Shortcuts:
         """
         tab = tab if tab is not None else self._window._current_tab()
         applicable = [b for b in self.bindings if b.tab in (tab, ANY_TAB)]
+        gestures = tuple(
+            gesture for gesture in TAB_GESTURES.get(tab, ())
+            if not (gesture.edits and self._read_only)
+        )
         grouped = _grouped_rows(
             applicable,
-            TAB_GESTURES.get(tab, ()),
-            _tab_marks(tab) + tuple(
+            gestures,
+            _tab_marks(tab, read_only=self._read_only) + tuple(
                 (GROUP_MENU, key, description)
                 for key, description in menu_rows(self._window)
             ),
@@ -702,7 +721,7 @@ class Shortcuts:
             help_text += (
                 "<p style='margin-top: 10px;'>This tab has no keys of its own.</p>"
             )
-        if tab == TAB_CURATE:
+        if tab == TAB_CURATE and not self._read_only:
             help_text += (
                 "<p style='margin-top: 10px;'>State changes need <i>Enable editing</i> "
                 "switched on.</p>"

@@ -64,7 +64,9 @@ def make_project(name: str, lamella_specs: list[tuple[str, int]]) -> Project:
     return Project(name=name, path=Path(name), lamellae=lamellae, number="001")
 
 
-def make_controller(projects: list[Project] | None = None) -> CurationController:
+def make_controller(
+    projects: list[Project] | None = None, *, read_only: bool = False
+) -> CurationController:
     projects = projects if projects is not None else [
         make_project("project-a", [("01-alpha", 4), ("02-beta", 2)]),
         make_project("project-b", [("01-gamma", 3)]),
@@ -77,7 +79,9 @@ def make_controller(projects: list[Project] | None = None) -> CurationController
         return index
 
     cache = FrameCache(lambda image, label=None: f"img:{image.name}", lambda plot: f"plot:{plot.name}")
-    controller = CurationController(cache=cache, config=CONFIG, scan=scan)
+    controller = CurationController(
+        cache=cache, config=CONFIG, scan=scan, read_only=read_only
+    )
     controller.scan(Path("/scan-root"))
     return controller
 
@@ -667,6 +671,38 @@ def test_state_changes_are_refused_until_editing_is_switched_on():
 
     with pytest.raises(EditingDisabled):
         controller.apply_state("deselected")
+
+
+@pytest.mark.parametrize("switch", ["method", "assignment"])
+def test_a_viewer_cannot_have_editing_switched_on(switch):
+    """The guard a viewer opens with is the one it closes with, however it
+    is asked: the window hides the switch, and this is what holds if anything
+    reaches past that."""
+    controller = make_controller(read_only=True)
+
+    with pytest.raises(EditingDisabled):
+        if switch == "method":
+            controller.set_editing_enabled(True)
+        else:
+            controller.editing_enabled = True
+
+    assert controller.read_only
+    assert not controller.editing_enabled
+    with pytest.raises(EditingDisabled):
+        controller.apply_state("deselected")
+
+
+def test_a_viewer_may_be_told_editing_is_off():
+    """Switching off what is already off is not an attempt to edit."""
+    controller = make_controller(read_only=True)
+
+    controller.set_editing_enabled(False)
+
+    assert not controller.editing_enabled
+
+
+def test_a_controller_is_an_editor_unless_built_as_a_viewer():
+    assert not make_controller().read_only
 
 
 def test_enabling_editing_allows_changes(tmp_path):

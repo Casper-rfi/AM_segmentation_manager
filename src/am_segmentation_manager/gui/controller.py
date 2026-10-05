@@ -413,7 +413,8 @@ class EditingDisabled(RuntimeError):
     """Raised when a state change is attempted while editing is switched off.
 
     The window disables the state controls too; this is the backstop that keeps
-    the guard meaningful no matter how the change was triggered.
+    the guard meaningful no matter how the change was triggered. Also raised by
+    switching editing on in a controller built read-only.
     """
 
 
@@ -421,7 +422,8 @@ class CurationController:
     """Drives the curation window.
 
     Holds the scanned projects, the position within them, how frames are being
-    displayed, and the guard around changing state on disk.
+    displayed, and the guard around changing state on disk. **A controller built
+    read-only never has editing switched on**, for as long as it exists.
     """
 
     def __init__(
@@ -432,6 +434,7 @@ class CurationController:
         scan: ProjectScanner | None = None,
         attribution: Attribution | None = None,
         known_labels: KnownLabels | None = None,
+        read_only: bool = False,
     ) -> None:
         """Create a controller.
 
@@ -447,7 +450,9 @@ class CurationController:
                 resolves the author itself.
             known_labels: What each label holds. The window hands this
                 controller's to its other views; one on its own keeps its own.
+            read_only: Build a viewer, whose editing guard cannot be lifted.
         """
+        self._read_only = bool(read_only)
         self.cache = cache if cache is not None else FrameCache()
         #: The project's grid overview and where its lamellae fall on it, held
         #: while that project is on screen. Kept up to date by
@@ -519,7 +524,7 @@ class CurationController:
         self.condition: dict[str, str | None] = {modality: None for modality in MODALITIES}
         #: Whether a state change reaches the family on screen or every one.
         self.family_scope: FamilyScope = "this"
-        self.editing_enabled = False
+        self._editing_enabled = False
         # Starts matching the initial view, for the same reason the target
         # follows the view thereafter: the modality on screen is the one a
         # state change is meant for.
@@ -1763,9 +1768,29 @@ class CurationController:
         )
         return changed
 
+    @property
+    def read_only(self) -> bool:
+        """Whether this controller was built as a viewer; fixed once built."""
+        return self._read_only
+
+    @property
+    def editing_enabled(self) -> bool:
+        """Whether the guard on state changes is lifted."""
+        return self._editing_enabled
+
+    @editing_enabled.setter
+    def editing_enabled(self, enabled: bool) -> None:
+        self.set_editing_enabled(enabled)
+
     def set_editing_enabled(self, enabled: bool) -> None:
-        """Switch the guard on state changes on or off."""
-        self.editing_enabled = bool(enabled)
+        """Switch the guard on state changes on or off.
+
+        Raises:
+            EditingDisabled: If switched on in a controller built read-only.
+        """
+        if enabled and self._read_only:
+            raise EditingDisabled("A viewer cannot change any file")
+        self._editing_enabled = bool(enabled)
 
     # -- internals ---------------------------------------------------------
 

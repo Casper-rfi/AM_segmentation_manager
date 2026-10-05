@@ -133,6 +133,7 @@ Getting started
 
     am-seg create-shortcut            # once: start the window like any other application
     am-seg gui                        # or start it from the command line
+    am-seg gui --viewer               # only look: nothing in it can change a file
 
 From a checkout, put `uv run` in front of each. `create-shortcut` adds the
 window to the Applications folder on macOS, the applications menu on Linux, and

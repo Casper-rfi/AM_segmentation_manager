@@ -192,11 +192,12 @@ class FrameTimeline(QWidget):
     #: it, so dragging back shrinks the range again.
     extend_reached = Signal(int)
 
-    def __init__(self, band: str = CURATE_BAND) -> None:
+    def __init__(self, band: str | None = CURATE_BAND) -> None:
         """Build an empty timeline.
 
         Args:
-            band: What the white band means on the tab this timeline is on.
+            band: What the white band means on the tab this timeline is on;
+                None where nothing can be picked out, as in a viewer.
         """
         super().__init__()
         self._band = band
@@ -440,7 +441,7 @@ class FrameTimeline(QWidget):
             if specks:
                 parts.append(f"{specks} speck{'s' if specks != 1 else ''}")
             lines.append(f"{modality}: {', '.join(parts)}")
-        if index in self._selected:
+        if index in self._selected and self._band is not None:
             lines.append(self._band)
         return lines
 
@@ -622,7 +623,7 @@ def _whole_sample() -> QPixmap:
     return strip.grab()
 
 
-def timeline_legend(band: str) -> list[tuple[QPixmap, str]]:
+def timeline_legend(band: str | None) -> list[tuple[QPixmap, str]]:
     """Return what each mark on the timeline means, as ``(sample, meaning)``.
 
     Args:
@@ -630,6 +631,7 @@ def timeline_legend(band: str) -> list[tuple[QPixmap, str]]:
             marks frames picked out for a state change while curating and
             labels with unsaved edits while proofreading -- one mark, two
             meanings, which is why the caller supplies it rather than this.
+            None leaves the band out, for a timeline that never draws it.
     """
     return [
         (
@@ -641,11 +643,12 @@ def timeline_legend(band: str) -> list[tuple[QPixmap, str]]:
     ]
 
 
-def _mark_legend(band: str) -> list[tuple[QPixmap, str]]:
+def _mark_legend(band: str | None) -> list[tuple[QPixmap, str]]:
     """Return what each mark means, without the miniature of the whole strip.
 
     The hover card's legend, where the strip itself is right under it.
     """
+    picked = [] if band is None else [(_selection_sample(), band)]
     return [
         (_state_sample("deselected"), "Deselected: no label is wanted here"),
         (_state_sample("selected"), "Selected: a label is wanted and not yet finished"),
@@ -655,7 +658,7 @@ def _mark_legend(band: str) -> list[tuple[QPixmap, str]]:
             "The label line, left to right: it holds an annotation, the file is "
             "there but empty, there is no label file",
         ),
-        (_selection_sample(), band),
+        *picked,
         (_cursor_sample(), "Where you are"),
     ]
 
@@ -704,7 +707,7 @@ class TimelineCard(QFrame):
     layout: a QToolTip holds text, and could not show the marks themselves.
     """
 
-    def __init__(self, parent: QWidget, band: str) -> None:
+    def __init__(self, parent: QWidget, band: str | None) -> None:
         super().__init__(parent, Qt.WindowType.ToolTip)
         self.setObjectName(TIMELINE_CARD)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)

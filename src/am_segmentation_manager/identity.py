@@ -16,6 +16,10 @@ from typing import Final
 #: the window, the banner and a launcher cannot drift apart on capitalisation.
 PRODUCT_NAME: Final[str] = "AM segmentation manager"
 
+#: What the window is called when opened only to look, so a viewer on the
+#: microscope is never mistaken for the window that edits.
+VIEWER_NAME: Final[str] = "AM segmentation viewer"
+
 #: How the desktop knows the application: the Linux desktop entry's name and
 #: the macOS bundle identifier. The distribution's own name, which PyPI keeps
 #: unique, rather than a domain that belongs to an employer.

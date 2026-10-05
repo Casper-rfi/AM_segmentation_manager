@@ -91,6 +91,14 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "--config", default=None,
         help="Segmentation config file defining class names and colours",
     )
+    gui_cmd.add_argument(
+        "--viewer", action="store_true",
+        help=(
+            "Open a viewer: the Curate view alone, for looking through a "
+            "collection without any way to change it -- no other tab, no state "
+            "or families controls, no operations, and no Enable editing switch"
+        ),
+    )
 
     # -- predict -------------------------------------------------------------
     predict_cmd = sub.add_parser(
@@ -351,6 +359,7 @@ def _cmd_gui(args: argparse.Namespace) -> int:
         return run(
             start_path=Path(args.start_path) if args.start_path else None,
             config_path=Path(args.config) if args.config else None,
+            viewer=args.viewer,
         )
     except RuntimeError as exc:
         logger.error("%s", exc)
