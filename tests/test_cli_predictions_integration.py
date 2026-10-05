@@ -1,6 +1,8 @@
 """Integration coverage for selector-based prediction conversion."""
 from pathlib import Path
 
+import pytest
+
 from am_segmentation_manager.cli import main
 
 
@@ -135,9 +137,7 @@ def test_cli_converts_the_prediction_source_asked_for(tmp_path: Path) -> None:
 
 def _annotated_fib_label(tmp_path: Path) -> Path:
     """A project with no history yet, whose FIB image has a label holding annotation."""
-    import numpy as np
-    import pytest
-
+    np = pytest.importorskip("numpy")
     tifffile = pytest.importorskip("tifffile")
     stage, _, fib_image = _build_project(tmp_path)
     blank = np.zeros((8, 8), dtype=np.uint8)
