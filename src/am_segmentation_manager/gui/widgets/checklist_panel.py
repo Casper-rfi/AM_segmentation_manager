@@ -132,7 +132,9 @@ class ChecklistPanel(QGroupBox):
         self.nothing.setVisible(not checking)
         for widget in (self.list, self.instructions, self.help_button):
             widget.setEnabled(checking)
-        self.list.show_ticks([checking and step in ticked for step in range(len(self.steps))])
+        self.list.show_ticks(
+            [ticked is not None and step in ticked for step in range(len(self.steps))]
+        )
         self._current = min(current, len(self.steps) - 1) if checking else None
         for row in range(self.list.count()):
             item = self.list.item(row)

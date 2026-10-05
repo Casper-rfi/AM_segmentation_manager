@@ -925,7 +925,8 @@ class LabelController:
                 headline += ", not marked corrected"
             else:
                 headline += f", marked {declared} image(s) corrected"
-                self.checklist.mark_saved({self.key_for(record) for record in approved})
+                keys = (self.key_for(record) for record in approved)
+                self.checklist.mark_saved({key for key in keys if key is not None})
         # The frames worth visiting are recomputed here rather than by a
         # rescan: marking corrected moves the state this reads, and a label
         # written where there was none changes what a frame's line reports.
