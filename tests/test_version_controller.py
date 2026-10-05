@@ -546,6 +546,63 @@ def test_a_prediction_takes_its_place_in_time_among_the_kept_versions(
     assert controller.rows[0].source == "prediction", "the newest thing is first"
 
 
+def _newer_prediction(tmp_path: Path) -> Path:
+    """A prediction made after every kept version, so it heads the list."""
+    import yaml
+
+    prediction = _prediction(
+        tmp_path / "sem_predictions" / "am_seg", "img_000.tif", 1, "fpn_v6", "run-6"
+    )
+    record = prediction.parent / "am_seg_predictions.yaml"
+    entry = yaml.safe_load(record.read_text())
+    entry["predictions"]["img_000.tif"]["predicted_at"] = "2035-01-01T09:00:00+00:00"
+    record.write_text(yaml.safe_dump(entry))
+    return prediction
+
+
+def test_a_comparison_starts_on_the_label_not_a_newer_prediction(
+    label, recorder, tmp_path
+):
+    """What the label held is what is looked back at; a model's guess is a choice."""
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [_newer_prediction(tmp_path)])
+
+    assert controller.rows[0].source == "prediction"
+    assert controller.rows[controller.default_index].source == "kept"
+
+
+def test_a_comparison_starts_on_a_prediction_only_with_no_kept_version(
+    tmp_path: Path, recorder
+):
+    start_history(tmp_path)
+    fresh = _write(tmp_path / "sem_labels" / "img_000.tif", 2)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(fresh, [_newer_prediction(tmp_path)])
+
+    assert controller.rows[controller.default_index].source == "prediction"
+
+
+def test_a_comparison_does_not_start_on_a_version_it_cannot_show(
+    label, recorder, tmp_path
+):
+    from am_segmentation_manager.operations.archive import versions_of
+
+    (kept,) = versions_of(label.parents[1], "sem_labels/img_000.tif")
+    kept.path.unlink()
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [_newer_prediction(tmp_path)])
+
+    assert controller.rows[controller.default_index].source == "prediction"
+
+
+def test_a_label_with_no_versions_has_nothing_to_start_on(tmp_path: Path, recorder):
+    start_history(tmp_path)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(_write(tmp_path / "sem_labels" / "new.tif", 1))
+
+    assert controller.default_index == -1
+
+
 def test_every_row_carries_its_date_in_the_same_place(label, recorder, tmp_path):
     """The date is what the list is ordered by, so it must be findable."""
     prediction = _prediction(

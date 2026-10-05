@@ -262,6 +262,22 @@ class VersionController:
         )
 
     @property
+    def default_index(self) -> int:
+        """Return the row of :attr:`rows` a comparison starts on, or -1 for none.
+
+        **The newest version of the label that can be shown, before any
+        prediction**, however recent the prediction: what the label held is
+        what a reviewer looks back at, and a newer model's guess is one
+        choice away. A prediction only where no kept version can be shown.
+        """
+        rows = self.rows
+        for source in (KEPT, PREDICTION):
+            for index, row in enumerate(rows):
+                if row.source == source and row.available:
+                    return index
+        return 0 if rows else -1
+
+    @property
     def has_versions(self) -> bool:
         """Return whether there is anything to compare the label against."""
         return bool(self._rows)

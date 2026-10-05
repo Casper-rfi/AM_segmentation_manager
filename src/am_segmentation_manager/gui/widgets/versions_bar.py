@@ -106,8 +106,11 @@ class VersionsBar(QWidget):
         self.set_rows(())
         self.setVisible(False)
 
-    def set_rows(self, rows) -> None:
-        """List *rows*, leaving whether the strip shows to :meth:`set_open`."""
+    def set_rows(self, rows, current: int = 0) -> None:
+        """List *rows*, choosing the one at *current*.
+
+        Whether the strip shows is left to :meth:`set_open`.
+        """
         blocked = self.chooser.blockSignals(True)
         self.chooser.clear()
         for row in rows:
@@ -121,7 +124,7 @@ class VersionsBar(QWidget):
                     "archive along. It can be neither shown nor put back.",
                     Qt.ItemDataRole.ToolTipRole,
                 )
-        self.chooser.setCurrentIndex(0 if rows else -1)
+        self.chooser.setCurrentIndex(current if 0 <= current < len(rows) else -1)
         self.chooser.blockSignals(blocked)
         self._chosen(self.chooser.currentIndex())
 

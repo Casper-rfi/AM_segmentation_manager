@@ -157,6 +157,50 @@ def test_the_strip_lists_what_is_kept(qt_app, label, recorder):
         destroy(bar)
 
 
+def test_the_strip_starts_on_the_row_it_is_given(qt_app, label, recorder, tmp_path):
+    prediction = tmp_path / "sem_predictions" / "am_seg" / "img_000.tif"
+    _write(prediction, 1)
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label, [prediction])
+    bar = VersionsBar()
+    chosen = []
+    try:
+        bar.selected.connect(chosen.append)
+        bar.set_rows(controller.rows, 1)
+
+        assert bar.chosen == 1 and chosen == [1]
+    finally:
+        destroy(bar)
+
+
+def test_holding_b_starts_on_the_label_not_a_newer_prediction(
+    qt_app, config, label, recorder, tmp_path, monkeypatch
+):
+    """A prediction made after the last save heads the list; B still shows the label."""
+    import yaml
+
+    prediction = _write(tmp_path / "sem_predictions" / "am_seg" / "img_000.tif", 1)
+    (prediction.parent / "am_seg_predictions.yaml").write_text(yaml.safe_dump({
+        "predictions": {"img_000.tif": {"predicted_at": "2035-01-01T09:00:00+00:00"}}
+    }))
+    panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
+    try:
+        monkeypatch.setattr(LabelController, "current_key", property(lambda self: label))
+        monkeypatch.setattr(
+            LabelController, "record",
+            property(lambda self: type("Record", (), {"predictions": (prediction,)})()),
+        )
+        panel.refresh_versions()
+        assert panel.versions_controller.rows[0].source == "prediction"
+
+        panel._compare_key_held(True)
+
+        assert panel.versions_controller.selected.source == "kept"
+        assert np.array_equal(panel._label_to_draw(), _pixels(2))
+    finally:
+        destroy(panel)
+
+
 def test_choosing_another_version_stops_showing_the_last(qt_app, label, recorder):
     bar = VersionsBar()
     seen = []

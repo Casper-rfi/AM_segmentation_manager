@@ -1107,7 +1107,9 @@ class LabelPanel(QWidget):
             self.controller.current_key,
             record.predictions if record is not None else (),
         )
-        self.versions.set_rows(self.versions_controller.rows)
+        self.versions.set_rows(
+            self.versions_controller.rows, self.versions_controller.default_index
+        )
         self._refresh_versions_switch()
 
     def _refresh_versions_switch(self) -> None:
