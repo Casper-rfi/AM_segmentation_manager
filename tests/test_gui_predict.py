@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.gui.operations_controller import OperationsController
+from am_segmentation_manager.gui.operations_controller import OperationsController, _series_named
+from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.predict_process import ProcessOutcome
 from am_segmentation_manager.progress import Cancellation, OperationCancelled
 from am_segmentation_manager.scanner import Scanner
@@ -99,6 +100,26 @@ def test_a_preview_writes_nothing_and_loads_no_model(controller, tmp_path: Path)
     assert report.count
     assert not report.applied
     assert "Would predict" in report.headline
+
+
+def test_the_preview_names_the_series_predicted(controller, tmp_path: Path):
+    """A ticked project once mixed series under a headline naming only the beam."""
+    report = controller.predict(
+        records_of(build_dataset(tmp_path).root), weights_file(tmp_path), dry_run=True
+    )
+
+    assert report.headline.startswith(
+        f"Would predict {report.count} Adaptive Polishing SEM image(s)"
+    )
+
+
+def test_several_series_are_each_named():
+    records = [
+        ImageRecord(image_path=Path(f"{name}.tif"), modality="SEM", series=series)
+        for name, series in (("a", "reference"), ("b", "adaptive"), ("c", "reference"))
+    ]
+
+    assert _series_named(records) == "Adaptive Polishing + reference"
 
 
 def test_the_preview_names_the_condition_predicted_from(controller, tmp_path: Path):
@@ -247,7 +268,7 @@ def test_a_run_reports_what_the_child_wrote(controller, tmp_path: Path):
 
     assert report.applied
     assert report.count == 3
-    assert "Predicted 3 SEM image(s)" in report.headline
+    assert "Predicted 3 Adaptive Polishing SEM image(s)" in report.headline
 
 
 def test_a_run_names_the_conditions_it_predicted_from(controller, tmp_path: Path):
@@ -260,7 +281,7 @@ def test_a_run_names_the_conditions_it_predicted_from(controller, tmp_path: Path
         )),
     )
 
-    assert "Predicted 3 SEM image(s) from sem (2) and sem-5kV (1) with " in report.headline
+    assert "Predicted 3 Adaptive Polishing SEM image(s) from sem (2) and sem-5kV (1) with " in report.headline
 
 
 def test_a_stopped_run_keeps_what_it_wrote_and_says_so(controller, tmp_path: Path):

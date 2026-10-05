@@ -88,6 +88,7 @@ class CurationWindowParts(Protocol):
         cancellation: Cancellation | None = None,
         rescan: bool = False,
         confirm: Callable[[str, OperationReport, str], bool] | None = None,
+        notes: tuple[str, ...] = (),
     ) -> None: ...
 
     def _operation_applied(
@@ -99,6 +100,8 @@ class CurationWindowParts(Protocol):
     def _show_report(self, title: str, report: OperationReport) -> None: ...
 
     def _editable_records(self) -> list | None: ...
+
+    def _scope_notes(self) -> tuple[str, ...]: ...
 
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

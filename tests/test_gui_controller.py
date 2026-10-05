@@ -831,33 +831,114 @@ def test_a_ticked_lamella_covers_only_the_series_on_screen():
     assert {record.series for record in controller.scoped_records()} == {"reference"}
 
 
-def test_a_ticked_lamella_holding_none_of_the_chosen_series_shows_what_it_has():
-    """The same answer navigating to it would give -- see frames.resolve_series.
-
-    Contributing nothing at all would make a tick on such a lamella look like
-    it had done something when it had not.
-    """
+def _reference_only(name: str = "02-beta", number: str = "02") -> Lamella:
+    """A lamella holding a reference image and nothing else."""
     stage = Stage(
-        name="01-alpha_stage",
-        path=Path("01-alpha_stage"),
+        name=f"{name}_stage",
+        path=Path(f"{name}_stage"),
         number="01",
         images=[
             ImageRecord(
-                image_path=Path("01-alpha/ref_Polishing_start_eb.tif"),
+                image_path=Path(f"{name}/ref_Polishing_start_eb.tif"),
                 modality="SEM",
                 series="reference",
             )
         ],
     )
-    lamella = Lamella(name="01-alpha", path=Path("01-alpha"), number="01", stages=[stage])
+    return Lamella(name=name, path=Path(name), number=number, stages=[stage])
+
+
+def _mixed_project() -> Project:
+    """One lamella of Adaptive Polishing images, one of a reference image only."""
+    adaptive = Lamella(
+        name="01-alpha", path=Path("01-alpha"), number="01",
+        stages=[make_stage("01-alpha_stage", "01", 2, fib=False)],
+    )
+    return Project(
+        name="project-a", path=Path("project-a"),
+        lamellae=[adaptive, _reference_only()], number="001",
+    )
+
+
+def test_a_ticked_lamella_holding_none_of_the_chosen_series_contributes_nothing():
+    """Falling back to what it holds predicted reference images with a model
+    chosen for Adaptive Polishing, under a headline naming neither."""
     controller = make_controller([Project(
-        name="project-a", path=Path("project-a"), lamellae=[lamella], number="001"
+        name="project-a", path=Path("project-a"),
+        lamellae=[_reference_only("01-alpha", "01")], number="001",
     )])
     controller.set_target("SEM")
     controller.set_lamella_checked(0, True)
 
-    assert controller.wanted_series == "adaptive"
+    assert controller.series == "reference", "navigating still falls back"
+    assert controller.scoped_records() == []
+    assert controller.lamellae_left_out() == 1
+
+
+def test_a_ticked_project_covers_only_the_chosen_series_of_every_lamella():
+    controller = make_controller([_mixed_project()])
+    controller.set_target("SEM")
+    controller.set_project_checked(0, True)
+
+    assert {record.series for record in controller.scoped_records()} == {"adaptive"}
+    assert controller.lamellae_left_out() == 1
+
+
+def test_choosing_another_series_covers_it_in_every_lamella_that_holds_it():
+    controller = make_controller([_mixed_project()])
+    controller.set_target("SEM")
+    controller.select_lamella(1)
+    controller.set_series("reference")
+    controller.set_project_checked(0, True)
+
     assert {record.series for record in controller.scoped_records()} == {"reference"}
+    assert controller.lamellae_left_out() == 1, "the Adaptive Polishing lamella"
+
+
+def test_the_reach_line_says_what_ticked_lamellae_leave_out():
+    controller = make_controller([_mixed_project()])
+    controller.set_target("SEM")
+    controller.set_project_checked(0, True)
+
+    assert controller.reach().summary() == (
+        "Covers 2 images, no label yet, 1 lamella. 1 ticked lamella holds no "
+        "Adaptive Polishing images and is left out"
+    )
+
+
+def test_a_selection_leaving_everything_out_says_why():
+    controller = make_controller([Project(
+        name="project-a", path=Path("project-a"),
+        lamellae=[_reference_only("01-alpha", "01"), _reference_only()], number="001",
+    )])
+    controller.set_project_checked(0, True)
+
+    assert controller.left_out_note() == (
+        "2 ticked lamellae hold no Adaptive Polishing images and are left out"
+    )
+    assert controller.reach().summary().startswith("Nothing selected. 2 ticked lamellae")
+
+
+def test_frames_leave_nothing_out():
+    """A frame is on the timeline, so it is of the series on screen."""
+    controller = make_controller([_mixed_project()])
+    controller.selection.toggle(0)
+
+    assert controller.lamellae_left_out() == 0
+    assert controller.left_out_note() == ""
+
+
+def test_a_chosen_series_switched_off_gives_way_to_one_switched_on():
+    """The choice is kept for when it is on again, but a batch cannot cover a
+    series nothing on the list shows."""
+    controller = make_controller([_mixed_project()])
+    controller.set_shown_series(("reference",))
+    controller.set_project_checked(0, True)
+
+    assert controller.wanted_series == "adaptive"
+    assert controller.batch_series == "reference"
+    assert {record.series for record in controller.scoped_records()} == {"reference"}
+    assert controller.lamellae_left_out() == 0, "the other lamella is not listed"
 
 
 def test_a_ticked_project_covers_every_lamella():

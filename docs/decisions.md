@@ -147,11 +147,11 @@ rather than appending to it.
   image and puts a reference image's files outside the lamella, where the next scan never looks.
   The scanner resolves both once per image set and the record carries them, so reading and writing
   cannot disagree; a record that does not say raises rather than guessing.
-- **A ticked lamella covers only the series on screen.** What is ticked has to be the whole of
-  what an operation touches; filtering by modality alone reached every series, so predicting a
-  lamella while looking at its Adaptive Polishing timeline predicted its reference and alignment
-  images too. Each lamella is asked what it can show of the chosen series, as navigating to it
-  would — `frames.resolve_series` — so one holding none of it contributes what it has.
+- **A ticked lamella covers only the chosen series, never a fallback.** What is ticked is the whole
+  of what an operation touches; falling back per lamella, as navigating does, would predict reference
+  images of every lamella without Adaptive Polishing ones, with the Adaptive Polishing model. So
+  `CurationController.batch_series` is one for the collection, and a lamella holding none of it is
+  counted on the reach line (`test_a_ticked_project_covers_only_the_chosen_series_of_every_lamella`).
 - **`predictions/clean/` is indexed but can never become a label**, for the reason
   `test_post_processed_predictions_are_never_converted` gives. That will not change upstream, so it
   is a property of `layout.py` (`is_convertible_prediction`) rather than a choice offered to the

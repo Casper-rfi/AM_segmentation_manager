@@ -444,7 +444,7 @@ def test_this_family_matches_ticked_lamellae_by_name_in_any_case(tmp_path: Path)
 
 
 def test_this_family_keeps_images_of_no_family(tmp_path: Path):
-    """A lamella holding only reference images contributes them to a ticked scope.
+    """Reference images reach a ticked scope while a family is chosen.
 
     They sit directly in the lamella, so no directory names a family for them
     and there is none to choose them by.
@@ -454,11 +454,10 @@ def test_this_family_keeps_images_of_no_family(tmp_path: Path):
     (project / "lam_011" / "ref_Polishing_start_eb.tif").write_bytes(b"")
     controller = make_controller(tmp_path)
     controller.set_condition("sem-5kV", "SEM")
+    controller.set_series("reference")
     controller.check_all_lamellae(True)
 
-    assert conditions(controller.scoped_records()) == [
-        "(loose)", "sem-5kV", "sem-5kV", "sem-5kV_fi4",
-    ]
+    assert conditions(controller.scoped_records()) == ["(loose)"]
 
 
 def test_the_reach_line_names_the_family(tmp_path: Path):

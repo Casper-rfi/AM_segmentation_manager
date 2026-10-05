@@ -176,7 +176,9 @@ To change a state, use the **State** tab on the right:
    **Ctrl-click** frames on the timeline (⌘-click on a Mac; **Shift-click**
    extends a run), or tick
    projects or lamellae in the lists. *Applies to* and *Covers* say how much you
-   have chosen.
+   have chosen. A ticked project or lamella covers only the series chosen under
+   **Series**; a lamella holding none of it is left out, and *Covers* says how
+   many were.
 3. Choose the beam: **SEM**, **FIB** or **Both**.
 4. Choose the state. Larger changes ask before they are made.
 

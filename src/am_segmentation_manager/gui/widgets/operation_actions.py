@@ -94,6 +94,7 @@ class OperationActions(_Window):
                 on_progress=None if dry else progressed.emit,
             ),
             cancellation=cancellation,
+            notes=self._scope_notes(),
         )
 
     def _offer_devices(self) -> None:
@@ -140,6 +141,7 @@ class OperationActions(_Window):
             lambda allow, dry: self.operations_controller.convert_predictions(
                 records, allow_overwrite=allow, dry_run=dry, prefer=origin
             ),
+            notes=self._scope_notes(),
         )
 
     def _find_specks(self, size: int) -> None:
@@ -203,6 +205,7 @@ class OperationActions(_Window):
                 allow_corrected=allow,
                 dry_run=dry,
             ),
+            notes=self._scope_notes(),
         )
 
     def _measure_archive(self) -> None:

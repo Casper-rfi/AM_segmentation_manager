@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
@@ -138,6 +139,7 @@ class OperationRunner(_Window):
         cancellation: Cancellation | None = None,
         rescan: bool = False,
         confirm: Callable[[str, OperationReport, str], bool] | None = None,
+        notes: tuple[str, ...] = (),
     ) -> None:
         """Preview an operation, confirm it, then apply what was previewed.
 
@@ -157,6 +159,8 @@ class OperationRunner(_Window):
                 one. For an operation whose answer is more than yes -- a merge
                 collects a decision per conflict -- and it runs here, on the
                 thread that may open a dialog, rather than inside *run*.
+            notes: Lines every preview opens with, saying what the selection
+                leaves out -- see :meth:`_scope_notes`.
 
         Preview and apply are two runs of the same function rather than one run
         whose result is replayed: a preview held across a dialog describes a
@@ -166,6 +170,7 @@ class OperationRunner(_Window):
         ask = confirm if confirm is not None else self._confirm_report
 
         def previewed(report: OperationReport, allowed: bool = False) -> None:
+            report = replace(report, lines=(*notes, *report.lines))
             if report.blocked and not allowed:
                 action = report.action or BLOCKED_ACTIONS.get(report.blocked, "Include them")
                 if not ask(title, report, action):
@@ -243,7 +248,12 @@ class OperationRunner(_Window):
             return None
         records = self.controller.scoped_records()
         if not records:
-            self._flash("Nothing selected")
+            self._flash(self.controller.left_out_note() or "Nothing selected")
             return None
         return records
+
+    def _scope_notes(self) -> tuple[str, ...]:
+        """Return what a preview of the selection says it leaves out, if anything."""
+        note = self.controller.left_out_note()
+        return (f"{note}.",) if note else ()
 

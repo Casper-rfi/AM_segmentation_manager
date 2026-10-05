@@ -25,6 +25,8 @@ from ..history import Recorder
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
     PREDICTION_ORIGINS,
+    SERIES,
+    SERIES_LABELS,
     PredictionOrigin,
     other_prediction_origin,
 )
@@ -531,9 +533,10 @@ class OperationsController:
             context = self._prediction_context(plan, source)
             if not plan.predictions:
                 return OperationReport("Nothing to predict.", context)
+            series = _series_named(item.record for item in plan.predictions)
             return OperationReport(
-                f"Would predict {len(plan.predictions)} {plan.modality} image(s)"
-                f"{describe_conditions(plan.conditions)} with {weights.name}.",
+                f"Would predict {len(plan.predictions)} {series} {plan.modality} "
+                f"image(s){describe_conditions(plan.conditions)} with {weights.name}.",
                 tuple(
                     f"{self._relative(item.destination)}: {item.describe()}"
                     for item in plan.predictions
@@ -546,10 +549,10 @@ class OperationsController:
             records, weights, device,
             on_progress=on_progress, cancellation=cancellation,
         )
-        return self._report_outcome(outcome, weights)
+        return self._report_outcome(outcome, weights, _series_named(records))
 
     def _report_outcome(
-        self, outcome: ProcessOutcome, weights: Path
+        self, outcome: ProcessOutcome, weights: Path, series: str
     ) -> OperationReport:
         """Turn what the child reported into the report the window shows."""
         if outcome.error:
@@ -574,7 +577,7 @@ class OperationsController:
         if outcome.stopped:
             return OperationReport(
                 f"Stopped after {outcome.written} of {outcome.total} "
-                f"{outcome.modality} image(s). What was predicted is kept; run "
+                f"{series} {outcome.modality} image(s). What was predicted is kept; run "
                 f"it again to continue.",
                 lines[:outcome.written] + context,
                 outcome.written,
@@ -582,7 +585,7 @@ class OperationsController:
                 written=created,
             )
         return OperationReport(
-            f"Predicted {outcome.written} {outcome.modality} image(s)"
+            f"Predicted {outcome.written} {series} {outcome.modality} image(s)"
             f"{describe_conditions(outcome.conditions)} with {weights.name}.",
             lines + context,
             outcome.written,
@@ -1043,3 +1046,14 @@ class OperationsController:
         if problems:
             headline = f"{headline} -- {problems} row(s) need attention."
         return OperationReport(headline, tuple(detail), problems)
+
+
+def _series_named(records: Iterable[ImageRecord]) -> str:
+    """Return the series *records* belong to as a headline names them.
+
+    ``"Adaptive Polishing"``, or several joined with ``+``: the series is what
+    says which images a run covers, a selection naming only a beam being
+    readable as every image of it.
+    """
+    present = {record.series for record in records}
+    return " + ".join(SERIES_LABELS[name] for name in SERIES if name in present)

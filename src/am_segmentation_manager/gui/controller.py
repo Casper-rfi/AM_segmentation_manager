@@ -310,6 +310,17 @@ class FolderSummary:
     status: CurationStatus
 
 
+def describe_left_out(lamellae: int, series: str) -> str:
+    """Return the sentence saying *lamellae* ticked lamellae hold none of *series*, or empty."""
+    if not lamellae:
+        return ""
+    verb = "holds" if lamellae == 1 else "hold"
+    return (
+        f"{counted(lamellae, 'ticked lamella', 'ticked lamellae')} {verb} no "
+        f"{SERIES_LABELS[series]} images and {'is' if lamellae == 1 else 'are'} left out"
+    )
+
+
 @dataclass(frozen=True)
 class StateChangeReach:
     """How far a state change would reach, counted before it is made.
@@ -336,6 +347,9 @@ class StateChangeReach:
             only where there was that choice.
         every_family: Whether there was that choice and the change reaches
             every family.
+        left_out: Ticked lamellae holding none of *series*, which the change
+            does not reach.
+        series: The series ticked projects and lamellae contribute.
     """
 
     images: int
@@ -347,9 +361,17 @@ class StateChangeReach:
     family_choice: bool = False
     families: tuple[str, ...] = ()
     every_family: bool = False
+    left_out: int = 0
+    series: str = DEFAULT_SERIES
 
     def summary(self) -> str:
         """Return the description shown above the state controls."""
+        covers = self._covers()
+        note = describe_left_out(self.left_out, self.series)
+        return f"{covers}. {note}" if note else covers
+
+    def _covers(self) -> str:
+        """Return what the change reaches, or that it reaches nothing."""
         if not self.images:
             return "Nothing selected"
         parts = ", ".join([
@@ -1468,9 +1490,8 @@ class CurationController:
         level is picked out. The window disables those controls as well, and
         this is the backstop that holds however a change was triggered: it is
         the one method every operation reads, so filtering here covers all of
-        them rather than each guarding itself. Ticked lamellae need it even
-        when the tab is showing a labelled series, one that holds no other
-        resolving to ``other`` on its own.
+        them rather than each guarding itself. Ticked lamellae need it where
+        :attr:`batch_series` is ``other``, the chosen series being switched off.
         """
         return self._narrowed(self._candidate_records())
 
@@ -1514,37 +1535,58 @@ class CurationController:
             for lamella in project.lamellae
         ]
 
+    @property
+    def batch_series(self) -> str:
+        """Return the one series a ticked project or lamella contributes.
+
+        The series chosen, or the first switched on where it is switched off.
+        Decided once for the whole collection, never per lamella: a lamella
+        holding none of it contributes nothing rather than a series nobody
+        chose, and is counted by :meth:`lamellae_left_out`.
+        """
+        return resolve_series(self.wanted_series, self._shown_series)
+
     def _records_of(self, lamellae: list[Lamella]) -> list:
-        """Return every record of *lamellae* in the edit target and the series shown.
+        """Return every record of *lamellae* in the edit target and :attr:`batch_series`.
 
         **Both narrowings, not only the modality.** A 2026 lamella holds its
         reference images and its alignment runs beside its Adaptive Polishing
         stages, and the tab shows one series at a time; a ticked lamella that
         reached every series would predict, convert or restate images the
-        timeline was not showing. Frame-level selection was already scoped this
-        way, being built from the frames themselves.
-
-        Each lamella is asked what it can show of the chosen series, exactly as
-        navigating to it would -- see :func:`~..frames.resolve_series` -- so a
-        lamella holding none of it contributes the series it does hold rather
-        than nothing at all. One holding only series switched off contributes
-        nothing, not being on the list -- see :meth:`set_shown_series`.
+        timeline was not showing. One holding only series switched off
+        contributes nothing, not being on the list -- see
+        :meth:`set_shown_series`.
         """
         modalities = self._targeted()
-        records: list = []
-        for lamella in lamellae:
-            present = [
-                name for name in series_present(lamella) if name in self._shown_series
-            ]
-            if not present:
-                continue
-            series = resolve_series(self.wanted_series, present)
-            records.extend(
-                record
-                for record in lamella.image_records
-                if record.modality in modalities and record.series == series
-            )
-        return records
+        series = self.batch_series
+        return [
+            record
+            for lamella in lamellae
+            if self._is_listed(lamella)
+            for record in lamella.image_records
+            if record.modality in modalities and record.series == series
+        ]
+
+    def lamellae_left_out(self) -> int:
+        """Return how many ticked, listed lamellae hold none of :attr:`batch_series`.
+
+        Zero unless projects or lamellae are what is ticked. A lamella holding
+        no images at all is not counted, there being nothing it could add.
+        """
+        if self.selection.level not in (LEVEL_PROJECTS, LEVEL_LAMELLAE):
+            return 0
+        series = self.batch_series
+        return sum(
+            1
+            for lamella in self._checked_lamellae()
+            if (present := series_present(lamella))
+            and self._is_listed(lamella)
+            and series not in present
+        )
+
+    def left_out_note(self) -> str:
+        """Return the sentence saying which ticked lamellae a change leaves out, or empty."""
+        return describe_left_out(self.lamellae_left_out(), self.batch_series)
 
     def _held_records(self) -> list[ImageRecord]:
         """Return every record of the lamellae a state change can reach.
@@ -1626,7 +1668,8 @@ class CurationController:
         several = _beams_with_several_families(candidates)
         if not scoped:
             return StateChangeReach(
-                images=0, labels=0, shared=0, lamellae=0, family_choice=bool(several)
+                images=0, labels=0, shared=0, lamellae=0, family_choice=bool(several),
+                left_out=self.lamellae_left_out(), series=self.batch_series,
             )
         confined = bool(several) and self.family_scope == "this"
         families = (
@@ -1664,6 +1707,8 @@ class CurationController:
             family_choice=bool(several),
             families=families,
             every_family=bool(several) and self.family_scope == "every",
+            left_out=self.lamellae_left_out(),
+            series=self.batch_series,
         )
 
     def apply_state(self, state: RecordState, *, confirm_corrected: bool = False) -> int:

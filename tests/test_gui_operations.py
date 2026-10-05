@@ -264,7 +264,7 @@ def test_a_prediction_reports_where_each_one_went(controller, tmp_path: Path):
         destinations=(str(tmp_path / "a.tif"), str(tmp_path / "b.tif")),
     )
 
-    report = controller._report_outcome(outcome, tmp_path / "model.pth")
+    report = controller._report_outcome(outcome, tmp_path / "model.pth", "Adaptive Polishing")
 
     assert report.written == (tmp_path / "a.tif", tmp_path / "b.tif")
 
@@ -282,7 +282,7 @@ def test_a_stopped_run_reports_only_what_it_reached(controller, tmp_path: Path):
         ),
     )
 
-    report = controller._report_outcome(outcome, tmp_path / "model.pth")
+    report = controller._report_outcome(outcome, tmp_path / "model.pth", "Adaptive Polishing")
 
     assert report.written == (tmp_path / "a.tif",)
 

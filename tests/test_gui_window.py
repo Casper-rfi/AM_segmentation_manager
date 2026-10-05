@@ -2516,6 +2516,42 @@ def test_predicting_with_editing_off_says_so_without_asking_for_anything(
     assert shown == ["Editing is off"]
 
 
+def test_a_selection_leaving_everything_out_says_why(window, monkeypatch):
+    """"Nothing selected" over ticked lamellae reads as the ticks not working."""
+    window.state_panel.enable_check.setChecked(True)
+    note = "1 ticked lamella holds no Adaptive Polishing images and is left out"
+    monkeypatch.setattr(window.controller, "scoped_records", lambda: [])
+    monkeypatch.setattr(window.controller, "left_out_note", lambda: note)
+    flashed: list[str] = []
+    monkeypatch.setattr(window, "_flash", flashed.append)
+
+    window._predict("model.pth")
+
+    assert flashed == [note]
+
+
+def test_a_preview_opens_with_what_the_selection_leaves_out(window, monkeypatch):
+    from am_segmentation_manager.gui.report import OperationReport
+
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: on_done(work()),
+    )
+    previewed: list[OperationReport] = []
+    monkeypatch.setattr(
+        window, "_confirm_report",
+        lambda title, report, action: previewed.append(report) and False,
+    )
+
+    window._operate(
+        "Predict labels",
+        lambda allow, dry: OperationReport("Would predict 1.", ("a.tif: write",), 1),
+        notes=("1 ticked lamella is left out.",),
+    )
+
+    assert previewed[0].lines == ("1 ticked lamella is left out.", "a.tif: write")
+
+
 def test_pressing_predict_with_an_empty_box_asks_for_a_model_last(window, monkeypatch):
     window.state_panel.enable_check.setChecked(True)
     _tick_lamella(window)
