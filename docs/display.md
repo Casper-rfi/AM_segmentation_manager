@@ -65,7 +65,9 @@ of one of these files, is held by `test_docs.py`.
   a name in the last change breaks (`test_a_model_name_does_not_widen_the_curate_tab`), and the floor
   is held against a named screen size (`test_no_tab_needs_more_room_than_the_smallest_screen_supported`).
   `fit_to_screen` is the other half, as `DEFAULT_SIZE` and a restored geometry may name another screen
-  (`test_a_window_remembered_off_the_edge_is_moved_back_on`).
+  (`test_a_window_remembered_off_the_edge_is_moved_back_on`). **A dialog that can run long scrolls**
+  above buttons that stay, capped by `common.fit_dialog_to_screen`
+  (`test_the_settings_dialog_is_capped_to_the_screen_and_scrolls`).
 - **A worker thread that will not stop outlives the window rather than being collected.** A frame
   read is one call into an image library and cannot be interrupted part-way, so a file on a
   cloud-synced volume outlasts any deadline worth waiting for on close. `loader.keep_alive` states

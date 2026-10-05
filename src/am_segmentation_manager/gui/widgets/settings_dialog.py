@@ -5,29 +5,34 @@ machine: the name changes are recorded under, kept in the home directory, and th
 accent and values the window opens on, declared by ``gui/preferences.py``. **Nothing here is
 asked for**: the name field opens empty and clearing it is a supported answer. The
 fields below it are built from :data:`~...preferences.PREFERENCES`, so adding a
-preference is a row there.
+preference is a row there. They scroll above buttons that stay put, the dialog
+being capped to the screen it opens on.
 """
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import TypeAlias
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QSize, Qt
 from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QLabel,
     QLineEdit,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from ...history import resolve_author
 from .. import preferences
 from . import theme
+from .common import fit_dialog_to_screen
 from .controls import SegmentedControl, ToggleSwitch, WrappingLabel
 
 __all__ = ["SettingsDialog", "author_summary"]
@@ -36,6 +41,9 @@ __all__ = ["SettingsDialog", "author_summary"]
 #: wrap to a few lines rather than a column, and that a spin box beside its
 #: caption is a control rather than a sliver.
 DIALOG_WIDTH = 420
+
+#: Kept clear of the screen's edges when the dialog is capped to fit it.
+SCREEN_MARGIN = 64
 
 #: How wide a number's box may get. A form stretches its field column, and a
 #: two-digit answer in a box the width of the dialog reads as an empty field
@@ -105,7 +113,11 @@ class SettingsDialog(QDialog):
         self._preview_accent = preview_accent
         self.setWindowTitle("Settings")
         self.setMinimumWidth(DIALOG_WIDTH)
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        #: Everything but the buttons, which scrolls where the screen is short.
+        self._body = QWidget()
+        layout = QVBoxLayout(self._body)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         current, _source = resolve_author()
 
@@ -138,11 +150,40 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(WrappingLabel(APPLIED_NOTE))
 
+        self._scroll = QScrollArea()
+        self._scroll.setWidget(self._body)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.addWidget(self._scroll)
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        outer.addWidget(buttons)
         self.buttons = buttons
+        self.fit_to_screen()
+
+    def fit_to_screen(self) -> None:
+        """Size to every setting, or to the screen where that is smaller.
+
+        Measured from the body rather than the dialog, a scroll area reporting
+        a small default hint whatever it holds; and its height at the width it
+        will have, the notes being word-wrapped.
+        """
+        outer = self.layout()
+        assert outer is not None, "the dialog is laid out when it is built"
+        margins = outer.contentsMargins()
+        wide = max(DIALOG_WIDTH, self._body.sizeHint().width() + margins.left() + margins.right())
+        body = self._body.layout()
+        assert body is not None, "the body is laid out when it is built"
+        inner = wide - margins.left() - margins.right()
+        tall = (
+            (body.heightForWidth(inner) if body.hasHeightForWidth() else body.sizeHint().height())
+            + margins.top() + margins.bottom() + outer.spacing()
+            + self.buttons.sizeHint().height()
+        )
+        fit_dialog_to_screen(self, QSize(wide, tall), self._scroll, margin=SCREEN_MARGIN)
 
     def _build_group(self, title: str, entries, held) -> QGroupBox:
         """Return one box of preferences, a row per entry."""

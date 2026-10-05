@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QSize, Qt
 from qtpy.QtWidgets import (
     QApplication,
     QDialog,
@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .common import mark_image
+from .common import fit_dialog_to_screen, mark_image
 from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram
 from .label_panel import CLASS_KEYS, LOCK_KEYS
@@ -308,15 +308,7 @@ class ShortcutHelp(QDialog):
         around = margins.top() + margins.bottom() + layout.spacing()
         tall = wanted.height() + around + self._buttons.sizeHint().height()
         wide = wanted.width() + margins.left() + margins.right()
-
-        screen = self.screen() or QApplication.primaryScreen()
-        room = screen.availableGeometry()
-        height = min(tall, room.height() - SCREEN_MARGIN)
-        if height < tall:
-            # Room for the scrollbar the cap has just made necessary, or the
-            # last column of the table goes under it.
-            wide += self._scroll.verticalScrollBar().sizeHint().width()
-        self.resize(min(wide, room.width() - SCREEN_MARGIN), height)
+        fit_dialog_to_screen(self, QSize(wide, tall), self._scroll, margin=SCREEN_MARGIN)
 
     def is_in_front(self) -> bool:
         """Return whether this list is the window a key press is aimed at.

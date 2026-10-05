@@ -22,6 +22,7 @@ from qtpy.QtCore import (
     QEvent,
     QObject,
     QPointF,
+    QSize,
     Qt,
 )
 from qtpy.QtGui import (
@@ -36,10 +37,12 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QCompleter,
     QFrame,
     QLabel,
+    QScrollArea,
     QWidget,
 )
 
@@ -50,6 +53,27 @@ from ...layout import family_key
 from . import theme
 
 logger = logging.getLogger(__name__)
+
+
+def fit_dialog_to_screen(
+    dialog: QWidget, wanted: QSize, scroll: QScrollArea, *, margin: int
+) -> None:
+    """Size *dialog* to *wanted*, or to its screen, less *margin*, where that is smaller.
+
+    **A dialog sized past the screen has no scrollbar anybody can reach**, so
+    whatever might run long sits in *scroll* and the cap is what puts its bar
+    to use. Room is left for that bar where the cap makes it appear, or the
+    last column of what it holds goes under it. The screen is the parent's
+    where there is one, a dialog not yet shown having none of its own.
+    """
+    parent = dialog.parentWidget()
+    screen = (parent or dialog).screen() or QApplication.primaryScreen()
+    room = screen.availableGeometry()
+    height = min(wanted.height(), room.height() - margin)
+    width = wanted.width()
+    if height < wanted.height():
+        width += scroll.verticalScrollBar().sizeHint().width()
+    dialog.resize(min(width, room.width() - margin), height)
 
 
 #: What each label status is called, and how strongly it is said. Shared by the

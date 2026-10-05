@@ -3706,6 +3706,32 @@ def test_every_group_of_settings_gets_the_height_its_rows_need(qt_app, settings)
         destroy(dialog)
 
 
+def test_the_settings_dialog_is_capped_to_the_screen_and_scrolls(qt_app, settings):
+    """It ran past a laptop's screen, leaving the last settings and OK beyond
+    reach: the settings scroll instead, under buttons that stay in view. The
+    offscreen screen is shorter than every setting together, as a laptop's is."""
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import (
+        SCREEN_MARGIN,
+        SettingsDialog,
+    )
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        dialog.show()
+        qt_app.processEvents()
+        room = qt_app.primaryScreen().availableGeometry()
+
+        assert dialog.height() <= room.height() - SCREEN_MARGIN
+        assert dialog.width() <= room.width() - SCREEN_MARGIN
+        assert dialog._body.height() > dialog._scroll.viewport().height()
+        assert dialog._scroll.verticalScrollBar().isVisible()
+        assert dialog.buttons.isVisible()
+        assert dialog.buttons.geometry().bottom() <= dialog.rect().bottom()
+    finally:
+        destroy(dialog)
+
+
 def test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at(
     qt_app, settings
 ):
