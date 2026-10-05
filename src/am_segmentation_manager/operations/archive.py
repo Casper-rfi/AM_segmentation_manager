@@ -45,6 +45,7 @@ __all__ = [
     "projected_archive_path",
     "version_directory",
     "versions_of",
+    "written_by",
 ]
 
 #: How many characters of the digest go in an archived filename. Enough to tell
@@ -449,6 +450,35 @@ def label_versions(
             )
         )
     return sorted(found, key=_version_order)
+
+
+#: Entries that re-encode a label without changing its pixels, and so cannot
+#: be what made a version.
+_REENCODINGS: frozenset[str] = frozenset({"label-compressed"})
+
+
+def written_by(version: ArchivedVersion, log: HistoryLog) -> Event | None:
+    """Return the entry that wrote *version*'s pixels, or None where none says.
+
+    The entry that archived a version names its digest as ``parent_digest``; the
+    writer is the last entry before it recording that digest, a re-encoding
+    passed over. None where the version has no archiving entry, that entry
+    names no parent, or nothing before it wrote that digest -- a label that was
+    there before the project kept a history.
+    """
+    archived = version.event
+    if archived is None:
+        return None
+    parent = archived.data.get("parent_digest")
+    if not isinstance(parent, str) or not parent:
+        return None
+    writer = None
+    for event in events_for(log, version.target):
+        if event.id == archived.id:
+            return writer
+        if event.kind not in _REENCODINGS and event.data.get("digest") == parent:
+            writer = event
+    return None
 
 
 def _version_order(version: ArchivedVersion) -> tuple[str, str]:

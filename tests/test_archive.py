@@ -825,3 +825,14 @@ def test_a_label_that_cannot_be_read_at_all_is_not_written_over(tmp_path: Path, 
 
     assert destination.read_bytes() == UNDECODABLE
     assert not archive_root(project).exists() or not any(archive_root(project).rglob("*.tif"))
+
+
+def test_a_version_with_no_entry_archiving_it_has_no_writer(tmp_path: Path):
+    from am_segmentation_manager.history import HistoryLog
+    from am_segmentation_manager.operations.archive import ArchivedVersion, written_by
+
+    version = ArchivedVersion(
+        path=tmp_path / "v.tif", target="sem_labels/v.tif", event=None, size=0
+    )
+
+    assert written_by(version, HistoryLog(path=tmp_path, events=())) is None

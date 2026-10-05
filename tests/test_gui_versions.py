@@ -62,15 +62,17 @@ def label(tmp_path: Path, recorder) -> Path:
     """A label with one kept version, in a project that keeps a history."""
     start_history(tmp_path)
     path = tmp_path / "sem_labels" / "img_000.tif"
-    _write(path, 2)
-    save_labels(
-        [
-            LabelToSave(
-                destination=path, label=_pixels(3), fingerprint=fingerprint_of(path)
-            )
-        ],
-        recorder=recorder,
-    )
+    path.parent.mkdir(parents=True)
+    for value in (2, 3):
+        save_labels(
+            [
+                LabelToSave(
+                    destination=path, label=_pixels(value),
+                    fingerprint=fingerprint_of(path),
+                )
+            ],
+            recorder=recorder,
+        )
     return path
 
 

@@ -34,7 +34,8 @@ def label(tmp_path: Path, recorder) -> Path:
     """A label in a project that keeps a history, with one kept version."""
     start_history(tmp_path)
     path = tmp_path / "sem_labels" / "img_000.tif"
-    _write(path, 2)
+    path.parent.mkdir(parents=True)
+    _save(path, _pixels(2), recorder)
     _save(path, _pixels(3), recorder)
     return path
 
@@ -91,6 +92,82 @@ def test_a_replaced_version_is_listed(label, recorder):
     assert row.available
 
 
+def _only_kept_row(path: Path, recorder) -> object:
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(path)
+    (row,) = controller.rows
+    return row
+
+
+def test_a_kept_version_is_dated_when_it_was_written_not_replaced(label, recorder):
+    """The save that replaced it is the next version's story."""
+    from am_segmentation_manager.history import events_for, read_log
+
+    first, second = [
+        event for event in events_for(read_log(label.parents[1]), "sem_labels/img_000.tif")
+        if event.kind == "label-saved"
+    ]
+    row = _only_kept_row(label, recorder)
+
+    assert row.when == first.at != second.at
+
+
+def test_a_label_there_before_the_history_is_said_to_have_been_there(
+    tmp_path: Path, recorder
+):
+    from am_segmentation_manager.operations.label_io import label_fields
+
+    start_history(tmp_path)
+    path = _write(tmp_path / "sem_labels" / "img_000.tif", 2)
+    recorder.record(
+        path, "baseline", state="selected", basis="scan",
+        digest=label_fields(_pixels(2))["digest"],
+    )
+    _save(path, _pixels(3), recorder)
+
+    assert _only_kept_row(path, recorder).produced_by == "already there"
+
+
+def test_a_version_saved_and_marked_corrected_says_so(tmp_path: Path, recorder):
+    start_history(tmp_path)
+    path = tmp_path / "sem_labels" / "img_000.tif"
+    path.parent.mkdir(parents=True)
+    batch = recorder.for_batch()
+    _save(path, _pixels(2), batch)
+    batch.record(path, "state-changed", old="selected", new="corrected")
+    _save(path, _pixels(3), recorder)
+
+    assert _only_kept_row(path, recorder).produced_by == "proofreading save, corrected"
+
+
+def test_a_version_nothing_recorded_writing_says_so(tmp_path: Path, recorder):
+    start_history(tmp_path)
+    path = _write(tmp_path / "sem_labels" / "img_000.tif", 2)
+    _save(path, _pixels(3), recorder)
+
+    row = _only_kept_row(path, recorder)
+
+    assert row.produced_by == "origin unrecorded" and row.when == ""
+    assert "(not recorded)" in row.describe()
+
+
+def test_a_recompression_is_not_what_wrote_a_version(label, recorder):
+    """Re-encoding leaves the pixels as they were, so it made nothing."""
+    from am_segmentation_manager.operations.label_io import label_fields
+
+    digest = label_fields(_pixels(3))["digest"]
+    recorder.record(
+        label, "label-compressed", digest=digest, parent_digest=digest,
+        bytes_before=2, bytes_after=1,
+    )
+    _save(label, _pixels(4), recorder)
+
+    controller = VersionController(Attribution(recorder))
+    controller.set_label(label)
+
+    assert [row.produced_by for row in controller.rows] == ["proofreading save"] * 2
+
+
 def test_a_row_says_how_far_the_version_is_from_the_next(label, recorder):
     """The number that makes ten rows readable without opening any of them."""
     controller = VersionController(Attribution(recorder))
@@ -98,7 +175,7 @@ def test_a_row_says_how_far_the_version_is_from_the_next(label, recorder):
 
     (row,) = controller.rows
     assert row.changed == pytest.approx(16 / 256)
-    assert "6.2% changed" in row.describe()
+    assert "then 6.2% changed" in row.describe()
 
 
 def test_versions_are_listed_newest_first(label, recorder):

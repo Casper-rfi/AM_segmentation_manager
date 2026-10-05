@@ -1,11 +1,10 @@
 """The versions of the label on screen, and comparing against one.
 
-Answers what a label held before, how far each version is from the one before it,
-and whether a model's guess beats what is there, with no Qt. **A version is
-anything that is a version of this segmentation**: a label kept when something
-replaced it can be put back, a prediction beside the image has to be converted.
-**A row is legible without opening anything** -- who, when, what produced it, and
-for a kept version the share of pixels changed. Everything runs when the frame
+Answers what a label held before, what wrote each version, and whether a model's
+guess beats what is there, with no Qt. **A version is anything that is a version of
+this segmentation**: a kept label can be put back, a prediction has to be converted.
+**A row is legible without opening anything** -- who wrote it, when, by what, and
+for a kept version how much the next one changed it. Everything runs when the frame
 changes, so nothing may be linear in the collection: the archive is read one
 label's directory at a time and the log is cached against its fingerprint.
 """
@@ -16,11 +15,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..history import HistoryLog, Recorder, containing_project, history_file_path, read_log
+from ..history import (
+    HistoryLog,
+    Recorder,
+    containing_project,
+    events_for,
+    history_file_path,
+    read_log,
+)
 from ..io.atomic import fingerprint_of
 from ..io.image import read_array, to_2d
 from ..layout import is_convertible_prediction, prediction_precedence
-from ..operations.archive import ArchivedVersion, label_versions, restore
+from ..operations.archive import ArchivedVersion, label_versions, restore, written_by
 from ..operations.predict import read_provenance
 from ..operations.predictions import as_converted
 from .attribution import Attribution
@@ -55,14 +61,14 @@ class VersionRow:
     Attributes:
         path: Where the pixels are.
         source: :data:`KEPT` or :data:`PREDICTION`.
-        when: When it was kept or predicted, or empty where nothing says.
-        who: Who kept it, empty where nobody stated a name, or the model that
+        when: When it was written or predicted, or empty where nothing says.
+        who: Who wrote it, empty where nobody stated a name, or the model that
             predicted it.
-        produced_by: What operation produced it.
-        changed: The share of pixels that differed from the version before,
-            or None where that was never computed -- across a resize, for a
-            version nothing recorded, and for every prediction, which is not
-            measured against the label until it is looked at.
+        produced_by: What operation wrote it.
+        changed: The share of pixels the next version changed, or None where
+            that was never computed -- across a resize, for a version nothing
+            recorded, and for every prediction, which is not measured against
+            the label until it is looked at.
         available: Whether the pixels are here to be looked at.
         version: The archived version, for a kept row. None for a prediction.
     """
@@ -99,8 +105,7 @@ class VersionRow:
         columns.append(_short(self.produced_by))
         line = "  ".join(columns)
         if self.source != PREDICTION:
-            share = _share(self.changed)
-            line += f"  {share}"
+            line += f"  {_share(self.changed)}"
         if self.available:
             return line
         return f"{line}  ({'will not open' if self.source == PREDICTION else 'pixels not here'})"
@@ -183,11 +188,10 @@ class VersionController:
         """
         if self._project is None or not self._target:
             return []
+        log = self._project_log()
         return [
-            _kept_row(version)
-            for version in label_versions(
-                self._project, self._target, self._project_log()
-            )
+            _kept_row(version, log)
+            for version in label_versions(self._project, self._target, log)
         ]
 
     def _prediction_rows(self, predictions: Sequence[Path]) -> list[VersionRow]:
@@ -434,15 +438,16 @@ def _shown(stamp: str) -> str:
 def _share(changed: float | None) -> str:
     """Return how much of the label differed, said so it cannot mislead.
 
-    A correction made in passing is a few hundred pixels of a few million, and
+    Said as what the next version did to this one, which is what the number
+    is. A correction made in passing is a few hundred pixels of a few million, and
     rounding that to ``0.0%`` reads as *nothing changed* -- which is the one
     thing it does not mean. Below what one decimal can show, the row says so.
     """
     if changed is None:
-        return "change unrecorded"
+        return "next change unrecorded"
     if 0 < changed < 0.0005:
-        return "<0.1% changed"
-    return f"{changed * 100:.1f}% changed"
+        return "then <0.1% changed"
+    return f"then {changed * 100:.1f}% changed"
 
 
 #: The columns a row is laid out in, so the date sits at the same offset on
@@ -464,19 +469,43 @@ def _short(name: str) -> str:
     return f"{name[:head]}…{name[-(MAX_NAME - head - 1):]}"
 
 
-def _kept_row(version: ArchivedVersion) -> VersionRow:
-    """Return how one kept version reads."""
-    event = version.event
-    changed = event.data.get("changed_fraction") if event else None
+def _kept_row(version: ArchivedVersion, log: HistoryLog) -> VersionRow:
+    """Return how one kept version reads.
+
+    **Described by the entry that wrote it**, not the one that replaced it:
+    a converted label saved over is looked for as "converted", and the save
+    is the next version's story. Only the share changed comes from the
+    replacement, being how far the next version moved from this one.
+    """
+    writer = written_by(version, log)
+    replaced = version.event
+    changed = replaced.data.get("changed_fraction") if replaced else None
+    produced_by = "origin unrecorded"
+    if writer is not None:
+        produced_by = _PRODUCED_BY.get(writer.kind, writer.kind)
+        if _marked_corrected(log, version.target, writer):
+            produced_by += ", corrected"
     return VersionRow(
         path=version.path,
         source=KEPT,
-        when=event.at if event else "",
-        who=(event.by or "") if event else "",
-        produced_by=_PRODUCED_BY.get(event.kind, event.kind) if event else "unrecorded",
+        when=writer.at if writer else "",
+        who=(writer.by or "") if writer else "",
+        produced_by=produced_by,
         changed=changed if isinstance(changed, (int, float)) else None,
         available=version.present and version.path.is_file(),
         version=version,
+    )
+
+
+def _marked_corrected(log: HistoryLog, target: str, writer) -> bool:
+    """Return whether the run that wrote a version also marked it corrected."""
+    if writer.batch is None:
+        return False
+    return any(
+        event.kind == "state-changed"
+        and event.batch == writer.batch
+        and event.data.get("new") == "corrected"
+        for event in events_for(log, target)
     )
 
 
@@ -508,4 +537,8 @@ def rows_for(project_root: Path, target: str) -> Sequence[VersionRow]:
 
     For a report that lists versions and does not compare against one.
     """
-    return [_kept_row(version) for version in label_versions(project_root, target)]
+    log = read_log(project_root)
+    return [
+        _kept_row(version, log)
+        for version in label_versions(project_root, target, log)
+    ]
