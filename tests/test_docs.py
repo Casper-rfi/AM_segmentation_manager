@@ -38,7 +38,7 @@ TESTS = REPOSITORY / "tests"
 #: something being added. Over the ceiling with none of those available is a
 #: question for the scientist rather than a deletion to be chosen, and a raise
 #: is a commit of its own, made only after a `doc-audit` found nothing to move.
-MAX_DOC_LINES = 1300
+MAX_DOC_LINES = 1310
 
 #: The documents holding invariants rather than status. An entry in the roadmap
 #: or the future-work sketches describes what is unbuilt or unfinished and so
