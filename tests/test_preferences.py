@@ -164,3 +164,20 @@ def test_a_choice_not_offered_falls_back_rather_than_raising(caplog):
 def test_the_accent_opens_the_settings_dialog():
     """Felt on every tab, so it comes before the groups felt on one."""
     assert preferences.groups()[0][0] == preferences.APPEARANCE
+
+
+def test_a_viewer_offers_only_what_its_one_view_opens_on():
+    """The accent, how a label is drawn, and which series the lists cover;
+    nothing a viewer has no tab or control for."""
+    offered = {entry.key for _title, entries in preferences.groups(viewer=True) for entry in entries}
+
+    assert offered == {"accent", "label_opacity", *(f"shown/{name}" for name in SERIES)}
+    assert [title for title, _ in preferences.groups(viewer=True)] == [
+        preferences.APPEARANCE, preferences.SHOWN,
+    ]
+
+
+def test_the_full_dialog_still_offers_every_preference_once():
+    listed = [entry.key for _title, entries in preferences.groups() for entry in entries]
+
+    assert sorted(listed) == sorted(entry.key for entry in preferences.PREFERENCES)

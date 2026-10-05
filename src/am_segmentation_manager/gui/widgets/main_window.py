@@ -297,7 +297,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         #: once: a signal connected again on every show would be delivered
         #: once per connection.
         self._watching_screen = False
-        self.project_panel = ProjectPanel()
+        self.project_panel = ProjectPanel(checkable=not self.read_only)
         self.scan_bar = ScanBar()
         self.image_panel = ImagePanel(controller.config)
         self.state_panel = StatePanel()
@@ -522,6 +522,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.tabs.tabBar().hide()
         self.tabs.setDocumentMode(True)
         self._corner.author.hide()
+        self._corner.settings_button.setToolTip("Settings for this machine (F2)")
         page = QWidget()
         column = QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
@@ -1960,13 +1961,19 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         Kept under the user's home directory: who is at this keyboard is a
         property of the machine, and a name written into a collection travels
-        with it.
+        with it. **A viewer's leaves the name alone**, asking none.
         """
         stored = preferences.read(self.settings)
-        dialog = SettingsDialog(self, stored, preview_accent=self.show_accent)
+        dialog = SettingsDialog(
+            self, stored, preview_accent=self.show_accent, viewer=self.read_only
+        )
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         wanted = dialog.author
+        if wanted is None:
+            preferences.write(self.settings, dialog.values)
+            self._flash("Settings kept")
+            return
         try:
             if wanted:
                 set_author(wanted)

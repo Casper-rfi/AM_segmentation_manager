@@ -442,7 +442,9 @@ class ProjectTree(QTreeWidget):
     # -- changing ----------------------------------------------------------
 
     def show_ticks(self, ticked: Sequence[bool]) -> None:
-        """Put the ticks back without rebuilding the rows."""
+        """Put the ticks back without rebuilding the rows; none on a tree without them."""
+        if not self._checkable:
+            return
         self._filling = True
         self.blockSignals(True)
         try:
@@ -533,8 +535,15 @@ class CheckList(QListWidget):
     #: ticks the list puts back itself when its contents are replaced.
     row_ticked = Signal(int, bool)
 
-    def __init__(self) -> None:
+    def __init__(self, *, checkable: bool = True) -> None:
+        """Build the list.
+
+        Args:
+            checkable: Whether the rows carry tick boxes. False where nothing
+                can be done to a set of rows, as in a viewer.
+        """
         super().__init__()
+        self._checkable = checkable
         self._filling = False
         self.itemChanged.connect(self._item_changed)
 
@@ -573,12 +582,17 @@ class CheckList(QListWidget):
             self.clear()
             for row, value in enumerate(values):
                 item = QListWidgetItem(value)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(
-                    Qt.CheckState.Checked
-                    if row < len(ticked) and ticked[row]
-                    else Qt.CheckState.Unchecked
-                )
+                # Taken away explicitly where there are no ticks, as
+                # ProjectTree._set_checkable says: Qt sets it by default.
+                if self._checkable:
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    item.setCheckState(
+                        Qt.CheckState.Checked
+                        if row < len(ticked) and ticked[row]
+                        else Qt.CheckState.Unchecked
+                    )
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
                 if icons is not None and row < len(icons):
                     item.setIcon(icons[row])
                 if tooltips is not None and row < len(tooltips):
@@ -594,8 +608,10 @@ class CheckList(QListWidget):
         """Put the ticks back without rebuilding the rows.
 
         Rebuilding would reset which row is current, and a tick is not a change
-        of what is being looked at.
+        of what is being looked at. A list without ticks is left as it is.
         """
+        if not self._checkable:
+            return
         self._filling = True
         try:
             for row in range(self.count()):

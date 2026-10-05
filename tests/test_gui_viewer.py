@@ -125,6 +125,80 @@ def test_a_viewer_can_still_open_a_folder_and_ask_for_help(viewer):
     assert not corner.author.isVisibleTo(viewer)
 
 
+def _has_tick_box(item, *column) -> bool:
+    """Whether a list or tree row can be ticked, or draws a box as if it could."""
+    from qtpy.QtCore import Qt
+
+    return bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable) or (
+        item.data(*column, Qt.ItemDataRole.CheckStateRole) is not None
+    )
+
+
+def test_a_viewer_lists_carry_no_tick_boxes(viewer):
+    """A tick says what a change applies to, and a viewer makes none -- not
+    even after the window puts the ticks back, as it does after every pick."""
+    from qtpy.QtWidgets import QPushButton
+
+    panel = viewer.project_panel
+    viewer._refresh_checks()
+
+    lamellae = [panel.lamella_list.item(row) for row in range(panel.lamella_list.count())]
+    projects = panel.project_list.project_items()
+    assert lamellae and projects
+    assert not any(_has_tick_box(item) for item in lamellae)
+    assert not any(_has_tick_box(item, 0) for item in projects)
+    assert not [
+        button.text() for button in panel.findChildren(QPushButton)
+        if button.text() in ("Tick all", "None")
+    ]
+
+
+def test_a_viewer_settings_ask_no_name_and_offer_only_what_it_opens_on(qt_app, settings):
+    from qtpy.QtWidgets import QGroupBox
+
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings), viewer=True)
+    try:
+        assert dialog.author_edit is None
+        assert dialog.author is None
+        assert set(dialog.values) == {
+            entry.key for _title, entries in preferences.groups(viewer=True) for entry in entries
+        }
+        assert [box.title() for box in dialog.findChildren(QGroupBox)] == [
+            preferences.APPEARANCE, preferences.SHOWN,
+        ]
+    finally:
+        destroy(dialog)
+
+
+def test_keeping_a_viewers_settings_leaves_the_recorded_name_alone(
+    viewer, settings, monkeypatch
+):
+    """With no name asked, keeping the dialog must not read as clearing one."""
+    from qtpy.QtWidgets import QDialog
+
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets import main_window
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    touched: list[str] = []
+    monkeypatch.setattr(main_window, "set_author", lambda name: touched.append(name))
+    monkeypatch.setattr(main_window, "clear_author", lambda: touched.append("cleared"))
+
+    def keep(dialog):
+        dialog._editors["label_opacity"].setValue(55)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(SettingsDialog, "exec_", keep)
+
+    viewer.show_settings()
+
+    assert touched == []
+    assert preferences.read(settings)["label_opacity"] == 55
+
+
 def test_a_viewer_says_it_is_one_in_its_title(viewer, collection):
     assert viewer.windowTitle().startswith(VIEWER_NAME)
     assert collection.name in viewer.windowTitle()

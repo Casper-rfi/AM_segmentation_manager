@@ -3226,7 +3226,7 @@ def test_a_name_that_cannot_be_written_takes_the_previewed_accent_back(window, m
     from am_segmentation_manager.gui.widgets import main_window as module
 
     class _Previewed:
-        def __init__(self, _parent, _values, *, preview_accent):
+        def __init__(self, _parent, _values, *, preview_accent, viewer=False):
             self.author = "Ada"
             self.values = {"accent": "blue"}
             self._preview = preview_accent

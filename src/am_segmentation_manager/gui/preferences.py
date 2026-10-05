@@ -61,7 +61,8 @@ DEFAULT_FOLDS = 1
 DEFAULT_ONE_PER_LABEL = False
 
 #: The boxes the dialog groups these under. A group is the tab a preference is
-#: felt on, not the module it reaches; appearance is felt on every tab.
+#: felt on, not the module it reaches; appearance is how things are drawn,
+#: on whichever tab draws them.
 APPEARANCE = "Appearance"
 PROOFREADING = "Proofreading"
 EXPORT = "Export"
@@ -103,6 +104,8 @@ class Preference:
         high: Largest accepted value, for a number.
         suffix: Shown after a number, where it has a unit.
         choices: The answers a choice offers, as ``(key, caption)``.
+        viewer: Whether a viewer offers it: only what the Curate view
+            itself opens on, a viewer having no other tab to open.
     """
 
     key: str
@@ -114,6 +117,7 @@ class Preference:
     high: int | None = None
     suffix: str = ""
     choices: tuple[tuple[str, str], ...] = ()
+    viewer: bool = False
 
     @property
     def is_flag(self) -> bool:
@@ -142,6 +146,21 @@ PREFERENCES: tuple[Preference, ...] = (
             "The colour that marks the chosen tab, row and segment, and the "
             "control in focus. Nothing that carries meaning changes with it."
         ),
+        viewer=True,
+    ),
+    Preference(
+        key="label_opacity",
+        group=APPEARANCE,
+        label="Label opacity",
+        fallback=int(round(DEFAULT_ALPHA * 100)),
+        low=0,
+        high=100,
+        suffix=" %",
+        hint=(
+            "How strongly a label is drawn over the image, on both tabs that "
+            "draw one. Changes nothing on disk and reaches no export."
+        ),
+        viewer=True,
     ),
     Preference(
         key="speck_pixels",
@@ -171,19 +190,6 @@ PREFERENCES: tuple[Preference, ...] = (
         ),
     ),
     Preference(
-        key="label_opacity",
-        group=PROOFREADING,
-        label="Label opacity",
-        fallback=int(round(DEFAULT_ALPHA * 100)),
-        low=0,
-        high=100,
-        suffix=" %",
-        hint=(
-            "How strongly a label is drawn over the image, on both tabs that "
-            "draw one. Changes nothing on disk and reaches no export."
-        ),
-    ),
-    Preference(
         key="advance_after_deciding",
         group=PROOFREADING,
         label="Move on after deciding a conflict",
@@ -206,6 +212,7 @@ PREFERENCES: tuple[Preference, ...] = (
                 "list, counted in its title. The switches beside the lists "
                 "move it for a session."
             ),
+            viewer=True,
         )
         for name in SERIES
     ),
@@ -293,10 +300,16 @@ PREFERENCES: tuple[Preference, ...] = (
 BY_KEY: Mapping[str, Preference] = {entry.key: entry for entry in PREFERENCES}
 
 
-def groups() -> list[tuple[str, list[Preference]]]:
-    """Return the preferences under their group, in the order declared."""
+def groups(*, viewer: bool = False) -> list[tuple[str, list[Preference]]]:
+    """Return the preferences under their group, in the order declared.
+
+    Args:
+        viewer: Only those a viewer offers, a group left with none leaving too.
+    """
     ordered: dict[str, list[Preference]] = {}
     for entry in PREFERENCES:
+        if viewer and not entry.viewer:
+            continue
         ordered.setdefault(entry.group, []).append(entry)
     return list(ordered.items())
 

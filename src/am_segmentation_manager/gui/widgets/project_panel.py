@@ -5,7 +5,8 @@ selected project's lamellae; the folder is chosen by :mod:`.scan_bar`, and the
 modality and state beside the buttons that act. In the lists the *current* row is
 what is looked at, the *checked* rows what a state change applies to, and the chip
 reports curation progress -- see ``docs/decisions.md`` § Workflow state. Only one
-list carries ticks at a time, so everything a change will touch is visible.
+list carries ticks at a time, so everything a change will touch is visible; a
+viewer's carry none, there being no change to make.
 """
 from __future__ import annotations
 
@@ -74,8 +75,15 @@ class ProjectPanel(QWidget):
     #: switched. Never empty: the last one cannot be switched off.
     shown_series_changed = Signal(tuple)
 
-    def __init__(self) -> None:
+    def __init__(self, *, checkable: bool = True) -> None:
+        """Build the panel.
+
+        Args:
+            checkable: Whether the lists carry tick boxes and the buttons that
+                tick every row. False in a viewer.
+        """
         super().__init__()
+        self._checkable = checkable
         self._project_labels: list[str] = []
         self._lamella_labels: list[str] = []
         #: The series each chip has a column for.
@@ -161,12 +169,15 @@ class ProjectPanel(QWidget):
         """
         box, filter_edit, tree = project_box(
             title,
-            on_check_all=self.projects_check_all.emit,
+            checkable=self._checkable,
+            on_check_all=self.projects_check_all.emit if self._checkable else None,
             tooltip=(
                 "Projects, under the folder each is in. Click a row to look at "
                 "it; tick rows to choose what a change applies to. Ticking a "
                 "folder ticks its projects, and ticking here clears the "
                 "lamellae."
+                if self._checkable
+                else "Projects, under the folder each is in. Click a row to look at it."
             ),
         )
         tree.project_selected.connect(self._project_changed)
@@ -189,17 +200,20 @@ class ProjectPanel(QWidget):
         filter_edit.setToolTip("Show only entries whose name contains this text")
         box_layout.addWidget(filter_edit)
 
-        list_widget = CheckList()
+        list_widget = CheckList(checkable=self._checkable)
         list_widget.setToolTip(
             "Click a row to look at it. Tick rows to choose what a change "
             "applies to; ticking here clears the other list. With nothing "
             "ticked it applies to the frame on screen."
+            if self._checkable
+            else "Click a row to look at it."
         )
         list_widget.currentRowChanged.connect(on_change)
         list_widget.row_ticked.connect(checked_signal)
         box_layout.addWidget(list_widget)
 
-        box_layout.addLayout(self._build_check_all(check_all_signal, title.lower()))
+        if self._checkable:
+            box_layout.addLayout(self._build_check_all(check_all_signal, title.lower()))
         return box, filter_edit, list_widget
 
     def _build_check_all(self, signal, noun: str) -> QHBoxLayout:

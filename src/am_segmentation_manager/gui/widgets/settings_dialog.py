@@ -6,7 +6,8 @@ accent and values the window opens on, declared by ``gui/preferences.py``. **Not
 asked for**: the name field opens empty and clearing it is a supported answer. The
 fields below it are built from :data:`~...preferences.PREFERENCES`, so adding a
 preference is a row there. They scroll above buttons that stay put, the dialog
-being capped to the screen it opens on.
+being capped to the screen it opens on. A viewer's asks no name, recording
+nothing, and offers only what its one view opens on.
 """
 from __future__ import annotations
 
@@ -97,6 +98,7 @@ class SettingsDialog(QDialog):
         values=None,
         *,
         preview_accent: Callable[[str], None] | None = None,
+        viewer: bool = False,
     ) -> None:
         """Build the dialog, filled from what is set now.
 
@@ -108,6 +110,8 @@ class SettingsDialog(QDialog):
             preview_accent: Called with an accent's key when one is chosen, and
                 with the one the dialog opened on when it is cancelled after
                 that, so the window shows a choice before it is kept.
+            viewer: Build a viewer's: no name, and only the preferences
+                :attr:`~...preferences.Preference.viewer` marks.
         """
         super().__init__(parent)
         self._preview_accent = preview_accent
@@ -119,25 +123,10 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self._body)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        current, _source = resolve_author()
-
-        form = QFormLayout()
-        self.author_edit = QLineEdit(current or "")
-        self.author_edit.setPlaceholderText("nobody")
-        self.author_edit.setToolTip(
-            "Who changes are recorded under, on this machine.\n"
-            "Leave empty to record no name at all."
-        )
-        form.addRow("Record changes as", self.author_edit)
-        layout.addLayout(form)
-
-        note = WrappingLabel(
-            "Every change to a label, a workflow state or a project's metadata "
-            "is recorded, from any tab. A name is written into each entry, and "
-            "the record lives inside the project -- so depositing a collection "
-            "deposits it. Leave this empty and entries carry no name."
-        )
-        layout.addWidget(note)
+        #: The name field, or None in a viewer, which records nothing.
+        self.author_edit: QLineEdit | None = None
+        if not viewer:
+            self.author_edit = self._build_author(layout)
 
         held = dict(values or {entry.key: entry.fallback for entry in preferences.PREFERENCES})
         #: The accent on screen when the dialog opened, which Cancel puts back.
@@ -145,7 +134,7 @@ class SettingsDialog(QDialog):
         #: The control for each preference, so :attr:`values` can read them
         #: back without a second table saying which widget went where.
         self._editors: dict[str, Editor] = {}
-        for title, entries in preferences.groups():
+        for title, entries in preferences.groups(viewer=viewer):
             layout.addWidget(self._build_group(title, entries, held))
 
         layout.addWidget(WrappingLabel(APPLIED_NOTE))
@@ -184,6 +173,27 @@ class SettingsDialog(QDialog):
             + self.buttons.sizeHint().height()
         )
         fit_dialog_to_screen(self, QSize(wide, tall), self._scroll, margin=SCREEN_MARGIN)
+
+    @staticmethod
+    def _build_author(layout: QVBoxLayout) -> QLineEdit:
+        """Add the name changes are recorded under, and what it is for."""
+        current, _source = resolve_author()
+        form = QFormLayout()
+        edit = QLineEdit(current or "")
+        edit.setPlaceholderText("nobody")
+        edit.setToolTip(
+            "Who changes are recorded under, on this machine.\n"
+            "Leave empty to record no name at all."
+        )
+        form.addRow("Record changes as", edit)
+        layout.addLayout(form)
+        layout.addWidget(WrappingLabel(
+            "Every change to a label, a workflow state or a project's metadata "
+            "is recorded, from any tab. A name is written into each entry, and "
+            "the record lives inside the project -- so depositing a collection "
+            "deposits it. Leave this empty and entries carry no name."
+        ))
+        return edit
 
     def _build_group(self, title: str, entries, held) -> QGroupBox:
         """Return one box of preferences, a row per entry."""
@@ -251,13 +261,15 @@ class SettingsDialog(QDialog):
         super().reject()
 
     @property
-    def author(self) -> str:
-        """Return the name typed, trimmed. Empty means record no name."""
+    def author(self) -> str | None:
+        """Return the name typed, trimmed: empty to record no name, None where not asked."""
+        if self.author_edit is None:
+            return None
         return self.author_edit.text().strip()
 
     @property
     def values(self) -> dict[str, preferences.Value]:
-        """Return every preference as the dialog now holds it."""
+        """Return every preference the dialog offers, as it now holds it."""
         return {key: _held(editor) for key, editor in self._editors.items()}
 
 
