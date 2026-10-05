@@ -115,6 +115,7 @@ Three steps remove everything am-seg put on this computer outside your data:
 1. Take the launchers away, from the install they were made with:
 
        uv run am-seg create-shortcut --remove
+       uv run am-seg create-shortcut --viewer --remove
 
    On Windows, a taskbar pin is Windows' own copy: unpin it by hand.
 2. Delete the checkout, which holds the environment in `.venv`; or, after a pip
@@ -133,11 +134,13 @@ Getting started
 
     am-seg create-shortcut            # once: start the window like any other application
     am-seg gui                        # or start it from the command line
-    am-seg gui --viewer               # only look: nothing in it can change a file
+    am-seg create-shortcut --viewer   # the viewer's own launcher, beside the window's
+    am-seg gui --viewer               # only look: nothing in it changes your data
 
 From a checkout, put `uv run` in front of each. `create-shortcut` adds the
 window to the Applications folder on macOS, the applications menu on Linux, and
-the Start menu and Desktop on Windows; the window's File menu offers the same.
+the Start menu and Desktop on Windows; the window's File menu offers the same,
+for the window or the viewer.
 
 Then follow [the user guide](guides/user_guide.md), which goes through the
 window a step at a time. In the window, hovering over a control says what it

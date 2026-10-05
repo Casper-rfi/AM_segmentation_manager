@@ -38,7 +38,7 @@ from qtpy.QtWidgets import (
 from ... import __version__
 from ...history import clear_author, set_author
 from ...identity import PRODUCT_NAME, VIEWER_NAME
-from ...launcher import LauncherRefused, menu_label, this_computer
+from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
 from ...operations.selection import (
@@ -578,9 +578,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._add_action(
             file_menu, "Settings...", self.show_settings, QKeySequence("F2")
         )
-        # Not in a viewer: what it adds is a launcher for the window that edits.
         label = menu_label()
-        if label is not None and not self.read_only:
+        if label is not None:
             self._add_action(file_menu, label, self.show_launcher_dialog)
         file_menu.addSeparator()
         self._add_action(file_menu, "Quit", self.close, QKeySequence.StandardKey.Quit)
@@ -1943,13 +1942,18 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.operations_panel.set_series_editable(editable)
 
     def show_launcher_dialog(self) -> None:
-        """Offer to add the window to this computer's applications."""
+        """Offer to add the window or the viewer to this computer's applications.
+
+        Opens on the one this window is, which is how someone at a viewer makes
+        its launcher without a terminal. It writes into the user's own menus,
+        never into a collection.
+        """
         try:
             computer = this_computer()
         except LauncherRefused as error:
             QMessageBox.warning(self, LAUNCHER_TITLE, str(error))
             return
-        LauncherDialog(self, computer).exec_()
+        LauncherDialog(self, computer, VIEWER if self.read_only else WINDOW).exec_()
 
     def show_settings(self) -> None:
         """Open the settings that belong to this machine rather than the data.

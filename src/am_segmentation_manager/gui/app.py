@@ -19,7 +19,7 @@ import traceback
 from pathlib import Path
 
 from ..config import load_segmentation_config
-from ..identity import APPLICATION_ID, PRODUCT_NAME
+from ..identity import APPLICATION_ID, PRODUCT_NAME, VIEWER_ID, VIEWER_NAME
 from .cache import FrameCache
 from .controller import CurationController
 from .macos import set_bundle_name
@@ -283,7 +283,7 @@ def build_window(
 
     log_qt_messages()
     # Before any QApplication exists, which is when AppKit reads the name.
-    set_bundle_name(PRODUCT_NAME)
+    set_bundle_name(VIEWER_NAME if viewer else PRODUCT_NAME)
 
     # Imported here, not at the top: importing the widgets creates a Qt
     # application, and this module is imported to install error reporting
@@ -309,8 +309,9 @@ def build_window(
     apply_theme(application, ACCENTS[preferences.accent_from(preferences.read(settings))])
     _apply_icon(application)
     # The desktop entry a launcher writes on Linux, which is how a Wayland
-    # desktop finds the icon for the window. Ignored elsewhere.
-    QGuiApplication.setDesktopFileName(APPLICATION_ID)
+    # desktop finds the icon for the window -- the viewer's for a viewer.
+    # Ignored elsewhere.
+    QGuiApplication.setDesktopFileName(VIEWER_ID if viewer else APPLICATION_ID)
     window = CurationWindow(controller, settings=settings)
     window.show()
     # Queued for the same reason the scan below is: show() only asks for a

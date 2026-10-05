@@ -3339,18 +3339,18 @@ def _launcher_computer(tmp_path, family="linux"):
 
 def test_the_launcher_dialog_shows_what_it_would_write_before_writing_it(qt_app, tmp_path):
     from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
-    from am_segmentation_manager.launcher import DESKTOP_ENTRY_NAME
+    from am_segmentation_manager.launcher import WINDOW
 
     dialog = LauncherDialog(None, _launcher_computer(tmp_path))
     try:
-        assert str(tmp_path / "menu" / DESKTOP_ENTRY_NAME) in dialog.paths.text()
+        assert str(tmp_path / "menu" / WINDOW.desktop_entry_name) in dialog.paths.text()
         assert str(tmp_path / "Desktop") not in dialog.paths.text()
         assert dialog.add_button.text() == "Add"
         assert not dialog.remove_button.isEnabled()
 
         dialog.desktop.setChecked(True)
 
-        assert str(tmp_path / "Desktop" / DESKTOP_ENTRY_NAME) in dialog.paths.text()
+        assert str(tmp_path / "Desktop" / WINDOW.desktop_entry_name) in dialog.paths.text()
         assert not (tmp_path / "menu").exists(), "shown, not written"
     finally:
         destroy(dialog)
@@ -3369,9 +3369,9 @@ def test_the_launcher_dialog_offers_the_desktop_where_the_platform_expects_it(qt
 
 def test_the_launcher_dialog_adds_writes_again_and_removes(qt_app, tmp_path):
     from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
-    from am_segmentation_manager.launcher import DESKTOP_ENTRY_NAME
+    from am_segmentation_manager.launcher import WINDOW
 
-    entry = tmp_path / "menu" / DESKTOP_ENTRY_NAME
+    entry = tmp_path / "menu" / WINDOW.desktop_entry_name
     dialog = LauncherDialog(None, _launcher_computer(tmp_path))
     try:
         dialog.add_button.click()
@@ -3395,9 +3395,9 @@ def test_the_launcher_dialog_adds_writes_again_and_removes(qt_app, tmp_path):
 
 def test_something_else_in_the_way_disables_adding_and_says_what(qt_app, tmp_path):
     from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
-    from am_segmentation_manager.launcher import DESKTOP_ENTRY_NAME
+    from am_segmentation_manager.launcher import WINDOW
 
-    theirs = tmp_path / "menu" / DESKTOP_ENTRY_NAME
+    theirs = tmp_path / "menu" / WINDOW.desktop_entry_name
     theirs.parent.mkdir(parents=True)
     theirs.write_text("[Desktop Entry]\nName=Someone else's\n")
     dialog = LauncherDialog(None, _launcher_computer(tmp_path))
@@ -3408,6 +3408,36 @@ def test_something_else_in_the_way_disables_adding_and_says_what(qt_app, tmp_pat
     finally:
         destroy(dialog)
     assert theirs.read_text() == "[Desktop Entry]\nName=Someone else's\n"
+
+
+def test_the_launcher_dialog_offers_the_viewer_beside_the_window(qt_app, tmp_path):
+    """Each a launcher of its own: adding or removing one leaves the other."""
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+    from am_segmentation_manager.launcher import VIEWER, WINDOW
+
+    window_entry = tmp_path / "menu" / WINDOW.desktop_entry_name
+    viewer_entry = tmp_path / "menu" / VIEWER.desktop_entry_name
+    dialog = LauncherDialog(None, _launcher_computer(tmp_path))
+    try:
+        assert dialog.app == WINDOW
+        dialog.add_button.click()
+
+        dialog.choice.buttons["viewer"].click()
+
+        assert dialog.app == VIEWER
+        assert str(viewer_entry) in dialog.paths.text()
+        assert dialog.add_button.text() == "Add"
+        assert not dialog.remove_button.isEnabled()
+        dialog.add_button.click()
+        assert viewer_entry.exists() and window_entry.exists()
+        assert VIEWER.name in dialog.status.text()
+
+        dialog.remove_button.click()
+
+        assert not viewer_entry.exists()
+        assert window_entry.exists()
+    finally:
+        destroy(dialog)
 
 
 def test_the_file_menu_opens_the_launcher_dialog(window, monkeypatch, tmp_path):
@@ -3422,6 +3452,7 @@ def test_the_file_menu_opens_the_launcher_dialog(window, monkeypatch, tmp_path):
     window._menu_actions[menu_label()].trigger()
 
     assert len(shown) == 1
+    assert shown[0].app.name == PRODUCT_NAME
     destroy(shown[0])
 
 

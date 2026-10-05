@@ -11,13 +11,15 @@ import logging
 from collections.abc import Callable
 
 from ..launcher import (
-    WHERE_TO_FIND,
+    VIEWER,
+    WINDOW,
     Launcher,
     LauncherRefused,
     check_write,
     existing,
     remove,
     this_computer,
+    where_to_find,
     write,
 )
 
@@ -39,8 +41,16 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "~/Applications on macOS, an entry in the applications menu on "
             "Linux, and a Start menu entry on Windows. It starts the window "
             "with the Python environment this command is run from, so run it "
-            "again with --replace if that environment moves. Only launchers "
-            "am-seg wrote are ever replaced or removed."
+            "again with --replace if that environment moves. With --viewer it "
+            "adds the viewer instead, a launcher of its own beside the window's. "
+            "Only launchers am-seg wrote are ever replaced or removed."
+        ),
+    )
+    shortcut.add_argument(
+        "--viewer", action="store_true",
+        help=(
+            "Add, replace or remove the viewer's launcher, which opens "
+            "'am-seg gui --viewer', rather than the window's"
         ),
     )
     shortcut.add_argument(
@@ -70,7 +80,9 @@ def _cmd_create_shortcut(args: argparse.Namespace) -> int:
         computer = this_computer()
         # Removing reaches the Desktop whatever was asked, as a launcher put
         # there before is still one of ours.
-        launcher = computer.launcher(True if args.remove else args.desktop)
+        launcher = computer.launcher(
+            True if args.remove else args.desktop, VIEWER if args.viewer else WINDOW
+        )
         if args.remove:
             return _remove(launcher, dry_run=args.dry_run)
         if args.dry_run:
@@ -86,7 +98,7 @@ def _cmd_create_shortcut(args: argparse.Namespace) -> int:
     for path in written:
         print(f"Wrote {path}")
     print(f"Starting {launcher.python}")
-    print(WHERE_TO_FIND[launcher.platform])
+    print(where_to_find(launcher.platform, launcher.app))
     return 0
 
 

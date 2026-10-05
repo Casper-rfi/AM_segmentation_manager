@@ -4,8 +4,8 @@ A constant module outside the four layers, reading nothing and importing
 nothing of the package: the window, and anything that names the application to
 the desktop, take these from here so they cannot drift apart. It holds no Qt,
 so naming the application never requires the window's dependencies.
-**:data:`APPLICATION_ID` never changes once shipped**: the desktop recognises
-the application by it, and a new one is a different application to it.
+**:data:`APPLICATION_ID` and :data:`VIEWER_ID` never change once shipped**: the
+desktop recognises each application by its own, and a new one is a different one.
 """
 from __future__ import annotations
 
@@ -24,6 +24,9 @@ VIEWER_NAME: Final[str] = "AM segmentation viewer"
 #: the macOS bundle identifier. The distribution's own name, which PyPI keeps
 #: unique, rather than a domain that belongs to an employer.
 APPLICATION_ID: Final[str] = "adaptive-milling-seg"
+
+#: How the desktop knows the viewer, a launcher of its own beside the window's.
+VIEWER_ID: Final[str] = "adaptive-milling-seg-viewer"
 
 #: Where the packaged assets are, located the way :mod:`.config` locates the
 #: packaged segmentation config.

@@ -130,11 +130,26 @@ def test_a_viewer_says_it_is_one_in_its_title(viewer, collection):
     assert collection.name in viewer.windowTitle()
 
 
-def test_a_viewer_offers_no_launcher_for_the_window_that_edits(viewer):
+def test_a_viewer_offers_its_own_launcher_first(viewer, monkeypatch, tmp_path):
+    """How someone at the microscope adds the viewer without a terminal."""
+    from am_segmentation_manager.gui.widgets import main_window
+    from am_segmentation_manager.gui.widgets.launcher_dialog import LauncherDialog
+    from am_segmentation_manager.launcher import VIEWER, Places, ThisComputer
+
     label = menu_label()
     if label is None:
         pytest.skip("this platform has no launcher to offer")
-    assert label not in viewer.menu_actions()
+    places = Places(menu=tmp_path / "menu", desktop=tmp_path / "Desktop", icons=tmp_path / "icons")
+    monkeypatch.setattr(
+        main_window, "this_computer", lambda: ThisComputer("linux", places, Path("/env/python"))
+    )
+    shown: list = []
+    monkeypatch.setattr(LauncherDialog, "exec_", lambda self: shown.append(self) or 0)
+
+    viewer.menu_actions()[label].trigger()
+
+    assert [dialog.app for dialog in shown] == [VIEWER]
+    destroy(shown[0])
 
 
 def test_a_viewer_binds_no_key_that_changes_anything(viewer):
@@ -230,24 +245,35 @@ def test_a_viewer_reads_a_collection_it_cannot_write_to(qt_app, settings, tmp_pa
             path.chmod(0o755 if path.is_dir() else 0o644)
 
 
-def test_build_window_opens_a_viewer_when_asked(qt_app, settings, monkeypatch):
-    """`am-seg gui --viewer` reaches the window through app.build_window."""
-    from am_segmentation_manager.gui import app as gui_app
+def test_build_window_opens_a_viewer_named_as_the_viewer(qt_app, settings, monkeypatch):
+    """`am-seg gui --viewer` reaches the window through app.build_window, and
+    names itself as the viewer's launcher does: the menu bar's name on macOS,
+    and the desktop entry a Wayland desktop finds the window's icon by."""
+    from qtpy.QtGui import QGuiApplication
 
+    from am_segmentation_manager.gui import app as gui_app
+    from am_segmentation_manager.identity import VIEWER_ID
+
+    named: list[str] = []
     monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
     monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
+    monkeypatch.setattr(gui_app, "set_bundle_name", lambda name: named.append(name) or True)
     monkeypatch.setattr(
         "am_segmentation_manager.gui.widgets.theme.apply_theme",
         lambda application, accent=None: None,
     )
+    previous = QGuiApplication.desktopFileName()
 
     _application, window = gui_app.build_window(settings=settings, viewer=True)
     try:
         qt_app.processEvents()
         assert window.read_only
         assert window.controller.read_only
+        assert named == [VIEWER_NAME]
+        assert QGuiApplication.desktopFileName() == VIEWER_ID
     finally:
         destroy(window)
+        QGuiApplication.setDesktopFileName(previous)
 
 
 @pytest.mark.parametrize("flag", [True, False], ids=["--viewer", "plain"])

@@ -20,10 +20,18 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from am_segmentation_manager import launcher
-from am_segmentation_manager.identity import APPLICATION_ID, PRODUCT_NAME
+from am_segmentation_manager.identity import (
+    APPLICATION_ID,
+    PRODUCT_NAME,
+    VIEWER_ID,
+    VIEWER_NAME,
+)
 from am_segmentation_manager.launcher import (
     ARGUMENTS,
     DESCRIPTION,
+    VIEWER,
+    VIEWER_DESCRIPTION,
+    WINDOW,
     LauncherRefused,
     Places,
     plan,
@@ -93,6 +101,62 @@ def test_a_platform_with_no_launcher_is_refused():
 # -- what each platform's launcher holds -------------------------------------------
 
 
+def test_the_windows_launcher_keeps_every_name_it_shipped_with():
+    """The desktop and :func:`launcher.is_ours` recognise a launcher written
+    before by these, so a change would orphan every one already on a computer."""
+    assert ARGUMENTS == ("-m", "am_segmentation_manager.cli", "gui")
+    assert DESCRIPTION == "Curate, proofread and export FIB/SEM segmentation labels"
+    assert (WINDOW.name, WINDOW.identifier, WINDOW.description, WINDOW.arguments) == (
+        PRODUCT_NAME, APPLICATION_ID, DESCRIPTION, ARGUMENTS
+    )
+    assert (WINDOW.bundle_name, WINDOW.desktop_entry_name, WINDOW.shortcut_name, WINDOW.icon_name) == (
+        "AM segmentation manager.app", "adaptive-milling-seg.desktop",
+        "AM segmentation manager.lnk", "adaptive-milling-seg.png",
+    )
+    assert WINDOW.command == "am-seg create-shortcut"
+
+
+def test_the_viewer_is_named_and_started_as_the_viewer():
+    assert (VIEWER.name, VIEWER.identifier, VIEWER.description) == (
+        VIEWER_NAME, VIEWER_ID, VIEWER_DESCRIPTION
+    )
+    assert VIEWER.arguments == (*ARGUMENTS, "--viewer")
+    assert VIEWER.command == "am-seg create-shortcut --viewer"
+
+
+def test_the_window_and_the_viewer_share_no_path_and_no_mark(tmp_path):
+    """So that writing, replacing or removing one can never reach the other."""
+    places = _places(tmp_path)
+    for family in ("darwin", "linux", "win32"):
+        paths = {
+            app: {e.path for e in plan(family, places, Path("/env/python"), desktop=True, app=app).entries}
+            for app in (WINDOW, VIEWER)
+        }
+        assert not paths[WINDOW] & paths[VIEWER], family
+    assert WINDOW.identifier != VIEWER.identifier
+    assert WINDOW.description not in VIEWER.description
+    assert VIEWER.description not in WINDOW.description
+
+
+def test_the_viewer_bundle_and_desktop_entry_name_the_viewer():
+    info = plistlib.loads(launcher.mac_info_plist(VIEWER))
+    entry = _read_desktop_entry(
+        launcher.desktop_entry(PurePosixPath("/env/bin/python"), PurePosixPath("/i/v.png"), VIEWER)
+    )
+
+    assert info["CFBundleName"] == VIEWER_NAME
+    assert info["CFBundleIdentifier"] == VIEWER_ID
+    assert entry["Name"] == VIEWER_NAME
+    assert entry["Comment"] == VIEWER_DESCRIPTION
+    assert _split_exec(entry["Exec"]) == ["/env/bin/python", *VIEWER.arguments]
+
+
+def test_where_a_launcher_is_found_names_its_application():
+    for family in ("darwin", "linux", "win32"):
+        assert f"'{VIEWER_NAME}'" in launcher.where_to_find(family, VIEWER)
+        assert f"'{PRODUCT_NAME}'" in launcher.where_to_find(family)
+
+
 def test_the_mac_bundle_is_named_iconed_and_marked():
     info = plistlib.loads(launcher.mac_info_plist())
 
@@ -103,8 +167,9 @@ def test_the_mac_bundle_is_named_iconed_and_marked():
 
 
 @posix_only
+@pytest.mark.parametrize("app", [WINDOW, VIEWER], ids=["window", "viewer"])
 @pytest.mark.parametrize("python_path", AWKWARD_PATHS)
-def test_the_mac_script_starts_its_python_whatever_its_path_holds(tmp_path, python_path):
+def test_the_mac_script_starts_its_python_whatever_its_path_holds(tmp_path, python_path, app):
     """The script is run for real, with a stand-in python recording what it
     was asked to run."""
     python = tmp_path / python_path.lstrip("/")
@@ -113,11 +178,11 @@ def test_the_mac_script_starts_its_python_whatever_its_path_holds(tmp_path, pyth
     python.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {shlex.quote(str(record))}\n')
     python.chmod(0o755)
     script = tmp_path / "launch"
-    script.write_bytes(launcher.mac_launch_script(python))
+    script.write_bytes(launcher.mac_launch_script(python, app))
 
     subprocess.run(["/bin/sh", str(script)], check=True, timeout=30)
 
-    assert record.read_text().splitlines() == list(ARGUMENTS)
+    assert record.read_text().splitlines() == list(app.arguments)
 
 
 @posix_only
@@ -269,7 +334,7 @@ def test_something_else_in_the_way_refuses_the_whole_launcher(tmp_path):
     left behind by a refusal the menu entry caused."""
     places = _places(tmp_path)
     built = plan("linux", places, Path("/env/python"), desktop=False)
-    theirs = places.menu / launcher.DESKTOP_ENTRY_NAME
+    theirs = places.menu / WINDOW.desktop_entry_name
     theirs.parent.mkdir(parents=True)
     theirs.write_text("[Desktop Entry]\nName=Someone else's\n")
 
@@ -277,7 +342,7 @@ def test_something_else_in_the_way_refuses_the_whole_launcher(tmp_path):
         launcher.write(built, replace=True)
 
     assert theirs.read_text() == "[Desktop Entry]\nName=Someone else's\n"
-    assert not (places.icons / launcher.LINUX_ICON_NAME).exists()
+    assert not (places.icons / WINDOW.icon_name).exists()
 
 
 @posix_only
@@ -285,7 +350,7 @@ def test_removing_takes_only_what_am_seg_wrote(tmp_path):
     places = _places(tmp_path)
     ours = plan("linux", places, Path("/env/python"), desktop=False)
     launcher.write(ours)
-    theirs = places.desktop / launcher.DESKTOP_ENTRY_NAME
+    theirs = places.desktop / WINDOW.desktop_entry_name
     theirs.parent.mkdir(parents=True)
     theirs.write_text("[Desktop Entry]\nName=Someone else's\n")
 
@@ -316,6 +381,16 @@ def test_a_windows_shortcut_is_ours_by_its_description(tmp_path):
 
     entry.path.write_bytes(b"L\x00\x00\x00" + DESCRIPTION.encode("utf-16-le"))
     assert launcher.is_ours(entry)
+    assert not launcher.is_ours(entry, VIEWER)
+
+
+def test_the_viewer_shortcut_is_given_the_viewers_arguments_and_mark(tmp_path):
+    environment = launcher.windows_shortcut_environment(
+        Path("C:/Start/V.lnk"), Path("C:/env/pythonw.exe"), Path("C:/Users/ada"), VIEWER
+    )
+
+    assert environment["AM_SEG_ARGUMENTS"] == " ".join(VIEWER.arguments)
+    assert environment["AM_SEG_DESCRIPTION"] == VIEWER_DESCRIPTION
 
 
 def test_a_windows_shortcut_is_written_by_powershell(tmp_path, monkeypatch):
@@ -400,16 +475,32 @@ def test_a_dry_run_writes_nothing(linux_home, capsys):
 
 @posix_only
 def test_the_command_writes_replaces_and_removes(linux_home, capsys):
-    entry = linux_home.menu / launcher.DESKTOP_ENTRY_NAME
+    entry = linux_home.menu / WINDOW.desktop_entry_name
 
     assert cli_main.main(["create-shortcut"]) == 0
-    assert entry.exists() and not (linux_home.desktop / launcher.DESKTOP_ENTRY_NAME).exists()
+    assert entry.exists() and not (linux_home.desktop / WINDOW.desktop_entry_name).exists()
     assert cli_main.main(["create-shortcut"]) == 1
     assert cli_main.main(["create-shortcut", "--replace"]) == 0
     assert cli_main.main(["create-shortcut", "--remove"]) == 0
 
     assert not entry.exists()
     assert "Removed" in capsys.readouterr().out
+
+
+@posix_only
+def test_the_command_adds_and_removes_the_viewer_apart_from_the_window(linux_home, capsys):
+    window_entry = linux_home.menu / WINDOW.desktop_entry_name
+    viewer_entry = linux_home.menu / VIEWER.desktop_entry_name
+    assert cli_main.main(["create-shortcut"]) == 0
+
+    assert cli_main.main(["create-shortcut", "--viewer"]) == 0
+    assert viewer_entry.exists()
+    assert f"'{VIEWER_NAME}'" in capsys.readouterr().out
+    assert cli_main.main(["create-shortcut", "--viewer", "--remove"]) == 0
+
+    assert not viewer_entry.exists()
+    assert window_entry.exists()
+    assert (linux_home.icons / WINDOW.icon_name).exists()
 
 
 def test_remove_and_replace_together_are_refused(linux_home):

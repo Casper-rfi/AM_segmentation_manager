@@ -176,8 +176,9 @@ builds for it.
 
 - **It stopped starting after the environment moved.** A launcher starts the
   Python it was made with. Run `am-seg create-shortcut --replace` from the
-  environment you use now, or *Add to...* in the window's File menu. On Linux
-  an entry whose Python has gone disappears from the menu.
+  environment you use now, adding `--viewer` for the viewer's, or *Add to...* in
+  the window's File menu. On Linux an entry whose Python has gone disappears from
+  the menu.
 - **On the GNOME Desktop** a launcher must be allowed once: right-click it and
   choose *Allow Launching*.
 - **On a managed Windows machine** the shortcut may be refused, PowerShell being

@@ -4,9 +4,10 @@ A surface outside the four layers: it writes into the user's own menus and
 Desktop, never into a collection, and reads nothing of one. A launcher is
 planned whole and checked before anything is written. **An existing file is
 replaced or removed only where it carries this package's mark**, so nothing
-this did not write is ever touched. A launcher starts the interpreter of the
-environment that made it, and one made from an environment that moves must be
-made again.
+this did not write is ever touched. The window and the viewer each have a
+launcher of their own, told apart by :class:`Application`, so neither is ever
+mistaken for the other. A launcher starts the interpreter of the environment
+that made it, and one made from an environment that moves must be made again.
 """
 from __future__ import annotations
 
@@ -28,16 +29,21 @@ from .identity import (
     ICON_PATH,
     MAC_ICON_PATH,
     PRODUCT_NAME,
+    VIEWER_ID,
+    VIEWER_NAME,
     WINDOWS_ICON_PATH,
 )
 
-#: What a launcher asks the interpreter to run.
+#: What the window's launcher asks the interpreter to run.
 ARGUMENTS: Final[tuple[str, ...]] = ("-m", "am_segmentation_manager.cli", "gui")
 
 #: Said beside the name: the tooltip on Windows, the comment on Linux. A
 #: Windows shortcut can carry nothing else of ours, so there it is the mark,
 #: and like every mark here it never changes once shipped.
 DESCRIPTION: Final[str] = "Curate, proofread and export FIB/SEM segmentation labels"
+
+#: The viewer's, and so the mark on its Windows shortcut.
+VIEWER_DESCRIPTION: Final[str] = "Look through FIB/SEM images and their labels, changing nothing"
 
 #: The key marking a macOS bundle or a Linux desktop entry as written here.
 PLIST_MARK: Final[str] = "AMSegLauncher"
@@ -46,12 +52,6 @@ DESKTOP_MARK: Final[str] = "X-AM-Seg-Launcher"
 #: The text chunk marking a Linux icon as written here: a PNG's own place for
 #: saying what made it.
 PNG_MARK: Final[bytes] = b"Software\x00am-seg create-shortcut"
-
-#: What each platform's menu entry is called on disk.
-MAC_BUNDLE_NAME: Final[str] = f"{PRODUCT_NAME}.app"
-DESKTOP_ENTRY_NAME: Final[str] = f"{APPLICATION_ID}.desktop"
-SHORTCUT_NAME: Final[str] = f"{PRODUCT_NAME}.lnk"
-LINUX_ICON_NAME: Final[str] = f"{APPLICATION_ID}.png"
 
 #: The executable inside the macOS bundle, a shell script.
 _MAC_EXECUTABLE: Final[str] = "am-seg"
@@ -64,21 +64,84 @@ MENU_LABELS: Final[dict[str, str]] = {
     "win32": "Add to Start menu...",
 }
 
-#: Where each platform's launcher is found once written.
+#: Where each platform's launcher is found once written, for an application
+#: called ``{name}``; :func:`where_to_find` fills it in.
 WHERE_TO_FIND: Final[dict[str, str]] = {
     "darwin": (
-        f"Find '{PRODUCT_NAME}' with Spotlight or in Launchpad; drag it to the Dock "
+        "Find '{name}' with Spotlight or in Launchpad; drag it to the Dock "
         "to keep it there."
     ),
     "linux": (
-        f"'{PRODUCT_NAME}' is in the applications menu. A launcher on the GNOME "
+        "'{name}' is in the applications menu. A launcher on the GNOME "
         "Desktop must be allowed once: right-click it and choose Allow Launching."
     ),
     "win32": (
-        f"'{PRODUCT_NAME}' is in the Start menu; right-click it there to pin it to "
+        "'{name}' is in the Start menu; right-click it there to pin it to "
         "the taskbar."
     ),
 }
+
+
+@dataclass(frozen=True)
+class Application:
+    """What one launcher starts, and every name the desktop knows it by.
+
+    Attributes:
+        name: What the menu shows, and what the macOS bundle and the Windows
+            shortcut are called.
+        identifier: The macOS bundle identifier, and the Linux desktop entry's
+            and icon's names.
+        description: Said beside the name, and the Windows shortcut's mark.
+        arguments: What the interpreter is asked to run.
+        option: What ``create-shortcut`` is given to write this one.
+    """
+
+    name: str
+    identifier: str
+    description: str
+    arguments: tuple[str, ...]
+    option: str = ""
+
+    @property
+    def bundle_name(self) -> str:
+        """The macOS bundle's directory name."""
+        return f"{self.name}.app"
+
+    @property
+    def desktop_entry_name(self) -> str:
+        """The Linux desktop entry's file name."""
+        return f"{self.identifier}.desktop"
+
+    @property
+    def shortcut_name(self) -> str:
+        """The Windows shortcut's file name."""
+        return f"{self.name}.lnk"
+
+    @property
+    def icon_name(self) -> str:
+        """The Linux icon's file name: its own, so removing one keeps the other's."""
+        return f"{self.identifier}.png"
+
+    @property
+    def command(self) -> str:
+        """The command that writes this launcher again."""
+        return " ".join(part for part in ("am-seg create-shortcut", self.option) if part)
+
+
+#: The window, which curates, proofreads and exports.
+WINDOW: Final[Application] = Application(
+    PRODUCT_NAME, APPLICATION_ID, DESCRIPTION, ARGUMENTS
+)
+
+#: The window opened only to look; see ``am-seg gui --viewer``.
+VIEWER: Final[Application] = Application(
+    VIEWER_NAME, VIEWER_ID, VIEWER_DESCRIPTION, (*ARGUMENTS, "--viewer"), "--viewer"
+)
+
+
+def where_to_find(family: str, app: Application = WINDOW) -> str:
+    """Say where *app*'s launcher is found on *family* once written."""
+    return WHERE_TO_FIND[family].format(name=app.name)
 
 
 class LauncherRefused(Exception):
@@ -127,6 +190,7 @@ class Launcher:
     platform: str
     python: Path
     entries: tuple[Entry, ...]
+    app: Application = WINDOW
 
 
 # -- what a launcher runs ----------------------------------------------------
@@ -171,12 +235,12 @@ def interpreter(platform: str = sys.platform, executable: str = sys.executable) 
 # -- what each platform's launcher holds ---------------------------------------
 
 
-def mac_info_plist() -> bytes:
+def mac_info_plist(app: Application = WINDOW) -> bytes:
     """Return the bundle's ``Info.plist``, naming it and its icon."""
     return plistlib.dumps({
-        "CFBundleName": PRODUCT_NAME,
-        "CFBundleDisplayName": PRODUCT_NAME,
-        "CFBundleIdentifier": APPLICATION_ID,
+        "CFBundleName": app.name,
+        "CFBundleDisplayName": app.name,
+        "CFBundleIdentifier": app.identifier,
         "CFBundleExecutable": _MAC_EXECUTABLE,
         "CFBundleIconFile": MAC_ICON_PATH.name,
         "CFBundlePackageType": "APPL",
@@ -185,10 +249,10 @@ def mac_info_plist() -> bytes:
     })
 
 
-def mac_launch_script(python: Path) -> bytes:
+def mac_launch_script(python: Path, app: Application = WINDOW) -> bytes:
     """Return the bundle's executable: start *python*, or say it has gone."""
     quoted = shlex.quote(str(python))
-    arguments = " ".join(ARGUMENTS)
+    arguments = " ".join(app.arguments)
     return (
         "#!/bin/sh\n"
         "# Written by am-seg create-shortcut.\n"
@@ -197,9 +261,9 @@ def mac_launch_script(python: Path) -> bytes:
         "    osascript -e 'on run argv' \\\n"
         "        -e 'display alert (item 1 of argv) message (item 2 of argv) as critical' \\\n"
         "        -e 'end run' \\\n"
-        f'        "{PRODUCT_NAME} cannot start" \\\n'
+        f'        "{app.name} cannot start" \\\n'
         '        "The Python it was set up with is no longer there: $python. Run '
-        '\'am-seg create-shortcut --replace\' from the environment you use now."\n'
+        f"'{app.command} --replace' from the environment you use now.\"\n"
         "    exit 1\n"
         "fi\n"
         f'exec "$python" {arguments}\n'
@@ -221,19 +285,19 @@ def _exec_argument(argument: str) -> str:
     return argument.replace("\\", "\\\\").replace("%", "%%")
 
 
-def desktop_entry(python: PurePath, icon: PurePath) -> bytes:
+def desktop_entry(python: PurePath, icon: PurePath, app: Application = WINDOW) -> bytes:
     """Return a Linux desktop entry starting *python*, drawn with *icon*.
 
     ``TryExec`` hides the entry once *python* is gone, rather than leaving one
     that does nothing when chosen.
     """
-    command = " ".join(_exec_argument(part) for part in (str(python), *ARGUMENTS))
+    command = " ".join(_exec_argument(part) for part in (str(python), *app.arguments))
     return (
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Version=1.5\n"
-        f"Name={PRODUCT_NAME}\n"
-        f"Comment={DESCRIPTION}\n"
+        f"Name={app.name}\n"
+        f"Comment={app.description}\n"
         f"TryExec={python}\n"
         f"Exec={command}\n"
         f"Icon={icon}\n"
@@ -273,14 +337,16 @@ WINDOWS_PLACES_SCRIPT: Final[str] = """\
 """
 
 
-def windows_shortcut_environment(shortcut: Path, python: Path, home: Path) -> dict[str, str]:
+def windows_shortcut_environment(
+    shortcut: Path, python: Path, home: Path, app: Application = WINDOW
+) -> dict[str, str]:
     """Return what :data:`WINDOWS_SHORTCUT_SCRIPT` reads to write *shortcut*."""
     return {
         "AM_SEG_SHORTCUT": str(shortcut),
         "AM_SEG_TARGET": str(python),
-        "AM_SEG_ARGUMENTS": " ".join(ARGUMENTS),
+        "AM_SEG_ARGUMENTS": " ".join(app.arguments),
         "AM_SEG_ICON": str(WINDOWS_ICON_PATH),
-        "AM_SEG_DESCRIPTION": DESCRIPTION,
+        "AM_SEG_DESCRIPTION": app.description,
         "AM_SEG_WORKDIR": str(home),
     }
 
@@ -288,7 +354,14 @@ def windows_shortcut_environment(shortcut: Path, python: Path, home: Path) -> di
 # -- where a launcher goes -----------------------------------------------------
 
 
-def plan(family: str, places: Places, python: Path, *, desktop: bool) -> Launcher:
+def plan(
+    family: str,
+    places: Places,
+    python: Path,
+    *,
+    desktop: bool,
+    app: Application = WINDOW,
+) -> Launcher:
     """Return the launcher for *family*, writing nothing.
 
     Args:
@@ -296,41 +369,44 @@ def plan(family: str, places: Places, python: Path, *, desktop: bool) -> Launche
         places: Where this computer keeps menus and the Desktop.
         python: The interpreter it starts.
         desktop: Whether a Desktop entry comes too.
+        app: What it starts: the window or the viewer.
     """
     entries: list[Entry] = []
     if family == "darwin":
-        bundle = places.menu / MAC_BUNDLE_NAME
+        bundle = places.menu / app.bundle_name
         entries.append(Entry(
             bundle,
             {
-                "Contents/Info.plist": mac_info_plist(),
-                f"Contents/MacOS/{_MAC_EXECUTABLE}": mac_launch_script(python),
+                "Contents/Info.plist": mac_info_plist(app),
+                f"Contents/MacOS/{_MAC_EXECUTABLE}": mac_launch_script(python, app),
                 f"Contents/Resources/{MAC_ICON_PATH.name}": MAC_ICON_PATH.read_bytes(),
             },
             executable=(f"Contents/MacOS/{_MAC_EXECUTABLE}",),
         ))
         if desktop:
-            entries.append(Entry(places.desktop / MAC_BUNDLE_NAME, {}, link_to=bundle))
+            entries.append(Entry(places.desktop / app.bundle_name, {}, link_to=bundle))
     elif family == "linux":
         if places.icons is None:
             raise LauncherRefused("No icon directory to put the launcher's icon in")
-        icon = places.icons / LINUX_ICON_NAME
-        entry = desktop_entry(python, icon)
+        icon = places.icons / app.icon_name
+        entry = desktop_entry(python, icon, app)
         entries.append(Entry(icon, {"": marked_png(ICON_PATH.read_bytes())}))
-        entries.append(Entry(places.menu / DESKTOP_ENTRY_NAME, {"": entry}))
+        entries.append(Entry(places.menu / app.desktop_entry_name, {"": entry}))
         if desktop:
-            entries.append(Entry(places.desktop / DESKTOP_ENTRY_NAME, {"": entry}, executable=("",)))
+            entries.append(
+                Entry(places.desktop / app.desktop_entry_name, {"": entry}, executable=("",))
+            )
     elif family == "win32":
-        entries.append(Entry(places.menu / SHORTCUT_NAME, {}))
+        entries.append(Entry(places.menu / app.shortcut_name, {}))
         if desktop:
-            entries.append(Entry(places.desktop / SHORTCUT_NAME, {}))
+            entries.append(Entry(places.desktop / app.shortcut_name, {}))
     else:
         raise LauncherRefused(f"No launcher is written for {family}")
-    return Launcher(family, python, tuple(entries))
+    return Launcher(family, python, tuple(entries), app)
 
 
-def is_ours(entry: Entry) -> bool:
-    """Whether what is at *entry*'s path was written here, and so may be replaced."""
+def is_ours(entry: Entry, app: Application = WINDOW) -> bool:
+    """Whether what is at *entry*'s path was written here for *app*, and so may be replaced."""
     path = entry.path
     if entry.link_to is not None:
         return path.is_symlink() and Path(path.readlink()) == entry.link_to
@@ -347,7 +423,7 @@ def is_ours(entry: Entry) -> bool:
     if path.suffix == ".desktop":
         return f"\n{DESKTOP_MARK}=true\n".encode() in content
     if path.suffix == ".lnk":
-        return DESCRIPTION.encode("utf-16-le") in content
+        return app.description.encode("utf-16-le") in content
     if path.suffix == ".png":
         return b"tEXt" + PNG_MARK in content
     return False
@@ -367,7 +443,7 @@ def check_write(launcher: Launcher, *, replace: bool) -> None:
     for entry in launcher.entries:
         if not _present(entry.path):
             continue
-        if not is_ours(entry):
+        if not is_ours(entry, launcher.app):
             problems.append(f"{entry.path} is already there and was not written by am-seg")
         elif not replace:
             problems.append(f"{entry.path} is already there; --replace writes it again")
@@ -392,7 +468,7 @@ def write(launcher: Launcher, *, replace: bool = False, home: Path | None = None
             entry.path.symlink_to(entry.link_to)
         elif launcher.platform == "win32":
             environment = windows_shortcut_environment(
-                entry.path, launcher.python, home or Path.home()
+                entry.path, launcher.python, home or Path.home(), launcher.app
             )
             run_powershell(WINDOWS_SHORTCUT_SCRIPT, environment)
         else:
@@ -416,7 +492,7 @@ def existing(launcher: Launcher) -> tuple[list[Entry], list[Path]]:
     ours, others = [], []
     for entry in launcher.entries:
         if _present(entry.path):
-            if is_ours(entry):
+            if is_ours(entry, launcher.app):
                 ours.append(entry)
             else:
                 others.append(entry.path)
@@ -463,10 +539,10 @@ class ThisComputer:
         """Whether a Desktop entry comes unless asked otherwise: on Windows only."""
         return self.family == "win32"
 
-    def launcher(self, desktop: bool | None = None) -> Launcher:
-        """Return the launcher for this computer, on the Desktop as well where *desktop*."""
+    def launcher(self, desktop: bool | None = None, app: Application = WINDOW) -> Launcher:
+        """Return *app*'s launcher for this computer, on the Desktop as well where *desktop*."""
         wanted = self.desktop_by_default if desktop is None else desktop
-        return plan(self.family, self.places, self.python, desktop=wanted)
+        return plan(self.family, self.places, self.python, desktop=wanted, app=app)
 
 
 def this_computer(platform: str | None = None) -> ThisComputer:

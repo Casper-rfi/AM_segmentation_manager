@@ -158,7 +158,9 @@ can judge the label against what it covers.
 To look through a collection where nothing should change, such as on the
 microscope's computer, start the window with `am-seg gui --viewer`. The viewer
 is this tab alone, without its right-hand column: no other tab, no state or
-families, no operations, and no *Enable editing* to switch on.
+families, no operations, and no *Enable editing* to switch on. To start it like
+any other application, choose *The viewer* under *Add to...* in the File menu,
+or run `am-seg create-shortcut --viewer`: it gets a launcher of its own.
 
 ### Decide what gets labelled
 
