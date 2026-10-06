@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,16 +12,15 @@ keywords = ["FIB-SEM", "segmentation", "autolamella", "microscopy"]
 
 requires-python = ">=3.11"
 
-# No license field. The package previously declared MIT with no LICENSE file,
-# which is a licence grant that was never actually decided on. Undeclared means
-# the default -- all rights reserved -- which is the accurate state while the
-# question is open. Choosing a licence (and whether the copyright holder is the
-# author or the Rosalind Franklin Institute) is deferred; see
-# docs/00_roadmap.md, "Before publishing".
-#
+# An SPDX expression, which needs setuptools 77. No `License ::` classifier
+# beside it: setuptools refuses both. THIRD_PARTY_NOTICES.md ships in the wheel
+# because the MIT licence of the code it lists requires its notice in every copy.
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+
 # "Private :: Do Not Upload" is not a real classifier to PyPI: it rejects any
-# upload carrying it. That is deliberate belt-and-braces against an accidental
-# `twine upload` while the package is unlicensed and unpublished.
+# upload carrying it, guarding against an accidental `twine upload` until the
+# first release is ready. Remove it as part of that release.
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",

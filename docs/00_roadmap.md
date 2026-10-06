@@ -50,9 +50,9 @@ its controller built read-only; `create-shortcut --viewer` gives it a launcher o
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
 - **Before publishing** (`plans/release_preparation.md`; `create-shortcut` untried under Wayland and with a Desktop moved into OneDrive; Xfce 4.18's panel menu cannot start the entry `gtk-launch` starts), several packaging gaps are open by decision rather than oversight and all
-  become necessary at once: no `LICENSE` (`pyproject.toml` deliberately declares none and carries a
-  `"Private :: Do Not Upload"` classifier, and `THIRD_PARTY_NOTICES.md` now records an MIT
-  obligation this package carries whatever licence it takes), and no `[project.urls]`; the
+  become necessary at once: `pyproject.toml` carries a `"Private :: Do Not Upload"` classifier,
+  `ml/preprocessing.py` has no licence from its owners (`THIRD_PARTY_NOTICES.md`), and there are
+  no `[project.urls]`; the
   version is `0.1.0.dev0`, and `CHANGELOG.md` holds the release's features under *Unreleased*. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
   under both on 2026-09-17.

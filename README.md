@@ -180,7 +180,6 @@ Rosalind Franklin Institute. Questions, bugs, and layouts that are not read
 correctly are welcome by email — the project is not yet hosted, so there is no
 issue tracker.
 
-**Status: in development, and not yet licensed for redistribution.** The
-package carries no `LICENSE`, which means default copyright — all rights
-reserved — while the licensing question is open. It is intended to be open
-source in future.
+**Status: in development.** Licensed under the
+[Apache License 2.0](LICENSE). Code derived from other projects is listed, with
+its licence, in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

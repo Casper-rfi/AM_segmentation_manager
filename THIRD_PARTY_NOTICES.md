@@ -56,5 +56,5 @@ changed, so that a `diff` against that source shows only what this package did
 to it. It is excluded from `ruff` for the same reason.
 
 **Licence:** not declared upstream. The copy is internal to the group that
-wrote it; settle this before publishing, along with this package's own licence
+wrote it; it needs a licence from its owners, or a rewrite, before publishing
 (`docs/00_roadmap.md`, "Before publishing").

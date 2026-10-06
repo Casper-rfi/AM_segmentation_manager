@@ -1,0 +1,6 @@
+AM_segmentation_manager (adaptive-milling-seg)
+Copyright 2026 Casper Berger
+
+This product includes code derived from fibsemOS
+(https://github.com/fibsem-os/fibsem-os), under the MIT License.
+THIRD_PARTY_NOTICES.md lists every such source and carries its licence.

@@ -1,5 +1,11 @@
 # Contributing
 
+## Licence
+
+The package is under the [Apache License 2.0](LICENSE). A contribution
+submitted for inclusion is licensed under the same terms (section 5), so no
+separate agreement is needed.
+
 ## Running the tests
 
 From the repository root, in the environment the gui and ml extras build:
