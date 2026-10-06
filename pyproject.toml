@@ -149,15 +149,6 @@ line-length = 100
 src = ["src", "tests"]
 target-version = "py311"
 
-# A copy of AM_training's module, changed only by the removal of its
-# training-only transform. Linting it would report import order and trailing
-# whitespace we must not fix: the moment this package reformats it, "what did we
-# change?" stops being a question `diff` can answer. Not ours to lint, so not
-# linted.
-extend-exclude = [
-  "src/am_segmentation_manager/ml/preprocessing.py",
-]
-
 [tool.ruff.lint]
 # Deliberately a small set. Starting from "every rule ruff has" produces
 # hundreds of findings that are mostly style opinions, and the useful ones then
@@ -190,8 +181,6 @@ ignore = ["E501"]
 # `mypy` from the repository root checks the package and should report nothing.
 files = ["src/am_segmentation_manager"]
 python_version = "3.11"
-# Not ours to type: the copy of AM_training's module, as for ruff.
-exclude = ['src/am_segmentation_manager/ml/preprocessing\.py$']
 # PyYAML and segmentation_models_pytorch ship no annotations, and torch and
 # segmentation_models_pytorch are absent from the main environment; calls into
 # them are unchecked rather than reported.

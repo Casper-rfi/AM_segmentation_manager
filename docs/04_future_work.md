@@ -25,8 +25,10 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
   and its torch index are not ours, so whether it is a dependency or an environment a child
   process runs, as predicting already is.
 - **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
-  `GENERATIONS` held to a recapture of `adaptive_milling_gen1.npz`'s kind, or as a dependency on
-  `adaptive-milling`, 27 packages beside `ml` and an API that renamed its generations once.
+  `GENERATIONS`, its preprocessing added beside `IMPLEMENTED_PREPROCESSING` and held to a recapture
+  of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside
+  `ml`, torch below 2.9 on Windows, Apache-2.0 with the Commons Clause, which is not open source,
+  and an API that renamed its generations once.
 - **Splitting the five classes that outgrew a screen** — `CurationWindow` (90 methods, 1651
   lines), `CurationController` (90), `LabelPanel` (65), `ExportController` (49) and `ExportPanel`
   (32). None is public API — that is six names and the `am-seg` entry point — so this is

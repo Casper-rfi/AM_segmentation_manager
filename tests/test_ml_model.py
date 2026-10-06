@@ -8,6 +8,7 @@ covered by the strict-load check in ml/model.py rather than in a test.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from am_segmentation_manager.ml.model import (
     check_generation,
     checkpoint_facts,
     description_path,
+    model_input,
     read_model_description,
     run_name_of,
 )
@@ -181,6 +183,17 @@ def test_generation_one_s_settings_are_the_ones_predictions_were_made_with():
         GENERATION_1.architecture, GENERATION_1.encoder,
         GENERATION_1.classes, GENERATION_1.in_channels,
     ) == (1536, True, False, 2, "pytorch", "FPN", "efficientnet-b6", 5, 3)
+
+
+@pytest.mark.parametrize(
+    "setting, value", [("pad", True), ("normalise_version", 1), ("resize_version", "cv2")]
+)
+def test_a_generation_asking_for_unimplemented_preprocessing_is_refused(setting, value):
+    """Refused before the image is touched, rather than run as generation 1."""
+    generation = replace(GENERATION_1, name="2.0", **{setting: value})
+
+    with pytest.raises(ValueError, match=rf"'2\.0'.*{setting}"):
+        model_input(None, generation, rgb=True)
 
 
 def test_a_generation_one_checkpoint_is_accepted():

@@ -9,7 +9,7 @@ Checks the image stack, the Qt binding and whether it can open a window,
 charts, how many worker processes a scan starts, and on Windows whether long
 paths can be reached; then, where the ``ml`` extra is installed, the inference
 stack, the devices torch can see, the NVIDIA GPUs and how full they are, and
-the vendored preprocessing on each device. Exits non-zero when something
+generation 1's preprocessing on each device. Exits non-zero when something
 installed does not work, NVIDIA GPUs torch cannot use among it; an extra that
 was simply not installed is reported and is not a failure.
 """

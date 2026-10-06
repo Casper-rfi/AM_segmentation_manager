@@ -5,7 +5,8 @@ adaptive-milling's ``Gen1Model`` fed its model for each, and the architecture it
 built, captured in its own environment by
 ``scripts/capture_adaptive_milling_reference.py``; the suite here runs with no
 adaptive-milling installed. The forward pass beyond these is
-segmentation-models-pytorch's own module on both sides.
+segmentation-models-pytorch's own module on both sides. The last tests cover
+what the fixture does not.
 """
 from __future__ import annotations
 
@@ -79,3 +80,33 @@ def test_the_fixture_covers_both_bit_depths_and_both_orientations():
     assert any(max(shape) > size for shape in shapes)
     assert any(max(shape) < size for shape in shapes)
     assert meta["source"].startswith("adaptive-milling ")
+
+
+@needs_ml
+def test_an_image_already_at_the_model_s_size_is_normalised_but_not_resampled():
+    import numpy as np
+
+    from am_segmentation_manager.ml.preprocessing import preprocess
+
+    image = np.random.default_rng(0).integers(0, 4096, size=(32, 48), dtype=np.uint16)
+    values = image.astype(np.float64)
+    expected = np.clip((values - values.mean()) / (3 * values.std(ddof=1)), -1, 1)
+
+    ours = preprocess(image, image_size=48, rgb=False).numpy()
+
+    np.testing.assert_allclose(ours[0, 0], expected, rtol=0, atol=TOLERANCE)
+
+
+@needs_ml
+def test_preprocessing_leaves_the_caller_s_image_untouched():
+    """A float32 image is shared with torch rather than copied, so nothing may work on it in place."""
+    import numpy as np
+
+    from am_segmentation_manager.ml.preprocessing import preprocess
+
+    image = np.random.default_rng(0).random((32, 48), dtype=np.float32)
+    before = image.copy()
+
+    preprocess(image, image_size=24, rgb=True)
+
+    np.testing.assert_array_equal(image, before)

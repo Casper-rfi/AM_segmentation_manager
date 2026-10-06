@@ -51,11 +51,11 @@ class Generation:
         name: What a description file and a prediction's provenance call it.
         image_size: Longest edge the image is resized to before the forward
             pass, and therefore the resolution the prediction is written at.
-        normalise_first: Whether normalisation runs before padding.
+        normalise_first: Whether normalisation runs before padding, which
+            only matters to a generation that pads.
         pad: Whether the image is padded to a square before resizing.
-        normalise_version: Which of the two normalisations in
-            :mod:`.preprocessing` applies.
-        resize_version: ``"pytorch"`` or ``"cv2"``.
+        normalise_version: ``2`` clips the normalised image to [-1, 1].
+        resize_version: ``"pytorch"`` resizes with torch's bicubic interpolation.
         architecture: The segmentation-models-pytorch model name.
         encoder: The encoder name within that architecture.
         classes: Segmentation classes the head must predict.
@@ -88,6 +88,15 @@ GENERATION_1 = Generation(
     classes=5,
     in_channels=3,
 )
+
+#: The preprocessing settings :mod:`.preprocessing` implements, which are
+#: generation 1's. A generation asking for others brings their implementation,
+#: and a fixture to hold it to.
+IMPLEMENTED_PREPROCESSING: Mapping[str, object] = {
+    "pad": False,
+    "normalise_version": 2,
+    "resize_version": "pytorch",
+}
 
 #: Every generation this package can run, by name.
 GENERATIONS: Mapping[str, Generation] = {GENERATION_1.name: GENERATION_1}
@@ -266,8 +275,8 @@ class LoadedModel:
         conversion to a label is what matches them to an image.
 
         Preprocessing runs on the CPU and the result is moved to the device, so
-        a device problem surfaces at the forward pass rather than inside the
-        vendored preprocessing.
+        a device problem surfaces at the forward pass rather than inside
+        preprocessing.
 
         Args:
             image: A 2D greyscale image array.
@@ -289,22 +298,27 @@ def model_input(image: np.ndarray, generation: Generation, rgb: bool) -> Any:
 
     Held to Adaptive Milling's own preprocessing by
     ``test_generation_one_preprocesses_as_adaptive_milling_does``.
+
+    Raises:
+        ValueError: If *generation* asks for preprocessing other than
+            :data:`IMPLEMENTED_PREPROCESSING`.
     """
-    import numpy as np
+    unimplemented = {
+        setting: getattr(generation, setting)
+        for setting, implemented in IMPLEMENTED_PREPROCESSING.items()
+        if getattr(generation, setting) != implemented
+    }
+    if unimplemented:
+        raise ValueError(
+            f"Generation {generation.name!r} asks for preprocessing this package "
+            f"does not implement: {unimplemented}"
+        )
 
     # Imported at the point of inference: reading a model's description must
     # not pay for the stack that runs one.
-    from .preprocessing import image_preprocess
+    from .preprocessing import preprocess
 
-    return image_preprocess(
-        image.astype(np.float32),
-        image_size=generation.image_size,
-        normalise_first=generation.normalise_first,
-        rgb=rgb,
-        pad=generation.pad,
-        normalise_version=generation.normalise_version,
-        resize_version=generation.resize_version,
-    )
+    return preprocess(image, image_size=generation.image_size, rgb=rgb)
 
 
 def build_architecture(generation: Generation) -> Any:

@@ -308,7 +308,7 @@ def _pin(gpu: Gpu, environ: MutableMapping[str, str], chosen_by: str = "") -> st
 
 
 def verify_preprocessing(device: str = "cpu", image_size: int = 512) -> tuple[int, ...]:
-    """Run the vendored preprocessing over a synthetic image, returning its shape.
+    """Run generation 1's preprocessing over a synthetic image, returning its shape.
 
     An end-to-end exercise of the parts of torch and torchvision inference
     depends on -- normalisation, the bicubic resize and the greyscale-to-RGB
@@ -331,17 +331,8 @@ def verify_preprocessing(device: str = "cpu", image_size: int = 512) -> tuple[in
 
     # torch, imported when a check asks for it rather than when the module
     # naming the devices is read.
-    from .preprocessing import image_preprocess
+    from .preprocessing import preprocess
 
-    image = np.random.default_rng(0).integers(
-        0, 256, size=(256, 384), dtype=np.uint16
-    ).astype(np.float32)
-    tensor = image_preprocess(
-        image,
-        image_size=image_size,
-        normalise_first=True,
-        rgb=True,
-        pad=False,
-        device=device,
-    )
+    image = np.random.default_rng(0).integers(0, 256, size=(256, 384), dtype=np.uint16)
+    tensor = preprocess(image, image_size=image_size, rgb=True, device=device)
     return tuple(int(size) for size in tensor.shape)

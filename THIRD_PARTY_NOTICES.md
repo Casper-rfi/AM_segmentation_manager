@@ -45,16 +45,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
----
-
-## AM_training
-
-**Used by:** `src/am_segmentation_manager/ml/preprocessing.py`, a copy of that
-project's module with its training-only transform removed and nothing else
-changed, so that a `diff` against that source shows only what this package did
-to it. It is excluded from `ruff` for the same reason.
-
-**Licence:** not declared upstream. The copy is internal to the group that
-wrote it; it needs a licence from its owners, or a rewrite, before publishing
-(`docs/00_roadmap.md`, "Before publishing").
