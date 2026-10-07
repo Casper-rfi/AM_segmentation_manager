@@ -1035,8 +1035,9 @@ class LabelPanel(QWidget):
         self._refresh_timeline()
         self.status.setText(self.controller.status_text())
         self._refresh_edit_state()
-        self.draw_current()
+        # Asked for before drawing, for the reason CurationWindow.refresh gives.
         self.loads_needed.emit()
+        self.draw_current()
 
     # -- earlier versions --------------------------------------------------
 

@@ -72,6 +72,10 @@ of one of these files, is held by `test_docs.py`.
   read is one call into an image library and cannot be interrupted part-way, so a file on a
   cloud-synced volume outlasts any deadline worth waiting for on close. `loader.keep_alive` states
   the trade and both the loader and `BackgroundOperation` take it.
+- **A view asks the loader for frames before it looks in the cache to draw.** A frame's "loaded" is
+  dropped once a newer token exists, so a frame an older batch finishes between a miss and the next
+  token is held with nobody told, and "loading..." stays for good
+  (`test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn`; the Label tab's twin).
 - **Whether a run can be *stopped* is answered by what a half-done run leaves behind.** A
   prediction is written atomically and recorded before the next begins, so a stopped run has
   finished files and an accurate account of them. **Converting predictions must not stop** — it

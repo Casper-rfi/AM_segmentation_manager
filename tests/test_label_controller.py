@@ -611,6 +611,17 @@ def test_a_frame_read_ahead_opens_what_was_written_since(tmp_path: Path):
     )
 
 
+def test_a_frame_read_before_its_label_was_rewritten_is_asked_for_again(tmp_path: Path):
+    """Before anything draws it: the panel asks for loads first, and a frame
+    still held then would never be read again."""
+    controller, dataset = read_ahead_controller(tmp_path)
+    rewrite(dataset.label("SEM", 1))
+
+    controller.step(1)
+
+    assert controller.pending_loads()[0].frame_index == controller.frame_index
+
+
 def test_a_frame_returned_to_opens_what_was_written_since(tmp_path: Path):
     controller, dataset = read_ahead_controller(tmp_path)
     controller.step(1)

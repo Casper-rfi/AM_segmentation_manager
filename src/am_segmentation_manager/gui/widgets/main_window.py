@@ -1618,10 +1618,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.project_panel.show_summary(self._summary_text())
         self._follow_model_context()
         self._refresh_timeline()
+        # Loads before the render: a frame an older batch finishes in between
+        # is then either held when the render looks, or asked for again by the
+        # new batch, whose signal is the only one not discarded as stale.
+        self._schedule_loads()
         self._render()
         self._refresh_state_panel()
         self._refresh_families()
-        self._schedule_loads()
 
     def _refresh_families(self) -> None:
         """Point the Families tab at the project in view, and at the condition shown."""

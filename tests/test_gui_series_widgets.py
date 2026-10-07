@@ -505,6 +505,53 @@ def test_the_residue_is_badged_view_only_rather_than_unlabelled(
         destroy(window)
 
 
+def test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn(
+    qt_app, residue_project: Path
+):
+    """The race behind the residue test's rare timeout, made certain.
+
+    The panel says "loading..." on a cache miss; an older batch then finishes
+    that very frame before the window takes its next token. The older batch's
+    signal is discarded as stale, so only the new batch can say the frame is
+    ready -- and it can only say so if it was asked for the frame.
+    """
+    from am_segmentation_manager.gui.cache import LoadRequest
+
+    window = _window(qt_app, residue_project)
+    panel = window.image_panel
+    show_loading = panel.show_loading
+    raced = []
+
+    def loading_then_finished_by_an_older_batch() -> None:
+        show_loading()
+        if not raced:
+            raced.append(True)
+            controller = window.controller
+            modality = "SEM" if controller.mode == "sem" else "FIB"
+            controller.cache.ensure(
+                LoadRequest(
+                    controller.frame_position, modality, controller.current_condition(modality)
+                )
+            )
+
+    try:
+        _show_other(window)
+        panel.show_loading = loading_then_finished_by_an_older_batch
+        window.controller.select_lamella(1)
+        window.refresh()
+        settle(
+            qt_app,
+            lambda: "view only" in panel.badges.text(),
+            what="the frame the older batch finished to be drawn",
+            found=lambda: (panel.status.text(), panel.badges.text()),
+        )
+
+        assert raced
+    finally:
+        panel.show_loading = show_loading
+        destroy(window)
+
+
 def test_the_label_tab_opens_on_the_residue(qt_app, residue_project: Path):
     """The Label tab asks where a label lives on every refresh. An `other`
     image has nowhere, and the tab must still open on it, describe it rather
@@ -526,6 +573,49 @@ def test_the_label_tab_opens_on_the_residue(qt_app, residue_project: Path):
         assert "02-ruling-oryx" in window.label_panel.status.text()
         assert not window.label_panel.canvas.editable
     finally:
+        destroy(window)
+
+
+def test_the_label_tab_draws_a_frame_an_older_batch_finishes_while_loading(
+    qt_app, residue_project: Path
+):
+    """The same race as the image panel's, in the Label tab's own loader."""
+    window = _window(qt_app, residue_project)
+    controller = window.label_panel.controller
+    cached_image = controller.cached_image
+    raced = []
+
+    def missing_then_finished_by_an_older_batch():
+        prepared = cached_image()
+        if prepared is None and not raced and controller.series == "other":
+            raced.append(True)
+            controller.cache.ensure(controller.pending_loads()[0])
+        return prepared
+
+    try:
+        _show_other(window)
+        window.controller.select_lamella(1)
+        window.refresh()
+        window.tabs.setCurrentWidget(window.label_panel)
+        settle(
+            qt_app,
+            lambda: "view only" in window.label_panel.badges.text(),
+            what="the Label tab to open on the residue",
+        )
+        # One refresh, and nothing prepared: the race decides what it draws.
+        controller.cache.clear()
+        controller.cached_image = missing_then_finished_by_an_older_batch
+        window.label_panel.refresh()
+        settle(
+            qt_app,
+            lambda: "view only" in window.label_panel.badges.text(),
+            what="the frame the older batch finished to be drawn in the Label tab",
+            found=lambda: window.label_panel.badges.text(),
+        )
+
+        assert raced
+    finally:
+        controller.cached_image = cached_image
         destroy(window)
 
 

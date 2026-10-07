@@ -506,6 +506,11 @@ class LabelController:
         index = self.frame_index
         if index is None:
             return None
+        self._drop_if_read_before_rewrite(index)
+        return self.cache.cached_image(index, self._modality, self._shown_condition)
+
+    def _drop_if_read_before_rewrite(self, index: int) -> None:
+        """Discard the frame at *index* if its label file changed since it was read."""
         prepared = self.cache.cached_image(index, self._modality, self._shown_condition)
         if prepared is not None and self._read_before_rewrite(prepared):
             logger.info(
@@ -513,8 +518,6 @@ class LabelController:
                 self.record.image_path.name,
             )
             self.cache.drop_image(index, self._modality, self._shown_condition)
-            return None
-        return prepared
 
     def _read_before_rewrite(self, prepared: FrameImage) -> bool:
         """Return whether *prepared*'s label file has changed since it was read.
@@ -538,10 +541,13 @@ class LabelController:
         """Return the frames to prepare, current first then outwards.
 
         Ordered over the proofreadable frames rather than the lamella, so the
-        read-ahead follows where stepping will actually go.
+        read-ahead follows where stepping will actually go. The current frame
+        is asked for again if it was read before its label was rewritten.
         """
         if not self._positions:
             return []
+        if self.frame_index is not None:
+            self._drop_if_read_before_rewrite(self.frame_index)
         requests = []
         for cursor in prefetch_order(self._cursor, len(self._positions), radius):
             index = self._positions[cursor]
