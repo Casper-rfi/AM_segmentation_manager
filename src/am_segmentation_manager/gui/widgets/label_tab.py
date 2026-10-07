@@ -224,6 +224,12 @@ class LabelTab(_Window):
                 f"Marking corrected would cover {approved} image(s), and the "
                 "labels they share."
             )
+        unannotated = self.label_controller.unannotated_checked() if editing else 0
+        if unannotated:
+            lines.append(
+                f"{unannotated} of the labels checked without a change hold no "
+                "annotation. Marking them corrected says they need none."
+            )
         unfinished = self.label_controller.unfinished_checklists()
         if unfinished:
             lines.append(

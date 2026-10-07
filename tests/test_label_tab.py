@@ -2661,3 +2661,17 @@ def test_every_example_is_drawn_about_as_wide_as_the_help_expects(window):
         checklist.show_help(index)
         width = checklist.help.example.pixmap().width()
         assert EXAMPLE_WIDTH // 2 < width <= 2 * EXAMPLE_WIDTH, (step.example, width)
+
+
+def test_marking_an_unannotated_checked_label_says_so(unlabelled, monkeypatch):
+    window = unlabelled
+    opened = save_dialogs(window, monkeypatch)
+    window.controller.set_editing_enabled(True)
+    window.label_panel.checklist_check.setChecked(True)
+    for _ in range(window.label_controller.checklist.save_step):
+        press(window, "C")
+
+    window.save_labels()
+
+    said = " ".join(label.text() for label in opened[0].findChildren(QLabel))
+    assert "hold no annotation" in said

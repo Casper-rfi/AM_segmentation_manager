@@ -837,6 +837,20 @@ class LabelController:
             and not self._is_corrected(key)
         }
 
+    def unannotated_checked(self) -> int:
+        """Return how many labels marking would cover unchanged that hold no annotation.
+
+        A checklist ticked through on a frame with no label, or an empty one,
+        would otherwise mark it corrected unasked: the claim Curate asks about
+        before making, read through the same rule and the same shared cache.
+        """
+        unchanged = self.records_for(self.checked_keys() - self.session.edited_keys())
+        readiness = label_io.classify_labels(unchanged, self.known_labels.state)
+        return len({
+            self.key_for(record)
+            for record in readiness.missing + readiness.empty + readiness.unreadable
+        })
+
     def unfinished_checklists(self) -> int:
         """Return how many edited labels have a checklist started and not ticked through."""
         return sum(

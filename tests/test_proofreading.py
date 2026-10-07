@@ -389,3 +389,31 @@ def test_every_example_shipped_is_named_by_a_step():
 
     assert sorted(path.name for path in EXAMPLES.iterdir() if path.is_dir()
                   and path.name not in named) == []
+
+
+@image_stack
+def test_a_label_ticked_through_with_no_annotation_is_counted_before_marking(tmp_path: Path):
+    """The claim Curate asks about before making it, reached here by ticking."""
+    from am_segmentation_manager.gui.label_controller import LabelController
+
+    build_dataset(tmp_path, acquisitions=1, labels="none")
+    controller = LabelController(CONFIG, cache=_stub_cache())
+    controller.set_lamella(Scanner(tmp_path).build_index().all_projects()[0].lamellae[0])
+    controller.current_image()
+    _tick_through(controller)
+
+    assert controller.unannotated_checked() == 1
+
+
+@image_stack
+def test_a_label_painted_on_is_not_counted_as_unannotated(tmp_path: Path):
+    from am_segmentation_manager.gui.label_controller import LabelController
+
+    build_dataset(tmp_path, acquisitions=1, labels="none")
+    controller = LabelController(CONFIG, cache=_stub_cache())
+    controller.set_lamella(Scanner(tmp_path).build_index().all_projects()[0].lamellae[0])
+    controller.current_image()
+    _tick_through(controller)
+    _paint(controller)
+
+    assert controller.unannotated_checked() == 0, "what is written is what will be marked"
