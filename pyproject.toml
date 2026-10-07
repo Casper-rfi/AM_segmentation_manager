@@ -141,9 +141,12 @@ include = ["am_segmentation_manager*"]
 # the artwork the .icns is built from and is wanted only by a rebuild, so it is
 # committed beside them and deliberately left out of the install. The arrow
 # images are the exception among the SVGs: the stylesheet draws dropdown and
-# spin box arrows from them, so they are named here and ship.
+# spin box arrows from them, so they are named here and ship. The proofreading
+# examples are a crop of a frame and its label before and after each step,
+# drawn in the checklist's help.
 am_segmentation_manager = [
     "data/*.yaml", "data/*.png", "data/*.ico", "data/*.icns", "data/arrow_*.svg",
+    "data/proofreading/*/*.png",
 ]
 
 [tool.pytest.ini_options]

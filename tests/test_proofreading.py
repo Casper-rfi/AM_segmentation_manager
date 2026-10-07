@@ -11,7 +11,13 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.config import SegmentationConfig
-from am_segmentation_manager.gui.proofreading import STEPS, Checklist
+from am_segmentation_manager.gui.proofreading import (
+    EXAMPLE_FILES,
+    EXAMPLES,
+    STEPS,
+    Checklist,
+    read_example,
+)
 from am_segmentation_manager.scanner import Scanner
 from am_segmentation_manager.state import read_state
 from conftest import build_dataset
@@ -324,3 +330,62 @@ def test_marking_an_unchanged_label_corrected_is_recorded(tmp_path: Path):
 
     log = projects[0].path / "AM_history.jsonl"
     assert '"kind":"state-changed"' in log.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# The examples
+# ---------------------------------------------------------------------------
+
+def _write_example(folder: Path, shapes=((4, 6), (4, 6), (4, 6))) -> None:
+    import cv2
+    import numpy as np
+
+    folder.mkdir(parents=True)
+    for name, shape in zip(EXAMPLE_FILES, shapes):
+        cv2.imwrite(str(folder / name), np.zeros(shape, dtype=np.uint8))
+
+
+@image_stack
+def test_an_example_is_its_image_and_both_labels(tmp_path: Path):
+    _write_example(tmp_path / "step")
+
+    example = read_example("step", root=tmp_path)
+
+    assert example is not None
+    assert example.image.shape == example.before.shape == example.after.shape == (4, 6)
+
+
+def test_a_step_without_an_example_has_none(tmp_path: Path):
+    assert read_example("", root=tmp_path) is None
+    assert read_example("not_there", root=tmp_path) is None
+
+
+@image_stack
+def test_an_example_missing_a_file_has_none(tmp_path: Path):
+    _write_example(tmp_path / "step")
+    (tmp_path / "step" / "after.png").unlink()
+
+    assert read_example("step", root=tmp_path) is None
+
+
+@image_stack
+def test_an_example_cropped_unalike_is_refused(tmp_path: Path):
+    _write_example(tmp_path / "step", shapes=((4, 6), (4, 6), (5, 6)))
+
+    with pytest.raises(ValueError, match="cropped alike"):
+        read_example("step", root=tmp_path)
+
+
+@image_stack
+def test_every_example_a_step_names_is_shipped():
+    named = [step.example for step in STEPS if step.example]
+
+    assert named, "at least one step has its example"
+    assert [name for name in named if read_example(name) is None] == []
+
+
+def test_every_example_shipped_is_named_by_a_step():
+    named = {step.example for step in STEPS}
+
+    assert sorted(path.name for path in EXAMPLES.iterdir() if path.is_dir()
+                  and path.name not in named) == []

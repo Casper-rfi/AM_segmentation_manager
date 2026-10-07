@@ -2616,3 +2616,48 @@ def test_f1_lists_the_checklist_keys(window):
 
     assert "Proofreading checklist" in help_text
     assert "Tick the current step of the checklist" in help_text
+
+
+def test_a_step_s_help_shows_its_example_before_and_after(window):
+    checklist = window.label_panel.checklist
+    step = next(index for index, step in enumerate(checklist.steps) if step.example)
+    help_window = checklist.help
+
+    checklist.show_help(step)
+    before = help_window.example.pixmap().toImage()
+    help_window.example_view.buttons["after"].click()
+    after = help_window.example.pixmap().toImage()
+
+    assert help_window.example.isVisibleTo(help_window)
+    assert not before.isNull() and before != after, "the switch shows the other label"
+
+
+def test_a_step_without_an_example_shows_its_explanation_alone(window):
+    checklist = window.label_panel.checklist
+    step = next(index for index, step in enumerate(checklist.steps) if not step.example)
+
+    checklist.show_help(step)
+
+    assert not checklist.help.example.isVisibleTo(checklist.help)
+    assert not checklist.help.example_view.isVisibleTo(checklist.help)
+
+
+def test_a_narrow_example_is_drawn_larger_by_a_whole_factor():
+    from am_segmentation_manager.gui.widgets.checklist_panel import EXAMPLE_WIDTH, magnification
+
+    assert magnification(EXAMPLE_WIDTH) == 1
+    assert magnification(EXAMPLE_WIDTH // 2) == 2
+    assert magnification(EXAMPLE_WIDTH // 2 + 1) == 1, "a fraction would blur the label's pixels"
+    assert magnification(2 * EXAMPLE_WIDTH) == 1, "a wide crop is never shrunk"
+
+
+def test_every_example_is_drawn_about_as_wide_as_the_help_expects(window):
+    from am_segmentation_manager.gui.widgets.checklist_panel import EXAMPLE_WIDTH
+
+    checklist = window.label_panel.checklist
+    for index, step in enumerate(checklist.steps):
+        if not step.example:
+            continue
+        checklist.show_help(index)
+        width = checklist.help.example.pixmap().width()
+        assert EXAMPLE_WIDTH // 2 < width <= 2 * EXAMPLE_WIDTH, (step.example, width)

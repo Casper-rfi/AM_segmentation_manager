@@ -7,7 +7,10 @@ help explains how.
 """
 from __future__ import annotations
 
+import logging
+
 from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -18,10 +21,27 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..proofreading import Step
-from .controls import WrappingLabel
+from ...config import default_config_path, load_segmentation_config
+from ...display import compose_overlay
+from ..proofreading import Step, read_example
+from .controls import SegmentedControl, WrappingLabel
+from .image_view import to_qimage
 from .lists import CheckList
 from .theme import MUTED
+
+logger = logging.getLogger(__name__)
+
+#: The width an example is drawn at, or near: a narrower crop is magnified to it.
+EXAMPLE_WIDTH = 384
+
+def magnification(width: int) -> int:
+    """Return the whole factor an example *width* pixels wide is drawn larger by.
+
+    Whole, so every pixel of the label stays a sharp square: a crop narrowed to
+    show a thin edge is shown bigger rather than lost in the window.
+    """
+    return max(1, EXAMPLE_WIDTH // max(1, width))
+
 
 #: The panel's width: room for the longest step's title on two lines.
 PANEL_WIDTH = 270
@@ -31,12 +51,18 @@ NOTHING_TO_CHECK = "No label to proofread on this frame."
 
 
 class StepHelp(QDialog):
-    """A step's explanation, in a window that stays open while you work."""
+    """A step's explanation and its example, in a window that stays open while you work.
+
+    The example is drawn here from its image and its two labels, by the code
+    that draws every overlay, in the packaged classes' colours: the indices
+    were painted with those classes, whatever the project in view uses.
+    """
 
     def __init__(self, parent) -> None:
         """Build the window, empty until :meth:`show_step` fills it."""
         super().__init__(parent)
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(EXAMPLE_WIDTH + 24)
+        self._pictures: dict[str, tuple[QPixmap, QPixmap] | None] = {}
         layout = QVBoxLayout(self)
         self.title = QLabel()
         self.title.setStyleSheet("font-weight: bold;")
@@ -47,12 +73,25 @@ class StepHelp(QDialog):
         layout.addWidget(self.instructions)
         self.explanation = WrappingLabel()
         layout.addWidget(self.explanation)
+
+        self.example = QLabel()
+        self.example.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.example)
+        self.example_view = SegmentedControl([
+            ("before", "Before", "The label before this step"),
+            ("after", "After", "The label once this step is done"),
+        ])
+        self.example_view.chosen.connect(self._show_picture)
+        layout.addWidget(self.example_view, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._step: Step | None = None
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.close)
         layout.addWidget(buttons)
 
     def show_step(self, number: int, step: Step) -> None:
         """Show *step*, numbered *number* from 1, and bring the window forward."""
+        self._step = step
         self.setWindowTitle(f"Step {number}: {step.title}")
         self.title.setText(f"{number}. {step.title}")
         self.instructions.setText(
@@ -61,8 +100,50 @@ class StepHelp(QDialog):
             + "</ul>"
         )
         self.explanation.setText(step.explanation)
+        has_example = self._pictures_of(step) is not None
+        self.example.setVisible(has_example)
+        self.example_view.setVisible(has_example)
+        if has_example:
+            self.example_view.set_current("before")
+            self._show_picture("before")
+        self.adjustSize()
         self.show()
         self.raise_()
+
+    def _show_picture(self, which: str) -> None:
+        pictures = self._pictures_of(self._step) if self._step is not None else None
+        if pictures is not None:
+            self.example.setPixmap(pictures[0] if which == "before" else pictures[1])
+
+    def _pictures_of(self, step: Step) -> tuple[QPixmap, QPixmap] | None:
+        """Return the step's example drawn before and after, or None without one.
+
+        Read once and kept: a window that stays open is asked again on every
+        step anyone opens. An example that will not read is logged and left
+        out, the explanation being help enough without it.
+        """
+        if step.example not in self._pictures:
+            self._pictures[step.example] = None
+            try:
+                example = read_example(step.example)
+            except (OSError, RuntimeError, ValueError):
+                logger.exception("Could not read the example %r", step.example)
+                example = None
+            if example is not None:
+                config = load_segmentation_config(default_config_path())
+                factor = magnification(example.image.shape[1])
+                self._pictures[step.example] = tuple(
+                    QPixmap.fromImage(
+                        to_qimage(compose_overlay(example.image, label, config)).scaled(
+                            factor * example.image.shape[1],
+                            factor * example.image.shape[0],
+                            Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.FastTransformation,
+                        )
+                    )
+                    for label in (example.before, example.after)
+                )
+        return self._pictures[step.example]
 
 
 class ChecklistPanel(QGroupBox):
