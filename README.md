@@ -162,8 +162,10 @@ Models and data
 
 The models Adaptive Milling was trained with, and the data they were trained
 on, are published on Zenodo:
-[doi:10.5281/zenodo.21804785](https://doi.org/10.5281/zenodo.21804785). The
-pictures in the user guide are of two of its projects. The models were trained
+[doi:10.5281/zenodo.21804785](https://doi.org/10.5281/zenodo.21804785). To try
+am-seg before pointing it at your own data, download one of its projects and
+scan the folder it unpacks to. The pictures in the user guide are of two of its
+projects. The models were trained
 with [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-training), which reads the training CSVs am-seg writes.
 
 Contributing
