@@ -202,8 +202,9 @@ Maintainer and status
 
 Written and maintained by Casper Berger (casper.berger@rfi.ac.uk) at the
 Rosalind Franklin Institute. Questions, bugs, and layouts that are not read
-correctly are welcome by email — the project is not yet hosted, so there is no
-issue tracker.
+correctly are welcome as
+[GitHub issues](https://github.com/Casper-rfi/AM_segmentation_manager/issues),
+or by email.
 
 **Status: in development.** Licensed under the
 [Apache License 2.0](LICENSE). Code derived from other projects is listed, with
