@@ -2,7 +2,8 @@
 
 ## First, check the environment
 
-After installing, and whenever something will not start, run:
+After installing, and whenever something will not start, run from a source
+checkout:
 
 ```bash
 uv run python scripts/check_environment.py
@@ -31,7 +32,8 @@ and not working is, and names what to do about it.
 
 The message says which part is missing:
 
-- **No Qt at all.** Install the window's extra: `uv sync --extra gui`.
+- **No Qt at all.** Install the window's extra: `uv sync --extra gui` in a
+  checkout, or `[gui]` in the `uv tool install` command.
 - **A Qt binding that will not load.** Two bindings in one environment, PySide6
   and PyQt5 say, crash as soon as the second loads. am-seg is developed and
   tested against PySide6; give it an environment of its own rather than sharing
@@ -155,18 +157,22 @@ takes no memory on the others.
 The window, the log and `check_environment.py` say why:
 
 - **The torch installed cannot use NVIDIA GPUs**, or the driver is too old for
-  it. Windows and Linux get torch built for CUDA 12.6, which runs on any NVIDIA
-  driver from version 525.
+  it. A checkout on Windows and Linux gets torch built for CUDA 12.6, which runs
+  on any NVIDIA driver from version 525. `uv tool install` gets it only when
+  told to, with `--torch-backend cu126`; without that, Windows gets a torch for
+  the CPU alone. Run the install command again with the flag and `--upgrade`.
 - **The card is newer than that build.** A 50-series, for one, has no kernels in
   the CUDA 12.6 build however new its driver is, and a run falls back to the CPU
   rather than failing halfway. Install the CUDA 13 build instead, which needs a
-  driver from version 580:
+  driver from version 580. From a checkout:
 
   ```bash
   uv sync --extra gui --extra ml-cuda13
   ```
 
   It replaces `ml` rather than joining it; `uv sync` refuses the two together.
+  After `uv tool install`, run the install command again with
+  `--torch-backend cu130 --upgrade`.
 
 On macOS, Apple silicon predicts on its own GPU (`mps`). An Intel Mac runs the
 window and the command line but cannot predict: torch no longer publishes

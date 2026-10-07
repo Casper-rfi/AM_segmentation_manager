@@ -50,8 +50,29 @@ What it does
 Installation
 ------------
 
-From a source checkout, with [uv](https://docs.astral.sh/uv/). One command on
-Windows, macOS and Linux, and it installs Python itself:
+With [uv](https://docs.astral.sh/uv/), which installs Python itself. As an
+application, in an environment of its own and with `am-seg` on the PATH:
+
+    uv tool install "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+
+**On Windows and Linux, name the torch build**, or predicting gets PyPI's:
+CPU-only on Windows, and on Linux a build needing an NVIDIA driver from version
+580:
+
+    uv tool install --torch-backend cu126 "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+
+`cu126` runs on any NVIDIA driver from version 525. For a card it has no
+kernels for, such as a 50-series, use `cu130`, which needs a driver from 580.
+macOS needs neither. Without `ml` the window installs several gigabytes
+smaller, and has no torch to name. If the shell cannot find `am-seg`
+afterwards, run `uv tool update-shell` once.
+
+**To upgrade, run the same command again with `--upgrade`.** `uv tool upgrade`
+does not remember `--torch-backend`, and would put PyPI's torch back.
+
+An install like this takes the newest release of every dependency. For the
+versions the tests were run against, or to work on am-seg, use a source
+checkout instead:
 
     uv sync --extra gui               # the window, the command line and charts
     uv sync --extra gui --extra ml    # ... and predicting
@@ -112,14 +133,16 @@ Uninstalling
 
 Three steps remove everything am-seg put on this computer outside your data:
 
-1. Take the launchers away, from the install they were made with:
+1. Take the launchers away, from the install they were made with (from a
+   checkout, put `uv run` in front):
 
-       uv run am-seg create-shortcut --remove
-       uv run am-seg create-shortcut --viewer --remove
+       am-seg create-shortcut --remove
+       am-seg create-shortcut --viewer --remove
 
    On Windows, a taskbar pin is Windows' own copy: unpin it by hand.
-2. Delete the checkout, which holds the environment in `.venv`; or, after a pip
-   install, `pip uninstall adaptive-milling-seg`.
+2. Remove the install: `uv tool uninstall adaptive-milling-seg`; or delete the
+   checkout, which holds the environment in `.venv`; or, after a pip install,
+   `pip uninstall adaptive-milling-seg`.
 3. Delete `~/.am_segmentation_manager` (`%USERPROFILE%\.am_segmentation_manager`
    on Windows): the window's log, and the name your changes are recorded under.
    Every install on this computer shares it, so keep it while another remains.

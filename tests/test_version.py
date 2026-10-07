@@ -113,3 +113,19 @@ def test_every_project_link_into_the_repository_names_a_file_it_has():
     for label, path in into_files.items():
         assert (REPOSITORY / path).is_file(), f"{label} names {path}, which is not here"
 
+
+#: A `uv tool install` line in the README: its requirement, and the source after `@`.
+TOOL_INSTALL = re.compile(r'uv tool install[^"\n]*"([A-Za-z0-9_.-]+)\[[a-z0-9,-]+\] @ git\+([^"]+)"')
+
+
+def test_the_readme_installs_the_package_from_the_repository_pyproject_names():
+    """Copied into a terminal as written, so a renamed package or a moved
+    repository must fail here rather than there."""
+    project = _project()
+    commands = TOOL_INSTALL.findall((REPOSITORY / "README.md").read_text(encoding="utf-8"))
+
+    assert commands, "the README gives no uv tool install command"
+    for name, source in commands:
+        assert _normalised(name) == _normalised(project["name"])
+        assert source == project["urls"]["Homepage"]
+
