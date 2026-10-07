@@ -132,17 +132,19 @@ class StepHelp(QDialog):
             if example is not None:
                 config = load_segmentation_config(default_config_path())
                 factor = magnification(example.image.shape[1])
-                self._pictures[step.example] = tuple(
-                    QPixmap.fromImage(
+                height, width = example.image.shape[:2]
+
+                def drawn(label) -> QPixmap:
+                    return QPixmap.fromImage(
                         to_qimage(compose_overlay(example.image, label, config)).scaled(
-                            factor * example.image.shape[1],
-                            factor * example.image.shape[0],
+                            factor * width,
+                            factor * height,
                             Qt.AspectRatioMode.IgnoreAspectRatio,
                             Qt.TransformationMode.FastTransformation,
                         )
                     )
-                    for label in (example.before, example.after)
-                )
+
+                self._pictures[step.example] = (drawn(example.before), drawn(example.after))
         return self._pictures[step.example]
 
 
