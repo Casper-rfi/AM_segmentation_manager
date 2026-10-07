@@ -1061,8 +1061,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 *self.operations_controller.unindexed_summary(self.controller.start_path)
             )
         # Re-pointed rather than left holding records from the previous scan,
-        # whose paths may no longer be where the files are.
+        # whose paths may no longer be where the files are. Redrawn if in
+        # front, re-pointing having put away the label the canvas holds.
         self.label_controller.set_lamella(self.controller.lamella)
+        if self.tabs.currentWidget() is self.label_panel:
+            self.label_panel.refresh()
         # The archive can only have changed if something wrote, and everything
         # that writes lands here; so this is where a stale number is dropped.
         self._archive_measured = False

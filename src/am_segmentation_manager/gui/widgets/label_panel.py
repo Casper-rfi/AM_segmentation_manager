@@ -1303,6 +1303,9 @@ class LabelPanel(QWidget):
         if prepared is None:
             # Only what is already prepared is read: a full-resolution frame
             # takes long enough that blocking here would freeze the window.
+            # The canvas still holds the frame before, which no stroke is
+            # recorded against any more.
+            self.canvas.set_editable(False)
             self._set_badges([("loading...", "info")])
             return
         if prepared.failed:

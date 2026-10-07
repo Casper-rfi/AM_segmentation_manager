@@ -206,7 +206,9 @@ class LabelController:
 
         Prepared frames are discarded either way, so returning to the tab
         re-reads the frame on screen. Keeping them would mean holding pixels
-        against frame indices that a rescan may have renumbered.
+        against frame indices that a rescan may have renumbered. The label in
+        hand is put away too, or its untouched copy would go on standing in for
+        a file written since; edits waiting to be saved are kept.
         """
         same = (
             lamella is not None
@@ -230,6 +232,8 @@ class LabelController:
             self._speck_counts.clear()
             self._stale_specks.clear()
             self.session.discard()
+        else:
+            self.session.release()
         self._rebuild_frames(keep_frame=keep_frame)
         logger.debug(
             "Label view now on %s: %d %s frames, %d proofreadable %s",

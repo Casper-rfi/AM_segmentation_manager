@@ -684,6 +684,33 @@ def test_a_rewrite_after_editing_starts_still_stops_the_save(tmp_path: Path):
         controller.save()
 
 
+def test_returning_to_the_tab_opens_a_label_converted_since(tmp_path: Path):
+    """The blank opened for an unlabelled image is not what comes back once
+    Curate has converted a prediction into a label there."""
+    controller, dataset = read_ahead_controller(tmp_path, labels="none")
+    converted = dataset.label("SEM", 0)
+    rewrite(converted)
+    controller.record.labels.append(converted)  # as attach_written names it
+
+    controller.set_lamella(controller.lamella)
+    controller.current_image()
+
+    assert controller.working_label()[4:8, 4:8].all()
+
+
+def test_returning_to_the_tab_keeps_a_stroke_not_yet_saved(tmp_path: Path):
+    from am_segmentation_manager.operations.label_edit import paint
+
+    controller, _ = read_ahead_controller(tmp_path)
+    controller.record_edit(paint(controller.working_label(), [(20, 20)], 0, 2))
+
+    controller.set_lamella(controller.lamella)
+    controller.current_image()
+
+    assert controller.working_label()[20, 20] == 2
+    assert controller.pending_count() == 1
+
+
 def test_a_frame_saved_twice_is_not_refused_by_its_own_save(tmp_path: Path):
     from am_segmentation_manager.operations.label_edit import paint
 

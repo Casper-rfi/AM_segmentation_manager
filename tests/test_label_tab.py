@@ -1104,6 +1104,50 @@ def test_the_tab_keeps_its_place_when_it_is_left_and_returned_to(qt_app, window)
     assert window.label_panel.frame_label.text() == "3 / 3"
 
 
+def test_returning_to_the_tab_draws_a_label_converted_meanwhile(qt_app, unlabelled):
+    """The reported fault: a blank opened for an unlabelled image stood in for
+    the label Curate converted there, until the reviewer stepped away and back."""
+    window = unlabelled
+    canvas = window.label_panel.canvas
+    assert not canvas._label_array.any(), "the image opens on a blank label"
+    window.tabs.setCurrentWidget(window.curate)
+    converted = window.label_controller.current_key
+    label = np.zeros((48, 64), dtype=np.uint8)
+    label[:10] = 2
+    converted.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(str(converted), label)
+    window.controller.attach_written([converted])
+
+    count = draws(window)
+    window.tabs.setCurrentWidget(window.label_panel)
+    settle(qt_app, lambda: count() >= 1, what="the converted frame")
+
+    assert (canvas._label_array[:10] == 2).all()
+
+
+def test_a_frame_still_loading_cannot_be_painted(window):
+    """The canvas still holds the frame before it, whose label is no longer
+    the one a stroke would be recorded against."""
+    panel = window.label_panel
+    assert panel.canvas.editable
+
+    window.label_controller.cache.clear()
+    panel.draw_current()
+
+    assert not panel.canvas.editable
+
+
+def test_a_scan_from_the_tab_paints_into_the_label_the_session_holds(
+    qt_app, window, project
+):
+    """A stroke on any other array is drawn and then never saved."""
+    count = draws(window)
+    window.scan(str(project))
+    settle(qt_app, lambda: count() >= 1, what="the frame after the scan")
+
+    assert window.label_panel.canvas._label_array is window.label_controller.session.open_label
+
+
 def test_moving_lamella_from_the_tab_moves_both_views(qt_app, config, tmp_path):
     root = tmp_path / "two"
     build_dataset(root, lamellae=2, acquisitions=2)

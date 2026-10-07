@@ -352,7 +352,10 @@ of one of these files, is held by `test_docs.py`.
   again first (`test_a_frame_read_ahead_opens_what_was_written_since`). **A save puts what it wrote,
   and its fingerprint, into the prepared frame**, or the canvas draws the label it replaced. Put in
   rather than dropped: dropping leaves nothing to draw until a background read catches up, which is
-  a blank canvas exactly where a save was just made.
+  a blank canvas exactly where a save was just made. **Nor from the session's untouched copy**:
+  returning to the tab puts it away, or the blank opened for an unlabelled image hides a label
+  converted there since (`test_returning_to_the_tab_draws_a_label_converted_meanwhile`) — and a
+  frame still loading cannot be painted (`test_a_frame_still_loading_cannot_be_painted`).
 - **The brush outline is redrawn from state, never from mouse movement alone**, being drawn in
   *scene* coordinates: anything moving the scene under a stationary pointer leaves a ring around a
   pixel the pointer is no longer over, which
