@@ -111,6 +111,14 @@ dev = [
   "mypy",
 ]
 
+# Shown on PyPI beside the release, and fixed with it: a released version's
+# metadata cannot be changed afterwards.
+[project.urls]
+Homepage = "https://github.com/Casper-rfi/AM_segmentation_manager"
+Documentation = "https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md"
+Issues = "https://github.com/Casper-rfi/AM_segmentation_manager/issues"
+Changelog = "https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CHANGELOG.md"
+
 [project.scripts]
 am-seg = "am_segmentation_manager.cli:main"
 

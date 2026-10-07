@@ -1,4 +1,4 @@
-"""The name and version are stated once, and a file format changes only as a breaking change.
+"""The name, version and links are stated once, and a file format changes only as a breaking change.
 
 Read from the repository's own files, so these hold whether or not the package
 is installed; `decisions.md` § Environment says why each rule is there.
@@ -96,3 +96,20 @@ def test_a_file_format_change_is_a_breaking_change():
         "breaking change, give files in the old format a way forward, then "
         "update this table."
     )
+
+
+def test_every_project_link_into_the_repository_names_a_file_it_has():
+    """A link on PyPI is fixed with the release it was published in, so a
+    renamed guide or changelog must fail here rather than there."""
+    urls = _project()["urls"]
+    homepage = urls["Homepage"].rstrip("/")
+    into_files = {
+        label: url.removeprefix(f"{homepage}/blob/main/")
+        for label, url in urls.items()
+        if url.startswith(f"{homepage}/blob/main/")
+    }
+
+    assert into_files, "no link names a file in the repository"
+    for label, path in into_files.items():
+        assert (REPOSITORY / path).is_file(), f"{label} names {path}, which is not here"
+
