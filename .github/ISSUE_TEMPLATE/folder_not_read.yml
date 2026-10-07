@@ -1,0 +1,40 @@
+name: A folder is not read correctly
+description: Projects, lamellae, images or labels missing, misplaced or misnamed after a scan.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        `am-seg inspect-layout` reports how am-seg reads a folder, and changes
+        nothing in it. Its report is what makes a layout fixable from here.
+  - type: textarea
+    id: report
+    attributes:
+      label: What inspect-layout reports
+      description: >-
+        The output of `am-seg inspect-layout --detail <folder>`, run on the
+        folder that is read wrongly (from a checkout, put `uv run` in front). It
+        names your folders and files: remove anything you would rather not post.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: How the folder should have been read
+      description: Which projects, lamellae, images or labels are missing, misplaced or misnamed.
+    validations:
+      required: true
+  - type: input
+    id: software
+    attributes:
+      label: What wrote the folder
+      description: The Autolamella or acquisition software and its version, and the microscope, if you know them.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `am-seg --version` (from a checkout, `uv run am-seg --version`).
+      placeholder: am-seg 0.1.0
+    validations:
+      required: true

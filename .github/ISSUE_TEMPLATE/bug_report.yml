@@ -1,0 +1,64 @@
+name: Something went wrong
+description: An error, a crash, or am-seg doing something other than it says.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, step by step, and what am-seg did. A screenshot helps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `am-seg --version` (from a checkout, `uv run am-seg --version`).
+      placeholder: am-seg 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How am-seg was installed
+      options:
+        - uv tool install
+        - A source checkout (uv sync)
+        - pip
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: The log
+      description: >-
+        For a problem in the window, the end of `gui.log` in
+        `~/.am_segmentation_manager/` (`%USERPROFILE%\.am_segmentation_manager\`
+        on Windows); for a command, what it printed. Both name your folders:
+        remove anything you would rather not post.
+      render: text
+  - type: textarea
+    id: environment
+    attributes:
+      label: The environment check
+      description: >-
+        From a source checkout, the output of
+        `uv run python scripts/check_environment.py`, if you can run it.
+      render: text
