@@ -85,7 +85,7 @@ rather than appending to it.
   task holding its own references loose and its stages below
   (`test_reference_images_above_a_stage_do_not_hide_it`). Nothing sits below an image directory.
 - **A loose set's label directory is resolved exactly, with no fallback chain**, unlike
-  `resolve_labels_directory`, which lets any member's directory stand in for a family's. Doing so would
+  `resolve_labels_directory`, which lets a condition's own directory stand in for its family's. Doing so would
   pair a reference image with a label of a different scene — right dimensions, plausible shapes,
   wrong data (`test_a_loose_set_never_falls_back_to_the_shared_directory`).
 - **A series nobody has started labelling is not reported as unlabelled.** `no-labels-yet` fires

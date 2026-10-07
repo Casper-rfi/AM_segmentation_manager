@@ -247,11 +247,7 @@ of one of these files, is held by `test_docs.py`.
   key or a mark the window does not have: `_keys_of` reads the bindings, a gesture names the keys it
   holds (`test_a_key_held_for_a_gesture_is_lit_on_the_diagram`), and each module supplies
   its own legend with the timeline's sample *grabbed from a `FrameTimeline`*
-  (`test_the_legend_shows_the_marks_rather_than_describing_them`). Two Qt facts have no test:
-  `common.mark_image` must hold its `QByteArray` in a name, **`QBuffer(QByteArray())` segfaulting
-  PySide6** as the array dies under the buffer; and `fit_to_screen` sizes from the label's own hint,
-  `adjustSize` being useless when a scroll area reports a small default instead of its contents.
-
+  (`test_the_legend_shows_the_marks_rather_than_describing_them`).
 - **Every column of the Export tab can be dragged, as the other tabs' can**, and so is the left
   column split between the projects and the filters under them — which of the two wants the room
   depends on what is being looked for. `FILTER_LIST_HEIGHT` is a floor rather than a cap for the
@@ -357,7 +353,6 @@ of one of these files, is held by `test_docs.py`.
   and its fingerprint, into the prepared frame**, or the canvas draws the label it replaced. Put in
   rather than dropped: dropping leaves nothing to draw until a background read catches up, which is
   a blank canvas exactly where a save was just made.
-
 - **The brush outline is redrawn from state, never from mouse movement alone**, being drawn in
   *scene* coordinates: anything moving the scene under a stationary pointer leaves a ring around a
   pixel the pointer is no longer over, which
@@ -522,8 +517,8 @@ of one of these files, is held by `test_docs.py`.
 
 - **An offscreen window cannot answer three questions**, and asking anyway produces tests that pass
   on nothing. It is never activated, so `hasFocus()` is False for every widget and `focusWidget()`
-  records who asked. Nothing is shown, so `isVisible()` is False whatever the code did and
-  `isHidden()` is the state to assert. And a modal dialog has nobody to dismiss it, so its `exec_`
+  records who asked. A window no test shows has every widget `isVisible()` False whatever the code
+  did, so `isHidden()` is the state to assert. And a modal dialog has nobody to dismiss it, so its `exec_`
   must be intercepted per dialog class, not just `QMessageBox`, or the suite hangs.
 - **The window's error reporter, once installed, turns a later test's exception into a hang.**
   `app.install_error_reporting` replaces `sys.excepthook` for the whole session, and a test through

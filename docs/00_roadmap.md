@@ -1,9 +1,9 @@
 # Roadmap
 
-Where the work stands and what to pick up next — the entry point for starting fresh. `README.md`
-catalogues the commands; [`decisions.md`](decisions.md) says why the software is the way it is and
-[`display.md`](display.md) why the window is; `CLAUDE.md` holds the working agreement. Nothing
-those say is restated here.
+Where the work stands and what to pick up next — the entry point for starting fresh.
+`guides/command_line.md` catalogues the commands; [`decisions.md`](decisions.md) says why the
+software is the way it is and [`display.md`](display.md) why the window is; `CLAUDE.md` holds the
+working agreement. Nothing those say is restated here.
 
 **One line per thing.** A capability that lands adds a line and a branch that merges collapses to
 one; prose has to be rewritten whole every time either happens.
@@ -25,6 +25,9 @@ for the project or for one lamella over it, from Curate's Families tab or `edit-
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its
 conflicts decided one at a time or a folder, project or lamella at once.
 [`decisions.md`](decisions.md) § History says how each of those decides.
+
+**The proofreading checklist** on Label walks each label through its steps, each with an example
+before and after, held in memory only; a label ticked through can be marked corrected unchanged.
 
 **Settings** (F2) hold the name changes are recorded under, the window's accent and what each
 control opens at, the last two declared in `gui/preferences.py` and reaching no write path.
