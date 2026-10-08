@@ -4,19 +4,21 @@
 split, its seed and what it kept together, how many rows each side holds, which
 am-seg wrote them, when and under whose name -- so a training run can be
 described, and repeated, from the files it read. **Written after the CSVs**, so a manifest names only files
-that were written whole. Nothing here chooses rows or writes a CSV.
+that were written whole. Nothing here chooses rows or writes a CSV;
+:func:`read_training_manifest` is how a training run finds the lists again.
 """
 from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
 from .. import __version__
 from ..history import resolve_author
-from ..io.yaml import write_yaml
+from ..io.yaml import read_yaml, version_problem, write_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +96,60 @@ def write_training_manifest(
     write_yaml(path, body, header=_HEADER)
     logger.info("Wrote the manifest to %s", path)
     return path
+
+
+@dataclass(frozen=True)
+class TrainingManifest:
+    """What a manifest says about the lists beside it.
+
+    Attributes:
+        path: The manifest itself.
+        source: The folder every path in the lists is written from, as the
+            export was given it, which may be relative.
+        train: The training list, or None if the export wrote none.
+        validation: The validation list, or None if every row went to training.
+        columns: The lists' header.
+        folds: How many folds a cross-validation export wrote; 0 for one split.
+        include_empty_labels: Whether background-only labels were exported on purpose.
+    """
+
+    path: Path
+    source: str
+    train: Path | None
+    validation: Path | None
+    columns: tuple[str, ...]
+    folds: int
+    include_empty_labels: bool
+
+
+def read_training_manifest(path: Path) -> TrainingManifest:
+    """Return what the manifest at *path* records.
+
+    Raises:
+        ValueError: If it is missing, is not a manifest, or was written by a
+            later am-seg.
+    """
+    try:
+        document = read_yaml(path)
+    except RuntimeError as error:
+        raise ValueError(str(error)) from error
+    if not document or not isinstance(document.get("files"), dict):
+        raise ValueError(f"{path} is not a training export's manifest")
+    problem = version_problem(document.get("version"), path, FILE_VERSION, required=True)
+    if problem is not None:
+        raise ValueError(problem)
+
+    def beside(role: str) -> Path | None:
+        name = document["files"].get(role)
+        return path.parent / str(name) if name else None
+
+    split = document.get("split")
+    return TrainingManifest(
+        path=path,
+        source=str(document.get("source") or ""),
+        train=beside("train"),
+        validation=beside("validation"),
+        columns=tuple(str(column) for column in document.get("columns") or ()),
+        folds=int(split.get("folds") or 0) if isinstance(split, dict) else 0,
+        include_empty_labels=bool(document.get("include_empty_labels")),
+    )

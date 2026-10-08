@@ -77,13 +77,18 @@ def test_a_file_format_change_is_a_breaking_change():
     """Collections outlive every version of this package, so a change to what
     it writes beside them is never a detail."""
     from am_segmentation_manager import history, state
-    from am_segmentation_manager.operations import export_record, training_manifest
+    from am_segmentation_manager.operations import (
+        export_record,
+        training_manifest,
+        training_run,
+    )
 
     formats = {
         "AM_state.yaml": state.FILE_VERSION,
         "history": history.FILE_VERSION,
         "training manifest": training_manifest.FILE_VERSION,
         "AM_export.yaml": export_record.FILE_VERSION,
+        "am_training_run.yaml": training_run.FILE_VERSION,
     }
 
     assert formats == {
@@ -91,6 +96,7 @@ def test_a_file_format_change_is_a_breaking_change():
         "history": 1,
         "training manifest": 1,
         "AM_export.yaml": 1,
+        "am_training_run.yaml": 1,
     }, (
         "A file format changed. Name it under Unreleased in CHANGELOG.md as a "
         "breaking change, give files in the old format a way forward, then "
