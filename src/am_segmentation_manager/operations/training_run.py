@@ -271,7 +271,7 @@ def plan_training_run(
     base_weights: Path | None = None,
     device: str = "auto",
     start_path: Path | None = None,
-    inspect_label: Callable[[Path, int], str | None] = label_problem,
+    inspect_label: Callable[[Path, int], str | None] | None = None,
 ) -> TrainingPlan:
     """Check that a run can be prepared from an export, and return it ready to write.
 
@@ -282,7 +282,8 @@ def plan_training_run(
         base_weights: The checkpoint to refine; required by, and only by, a refine.
         start_path: The folder the export's paths are written from. Needed where
             the manifest recorded a relative one.
-        inspect_label: Answers why a label cannot be trained on; see :func:`label_problem`.
+        inspect_label: Answers why a label cannot be trained on; :func:`label_problem`
+            where omitted.
 
     Raises:
         TrainingRunRefused: Naming every reason, nothing having been written.
@@ -290,6 +291,7 @@ def plan_training_run(
     # The class count is generation 1's, which is all AM-model-training trains.
     from ..ml.model import GENERATION_1
 
+    inspect = inspect_label or label_problem
     reasons: list[str] = list(settings.problems())
 
     if not NAME_PATTERN.match(name):
@@ -369,7 +371,7 @@ def plan_training_run(
     unusable = [
         f"{label}: {problem}"
         for _, label in pairs
-        if (problem := inspect_label(label, GENERATION_1.classes)) is not None
+        if (problem := inspect(label, GENERATION_1.classes)) is not None
         and not (manifest.include_empty_labels and problem == ONLY_BACKGROUND)
     ]
     if unusable:
@@ -415,7 +417,7 @@ def apply_training_run(plan: TrainingPlan, user: str | None = None) -> Path:
         "created_by": by or "",
         "name": plan.name,
         "mode": plan.settings.mode,
-        "base": _describe_weights(plan.base_weights) if plan.base_weights else None,
+        "base": describe_weights(plan.base_weights) if plan.base_weights else None,
         "settings": {key: value for key, value in asdict(plan.settings).items() if key != "mode"},
         "device": plan.device,
         "training_set": {
@@ -468,6 +470,18 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
         raise ValueError(f"{path} is not a training run's record: {error!r}") from error
 
 
+def find_run_directories(path: Path) -> list[Path]:
+    """Return the prepared runs at *path*: itself if it is one, else those directly inside it."""
+    if (path / RUN_RECORD_FILENAME).is_file():
+        return [path]
+    try:
+        children = sorted(child for child in path.iterdir() if child.is_dir())
+    except OSError as error:
+        logger.warning("Could not look inside %s: %s", path, error)
+        return []
+    return [child for child in children if (child / RUN_RECORD_FILENAME).is_file()]
+
+
 def _source(manifest: TrainingManifest, start_path: Path | None) -> Path | None:
     """Return the folder the manifest's paths resolve against, or None if nothing says."""
     if start_path is not None:
@@ -494,7 +508,7 @@ def _listed(summary: str, items: Sequence[object]) -> str:
     return f"{summary}: {shown}" + (f", and {more} more" if more > 0 else "")
 
 
-def _describe_weights(weights: Path) -> dict[str, Any]:
+def describe_weights(weights: Path) -> dict[str, Any]:
     """Return what identifies a checkpoint: its name, the run inside it, its size and digest."""
     # Reads the archive's names only, with zipfile, so it needs no training stack.
     from ..ml.model import run_name_of

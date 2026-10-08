@@ -177,10 +177,14 @@ jobs:
   newest:
     if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/qt-libraries
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
       - run: uv sync --upgrade --extra gui --extra ml --extra train
-      - run: uv run pytest -v -o faulthandler_timeout=600
+      # The one job that trains for real: a release of MONAI, mlflow or torch
+      # that breaks AM-model-training shows here, minutes of CPU being the price.
+      - run: uv run pytest -v -o faulthandler_timeout=3000
+        env:
+          AM_SEG_TEST_TRAINING: "1"

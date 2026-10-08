@@ -109,16 +109,41 @@ measures the model rather than the sample.
 ## Train
 
 ```bash
-am-seg show-training /path/to/runs
-am-seg show-training /path/to/runs/training_261008_093830 --metric dice --plot curves.png
+am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round02 --dry-run
+am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round02 \
+    --refine AM_SEM_All_V01.pth
+am-seg show-training /path/to/runs/round02 --plot curves.png
+am-seg stop-training /path/to/runs/round02
 ```
 
-`show-training` reads what AM-model-training writes into each
-`training_<date>_<time>` directory, wherever the run was started, and needs no
-training stack installed. For each run it gives the epochs so far, the
-validation epoch the run counts as best, and the checkpoint kept for it. A run
-without its `training_parameters.json` is still training, or was stopped
-before it ended. `--plot` draws one run's loss and per-class metric by epoch.
+`train` needs the `train` extra, and takes the manifest a training export
+wrote: the split is the export's, so validation is whatever **Keep together**
+kept out of training. Without `--refine` it trains a new model, the encoder
+frozen for the first 25 of at most 100 epochs and the learning rate from 1e-5
+to 1e-3, which downloads ImageNet weights the first time. With it, it refines
+the model given for at most 50 epochs from 2e-6. Each has an option. A run
+stops early once it stops improving.
+
+Everything is checked before anything is written, and every problem reported at
+once. Each label is opened again: one that will not read, holds only
+background, or holds a class the model does not predict stops the run. Keep the
+training directory outside the collection. The run gets a directory there named
+for it, and a run directory is never reused.
+
+Training runs in a process of its own and goes on after the command returns,
+and after the terminal is closed. `show-training` says how a run stands:
+training, finished, failed and why, stopped, or ended without finishing. It
+also reads what AM-model-training wrote, for a run started anywhere, without
+the training stack: the epochs so far, the validation epoch the run counts as
+best, and the checkpoints kept, `<name>_val_epochNNN.pth`. `--plot` draws one
+run's loss and per-class metric by epoch.
+
+`stop-training` ends a run started on this computer. The epoch in progress is
+lost and every checkpoint already written is kept. A stopped run is not
+continued: start another, refining from one of its checkpoints.
+
+AM-model-training trains on an NVIDIA GPU or the CPU. On the CPU, Apple
+silicon included, a step takes minutes per image.
 
 ## Record and undo
 
@@ -198,7 +223,9 @@ labels.
 
 | Command | What it does |
 |---|---|
+| `am-seg train` | Train a new model, or refine an existing one, on an exported training set |
 | `am-seg show-training` | Report how a training run is going or how it ended, and draw its curves |
+| `am-seg stop-training` | Stop a training run that am-seg started on this computer |
 
 ### Record what changes, and read it back
 

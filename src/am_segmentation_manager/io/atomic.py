@@ -4,7 +4,8 @@ A write goes to a temporary file in the destination's own directory and is
 renamed into place, so an interrupted run leaves the previous file rather than
 half of a new one. An append holds an exclusive lock for its one write, so no
 other process's append splits or overwrites it. A fingerprint taken before a
-write is what lets a caller refuse a destination something else has rewritten.
+write is what lets a caller refuse a destination something else has rewritten,
+and a lock taken without waiting is how one process tells whether another lives.
 
 Nothing here knows what it is writing.
 """
@@ -30,6 +31,7 @@ __all__ = [
     "append_whole",
     "file_mode_for",
     "fingerprint_of",
+    "try_lock",
     "write_atomically",
 ]
 
@@ -148,6 +150,39 @@ def _locked(descriptor: int) -> Iterator[None]:
         yield
     finally:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
+
+
+def try_lock(descriptor: int) -> bool | None:
+    """Take an exclusive lock on the open file *descriptor* without waiting.
+
+    The lock lasts until the descriptor is closed or its process ends, however
+    it ends, which is what makes holding one a statement that a process is alive.
+
+    Returns:
+        True if the lock was taken, False if another process holds it, and
+        None where the filesystem offers no locks.
+    """
+    if sys.platform == "win32":
+        import msvcrt
+
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+
+    import fcntl
+
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    except OSError as error:
+        if error.errno not in _LOCKS_UNSUPPORTED:
+            raise
+        return None
+    return True
 
 
 def file_mode_for(destination: Path) -> int:

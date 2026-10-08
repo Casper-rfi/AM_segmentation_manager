@@ -253,3 +253,81 @@ def test_any_other_failure_to_lock_is_raised(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(fcntl, "flock", broken)
     with pytest.raises(OSError):
         append_whole(tmp_path / "log.jsonl", b"not written\n")
+
+
+# -- a lock taken without waiting ---------------------------------------------
+
+
+def test_a_free_lock_is_taken_and_a_held_one_is_not(tmp_path: Path):
+    path = tmp_path / "held.lock"
+    first = os.open(path, os.O_RDWR | os.O_CREAT)
+    second = os.open(path, os.O_RDWR)
+    try:
+        assert atomic.try_lock(first) is True
+        assert atomic.try_lock(second) is False
+    finally:
+        os.close(first)
+        os.close(second)
+
+
+def test_a_lock_is_given_back_when_its_file_is_closed(tmp_path: Path):
+    """Which is what a process ending does, however it ends."""
+    path = tmp_path / "held.lock"
+    first = os.open(path, os.O_RDWR | os.O_CREAT)
+    assert atomic.try_lock(first) is True
+    os.close(first)
+
+    second = os.open(path, os.O_RDWR)
+    try:
+        assert atomic.try_lock(second) is True
+    finally:
+        os.close(second)
+
+
+def test_a_lock_another_process_holds_is_not_taken(tmp_path: Path):
+    path = tmp_path / "held.lock"
+    path.write_bytes(b"")
+    holder = subprocess.Popen(
+        [
+            sys.executable, "-c",
+            "import os, sys, time\n"
+            f"sys.path.insert(0, {str(Path(atomic.__file__).parents[2])!r})\n"
+            "from am_segmentation_manager.io.atomic import try_lock\n"
+            f"d = os.open({str(path)!r}, os.O_RDWR)\n"
+            "print(try_lock(d), flush=True)\n"
+            "time.sleep(60)\n",
+        ],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert holder.stdout.readline().strip() == "True"
+        descriptor = os.open(path, os.O_RDWR)
+        try:
+            assert atomic.try_lock(descriptor) is False
+        finally:
+            os.close(descriptor)
+    finally:
+        holder.kill()
+        holder.wait()
+        holder.stdout.close()
+
+    descriptor = os.open(path, os.O_RDWR)
+    try:
+        assert atomic.try_lock(descriptor) is True, "a killed process gives its lock back"
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows always offers locks")
+def test_a_filesystem_without_locks_is_said_so_rather_than_raised(tmp_path: Path, monkeypatch):
+    import fcntl
+
+    def unsupported(descriptor, operation):
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(fcntl, "flock", unsupported)
+    descriptor = os.open(tmp_path / "held.lock", os.O_RDWR | os.O_CREAT)
+    try:
+        assert atomic.try_lock(descriptor) is None
+    finally:
+        os.close(descriptor)

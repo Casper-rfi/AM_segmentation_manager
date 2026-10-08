@@ -163,6 +163,29 @@ def test_checkpoints_are_found_by_epoch(tmp_path: Path):
     assert run.checkpoint_for(7) is None
 
 
+def test_a_checkpoint_cut_short_is_not_whole(tmp_path: Path):
+    """A run stopped while saving leaves the archive without its directory."""
+    import zipfile
+
+    directory = _run(tmp_path, checkpoints=[1, 2])
+    with zipfile.ZipFile(directory / "set_epoch001.pth", "w") as archive:
+        archive.writestr("set_epoch001/data.pkl", b"weights")
+    (directory / "set_epoch002.pth").write_bytes(b"PK\x03\x04 cut short")
+
+    first, second = read_training_run(directory).checkpoints
+
+    assert first.whole()
+    assert not second.whole()
+
+
+def test_show_training_marks_a_checkpoint_cut_short(tmp_path: Path, capsys):
+    _run(tmp_path, train=[_epoch(1, 0.1, 0.1)], checkpoints=[1])
+
+    main(["show-training", str(tmp_path)])
+
+    assert "checkpoints kept after epoch(s): 1 (incomplete)" in capsys.readouterr().out
+
+
 def test_the_run_id_comes_from_a_checkpoint_when_nothing_else_names_it(tmp_path: Path):
     run = read_training_run(_run(tmp_path, checkpoints=[4], run_id="arctis"))
 

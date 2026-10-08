@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -78,6 +79,14 @@ class Checkpoint:
 
     epoch: int
     path: Path
+
+    def whole(self) -> bool:
+        """Return whether the file was written to its end.
+
+        A run stopped or killed while saving leaves the archive without its
+        directory, which is written last.
+        """
+        return zipfile.is_zipfile(self.path)
 
 
 @dataclass(frozen=True)

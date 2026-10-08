@@ -69,10 +69,15 @@ The first public release, to be published as 0.1.0.
 
 **Training**
 
-- `show-training` reports how an AM-model-training run is going or how it
-  ended, wherever it was started: its epochs, its best validation epoch and
-  the checkpoint kept for it. It draws the run's loss and per-class metric
-  by epoch.
+- `train` trains a new model, or refines an existing one, on an exported
+  training set, with AM-model-training and the settings its models were
+  published with. The run is checked before anything is written, keeps the
+  export's split, and goes on in a process of its own after the command
+  returns. `stop-training` ends one.
+- `show-training` reports how a run stands, and for any AM-model-training
+  run, wherever it was started: its epochs, its best validation epoch and
+  the checkpoints kept. It draws the run's loss and per-class metric by
+  epoch.
 - A `train` extra installs AM-model-training beside an inference build, and
   `check_environment.py` says whether it loads and has a GPU to train on.
 

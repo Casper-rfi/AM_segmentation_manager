@@ -24,6 +24,7 @@ from am_segmentation_manager.operations.training_run import (
     TrainingRunRefused,
     apply_training_run,
     default_settings,
+    find_run_directories,
     label_problem,
     plan_training_run,
     read_run_record,
@@ -431,3 +432,15 @@ def test_a_manifest_from_a_later_am_seg_is_refused(export: Path):
 
     with pytest.raises(ValueError, match="later version"):
         read_training_manifest(export)
+
+
+# -- finding prepared runs ----------------------------------------------------
+
+
+def test_a_prepared_run_is_found_as_itself_and_from_its_training_directory(export: Path):
+    directory = apply_training_run(_plan(export))
+    (directory.parent / "notes").mkdir()
+
+    assert find_run_directories(directory) == [directory]
+    assert find_run_directories(directory.parent) == [directory]
+    assert find_run_directories(export.parent) == []
