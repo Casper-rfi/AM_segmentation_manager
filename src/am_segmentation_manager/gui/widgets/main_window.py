@@ -645,6 +645,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.label_panel.speck_counts_needed.connect(self._sweep_specks)
         self.label_panel.save_requested.connect(self.save_labels)
         self.label_panel.restore_requested.connect(self.restore_label_version)
+        self.label_panel.notice.connect(self._flash)
         self.scan_bar.scan_requested.connect(self.scan)
         self.project_panel.project_selected.connect(self._select_project)
         self.project_panel.folder_selected.connect(self._select_folder)

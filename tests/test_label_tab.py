@@ -1344,6 +1344,30 @@ def test_the_overlay_and_fit_use_the_same_keys_in_both_tabs(window):
     assert label["Fit the image to the pane"] == curate["Fit the view to the pane"]
 
 
+def test_a_picked_class_is_the_one_painted_and_the_one_shown(window):
+    panel = window.label_panel
+    panel._select_class(1)
+
+    panel.canvas.class_picked.emit(2)
+
+    assert panel.canvas.paint_value == 2
+    assert panel.paint_buttons[2].isChecked()
+
+
+def test_a_class_the_configuration_does_not_define_is_not_picked(window):
+    """It is drawn in the colour kept for an unknown class, and has no button."""
+    panel = window.label_panel
+    panel._select_class(1)
+    notices = []
+    panel.notice.connect(notices.append)
+
+    panel.canvas.class_picked.emit(7)
+
+    assert panel.canvas.paint_value == 1
+    assert panel.paint_buttons[1].isChecked()
+    assert notices and "7" in notices[0]
+
+
 def test_a_class_is_chosen_by_one_key_rather_than_stepped_to(window):
     from am_segmentation_manager.gui.widgets.label_panel import CLASS_KEYS
 
@@ -1413,6 +1437,13 @@ def test_the_help_lists_the_tab_s_own_keys(window):
     assert "Set state: corrected" not in help_text, "that is the Curate tab's"
 
 
+def test_the_help_says_a_class_can_be_picked_off_the_label(window):
+    help_text = window._keys.help_html(TAB_LABEL)
+
+    assert "Shift-click the label" in help_text
+    assert "Shift-click the label" not in window._keys.help_html(TAB_CURATE)
+
+
 def test_the_curate_tab_keeps_its_own_keys(window):
     assert "Set state: corrected" in window._keys.help_html(TAB_CURATE)
 
@@ -1421,7 +1452,7 @@ def test_the_curate_tab_keeps_its_own_keys(window):
 # Painting on the canvas
 # ---------------------------------------------------------------------------
 
-def mouse_event(kind, position, button=None, buttons=None):
+def mouse_event(kind, position, button=None, buttons=None, modifiers=None):
     """Build a mouse event under either Qt version.
 
     Qt 6 requires a scene and a global position that Qt 5 does not take, so the
@@ -1429,11 +1460,12 @@ def mouse_event(kind, position, button=None, buttons=None):
     """
     button = button if button is not None else Qt.LeftButton
     buttons = buttons if buttons is not None else button
+    modifiers = modifiers if modifiers is not None else Qt.NoModifier
     point = QPointF(position)
     try:
-        return QMouseEvent(kind, point, point, point, button, buttons, Qt.NoModifier)
+        return QMouseEvent(kind, point, point, point, button, buttons, modifiers)
     except TypeError:  # pragma: no cover - depends on the installed binding
-        return QMouseEvent(kind, point, button, buttons, Qt.NoModifier)
+        return QMouseEvent(kind, point, button, buttons, modifiers)
 
 
 @pytest.fixture
@@ -1510,6 +1542,51 @@ def test_nothing_is_painted_when_editing_is_off(canvas):
 
     assert patches == []
     assert not (canvas._label_array != 0).any()
+
+
+def shift_click(canvas, x, y):
+    """Shift-click label pixel (x, y), returning the classes picked and the edits made."""
+    picked, patches = [], []
+    canvas.class_picked.connect(picked.append)
+    canvas.edited.connect(patches.append)
+    position = canvas.mapFromScene(QPointF(x + 0.5, y + 0.5))
+    for kind, buttons in (
+        (QEvent.MouseButtonPress, Qt.LeftButton), (QEvent.MouseButtonRelease, Qt.NoButton)
+    ):
+        event = mouse_event(kind, position, Qt.LeftButton, buttons, Qt.ShiftModifier)
+        if kind == QEvent.MouseButtonPress:
+            canvas.mousePressEvent(event)
+        else:
+            canvas.mouseReleaseEvent(event)
+    return picked, patches
+
+
+@pytest.mark.parametrize("tool", [TOOL_BRUSH, TOOL_FILL])
+def test_shift_click_picks_the_class_under_the_pointer_and_paints_nothing(canvas, tool):
+    canvas.set_tool(tool)
+    canvas.set_paint_value(1)
+    canvas._label_array[20:30, 30:40] = 2
+    before = canvas._label_array.copy()
+
+    picked, patches = shift_click(canvas, 35, 25)
+
+    assert picked == [2]
+    assert patches == [] and np.array_equal(canvas._label_array, before)
+
+
+def test_shift_click_picks_background_too(canvas):
+    """Which is how a stroke erases, so it is a class like any other here."""
+    picked, _ = shift_click(canvas, 5, 5)
+
+    assert picked == [BACKGROUND_CLASS]
+
+
+def test_nothing_is_picked_when_editing_is_off(canvas):
+    canvas.set_editable(False)
+
+    picked, _ = shift_click(canvas, 5, 5)
+
+    assert picked == []
 
 
 def test_a_frame_with_no_label_cannot_be_painted(qt_app, config):

@@ -228,8 +228,9 @@ to correct its labels. It visits only the frames still worth proofreading.
 
 ![The Label tab, numbered](images/label.png)
 
-1. **Choose a class** to paint with. The padlock beside a class locks it, so
-   nothing paints over it.
+1. **Choose a class** to paint with, or **Shift-click** the label where it
+   shows the class you want. The padlock beside a class locks it, so nothing
+   paints over it.
 2. **Brush** paints where you drag; **Fill** floods the area you click in.
    Scroll to zoom, and hold Space to pan.
 3. **Find specks** rings every piece of a class too small to be likely real,

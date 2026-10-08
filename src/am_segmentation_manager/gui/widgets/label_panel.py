@@ -220,6 +220,9 @@ class LabelPanel(QWidget):
     #: Asked when the reviewer wants the chosen earlier version put back. The
     #: window handles it, restoring being a write and so its to confirm.
     restore_requested = Signal()
+    #: A short message for the window to show at the pointer, which is where
+    #: the reviewer is looking when a Shift-click is answered.
+    notice = Signal(str)
 
     def __init__(
         self,
@@ -265,6 +268,7 @@ class LabelPanel(QWidget):
         self.canvas = LabelCanvas(controller.config)
         self.canvas.edited.connect(self._stroke_finished)
         self.canvas.brush_stepped.connect(self.step_brush)
+        self.canvas.class_picked.connect(self._class_picked)
         self.canvas.compare_held.connect(self._compare_key_held)
         # Beside the canvas rather than over it, so no step covers the image.
         self.checklist = ChecklistPanel(controller.checklist.steps)
@@ -644,6 +648,7 @@ class LabelPanel(QWidget):
             )
             if position < len(CLASS_KEYS):
                 hint += f"\nShortcut: {CLASS_KEYS[position]}"
+            hint += "\nOr Shift-click the label where it shows this class"
             button.setToolTip(hint)
 
             def choose_class(checked: bool, index: int = class_index) -> None:
@@ -864,6 +869,17 @@ class LabelPanel(QWidget):
 
     def _class_chosen(self, class_index: int) -> None:
         self.canvas.set_paint_value(class_index)
+
+    def _class_picked(self, class_index: int) -> None:
+        """Paint with the class a Shift-click found, if the configuration has it."""
+        button = self.paint_buttons.get(class_index)
+        if button is None:
+            self.notice.emit(
+                f"Class {class_index} is not in the configuration, so it cannot be painted"
+            )
+            return
+        self._select_class(class_index)
+        self.notice.emit(f"Painting {button.text()}")
 
     def _select_class(self, class_index: int) -> None:
         """Show *class_index* as the class being painted, if there is a button."""

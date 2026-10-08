@@ -168,6 +168,10 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
             "Flood the area of one class you clicked in",
         ),
         Gesture(
+            GROUP_CLASSES, "Shift-click the label",
+            "Paint with the class clicked on, with either tool", ("Shift",),
+        ),
+        Gesture(
             GROUP_VIEW, "Hold Space, or drag with the middle button",
             "Pan instead of painting", ("Space",),
         ),

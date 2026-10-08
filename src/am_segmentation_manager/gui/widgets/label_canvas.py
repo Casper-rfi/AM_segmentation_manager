@@ -125,8 +125,9 @@ class LabelCanvas(ImageView):
 
     Inherits the wheel zoom, fit and drag panning of the curation view's panes,
     so proofreading and reviewing behave the same way where they do the same
-    thing. While editing, the left button paints instead of panning; hold space,
-    or drag with the middle button, to pan.
+    thing. While editing, the left button paints instead of panning, and with
+    Shift picks the class under it; hold space, or drag with the middle button,
+    to pan.
     """
 
     #: Emitted with the :class:`~...operations.label_edit.EditPatch` of a
@@ -138,6 +139,11 @@ class LabelCanvas(ImageView):
     #: smaller brush. Reported rather than applied: which sizes are offered is
     #: the panel's, and the slider has to move with the wheel.
     brush_stepped = Signal(int)
+
+    #: Emitted with the value under the pointer on a Shift-click, with either
+    #: tool. Reported rather than applied, as above: whether it is a class
+    #: anyone may paint with is the panel's to say.
+    class_picked = Signal(int)
 
     #: Emitted while the compare key is held, so the panel can put an earlier
     #: version on the canvas and take it off again. The canvas holds the
@@ -490,7 +496,7 @@ class LabelCanvas(ImageView):
     # -- painting ----------------------------------------------------------
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Start a stroke, or start panning."""
+        """Start a stroke, pick a class, or start panning."""
         if event.button() == Qt.MouseButton.MiddleButton:
             self._pan_from = event_position(event)
             self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -498,7 +504,9 @@ class LabelCanvas(ImageView):
             return
         if event.button() == Qt.MouseButton.LeftButton and self.editable and not self._space_held:
             point = self._label_point(event_position(event))
-            if self._tool == TOOL_FILL:
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                self._pick(point)
+            elif self._tool == TOOL_FILL:
                 self._fill(point)
             else:
                 self._begin_stroke(point)
@@ -612,6 +620,15 @@ class LabelCanvas(ImageView):
             return
         self.set_label(self._label_array)
         self.edited.emit(patch)
+
+    def _pick(self, point: tuple[int, int]) -> None:
+        """Report the value of the label pixel at *point*, changing nothing."""
+        if self._label_array is None:
+            return
+        x, y = point
+        height, width = self._label_array.shape[:2]
+        if 0 <= x < width and 0 <= y < height:
+            self.class_picked.emit(int(self._label_array[y, x]))
 
     def _end_stroke(self) -> None:
         """Report the whole stroke as a single reversible edit."""
