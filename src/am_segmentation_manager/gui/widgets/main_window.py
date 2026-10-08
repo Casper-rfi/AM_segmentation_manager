@@ -990,6 +990,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         widget = self.tabs.widget(index)
         if widget is self.curate:
             self._focus_curate()
+            # Redrawn only if the label on screen was rewritten while away.
+            if self.controller.drop_rewritten_frame():
+                self._schedule_loads()
+                self._render()
         elif widget is self.export_panel:
             self._open_export()
         elif widget is self.label_panel:

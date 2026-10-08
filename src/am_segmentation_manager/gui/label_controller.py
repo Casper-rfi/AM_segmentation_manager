@@ -25,7 +25,6 @@ from ..frames import (
     series_present,
 )
 from ..history import Recorder
-from ..io.atomic import fingerprint_of
 from ..layout import LABELLED_SERIES, MODALITIES, SERIES
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
@@ -515,31 +514,26 @@ class LabelController:
 
     def _drop_if_read_before_rewrite(self, index: int) -> None:
         """Discard the frame at *index* if its label file changed since it was read."""
-        prepared = self.cache.cached_image(index, self._modality, self._shown_condition)
-        if prepared is not None and self._read_before_rewrite(prepared):
+        if self._read_before_rewrite(index):
             logger.info(
                 "Label of %s changed on disk since it was read; reading it again",
                 self.record.image_path.name,
             )
             self.cache.drop_image(index, self._modality, self._shown_condition)
 
-    def _read_before_rewrite(self, prepared: FrameImage) -> bool:
-        """Return whether *prepared*'s label file has changed since it was read.
+    def _read_before_rewrite(self, index: int) -> bool:
+        """Return whether the frame at *index* was read before its label was rewritten.
 
         Asked only until the label is opened for editing: from then on the
-        session holds the working copy and the save compares against it. A
-        record naming no label is never answered True, reading it again finding
-        no label either; a file that has appeared since is refused at the save.
+        session holds the working copy and the save compares against it. A file
+        appearing beside a record that names no label is refused at the save.
         """
-        record = self.record
-        if record is None or not record.labels or prepared.display is None:
-            return False
-        key = self.key_for(record)
+        key = self.key_for(self.record)
         if key is None or key == self.session.open_key:
             return False
         if self.session.state_of(key) is not None:
             return False
-        return prepared.label_fingerprint != fingerprint_of(key)
+        return self.cache.read_before_rewrite(index, self._modality, self._shown_condition)
 
     def pending_loads(self, *, radius: int | None = DEFAULT_RADIUS) -> list[LoadRequest]:
         """Return the frames to prepare, current first then outwards.

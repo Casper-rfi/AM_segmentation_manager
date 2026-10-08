@@ -1133,13 +1133,30 @@ class CurationController:
         """Return the prepared plot for the current frame, if it has one."""
         return self.cache.plot(self._frame_position)
 
+    def drop_rewritten_frame(self) -> bool:
+        """Discard the frame on screen if its label was rewritten since it was read.
+
+        A save or a restore on the Label tab rewrites a label under this cache,
+        and so does another program. Returns whether a frame was discarded.
+        """
+        modality = MODE_MODALITIES.get(self.mode)
+        if modality is None:
+            return False
+        condition = self.condition.get(modality)
+        if not self.cache.read_before_rewrite(self._frame_position, modality, condition):
+            return False
+        logger.info("Label on screen changed on disk since it was read; reading it again")
+        return self.cache.drop_image(self._frame_position, modality, condition)
+
     def pending_loads(self, *, radius: int | None = DEFAULT_RADIUS) -> list[LoadRequest]:
         """Return preparation work for the current position, most useful first.
 
         The mode in view is prepared first so the visible panel fills before
         anything else. Plots are only included while the plot view is on,
-        because they cost several times more than an acquisition.
+        because they cost several times more than an acquisition. The frame on
+        screen is asked for again if its label was rewritten since it was read.
         """
+        self.drop_rewritten_frame()
         modality = MODE_MODALITIES.get(self.mode)
         ordered = [modality, *(m for m in ("SEM", "FIB") if m != modality)] if modality else ["SEM", "FIB"]
         showing_plots = self.mode == "plot"

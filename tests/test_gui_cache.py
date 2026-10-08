@@ -218,6 +218,51 @@ def test_relabelling_takes_the_written_label_s_fingerprint(tmp_path):
     assert cache.cached_image(0, "SEM").label_fingerprint == fingerprint_of(label)
 
 
+def test_a_frame_whose_label_was_rewritten_is_reported(tmp_path):
+    label = tmp_path / "img.tif"
+    label.write_bytes(b"before")
+    cache = labelled_cache(label, lambda image_path, label_path=None: "prepared")
+    cache.image(0, "SEM")
+    assert not cache.read_before_rewrite(0, "SEM")
+
+    label.write_bytes(b"rewritten, and longer")
+
+    assert cache.read_before_rewrite(0, "SEM")
+
+
+def test_a_label_named_since_the_read_is_reported(tmp_path):
+    """What a conversion does: the record gains a label it did not name."""
+    cache, _, _ = make_cache(1)
+    cache.image(0, "SEM")
+    label = tmp_path / "img.tif"
+    label.write_bytes(b"converted")
+
+    cache.frames[0].sem[0].labels.append(label)
+
+    assert cache.read_before_rewrite(0, "SEM")
+
+
+def test_a_failed_read_is_not_reported_however_its_label_changed(tmp_path):
+    """Or a file that will not read is read again on every repaint."""
+    label = tmp_path / "img.tif"
+    label.write_bytes(b"before")
+
+    def fail(image_path, label_path=None):
+        raise OSError("will not decode")
+
+    cache = labelled_cache(label, fail)
+    cache.image(0, "SEM")
+    label.write_bytes(b"rewritten, and longer")
+
+    assert not cache.read_before_rewrite(0, "SEM")
+
+
+def test_a_frame_not_held_is_not_reported():
+    cache, _, _ = make_cache(1)
+
+    assert not cache.read_before_rewrite(0, "SEM")
+
+
 def test_a_dropped_frame_is_read_again():
     cache, loader, _ = make_cache(2)
     cache.image(0, "SEM")

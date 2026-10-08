@@ -346,11 +346,14 @@ of one of these files, is held by `test_docs.py`.
   most, a crack being a fraction of a percent of the frame. So a batch table ranking labels by how
   far something moved them is refused, and so is a percentage beside a conflict; the answer is one
   frame at a time on a subset.
-- **Editing never starts from pixels older than the label's file.** A prepared frame holds the pixels
-  its label had when read, perhaps long before it is opened, so the cache fingerprints the file just
-  before reading and editing opens with that fingerprint; a frame whose file changed since is read
-  again first (`test_a_frame_read_ahead_opens_what_was_written_since`). **A save puts what it wrote,
-  and its fingerprint, into the prepared frame**, or the canvas draws the label it replaced. Put in
+- **No view draws, and editing never starts from, pixels older than the label's file.** A prepared
+  frame holds the pixels its label had when read, perhaps long before it is shown, so the cache
+  fingerprints the file just before reading, and `FrameCache.read_before_rewrite` sends a frame whose
+  file changed since back to be read before either tab draws it
+  (`test_a_frame_read_ahead_opens_what_was_written_since`). Curate asks again on coming forward,
+  nothing telling it of a save or restore made on Label, or of another program's write
+  (`test_curate_shows_a_label_rewritten_while_it_was_behind`). **A save puts what it wrote, and its
+  fingerprint, into the Label tab's prepared frame**, or the canvas draws the label it replaced. Put in
   rather than dropped: dropping leaves nothing to draw until a background read catches up, which is
   a blank canvas exactly where a save was just made. **Nor from the session's untouched copy**:
   returning to the tab puts it away, or the blank opened for an unlabelled image hides a label

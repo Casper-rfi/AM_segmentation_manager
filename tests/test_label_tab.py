@@ -2066,6 +2066,51 @@ def test_the_canvas_shows_what_was_saved_rather_than_what_it_replaced(
     )
 
 
+def curate_label(window):
+    """The label Curate holds for the SEM image on screen, or None if not held."""
+    controller = window.controller
+    prepared = controller.cache.cached_image(
+        controller.frame_position, "SEM", controller.current_condition("SEM")
+    )
+    return None if prepared is None else prepared.display.label
+
+
+def test_curate_shows_what_the_label_tab_saved(qt_app, window):
+    """The reported fault: Curate went on drawing the label a save replaced,
+    until the reviewer moved to another lamella and back."""
+    key = window.label_controller.current_key
+    assert window.controller.frame.record("SEM").labels == [key]
+    settle(qt_app, lambda: curate_label(window) is not None, what="Curate's frame")
+    paint_on(window, value=1)
+
+    save_with(window, mark_corrected=False)
+    settle(qt_app, lambda: saved(window))
+    window.tabs.setCurrentWidget(window.curate)
+
+    settle(
+        qt_app,
+        lambda: np.array_equal(curate_label(window), tifffile.imread(str(key))),
+        what="the saved label on Curate",
+    )
+
+
+def test_curate_shows_a_label_rewritten_while_it_was_behind(qt_app, window):
+    """A restore, or another program: nothing tells Curate, so arriving asks."""
+    key = window.label_controller.current_key
+    settle(qt_app, lambda: curate_label(window) is not None, what="Curate's frame")
+    label = np.zeros((48, 64), dtype=np.uint8)
+    label[20:30] = 1
+    tifffile.imwrite(str(key), label, compression="zlib")
+
+    window.tabs.setCurrentWidget(window.curate)
+
+    settle(
+        qt_app,
+        lambda: np.array_equal(curate_label(window), label),
+        what="the rewritten label on Curate",
+    )
+
+
 def test_saving_starts_the_record_it_writes_into(qt_app, window):
     """The Label tab has no editing guard, so the save is the door itself.
 

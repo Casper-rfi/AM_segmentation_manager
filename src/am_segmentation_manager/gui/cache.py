@@ -507,6 +507,24 @@ class FrameCache:
         key = self._key(frame_index, modality, condition)
         return key is not None and self._images.drop([key]) > 0
 
+    def read_before_rewrite(
+        self, frame_index: int, modality: str, condition: str | None = None
+    ) -> bool:
+        """Return whether a held acquisition's label file changed since it was read.
+
+        A label the record names since, where it named none, counts as a change.
+        Never True for a read that failed, which would then be retried on every
+        repaint.
+        """
+        key = self._key(frame_index, modality, condition)
+        prepared = self._images.get(key) if key is not None else None
+        if prepared is None or prepared.failed:
+            return False
+        record = self._record(frame_index, modality, condition)
+        label = record.labels[0] if record is not None and record.labels else None
+        now = fingerprint_of(label) if label is not None else None
+        return prepared.label_fingerprint != now
+
     def cached_plot(self, frame_index: int) -> FramePlot | None:
         """Return a prepared plot only if it is already held."""
         return self._plots.get(frame_index)
