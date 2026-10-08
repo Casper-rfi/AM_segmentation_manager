@@ -17,7 +17,8 @@ Every main function `CLAUDE.md` names is built, across the three series of image
 and every layout era the collection holds. Add data, Curate, Label and Export are four tabs, each
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
 Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
-need the `ml` extra, or `ml-cuda13` where the card is newer than its torch. Imaging conditions form
+need the `ml` extra, or `ml-cuda13` where the card is newer than its torch; `show-training` reads an
+AM-model-training run, and starting one is `plans/model_training.md`. Imaging conditions form
 **families**, each sharing one label: a folder's name gives the family and `AM_families.yaml` corrects it,
 for the project or for one lamella over it, from Curate's Families tab or `edit-families`.
 

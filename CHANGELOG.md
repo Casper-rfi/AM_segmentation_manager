@@ -67,6 +67,13 @@ The first public release, to be published as 0.1.0.
 - `export-files` copies a selection of images and labels into a folder of
   its own, and `merge` brings the worked-on copy back.
 
+**Training**
+
+- `show-training` reports how an AM-model-training run is going or how it
+  ended, wherever it was started: its epochs, its best validation epoch and
+  the checkpoint kept for it. It draws the run's loss and per-class metric
+  by epoch.
+
 **History**
 
 - Records what changed, who changed it and when, and keeps every replaced

@@ -106,6 +106,20 @@ am-seg check-training-csv dataset_train.csv
 corrected labels unless told otherwise, since a label made from a prediction
 measures the model rather than the sample.
 
+## Train
+
+```bash
+am-seg show-training /path/to/runs
+am-seg show-training /path/to/runs/training_261008_093830 --metric dice --plot curves.png
+```
+
+`show-training` reads what AM-model-training writes into each
+`training_<date>_<time>` directory, wherever the run was started, and needs no
+training stack installed. For each run it gives the epochs so far, the
+validation epoch the run counts as best, and the checkpoint kept for it. A run
+without its `training_parameters.json` is still training, or was stopped
+before it ended. `--plot` draws one run's loss and per-class metric by epoch.
+
 ## Record and undo
 
 ```bash
@@ -179,6 +193,12 @@ labels.
 | `am-seg export-files` | Copy the selected images, their labels and the project files out |
 | `am-seg create-training-csv` | Export image and label paths to CSV files for ML model training |
 | `am-seg check-training-csv` | Check that image/label paths recorded in a training CSV still exist |
+
+### Train models
+
+| Command | What it does |
+|---|---|
+| `am-seg show-training` | Report how a training run is going or how it ended, and draw its curves |
 
 ### Record what changes, and read it back
 

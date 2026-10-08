@@ -1,12 +1,11 @@
-"""Charts of the breakdowns :mod:`am_segmentation_manager.aggregate` counts.
+"""Charts of the breakdowns :mod:`am_segmentation_manager.aggregate` counts, and of a training run.
 
-One property is bars and two are a heatmap, whose *empty* cells are the finding.
-**A deliberately small module**: it draws breakdowns already computed, and anything
-bespoke belongs in a script reading the exported CSV. Figures are built without
-``pyplot``, so nothing registers globally, no backend is chosen, and a chart drawn
-over ssh never looks for a display. The window attaches its own canvas;
-:func:`plot_counts` and :func:`plot_cross_tabulation` write a file, refusing to
-replace one unless told to, as every export does.
+One property is bars and two are a heatmap, whose *empty* cells are the finding; a
+training run is its curves, epoch by epoch. **A deliberately small module**: it draws
+what is already computed or read, and anything bespoke belongs in a script. Figures are
+built without ``pyplot``, so nothing registers globally, no backend is chosen, and a
+chart drawn over ssh never looks for a display. The window attaches its own canvas; the
+``plot_*`` functions write a file, refusing to replace one unless told to.
 """
 from __future__ import annotations
 
@@ -18,10 +17,13 @@ from typing import TYPE_CHECKING
 from .aggregate import totals
 from .io.atomic import write_atomically
 from .io.tables import refuse_existing
+from .training_runs import PER_CLASS_METRICS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+
+    from .training_runs import TrainingRun
 
 logger = logging.getLogger(__name__)
 
@@ -343,3 +345,94 @@ def plot_cross_tabulation(
         output,
         overwrite=overwrite,
     )
+
+
+#: What each per-class metric is called on an axis.
+_METRIC_LABELS = {
+    "iou": "IoU", "dice": "Dice", "f1": "F1",
+    "accuracy": "Accuracy", "precision": "Precision", "recall": "Recall",
+}
+
+
+def training_figure(run: TrainingRun, metric: str = "iou") -> Figure:
+    """Draw a run's loss, and *metric* for each class, epoch by epoch.
+
+    The classes are drawn from validation, where a model is judged, with the
+    weighted average of both sides over them; a run not yet validated draws
+    its training classes instead. The epoch the run counts as best, and the
+    one its encoder was unfrozen after, are marked.
+
+    Args:
+        metric: One of :data:`~am_segmentation_manager.training_runs.PER_CLASS_METRICS`.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+        ValueError: If the run has no epochs yet, or *metric* is unknown.
+    """
+    require_plot_support()
+    if metric not in PER_CLASS_METRICS:
+        raise ValueError(f"Unknown metric {metric!r}; choose from {', '.join(PER_CLASS_METRICS)}")
+    if not run.train and not run.val:
+        raise ValueError("Nothing to plot: the run has finished no epoch yet")
+
+    from matplotlib import colormaps
+    from matplotlib.figure import Figure
+
+    figure = Figure(figsize=(_WIDTH * 1.25, 4.2), layout="constrained")
+    loss_axes, metric_axes = figure.subplots(1, 2)
+
+    for epochs, side, style in ((run.train, "training", "--"), (run.val, "validation", "-")):
+        if epochs:
+            loss_axes.plot([e.epoch for e in epochs], [e.loss for e in epochs],
+                           style, color=_BAR_COLOUR, label=side)
+    loss_axes.set_yscale("log")
+    loss_axes.set_ylabel("loss")
+
+    by_class = run.val or run.train
+    palette = colormaps["tab10"]
+    for index, name in enumerate(run.label_names):
+        points = [(e.epoch, e.per_class[metric][index]) for e in by_class
+                  if len(e.per_class.get(metric, ())) > index]
+        if points:
+            metric_axes.plot(*zip(*points), color=palette(index), linewidth=1, label=name)
+    average = f"weighted_average_{metric}"
+    for epochs, side, style in ((run.train, "training", "--"), (run.val, "validation", "-")):
+        points = [(e.epoch, e.scalars[average]) for e in epochs if average in e.scalars]
+        if points:
+            metric_axes.plot(*zip(*points), style, color="#222222", linewidth=1.8,
+                             label=f"weighted average, {side}")
+    metric_axes.set_ylabel(f"{_METRIC_LABELS[metric]}, per class from "
+                           f"{'validation' if run.val else 'training'}")
+    metric_axes.set_ylim(0, 1)
+
+    best = run.best()
+    for axes in (loss_axes, metric_axes):
+        if best is not None:
+            axes.axvline(best.epoch, color=_LINE_COLOUR, linestyle=":", linewidth=1.2,
+                         label=f"best epoch ({best.epoch})")
+        if run.frozen_epochs:
+            axes.axvline(run.frozen_epochs + 1, color="#888888", linestyle="-.", linewidth=1,
+                         label="encoder unfrozen")
+        axes.set_xlabel("epoch")
+        axes.spines[["top", "right"]].set_visible(False)
+    loss_axes.legend(fontsize=7, frameon=False)
+    # Outside the axes: every corner of a run's metric panel holds a curve.
+    metric_axes.legend(fontsize=7, frameon=False, loc="center left", bbox_to_anchor=(1.01, 0.5))
+
+    started = f", started {run.started:%Y-%m-%d %H:%M} UTC" if run.started else ""
+    state = "finished" if run.finished else "not finished"
+    figure.suptitle(f"{run.run_id or run.directory.name}{started} ({state})")
+    return figure
+
+
+def plot_training_run(
+    run: TrainingRun, output: Path, *, metric: str = "iou", overwrite: bool = False
+) -> Path:
+    """Draw a run's curves and write them to *output*.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+        ValueError: If the run has no epochs yet, or *metric* is unknown.
+        FileExistsError: If *output* exists and *overwrite* is False.
+    """
+    return _finish(training_figure(run, metric), output, overwrite=overwrite)

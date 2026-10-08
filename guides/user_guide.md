@@ -289,7 +289,9 @@ out. Its count is always what an export would cover.
 
 An empty label is never exported as a training pair: it would teach a model
 that nothing is there. To train a model on the CSVs, use [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-training),
-the software the Adaptive Milling models were trained with.
+the software the Adaptive Milling models were trained with. `am-seg show-training`
+reports how its runs are going or how they ended
+([Train](command_line.md#train)).
 
 ## Undo and history
 

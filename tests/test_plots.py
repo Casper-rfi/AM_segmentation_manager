@@ -18,8 +18,11 @@ from am_segmentation_manager.plots import (
     heatmap_figure,
     plot_counts,
     plot_cross_tabulation,
+    plot_training_run,
     require_plot_support,
+    training_figure,
 )
+from am_segmentation_manager.training_runs import EpochMetrics, TrainingRun, read_training_run
 
 pytestmark = pytest.mark.skipif(not has_plot_support(), reason="matplotlib not installed")
 
@@ -263,3 +266,57 @@ def test_cli_refuses_an_existing_chart_before_counting(tmp_path: Path, capsys):
 
     assert main([*command, "--overwrite"]) == 0
     assert chart.read_bytes().startswith(b"\x89PNG")
+
+
+# -- a training run -------------------------------------------------------------
+
+TRAINING_RUN = Path(__file__).parent / "data" / "amt_run" / "training_260927_093830"
+
+
+def _legend_labels(axes) -> list[str]:
+    return [text.get_text() for text in axes.get_legend().get_texts()]
+
+
+def test_a_training_run_is_drawn_as_loss_beside_its_classes(tmp_path: Path):
+    output = plot_training_run(read_training_run(TRAINING_RUN), tmp_path / "run.svg")
+
+    assert output.read_text(encoding="utf-8").lstrip().startswith("<?xml")
+
+
+def test_the_best_and_unfreeze_epochs_are_marked():
+    loss_axes, metric_axes = training_figure(read_training_run(TRAINING_RUN)).axes
+
+    labels = _legend_labels(metric_axes)
+    assert "best epoch (2)" in labels
+    assert "encoder unfrozen" in labels
+    assert {"background", "gis", "lamella", "crack", "vacuum"} <= set(labels)
+    assert {"training", "validation"} <= set(_legend_labels(loss_axes))
+
+
+def test_a_run_not_yet_validated_draws_its_training_classes():
+    epoch = EpochMetrics(1, 0.5, {"weighted_average_iou": 0.4}, {"iou": (0.3, 0.5)})
+    run = TrainingRun(Path("training_261001_000000"), "set", None, train=(epoch,))
+
+    _, metric_axes = training_figure(run).axes
+
+    assert "from training" in metric_axes.get_ylabel()
+    assert not any(label.startswith("best epoch") for label in _legend_labels(metric_axes))
+
+
+def test_a_run_with_no_epoch_is_not_drawn():
+    with pytest.raises(ValueError, match="no epoch"):
+        training_figure(TrainingRun(Path("training_261001_000000"), None, None))
+
+
+def test_an_unknown_training_metric_is_refused():
+    with pytest.raises(ValueError, match="Unknown metric"):
+        training_figure(read_training_run(TRAINING_RUN), "sharpness")
+
+
+def test_an_existing_training_figure_is_refused(tmp_path: Path):
+    output = tmp_path / "run.png"
+    output.write_bytes(b"mine")
+
+    with pytest.raises(FileExistsError):
+        plot_training_run(read_training_run(TRAINING_RUN), output)
+    assert output.read_bytes() == b"mine"
