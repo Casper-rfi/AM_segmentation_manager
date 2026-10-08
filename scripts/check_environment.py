@@ -9,9 +9,10 @@ Checks the image stack, the Qt binding and whether it can open a window,
 charts, how many worker processes a scan starts, and on Windows whether long
 paths can be reached; then, where the ``ml`` extra is installed, the inference
 stack, the devices torch can see, the NVIDIA GPUs and how full they are, and
-generation 1's preprocessing on each device. Exits non-zero when something
-installed does not work, NVIDIA GPUs torch cannot use among it; an extra that
-was simply not installed is reported and is not a failure.
+generation 1's preprocessing on each device; and where ``train`` is, that
+AM-model-training imports and whether it has a GPU to train on. Exits non-zero
+when something installed does not work, NVIDIA GPUs torch cannot use among it;
+an extra that was simply not installed is reported and is not a failure.
 """
 from __future__ import annotations
 
@@ -200,6 +201,39 @@ def check_inference() -> bool:
     return working
 
 
+def check_training() -> bool:
+    """Report the training stack, returning whether it works where installed."""
+    from importlib.metadata import version
+
+    from am_segmentation_manager.ml.environment import (
+        training_stack_present,
+        training_stack_problems,
+    )
+
+    if not training_stack_present():
+        print("  training      not installed: training a model needs the train extra")
+        return True
+    problems = training_stack_problems()
+    for name, reason in problems:
+        print(f"  MISSING  {name}: {reason}")
+    if problems:
+        print("  AM-model-training is installed but does not load.")
+        return False
+
+    import torch
+
+    print(
+        f"  training      OK (am-model-training {version('am-model-training')}, "
+        f"monai {version('monai')})"
+    )
+    if not torch.cuda.is_available():
+        print(
+            "                No CUDA GPU: AM-model-training trains on the CPU here, "
+            "which takes minutes per image."
+        )
+    return True
+
+
 def main() -> int:
     """Run every check, returning the exit status."""
     print(f"Python {sys.version.split()[0]} at {sys.executable}")
@@ -208,7 +242,8 @@ def main() -> int:
     check_workers()
     check_long_paths()
     inference = check_inference()
-    return 0 if images and inference else 1
+    training = check_training()
+    return 0 if images and inference and training else 1
 
 
 if __name__ == "__main__":

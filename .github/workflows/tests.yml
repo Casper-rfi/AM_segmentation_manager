@@ -104,7 +104,9 @@ jobs:
       - run: uv run --locked pytest -v --durations=15 -o faulthandler_timeout=600
 
   # The inference stack on a runner with no GPU: loading, preprocessing and
-  # the prediction process on the CPU.
+  # the prediction process on the CPU. The training stack is installed beside
+  # it, as it always is, so the lock that resolves AM-model-training with each
+  # torch build is installed somewhere.
   ml:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -114,7 +116,7 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
-      - run: uv sync --locked --extra gui --extra ml
+      - run: uv sync --locked --extra gui --extra ml --extra train
       - run: uv run --locked python scripts/check_environment.py
       - run: uv run --locked pytest -v -o faulthandler_timeout=600
 
@@ -140,7 +142,7 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
-      - run: uv sync --locked --extra gui --extra ${{ matrix.extra }}
+      - run: uv sync --locked --extra gui --extra ${{ matrix.extra }} --extra train
       - run: uv run --locked python scripts/check_environment.py
       - run: uv run --locked pytest -v -o faulthandler_timeout=600
 
@@ -180,5 +182,5 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/qt-libraries
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
-      - run: uv sync --upgrade --extra gui --extra ml
+      - run: uv sync --upgrade --extra gui --extra ml --extra train
       - run: uv run pytest -v -o faulthandler_timeout=600

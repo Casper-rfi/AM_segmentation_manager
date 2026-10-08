@@ -588,10 +588,15 @@ rather than appending to it.
 - **One environment, every dependency from PyPI, and `uv.lock` holding the versions tested.** Every
   `cv2` failure this package has met was two providers of one module — conda's `opencv` beside
   pip's, or `opencv-python` beside `opencv-python-headless` — so every
-  extra names the headless build and nothing comes from conda. **Inference is an extra, not an
-  environment**: nothing outside `ml/` imports torch
-  (`test_torch_is_not_loaded_outside_the_module_that_runs_it`), so an environment without it is a
-  subset rather than a peer. `required-environments` locks for Windows, Linux and Apple silicon on
+  extra names the headless build and nothing comes from conda. **Inference and training are extras,
+  not environments**: nothing outside `ml/` imports torch
+  (`test_torch_is_not_loaded_outside_the_module_that_runs_it`), nor AM-model-training, MONAI or
+  mlflow at all, which also set process-wide state
+  (`test_the_training_stack_is_imported_only_inside_ml_functions`), so an environment without them
+  is a subset rather than a peer. `train` takes the torch `ml` or `ml-cuda13` chose and is installed
+  beside each (`test_every_inference_build_is_installed_with_the_training_stack_somewhere`); am-seg
+  still predicts, AM-model-training's `am-infer` never calling `model.eval()`.
+  `required-environments` locks for Windows, Linux and Apple silicon on
   each supported Python — but a dependency lacking a wheel for one of them locks anyway and is
   built from source there, which on Windows means a C++ compiler. Nothing checks this yet.
 - **Windows and Linux take torch built for CUDA 12.6, not PyPI's.** PyPI's Windows torch is

@@ -150,3 +150,19 @@ def test_each_torch_build_is_installed_on_every_platform_it_is_chosen_for():
 
     assert wanted
     assert wanted <= _installed(), sorted(wanted - _installed())
+
+
+def test_every_inference_build_is_installed_with_the_training_stack_somewhere():
+    """AM-model-training takes whichever torch the inference extra chose, so the
+    combination a user installs is each build with `train` beside it."""
+    builds = {
+        source["extra"] for source in _pyproject()["tool"]["uv"]["sources"]["torch"]
+    }
+    installed = _installed()
+    alone = {
+        (runner, extra) for runner, extra in installed
+        if extra in builds and (runner, "train") not in installed
+    }
+
+    assert builds
+    assert not alone, sorted(alone)

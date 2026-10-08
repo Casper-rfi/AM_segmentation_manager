@@ -1,11 +1,10 @@
-"""Tests for how the optional inference stack is reported when it is absent.
+"""Tests for how the optional inference and training stacks are reported when absent.
 
-The stack is several gigabytes and lives in its own environment, so the case
-that matters most is the one every developer machine is in: torch is not
-installed, and everything that is not inference must keep working anyway. These
-pin that the reporting is importable, honest about which dependency failed, and
-that asking for a device or a preprocessing run says what to install rather
-than raising ImportError from somewhere deep.
+Each is an extra of a gigabyte or more that many environments lack, so the case
+that matters most is the one where it is not installed and everything else must
+keep working anyway. These pin that the reporting is importable, honest about
+which dependency failed, and that asking for a device, a preprocessing run or
+training says what to install rather than raising ImportError from somewhere deep.
 """
 from __future__ import annotations
 
@@ -304,3 +303,92 @@ def test_prediction_uses_as_many_cpu_threads_as_am_seg_may(monkeypatch):
 
     assert ml_env.limit_cpu_threads() == 3
     assert threads == [3]
+
+
+# -- training -------------------------------------------------------------------
+
+
+def test_training_is_not_offered_without_the_inference_stack(monkeypatch):
+    """AM-model-training brings no torch of its own; the inference extra chooses it."""
+    monkeypatch.setattr(ml_env, "ml_stack_present", lambda: False)
+
+    assert not ml_env.training_stack_present()
+
+
+def test_training_is_offered_only_where_am_model_training_is_found(monkeypatch):
+    import importlib.util
+
+    real = importlib.util.find_spec
+    monkeypatch.setattr(ml_env, "ml_stack_present", lambda: True)
+    monkeypatch.setattr(
+        importlib.util, "find_spec",
+        lambda name, *args: None if name == "am_model_training" else real(name, *args),
+    )
+
+    assert not ml_env.training_stack_present()
+
+
+def test_a_missing_inference_stack_is_the_training_stack_s_problem(monkeypatch):
+    """Reported as torch, the thing to install first, not as a trainer that would not load."""
+    monkeypatch.setattr(ml_env, "ml_stack_problems", lambda: [("torch", "not installed")])
+
+    assert ml_env.training_stack_problems() == [("torch", "not installed")]
+
+
+def test_a_missing_trainer_is_reported_as_not_installed(monkeypatch):
+    monkeypatch.setattr(ml_env, "ml_stack_problems", lambda: [])
+    break_import(monkeypatch, "am_model_training.main",
+                 ImportError("No module named 'am_model_training'"))
+
+    problems = dict(ml_env.training_stack_problems())
+
+    assert "not installed" in problems["am-model-training"]
+    assert not ml_env.has_training_support()
+
+
+def test_a_trainer_whose_dependencies_fail_is_installed_not_missing(monkeypatch):
+    """Importing it loads MONAI and mlflow; one of those failing is a broken install."""
+    monkeypatch.setattr(ml_env, "ml_stack_problems", lambda: [])
+    break_import(monkeypatch, "am_model_training.main", AttributeError("mlflow has no attribute"))
+
+    problems = dict(ml_env.training_stack_problems())
+
+    assert "installed but failed to import" in problems["am-model-training"]
+
+
+def test_mlflow_is_quietened_before_the_trainer_is_imported(monkeypatch):
+    import os
+
+    variable, quiet = ml_env.QUIET_MLFLOW
+    seen: list[str | None] = []
+
+    def importing(modules):
+        seen.append(os.environ.get(variable))
+        return []
+
+    monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(ml_env, "ml_stack_problems", lambda: [])
+    monkeypatch.setattr(ml_env, "_import_problems", importing)
+
+    ml_env.training_stack_problems()
+
+    assert seen == [quiet]
+
+
+def test_requiring_the_training_stack_names_the_operation_and_the_fix(monkeypatch):
+    monkeypatch.setattr(ml_env, "ml_stack_problems", lambda: [])
+    break_import(monkeypatch, "am_model_training.main",
+                 ImportError("No module named 'am_model_training'"))
+
+    with pytest.raises(RuntimeError) as raised:
+        ml_env.require_training_stack("Training")
+
+    message = str(raised.value)
+    assert message.startswith("Training needs am-model-training")
+    assert "--extra train" in message
+
+
+@pytest.mark.skipif(not ml_env.training_stack_present(), reason="train extra not installed")
+def test_the_installed_training_stack_imports():
+    """Where the extra is installed, AM-model-training loads beside this torch."""
+    assert ml_env.training_stack_problems() == []

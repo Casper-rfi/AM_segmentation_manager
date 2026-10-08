@@ -220,6 +220,30 @@ def _package_imports() -> list[tuple[str, str, str, int]]:
     return found
 
 
+def _external_imports() -> list[tuple[str, str, str, int]]:
+    """Return every import of another distribution as (source, top-level name, function, line)."""
+    root = SRC / "am_segmentation_manager"
+    found: list[tuple[str, str, str, int]] = []
+    for path in sorted(root.rglob("*.py")):
+        module = ".".join(["am_segmentation_manager", *path.relative_to(root).with_suffix("").parts])
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[int, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
+                    enclosing.setdefault(line, node.name)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                found.append((module, name.split(".")[0], enclosing.get(node.lineno, ""), node.lineno))
+    return found
+
+
 def _tops(module: str) -> str:
     """Return the part of *module* the spine rules are stated about."""
     name = module.removeprefix("am_segmentation_manager").lstrip(".")
@@ -287,3 +311,24 @@ def test_torch_is_not_loaded_outside_the_module_that_runs_it():
     assert not loaded, "\n".join(
         f"{s}:{n} imports {t} at module level" for s, t, n in loaded
     )
+
+
+#: What the train extra brings that nothing else does: the trainer, and the two
+#: libraries whose import costs seconds and sets process-wide state.
+TRAINING_STACK = {"am_model_training", "monai", "mlflow"}
+
+
+def test_the_training_stack_is_imported_only_inside_ml_functions():
+    """Only `ml/` may import it, and only inside the function that trains.
+
+    Most environments have no train extra, and importing AM-model-training
+    loads MONAI and mlflow and sets torch's sharing strategy for the whole
+    process: a cost and a side effect only the training child should carry.
+    """
+    misplaced = [
+        f"{source}:{line} imports {name}"
+        + (" at module level" if not function else " outside ml/")
+        for source, name, function, line in _external_imports()
+        if name in TRAINING_STACK and (not function or _tops(source) != "ml")
+    ]
+    assert not misplaced, "\n".join(misplaced)

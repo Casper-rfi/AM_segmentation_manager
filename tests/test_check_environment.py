@@ -121,3 +121,34 @@ def test_a_child_that_hangs_is_reported_rather_than_waited_on(capsys):
     check_environment.check_qt_window(run, "linux", {"WAYLAND_DISPLAY": "wayland-0"})
 
     assert "did not answer within" in capsys.readouterr().out
+
+
+def test_a_training_stack_not_installed_is_not_a_failure(monkeypatch, capsys):
+    from am_segmentation_manager.ml import environment
+
+    monkeypatch.setattr(environment, "training_stack_present", lambda: False)
+
+    assert check_environment.check_training() is True
+    assert "training a model needs the train extra" in capsys.readouterr().out
+
+
+def test_an_installed_training_stack_that_does_not_load_fails_the_check(monkeypatch, capsys):
+    from am_segmentation_manager.ml import environment
+
+    monkeypatch.setattr(environment, "training_stack_present", lambda: True)
+    monkeypatch.setattr(
+        environment, "training_stack_problems",
+        lambda: [("am-model-training", "installed but failed to import: no mlflow")],
+    )
+
+    assert check_environment.check_training() is False
+    assert "no mlflow" in capsys.readouterr().out
+
+
+def test_a_broken_training_stack_fails_the_whole_check(monkeypatch):
+    monkeypatch.setattr(check_environment, "check_image_stack", lambda: True)
+    monkeypatch.setattr(check_environment, "check_window", lambda: None)
+    monkeypatch.setattr(check_environment, "check_inference", lambda: True)
+    monkeypatch.setattr(check_environment, "check_training", lambda: False)
+
+    assert check_environment.main() == 1

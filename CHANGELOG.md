@@ -73,6 +73,8 @@ The first public release, to be published as 0.1.0.
   ended, wherever it was started: its epochs, its best validation epoch and
   the checkpoint kept for it. It draws the run's loss and per-class metric
   by epoch.
+- A `train` extra installs AM-model-training beside an inference build, and
+  `check_environment.py` says whether it loads and has a GPU to train on.
 
 **History**
 

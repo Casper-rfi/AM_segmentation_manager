@@ -19,11 +19,6 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **Running the suite in parallel** with `pytest-xdist`, a new dependency. First: whether the
   process-wide state [`display.md`](display.md) § Testing the window names — the locale a
   `QApplication` sets, the error reporter's excepthook — stays confined to one worker.
-- **Starting a training run through AM-model-training** (Apache-2.0, RFI; `plans/model_training.md`),
-  which reads the `image,label` CSVs `create-training-csv` writes, resolving a relative path against
-  the CSV's folder rather than the collection's. Not its `am-infer`, which predicts in training mode,
-  never calling `model.eval()`. First: whether MONAI, ITK and mlflow lock beside `gui` and `ml` on
-  every platform, which decides between a dependency and a second environment.
 - **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
   `GENERATIONS`, its preprocessing added beside `IMPLEMENTED_PREPROCESSING` and held to a recapture
   of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside

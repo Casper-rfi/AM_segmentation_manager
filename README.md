@@ -84,13 +84,14 @@ the versions the tests were run against. Run anything in it with `uv run`:
 
 **`uv sync` installs exactly the extras it is given** and removes the rest, so
 name every extra you want each time. The extras combine freely, `ml` and
-`ml-cuda13` apart:
+`ml-cuda13` apart, and `train` goes beside one of those two:
 
 | Extra | Adds |
 |---|---|
 | `gui` | the window, the image stack and charts |
 | `ml` | predicting: torch and the model libraries, several gigabytes |
 | `ml-cuda13` | predicting, with torch for CUDA 13, for a card the default build has no kernels for, such as a 50-series |
+| `train` | AM-model-training and the libraries it trains with, about another gigabyte; it takes the torch `ml` or `ml-cuda13` chose, and supports Python up to 3.13 |
 | `all` | the image stack and charts, for the command line without the window |
 | `plots` | charts alone, for the command line's plots |
 

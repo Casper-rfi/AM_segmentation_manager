@@ -1,10 +1,10 @@
-"""Reporting whether the inference stack is usable, and on which devices.
+"""Reporting whether the inference and training stacks are usable, and on which devices.
 
 The counterpart of :mod:`..io.image` for the machine-learning dependencies:
-torch is imported inside functions, never at module level, so this module can
-be imported and asked its questions in an installation that has no torch at
-all. ``scripts/check_environment.py`` and every inference command ask through
-here rather than catching ``ImportError`` themselves.
+torch and AM-model-training are imported inside functions, never at module level,
+so this module can be imported and asked its questions in an installation that
+has neither. ``scripts/check_environment.py`` and every inference or training
+command ask through here rather than catching ``ImportError`` themselves.
 """
 from __future__ import annotations
 
@@ -32,6 +32,21 @@ INSTALL_HINT = (
     "providers of cv2 break the import."
 )
 
+TRAINING_INSTALL_HINT = (
+    "Install the train extra beside an inference one: uv sync --extra gui --extra ml "
+    "--extra train (ml-cuda13 in place of ml where the card needs it), or pip install "
+    "'adaptive-milling-seg[ml,train]'. AM-model-training supports Python up to 3.13."
+)
+
+#: The module whose import starts AM-model-training, and the distribution it
+#: comes from. Importing it loads MONAI, mlflow, pandas and cv2 as well, so it
+#: is the one import that tells whether training can start.
+TRAINING_MODULE: tuple[str, str] = ("am_model_training.main", "am-model-training")
+
+#: Set before AM-model-training is imported: mlflow otherwise logs advice meant
+#: for someone writing tracing code into every process that loads it.
+QUIET_MLFLOW: tuple[str, str] = ("MLFLOW_DISABLE_AGENT_HINT", "1")
+
 #: The modules that must import before any prediction can be made, and the
 #: distribution each comes from. Named by import name because that is what
 #: fails, and by distribution because that is what you install.
@@ -50,8 +65,13 @@ def ml_stack_problems() -> list[tuple[str, str]]:
     load its native libraries reports as neither, and reading "not installed"
     sends you to install it again.
     """
+    return _import_problems(ML_MODULES)
+
+
+def _import_problems(modules: tuple[tuple[str, str], ...]) -> list[tuple[str, str]]:
+    """Return ``(distribution, reason)`` for each of *modules* that will not import."""
     problems: list[tuple[str, str]] = []
-    for module, distribution in ML_MODULES:
+    for module, distribution in modules:
         try:
             __import__(module)
         except ImportError as error:
@@ -100,6 +120,50 @@ def require_ml_stack(operation: str) -> None:
     detail = "; ".join(f"{name}: {reason}" for name, reason in problems)
     logger.warning("%s unavailable -- %s", operation, detail)
     raise RuntimeError(f"{operation} needs {detail}. {INSTALL_HINT}")
+
+
+def training_stack_present() -> bool:
+    """Return whether the inference stack and AM-model-training are installed, without importing them.
+
+    For the same reason as :func:`ml_stack_present`: this decides whether to
+    offer training, and :func:`training_stack_problems` whether it can start.
+    """
+    import importlib.util
+
+    package = TRAINING_MODULE[0].split(".")[0]
+    return ml_stack_present() and importlib.util.find_spec(package) is not None
+
+
+def training_stack_problems() -> list[tuple[str, str]]:
+    """Return ``(distribution, reason)`` for each part of the training stack that will not import.
+
+    Importing AM-model-training costs seconds and loads MONAI and mlflow, so
+    this is asked where training is about to start, not to draw a button.
+    """
+    problems = ml_stack_problems()
+    if problems:
+        return problems
+    os.environ.setdefault(*QUIET_MLFLOW)
+    return _import_problems((TRAINING_MODULE,))
+
+
+def has_training_support() -> bool:
+    """Return whether the optional training stack is usable."""
+    return not training_stack_problems()
+
+
+def require_training_stack(operation: str) -> None:
+    """Raise a helpful error if the training stack is unavailable.
+
+    Raises:
+        RuntimeError: If any part cannot be imported, naming which and why.
+    """
+    problems = training_stack_problems()
+    if not problems:
+        return
+    detail = "; ".join(f"{name}: {reason}" for name, reason in problems)
+    logger.warning("%s unavailable -- %s", operation, detail)
+    raise RuntimeError(f"{operation} needs {detail}. {TRAINING_INSTALL_HINT}")
 
 
 def available_devices() -> tuple[str, ...]:
