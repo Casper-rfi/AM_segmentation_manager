@@ -62,8 +62,8 @@ if __name__ == "__main__":
 """
 
 
-def _prepare(tmp_path: Path, settings=NEW_MODEL, base_weights: Path | None = None) -> Path:
-    """Return a prepared run directory, made from a two-pair export of placeholder files."""
+def export_of_placeholders(tmp_path: Path) -> Path:
+    """Return the manifest of a two-pair export whose images and labels are empty files."""
     collection = tmp_path / "collection"
     collection.mkdir()
     rows = []
@@ -75,15 +75,19 @@ def _prepare(tmp_path: Path, settings=NEW_MODEL, base_weights: Path | None = Non
     export.mkdir()
     write_csv(export / "set_train.csv", ("image", "label"), rows[:1])
     write_csv(export / "set_val.csv", ("image", "label"), rows[1:])
-    manifest = write_training_manifest(
+    return write_training_manifest(
         export / "set_manifest.yaml", source=collection, scope="",
         files={"train": export / "set_train.csv", "validation": export / "set_val.csv"},
         columns=("image", "label"), train_ratio=0.5, seed=1, keep_together="lamella",
         conditions="primary", include_empty_labels=False, counts={},
     )
+
+
+def _prepare(tmp_path: Path, settings=NEW_MODEL, base_weights: Path | None = None) -> Path:
+    """Return a prepared run directory, its placeholder labels taken as fine."""
     plan = plan_training_run(
-        manifest, tmp_path / "runs", "round01", settings, base_weights=base_weights,
-        inspect_label=lambda path, classes: None,
+        export_of_placeholders(tmp_path), tmp_path / "runs", "round01", settings,
+        base_weights=base_weights, inspect_label=lambda path, classes: None,
     )
     return apply_training_run(plan)
 

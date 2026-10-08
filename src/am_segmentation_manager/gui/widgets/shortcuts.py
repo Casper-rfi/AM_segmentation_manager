@@ -56,6 +56,7 @@ TAB_CURATE = "curate"
 TAB_ADD_DATA = "add data"
 TAB_LABEL = "label"
 TAB_EXPORT = "export"
+TAB_TRAIN = "train"
 
 #: A key that works everywhere, whatever is showing.
 ANY_TAB = "any"

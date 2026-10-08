@@ -12,33 +12,17 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.cli import training as cli_training
-from am_segmentation_manager.io.tables import write_csv
 from am_segmentation_manager.ml import environment
 from am_segmentation_manager.operations import training_process, training_run
-from am_segmentation_manager.operations.training_manifest import write_training_manifest
 from am_segmentation_manager.operations.training_run import read_run_record
-from test_training_process import CHILD, _settled
+from test_training_process import CHILD, _settled, export_of_placeholders
 
 
 @pytest.fixture
 def manifest(tmp_path: Path, monkeypatch) -> Path:
     """Return the manifest of a two-pair export of placeholder files, labels taken as fine."""
-    collection = tmp_path / "collection"
-    collection.mkdir()
-    for name in ("a", "b"):
-        (collection / f"{name}.tif").write_bytes(b"")
-        (collection / f"{name}_label.tif").write_bytes(b"")
-    export = tmp_path / "export"
-    export.mkdir()
-    write_csv(export / "set_train.csv", ("image", "label"), [("a.tif", "a_label.tif")])
-    write_csv(export / "set_val.csv", ("image", "label"), [("b.tif", "b_label.tif")])
     monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
-    return write_training_manifest(
-        export / "set_manifest.yaml", source=collection, scope="",
-        files={"train": export / "set_train.csv", "validation": export / "set_val.csv"},
-        columns=("image", "label"), train_ratio=0.5, seed=1, keep_together="lamella",
-        conditions="primary", include_empty_labels=False, counts={},
-    )
+    return export_of_placeholders(tmp_path)
 
 
 @pytest.fixture

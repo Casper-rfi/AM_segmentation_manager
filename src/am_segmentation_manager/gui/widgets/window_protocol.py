@@ -27,6 +27,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..metadata_controller import MetadataController
     from ..operations_controller import OperationsController
     from ..report import OperationReport
+    from ..training_controller import TrainingController
     from ..worker import BackgroundOperation
     from .export_panel import ExportPanel
     from .label_panel import LabelPanel
@@ -45,6 +46,7 @@ class CurationWindowParts(Protocol):
     metadata_controller: MetadataController
     operations_controller: OperationsController
     history_controller: HistoryController
+    training_controller: TrainingController
     settings: QSettings
 
     project_panel: ProjectPanel

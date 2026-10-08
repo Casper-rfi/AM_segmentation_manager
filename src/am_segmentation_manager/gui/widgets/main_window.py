@@ -65,6 +65,7 @@ from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationsController
 from ..selection import counted
+from ..training_controller import TrainingController
 from ..version_controller import VersionController
 from ..worker import BackgroundOperation
 from .branding import logo_pixmap
@@ -92,10 +93,12 @@ from .shortcuts import (
     TAB_CURATE,
     TAB_EXPORT,
     TAB_LABEL,
+    TAB_TRAIN,
     Shortcuts,
 )
 from .state_panel import StatePanel
 from .theme import ACCENTS, COMPACT_BUTTON, MUTED, apply_accent
+from .training_panel import TrainingPanel
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,12 @@ SETTING_LEGACY_MODEL = "model_directory"
 #: The device last predicted on, remembered like the model: one machine
 #: usually has one answer, and re-choosing it every session is noise.
 SETTING_DEVICE = "predict_device"
+#: What the Train tab was last pointed at: where runs are kept, the device they
+#: train on and the weights last refined. Remembered like the model, and for
+#: the same reason; none is a preference, each being a place on this machine.
+SETTING_TRAINING_DIRECTORY = "training/directory"
+SETTING_TRAINING_DEVICE = "training/device"
+SETTING_TRAINING_WEIGHTS = "training/weights"
 SETTING_GEOMETRY = "geometry"
 SETTING_SPLITTER = "splitter"
 #: The group a viewer keeps its own geometry and splitters under.
@@ -345,6 +354,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.operations_controller = OperationsController(self._attribution)
         self.history_controller = HistoryController(self._attribution)
         self.export_panel = ExportPanel(self.export_controller)
+        self.training_controller = TrainingController(self._attribution)
+        self._restore_training()
+        self.training_panel = TrainingPanel(self.training_controller)
+        self.training_panel.run_in_background = lambda work, done: self._run_operation(
+            "Checking the training set", work, done
+        )
+        self.training_panel.remembered.connect(self._remember_training)
         self.label_panel = LabelPanel(
             self.label_controller, VersionController(self._attribution)
         )
@@ -482,6 +498,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         if not self.read_only:
             self.tabs.addTab(self.label_panel, "Label")
             self.tabs.addTab(self.export_panel, "Export")
+            self.tabs.addTab(self.training_panel, "Train")
         # Chosen before the signal is connected: _tab_changed switches the
         # keyboard shortcuts, which do not exist until _add_shortcuts runs.
         self.tabs.setCurrentWidget(self.curate)
@@ -499,7 +516,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             # and none becomes a window of its own.
             unshown = QWidget(self)
             unshown.hide()
-            for widget in (right, self.metadata_panel, self.label_panel, self.export_panel):
+            for widget in (
+                right, self.metadata_panel, self.label_panel, self.export_panel,
+                self.training_panel,
+            ):
                 widget.setParent(unshown)
         else:
             self.tabs.setCornerWidget(self._corner, Qt.Corner.TopRightCorner)
@@ -959,6 +979,29 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.settings.setValue(SETTING_DEVICE, device)
         return device
 
+    def _restore_training(self) -> None:
+        """Point the Train tab at what it was last pointed at, where that is still there."""
+        directory = _setting_text(self.settings, SETTING_TRAINING_DIRECTORY)
+        if directory and Path(directory).is_dir():
+            self.training_controller.training_directory = Path(directory)
+        weights = _setting_text(self.settings, SETTING_TRAINING_WEIGHTS)
+        if weights and Path(weights).is_file():
+            self.training_controller.base_weights = Path(weights)
+        self.training_controller.device = (
+            _setting_text(self.settings, SETTING_TRAINING_DEVICE) or "auto"
+        )
+
+    def _remember_training(self) -> None:
+        """Store where the Train tab is pointed, for the next session."""
+        controller = self.training_controller
+        for key, value in (
+            (SETTING_TRAINING_DIRECTORY, controller.training_directory),
+            (SETTING_TRAINING_WEIGHTS, controller.base_weights),
+        ):
+            if value is not None:
+                self.settings.setValue(key, str(value))
+        self.settings.setValue(SETTING_TRAINING_DEVICE, controller.device)
+
     def _follow_model_context(self) -> None:
         """Point the model box at the series and beam now on screen.
 
@@ -997,6 +1040,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 self._render()
         elif widget is self.export_panel:
             self._open_export()
+        elif widget is self.training_panel:
+            self.training_panel.refresh()
         elif widget is self.label_panel:
             self._point_label_tab()
             # Space pans, and it is read by the canvas as a key press, so the
@@ -1058,6 +1103,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.label_controller.set_projects(projects)
         self.operations_controller.set_start_path(self.controller.start_path)
         self.history_controller.set_start_path(self.controller.start_path)
+        self.training_controller.collection = self.controller.start_path
         self.operations_controller.set_projects(projects)
         self.metadata_panel.set_projects(self.metadata_controller.project_summaries())
         self.metadata_panel.set_root(self.controller.start_path)
@@ -1132,6 +1178,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             (self.metadata_panel, TAB_ADD_DATA),
             (self.label_panel, TAB_LABEL),
             (self.export_panel, TAB_EXPORT),
+            (self.training_panel, TAB_TRAIN),
         ):
             if widget is panel:
                 return tab

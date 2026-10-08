@@ -22,6 +22,7 @@ from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 from ...operations.csv import LeftoverFolds
 from ...operations.metadata_csv import export_project_metadata_csv
 from ...operations.predict_process import DeviceProbe, probe_devices
+from ...operations.training_manifest import manifest_path
 from ...progress import Cancellation
 from .. import preferences
 from ..report import OperationReport
@@ -518,6 +519,11 @@ class OperationActions(_Window):
             written = f"{len(files)} folds"
         else:
             written = ", ".join(path.name for path in files[0] if path)
+        if len(files) == 1:
+            # One split is what a run trains on; the Train tab offers it.
+            self.training_controller.exported(
+                manifest_path(output, self.export_controller.training.prefix)
+            )
         self._flash(f"Wrote {written} and the manifest", 4000)
         logger.info("Exported training CSV to %s", directory)
 

@@ -984,7 +984,7 @@ def test_a_chip_keeps_its_colour_on_the_row_being_looked_at(qt_app):
 def test_tabs_are_in_workflow_order(window):
     titles = [window.tabs.tabText(index) for index in range(window.tabs.count())]
 
-    assert titles == ["Add data", "Curate", "Label", "Export"]
+    assert titles == ["Add data", "Curate", "Label", "Export", "Train"]
 
 
 def test_curate_is_the_tab_that_opens(window):
@@ -1374,9 +1374,10 @@ def test_the_help_lists_the_menu_keys_every_tab_shares(window):
         TAB_CURATE,
         TAB_EXPORT,
         TAB_LABEL,
+        TAB_TRAIN,
     )
 
-    for tab in (TAB_ADD_DATA, TAB_CURATE, TAB_LABEL, TAB_EXPORT):
+    for tab in (TAB_ADD_DATA, TAB_CURATE, TAB_LABEL, TAB_EXPORT, TAB_TRAIN):
         listed = window._keys.help_html(tab)
         assert "The File menu" in listed, tab
         assert "Rescan" in listed, tab
@@ -6248,3 +6249,125 @@ def test_add_data_holds_no_families(qt_app, tmp_path: Path):
         assert "AM_families.yaml" not in panel.enable.toolTip()
     finally:
         destroy(panel)
+
+
+# ---------------------------------------------------------------------------
+# The Train tab
+# ---------------------------------------------------------------------------
+
+def test_curate_s_keys_are_off_on_the_train_tab(window):
+    """A tab the window does not know by name falls back to Curate's keys, and
+    an arrow key pressed in the name box would then step through frames."""
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE, TAB_TRAIN
+
+    window.tabs.setCurrentWidget(window.training_panel)
+
+    assert window._current_tab() == TAB_TRAIN
+    live = [
+        binding for binding, shortcut in zip(window._keys.bindings, window._keys.shortcuts)
+        if binding.tab == TAB_CURATE and shortcut.isEnabled()
+    ]
+    assert not live
+
+
+def test_where_the_train_tab_is_pointed_is_remembered(qt_app, project: Path, settings, tmp_path):
+    runs, weights = tmp_path / "runs", tmp_path / "base.pth"
+    runs.mkdir()
+    weights.write_bytes(b"weights")
+    first = CurationWindow(CurationController(cache=FrameCache()), settings=settings)
+    try:
+        first.training_controller.training_directory = runs
+        first.training_controller.base_weights = weights
+        first.training_controller.device = "cuda:1"
+        first.training_panel.remembered.emit()
+    finally:
+        destroy(first)
+
+    second = CurationWindow(CurationController(cache=FrameCache()), settings=settings)
+    try:
+        assert second.training_controller.training_directory == runs
+        assert second.training_controller.base_weights == weights
+        assert second.training_controller.device == "cuda:1"
+    finally:
+        destroy(second)
+
+
+def test_a_training_directory_that_has_gone_is_not_restored(qt_app, settings, tmp_path):
+    settings.setValue("training/directory", str(tmp_path / "unmounted"))
+
+    opened = CurationWindow(CurationController(cache=FrameCache()), settings=settings)
+    try:
+        assert opened.training_controller.training_directory is None
+    finally:
+        destroy(opened)
+
+
+def test_a_training_export_is_offered_on_the_train_tab(window, tmp_path, monkeypatch):
+    output = tmp_path / "export"
+    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
+    monkeypatch.setattr(
+        window.export_controller, "export_training",
+        lambda directory, overwrite=False: [(directory / "dataset_train.csv", directory / "dataset_val.csv")],
+    )
+
+    window._write_training(str(output))
+
+    prefix = window.export_controller.training.prefix
+    assert window.training_controller.manifest == output / f"{prefix}_manifest.yaml"
+
+
+def test_a_cross_validation_export_is_not_offered_to_train_on(window, tmp_path, monkeypatch):
+    """A run trains on one split."""
+    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
+    monkeypatch.setattr(
+        window.export_controller, "export_training",
+        lambda directory, overwrite=False: [(directory / "a", directory / "b")] * 2,
+    )
+
+    window._write_training(str(tmp_path / "export"))
+
+    assert window.training_controller.manifest is None
+
+
+def test_the_train_tab_checks_a_run_behind_the_busy_dialog(window, monkeypatch):
+    """Opening every label is seconds over a real set, on the interface thread
+    a window that looks hung."""
+    ran = []
+    monkeypatch.setattr(
+        window, "_run_operation", lambda description, work, done, **_: ran.append(description)
+    )
+
+    window.training_panel.run_in_background(lambda: None, lambda outcome: None)
+
+    assert ran == ["Checking the training set"]
+
+
+def test_the_scanned_folder_reaches_the_train_tab(window, project: Path):
+    assert window.training_controller.collection == project
+
+
+def test_starting_a_run_checks_it_off_the_interface_thread_and_then_asks(
+    window, qt_app, tmp_path, monkeypatch
+):
+    """The whole way round: the tab, the window's worker thread, and back to the
+    dialog that asks, with nothing written when the answer is no."""
+    from am_segmentation_manager.operations import training_run
+    from test_training_process import export_of_placeholders
+
+    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    controller, panel = window.training_controller, window.training_panel
+    monkeypatch.setattr(controller, "can_train", lambda: True)
+    controller.manifest = export_of_placeholders(tmp_path)
+    controller.training_directory = tmp_path / "runs"
+    controller.name = "round01"
+    asked = []
+    monkeypatch.setattr(
+        panel, "_confirm", lambda title, lines, action: asked.append(lines) or False
+    )
+
+    panel.start()
+    settle(qt_app, lambda: bool(asked), what="the check to come back")
+
+    assert "1 training and 1 validation pair(s)" in "\n".join(asked[0])
+    assert not window._operation_running()
+    assert not (tmp_path / "runs").exists()

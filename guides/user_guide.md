@@ -1,7 +1,7 @@
 # User guide
 
 This guide takes you through am-seg in the order you will use it: from a folder
-of Autolamella projects to proofread labels and an exported training set. It
+of Autolamella projects to proofread labels, an exported training set and a model trained on it. It
 shows where things are rather than explaining every option. In the window:
 
 - **Hover over a control** to see what it does.
@@ -288,10 +288,43 @@ out. Its count is always what an export would cover.
    brings that work home again.
 
 An empty label is never exported as a training pair: it would teach a model
-that nothing is there. To train a model on the CSVs, `am-seg train` runs
+that nothing is there.
+
+## 7. Train a model
+
+The **Train** tab trains a model on a training set you exported, with
 [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-training),
-the software the Adaptive Milling models were trained with, and
-`am-seg show-training` reports how a run is going or how it ended
+the software the Adaptive Milling models were trained with. It needs the
+`train` extra ([README](../README.md#installation)) and, to be practical, an
+NVIDIA GPU: on a CPU, Apple silicon included, a step takes minutes per image.
+
+On the left, set the run up:
+
+1. **Training set**: the one you last wrote with **Training CSV...** is offered,
+   or **Browse...** to the `<name>_manifest.yaml` of an earlier one. The split
+   is the export's, so what is validated on is what **Keep together** set there.
+2. **New model** or **Refine a model**. Refining starts from weights you choose
+   and needs far less data and time. Each opens on the settings the Adaptive
+   Milling models were published with; **Advanced settings** shows them.
+3. **Name** the run, and choose the **Device**.
+4. **Start...** opens every label again, says what will be done, and asks. A
+   label that is empty, will not open, or holds a class the model does not
+   predict stops the run before anything is written.
+
+Training runs on its own and goes on after you close the window. On the right,
+**Runs** lists every run in the training directory, which you choose once with
+**Training directory...**; keep it outside your collection. For the run
+selected, the tab shows how it stands, its loss and a metric per class by
+epoch, and its checkpoints, the best marked.
+
+- **Save a copy...** copies the selected epoch's weights to wherever you keep
+  your models. To predict with it, choose that file as the model on Curate.
+- **Delete the others...** deletes that run's checkpoints except the ones you
+  selected, about 170 MB each. It asks first and cannot be undone.
+- **Stop** ends a run. The epoch in progress is lost, and a stopped run is not
+  continued: start another, refining from one of its checkpoints.
+
+The same can be done with `am-seg train`, `show-training` and `stop-training`
 ([Train](command_line.md#train)).
 
 ## Undo and history

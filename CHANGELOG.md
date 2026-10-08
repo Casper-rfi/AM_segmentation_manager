@@ -69,11 +69,13 @@ The first public release, to be published as 0.1.0.
 
 **Training**
 
-- `train` trains a new model, or refines an existing one, on an exported
-  training set, with AM-model-training and the settings its models were
-  published with. The run is checked before anything is written, keeps the
-  export's split, and goes on in a process of its own after the command
-  returns. `stop-training` ends one.
+- The Train tab and `train` train a new model, or refine an existing one, on
+  an exported training set, with AM-model-training and the settings its
+  models were published with. The run is checked before anything is written,
+  keeps the export's split, and goes on in a process of its own after the
+  window is closed. The tab follows every run in the training directory:
+  how it stands, its curves, and its checkpoints, one of which can be copied
+  out and the rest deleted. `stop-training` ends a run.
 - `show-training` reports how a run stands, and for any AM-model-training
   run, wherever it was started: its epochs, its best validation epoch and
   the checkpoints kept. It draws the run's loss and per-class metric by

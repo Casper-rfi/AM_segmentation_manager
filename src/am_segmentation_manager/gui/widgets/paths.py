@@ -100,19 +100,25 @@ def choose_save_file(
     directory: Path | str | None = None,
     filters: tuple[str, ...] = (CSV_FILTER,),
     default_suffix: str = "csv",
+    name: str = "",
 ) -> Path | None:
-    """Ask for a file to write, confirming a replacement if one is picked."""
-    return _chosen(
-        build_path_dialog(
-            parent,
-            caption,
-            mode=QFileDialog.FileMode.AnyFile,
-            save=True,
-            directory=directory,
-            filters=filters,
-            default_suffix=default_suffix,
-        )
+    """Ask for a file to write, confirming a replacement if one is picked.
+
+    Args:
+        name: The file name the dialog opens with, for the person to keep or change.
+    """
+    dialog = build_path_dialog(
+        parent,
+        caption,
+        mode=QFileDialog.FileMode.AnyFile,
+        save=True,
+        directory=directory,
+        filters=filters,
+        default_suffix=default_suffix,
     )
+    if name:
+        dialog.selectFile(name)
+    return _chosen(dialog)
 
 
 def choose_directory(
