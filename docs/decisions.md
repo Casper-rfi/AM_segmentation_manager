@@ -663,3 +663,23 @@ rather than appending to it.
   `nvidia-smi`, not torch or `nvidia-ml-py`**: no dependency, no CUDA context on anyone's card, and
   cheap enough to refresh free memory each time the box opens
   (`test_opening_the_device_box_asks_torch_once_and_nvidia_smi_every_time`).
+
+## Training
+
+- **A run is a directory prepared whole, outside the collection, before anything starts.** Its split
+  is the export's, never remade (`test_the_split_is_the_export_s_and_not_remade`), and AM-model-training
+  is always given two lists, since left to split one it shuffles through lamellae
+  (`test_the_arguments_always_name_a_training_and_a_validation_list`). The lists are rewritten with
+  absolute paths, a relative one being resolved against the list's folder, not the collection's.
+  Each label is opened again (`test_a_label_emptied_since_the_export_is_refused`).
+- **Running is a lock held, never a process id in a file**, which another program can come to own; the
+  system gives a lock back however its process dies
+  (`test_a_held_lock_is_a_living_process_whatever_the_host_is_called`). A stop writes its request
+  before ending the process, which is all that tells stopped from interrupted
+  (`test_a_run_killed_without_a_request_was_interrupted`): a detached Windows process cannot be asked.
+  **A run directory is started once** (`test_a_run_directory_is_started_once`), and `run_status` is
+  the one answer to how a run stands.
+- **Training is a detached process started as a module**: AM-model-training's workers re-import
+  `__main__`, and a script there trains again (`test_a_start_runs_this_module_with_this_interpreter`).
+  What a run did is read from its files alone, the best epoch computed as it ranks them, which no
+  file stores (`test_the_best_epoch_is_ranked_as_the_run_ranks_it`).
