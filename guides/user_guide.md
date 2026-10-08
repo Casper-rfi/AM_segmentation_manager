@@ -315,7 +315,9 @@ Training runs on its own and goes on after you close the window. On the right,
 **Runs** lists every run in the training directory, which you choose once with
 **Training directory...**; keep it outside your collection. For the run
 selected, the tab shows how it stands, its loss and a metric per class by
-epoch, and its checkpoints, the best marked.
+epoch, and its checkpoints, the best marked. A run AM-model-training was
+started on directly, here or on another machine, is listed too, from the files
+it wrote: point **Training directory...** at the folder holding such runs.
 
 - **Save a copy...** copies the selected epoch's weights to wherever you keep
   your models. To predict with it, choose that file as the model on Curate.

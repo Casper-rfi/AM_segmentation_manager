@@ -407,12 +407,9 @@ class TrainingPanel(QWidget):
             self._draw(None)
             self._show_buttons()
             return
-        self.status_label.setText(
-            run.problem or f"{run.name}: {run.status.describe() if run.status else ''}"
-        )
+        self.status_label.setText(run.describe())
         self.status_label.setStyleSheet(
-            f"color: {ERROR};" if run.problem or (run.status and run.status.state == "failed")
-            else ""
+            f"color: {ERROR};" if run.problem or run.state == "failed" else ""
         )
         self.asked_label.setText(_asked(run))
         self._show_checkpoints(run)

@@ -367,3 +367,21 @@ def test_delete_is_not_offered_while_the_run_is_training(panel):
     _select(panel, 1)
 
     assert not panel.delete_button.isEnabled()
+
+
+# -- runs am-seg did not start ------------------------------------------------
+
+
+def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, monkeypatch):
+    from test_training_controller import _bare_run
+
+    _bare_run(panel.controller.training_directory, "wide_seed2")
+    drawn: list[int] = []
+    monkeypatch.setattr(panel.chart, "show_chart", lambda build, **_: drawn.append(1))
+
+    panel.refresh()
+
+    assert panel.runs_list.item(0).text().startswith("wide_seed2 · finished")
+    assert "Not started by am-seg" in panel.status_label.text()
+    assert drawn == [1]
+    assert not panel.stop_button.isEnabled()

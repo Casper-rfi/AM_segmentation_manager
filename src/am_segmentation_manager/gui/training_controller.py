@@ -3,14 +3,16 @@
 Holds no Qt and decides nothing an operation does not: preparing, starting, stopping
 and reading a run are :mod:`..operations.training_run`, :mod:`..operations.training_process`
 and :mod:`..training_runs`, as the command line uses them. **Every run shown is read
-from its directory**, so a window opened later, or on another day, shows the same.
-A metrics file caught mid-rewrite keeps the epochs last read whole, so a curve never
-drops to nothing between two polls.
+from its directory**, so a window opened later, or on another day, shows the same;
+a run AM-model-training was started on without am-seg is listed beside the others,
+with what its own files say. A metrics file caught mid-rewrite keeps the epochs last
+read whole, so a curve never drops to nothing between two polls.
 """
 from __future__ import annotations
 
 import logging
 import shutil
+import time
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -38,6 +40,7 @@ from ..training_runs import (
     EpochMetrics,
     TrainingRun,
     find_training_runs,
+    is_run_directory,
     read_training_run,
 )
 from .attribution import Attribution
@@ -47,18 +50,27 @@ logger = logging.getLogger(__name__)
 #: The states in which a run's files can still change, so are worth reading again.
 LIVE_STATES = frozenset({"running", "unknown"})
 
+#: How recently a run am-seg did not start must have written to count as still
+#: training. Nothing else says: it has no process here to ask. An epoch is
+#: minutes, so an hour of silence is a run that has stopped.
+RECENT_SECONDS = 3600.0
+
 
 @dataclass(frozen=True)
 class RunSummary:
     """One run in the training directory, as the tab lists and draws it.
 
     Attributes:
-        directory: The run's directory.
+        directory: The run's directory; for a run am-seg did not start, the
+            directory AM-model-training wrote.
         name: What it is called.
-        record: What it was asked to do, or None where the record cannot be read.
-        status: How it stands, or None where that cannot be said.
+        record: What it was asked to do; None for a run am-seg did not start,
+            or where the record cannot be read.
+        status: How it stands; None for a run am-seg did not start.
         written: What AM-model-training has written, or None before it has.
         problem: Why the run cannot be read, or "".
+        recent: Whether a run am-seg did not start has written within
+            :data:`RECENT_SECONDS`.
     """
 
     directory: Path
@@ -67,6 +79,7 @@ class RunSummary:
     status: RunStatus | None = None
     written: TrainingRun | None = None
     problem: str = ""
+    recent: bool = False
 
     @property
     def epochs(self) -> int:
@@ -81,17 +94,49 @@ class RunSummary:
     @property
     def live(self) -> bool:
         """Return whether the run's files may still change."""
-        return self.status is not None and self.status.state in LIVE_STATES
+        if self.status is not None:
+            return self.status.state in LIVE_STATES
+        return self.written is not None and not self.written.finished and self.recent
+
+    @property
+    def state(self) -> str:
+        """Return how the run stands in a word or two, from its status or its files."""
+        if self.status is not None:
+            return self.status.state
+        if self.written is None:
+            return ""
+        if self.written.finished:
+            return "finished"
+        return "training" if self.recent else "not finished"
+
+    def describe(self) -> str:
+        """Return how the run stands in a sentence, for the run selected."""
+        if self.problem:
+            return self.problem
+        if self.status is not None:
+            return f"{self.name}: {self.status.describe()}"
+        said = {
+            "finished": "finished",
+            "training": "written to within the last hour, so probably still training",
+            "not finished": "not finished: stopped before it ended, or training elsewhere",
+        }.get(self.state, "")
+        return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
 
     def line(self) -> str:
         """Return the run in one line: its name, how it stands and how far it got."""
         if self.problem:
             return f"{self.name}: {self.problem}"
         parts = [self.name]
-        if self.status is not None:
-            parts.append(self.status.state)
-        if self.record is not None and (self.epochs or self.live):
-            parts.append(f"epoch {self.epochs} of at most {self.record.settings.max_epochs}")
+        if self.state:
+            parts.append(self.state)
+        most = (
+            self.record.settings.max_epochs if self.record is not None
+            else self.written.max_epochs if self.written is not None else None
+        )
+        if most is not None and (self.epochs or self.live):
+            parts.append(f"epoch {self.epochs} of at most {most}")
+        elif self.epochs:
+            parts.append(f"{self.epochs} epoch(s)")
         best = self.best
         if best is not None and self.written is not None:
             parts.append(f"best {best.epoch} ({best.score(self.written.key_metrics):.3f})")
@@ -265,21 +310,34 @@ class TrainingController:
     # -- the runs there are ---------------------------------------------------
 
     def runs(self) -> list[RunSummary]:
-        """Return every run in the training directory, the newest first."""
+        """Return every run in the training directory, the newest first.
+
+        Those am-seg prepared, and each directory AM-model-training wrote that
+        belongs to none of them: a run started with it directly, here or elsewhere.
+        """
         if self.training_directory is None or not self.training_directory.is_dir():
             return []
-        summaries = [
-            self.summary(directory)
-            for directory in find_run_directories(self.training_directory)
+        prepared = find_run_directories(self.training_directory)
+        others = [
+            written for written in find_training_runs(self.training_directory)
+            if written.parent not in prepared
         ]
-        return sorted(
-            summaries,
-            key=lambda run: (run.record.created_at if run.record else "", run.name),
-            reverse=True,
-        )
+        summaries = [self.summary(directory) for directory in (*prepared, *others)]
+        return sorted(summaries, key=lambda run: (_when(run), run.name), reverse=True)
 
     def summary(self, directory: Path) -> RunSummary:
-        """Return the run in *directory* as its files say it stands now."""
+        """Return the run in *directory* as its files say it stands now.
+
+        Args:
+            directory: A run am-seg prepared, or a directory AM-model-training wrote.
+        """
+        if is_run_directory(directory):
+            return RunSummary(
+                directory=directory,
+                name=self._name_of(directory),
+                written=self._steady(read_training_run(directory)),
+                recent=_written_recently(directory),
+            )
         try:
             record = read_run_record(directory)
             status = run_status(directory)
@@ -305,9 +363,23 @@ class TrainingController:
         """Return whether any run's files may still change, so the tab should keep reading."""
         return any(run.live for run in self.runs())
 
+    def _name_of(self, written: Path) -> str:
+        """Return what to call a run am-seg did not start: the folder it was written into."""
+        parent = written.parent
+        if self.training_directory is None or parent == self.training_directory:
+            return written.name
+        try:
+            return parent.relative_to(self.training_directory).as_posix()
+        except ValueError:
+            return parent.name
+
     def stop(self, directory: Path, user: str | None = None) -> RunSummary:
-        """Stop the run in *directory* if it is running, and return how it stands."""
-        stop_training(directory, user=user or self._user())
+        """Stop the run in *directory* if it is running, and return how it stands.
+
+        A run am-seg did not start has no process here to end, and is left as it is.
+        """
+        if not is_run_directory(directory):
+            stop_training(directory, user=user or self._user())
         return self.summary(directory)
 
     # -- what a run produced --------------------------------------------------
@@ -418,3 +490,21 @@ class TrainingController:
         if run.train or run.val:
             self._whole[run.directory] = run
         return run
+
+
+def _when(run: RunSummary) -> str:
+    """Return when *run* began, as text that sorts by time, or "" where nothing says."""
+    if run.record is not None and run.record.created_at:
+        return run.record.created_at
+    if run.written is not None and run.written.started is not None:
+        return f"{run.written.started:%Y-%m-%dT%H:%M:%SZ}"
+    return ""
+
+
+def _written_recently(directory: Path) -> bool:
+    """Return whether anything in *directory* was written within :data:`RECENT_SECONDS`."""
+    try:
+        newest = max((child.stat().st_mtime for child in directory.iterdir()), default=0.0)
+    except OSError:
+        return False
+    return time.time() - newest < RECENT_SECONDS

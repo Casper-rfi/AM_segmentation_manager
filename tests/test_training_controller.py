@@ -452,3 +452,119 @@ def test_the_devices_offered_begin_with_auto_and_end_with_the_cpu(
 
     assert [device for device, _ in offered] == ["auto", "cuda:0", "cpu"]
     assert "A100" in offered[1][1]
+
+
+# -- runs am-seg did not start ------------------------------------------------
+
+
+def _bare_run(root: Path, name: str, started: str = "261001_120000", *, epochs: int = 2,
+              finished: bool = True) -> Path:
+    """Write what AM-model-training leaves for a run started without am-seg."""
+    written = root / name / f"training_{started}"
+    written.mkdir(parents=True)
+    entries = [_epoch(n, 0.1 * n, 0.1 * n) for n in range(1, epochs + 1)]
+    (written / "set_train_metrics.json").write_text(json.dumps(entries))
+    (written / "set_val_metrics.json").write_text(json.dumps(entries))
+    if finished:
+        (written / "training_parameters.json").write_text(
+            json.dumps({"run_id": "set", "max_epochs": 90, "frozen_epochs": 25})
+        )
+    return written
+
+
+def _aged(written: Path, seconds: float) -> None:
+    """Make everything in *written* look last written *seconds* ago."""
+    import os
+    import time
+
+    then = time.time() - seconds
+    for child in written.iterdir():
+        os.utime(child, (then, then))
+
+
+def test_a_run_started_without_am_seg_is_listed_with_what_its_files_say(
+    controller: TrainingController,
+):
+    """A folder of AM-model-training's own runs is what there was before the tab."""
+    written = _bare_run(controller.training_directory, "wide_seed2")
+
+    (listed,) = controller.runs()
+
+    assert listed.directory == written
+    assert listed.record is None and listed.status is None
+    assert listed.line() == "wide_seed2 · finished · epoch 2 of at most 90 · best 2 (0.200)"
+    assert "Not started by am-seg" in listed.describe()
+
+
+def test_such_a_run_is_named_for_the_folders_it_sits_in(controller: TrainingController):
+    _bare_run(controller.training_directory, "step8/fold1_wide")
+    direct = controller.training_directory / "training_261002_000000"
+    direct.mkdir()
+
+    assert sorted(run.name for run in controller.runs()) == [
+        "step8/fold1_wide", "training_261002_000000",
+    ]
+
+
+def test_a_prepared_run_s_own_output_is_not_listed_a_second_time(controller: TrainingController):
+    controller.start(controller.plan())
+    _settled(controller.selected)
+    _write_epochs(controller.selected, 2)
+    _bare_run(controller.training_directory, "elsewhere")
+
+    assert sorted(run.name for run in controller.runs()) == ["elsewhere", "round01"]
+
+
+def test_runs_of_both_kinds_are_ordered_by_when_they_began(controller: TrainingController):
+    _bare_run(controller.training_directory, "older", "250101_000000")
+    _bare_run(controller.training_directory, "newer", "260101_000000")
+
+    assert [run.name for run in controller.runs()] == ["newer", "older"]
+
+
+def test_an_unfinished_run_written_to_lately_is_taken_as_still_training(
+    controller: TrainingController,
+):
+    """Nothing else says: a run started elsewhere has no process here to ask."""
+    written = _bare_run(controller.training_directory, "cluster", finished=False)
+
+    (listed,) = controller.runs()
+    assert listed.state == "training" and listed.live
+    assert controller.any_live()
+
+    _aged(written, 2 * 3600)
+    (listed,) = controller.runs()
+    assert listed.state == "not finished" and not listed.live
+    assert listed.line() == "cluster · not finished · 2 epoch(s) · best 2 (0.200)"
+
+
+def test_a_finished_run_s_other_checkpoints_can_be_deleted_whoever_started_it(
+    controller: TrainingController,
+):
+    written = _bare_run(controller.training_directory, "wide_seed2")
+    for epoch in (1, 2):
+        (written / f"set_epoch{epoch:03}.pth").write_bytes(b"weights")
+
+    controller.remove_other_checkpoints(written, keep={2})
+
+    assert sorted(path.name for path in written.glob("*.pth")) == ["set_epoch002.pth"]
+
+
+def test_a_run_probably_still_training_elsewhere_keeps_its_checkpoints(
+    controller: TrainingController,
+):
+    written = _bare_run(controller.training_directory, "cluster", finished=False)
+    for epoch in (1, 2):
+        (written / f"set_epoch{epoch:03}.pth").write_bytes(b"weights")
+
+    with pytest.raises(ValueError, match="may still be training"):
+        controller.remove_other_checkpoints(written, keep={2})
+
+    assert len(list(written.glob("*.pth"))) == 2
+
+
+def test_stopping_a_run_am_seg_did_not_start_leaves_it_as_it_is(controller: TrainingController):
+    written = _bare_run(controller.training_directory, "cluster", finished=False)
+
+    assert controller.stop(written).state == "training"
+    assert not any(path.name.startswith("am_training") for path in written.iterdir())
