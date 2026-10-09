@@ -354,7 +354,7 @@ class LabelPanel(QWidget):
         self.modality_control.set_current(MODALITIES[0])
 
         self.fit_button = QPushButton("Fit")
-        self.fit_button.setToolTip("Scale the image to the pane\nShortcut: 0")
+        self.fit_button.setToolTip("Scale the image to the pane\nShortcut: G")
         self.fit_button.clicked.connect(self.canvas_fit)
         # Which view and fitting it to the pane, over undo, redo and save: the
         # top left, where image software keeps the actions reached for most.

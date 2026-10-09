@@ -1480,6 +1480,26 @@ def test_the_three_ways_to_resize_the_brush_are_listed_together(window):
     )
 
 
+def test_a_tooltip_names_only_a_key_its_tab_binds(window):
+    """A tooltip's key is written by hand beside the control, apart from the
+    binding, and Label's Fit taught one that nothing was bound to."""
+    import re
+
+    from qtpy.QtWidgets import QWidget
+
+    from am_segmentation_manager.gui.widgets.shortcuts import ANY_TAB, TAB_CURATE, TAB_LABEL
+
+    unbound = []
+    for panel, tab in ((window.image_panel, TAB_CURATE), (window.label_panel, TAB_LABEL)):
+        bound = {b.key for b in window._keys.bindings if b.tab in (tab, ANY_TAB)}
+        for widget in (panel, *panel.findChildren(QWidget)):
+            named = re.search(r"Shortcut: ([^\s;]+)", widget.toolTip())
+            if named and named.group(1) not in bound:
+                unbound.append((tab, widget.toolTip()))
+
+    assert not unbound, unbound
+
+
 def test_a_heading_is_not_drawn_like_the_rows_under_it(window):
     """Every left-hand cell is bold, being the column a reader scans, so bold
     alone left a heading looking like one more key."""
