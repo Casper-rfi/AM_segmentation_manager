@@ -334,13 +334,13 @@ def plan_training_run(
             f"below 100 %, so the split is am-seg's and keeps what it was told together"
         )
 
-    source = _source(manifest, start_path)
+    source = resolve_collection(manifest, start_path)
     if source is None:
         reasons.append(
             f"{manifest.path.name} does not say where the collection is; name the folder "
             f"the export was made from"
         )
-    elif _inside(run_directory, source):
+    elif is_inside(run_directory, source):
         reasons.append(
             f"{run_directory} is inside the collection at {source}; keep training runs "
             f"outside it"
@@ -366,7 +366,7 @@ def plan_training_run(
     pairs = [pair for side in lists.values() for pair in side]
     missing = [path for pair in pairs for path in pair if not path.is_file()]
     if missing:
-        raise TrainingRunRefused([_listed(
+        raise TrainingRunRefused([listed_examples(
             f"{len(missing)} file(s) the lists name are not under {source}", missing,
         )])
 
@@ -377,7 +377,7 @@ def plan_training_run(
         and not (manifest.include_empty_labels and problem == ONLY_BACKGROUND)
     ]
     if unusable:
-        raise TrainingRunRefused([_listed(
+        raise TrainingRunRefused([listed_examples(
             f"{len(unusable)} label(s) cannot be trained on", unusable,
         )])
 
@@ -502,14 +502,14 @@ def find_run_directories(path: Path, depth: int = 0) -> list[Path]:
     return sorted(found)
 
 
-def _source(manifest: TrainingManifest, start_path: Path | None) -> Path | None:
+def resolve_collection(manifest: TrainingManifest, start_path: Path | None) -> Path | None:
     """Return the folder the manifest's paths resolve against, or None if nothing says."""
     if start_path is not None:
         return start_path.resolve()
     return manifest.collection.resolve() if manifest.collection is not None else None
 
 
-def _inside(path: Path, directory: Path) -> bool:
+def is_inside(path: Path, directory: Path) -> bool:
     """Return whether *path* is *directory* or below it."""
     return path.resolve().is_relative_to(directory.resolve())
 
@@ -520,7 +520,7 @@ def _cells(pair: tuple[Path, Path]) -> tuple[str, str]:
     return str(image), str(label)
 
 
-def _listed(summary: str, items: Sequence[object]) -> str:
+def listed_examples(summary: str, items: Sequence[object]) -> str:
     """Return *summary* followed by the first few of *items*, and how many more there are."""
     shown = ", ".join(str(item) for item in items[:EXAMPLES_SHOWN])
     more = len(items) - EXAMPLES_SHOWN

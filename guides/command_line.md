@@ -115,6 +115,7 @@ am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round0
 am-seg show-training /path/to/runs/round02 --plot curves.png --classes gis lamella crack
 am-seg stop-training /path/to/runs/round02
 am-seg choose-best /path/to/runs/round02 --epoch 74
+am-seg validate /path/to/runs/round02 held_out/set_manifest.yaml --name hydra --rows all
 am-seg compare-training /path/to/runs --value median --epochs 60 90 --output runs.csv --plot runs.png
 ```
 
@@ -144,6 +145,15 @@ run's loss and per-class metric by epoch.
 `choose-best` marks the epoch you count as a run's best where it is not the one
 the run chose, or takes that back with `--clear`; `show-training` reports both,
 and `--plot` marks both.
+
+`validate` scores a run's checkpoints on the rows of another training export:
+its validation list, or with `--rows all` every row, for an export made of data
+held out whole. Every checkpoint with whole weights on disk is scored unless
+`--epochs` names some, each over each image once, in a process of its own that
+`show-training` reports and `stop-training`, given the validation's directory,
+ends. What an epoch scored on each image is kept in the run, under
+`am_validations/<name>`, with the metadata the export wrote for it. Scoring
+loads the model, so it needs the `train` extra and, in practice, a GPU.
 
 `compare-training` sets every run under a folder side by side, a row per run
 and a column per class from each run's validation: at its best epoch, at the
@@ -238,6 +248,7 @@ labels.
 | `am-seg train` | Train a new model, or refine an existing one, on an exported training set |
 | `am-seg show-training` | Report how a training run is going or how it ended, and draw its curves |
 | `am-seg stop-training` | Stop a training run that am-seg started on this computer |
+| `am-seg validate` | Score a training run's checkpoints on a list it did not train on |
 | `am-seg compare-training` | Set training runs side by side: one value per run and class |
 | `am-seg choose-best` | Mark an epoch as a training run's best, in place of the one the run chose |
 

@@ -69,6 +69,7 @@ WORKFLOW_ORDER = [
     "train",
     "show-training",
     "stop-training",
+    "validate",
     "compare-training",
     "choose-best",
     "init-history",

@@ -32,6 +32,13 @@ from ..operations.training_run import (
     plan_training_run,
     read_run_record,
 )
+from ..operations.validation_run import (
+    ROWS,
+    apply_validation,
+    find_validations,
+    plan_validation,
+    read_validation_record,
+)
 from ..plots import plot_comparison, plot_training_run
 from ..training_compare import (
     DEFAULT_EPOCH_RANGE,
@@ -47,6 +54,7 @@ from ..training_runs import (
     read_training_run,
     written_in,
 )
+from ..validation_scores import find_scores, metrics_for, read_scores
 from .scope import _add_overwrite_argument, _outputs_refused
 
 logger = logging.getLogger(__name__)
@@ -213,6 +221,57 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     stop.add_argument("path", help="The run's directory")
 
+    validate = sub.add_parser(
+        "validate",
+        help="Score a training run's checkpoints on a list it did not train on",
+        description=(
+            "Prepare a validation of the run at RUN on the rows of a training "
+            "export, and start it in a process of its own: each checkpoint is run "
+            "over each image once and what it scored on that image is kept, in "
+            "RUN/am_validations/NAME. show-training reports it, and a part of the "
+            "list -- one instrument, one voltage -- is scored from the same files "
+            "afterwards. Everything is checked before anything is written, each "
+            "label opened; stop it with stop-training on its directory. A stopped "
+            "validation keeps the epochs it finished and is not continued."
+        ),
+    )
+    validate.add_argument(
+        "run", metavar="RUN",
+        help="The run's directory: one am-seg prepared, or a training_<date>_<time> directory",
+    )
+    validate.add_argument(
+        "manifest", help="The <prefix>_manifest.yaml of the training export to score on",
+    )
+    validate.add_argument(
+        "--name", required=True, metavar="NAME", help="What to call the validation",
+    )
+    validate.add_argument(
+        "--rows", default="validation", choices=ROWS,
+        help=(
+            "Which rows of the export: its validation list, or every row it names, "
+            "for an export made of data held out whole (default: validation)"
+        ),
+    )
+    validate.add_argument(
+        "--epochs", nargs="+", type=int, default=None, metavar="N",
+        help="The epochs to score (default: every one with whole weights on disk)",
+    )
+    validate.add_argument(
+        "--start-path", default=None, metavar="DIR",
+        help=(
+            "The collection the export was made from, needed where the two have "
+            "been moved apart"
+        ),
+    )
+    validate.add_argument(
+        "--device", default="auto", metavar="DEVICE",
+        help="Where to score: auto, cuda:N as nvidia-smi numbers them, or cpu (default: auto)",
+    )
+    validate.add_argument(
+        "--dry-run", action="store_true",
+        help="Check everything and say what would be done, writing and starting nothing",
+    )
+
     compare = sub.add_parser(
         "compare-training",
         help="Set training runs side by side: one value per run and class",
@@ -363,12 +422,14 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
             runs.append(read_training_run(written))
             marked[written] = _marked(directory)
             _print_run(runs[-1], args.metric, marked[written])
+        _print_validations(directory, args.metric)
     inside = {run.directory for run in runs}
     for directory in found:
         if directory not in inside:
             runs.append(read_training_run(directory))
             marked[directory] = _marked(directory)
             _print_run(runs[-1], args.metric, marked[directory])
+            _print_validations(directory, args.metric)
 
     if args.plot:
         if len(runs) != 1:
@@ -401,6 +462,62 @@ def _cmd_stop_training(args: argparse.Namespace) -> int:
         return 0
     print(after.describe())
     return 0 if after.state == "stopped" else 1
+
+
+def _cmd_validate(args: argparse.Namespace) -> int:
+    """Handle ``am-seg validate``."""
+    try:
+        plan = plan_validation(
+            Path(args.run), Path(args.manifest), args.name, rows=args.rows,
+            epochs=args.epochs, device=args.device,
+            start_path=Path(args.start_path) if args.start_path else None,
+        )
+    except TrainingRunRefused as refused:
+        for reason in refused.reasons:
+            logger.error("%s", reason)
+        return 2
+    for line in plan.describe():
+        print(line)
+    if args.dry_run:
+        print("Dry run: nothing was written or started")
+        return 0
+    try:
+        directory = apply_validation(plan, user=getattr(args, "user", None))
+        start_training(directory)
+    except (OSError, TrainingNotStarted) as error:
+        logger.error("%s", error)
+        return 2
+    print(f"Started. Follow it with: am-seg show-training {plan.run_directory}")
+    print(f"Stop it with: am-seg stop-training {directory}")
+    return 0
+
+
+def _print_validations(run_directory: Path, metric: str) -> None:
+    """Print each validation of a run: how it stands and what its last scored epoch says."""
+    for directory in find_validations(run_directory):
+        try:
+            record = read_validation_record(directory)
+            status = run_status(directory)
+        except ValueError as error:
+            logger.error("%s", error)
+            continue
+        assert record is not None
+        scored = find_scores(directory)
+        print(
+            f"  validation {record.name}: {status.state}, "
+            f"{len(scored)} of {len(record.epochs)} epoch(s) scored"
+        )
+        if status.state == "failed" and status.error:
+            print(f"    {status.error}")
+        if scored:
+            try:
+                metrics = metrics_for(read_scores(scored[-1]))
+            except ValueError as error:
+                logger.error("%s", error)
+                continue
+            if metrics is not None:
+                values = ", ".join(f"{value:.3f}" for value in metrics.per_class[metric])
+                print(f"    epoch {metrics.epoch}, {metric} per class: {values}")
 
 
 def _cmd_compare_training(args: argparse.Namespace) -> int:
@@ -515,5 +632,6 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "show-training": _cmd_show_training,
     "stop-training": _cmd_stop_training,
     "choose-best": _cmd_choose_best,
+    "validate": _cmd_validate,
     "compare-training": _cmd_compare_training,
 }

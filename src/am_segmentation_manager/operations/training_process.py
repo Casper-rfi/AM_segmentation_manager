@@ -1,4 +1,4 @@
-"""Starting a prepared training run in a process of its own, and saying how it stands.
+"""Starting a prepared training run, or a validation of one, in a process of its own, and saying how it stands.
 
 Training takes hours, so the process is detached and outlives whatever started it;
 everything known about it afterwards is read from its run directory. **It holds a
@@ -6,6 +6,8 @@ lock there for as long as it lives**, which the system releases however it dies,
 a run is running exactly while that lock is held. A stop writes its request before
 ending the process, which is what tells a stopped run from one that crashed. **A run
 directory is started once.** :func:`run_status` is the one answer to how a run stands.
+A validation is prepared, started, stopped and read the same way, in its own directory;
+what its process does there is score, an epoch at a time, each kept as it is done.
 """
 from __future__ import annotations
 
@@ -26,6 +28,12 @@ from ..history import resolve_author
 from ..io.atomic import try_lock
 from ..io.yaml import read_yaml, write_yaml
 from .training_run import RUN_RECORD_FILENAME, RunRecord, describe_weights, read_run_record
+from .validation_run import (
+    VALIDATION_RECORD_FILENAME,
+    ValidationRecord,
+    read_images,
+    read_validation_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +120,11 @@ def run_status(run_directory: Path) -> RunStatus:
     Raises:
         ValueError: If the directory holds no run record, or one that cannot be read.
     """
-    if read_run_record(run_directory) is None:
-        raise ValueError(f"{run_directory} holds no {RUN_RECORD_FILENAME}: not a training run")
+    if read_run_record(run_directory) is None and read_validation_record(run_directory) is None:
+        raise ValueError(
+            f"{run_directory} holds no {RUN_RECORD_FILENAME} or {VALIDATION_RECORD_FILENAME}: "
+            f"not a training run or a validation"
+        )
     process = read_yaml(run_directory / PROCESS_FILENAME)
     if not process:
         return RunStatus("prepared")
@@ -248,13 +259,16 @@ def stop_training(
 
 
 def run_child(
-    run_directory: Path, trainer: Callable[[RunRecord], str] | None = None
+    run_directory: Path,
+    trainer: Callable[[RunRecord], str] | None = None,
+    scorer: Callable[[ValidationRecord], str] | None = None,
 ) -> int:
-    """Train the run in *run_directory* in this process, and return its exit status.
+    """Train the run, or score the validation, in *run_directory* in this process, and return its exit status.
 
     Args:
-        trainer: Trains what a record asks and returns the device used;
+        trainer: Trains what a run's record asks and returns the device used;
             AM-model-training's where omitted.
+        scorer: Scores what a validation's record asks and returns the device asked for.
     """
     descriptor = os.open(
         run_directory / LOCK_FILENAME, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o666
@@ -263,8 +277,9 @@ def run_child(
         if try_lock(descriptor) is False:
             logger.error("Another process is already training in %s", run_directory)
             return 3
-        record = read_run_record(run_directory)
-        if record is None:
+        validation = read_validation_record(run_directory)
+        record = read_run_record(run_directory) if validation is None else None
+        if record is None and validation is None:
             logger.error("%s holds no %s", run_directory, RUN_RECORD_FILENAME)
             return 2
 
@@ -276,7 +291,11 @@ def run_child(
         }
         write_yaml(run_directory / PROCESS_FILENAME, started)
         try:
-            device = (trainer or _train)(record)
+            if validation is not None:
+                device = (scorer or _validate)(validation)
+            else:
+                assert record is not None
+                device = (trainer or _train)(record)
         # Everything, an interrupt included: the record of how a run ended is
         # what a reader has in place of the process.
         except BaseException as error:  # noqa: BLE001
@@ -309,6 +328,48 @@ def _train(record: RunRecord) -> str:
         record.train_list, record.validation_list, record.directory,
         device=record.device, base_weights=base, **settings,
     )
+
+
+def _validate(record: ValidationRecord) -> str:
+    """Score each epoch *record* names that has no scores yet, returning the device asked for.
+
+    Each epoch's scores are written as it is done, so a validation stopped
+    part-way keeps what it finished.
+    """
+    from ..ml.scoring import score_checkpoints
+    from ..training_runs import read_training_run, written_in
+    from ..validation_scores import ImageScores, scores_filename, write_scores
+
+    written = written_in(record.run_directory)
+    if written is None:
+        raise FileNotFoundError(f"The run this validation scores has gone: {record.run_directory}")
+    run = read_training_run(written)
+    names = tuple(row["image"] for row in read_images(record.images_file))
+    todo = [
+        epoch for epoch in record.epochs
+        if not (record.directory / scores_filename(epoch)).exists()
+    ]
+    weights = []
+    for epoch in todo:
+        checkpoint = run.checkpoint_for(epoch)
+        if checkpoint is None or not checkpoint.whole():
+            raise FileNotFoundError(
+                f"The weights of epoch {epoch} have gone, or are incomplete, since this "
+                f"validation was prepared"
+            )
+        weights.append(checkpoint.path)
+    scored = score_checkpoints(weights, record.list_file, device=record.device)
+    for epoch, (matrices, losses) in zip(todo, scored):
+        write_scores(
+            record.directory / scores_filename(epoch),
+            ImageScores(
+                epoch, names,
+                tuple(tuple(tuple(row) for row in matrix) for matrix in matrices),
+                tuple(losses),
+            ),
+        )
+        logger.info("Scored epoch %d", epoch)
+    return record.device
 
 
 def _ended(run_directory: Path, started: Mapping[str, Any], **outcome: str) -> None:

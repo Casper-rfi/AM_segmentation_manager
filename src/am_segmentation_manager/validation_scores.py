@@ -102,6 +102,11 @@ def read_scores(path: Path) -> ImageScores:
     return scores
 
 
+def find_scores(directory: Path) -> list[Path]:
+    """Return the scores files in *directory*, by epoch."""
+    return sorted(directory.glob("scores_epoch[0-9]*.json"))
+
+
 def metrics_for(scores: ImageScores, images: Collection[str] | None = None) -> EpochMetrics | None:
     """Return the metrics of *scores* over *images*, as AM-model-training would report them.
 

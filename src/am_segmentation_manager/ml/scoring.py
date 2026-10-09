@@ -9,6 +9,7 @@ rather than added to a total. Imported only inside :func:`score_checkpoint`, as
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from .environment import require_training_stack, resolve_device
@@ -24,30 +25,51 @@ LOSS_WEIGHTS = (1.0, 4.0, 3.0, 6.0, 2.0)
 LOSS_ALPHA = 0.5
 
 
-def score_checkpoint(
-    weights: Path, list_file: Path, *, device: str = "auto", workers: int | None = None
-) -> tuple[list[list[list[int]]], list[float]]:
-    """Return a confusion matrix and a loss for each row of *list_file*, in its order.
+Scored = tuple[list[list[list[int]]], list[float]]
 
-    Blocks until every image is scored. **Call it before anything in the
-    process uses CUDA**, so the GPU it resolves can be pinned.
+
+def score_checkpoints(
+    checkpoints: Iterable[Path],
+    list_file: Path,
+    *,
+    device: str = "auto",
+    workers: int | None = None,
+) -> Iterator[Scored]:
+    """Score each of *checkpoints* on *list_file* in turn, on one device, yielding as each is done.
+
+    **Start it before anything in the process uses CUDA**, so the GPU it
+    resolves, once for them all, can be pinned.
 
     Args:
-        weights: The checkpoint to score.
         list_file: An ``image,label`` list with absolute paths.
         device: ``"auto"``, or a torch device, as :func:`~.environment.resolve_device` takes.
         workers: Processes loading images; AM-model-training's own number where omitted.
 
-    Returns:
-        ``(matrices, losses)``: per image, ``[label][prediction]`` in pixels, and its loss.
+    Yields:
+        ``(matrices, losses)`` per checkpoint: for each row of the list in its
+        order, ``[label][prediction]`` in pixels, and its loss.
 
     Raises:
         RuntimeError: If the training stack is not installed or does not load, or
             the images loaded are not the rows listed.
     """
     require_training_stack("Scoring a checkpoint")
-    resolved = resolve_device(device)
-    cpu_only, gpu_number = trainable_device(resolved)
+    cpu_only, gpu_number = trainable_device(resolve_device(device))
+    for weights in checkpoints:
+        yield _score(weights, list_file, cpu_only, gpu_number, workers)
+
+
+def score_checkpoint(
+    weights: Path, list_file: Path, *, device: str = "auto", workers: int | None = None
+) -> Scored:
+    """Return what :func:`score_checkpoints` yields for the one checkpoint *weights*."""
+    return next(score_checkpoints([weights], list_file, device=device, workers=workers))
+
+
+def _score(
+    weights: Path, list_file: Path, cpu_only: bool, gpu_number: int, workers: int | None
+) -> Scored:
+    """Score one checkpoint on a device already resolved."""
 
     import torch
     from am_model_training import run

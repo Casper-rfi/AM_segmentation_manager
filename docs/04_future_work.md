@@ -19,8 +19,8 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **Running the suite in parallel** with `pytest-xdist`, a new dependency. First: whether the
   process-wide state [`display.md`](display.md) § Testing the window names — the locale a
   `QApplication` sets, the error reporter's excepthook — stays confined to one worker.
-- **More of training**: a run per fold of a cross-validation export; scoring a checkpoint on a
-  held-out set, with am-seg's own inference and `label_measure`; queueing runs; a remote machine.
+- **More of training**: a run per fold of a cross-validation export; continuing a validation
+  that was stopped, or scoring the checkpoints saved since it was prepared; queueing runs; a remote machine.
   First: which of these is wanted, none having been asked for.
 - **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
   `GENERATIONS`, its preprocessing added beside `IMPLEMENTED_PREPROCESSING` and held to a recapture
