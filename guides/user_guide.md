@@ -324,18 +324,20 @@ can train at once: **Start...** says when one already is, and with two on
 taken little memory yet. Above the form,
 **Runs** lists every run in the training directory, which you choose once with
 **Browse...** beside *Training directory* at the top of the column; keep it
-outside your collection. Each run has a
-column for how it stands, the epochs trained of the most it may train, its
-best epoch and that epoch's score, and the epoch you marked. The score is
+outside your collection. The mark before a run says how it stands — not
+started, training, finished, stopped by you, interrupted or failed — and F1
+shows each mark. A run can finish before its last epoch: training ends early
+once it has stopped improving. Each run has a column for the epochs trained of
+the most it may train, with how far a validation has got while one is scoring,
+its best epoch and that epoch's score, and the epoch you marked. The score is
 what the run ranks its epochs by: the mean of the weighted-average IoU and
 Dice on its validation list, from 0 to 1. Hover a heading for what it holds. Runs kept in a
 folder of that directory are gathered under it, and **Expand** and **Collapse**
 open and close every folder. Right-click a run to copy its path or reveal it in
 the file manager. The tick boxes, with **Tick all** and **None**, choose the
-runs **Table** sets side by side. The mark beside a run has two bars: the
-epochs trained of the most it may train, and below it how many of the weights
-it saved are still on disk, which is where to look for runs to tidy. Hover a
-run for the numbers and the disk space, and for what the columns leave out:
+runs **Table** sets side by side. **Weights** counts the weights a run saved
+that are still on disk, of those it saved, which is where to look for runs to
+tidy. Hover a run for the disk space they take, and for what the columns leave out:
 which GPU a run in training is on, why one failed, who marked its best epoch,
 how each validation of it stands, how many images it trains and validates on,
 and the settings it was started with. While

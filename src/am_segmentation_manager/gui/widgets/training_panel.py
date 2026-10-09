@@ -14,12 +14,13 @@ import math
 from collections.abc import Callable
 from pathlib import Path
 
-from qtpy.QtCore import QPointF, QSize, Qt, QTimer, QUrl, Signal
+from qtpy.QtCore import QPointF, QRectF, QSize, Qt, QTimer, QUrl, Signal
 from qtpy.QtGui import (
     QColor,
     QDesktopServices,
     QIcon,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
     QPolygonF,
@@ -91,11 +92,8 @@ from .report_dialog import ReportDialog
 from .theme import (
     ERROR,
     MUTED,
-    SWATCH_CELL,
-    SWATCH_GAP,
-    SWATCH_HEIGHT,
-    SWATCH_WIDTH,
     TEXT,
+    WARNING,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,11 +109,8 @@ COLOUR_REDRAW_MILLISECONDS = 120
 COLOUR_SLIDER_WIDTH = 240
 
 #: How wide the column of runs and the form opens: what the run columns want
-#: for a run by its dated name, in a folder, whose state is the longest one.
+#: for a run by its dated name, in a folder, with no validation of it scoring.
 LEFT_COLUMN_WIDTH = 560
-
-#: Which column of the list of runs holds how each stands.
-STATE_COLUMN = 1
 
 #: What the window says while a run or a validation is checked in full.
 CHECKING = "Checking the training set"
@@ -394,6 +389,7 @@ class TrainingPanel(QWidget):
         # only puts a run in the set the controller holds.
         self.runs_tree = ProjectTree()
         self.runs_tree.set_headers(RUN_COLUMNS)
+        self.runs_tree.setIconSize(QSize(RUN_MARK, RUN_MARK))
         self.runs_tree.project_selected.connect(self._run_chosen)
         self.runs_tree.row_ticked.connect(self._run_ticked)
         add_path_menu(
@@ -702,7 +698,7 @@ class TrainingPanel(QWidget):
             [f"{run.label}: {run.problem}" if run.problem else run.label for run in runs],
             cells=[run.cells() for run in runs],
             ticked=[run.directory in controller.ticked for run in runs],
-            icons=[run_chip(run) for run in runs],
+            icons=[run_mark(run.state) for run in runs],
             tooltips=[
                 str(run.directory) if run.problem
                 else f"{run.directory}\n{run.progress()}\n{run.details()}"
@@ -712,11 +708,6 @@ class TrainingPanel(QWidget):
                 directories.index(controller.selected) if controller.selected is not None else None
             ),
         )
-        # The one state that asks to be looked into, which hover and the log then explain.
-        for row, run in enumerate(runs):
-            item = self.runs_tree.project_item(row)
-            if item is not None and run.state == "failed":
-                item.setForeground(STATE_COLUMN, QColor(ERROR))
         self._show_selected()
 
     def _show_selected(self) -> None:
@@ -1345,72 +1336,93 @@ class TrainingPanel(QWidget):
         )
 
 
-#: What each bar of a run's chip is filled with: the epochs by how the run
-#: stands, the weights in a hue of their own, and what is left of either.
-CHIP_FINISHED = CELL_COLOURS["done"]
-CHIP_LIVE = CELL_COLOURS["in progress"]
-CHIP_ENDED_EARLY = CELL_COLOURS["unlabelled"]
-CHIP_WEIGHTS = CELL_COLOURS["not started"]
-CHIP_TRACK = CELL_COLOURS["empty"]
+#: Side of the mark before a run, in logical pixels; laid out on a grid of sixteen.
+RUN_MARK = 14
+_MARK_GRID = 16
+
+#: The mark before a run for each way it can stand: ``(shape, colour, meaning)``.
+#: No two share a shape, so none is told from another by its colour alone.
+RUN_MARKS: dict[str, tuple[str, str, str]] = {
+    "prepared": ("ring", MUTED, "Not started"),
+    "running": ("triangle", CELL_COLOURS["in progress"].name(), "Training"),
+    "finished": ("tick", CELL_COLOURS["done"].name(), "Finished"),
+    "stopped": ("square", MUTED, "Stopped by you"),
+    "interrupted": ("exclamation", WARNING, "Interrupted"),
+    "failed": ("cross", ERROR, "Failed"),
+    "unknown": ("question", MUTED, "Started on another computer"),
+}
+
+#: What a run am-seg did not start is drawn as, its files saying less than a process does.
+_MARKED_AS = {"training": "running", "not finished": "interrupted"}
 
 
-def chip_fills(run: RunSummary) -> tuple[tuple[float, QColor], tuple[float, QColor]]:
-    """Return how much of each bar of *run*'s chip is filled, and with what.
-
-    The upper bar is the epochs trained of the most it may train, left empty
-    where nothing says how many that is; the lower, the saved weights still on disk.
-    """
-    most = run.most_epochs
-    colour = CHIP_LIVE if run.training else CHIP_FINISHED if run.state == "finished" else CHIP_ENDED_EARLY
-    saved = len(run.saved_epochs)
-    return (
-        (min(run.epochs / most, 1.0) if most else 0.0, colour),
-        (len(run.kept) / saved if saved else 0.0, CHIP_WEIGHTS),
-    )
+def run_mark(state: str) -> QIcon:
+    """Return the mark before a run that stands as *state*, or no icon where it says nothing."""
+    pixmap = _run_mark_pixmap(state)
+    return chip_icon(pixmap) if pixmap is not None else QIcon()
 
 
-def run_chip(run: RunSummary) -> QIcon:
-    """Return the chip beside a run: epochs trained above, weights on disk below."""
-    return chip_icon(_bars(chip_fills(run)))
-
-
-def _bars(fills: tuple[tuple[float, QColor], ...]) -> QPixmap:
-    """Paint one bar per fill, each a track filled from the left."""
-    pixmap = QPixmap(SWATCH_WIDTH, SWATCH_HEIGHT)
+def _run_mark_pixmap(state: str, size: int = RUN_MARK) -> QPixmap | None:
+    mark = RUN_MARKS.get(_MARKED_AS.get(state, state))
+    if mark is None:
+        return None
+    shape, colour, _meaning = mark
+    pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
-        for row, (share, colour) in enumerate(fills):
-            top = row * (SWATCH_CELL + SWATCH_GAP)
-            painter.fillRect(0, top, SWATCH_WIDTH, SWATCH_CELL, CHIP_TRACK)
-            # A share above nothing shows a pixel: one epoch of a hundred is not none.
-            width = max(round(share * SWATCH_WIDTH), 1) if share > 0 else 0
-            painter.fillRect(0, top, width, SWATCH_CELL, colour)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.scale(size / _MARK_GRID, size / _MARK_GRID)
+        _draw_run_mark(painter, shape, QColor(colour))
     finally:
         # A painter left alive past its pixmap crashes the process.
         painter.end()
     return pixmap
 
 
+def _draw_run_mark(painter: QPainter, shape: str, colour: QColor) -> None:
+    """Draw *shape* on the sixteen-pixel grid: stroked where it is a line, filled where an area."""
+    pen = QPen(colour)
+    pen.setWidthF(2.2)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    if shape in ("triangle", "square"):
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(colour)
+    else:
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+    if shape == "ring":
+        painter.drawEllipse(QRectF(3.5, 3.5, 9.0, 9.0))
+    elif shape == "triangle":
+        painter.drawPolygon(QPolygonF([QPointF(4.5, 2.5), QPointF(13.5, 8.0), QPointF(4.5, 13.5)]))
+    elif shape == "tick":
+        painter.drawPolyline(QPolygonF([QPointF(3.0, 8.5), QPointF(6.5, 12.0), QPointF(13.0, 4.0)]))
+    elif shape == "square":
+        painter.drawRect(QRectF(4.0, 4.0, 8.0, 8.0))
+    elif shape == "cross":
+        painter.drawLine(QPointF(4.0, 4.0), QPointF(12.0, 12.0))
+        painter.drawLine(QPointF(12.0, 4.0), QPointF(4.0, 12.0))
+    elif shape in ("exclamation", "question"):
+        if shape == "exclamation":
+            painter.drawLine(QPointF(8.0, 3.0), QPointF(8.0, 9.0))
+        else:
+            hook = QPainterPath()
+            hook.arcMoveTo(QRectF(5.0, 2.5, 6.0, 6.0), 180)
+            hook.arcTo(QRectF(5.0, 2.5, 6.0, 6.0), 180, -270)
+            hook.lineTo(8.0, 10.0)
+            painter.drawPath(hook)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(colour)
+        painter.drawEllipse(QPointF(8.0, 13.2), 1.4, 1.4)
+
+
 def run_legend() -> list[tuple[QPixmap, str]]:
-    """Return what the chip beside each run means, as ``(sample, meaning)``."""
+    """Return what the mark before each run means, as ``(sample, meaning)``."""
     return [
-        (
-            _bars(((0.6, CHIP_LIVE), (0.3, CHIP_WEIGHTS))),
-            "Above, the epochs trained of the most the run may train. Below, how many of "
-            "the weights it saved are still on disk.",
-        ),
-        (_bars(((0.6, CHIP_LIVE), (0.0, CHIP_WEIGHTS))), "Training, or may still be"),
-        (_bars(((0.6, CHIP_FINISHED), (0.0, CHIP_WEIGHTS))), "Finished, often before its last epoch"),
-        (
-            _bars(((0.6, CHIP_ENDED_EARLY), (0.0, CHIP_WEIGHTS))),
-            "Ended without finishing: stopped, failed or interrupted",
-        ),
-        (
-            _bars(((0.0, CHIP_LIVE), (0.3, CHIP_WEIGHTS))),
-            "The upper bar stays empty while a run am-seg did not start has not said how "
-            "many epochs it may train, which it writes when it ends",
-        ),
+        (pixmap, meaning)
+        for state, (_shape, _colour, meaning) in RUN_MARKS.items()
+        if (pixmap := _run_mark_pixmap(state)) is not None
     ]
 
 

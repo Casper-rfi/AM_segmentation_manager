@@ -404,7 +404,7 @@ def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, mon
     panel.refresh()
 
     listed = panel.runs_tree.project_item(0)
-    assert (listed.text(0), listed.text(1)) == ("wide_seed2", "finished")
+    assert (listed.text(0), listed.text(1)) == ("wide_seed2", "2/90")
     assert "Not started by am-seg" in listed.toolTip(0)
     assert drawn == [1]
     assert not panel.stop_button.isEnabled()
@@ -497,61 +497,38 @@ def _checked():
     return Qt.CheckState.Checked
 
 
-# -- the chip beside a run ----------------------------------------------------
+# -- what a run still holds ---------------------------------------------------
 
 
-def test_the_chip_fills_by_epochs_trained_and_by_weights_still_on_disk(panel):
-    from am_segmentation_manager.gui.widgets.training_panel import (
-        CHIP_FINISHED,
-        CHIP_WEIGHTS,
-        chip_fills,
-    )
-
+def test_a_run_counts_the_weights_still_on_disk_of_those_it_saved(panel):
     run = _with_checkpoints(panel, epochs=(1, 2, 3, 4))
+    weights = panel.runs_tree.columnCount() - 1
+    assert panel.runs_tree.headerItem().text(weights) == "Weights"
+    assert panel.runs_tree.project_item(0).text(weights) == "4/4"
+
     _select(panel, 4)
     panel.delete_others()
 
-    epochs, weights = chip_fills(panel.controller.summary(run))
-
-    assert epochs == (4 / 100, CHIP_FINISHED)
-    assert weights == (1 / 4, CHIP_WEIGHTS)
+    assert panel.controller.summary(run).cells()[-1] == "1/4"
+    assert panel.runs_tree.project_item(0).text(weights) == "1/4"
 
 
-def test_a_run_that_ended_early_or_may_still_be_training_is_coloured_apart(panel):
-    from am_segmentation_manager.gui.widgets.training_panel import (
-        CHIP_ENDED_EARLY,
-        CHIP_LIVE,
-        chip_fills,
-    )
-    from test_training_controller import _aged, _bare_run
+def test_a_run_that_saved_no_weights_counts_none(panel):
+    _started(panel)
+    panel.refresh()
 
-    root = panel.controller.training_directory
-    live = _bare_run(root, "live", finished=False)
-    ended = _bare_run(root, "ended", "260101_000000", finished=False)
-    _aged(ended, 7200)
-
-    assert chip_fills(panel.controller.summary(live))[0] == (0.0, CHIP_LIVE)
-    assert chip_fills(panel.controller.summary(ended))[0][1] == CHIP_ENDED_EARLY
+    assert panel.controller.selected_run().cells()[-1] == ""
 
 
-def test_each_run_carries_its_chip_and_says_it_in_words_on_hover(panel):
+def test_each_run_says_what_it_holds_in_words_on_hover(panel):
     run = _with_checkpoints(panel)
 
     item = panel.runs_tree.project_item(0)
 
-    assert not item.icon(0).isNull()
     assert item.toolTip(0).startswith(
         f"{run}\n3 of at most 100 epochs trained\n3 of 3 saved weights on disk, 0.0 GB\n"
     )
     assert item.toolTip(0).endswith(panel.controller.selected_run().details())
-
-
-def test_the_key_list_says_what_a_run_s_chip_means(qt_app):
-    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN, _tab_marks
-
-    meanings = " ".join(meaning for _, _, meaning in _tab_marks(TAB_TRAIN))
-
-    assert "epochs trained" in meanings and "still on disk" in meanings
 
 
 # -- classes, and the point under the pointer ---------------------------------
@@ -644,7 +621,7 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
     assert panel.checkpoints_list.item(1).text() == "2 (incomplete)"
     assert panel.checkpoints_list.item(1).toolTip() == "Epoch 2: marked best, incomplete"
     assert "Marked as best: epoch 2" in panel.runs_tree.project_item(0).toolTip(0)
-    assert panel.runs_tree.project_item(0).text(5) == "2"
+    assert panel.runs_tree.project_item(0).text(4) == "2"
     assert panel.unmark_button.isEnabled()
 
 
@@ -1139,30 +1116,77 @@ def test_a_run_is_listed_a_column_to_each_thing_said_of_it(panel):
         caption for caption, _hint in RUN_COLUMNS
     ]
     assert [row.text(column) for column in range(tree.columnCount())] == [
-        "wide_seed2", "finished", "2/90", "2", "0.200", "",
+        "wide_seed2", "2/90", "2", "0.200", "", "0/2",
     ]
-    assert "IoU and Dice" in tree.headerItem().toolTip(4), "the number says what it is of"
+    assert "IoU and Dice" in tree.headerItem().toolTip(3), "the number says what it is of"
 
 
-def test_a_run_that_failed_says_so_in_red_and_one_that_finished_does_not(panel):
-    """Among a list of states in one colour, the one to look into was as quiet as the rest."""
-    from am_segmentation_manager.gui.widgets.theme import ERROR
+def _pixels(icon_or_pixmap) -> bytes:
+    """Return the pixels of a mark, so two can be told apart."""
+    from qtpy.QtGui import QIcon
+
+    from am_segmentation_manager.gui.widgets.training_panel import RUN_MARK
+
+    pixmap = icon_or_pixmap.pixmap(RUN_MARK, RUN_MARK) if isinstance(icon_or_pixmap, QIcon) else icon_or_pixmap
+    image = pixmap.toImage()
+    return bytes(image.constBits())[: image.sizeInBytes()]
+
+
+def test_every_way_a_run_can_stand_has_a_mark_of_its_own(qt_app):
+    """Two greens on one bar were told apart by shade alone."""
+    from typing import get_args
+
+    from am_segmentation_manager.gui.widgets.training_panel import RUN_MARKS, run_mark
+    from am_segmentation_manager.operations.training_process import State
+
+    assert set(RUN_MARKS) == set(get_args(State))
+    drawn = {state: _pixels(run_mark(state)) for state in RUN_MARKS}
+    assert len(set(drawn.values())) == len(drawn)
+    shapes = [shape for shape, _colour, _meaning in RUN_MARKS.values()]
+    assert len(set(shapes)) == len(shapes), "none is told from another by its colour alone"
+
+
+def test_a_run_am_seg_did_not_start_is_marked_as_one_it_did(qt_app):
+    from am_segmentation_manager.gui.widgets.training_panel import run_mark
+
+    assert _pixels(run_mark("training")) == _pixels(run_mark("running"))
+    assert _pixels(run_mark("not finished")) == _pixels(run_mark("interrupted"))
+    assert run_mark("").isNull(), "a run that cannot be read has only its problem to say"
+
+
+def test_a_run_s_mark_says_how_it_stands_and_hover_says_why(panel):
+    """A column of words said it before, in one colour but for the run that failed."""
+    from am_segmentation_manager.gui.widgets.training_panel import run_mark
 
     _started(panel)
     panel.how["training"] = "fail"
     _started(panel)
     panel.refresh()
-    tree = panel.runs_tree
 
-    colours = {
-        item.text(1): item.foreground(1).color().name()
-        for item in tree.project_items()
+    marks = {
+        run.state: (_pixels(item.icon(0)), item.toolTip(0))
+        for run, item in zip(panel.controller.runs(), panel.runs_tree.project_items(), strict=True)
     }
 
-    assert set(colours) == {"finished", "failed"}
-    assert colours["failed"] == ERROR and colours["finished"] != ERROR
-    failed = next(item for item in tree.project_items() if item.text(1) == "failed")
-    assert "out of GPU memory" in failed.toolTip(1), "and hover says why"
+    assert set(marks) == {"finished", "failed"}
+    assert marks["failed"][0] == _pixels(run_mark("failed"))
+    assert marks["finished"][0] == _pixels(run_mark("finished"))
+    assert "out of GPU memory" in marks["failed"][1]
+    assert "State" not in [
+        panel.runs_tree.headerItem().text(column) for column in range(panel.runs_tree.columnCount())
+    ]
+
+
+def test_the_key_list_names_each_mark_in_a_few_words(qt_app):
+    """A paragraph to each of five rows was not read."""
+    from am_segmentation_manager.gui.widgets.shortcuts import GROUP_ROW_MARK, TAB_TRAIN, _tab_marks
+
+    meanings = [meaning for group, _, meaning in _tab_marks(TAB_TRAIN) if group == GROUP_ROW_MARK]
+
+    assert meanings == [
+        "Not started", "Training", "Finished", "Stopped by you",
+        "Interrupted", "Failed", "Started on another computer",
+    ]
 
 
 def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(panel):
@@ -1234,7 +1258,7 @@ def test_a_run_s_dated_name_is_whole_at_the_width_the_column_opens_at(panel, qt_
     tree = panel.runs_tree
     tree.set_projects(
         ["", "sweeps"], ["20261009_refine_01", "20261009_refine_02"],
-        cells=[("not finished", "100/100", "100", "0.845", "100")] * 2,
+        cells=[("100/100", "100", "0.845", "100", "100/100")] * 2,
     )
     tree.expandAll()
     qt_app.processEvents()

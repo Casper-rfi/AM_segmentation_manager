@@ -90,13 +90,12 @@ CLASSES_LEFT_OUT: frozenset[str] = frozenset({"background", "vacuum"})
 #: short, the list being a column beside what it shows; :meth:`RunSummary.details`
 #: says the rest.
 RUN_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("Run", "What the run is called."),
+    ("Run", "What the run is called. The mark before it says how it stands; hover for it in words."),
     (
-        "State",
-        "How the run stands: training, finished, stopped, failed; and, while a validation "
-        "of it is scoring, the epochs scored of those asked for.",
+        "Epochs",
+        "Epochs trained, of the most the run may train; and, while a validation of it "
+        "is scoring, the epochs scored of those asked for.",
     ),
-    ("Epochs", "Epochs trained, of the most the run may train."),
     ("Best", "The epoch the run counts as its best, on its own validation list."),
     (
         "Score",
@@ -105,6 +104,11 @@ RUN_COLUMNS: tuple[tuple[str, str], ...] = (
         "From 0 to 1, higher is better.",
     ),
     ("Marked", "The epoch you marked as best, where you marked one."),
+    (
+        "Weights",
+        "The saved weights still on disk, of those the run saved: where to look for "
+        "runs to tidy.",
+    ),
 )
 
 #: How recently a run am-seg did not start must have written to count as still
@@ -276,13 +280,13 @@ class RunSummary:
         }.get(self.state, "")
         return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
 
-    def state_cell(self) -> str:
-        """Return :attr:`state`, and how far each validation still scoring has got."""
-        scoring = ", ".join(
+    def scoring(self) -> str:
+        """Return how far each validation still scoring has got, or "" where none is."""
+        scored = ", ".join(
             f"{len(validation.scored.scores)}/{validation.epochs}"
             for validation in self.validations if validation.live
         )
-        return " · ".join(part for part in (self.state, scoring and f"val {scoring}") if part)
+        return f"val {scored}" if scored else ""
 
     def asked(self) -> str:
         """Return what the run was asked to do and on how many images, or "" for one am-seg did not start."""
@@ -338,13 +342,14 @@ class RunSummary:
         else:
             epochs = str(self.epochs) if self.epochs else ""
         best = self.best if self.written is not None else None
+        saved = self.saved_epochs
         return (
-            self.state_cell(),
-            epochs,
+            " · ".join(part for part in (epochs, self.scoring()) if part),
             str(best.epoch) if best is not None else "",
             f"{best.score(self.written.key_metrics):.3f}"
             if best is not None and self.written is not None else "",
             str(self.chosen.epoch) if self.chosen is not None else "",
+            f"{len(self.kept)}/{len(saved)}" if saved else "",
         )
 
 

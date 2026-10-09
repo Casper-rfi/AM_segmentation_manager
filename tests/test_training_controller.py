@@ -208,7 +208,7 @@ def test_a_running_run_keeps_the_tab_reading_and_a_stop_ends_that(controller: Tr
     controller.start(controller.plan())
 
     assert any(run.live for run in controller.runs())
-    assert controller.selected_run().cells()[0] == "running"
+    assert controller.selected_run().state == "running"
 
     stopped = controller.stop(controller.selected)
 
@@ -249,7 +249,7 @@ def test_a_run_s_line_says_how_far_it_got_and_its_best_epoch(controller: Trainin
 
     assert run.epochs == 3
     assert run.best.epoch == 3
-    assert run.cells() == ("finished", "3/100", "3", "0.300", "")
+    assert run.cells() == ("3/100", "3", "0.300", "", "0/3")
     assert "1 training and 1 validation image(s)" in run.details()
     assert len(run.cells()) == len(RUN_COLUMNS) - 1
 
@@ -526,7 +526,7 @@ def test_a_run_started_without_am_seg_is_listed_with_what_its_files_say(
 
     assert listed.directory == written
     assert listed.record is None and listed.status is None
-    assert (listed.label, *listed.cells()) == ("wide_seed2", "finished", "2/90", "2", "0.200", "")
+    assert (listed.label, *listed.cells()) == ("wide_seed2", "2/90", "2", "0.200", "", "0/2")
     assert "Not started by am-seg" in listed.describe()
 
 
@@ -568,7 +568,7 @@ def test_an_unfinished_run_written_to_lately_is_taken_as_still_training(
     _aged(written, 2 * 3600)
     (listed,) = controller.runs()
     assert listed.state == "not finished" and not listed.live
-    assert (listed.label, *listed.cells()) == ("cluster", "not finished", "2", "2", "0.200", "")
+    assert (listed.label, *listed.cells()) == ("cluster", "2", "2", "0.200", "", "0/2")
 
 
 def test_a_finished_run_s_other_checkpoints_can_be_deleted_whoever_started_it(
@@ -727,7 +727,7 @@ def test_a_run_carries_the_epoch_marked_as_its_best(controller: TrainingControll
     marked = controller.choose_best(run, 2)
 
     assert marked.chosen.epoch == 2 and marked.best.epoch == 3
-    assert marked.cells()[2:] == ("3", "0.300", "2")
+    assert marked.cells()[1:4] == ("3", "0.300", "2")
     assert controller.clear_best(run).chosen is None
 
 
@@ -889,12 +889,14 @@ def test_a_run_s_state_says_how_far_a_validation_still_scoring_has_got(
     from am_segmentation_manager.operations.training_process import RunStatus
 
     ended = controller.summary(validated)
-    assert ended.state_cell() == ended.state, "a validation that has ended adds nothing"
+    assert ended.scoring() == "", "a validation that has ended adds nothing"
+    assert ended.cells()[0] == "3"
 
     monkeypatch.setattr(training_controller, "run_status", lambda directory: RunStatus("running", 1, "here"))
     scoring = controller.summary(validated)
 
-    assert scoring.cells()[0] == scoring.state_cell() == f"{scoring.state} · val 3/3"
+    assert scoring.scoring() == "val 3/3"
+    assert scoring.cells()[0] == "3 · val 3/3"
 
 
 def test_what_the_columns_leave_unsaid_of_a_run_is_said_in_its_details(
