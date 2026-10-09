@@ -94,6 +94,17 @@ class ToggleSwitch(QCheckBox):
 
     #: Whether focus arrived by keyboard; see :func:`_from_keyboard`.
     _keyboard_focus = False
+    #: What the track is filled with while on, or None for the accent.
+    _colour: str | None = None
+
+    def set_colour(self, colour: str | None) -> None:
+        """Fill the track with *colour* while on, in place of the accent; None gives the accent back.
+
+        For a switch that shows something drawn in a colour of its own, which
+        the track then says without a swatch beside it.
+        """
+        self._colour = colour
+        self.update()
 
     def focusInEvent(self, event) -> None:  # noqa: N802 - Qt naming
         self._keyboard_focus = _from_keyboard(event)
@@ -181,7 +192,9 @@ class ToggleSwitch(QCheckBox):
     def _track_colour(self) -> str:
         if not self.isEnabled():
             return theme.BORDER_LIGHT
-        return theme.active_accent().colour if self.isChecked() else theme.SWITCH_OFF
+        if not self.isChecked():
+            return theme.SWITCH_OFF
+        return self._colour or theme.active_accent().colour
 
     def _text_colour(self) -> str:
         return theme.TEXT if self.isEnabled() else theme.DISABLED_TEXT

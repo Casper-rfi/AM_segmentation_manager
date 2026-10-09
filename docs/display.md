@@ -125,7 +125,9 @@ of one of these files, is held by `test_docs.py`.
   is a **subclass of `QCheckBox`** (`test_it_is_a_check_box`), so only `paintEvent` differs. It
   paints everything itself, so **no stylesheet rule may name `QCheckBox`** — a rule sends the
   control back through `QStyle` and draws it twice — and it reserves room for its own focus ring
-  (`test_the_focus_ring_fits_inside_the_widget`).
+  (`test_the_focus_ring_fits_inside_the_widget`). **A switch showing something drawn in a colour of
+  its own is on in that colour**, Train's classes each in their curve's, a swatch beside it saying it
+  twice (`test_a_class_s_switch_is_on_in_the_colour_of_its_curve`).
 - **A chosen row is ticked, never highlighted**, highlighting being also how Qt marks the row you
   are looking at and lost whenever the list is rebuilt. `lists.CheckList` is the one implementation,
   and it reports nothing while its contents are replaced — a redraw rather than a gesture. Two traps,

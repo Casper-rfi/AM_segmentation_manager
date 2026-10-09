@@ -1172,3 +1172,37 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
         "checkpoints_list", "copy_button", "mark_button", "unmark_button",
         "delete_button", "keep_best_check",
     }
+
+
+def test_a_class_s_switch_is_on_in_the_colour_of_its_curve(panel):
+    """A swatch beside a tick box said the same thing in twice the room."""
+    from am_segmentation_manager.gui.widgets.controls import ToggleSwitch
+    from am_segmentation_manager.plots import class_colour
+
+    _with_checkpoints(panel)
+
+    boxes = list(panel.class_boxes.values())
+    assert all(isinstance(box, ToggleSwitch) and box.icon().isNull() for box in boxes)
+    assert [box._track_colour() for box in boxes if box.isChecked()] == [
+        class_colour(index) for index, box in enumerate(boxes) if box.isChecked()
+    ]
+
+
+def test_the_lists_above_the_chart_are_stacked_in_one_column(panel, qt_app):
+    """Each in a row of its own started wherever its caption ended."""
+    _with_checkpoints(panel)
+    panel.view_control.set_current("table")
+    panel._view_chosen("table")
+    panel.resize(1400, 900)
+    panel.show()
+    qt_app.processEvents()
+    panel.controller.validated_on = ""
+    panel._show_sets()  # refilled, a list sized to its contents takes its own width
+    for _ in range(3):
+        qt_app.processEvents()
+
+    stacked = [panel.metric_box, panel.validated_box, panel.value_box]
+
+    assert len({(box.x(), box.width()) for box in stacked}) == 1
+    assert [box.y() for box in stacked] == sorted(box.y() for box in stacked)
+    panel.hide()

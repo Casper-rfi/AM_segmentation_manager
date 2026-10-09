@@ -347,9 +347,9 @@ folder holding such runs.
 The tab is in three boxes: **Runs**, with what is done to the run selected
 under the list; **Curves and table**; and **Checkpoints**, each listed by its
 epoch. For the run selected, the tab shows its loss and a metric per
-class by epoch, and its checkpoints. Untick a class beside **Metric per
-class** to take its curve out, and tick **background** to draw it, which is
-left out at first; the weighted averages stay over every class. Point at a
+class by epoch, and its checkpoints. Switch a class off beside **Metric** to
+take its curve out, and **background** on to draw it, which is left out at
+first, each switch in the colour of its curve; the weighted averages stay over every class. Point at a
 curve to read its class, epoch and value. Scroll over a chart to zoom about
 the pointer, hold Space and drag to pan, and **Reset view**, or G, to undo
 both; the wheel never zooms out beyond that view. The charts on Export answer
@@ -373,10 +373,10 @@ to the same.
 
 **Table**, beside **Curves**, compares the ticked runs: a row per run and a
 block per class, shaded by value, for the metric and the classes chosen
-above it. **Colours from** sets the two values the shading runs between, and
-the bar beside the table shows them. With **Auto** ticked, as it is at first,
-they are the lowest and highest value in the table and follow it as runs and
-classes are ticked; setting either by hand clears the tick, and **Auto-scale**
+above it. **Colours** sets the two values the shading runs between, and
+the bar beside the table shows them. With **Auto** on, as it is at first,
+they are the lowest and highest value in the table and follow it as runs are
+ticked and classes switched; setting either by hand switches it off, and **Auto-scale**
 fits them once. **Each cell** is the value at the run's best epoch, at the epoch you
 marked as best (the run's own where none is marked), or the mean or median
 over the epochs you set, 60 to 90 at first; a refined model, which trains for
@@ -388,7 +388,7 @@ writes the numbers, and **Save figure...** the table.
 export: its validation list, or every row of an export made of data the run
 never trained on. Each checkpoint on disk is run over each image once, in the
 background like a training run, and what it scored on every image is kept in
-the run's folder; the line under the runs says how far each validation has got,
+the run's folder; the run's state says how far a validation has got while it scores,
 and **Stop validating** ends one, keeping the epochs it finished. It needs the
 `train` extra and, in practice, a GPU.
 

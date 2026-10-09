@@ -77,6 +77,20 @@ def test_on_and_off_are_different_pictures(qt_app):
     assert _drawn(switch) != off
 
 
+def test_a_switch_given_a_colour_is_on_in_it_and_off_as_any_other(qt_app):
+    plain, coloured = ToggleSwitch("gis"), ToggleSwitch("gis")
+    coloured.set_colour("#ff7f0e")
+
+    assert _drawn(coloured) == _drawn(plain), "off, it shows nothing to have a colour"
+
+    plain.setChecked(True)
+    coloured.setChecked(True)
+    assert _drawn(coloured) != _drawn(plain)
+
+    coloured.set_colour(None)
+    assert _drawn(coloured) == _drawn(plain)
+
+
 def test_a_switch_that_cannot_be_used_says_so(qt_app):
     switch = ToggleSwitch("Show label")
     switch.setChecked(True)

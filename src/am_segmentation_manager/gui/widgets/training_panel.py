@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -372,31 +373,35 @@ class TrainingPanel(QWidget):
         self.plots_box = QGroupBox("Curves and table")
         column = QVBoxLayout(self.plots_box)
 
-        chart_row = QHBoxLayout()
+        # One grid, so that what is stacked is aligned: a caption, the list it
+        # names at the width of the widest of them, then whatever goes with it.
+        grid = QGridLayout()
+        grid.setColumnStretch(2, 1)
         self.view_control = SegmentedControl(VIEW_SEGMENTS)
         self.view_control.set_current(self.controller.view)
         self.view_control.chosen.connect(self._view_chosen)
-        chart_row.addWidget(self.view_control)
-        chart_row.addWidget(_muted("Metric per class"))
+        grid.addWidget(self.view_control, 0, 3, alignment=Qt.AlignmentFlag.AlignTop)
+        metric_caption = _muted("Metric")
+        metric_caption.setToolTip("The metric drawn and tabled for each class.")
+        grid.addWidget(metric_caption, 0, 0)
         self.metric_box = QComboBox()
         for metric in PER_CLASS_METRICS:
             self.metric_box.addItem(METRIC_CAPTIONS[metric], metric)
         self.metric_box.currentIndexChanged.connect(lambda _index: self._show_selected())
-        chart_row.addWidget(self.metric_box)
+        grid.addWidget(self.metric_box, 0, 1)
         # Wrapped: a model's classes are as many as it has, in a pane of any width.
         self.class_area = FlowArea()
         self.class_area.setLayout(FlowLayout(spacing=10))
-        chart_row.addWidget(self.class_area, stretch=1)
-        column.addLayout(chart_row)
+        grid.addWidget(self.class_area, 0, 2)
+        grid.addWidget(_muted("Validated on"), 1, 0)
         sets_row = QHBoxLayout()
-        sets_row.addWidget(_muted("Validated on"))
         self.validated_box = QComboBox()
         self.validated_box.setToolTip(
             "Which images the validation side is of: the list each run validated on as it "
             "trained, a validation made of it since with Validate..., or every one of those."
         )
         self.validated_box.activated.connect(lambda _index: self._sets_chosen())
-        sets_row.addWidget(self.validated_box)
+        grid.addWidget(self.validated_box, 1, 1)
         sets_row.addWidget(_muted("split by"))
         self.split_box = QComboBox()
         self.split_box.setToolTip(
@@ -418,12 +423,13 @@ class TrainingPanel(QWidget):
         sets_row.addStretch(1)
         for box in (self.validated_box, self.split_box, self.subset_box):
             box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        column.addLayout(sets_row)
+        grid.addLayout(sets_row, 1, 2, 1, 2)
 
+        self.value_caption = _muted("Each cell")
+        grid.addWidget(self.value_caption, 2, 0)
         self.table_row = QWidget()
         table_row = QHBoxLayout(self.table_row)
         table_row.setContentsMargins(0, 0, 0, 0)
-        table_row.addWidget(_muted("Each cell"))
         self.value_box = QComboBox()
         for value, caption in VALUE_CAPTIONS.items():
             self.value_box.addItem(caption, value)
@@ -432,8 +438,8 @@ class TrainingPanel(QWidget):
             "best (the run's own where none is marked), or its mean or median over epochs."
         )
         self.value_box.currentIndexChanged.connect(lambda _index: self._table_changed())
-        table_row.addWidget(self.value_box)
-        self.range_label = _muted("over epochs")
+        grid.addWidget(self.value_box, 2, 1)
+        self.range_label = _muted("epochs")
         table_row.addWidget(self.range_label)
         self.first_epoch = _spin(1, 10_000, "The first epoch the mean or median is taken over.")
         self.last_epoch = _spin(1, 10_000, "The last epoch the mean or median is taken over.")
@@ -442,7 +448,7 @@ class TrainingPanel(QWidget):
             spin.valueChanged.connect(lambda _value: self._table_changed())
             table_row.addWidget(spin)
         table_row.addSpacing(12)
-        table_row.addWidget(_muted("Colours from"))
+        table_row.addWidget(_muted("Colours"))
         self.colour_low = _colour_spin("The value the palest colour stands for; anything lower is as pale.")
         self.colour_high = _colour_spin("The value the darkest colour stands for; anything higher is as dark.")
         ramp = QLabel()
@@ -458,7 +464,7 @@ class TrainingPanel(QWidget):
         )
         self.fit_colours_button.clicked.connect(self._fit_colours)
         table_row.addWidget(self.fit_colours_button)
-        self.auto_colours = QCheckBox("Auto")
+        self.auto_colours = ToggleSwitch("Auto")
         self.auto_colours.setChecked(self.controller.auto_colours)
         self.auto_colours.setToolTip(
             "Auto-scale whenever the table changes: a run or a class ticked, another "
@@ -467,7 +473,8 @@ class TrainingPanel(QWidget):
         self.auto_colours.toggled.connect(self._auto_colours_toggled)
         table_row.addWidget(self.auto_colours)
         table_row.addStretch(1)
-        column.addWidget(self.table_row)
+        grid.addWidget(self.table_row, 2, 2, 1, 2)
+        column.addLayout(grid)
 
         self.chart = ChartView()
         self.chart.export_table_requested.connect(self.export_table)
@@ -692,7 +699,7 @@ class TrainingPanel(QWidget):
         self.checkpoints_list.blockSignals(False)
 
     def _show_classes(self, names: tuple[str, ...]) -> None:
-        """Offer a box per class, each beside the colour its curve is drawn in."""
+        """Offer a switch per class, each in the colour its curve is drawn in."""
         if tuple(self.class_boxes) != names:
             layout = self.class_area.layout()
             assert layout is not None, "the area was given its layout when built"
@@ -701,13 +708,11 @@ class TrainingPanel(QWidget):
                 box.deleteLater()
             self.class_boxes = {}
             for index, name in enumerate(names):
-                box = QCheckBox(name)
+                box = ToggleSwitch(name)
                 box.setToolTip(f"Draw the curve for {name}. The weighted averages stay over every class.")
                 if has_plot_support():
-                    swatch = QPixmap(SWATCH_CELL, SWATCH_CELL)
-                    swatch.fill(QColor(class_colour(index)))
-                    box.setIcon(QIcon(swatch))
-                    box.setIconSize(QSize(SWATCH_CELL, SWATCH_CELL))
+                    # The colour its curve is drawn in, which a swatch beside it would say twice.
+                    box.set_colour(class_colour(index))
                 box.toggled.connect(lambda shown, name=name: self._class_toggled(name, shown))
                 layout.addWidget(box)
                 self.class_boxes[name] = box
@@ -755,7 +760,7 @@ class TrainingPanel(QWidget):
                 box.deleteLater()
             self.set_boxes = {}
             for name in offered:
-                box = QCheckBox(name)
+                box = ToggleSwitch(name)
                 box.setToolTip(f"Give {name} a column under each class.")
                 box.setChecked(name not in controller.hidden_sets)
                 box.toggled.connect(lambda shown, name=name: self._set_toggled(name, shown))
@@ -855,7 +860,8 @@ class TrainingPanel(QWidget):
         """Draw the view chosen, only where it would differ from what is drawn."""
         tabled = self.controller.view == "table"
         ranged = self.controller.table_value in RANGED_VALUES
-        self.table_row.setVisible(tabled)
+        for widget in (self.value_caption, self.value_box, self.table_row):
+            widget.setVisible(tabled)
         for widget in (self.range_label, self.first_epoch, self.last_epoch):
             widget.setVisible(ranged)
         # The numbers behind the table; a run's curves are its metrics files.
