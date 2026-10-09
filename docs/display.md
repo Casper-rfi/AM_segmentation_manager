@@ -279,7 +279,7 @@ of one of these files, is held by `test_docs.py`.
   rather than read out of a sentence (`test_clicking_a_value_chooses_it_and_clicking_it_again_undecides`).
 - **Who changes are recorded under is a standing line in the corner, not a warning per action.**
   Actions on four tabs put a name into a log, and two exports and a training run write it into what
-  they leave behind — a copy's fork point, a set's manifest, a run's record: there is no single tab to say it
+  they leave behind — a copy's fork point, a set's manifest, a run's records: there is no single tab to say it
   on and far too many places to warn at. It is muted, being a fact rather than a message.
 - **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
   holds reaches a write path (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`).

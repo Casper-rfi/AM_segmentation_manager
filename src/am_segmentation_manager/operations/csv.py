@@ -1,5 +1,5 @@
 """Writing the image and label lists a training run reads: one train/validation
-pair, or one per fold for cross-validation.
+pair, or one per fold for cross-validation, and with them each image's side and metadata.
 
 A row is one acquisition: both beams side by side (``sem_image, sem_label,
 fib_image, fib_label``), or ``image, label`` for one beam, a cell blank where that

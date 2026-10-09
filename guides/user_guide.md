@@ -324,14 +324,16 @@ the file manager. The tick boxes, with **Tick all** and **None**, choose the
 runs **Table** sets side by side. The mark beside a run has two bars: the
 epochs trained of the most it may train, and below it how many of the weights
 it saved are still on disk, which is where to look for runs to tidy. Hover for
-the numbers and the disk space; F1 says what the colours mean. For the run
-selected, the tab shows how it stands, its loss and a metric per class by
-epoch, and its checkpoints, the best marked. Untick a class beside
-**Metric per class** to take its curve out, and tick **background** to draw
-it, which is left out at first; the weighted averages stay over
-every class. Point at a curve to read its class, epoch and value. A run AM-model-training was
-started on directly, here or on another machine, is listed too, from the files
-it wrote: point **Training directory...** at the folder holding such runs.
+the numbers and the disk space; F1 says what the colours mean. A run
+AM-model-training was started on directly, here or on another machine, is
+listed too, from the files it wrote: point **Training directory...** at the
+folder holding such runs.
+
+For the run selected, the tab shows how it stands, its loss and a metric per
+class by epoch, and its checkpoints. Untick a class beside **Metric per
+class** to take its curve out, and tick **background** to draw it, which is
+left out at first; the weighted averages stay over every class. Point at a
+curve to read its class, epoch and value.
 
 - **Save a copy...** copies the selected epoch's weights to wherever you keep
   your models. To predict with it, choose that file as the model on Curate.
@@ -343,7 +345,8 @@ it wrote: point **Training directory...** at the folder holding such runs.
 - **Delete the others...** deletes that run's checkpoints except the ones you
   selected, about 170 MB each. It asks first and cannot be undone. The epoch
   you marked as best is always kept, and the run's own best too while **Keep
-  the run's best** is ticked.
+  the run's best** is ticked. Nothing is deleted while the run is training or
+  being validated.
 - **Stop** ends a run. The epoch in progress is lost, and a stopped run is not
   continued: start another, refining from one of its checkpoints.
 

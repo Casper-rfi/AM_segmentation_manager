@@ -1,12 +1,12 @@
-"""What the Train tab knows: the run being set up, and the runs in the training directory.
+"""What the Train tab knows: the run being set up, the runs there are, and how they are looked at.
 
-Holds no Qt and decides nothing an operation does not: preparing, starting, stopping
-and reading a run are :mod:`..operations.training_run`, :mod:`..operations.training_process`
-and :mod:`..training_runs`, as the command line uses them. **Every run shown is read
-from its directory**, so a window opened later, or on another day, shows the same;
-a run AM-model-training was started on without am-seg is listed beside the others,
-with what its own files say. A metrics file caught mid-rewrite keeps the epochs last
-read whole, so a curve never drops to nothing between two polls.
+Holds no Qt and decides nothing an operation does not: preparing, starting, stopping,
+marking, validating and comparing are the operations and readers the command line uses.
+**Every run shown is read from its directory**, its validations and the epoch marked as
+its best with it, so a window opened on another day shows the same; a run started
+without am-seg is listed beside the others. What is ticked, which classes and sets are
+drawn and what a table's cell holds are the tab's alone, and last only as long as it does.
+A metrics file caught mid-rewrite keeps the epochs last read whole.
 """
 from __future__ import annotations
 

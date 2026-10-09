@@ -1,7 +1,8 @@
-"""Charts of the breakdowns :mod:`am_segmentation_manager.aggregate` counts, and of a training run.
+"""Charts of the breakdowns :mod:`am_segmentation_manager.aggregate` counts, and of training runs.
 
 One property is bars and two are a heatmap, whose *empty* cells are the finding; a
-training run is its curves, epoch by epoch. **A deliberately small module**: it draws
+training run is its curves, epoch by epoch, and several are a table shaded by value.
+**A deliberately small module**: it draws
 what is already computed or read, and anything bespoke belongs in a script. Figures are
 built without ``pyplot``, so nothing registers globally, no backend is chosen, and a
 chart drawn over ssh never looks for a display. The window attaches its own canvas; the
@@ -404,7 +405,7 @@ def nearest_curve_point(
         for line in axes.get_lines():
             if line.get_gid() != CURVE or not line.get_visible():
                 continue
-            data = line.get_xydata()
+            data = np.asarray(line.get_xydata(), dtype=float)
             if not len(data):
                 continue
             pixels = line.get_transform().transform(data)

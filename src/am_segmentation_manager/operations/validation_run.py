@@ -417,14 +417,10 @@ def _described(images: Path | None) -> tuple[tuple[str, ...], dict[str, dict[str
 
 def _ranges(epochs: Sequence[int]) -> str:
     """Return *epochs* in words, a run of them as its first and last."""
-    said: list[str] = []
-    start = previous = None
-    for epoch in [*sorted(epochs), None]:
-        if start is None:
-            start = previous = epoch
-        elif epoch is not None and epoch == previous + 1:
-            previous = epoch
+    runs: list[list[int]] = []
+    for epoch in sorted(epochs):
+        if runs and epoch == runs[-1][1] + 1:
+            runs[-1][1] = epoch
         else:
-            said.append(str(start) if start == previous else f"{start}-{previous}")
-            start = previous = epoch
-    return ", ".join(said) or "none"
+            runs.append([epoch, epoch])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs) or "none"

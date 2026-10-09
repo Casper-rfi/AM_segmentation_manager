@@ -2,8 +2,10 @@
 
 ``train`` prepares a run from a training export and starts it in a process of its
 own, which goes on after this command returns; ``show-training`` reports how a run
-stands and what it has written, and draws its curves; ``stop-training`` ends one.
-Only ``train`` needs the training stack. The order is the order they are met in.
+stands and what it has written, and draws its curves; ``stop-training`` ends one;
+``validate`` scores a run on another export; ``compare-training`` sets runs side by
+side; ``choose-best`` marks an epoch. Only ``train`` and ``validate`` need the
+training stack. The order is the order they are met in.
 """
 from __future__ import annotations
 

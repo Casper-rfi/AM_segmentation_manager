@@ -38,9 +38,9 @@ from qtpy.QtWidgets import (
 from ...io.tables import write_csv
 from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
 from ...operations.training_run import TrainingPlan, TrainingRunRefused
-from ...operations.validation_run import ValidationPlan
+from ...operations.validation_run import Rows, ValidationPlan
 from ...plots import class_colour, comparison_figure, has_plot_support, training_figure
-from ...training_compare import EVERY_SET, RANGED_VALUES, VALUE_CAPTIONS
+from ...training_compare import EVERY_SET, RANGED_VALUES, VALUE_CAPTIONS, Comparison
 from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
 from ..training_controller import RunSummary, TrainingController
 from .chart_view import ChartView
@@ -389,10 +389,10 @@ class TrainingPanel(QWidget):
         table_row.addWidget(self.range_label)
         self.first_epoch = _spin(1, 10_000, "The first epoch the mean or median is taken over.")
         self.last_epoch = _spin(1, 10_000, "The last epoch the mean or median is taken over.")
-        for box, epoch in zip((self.first_epoch, self.last_epoch), self.controller.epoch_range):
-            box.setValue(epoch)
-            box.valueChanged.connect(lambda _value: self._table_changed())
-            table_row.addWidget(box)
+        for spin, epoch in zip((self.first_epoch, self.last_epoch), self.controller.epoch_range):
+            spin.setValue(epoch)
+            spin.valueChanged.connect(lambda _value: self._table_changed())
+            table_row.addWidget(spin)
         table_row.addStretch(1)
         column.addWidget(self.table_row)
 
@@ -560,7 +560,9 @@ class TrainingPanel(QWidget):
                 str(run.directory) if run.problem else f"{run.directory}\n{run.progress()}"
                 for run in runs
             ],
-            current=directories.index(controller.selected) if directories else None,
+            current=(
+                directories.index(controller.selected) if controller.selected is not None else None
+            ),
         )
         self._show_selected()
 
@@ -612,6 +614,7 @@ class TrainingPanel(QWidget):
         """Offer a box per class, each beside the colour its curve is drawn in."""
         if tuple(self.class_boxes) != names:
             layout = self.class_area.layout()
+            assert layout is not None, "the area was given its layout when built"
             for box in self.class_boxes.values():
                 layout.removeWidget(box)
                 box.deleteLater()
@@ -665,6 +668,7 @@ class TrainingPanel(QWidget):
         offered = controller.set_names([controller.sets_of(run) for run in ticked])
         if tuple(self.set_boxes) != offered:
             layout = self.set_area.layout()
+            assert layout is not None, "the area was given its layout when built"
             for box in self.set_boxes.values():
                 layout.removeWidget(box)
                 box.deleteLater()
@@ -727,7 +731,7 @@ class TrainingPanel(QWidget):
     def export_table(self) -> None:
         """Write the table drawn to a CSV the person names."""
         table = self._drawn
-        if self.controller.view != "table" or not hasattr(table, "cells"):
+        if self.controller.view != "table" or not isinstance(table, Comparison):
             return
         destination = self._ask_table_destination()
         if destination is None:
@@ -1127,7 +1131,7 @@ class TrainingPanel(QWidget):
         box.exec()
         return box.clickedButton() is go
 
-    def _ask_validation(self, run: RunSummary) -> tuple[Path, str, str] | None:
+    def _ask_validation(self, run: RunSummary) -> tuple[Path, str, Rows] | None:
         """Ask which export to score *run* on, what to call it and which of its rows."""
         dialog = ValidationDialog(self, run, self.controller.manifest or self.controller.last_export)
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -1275,10 +1279,11 @@ class ValidationDialog(QDialog):
         self._suggest()
         self._show()
 
-    def asked(self) -> tuple[Path, str, str]:
+    def asked(self) -> tuple[Path, str, Rows]:
         """Return the manifest, the name and the rows chosen."""
         assert self._manifest is not None
-        return self._manifest, self.name_edit.text().strip(), str(self.rows_box.currentData())
+        rows: Rows = "all" if self.rows_box.currentData() == "all" else "validation"
+        return self._manifest, self.name_edit.text().strip(), rows
 
     def _browse(self) -> None:
         chosen = choose_open_file(
