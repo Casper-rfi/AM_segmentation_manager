@@ -13,7 +13,7 @@ import json
 import logging
 import re
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -250,12 +250,17 @@ def written_in(directory: Path) -> Path | None:
     return found[-1] if found else None
 
 
-def find_training_runs(path: Path, depth: int = SEARCH_DEPTH) -> list[Path]:
-    """Return the run directories at *path* or up to *depth* levels below it, oldest first.
+def find_directories(path: Path, depth: int, wanted: Callable[[Path], bool]) -> list[Path]:
+    """Return *path* if it is *wanted*, else the wanted directories up to *depth* levels below it.
 
-    A run directory is not looked inside for further runs.
+    A wanted directory is not looked inside for more, nor is one whose name
+    starts with a dot; one that cannot be listed is logged and passed over.
+
+    Args:
+        depth: How many levels of folders between *path* and a wanted directory
+            are looked through; 0 finds only those directly inside it.
     """
-    if is_run_directory(path):
+    if wanted(path):
         return [path]
     found: list[Path] = []
     level = [path]
@@ -271,8 +276,17 @@ def find_training_runs(path: Path, depth: int = SEARCH_DEPTH) -> list[Path]:
                 logger.warning("Could not look inside %s: %s", directory, error)
                 continue
             for child in children:
-                (found if is_run_directory(child) else below).append(child)
+                (found if wanted(child) else below).append(child)
         level = below
+    return found
+
+
+def find_training_runs(path: Path, depth: int = SEARCH_DEPTH) -> list[Path]:
+    """Return the run directories at *path* or up to *depth* levels below it, oldest first.
+
+    A run directory is not looked inside for further runs.
+    """
+    found = find_directories(path, depth, is_run_directory)
     return sorted(found, key=lambda run: (parse_started(run.name) or datetime.min.replace(tzinfo=UTC), run))
 
 

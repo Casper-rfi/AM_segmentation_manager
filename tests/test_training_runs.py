@@ -425,3 +425,25 @@ def test_a_colour_range_that_is_not_one_is_refused_at_the_command_line(tmp_path:
     with pytest.raises(SystemExit):
         main(["compare-training", str(tmp_path), "--colour-range", asked])
 
+
+
+def test_a_folder_that_cannot_be_listed_is_passed_over_and_said_so(tmp_path: Path, monkeypatch, caplog):
+    from am_segmentation_manager.training_runs import find_directories
+
+    wanted = _run(tmp_path / "open")
+    (tmp_path / "shut").mkdir()
+    (tmp_path / ".hidden" / "training_261001_120000").mkdir(parents=True)
+    listing = Path.iterdir
+
+    def iterdir(directory: Path):
+        if directory.name == "shut":
+            raise PermissionError("not yours")
+        return listing(directory)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+
+    with caplog.at_level("WARNING"):
+        found = find_directories(tmp_path, 1, lambda path: path.name.startswith("training_"))
+
+    assert found == [wanted]
+    assert "shut" in caplog.text

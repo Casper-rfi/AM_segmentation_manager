@@ -27,6 +27,7 @@ from ..history import resolve_author
 from ..io.image import to_2d
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
+from ..training_runs import find_directories
 from .csv import SINGLE_COLUMNS
 from .label_io import read_label
 from .training_manifest import TrainingManifest, read_training_manifest
@@ -467,25 +468,9 @@ def find_run_directories(path: Path, depth: int = 0) -> list[Path]:
 
     A run directory is not looked inside for further runs.
     """
-    if (path / RUN_RECORD_FILENAME).is_file():
-        return [path]
-    found: list[Path] = []
-    level = [path]
-    for _ in range(depth + 1):
-        below: list[Path] = []
-        for directory in level:
-            try:
-                children = sorted(
-                    child for child in directory.iterdir()
-                    if child.is_dir() and not child.name.startswith(".")
-                )
-            except OSError as error:
-                logger.warning("Could not look inside %s: %s", directory, error)
-                continue
-            for child in children:
-                (found if (child / RUN_RECORD_FILENAME).is_file() else below).append(child)
-        level = below
-    return sorted(found)
+    return sorted(find_directories(
+        path, depth, lambda directory: (directory / RUN_RECORD_FILENAME).is_file()
+    ))
 
 
 def locate_collection(
