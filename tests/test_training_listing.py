@@ -94,3 +94,17 @@ def test_a_choice_that_cannot_be_read_is_none_to_a_listing_and_says_so(tmp_path:
         assert chosen_best_or_none(tmp_path) is None
 
     assert CHOICE_FILENAME in caplog.text
+
+
+def test_show_training_says_how_a_run_prepared_in_a_folder_of_runs_stands(tmp_path: Path, capsys):
+    home = _prepare(tmp_path)
+    nested = tmp_path / "all" / "october"
+    nested.mkdir(parents=True)
+    home = home.rename(nested / home.name)
+    _run(home, **SCORED)
+
+    assert main(["show-training", str(tmp_path / "all")]) == 0
+
+    said = capsys.readouterr().out
+    assert "round01: prepared, not started" in said
+    assert said.count("best validation epoch 1") == 1

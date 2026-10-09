@@ -30,7 +30,6 @@ from ..operations.training_run import (
     TrainingRunRefused,
     apply_training_run,
     default_settings,
-    find_run_directories,
     plan_training_run,
     read_run_record,
 )
@@ -60,7 +59,6 @@ from ..training_runs import (
     PER_CLASS_METRICS,
     SEARCH_DEPTH,
     TrainingRun,
-    find_training_runs,
     read_training_run,
     written_in,
 )
@@ -435,37 +433,30 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
     if not path.is_dir():
         logger.error("Not a directory: %s", path)
         return 2
-    prepared = find_run_directories(path)
-    found = find_training_runs(path)
-    if not prepared and not found:
+    listed = list_runs(path)
+    if not listed:
         logger.error("No training run found at %s or up to %d levels below it", path, SEARCH_DEPTH)
         return 2
 
     runs: list[TrainingRun] = []
     marked: dict[Path, int | None] = {}
-    for directory in prepared:
-        try:
-            record = read_run_record(directory)
-            status = run_status(directory)
-        except ValueError as error:
-            logger.error("%s", error)
-            continue
-        print(f"{directory}  ({record.name if record else directory.name}: {status.describe()})")
-        if record is not None and record.train_count is not None:
-            validation = "?" if record.validation_count is None else record.validation_count
-            print(f"  {record.train_count} training and {validation} validation pair(s)")
-        for written in find_training_runs(directory, depth=0):
-            runs.append(read_training_run(written))
-            marked[written] = _marked(directory)
-            _print_run(runs[-1], args.metric, marked[written])
-        _print_validations(directory, args.metric)
-    inside = {run.directory for run in runs}
-    for directory in found:
-        if directory not in inside:
-            runs.append(read_training_run(directory))
-            marked[directory] = _marked(directory)
-            _print_run(runs[-1], args.metric, marked[directory])
-            _print_validations(directory, args.metric)
+    for run in listed:
+        if run.written != run.home:
+            try:
+                record = read_run_record(run.home)
+                status = run_status(run.home)
+            except ValueError as error:
+                logger.error("%s", error)
+                continue
+            print(f"{run.home}  ({run.name}: {status.describe()})")
+            if record is not None and record.train_count is not None:
+                validation = "?" if record.validation_count is None else record.validation_count
+                print(f"  {record.train_count} training and {validation} validation pair(s)")
+        if run.written is not None:
+            runs.append(read_training_run(run.written))
+            marked[run.written] = _marked(run.home)
+            _print_run(runs[-1], args.metric, marked[run.written])
+        _print_validations(run.home, args.metric)
 
     if args.plot:
         if len(runs) != 1:
