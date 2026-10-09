@@ -662,3 +662,20 @@ def test_a_run_started_without_am_seg_takes_its_most_epochs_from_its_own_files(
 
     assert listed.most_epochs == 90
     assert listed.saved_epochs == (1, 2) and listed.kept == ()
+
+
+# -- the classes drawn --------------------------------------------------------
+
+
+def test_background_is_left_out_until_asked_for(controller: TrainingController):
+    assert controller.shown_classes(("background", "gis", "lamella")) == ("gis", "lamella")
+
+    controller.show_class("background", True)
+    assert controller.shown_classes(("background", "gis")) == ("background", "gis")
+
+
+def test_a_class_left_out_stays_out_from_one_run_to_the_next(controller: TrainingController):
+    controller.show_class("gis", False)
+
+    assert controller.shown_classes(("background", "gis", "lamella")) == ("lamella",)
+    assert controller.shown_classes(("lamella", "gis")) == ("lamella",)

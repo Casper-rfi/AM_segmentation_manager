@@ -10,9 +10,10 @@ chart drawn over ssh never looks for a display. The window attaches its own canv
 from __future__ import annotations
 
 import logging
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Collection, Hashable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .aggregate import totals
 from .io.atomic import write_atomically
@@ -354,7 +355,83 @@ _METRIC_LABELS = {
 }
 
 
-def training_figure(run: TrainingRun, metric: str = "iou") -> Figure:
+#: Marks a line as a curve a reader can point at, apart from the lines marking an epoch.
+CURVE = "curve"
+
+#: How near a curve's point the pointer must be to be read as pointing at it, in pixels.
+HOVER_PIXELS = 10.0
+
+
+@dataclass(frozen=True)
+class CurvePoint:
+    """One point of one curve: what the pointer is on.
+
+    Attributes:
+        axes: The panel the curve is drawn in.
+        curve: What the curve is called in the legend.
+        quantity: What the panel plots: its y axis's label, before any comma.
+        x: The point's epoch.
+        y: Its value.
+    """
+
+    axes: Any
+    curve: str
+    quantity: str
+    x: float
+    y: float
+
+    def describe(self) -> str:
+        """Return the point in a line: the curve, the epoch, the value."""
+        return f"{self.curve} · epoch {self.x:g} · {self.quantity} {self.y:.3f}"
+
+
+def nearest_curve_point(
+    figure: Figure, x: float, y: float, within: float = HOVER_PIXELS
+) -> CurvePoint | None:
+    """Return the curve point nearest pixel (*x*, *y*) of a drawn *figure*, or None beyond *within*.
+
+    Only lines marked :data:`CURVE` are looked at, and distance is measured on
+    the screen, so a logarithmic axis reads as it looks.
+    """
+    import numpy as np
+
+    nearest: CurvePoint | None = None
+    closest = within
+    for axes in figure.axes:
+        for line in axes.get_lines():
+            if line.get_gid() != CURVE or not line.get_visible():
+                continue
+            data = line.get_xydata()
+            if not len(data):
+                continue
+            pixels = line.get_transform().transform(data)
+            distances = np.hypot(pixels[:, 0] - x, pixels[:, 1] - y)
+            index = int(np.nanargmin(distances)) if not np.isnan(distances).all() else None
+            if index is not None and distances[index] <= closest:
+                closest = float(distances[index])
+                nearest = CurvePoint(
+                    axes, str(line.get_label()), axes.get_ylabel().split(",")[0],
+                    float(data[index, 0]), float(data[index, 1]),
+                )
+    return nearest
+
+
+def class_colour(index: int) -> str:
+    """Return the colour class *index*'s curve is drawn in, as ``#rrggbb``.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+    """
+    require_plot_support()
+    from matplotlib import colormaps
+    from matplotlib.colors import to_hex
+
+    return to_hex(colormaps["tab10"](index))
+
+
+def training_figure(
+    run: TrainingRun, metric: str = "iou", classes: Collection[str] | None = None
+) -> Figure:
     """Draw a run's loss, and *metric* for each class, epoch by epoch.
 
     The classes are drawn from validation, where a model is judged, with the
@@ -364,19 +441,28 @@ def training_figure(run: TrainingRun, metric: str = "iou") -> Figure:
 
     Args:
         metric: One of :data:`~am_segmentation_manager.training_runs.PER_CLASS_METRICS`.
+        classes: The classes to draw a curve for; every one where omitted. The
+            weighted averages are over every class whichever are drawn.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
-        ValueError: If the run has no epochs yet, or *metric* is unknown.
+        ValueError: If the run has no epochs yet, *metric* is unknown, or one of
+            *classes* is not a class of the run.
     """
     require_plot_support()
     if metric not in PER_CLASS_METRICS:
         raise ValueError(f"Unknown metric {metric!r}; choose from {', '.join(PER_CLASS_METRICS)}")
+    unknown = sorted(set(classes or ()) - set(run.label_names))
+    if unknown:
+        raise ValueError(
+            f"Unknown class {', '.join(unknown)}; choose from {', '.join(run.label_names)}"
+        )
     if not run.train and not run.val:
         raise ValueError("Nothing to plot: the run has finished no epoch yet")
 
     from matplotlib import colormaps
     from matplotlib.figure import Figure
+    from matplotlib.ticker import MaxNLocator
 
     figure = Figure(figsize=(_WIDTH * 1.25, 4.2), layout="constrained")
     loss_axes, metric_axes = figure.subplots(1, 2)
@@ -384,23 +470,26 @@ def training_figure(run: TrainingRun, metric: str = "iou") -> Figure:
     for epochs, side, style in ((run.train, "training", "--"), (run.val, "validation", "-")):
         if epochs:
             loss_axes.plot([e.epoch for e in epochs], [e.loss for e in epochs],
-                           style, color=_BAR_COLOUR, label=side)
+                           style, color=_BAR_COLOUR, label=side, gid=CURVE)
     loss_axes.set_yscale("log")
     loss_axes.set_ylabel("loss")
 
     by_class = run.val or run.train
     palette = colormaps["tab10"]
     for index, name in enumerate(run.label_names):
+        if classes is not None and name not in classes:
+            continue
         points = [(e.epoch, e.per_class[metric][index]) for e in by_class
                   if len(e.per_class.get(metric, ())) > index]
         if points:
-            metric_axes.plot(*zip(*points), color=palette(index), linewidth=1, label=name)
+            metric_axes.plot(*zip(*points), color=palette(index), linewidth=1, label=name,
+                             gid=CURVE)
     average = f"weighted_average_{metric}"
     for epochs, side, style in ((run.train, "training", "--"), (run.val, "validation", "-")):
         points = [(e.epoch, e.scalars[average]) for e in epochs if average in e.scalars]
         if points:
             metric_axes.plot(*zip(*points), style, color="#222222", linewidth=1.8,
-                             label=f"weighted average, {side}")
+                             label=f"weighted average, {side}", gid=CURVE)
     metric_axes.set_ylabel(f"{_METRIC_LABELS[metric]}, per class from "
                            f"{'validation' if run.val else 'training'}")
     metric_axes.set_ylim(0, 1)
@@ -414,6 +503,7 @@ def training_figure(run: TrainingRun, metric: str = "iou") -> Figure:
             axes.axvline(run.frozen_epochs + 1, color="#888888", linestyle="-.", linewidth=1,
                          label="encoder unfrozen")
         axes.set_xlabel("epoch")
+        axes.xaxis.set_major_locator(MaxNLocator(integer=True))
         axes.spines[["top", "right"]].set_visible(False)
     loss_axes.legend(fontsize=7, frameon=False)
     # Outside the axes: every corner of a run's metric panel holds a curve.
@@ -426,13 +516,18 @@ def training_figure(run: TrainingRun, metric: str = "iou") -> Figure:
 
 
 def plot_training_run(
-    run: TrainingRun, output: Path, *, metric: str = "iou", overwrite: bool = False
+    run: TrainingRun,
+    output: Path,
+    *,
+    metric: str = "iou",
+    classes: Collection[str] | None = None,
+    overwrite: bool = False,
 ) -> Path:
     """Draw a run's curves and write them to *output*.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
-        ValueError: If the run has no epochs yet, or *metric* is unknown.
+        ValueError: As :func:`training_figure`.
         FileExistsError: If *output* exists and *overwrite* is False.
     """
-    return _finish(training_figure(run, metric), output, overwrite=overwrite)
+    return _finish(training_figure(run, metric, classes), output, overwrite=overwrite)

@@ -5,7 +5,8 @@ builds figures and knows nothing about widgets; this attaches a canvas to one.
 **Matplotlib's own toolbar is never shown**: its Subplots and Customize change a
 figure bound for a paper with nothing recording it. A hidden one still drives
 pan and zoom, which are matplotlib's to do, and the bar offers those, a reset,
-and the ways out -- a file, the clipboard, or the counts behind the chart.
+and the ways out -- a file, the clipboard, or the counts behind the chart. A
+chart of curves can say which point the pointer is on.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...plots import CurvePoint, nearest_curve_point
 from .controls import FlowArea, FlowLayout, SegmentedControl
 from .paths import choose_save_file
 
@@ -88,6 +90,8 @@ class ChartView(QWidget):
         self._figure: Figure | None = None
         self._canvas: FigureCanvasQTAgg | None = None
         self._toolbar: NavigationToolbar2QT | None = None
+        self._hover = False
+        self._note = None
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -161,7 +165,7 @@ class ChartView(QWidget):
         self._set_actions_enabled(False)
 
     def show_chart(
-        self, build: Callable[[str], Figure], *, shadeable: bool = False
+        self, build: Callable[[str], Figure], *, shadeable: bool = False, hover: bool = False
     ) -> None:
         """Draw the figure *build* returns.
 
@@ -172,8 +176,10 @@ class ChartView(QWidget):
                 draws a different chart rather than repainting this one.
             shadeable: Whether the shading applies. Only a grid has rows and
                 columns to take a share of.
+            hover: Whether the curve point under the pointer is named beside it.
         """
         self._build = build
+        self._hover = hover
         self.message.setVisible(False)
         self.shading.setVisible(shadeable)
         self._draw()
@@ -189,7 +195,7 @@ class ChartView(QWidget):
                 self._layout.removeWidget(widget)
                 widget.setParent(None)
                 widget.deleteLater()
-        self._figure = self._canvas = self._toolbar = None
+        self._figure = self._canvas = self._toolbar = self._note = None
 
     def _draw(self) -> None:
         """Replace the canvas with a chart drawn for the shading chosen."""
@@ -202,9 +208,48 @@ class ChartView(QWidget):
         self._take_down()
         self._figure, self._canvas, self._toolbar = figure, canvas, toolbar
         self._layout.addWidget(canvas, stretch=1)
+        if self._hover:
+            canvas.mpl_connect("motion_notify_event", lambda event: self.point_at(event.x, event.y))
+            canvas.mpl_connect("figure_leave_event", lambda _event: self._say(None))
         self._set_actions_enabled(True)
         self._sync_modes()
         canvas.draw_idle()
+
+    def point_at(self, x: float, y: float) -> None:
+        """Name the curve point at canvas pixel (*x*, *y*), or take the name down.
+
+        Nothing is named while panning or zooming, where the pointer is doing
+        something else.
+        """
+        if self._figure is None:
+            return
+        busy = self._toolbar is not None and bool(self._toolbar.mode)
+        self._say(None if busy else nearest_curve_point(self._figure, x, y))
+
+    def hovered(self) -> str:
+        """Return what is said of the point under the pointer, or "" where nothing is."""
+        return self._note.get_text() if self._note is not None else ""
+
+    def _say(self, point: CurvePoint | None) -> None:
+        """Put the note on *point*, or take it down; a saved figure never carries one left behind."""
+        if self._note is None and point is None:
+            return
+        if self._note is not None:
+            self._note.remove()
+            self._note = None
+        if point is not None:
+            # Towards the middle of the panel, so the note is never cut off at its edge.
+            low, high = point.axes.get_xlim()
+            left = point.x > (low + high) / 2
+            self._note = point.axes.annotate(
+                point.describe(), (point.x, point.y),
+                xytext=(-10 if left else 10, 10), textcoords="offset points",
+                ha="right" if left else "left", fontsize=8, annotation_clip=False,
+                bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "edgecolor": "#888888"},
+                arrowprops={"arrowstyle": "-", "color": "#888888"},
+            )
+        if self._canvas is not None:
+            self._canvas.draw_idle()
 
     def _reset(self) -> None:
         if self._toolbar is not None:

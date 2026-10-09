@@ -534,3 +534,77 @@ def test_the_key_list_says_what_a_run_s_chip_means(qt_app):
     meanings = " ".join(meaning for _, _, meaning in _tab_marks(TAB_TRAIN))
 
     assert "epochs trained" in meanings and "still on disk" in meanings
+
+
+# -- classes, and the point under the pointer ---------------------------------
+
+
+@pytest.fixture
+def drawn(panel):
+    """The panel showing the real run's curves."""
+    import shutil
+
+    pytest.importorskip("matplotlib")
+    real = Path(__file__).parent / "data" / "amt_run" / "training_260927_093830"
+    shutil.copytree(real, panel.controller.training_directory / "real" / real.name)
+    panel.refresh()
+    return panel
+
+
+def _curves(panel: TrainingPanel) -> set[str]:
+    _, metric_axes = panel.chart._figure.axes
+    return {line.get_label() for line in metric_axes.get_lines() if line.get_gid() == "curve"}
+
+
+def test_a_box_is_offered_for_each_class_of_the_run_all_but_background_ticked(drawn):
+    assert list(drawn.class_boxes) == ["background", "gis", "lamella", "crack", "vacuum"]
+    assert [name for name, box in drawn.class_boxes.items() if not box.isChecked()] == ["background"]
+    assert "crack" in _curves(drawn) and "background" not in _curves(drawn)
+
+    drawn.class_boxes["background"].setChecked(True)
+    assert "background" in _curves(drawn)
+
+
+def test_unticking_a_class_takes_its_curve_out_and_leaves_the_averages(drawn):
+    drawn.class_boxes["crack"].setChecked(False)
+
+    curves = _curves(drawn)
+
+    assert "crack" not in curves and "gis" in curves
+    assert "weighted average, validation" in curves
+
+
+def test_a_class_unticked_is_still_unticked_when_the_runs_are_read_again(drawn):
+    drawn.class_boxes["vacuum"].setChecked(False)
+
+    drawn.refresh()
+
+    assert not drawn.class_boxes["vacuum"].isChecked()
+    assert "vacuum" not in _curves(drawn)
+
+
+def test_pointing_at_a_curve_names_the_class_the_epoch_and_the_value(drawn, qt_app):
+    chart = drawn.chart
+    chart._canvas.draw()
+    _, metric_axes = chart._figure.axes
+    line = next(line for line in metric_axes.get_lines() if line.get_label() == "gis")
+    x, y = line.get_transform().transform(line.get_xydata()[0])
+
+    chart.point_at(x, y)
+    assert chart.hovered().startswith("gis · epoch 1 · IoU 0.")
+
+    chart.point_at(1, 1)
+    assert chart.hovered() == ""
+
+
+def test_nothing_is_named_while_panning(drawn, qt_app):
+    chart = drawn.chart
+    chart._canvas.draw()
+    _, metric_axes = chart._figure.axes
+    line = next(line for line in metric_axes.get_lines() if line.get_label() == "gis")
+    x, y = line.get_transform().transform(line.get_xydata()[0])
+
+    chart.pan_button.click()
+    chart.point_at(x, y)
+
+    assert chart.hovered() == ""

@@ -112,7 +112,7 @@ measures the model rather than the sample.
 am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round02 --dry-run
 am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round02 \
     --refine AM_SEM_All_V01.pth
-am-seg show-training /path/to/runs/round02 --plot curves.png
+am-seg show-training /path/to/runs/round02 --plot curves.png --classes gis lamella crack
 am-seg stop-training /path/to/runs/round02
 ```
 

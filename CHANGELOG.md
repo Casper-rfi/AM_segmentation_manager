@@ -76,7 +76,8 @@ The first public release, to be published as 0.1.0.
   window is closed. The tab follows every run in the training directory,
   gathered under the folders they are kept in, each marked with how far it
   trained and how many of its saved weights are still on disk:
-  how it stands, its curves, and its checkpoints, one of which can be copied
+  how it stands, its curves for the classes ticked, read off under the
+  pointer, and its checkpoints, one of which can be copied
   out and the rest deleted. `stop-training` ends a run.
 - `show-training` reports how a run stands, and for any AM-model-training
   run, wherever it was started: its epochs, its best validation epoch and

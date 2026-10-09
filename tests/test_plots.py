@@ -16,6 +16,7 @@ from am_segmentation_manager.plots import (
     bar_figure,
     has_plot_support,
     heatmap_figure,
+    nearest_curve_point,
     plot_counts,
     plot_cross_tabulation,
     plot_training_run,
@@ -320,3 +321,76 @@ def test_an_existing_training_figure_is_refused(tmp_path: Path):
     with pytest.raises(FileExistsError):
         plot_training_run(read_training_run(TRAINING_RUN), output)
     assert output.read_bytes() == b"mine"
+
+
+# -- which classes are drawn, and what the pointer is on ----------------------
+
+
+def test_only_the_classes_asked_for_get_a_curve():
+    _, metric_axes = training_figure(
+        read_training_run(TRAINING_RUN), classes=("gis", "crack")
+    ).axes
+
+    labels = set(_legend_labels(metric_axes))
+
+    assert {"gis", "crack"} <= labels
+    assert not {"background", "lamella", "vacuum"} & labels
+    assert "weighted average, validation" in labels
+
+
+def test_a_class_the_run_does_not_have_is_refused():
+    with pytest.raises(ValueError, match="Unknown class ice"):
+        training_figure(read_training_run(TRAINING_RUN), classes=("ice",))
+
+
+def _drawn(figure):
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    FigureCanvasAgg(figure).draw()
+    return figure
+
+
+def _pixel(axes, label: str, index: int) -> tuple[float, float]:
+    line = next(line for line in axes.get_lines() if line.get_label() == label)
+    return tuple(line.get_transform().transform(line.get_xydata()[index]))
+
+
+def test_the_pointer_on_a_curve_reads_its_class_epoch_and_value():
+    run = read_training_run(TRAINING_RUN)
+    figure = _drawn(training_figure(run, classes=("lamella",)))
+    _, metric_axes = figure.axes
+    x, y = _pixel(metric_axes, "lamella", 1)
+
+    point = nearest_curve_point(figure, x + 2, y - 2)
+
+    assert point is not None and point.axes is metric_axes
+    assert (point.curve, point.x) == ("lamella", 2.0)
+    assert point.y == pytest.approx(run.val[1].per_class["iou"][2])
+    assert point.describe() == f"lamella · epoch 2 · IoU {point.y:.3f}"
+
+
+def test_the_loss_reads_on_its_logarithmic_axis():
+    run = read_training_run(TRAINING_RUN)
+    figure = _drawn(training_figure(run))
+    loss_axes, _ = figure.axes
+
+    point = nearest_curve_point(figure, *_pixel(loss_axes, "validation", 2))
+
+    assert point is not None
+    assert point.describe() == f"validation · epoch 3 · loss {run.val[2].loss:.3f}"
+
+
+def test_away_from_every_curve_the_pointer_is_on_nothing():
+    figure = _drawn(training_figure(read_training_run(TRAINING_RUN)))
+
+    assert nearest_curve_point(figure, 1.0, 1.0) is None
+
+
+def test_the_lines_marking_an_epoch_are_not_curves_to_point_at():
+    figure = _drawn(training_figure(read_training_run(TRAINING_RUN), classes=()))
+    _, metric_axes = figure.axes
+    marker = next(line for line in metric_axes.get_lines() if line.get_label().startswith("best"))
+    x, _ = marker.get_transform().transform((2, 0))
+    _, y = metric_axes.transData.transform((2, 0.9))
+
+    assert nearest_curve_point(figure, x, y) is None

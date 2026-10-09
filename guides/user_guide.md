@@ -324,7 +324,10 @@ epochs trained of the most it may train, and below it how many of the weights
 it saved are still on disk, which is where to look for runs to tidy. Hover for
 the numbers and the disk space; F1 says what the colours mean. For the run
 selected, the tab shows how it stands, its loss and a metric per class by
-epoch, and its checkpoints, the best marked. A run AM-model-training was
+epoch, and its checkpoints, the best marked. Untick a class beside
+**Metric per class** to take its curve out, and tick **background** to draw
+it, which is left out at first; the weighted averages stay over
+every class. Point at a curve to read its class, epoch and value. A run AM-model-training was
 started on directly, here or on another machine, is listed too, from the files
 it wrote: point **Training directory...** at the folder holding such runs.
 

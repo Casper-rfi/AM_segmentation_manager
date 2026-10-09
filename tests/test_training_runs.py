@@ -266,6 +266,18 @@ def test_show_training_draws_one_run(tmp_path: Path):
     assert output.read_bytes().startswith(b"\x89PNG")
 
 
+@pytest.mark.skipif(not has_plot_support(), reason="matplotlib not installed")
+def test_show_training_draws_the_classes_named_and_refuses_one_it_does_not_know(tmp_path: Path):
+    output = tmp_path / "curves.svg"
+
+    assert main(["show-training", str(FIXTURE), "--plot", str(output), "--classes", "gis", "crack"]) == 0
+    drawn = output.read_text(encoding="utf-8")
+    assert "crack" in drawn and "vacuum" not in drawn
+
+    assert main(["show-training", str(FIXTURE), "--plot", str(tmp_path / "no.svg"), "--classes", "ice"]) == 2
+    assert not (tmp_path / "no.svg").exists()
+
+
 def test_show_training_will_not_draw_several_runs_at_once(tmp_path: Path):
     _run(tmp_path, "training_261001_000000", train=[_epoch(1, 0.1, 0.1)])
     _run(tmp_path, "training_261002_000000", train=[_epoch(1, 0.1, 0.1)])

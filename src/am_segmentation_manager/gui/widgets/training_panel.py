@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from qtpy.QtCore import Qt, QTimer, QUrl, Signal
+from qtpy.QtCore import QSize, Qt, QTimer, QUrl, Signal
 from qtpy.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -35,12 +35,19 @@ from qtpy.QtWidgets import (
 
 from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
 from ...operations.training_run import TrainingPlan, TrainingRunRefused
-from ...plots import has_plot_support, training_figure
-from ...training_runs import PER_CLASS_METRICS
+from ...plots import class_colour, has_plot_support, training_figure
+from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
 from ..training_controller import RunSummary, TrainingController
 from .chart_view import ChartView
 from .common import chip_icon
-from .controls import ElidingLabel, GripSplitter, SegmentedControl, WrappingLabel
+from .controls import (
+    ElidingLabel,
+    FlowArea,
+    FlowLayout,
+    GripSplitter,
+    SegmentedControl,
+    WrappingLabel,
+)
 from .lists import FOLD_GAP, ProjectTree, add_check_all_buttons, add_fold_buttons
 from .paths import (
     ALL_FILES_FILTER,
@@ -118,6 +125,7 @@ class TrainingPanel(QWidget):
         self.run_in_background = lambda work, done: done(work())
         self._drawn: tuple | None = None
         self._listed: list[RunSummary] = []
+        self.class_boxes: dict[str, QCheckBox] = {}
 
         split = GripSplitter(Qt.Orientation.Horizontal)
         split.addWidget(self._build_form())
@@ -311,7 +319,10 @@ class TrainingPanel(QWidget):
             self.metric_box.addItem(METRIC_CAPTIONS[metric], metric)
         self.metric_box.currentIndexChanged.connect(lambda _index: self._show_selected())
         chart_row.addWidget(self.metric_box)
-        chart_row.addStretch(1)
+        # Wrapped: a model's classes are as many as it has, in a pane of any width.
+        self.class_area = FlowArea()
+        self.class_area.setLayout(FlowLayout(spacing=10))
+        chart_row.addWidget(self.class_area, stretch=1)
         column.addLayout(chart_row)
         self.chart = ChartView()
         # The counts behind a breakdown; a run's are its metrics files.
@@ -464,6 +475,7 @@ class TrainingPanel(QWidget):
             f"color: {ERROR};" if run.problem or run.state == "failed" else ""
         )
         self.asked_label.setText(_asked(run))
+        self._show_classes(run.written.label_names if run.written else DEFAULT_LABEL_NAMES)
         self._show_checkpoints(run)
         self._draw(run)
         self._show_buttons()
@@ -484,12 +496,43 @@ class TrainingPanel(QWidget):
             item.setSelected(checkpoint.epoch in kept)
         self.checkpoints_list.blockSignals(False)
 
+    def _show_classes(self, names: tuple[str, ...]) -> None:
+        """Offer a box per class, each beside the colour its curve is drawn in."""
+        if tuple(self.class_boxes) != names:
+            layout = self.class_area.layout()
+            for box in self.class_boxes.values():
+                layout.removeWidget(box)
+                box.deleteLater()
+            self.class_boxes = {}
+            for index, name in enumerate(names):
+                box = QCheckBox(name)
+                box.setToolTip(f"Draw the curve for {name}. The weighted averages stay over every class.")
+                if has_plot_support():
+                    swatch = QPixmap(SWATCH_CELL, SWATCH_CELL)
+                    swatch.fill(QColor(class_colour(index)))
+                    box.setIcon(QIcon(swatch))
+                    box.setIconSize(QSize(SWATCH_CELL, SWATCH_CELL))
+                box.toggled.connect(lambda shown, name=name: self._class_toggled(name, shown))
+                layout.addWidget(box)
+                self.class_boxes[name] = box
+            self.class_area.sync_height()
+        shown = self.controller.shown_classes(names)
+        for name, box in self.class_boxes.items():
+            box.blockSignals(True)
+            box.setChecked(name in shown)
+            box.blockSignals(False)
+
+    def _class_toggled(self, name: str, shown: bool) -> None:
+        self.controller.show_class(name, shown)
+        self._draw(self.controller.selected_run())
+
     def _draw(self, run: RunSummary | None) -> None:
         """Draw the run's curves, only where they would differ from what is drawn."""
         metric = self.metric_box.currentData()
         written = run.written if run else None
+        classes = self.controller.shown_classes(written.label_names) if written else ()
         key = (
-            run.directory if run else None, metric,
+            run.directory if run else None, metric, classes,
             len(written.train) if written else 0, len(written.val) if written else 0,
             written.finished if written else False,
         )
@@ -504,7 +547,9 @@ class TrainingPanel(QWidget):
         elif not has_plot_support():
             self.chart.show_message("Charts need matplotlib, which is not installed.")
         else:
-            self.chart.show_chart(lambda _shading: training_figure(written, metric))
+            self.chart.show_chart(
+                lambda _shading: training_figure(written, metric, classes), hover=True
+            )
 
     def _show_buttons(self) -> None:
         run = self.controller.selected_run()

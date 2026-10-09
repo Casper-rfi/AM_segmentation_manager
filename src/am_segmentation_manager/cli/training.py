@@ -176,6 +176,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         help="The per-class metric to report and draw (default: iou)",
     )
     show.add_argument(
+        "--classes", nargs="+", default=None, metavar="CLASS",
+        help="The classes --plot draws a curve for, by name (default: every class)",
+    )
+    show.add_argument(
         "--plot", default=None, metavar="FILE",
         help=(
             "Draw the run's loss and per-class metric by epoch. The suffix chooses "
@@ -295,7 +299,7 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
             return 2
         try:
             plot_training_run(runs[0], Path(args.plot), metric=args.metric,
-                              overwrite=args.overwrite)
+                              classes=args.classes, overwrite=args.overwrite)
         except (RuntimeError, ValueError) as error:
             logger.error("%s", error)
             return 2

@@ -51,6 +51,10 @@ logger = logging.getLogger(__name__)
 #: The states in which a run's files can still change, so are worth reading again.
 LIVE_STATES = frozenset({"running", "unknown"})
 
+#: The class whose curve is left out until asked for: it is most of every image,
+#: scores near 1 throughout, and says little about the model.
+BACKGROUND_CLASS = "background"
+
 #: How recently a run am-seg did not start must have written to count as still
 #: training. Nothing else says: it has no process here to ask. An epoch is
 #: minutes, so an hour of silence is a run that has stopped.
@@ -224,6 +228,7 @@ class TrainingController:
         self.device: str = "auto"
         self.selected: Path | None = None
         self.ticked: set[Path] = set()
+        self.hidden_classes: set[str] = {BACKGROUND_CLASS}
         self._whole: dict[Path, TrainingRun] = {}
 
     # -- what is installed ----------------------------------------------------
@@ -439,6 +444,22 @@ class TrainingController:
     def ticked_runs(self) -> list[RunSummary]:
         """Return the ticked runs still in the training directory, in the order listed."""
         return [run for run in self.runs() if run.directory in self.ticked]
+
+    # -- the classes drawn ----------------------------------------------------
+
+    def show_class(self, name: str, shown: bool) -> None:
+        """Draw class *name*'s curve, or leave it out."""
+        if shown:
+            self.hidden_classes.discard(name)
+        else:
+            self.hidden_classes.add(name)
+
+    def shown_classes(self, names: Sequence[str]) -> tuple[str, ...]:
+        """Return those of a run's classes that are drawn, in its order.
+
+        What is left out is remembered by name, so it stays out from one run to the next.
+        """
+        return tuple(name for name in names if name not in self.hidden_classes)
 
     def _folder_of(self, directory: Path) -> str:
         """Return the folders between the training directory and a prepared run, or ""."""
