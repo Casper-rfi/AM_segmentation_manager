@@ -357,7 +357,7 @@ def test_the_tab_row_carries_the_mark(window):
 
     assert corner is not None
     labels = corner.findChildren(QLabel)
-    assert any(not label.pixmap().isNull() for label in labels), "no mark"
+    assert not corner.mark.icon().isNull(), "no mark"
     assert all(label.text() != PRODUCT_NAME for label in labels), (
         "the title bar and the menu bar already name it"
     )

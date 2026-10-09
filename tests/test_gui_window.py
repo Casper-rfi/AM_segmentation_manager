@@ -3842,9 +3842,23 @@ def test_the_corner_shows_the_mark_without_naming_the_product(window):
     corner = window._corner
     labels = corner.findChildren(QLabel)
 
-    assert not corner.mark.pixmap().isNull(), "the mark is what is left"
+    assert not corner.mark.icon().isNull(), "the mark is what is left"
+    assert not corner.mark.text()
     assert all(label.text() != PRODUCT_NAME for label in labels)
-    assert corner.mark.toolTip() == PRODUCT_NAME, "named on hover, for a reader who asks"
+    assert PRODUCT_NAME in corner.mark.toolTip(), "named on hover, for a reader who asks"
+
+
+def test_the_mark_opens_what_help_about_opens(window, monkeypatch):
+    """Whose window this is, and so where a reader looks for which version it is."""
+    opened = []
+    monkeypatch.setattr(
+        QMessageBox, "exec_", lambda self: opened.append(self.windowTitle()) or 0, raising=False
+    )
+
+    window._corner.mark.click()
+    window.menu_actions()[f"About {PRODUCT_NAME}"].trigger()
+
+    assert len(opened) == 2 and opened[0] == opened[1]
 
 
 def test_the_path_field_gives_way_before_the_tabs_do(window):
@@ -3901,6 +3915,21 @@ def test_about_says_the_version_and_where_the_log_went(window, monkeypatch, tmp_
 
     assert __version__ in shown["text"]
     assert "run.log" in shown["text"]
+
+
+def test_about_says_where_to_look_for_a_newer_version_and_how_to_take_it(window, monkeypatch):
+    """A link the reader follows themselves, and the steps for this install."""
+    from am_segmentation_manager.gui.widgets import main_window
+    from am_segmentation_manager.identity import REPOSITORY_URL
+
+    shown = {}
+    monkeypatch.setattr(QMessageBox, "exec_", lambda self: shown.update(text=self.informativeText()) or 0, raising=False)
+    monkeypatch.setattr(main_window, "update_steps", lambda: (f"Listed at {REPOSITORY_URL}", "run <this>"))
+
+    window._show_about()
+
+    assert f'<a href="{REPOSITORY_URL}">' in shown["text"]
+    assert "run &lt;this&gt;" in shown["text"]
 
 
 def test_the_tab_says_how_much_of_the_folder_is_not_indexed(

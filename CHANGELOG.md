@@ -117,3 +117,5 @@ The first public release, to be published as 0.1.0.
 **Platforms**
 
 - Windows, macOS and Linux, on Python 3.11 to 3.13.
+- *About*, from the Help menu or the mark beside the tabs, gives the version, where
+  newer ones are listed and how this install is updated. It contacts nothing.

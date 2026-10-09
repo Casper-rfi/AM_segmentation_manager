@@ -28,6 +28,10 @@ APPLICATION_ID: Final[str] = "adaptive-milling-seg"
 #: How the desktop knows the viewer, a launcher of its own beside the window's.
 VIEWER_ID: Final[str] = "adaptive-milling-seg-viewer"
 
+#: Where the source is published and newer versions are looked for; the
+#: project's Homepage in ``pyproject.toml``.
+REPOSITORY_URL: Final[str] = "https://github.com/Casper-rfi/AM_segmentation_manager"
+
 #: Where the packaged assets are, located the way :mod:`.config` locates the
 #: packaged segmentation config.
 DATA_DIRECTORY: Final[Path] = Path(__file__).parent / "data"

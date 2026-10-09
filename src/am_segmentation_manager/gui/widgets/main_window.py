@@ -9,6 +9,7 @@ rather than inherited. ``docs/display.md`` holds why, and every Qt trap in it.
 """
 from __future__ import annotations
 
+import html
 import logging
 import os
 from collections import Counter
@@ -16,8 +17,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from qtpy import API_NAME, QT_VERSION
-from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, Qt, QUrl
-from qtpy.QtGui import QAction, QCursor, QDesktopServices, QKeySequence
+from qtpy.QtCore import QByteArray, QEvent, QRect, QSettings, QSize, Qt, QUrl
+from qtpy.QtGui import QAction, QCursor, QDesktopServices, QIcon, QKeySequence
 from qtpy.QtWidgets import (
     QApplication,
     QDialog,
@@ -37,7 +38,8 @@ from qtpy.QtWidgets import (
 
 from ... import __version__
 from ...history import clear_author, set_author
-from ...identity import PRODUCT_NAME, VIEWER_NAME
+from ...identity import PRODUCT_NAME, REPOSITORY_URL, VIEWER_NAME
+from ...installation import update_steps
 from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
@@ -97,7 +99,7 @@ from .shortcuts import (
     Shortcuts,
 )
 from .state_panel import StatePanel
-from .theme import ACCENTS, COMPACT_BUTTON, MUTED, apply_accent
+from .theme import ACCENTS, COMPACT_BUTTON, MARK_BUTTON, MUTED, apply_accent
 from .training_panel import TrainingPanel
 
 logger = logging.getLogger(__name__)
@@ -167,13 +169,13 @@ def _setting_bytes(settings: QSettings, key: str) -> QByteArray | None:
 class CornerBar(QWidget):
     """The tab row's corner, naming the widgets in it the window reaches back into."""
 
-    mark: QLabel
+    mark: QToolButton
     author: QLabel
     settings_button: QToolButton
     help_button: QToolButton
 
 
-def _corner(scan_bar: QWidget, on_help, on_settings) -> CornerBar:
+def _corner(scan_bar: QWidget, on_help, on_settings, on_about) -> CornerBar:
     """Return the tab row's corner: the folder, who is recording, and the mark.
 
     **Three runs with a rule between each**, read from what is being worked on
@@ -185,13 +187,14 @@ def _corner(scan_bar: QWidget, on_help, on_settings) -> CornerBar:
     the window saying its own name twice.
 
     A widget rather than a `QLabel`, a label showing either a pixmap or text
-    and this needing both. **The mark and the name are not clickable**: they
-    say whose window this is and answer no question.
+    and this needing both. **The mark is a button that opens About**, which
+    is where a reader asking whose window this is finds its version.
 
     Args:
         scan_bar: The path, Browse and Scan, which the window builds and owns.
         on_help: Called when the help button is pressed.
         on_settings: Called when the settings button is pressed.
+        on_about: Called when the mark is pressed.
     """
     row = CornerBar()
     layout = QHBoxLayout(row)
@@ -233,9 +236,13 @@ def _corner(scan_bar: QWidget, on_help, on_settings) -> CornerBar:
     layout.addWidget(help_button)
     rule()
 
-    mark = QLabel()
-    mark.setPixmap(logo_pixmap(CORNER_LOGO))
-    mark.setToolTip(PRODUCT_NAME)
+    mark = QToolButton()
+    mark.setObjectName(MARK_BUTTON)
+    mark.setIcon(QIcon(logo_pixmap(CORNER_LOGO)))
+    mark.setIconSize(QSize(CORNER_LOGO, CORNER_LOGO))
+    mark.setCursor(Qt.CursorShape.PointingHandCursor)
+    mark.setToolTip(f"About {PRODUCT_NAME}")
+    mark.clicked.connect(on_about)
     layout.addWidget(mark)
 
     row.mark = mark
@@ -514,7 +521,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # and appears only here and on the banner -- the orange and green in it
         # are segmentation class colours, so a use beyond the logo and the
         # accent on controls would be read as data.
-        self._corner = _corner(self.scan_bar, self.show_shortcuts, self.show_settings)
+        self._corner = _corner(
+            self.scan_bar, self.show_shortcuts, self.show_settings, self._show_about
+        )
         if self.read_only:
             self.setCentralWidget(self._viewer_page())
             # Built all the same, so nothing that refreshes them has to know
@@ -768,13 +777,14 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.setWindowTitle(f"{self._name}{TITLE_SEPARATOR}{directory.name}")
 
     def _show_about(self) -> None:
-        """Say what this is, which version, and where its log is going.
+        """Say what this is, which version, where its log is going, and how to update it.
 
         The version and the log path are the two things anybody reporting a
         problem is asked for first, and neither was anywhere on screen. The log
         is read back from the handlers rather than from the path the command
         line would have chosen, so a run started with ``--log-file`` reports
-        where its output actually went.
+        where its output actually went. The repository is a link the reader
+        follows in their own browser; the window asks it nothing.
         """
 
         lines = [
@@ -784,12 +794,16 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         ]
         log = _log_file_path()
         lines.append(f"Log: {log}" if log else "Not logging to a file")
+        link = f'<a href="{REPOSITORY_URL}">{REPOSITORY_URL}</a>'
+        updating = [html.escape(step).replace(REPOSITORY_URL, link) for step in update_steps()]
 
         about = QMessageBox(self)
         about.setWindowTitle(f"About {PRODUCT_NAME}")
         about.setIconPixmap(logo_pixmap(ABOUT_LOGO))
         about.setText("<br>".join(lines))
-        about.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        about.setInformativeText("<br><br>".join(updating))
+        about.setTextFormat(Qt.TextFormat.RichText)
+        about.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         about.exec_()
 
     # -- being the window in front -----------------------------------------

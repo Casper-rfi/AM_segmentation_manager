@@ -307,7 +307,9 @@ of one of these files, is held by `test_docs.py`.
   this machine is set to and the gear that changes it, and on to the mark
   (`test_the_corner_reads_from_the_folder_to_the_mark`). **The mark carries no words**: the title bar names
   the product, and printed here too the window said its own name twice
-  (`test_the_corner_shows_the_mark_without_naming_the_product`). The gear and the **?** are what nothing else
+  (`test_the_corner_shows_the_mark_without_naming_the_product`), **and is a button opening About**
+  (`test_the_mark_opens_what_help_about_opens`), which says how this install is updated and links the
+  repository, asking the network nothing (`test_updating_reaches_no_network`). The gear and the **?** are what nothing else
   mentions, F2 and F1 (`test_the_settings_button_opens_what_f2_opens`), and **the path field gives way before
   the tabs**, Qt otherwise shrinking them to slivers (`test_the_path_field_gives_way_before_the_tabs_do`).
 - **Everything that records shares one `Attribution`, so adopting a name is one assignment.** Several

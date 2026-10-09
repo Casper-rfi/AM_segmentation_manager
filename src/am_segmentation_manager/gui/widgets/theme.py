@@ -153,6 +153,10 @@ VALUE_CHIP_STYLE = (
 #: ``setObjectName``; see the rule of the same name below.
 COMPACT_BUTTON = "compactButton"
 
+#: Object name of the mark in the tab row's corner: a button drawn as the mark
+#: alone, a frame around it reading as one more control beside the gear.
+MARK_BUTTON = "markButton"
+
 #: Object name of the count beside a view dropdown holding several entries.
 CHOICE_COUNT = "choiceCount"
 
@@ -450,6 +454,9 @@ def stylesheet(accent: Accent) -> str:
         padding: 3px 8px;
     }}
     QToolButton:hover {{ border-color: {accent.colour}; }}
+    QToolButton#{MARK_BUTTON}, QToolButton#{MARK_BUTTON}:hover {{
+        background: transparent; border: none; padding: 0;
+    }}
     /* Fusion marks a checked button with a barely darker fill. These carry
        which class a stroke will write and which classes are protected from
        one, so being able to see the answer across the room is worth a rule. */
