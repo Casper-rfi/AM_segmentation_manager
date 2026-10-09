@@ -96,8 +96,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     train.add_argument(
         "--start-path", default=None, metavar="DIR",
         help=(
-            "The folder the export was made from, which its paths are written "
-            "against. Needed only where the manifest recorded a relative one"
+            "The collection: the folder the export was made from, which its paths "
+            "are written against. Needed where the export and the collection have "
+            "been moved apart since, the manifest saying only where one was from "
+            "the other"
         ),
     )
     train.add_argument(

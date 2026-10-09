@@ -120,7 +120,8 @@ am-seg compare-training /path/to/runs --value median --epochs 60 90 --output run
 
 `train` needs the `train` extra, and takes the manifest a training export
 wrote: the split is the export's, so validation is whatever **Keep together**
-kept out of training. Without `--refine` it trains a new model, the encoder
+kept out of training. The collection is found from where the manifest sits;
+where the two have been moved apart, name it with `--start-path`. Without `--refine` it trains a new model, the encoder
 frozen for the first 25 of at most 100 epochs and the learning rate from 1e-5
 to 1e-3, which downloads ImageNet weights the first time. With it, it refines
 the model given for at most 50 epochs from 2e-6. Each has an option. A run

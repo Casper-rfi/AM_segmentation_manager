@@ -186,7 +186,10 @@ many pairs instead, for cross-validation, so every image is validated exactly
 once. **Keep together** sets what is never divided between training and
 validation: each lamella by default, each project, or only each acquisition.
 With **Seed** on, the same selection always splits the same way.
-`<name>_manifest.yaml` beside them records what they were made from.
+`<name>_manifest.yaml` beside them records what they were made from. Neither
+names a folder of your computer: every path is written from the collection,
+and the manifest says where the collection is only from its own folder, so the
+files can be deposited or moved with the collection as they are.
 
 With one beam chosen, each row is an image and its label. With both, each row
 is one acquisition, its SEM and FIB images and labels side by side. A label

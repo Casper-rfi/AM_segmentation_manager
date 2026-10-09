@@ -332,6 +332,11 @@ class TrainingController:
             found.append("The training stack is not installed")
         if self.manifest is None:
             found.append("Choose a training set: the manifest a training export wrote")
+        elif self._collection_unknown():
+            found.append(
+                "Scan the collection the training set was exported from: its manifest "
+                "does not say where it is"
+            )
         if self.training_directory is None:
             found.append("Choose the training directory, where runs are kept")
         if not self.name:
@@ -652,14 +657,17 @@ class TrainingController:
         return self._attribution.recorder.by if self._attribution is not None else None
 
     def _start_path(self) -> Path | None:
-        """Return the scanned folder where the manifest did not record an absolute one."""
-        if self.manifest is None or self.collection is None:
-            return None
+        """Return the scanned folder, which is where the collection is whatever a manifest says."""
+        return self.collection
+
+    def _collection_unknown(self) -> bool:
+        """Return whether nothing says where the chosen training set's collection is."""
+        if self.manifest is None or self.collection is not None:
+            return False
         try:
-            recorded = read_training_manifest(self.manifest).source
+            return read_training_manifest(self.manifest).collection is None
         except ValueError:
-            return None
-        return None if Path(recorded).is_absolute() else self.collection
+            return False
 
     def _taken_names(self) -> set[str]:
         """Return the name of everything in the training directory, run or not."""

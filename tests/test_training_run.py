@@ -204,19 +204,79 @@ def test_an_export_with_no_validation_list_is_refused(tmp_path: Path):
     assert "no validation list" in _refusal(tmp_path / "export" / "set_manifest.yaml")
 
 
-def test_a_manifest_recording_a_relative_folder_needs_the_folder_named(
-    tmp_path: Path, monkeypatch
-):
-    """The command line's default start path is ".", which says nothing later."""
+def test_a_manifest_names_no_folder_of_this_machine(tmp_path: Path, monkeypatch):
+    """Whether the export was given the collection in full or as ".", from wherever it was run."""
     root = tmp_path / "collection"
     records = _records(root)
+    export_training_csv(records, root, tmp_path / "full", prefix="set")
     monkeypatch.chdir(root)
-    export_training_csv(records, Path("."), tmp_path / "export", prefix="set")
-    manifest = tmp_path / "export" / "set_manifest.yaml"
+    export_training_csv(records, Path("."), tmp_path / "typed", prefix="set")
     monkeypatch.chdir(tmp_path)
 
-    assert "does not say where the collection is" in _refusal(manifest)
-    assert len(_plan(manifest, start_path=root).train) == 8
+    for export in ("full", "typed"):
+        folder = tmp_path / export
+        written = "".join(path.read_text(encoding="utf-8") for path in folder.iterdir())
+        assert str(tmp_path) not in written and str(tmp_path.resolve()) not in written
+        assert "collection: ../collection" in (folder / "set_manifest.yaml").read_text(encoding="utf-8")
+        assert len(_plan(folder / "set_manifest.yaml").train) == 8
+
+
+def test_an_export_moved_with_its_collection_still_finds_it(export: Path, tmp_path: Path):
+    moved = tmp_path / "elsewhere"
+    moved.mkdir()
+    for name in ("collection", "export"):
+        (tmp_path / name).rename(moved / name)
+
+    plan = _plan(moved / "export" / "set_manifest.yaml", training_directory=tmp_path / "runs")
+
+    assert plan.source == (moved / "collection").resolve()
+
+
+def test_an_export_moved_away_from_its_collection_needs_it_named(export: Path, tmp_path: Path):
+    apart = tmp_path / "sent" / "deeper"
+    apart.mkdir(parents=True)
+    for file in list(export.parent.iterdir()):
+        file.rename(apart / file.name)
+    manifest = apart / export.name
+
+    assert "are not under" in _refusal(manifest, training_directory=tmp_path / "runs")
+    named = _plan(manifest, training_directory=tmp_path / "runs", start_path=tmp_path / "collection")
+    assert len(named.train) == 8
+
+
+def test_the_folder_named_is_taken_before_the_one_the_manifest_says(export: Path, tmp_path: Path):
+    other = tmp_path / "other"
+    other.mkdir()
+
+    assert "are not under" in _refusal(export, start_path=other)
+
+
+def _older(export: Path, source: str) -> Path:
+    """Rewrite a manifest as one written before it said where the collection is from itself."""
+    document = yaml.safe_load(export.read_text(encoding="utf-8"))
+    del document["collection"]
+    document["source"] = source
+    export.write_text(yaml.safe_dump(document), encoding="utf-8")
+    return export
+
+
+def test_an_older_manifest_recording_the_folder_in_full_still_prepares_a_run(
+    export: Path, tmp_path: Path
+):
+    older = _older(export, str(tmp_path / "collection"))
+
+    assert read_training_manifest(older).collection == tmp_path / "collection"
+    assert len(_plan(older).train) == 8
+
+
+def test_an_older_manifest_recording_the_folder_as_typed_needs_it_named(
+    export: Path, tmp_path: Path
+):
+    """A "." said where the command was run, which nothing recorded."""
+    older = _older(export, ".")
+
+    assert "does not say where the collection is" in _refusal(older)
+    assert len(_plan(older, start_path=tmp_path / "collection").train) == 8
 
 
 def test_a_file_that_has_gone_is_refused_and_named(export: Path):
@@ -413,7 +473,7 @@ def test_a_manifest_reads_back_as_the_export_wrote_it(export: Path):
     assert manifest.columns == ("image", "label")
     assert manifest.folds == 0
     assert not manifest.include_empty_labels
-    assert Path(manifest.source).is_absolute()
+    assert manifest.collection == export.parent / "../collection"
 
 
 def test_a_missing_or_foreign_manifest_is_refused(tmp_path: Path):

@@ -281,8 +281,9 @@ def plan_training_run(
         training_directory: Where runs are kept; the run gets a directory of
             its own in it, named *name*.
         base_weights: The checkpoint to refine; required by, and only by, a refine.
-        start_path: The folder the export's paths are written from. Needed where
-            the manifest recorded a relative one.
+        start_path: The collection: the folder the export's paths are written
+            from. Taken before the one the manifest says, and needed where it
+            says none or the two have been moved apart.
         inspect_label: Answers why a label cannot be trained on; :func:`label_problem`
             where omitted.
 
@@ -336,8 +337,8 @@ def plan_training_run(
     source = _source(manifest, start_path)
     if source is None:
         reasons.append(
-            f"{manifest.path.name} records its paths from {manifest.source!r}, which does "
-            f"not say where the collection is; name the folder the export was made from"
+            f"{manifest.path.name} does not say where the collection is; name the folder "
+            f"the export was made from"
         )
     elif _inside(run_directory, source):
         reasons.append(
@@ -505,8 +506,7 @@ def _source(manifest: TrainingManifest, start_path: Path | None) -> Path | None:
     """Return the folder the manifest's paths resolve against, or None if nothing says."""
     if start_path is not None:
         return start_path.resolve()
-    recorded = Path(manifest.source) if manifest.source else None
-    return recorded if recorded is not None and recorded.is_absolute() else None
+    return manifest.collection.resolve() if manifest.collection is not None else None
 
 
 def _inside(path: Path, directory: Path) -> bool:

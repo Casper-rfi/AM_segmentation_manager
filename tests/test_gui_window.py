@@ -6358,6 +6358,8 @@ def test_starting_a_run_checks_it_off_the_interface_thread_and_then_asks(
     controller, panel = window.training_controller, window.training_panel
     monkeypatch.setattr(controller, "can_train", lambda: True)
     controller.manifest = export_of_placeholders(tmp_path)
+    # The scanned folder is where the collection is, whatever the manifest says.
+    controller.collection = tmp_path / "collection"
     controller.training_directory = tmp_path / "runs"
     controller.name = "round01"
     asked = []

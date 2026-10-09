@@ -306,7 +306,8 @@ def test_the_manifest_counts_what_the_files_hold(tmp_path: Path):
     assert manifest["columns"] == ["image", "label"]
     assert manifest["scope"] == "modality SEM"
     assert manifest["written_by"] == "Ada Lovelace"
-    assert manifest["source"] == str(root)
+    assert manifest["collection"] == "../dataset"
+    assert "source" not in manifest
 
 
 def test_an_unseeded_split_records_no_seed(tmp_path: Path):

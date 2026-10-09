@@ -4,7 +4,8 @@
 split, its seed and what it kept together, how many rows each side holds, which
 am-seg wrote them, when and under whose name -- so a training run can be
 described, and repeated, from the files it read. **Written after the CSVs**, so a manifest names only files
-that were written whole. Nothing here chooses rows or writes a CSV;
+that were written whole, **and it names no folder of this machine**: where the
+collection is, it says from its own folder (``test_a_manifest_names_no_folder_of_this_machine``). Nothing here chooses rows or writes a CSV;
 :func:`read_training_manifest` is how a training run finds the lists again.
 """
 from __future__ import annotations
@@ -18,6 +19,7 @@ from typing import Final
 
 from .. import __version__
 from ..history import resolve_author
+from ..io.path import NoRelativePath, exported_relative_path
 from ..io.yaml import read_yaml, version_problem, write_yaml
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,11 @@ FILE_VERSION: Final[int] = 1
 
 _HEADER: Final[str] = """\
 # What this training set was made from, written by am-seg beside its CSV files.
+#
+# Every path in the lists is written from the collection's folder. `collection`
+# is where that folder was, from this file's own folder; where the two have been
+# moved apart, name the collection when training: scan it in the window, or
+# give `am-seg train --start-path`.
 #
 # `scope` is what the export was narrowed to, in the words of whatever made it:
 # the Export tab's filters, or the command line's selectors. `split.keep_together`
@@ -82,7 +89,7 @@ def write_training_manifest(
         "am_seg_version": __version__,
         "written_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "written_by": by or "",
-        "source": str(source),
+        "collection": _from(path.parent, source),
         "scope": scope,
         "files": {role: file.name if file else None for role, file in files.items()},
         "columns": list(columns),
@@ -104,8 +111,9 @@ class TrainingManifest:
 
     Attributes:
         path: The manifest itself.
-        source: The folder every path in the lists is written from, as the
-            export was given it, which may be relative.
+        collection: Where the manifest says the folder every path in the lists
+            is written from is: from its own folder, or as an older manifest
+            recorded it in full. None where it does not say.
         train: The training list, or None if the export wrote none.
         validation: The validation list, or None if every row went to training.
         columns: The lists' header.
@@ -114,7 +122,7 @@ class TrainingManifest:
     """
 
     path: Path
-    source: str
+    collection: Path | None
     train: Path | None
     validation: Path | None
     columns: tuple[str, ...]
@@ -146,10 +154,30 @@ def read_training_manifest(path: Path) -> TrainingManifest:
     split = document.get("split")
     return TrainingManifest(
         path=path,
-        source=str(document.get("source") or ""),
+        collection=_collection(path, document),
         train=beside("train"),
         validation=beside("validation"),
         columns=tuple(str(column) for column in document.get("columns") or ()),
         folds=int(split.get("folds") or 0) if isinstance(split, dict) else 0,
         include_empty_labels=bool(document.get("include_empty_labels")),
     )
+
+
+def _from(folder: Path, collection: Path) -> str | None:
+    """Return *collection* as a path from *folder*, or None where there is none, as across drives."""
+    try:
+        return exported_relative_path(collection, folder)
+    except NoRelativePath as error:
+        logger.warning("The manifest will not say where the collection is: %s", error)
+        return None
+
+
+def _collection(path: Path, document: dict) -> Path | None:
+    """Return where a manifest says the collection is, or None where it does not."""
+    recorded = document.get("collection")
+    if recorded:
+        return path.parent / str(recorded)
+    # Before `collection`, the folder was recorded as the export was given it:
+    # in full, or from wherever the command happened to be run.
+    older = Path(str(document.get("source") or ""))
+    return older if older.is_absolute() else None

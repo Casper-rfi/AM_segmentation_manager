@@ -424,19 +424,30 @@ def test_a_run_is_recorded_under_the_window_s_name(controller: TrainingControlle
     _settled(controller.selected)
 
 
-def test_the_scanned_folder_stands_in_for_a_relative_one(
+def test_the_scanned_folder_is_where_the_collection_is_whatever_the_manifest_says(
     controller: TrainingController, tmp_path: Path
 ):
-    """A manifest written by the command line records the folder as typed."""
-    text = controller.manifest.read_text(encoding="utf-8")
-    recorded = str(tmp_path / "collection")
-    assert recorded in text
-    controller.manifest.write_text(text.replace(recorded, "."), encoding="utf-8")
+    assert controller.plan().source == (tmp_path / "collection").resolve()
 
-    with pytest.raises(TrainingRunRefused, match="does not say where the collection is"):
+    other = tmp_path / "other"
+    other.mkdir()
+    controller.collection = other
+    with pytest.raises(TrainingRunRefused, match="are not under"):
         controller.plan()
 
+
+def test_a_manifest_that_says_no_collection_asks_for_a_scan(
+    controller: TrainingController, tmp_path: Path
+):
+    text = controller.manifest.read_text(encoding="utf-8")
+    controller.manifest.write_text(
+        text.replace("collection: ../collection", "source: ."), encoding="utf-8"
+    )
+
+    assert any("Scan the collection" in problem for problem in controller.problems())
+
     controller.collection = tmp_path / "collection"
+    assert controller.problems() == []
     assert len(controller.plan().train) == 1
 
 

@@ -455,7 +455,9 @@ rather than appending to it.
   way (`test_cli_reports_an_output_that_appears_while_it_is_written`): an export is something a
   person may have kept, and a split replaced by accident is gone with the seed that made it. A training export also leaves a
   manifest, written last so it names only files written whole
-  (`test_the_manifest_counts_what_the_files_hold`).
+  (`test_the_manifest_counts_what_the_files_hold`), and naming no folder of the machine: an export
+  is deposited and moved, so the collection is said from the manifest's own folder and a folder
+  named when training is taken before it (`test_a_manifest_names_no_folder_of_this_machine`).
 
 ## History
 

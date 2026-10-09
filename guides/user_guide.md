@@ -301,7 +301,9 @@ NVIDIA GPU: on a CPU, Apple silicon included, a step takes minutes per image.
 On the left, set the run up:
 
 1. **Training set**: the one you last wrote with **Training CSV...** is offered,
-   or **Browse...** to the `<name>_manifest.yaml` of an earlier one. The split
+   or **Browse...** to the `<name>_manifest.yaml` of an earlier one. The
+   collection it was exported from is the folder you scanned, or where none
+   is scanned, wherever the manifest says it is from its own folder. The split
    is the export's, so what is validated on is what **Keep together** set there.
 2. **New model** or **Refine a model**. Refining starts from weights you choose
    and needs far less data and time. Each opens on the settings the Adaptive
