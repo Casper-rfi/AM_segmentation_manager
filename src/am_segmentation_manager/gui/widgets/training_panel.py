@@ -86,7 +86,6 @@ from .paths import (
 from .project_panel import CELL_COLOURS
 from .report_dialog import ReportDialog
 from .theme import (
-    ERROR,
     MUTED,
     SECTION_HEADING,
     SWATCH_CELL,
@@ -364,11 +363,6 @@ class TrainingPanel(QWidget):
         shown = QWidget()
         column = QVBoxLayout(shown)
         column.setContentsMargins(0, 0, 0, 0)
-        self.status_label = WrappingLabel()
-        column.addWidget(self.status_label)
-        self.asked_label = WrappingLabel()
-        self.asked_label.setStyleSheet(f"color: {MUTED};")
-        column.addWidget(self.asked_label)
 
         chart_row = QHBoxLayout()
         self.view_control = SegmentedControl(VIEW_SEGMENTS)
@@ -633,7 +627,8 @@ class TrainingPanel(QWidget):
             ticked=[run.directory in controller.ticked for run in runs],
             icons=[run_chip(run) for run in runs],
             tooltips=[
-                str(run.directory) if run.problem else f"{run.directory}\n{run.progress()}"
+                str(run.directory) if run.problem
+                else f"{run.directory}\n{run.progress()}\n{run.details()}"
                 for run in runs
             ],
             current=(
@@ -646,20 +641,10 @@ class TrainingPanel(QWidget):
         self._show_sets()
         run = self.controller.selected_run()
         if run is None:
-            self.status_label.setText(
-                "No run yet." if self.controller.training_directory else
-                "Choose a training directory to see the runs in it."
-            )
-            self.asked_label.setText("")
             self.checkpoints_list.clear()
             self._draw(None)
             self._show_buttons()
             return
-        self.status_label.setText(run.describe() + _chosen_line(run) + _validations_line(run))
-        self.status_label.setStyleSheet(
-            f"color: {ERROR};" if run.problem or run.state == "failed" else ""
-        )
-        self.asked_label.setText(_asked(run))
         self._show_classes(run.written.label_names if run.written else DEFAULT_LABEL_NAMES)
         self._show_checkpoints(run)
         self._draw(run)
@@ -876,7 +861,9 @@ class TrainingPanel(QWidget):
         if written is None or not (written.train or written.val):
             self.chart.show_message(
                 "No epoch has finished yet." if run is not None and run.training
-                else "Nothing to draw: the run wrote no epoch." if run is not None else ""
+                else "Nothing to draw: the run wrote no epoch." if run is not None
+                else "No run yet." if self.controller.training_directory
+                else "Choose a training directory to see the runs in it."
             )
         elif not has_plot_support():
             self.chart.show_message("Charts need matplotlib, which is not installed.")
@@ -1444,13 +1431,6 @@ def _fill(box: QComboBox, current: str, entries: list[tuple[str, str]]) -> None:
     box.blockSignals(False)
 
 
-def _validations_line(run: RunSummary) -> str:
-    """Return a line saying how each validation of *run* stands, or "" where it has none."""
-    if not run.validations:
-        return ""
-    return "\nValidations: " + "; ".join(validation.line() for validation in run.validations) + "."
-
-
 #: Side of one of a checkpoint's two marks, in logical pixels.
 BEST_MARK = 14
 
@@ -1495,16 +1475,6 @@ def best_legend() -> list[tuple[QPixmap, str]]:
         (best_marks(True, False).pixmap(size), "The epoch the run counts as its best"),
         (best_marks(False, True).pixmap(size), "The epoch you marked as best with Mark as best..."),
     ]
-
-
-def _chosen_line(run: RunSummary) -> str:
-    """Return a line saying which epoch is marked as best, or "" where none is."""
-    if run.chosen is None:
-        return ""
-    by = f" by {run.chosen.chosen_by}" if run.chosen.chosen_by else ""
-    held = run.written is not None and run.written.checkpoint_for(run.chosen.epoch) is not None
-    gone = "" if held else "; its weights are not in this directory"
-    return f"\nMarked as best: epoch {run.chosen.epoch}{by}{gone}."
 
 
 def _heading(text: str) -> QLabel:
@@ -1557,18 +1527,3 @@ def _rate(tooltip: str) -> QLineEdit:
     edit = QLineEdit()
     edit.setToolTip(f"{tooltip} A number such as 1e-5.")
     return edit
-
-
-def _asked(run: RunSummary) -> str:
-    """Return what the run was asked to do, in a line."""
-    if run.record is None:
-        return ""
-    settings, base = run.record.settings, run.record.base
-    start = f"refining {Path(str(base['file'])).name}" if base else "a new model"
-    frozen = f", encoder frozen for {settings.frozen_epochs}" if settings.frozen_epochs else ""
-    by = f" · prepared by {run.record.created_by}" if run.record.created_by else ""
-    return (
-        f"{start} · at most {settings.max_epochs} epochs{frozen} · learning rate "
-        f"{settings.initial_learning_rate:g} to {settings.max_learning_rate:g} · "
-        f"batches of {settings.training_batch_size}{by}"
-    )

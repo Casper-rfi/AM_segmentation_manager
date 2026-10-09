@@ -89,7 +89,11 @@ BACKGROUND_CLASS = "background"
 #: is the run's name, and :meth:`RunSummary.cells` fills the rest.
 RUN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("Run", "What the run is called."),
-    ("State", "How the run stands: training, finished, stopped, failed."),
+    (
+        "State",
+        "How the run stands: training, finished, stopped, failed; and, while a validation "
+        "of it is scoring, the epochs scored of those asked for.",
+    ),
     ("Epochs", "Epochs trained, of the most the run may train."),
     ("Train", "How many images the run trains on, as it was prepared."),
     ("Val", "How many images the run validates on as it trains."),
@@ -272,6 +276,50 @@ class RunSummary:
         }.get(self.state, "")
         return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
 
+    def state_cell(self) -> str:
+        """Return :attr:`state`, and how far each validation still scoring has got."""
+        scoring = ", ".join(
+            f"{len(validation.scored.scores)}/{validation.epochs}"
+            for validation in self.validations if validation.live
+        )
+        return " · ".join(part for part in (self.state, scoring and f"validating {scoring}") if part)
+
+    def asked(self) -> str:
+        """Return what the run was asked to do in a line, or "" for a run am-seg did not start."""
+        if self.record is None:
+            return ""
+        settings, base = self.record.settings, self.record.base
+        start = f"refining {Path(str(base['file'])).name}" if base else "a new model"
+        frozen = f", encoder frozen for {settings.frozen_epochs}" if settings.frozen_epochs else ""
+        by = f" · prepared by {self.record.created_by}" if self.record.created_by else ""
+        return (
+            f"{start} · at most {settings.max_epochs} epochs{frozen} · learning rate "
+            f"{settings.initial_learning_rate:g} to {settings.max_learning_rate:g} · "
+            f"batches of {settings.training_batch_size}{by}"
+        )
+
+    def details(self) -> str:
+        """Return what the columns leave unsaid of the run, a line for each thing.
+
+        How it stands in full, the epoch marked as best and by whom, each
+        validation, and what it was asked to do.
+        """
+        if self.problem:
+            return self.problem
+        said = [self.describe()]
+        if self.chosen is not None:
+            by = f" by {self.chosen.chosen_by}" if self.chosen.chosen_by else ""
+            held = self.written is not None and self.written.checkpoint_for(self.chosen.epoch) is not None
+            gone = "" if held else "; its weights are not in this directory"
+            said.append(f"Marked as best: epoch {self.chosen.epoch}{by}{gone}.")
+        if self.validations:
+            said.append(
+                "Validations: " + "; ".join(validation.line() for validation in self.validations) + "."
+            )
+        if self.asked():
+            said.append(self.asked())
+        return "\n".join(said)
+
     def cells(self) -> tuple[str, ...]:
         """Return what the run holds under each of :data:`RUN_COLUMNS` after its name.
 
@@ -287,7 +335,7 @@ class RunSummary:
         best = self.best if self.written is not None else None
         record = self.record
         return (
-            self.state,
+            self.state_cell(),
             epochs,
             _counted(record.train_count if record else None),
             _counted(record.validation_count if record else None),

@@ -398,7 +398,7 @@ def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, mon
 
     listed = panel.runs_tree.project_item(0)
     assert (listed.text(0), listed.text(1)) == ("wide_seed2", "finished")
-    assert "Not started by am-seg" in panel.status_label.text()
+    assert "Not started by am-seg" in listed.toolTip(0)
     assert drawn == [1]
     assert not panel.stop_button.isEnabled()
 
@@ -468,13 +468,13 @@ def test_reading_the_runs_again_keeps_the_ticks_the_folds_and_the_run_looked_at(
 
 def test_the_row_looked_at_decides_what_is_shown_and_a_tick_does_not(panel):
     _three_runs(panel)
-    shown = panel.status_label.text()
+    shown = panel.controller.selected
 
     panel.runs_tree.project_item(2).setCheckState(0, _checked())
-    assert panel.status_label.text() == shown
+    assert panel.controller.selected == shown
 
     panel.runs_tree.setCurrentItem(panel.runs_tree.project_item(2))
-    assert panel.status_label.text().startswith("alone:")
+    assert panel.controller.selected_run().name == "alone"
 
 
 def test_a_run_s_row_gives_the_path_to_copy_or_reveal(panel):
@@ -533,9 +533,10 @@ def test_each_run_carries_its_chip_and_says_it_in_words_on_hover(panel):
     item = panel.runs_tree.project_item(0)
 
     assert not item.icon(0).isNull()
-    assert item.toolTip(0) == (
-        f"{run}\n3 of at most 100 epochs trained\n3 of 3 saved weights on disk, 0.0 GB"
+    assert item.toolTip(0).startswith(
+        f"{run}\n3 of at most 100 epochs trained\n3 of 3 saved weights on disk, 0.0 GB\n"
     )
+    assert item.toolTip(0).endswith(panel.controller.selected_run().details())
 
 
 def test_the_key_list_says_what_a_run_s_chip_means(qt_app):
@@ -633,7 +634,7 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
 
     assert read_chosen_best(run).epoch == 2
     assert panel.checkpoints_list.item(1).text() == "epoch 2 (marked best, incomplete)"
-    assert "Marked as best: epoch 2" in panel.status_label.text()
+    assert "Marked as best: epoch 2" in panel.runs_tree.project_item(0).toolTip(0)
     assert panel.runs_tree.project_item(0).text(7) == "2"
     assert panel.unmark_button.isEnabled()
 
@@ -824,7 +825,7 @@ def _choose(box, value: str) -> None:
 
 
 def test_a_run_s_validations_are_said_and_offered(validated):
-    assert "Validations: held finished, 3 of 3 epoch(s) scored." in validated.status_label.text()
+    assert "Validations: held finished, 3 of 3 epoch(s) scored." in validated.runs_tree.currentItem().toolTip(0)
     assert [validated.validated_box.itemData(i) for i in range(3)] == ["", "held", "*"]
     assert not validated.split_box.isEnabled()
 
@@ -881,7 +882,7 @@ def test_validating_asks_what_to_score_on_checks_it_and_asks_before_starting(
     title, said = validated.answers.asked[-1]
     assert title == "Start validating" and "1 image(s), the validation list" in said
     assert [path.name for path in started] == ["second"]
-    assert "second prepared, 0 of 3 epoch(s) scored" in validated.status_label.text()
+    assert "second prepared, 0 of 3 epoch(s) scored" in validated.runs_tree.currentItem().toolTip(0)
 
 
 def test_declining_or_cancelling_a_validation_writes_nothing(validated, tmp_path: Path):

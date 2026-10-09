@@ -876,6 +876,55 @@ def test_a_run_being_validated_keeps_its_checkpoints(
         controller.remove_other_checkpoints(validated, keep={1})
 
 
+def test_a_run_s_state_says_how_far_a_validation_still_scoring_has_got(
+    controller: TrainingController, validated: Path, monkeypatch
+):
+    """The one thing said of a run that changes while it is watched, so it has a column."""
+    from am_segmentation_manager.gui import training_controller
+    from am_segmentation_manager.operations.training_process import RunStatus
+
+    ended = controller.summary(validated)
+    assert ended.state_cell() == ended.state, "a validation that has ended adds nothing"
+
+    monkeypatch.setattr(training_controller, "run_status", lambda directory: RunStatus("running", 1, "here"))
+    scoring = controller.summary(validated)
+
+    assert scoring.cells()[0] == scoring.state_cell() == f"{scoring.state} · validating 3/3"
+
+
+def test_what_the_columns_leave_unsaid_of_a_run_is_said_in_its_details(
+    controller: TrainingController, validated: Path
+):
+    marked = controller.choose_best(validated, 2)
+
+    said = marked.details().splitlines()
+
+    assert said[0] == marked.describe()
+    assert said[1].startswith("Marked as best: epoch 2")
+    assert said[2] == "Validations: held finished, 3 of 3 epoch(s) scored."
+    assert said[3:] == ([marked.asked()] if marked.record else [])
+
+
+def test_a_run_s_details_say_what_it_was_asked_to_do(controller: TrainingController):
+    controller.start(controller.plan())
+    _settled(controller.selected)
+
+    run = controller.selected_run()
+
+    assert run.asked().startswith("a new model · at most 100 epochs")
+    assert run.details().splitlines() == [run.describe(), run.asked()]
+
+
+def test_a_run_that_cannot_be_read_has_only_its_problem_to_say(controller: TrainingController):
+    broken = controller.training_directory / "broken"
+    broken.mkdir(parents=True)
+    (broken / training_run.RUN_RECORD_FILENAME).write_text("version: 99\n", encoding="utf-8")
+
+    (listed,) = controller.runs()
+
+    assert listed.problem and listed.details() == listed.problem
+
+
 def test_a_start_beside_a_run_in_training_is_told_of_it(controller: TrainingController):
     """Two runs on auto, started moments apart, can take the same GPU: the first has
     claimed little memory when the second looks."""

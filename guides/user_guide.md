@@ -321,7 +321,7 @@ On the left, set the run up:
 Training runs on its own and goes on after you close the window. Several runs
 can train at once: **Start...** says when one already is, and with two on
 *auto* it is safer to name each a GPU, since a run started moments ago has
-taken little memory yet. A run in training says which GPU it is on. On the right,
+taken little memory yet. On the right,
 **Runs** lists every run in the training directory, which you choose once with
 **Training directory...**; keep it outside your collection. Each run has a
 column for how it stands, the epochs trained of the most it may train, how
@@ -334,13 +334,17 @@ open and close every folder. Right-click a run to copy its path or reveal it in
 the file manager. The tick boxes, with **Tick all** and **None**, choose the
 runs **Table** sets side by side. The mark beside a run has two bars: the
 epochs trained of the most it may train, and below it how many of the weights
-it saved are still on disk, which is where to look for runs to tidy. Hover for
-the numbers and the disk space; F1 says what the colours mean. A run
+it saved are still on disk, which is where to look for runs to tidy. Hover a
+run for the numbers and the disk space, and for what the columns leave out:
+which GPU a run in training is on, why one failed, who marked its best epoch,
+how each validation of it stands, and the settings it was started with. While
+a validation is scoring, the run's state says how many epochs it has scored.
+F1 says what the colours mean. A run
 AM-model-training was started on directly, here or on another machine, is
 listed too, from the files it wrote: point **Training directory...** at the
 folder holding such runs.
 
-For the run selected, the tab shows how it stands, its loss and a metric per
+For the run selected, the tab shows its loss and a metric per
 class by epoch, and its checkpoints. Untick a class beside **Metric per
 class** to take its curve out, and tick **background** to draw it, which is
 left out at first; the weighted averages stay over every class. Point at a
