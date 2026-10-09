@@ -278,8 +278,8 @@ of one of these files, is held by `test_docs.py`.
   *Field | Here | Copy* and a value is chosen by clicking it, so two values are compared side by side
   rather than read out of a sentence (`test_clicking_a_value_chooses_it_and_clicking_it_again_undecides`).
 - **Who changes are recorded under is a standing line in the corner, not a warning per action.**
-  Actions on all four tabs put a name into a log, and two exports write it into what they
-  leave behind — a copy's fork point, a training set's manifest: there is no single tab to say it
+  Actions on four tabs put a name into a log, and two exports and a training run write it into what
+  they leave behind — a copy's fork point, a set's manifest, a run's record: there is no single tab to say it
   on and far too many places to warn at. It is muted, being a fact rather than a message.
 - **A default decides what a control opens at, and nothing else.** Nothing `gui/preferences.py`
   holds reaches a write path (`test_a_default_decides_what_a_control_opens_at_and_nothing_else`).
@@ -291,7 +291,7 @@ of one of these files, is held by `test_docs.py`.
   sized from that hint comes up short and everything below is pushed towards its minimum, nowhere
   near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,
   and again from each new text (`test_a_status_line_that_starts_empty_grows_to_what_it_says`).
-- **The folder is chosen in the tab row, not in a tab.** A scan serves all four, and only Curate
+- **The folder is chosen in the tab row, not in a tab.** A scan serves every tab, and only Curate
   could show which folder was read; the corner holds the path, Browse and Scan, and says on hover
   what the folder held (`test_the_folder_is_chosen_in_the_tab_row_on_every_tab`).
 - **A window that has read nothing offers the folder in the middle of it, where the panes would be**: nothing

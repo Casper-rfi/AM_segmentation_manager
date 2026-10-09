@@ -20,6 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from ..io.atomic import write_atomically
+from ..operations.training_choice import (
+    ChosenBest,
+    choose_best,
+    clear_chosen_best,
+    read_chosen_best,
+)
 from ..operations.training_manifest import read_training_manifest
 from ..operations.training_process import RunStatus, run_status, start_training, stop_training
 from ..operations.training_run import (
@@ -76,6 +82,7 @@ class RunSummary:
             or where the record cannot be read.
         status: How it stands; None for a run am-seg did not start.
         written: What AM-model-training has written, or None before it has.
+        chosen: The epoch a person chose as its best, or None where none is.
         problem: Why the run cannot be read, or "".
         recent: Whether a run am-seg did not start has written within
             :data:`RECENT_SECONDS`.
@@ -87,6 +94,7 @@ class RunSummary:
     record: RunRecord | None = None
     status: RunStatus | None = None
     written: TrainingRun | None = None
+    chosen: ChosenBest | None = None
     problem: str = ""
     recent: bool = False
 
@@ -192,6 +200,8 @@ class RunSummary:
         best = self.best
         if best is not None and self.written is not None:
             parts.append(f"best {best.epoch} ({best.score(self.written.key_metrics):.3f})")
+        if self.chosen is not None:
+            parts.append(f"marked {self.chosen.epoch}")
         return " · ".join(parts)
 
 
@@ -392,6 +402,7 @@ class TrainingController:
                 name=name,
                 folder=name.rpartition("/")[0],
                 written=self._steady(read_training_run(directory)),
+                chosen=_chosen(directory),
                 recent=_written_recently(directory),
             )
         try:
@@ -410,6 +421,7 @@ class TrainingController:
             status=status,
             # A run directory is started once, so it holds one of these at most.
             written=self._steady(read_training_run(written[-1])) if written else None,
+            chosen=_chosen(directory),
         )
 
     def selected_run(self) -> RunSummary | None:
@@ -496,6 +508,25 @@ class TrainingController:
             stop_training(directory, user=user or self._user())
         return self.summary(directory)
 
+    # -- the epoch chosen as best ---------------------------------------------
+
+    def choose_best(self, directory: Path, epoch: int, user: str | None = None) -> RunSummary:
+        """Record *epoch* as the best of the run in *directory*, and return the run.
+
+        Raises:
+            ValueError: If the run cannot be read or did not validate *epoch*.
+        """
+        run = self.summary(directory)
+        if run.problem or run.written is None:
+            raise ValueError(run.problem or f"{run.name} has validated no epoch yet")
+        choose_best(directory, run.written, epoch, user=user or self._user())
+        return self.summary(directory)
+
+    def clear_best(self, directory: Path) -> RunSummary:
+        """Take back the choice for the run in *directory*, and return the run."""
+        clear_chosen_best(directory)
+        return self.summary(directory)
+
     # -- what a run produced --------------------------------------------------
 
     def copy_checkpoint(self, checkpoint: Checkpoint, destination: Path) -> Path:
@@ -525,13 +556,23 @@ class TrainingController:
         logger.info("Copied %s to %s", checkpoint.path, destination)
         return destination
 
-    def other_checkpoints(self, directory: Path, keep: Collection[int]) -> list[Checkpoint]:
+    def other_checkpoints(
+        self, directory: Path, keep: Collection[int], keep_run_best: bool = False
+    ) -> list[Checkpoint]:
         """Return the checkpoints of the run in *directory* that :meth:`remove_other_checkpoints` would delete.
 
+        **The epoch chosen as best is never among them**, whatever *keep* says:
+        the choice is cleared first by whoever means to delete it.
+
+        Args:
+            keep_run_best: Whether the epoch the run counts as best is kept as well.
+
         Raises:
-            ValueError: If the run may still be training, no epoch is kept, or
-                a kept epoch has no checkpoint. Nothing is deleted on any of them.
+            ValueError: If the run may still be training, no epoch is kept, a
+                kept epoch has no checkpoint, or the choice cannot be read.
+                Nothing is deleted on any of them.
         """
+        chosen = read_chosen_best(directory)
         run = self.summary(directory)
         if run.problem:
             raise ValueError(run.problem)
@@ -548,9 +589,15 @@ class TrainingController:
             raise ValueError(
                 f"{run.name} has no checkpoint for epoch(s) {', '.join(map(str, missing))}"
             )
+        if chosen is not None:
+            kept.add(chosen.epoch)
+        if keep_run_best and run.best is not None:
+            kept.add(run.best.epoch)
         return [checkpoint for checkpoint in checkpoints if checkpoint.epoch not in kept]
 
-    def remove_other_checkpoints(self, directory: Path, keep: Collection[int]) -> list[Path]:
+    def remove_other_checkpoints(
+        self, directory: Path, keep: Collection[int], keep_run_best: bool = False
+    ) -> list[Path]:
         """Delete every checkpoint of the run in *directory* but those of the epochs in *keep*.
 
         **Never called without the person having been shown what goes and saying yes**:
@@ -563,7 +610,10 @@ class TrainingController:
         Raises:
             ValueError: As :meth:`other_checkpoints`, before anything is deleted.
         """
-        doomed = [checkpoint.path for checkpoint in self.other_checkpoints(directory, keep)]
+        doomed = [
+            checkpoint.path
+            for checkpoint in self.other_checkpoints(directory, keep, keep_run_best)
+        ]
         for path in doomed:
             path.unlink()
             logger.info("Deleted the checkpoint %s", path)
@@ -604,6 +654,15 @@ class TrainingController:
         if run.train or run.val:
             self._whole[run.directory] = run
         return run
+
+
+def _chosen(directory: Path) -> ChosenBest | None:
+    """Return the epoch chosen as best for a listing, a choice that cannot be read logged as none."""
+    try:
+        return read_chosen_best(directory)
+    except ValueError as error:
+        logger.warning("%s", error)
+        return None
 
 
 def _when(run: RunSummary) -> str:

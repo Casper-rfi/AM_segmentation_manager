@@ -19,13 +19,16 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **Running the suite in parallel** with `pytest-xdist`, a new dependency. First: whether the
   process-wide state [`display.md`](display.md) § Testing the window names — the locale a
   `QApplication` sets, the error reporter's excepthook — stays confined to one worker.
+- **More of training**: a run per fold of a cross-validation export; scoring a checkpoint on a
+  held-out set, with am-seg's own inference and `label_measure`; queueing runs; a remote machine.
+  First: which of these is wanted, none having been asked for.
 - **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
   `GENERATIONS`, its preprocessing added beside `IMPLEMENTED_PREPROCESSING` and held to a recapture
   of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside
   `ml`, torch below 2.9 on Windows, Apache-2.0 with the Commons Clause, which is not open source,
   and an API that renamed its generations once.
-- **Splitting the five classes that outgrew a screen** — `CurationWindow` (96 methods, 1789
-  lines), `CurationController` (95), `LabelPanel` (72), `ExportController` (49) and `ExportPanel`
+- **Splitting the five classes that outgrew a screen** — `CurationWindow` (98 methods, 1835
+  lines), `CurationController` (96), `LabelPanel` (73), `ExportController` (49) and `ExportPanel`
   (32). None is public API — that is six names and the `am-seg` entry point — so this is
   maintainability, not a break a user would see, and it is deliberately not done before a release.
   First: whether a split follows the tabs, the panels or the operations; and whether it removes

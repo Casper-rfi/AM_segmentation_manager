@@ -78,7 +78,9 @@ The first public release, to be published as 0.1.0.
   trained and how many of its saved weights are still on disk:
   how it stands, its curves for the classes ticked, read off under the
   pointer, and its checkpoints, one of which can be copied
-  out and the rest deleted. `stop-training` ends a run.
+  out and the rest deleted. An epoch can be marked as a run's best in place
+  of the one the run chose, from the tab or with `choose-best`, and is never
+  deleted with the rest. `stop-training` ends a run.
 - `show-training` reports how a run stands, and for any AM-model-training
   run, wherever it was started: its epochs, its best validation epoch and
   the checkpoints kept. It draws the run's loss and per-class metric by

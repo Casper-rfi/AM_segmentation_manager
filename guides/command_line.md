@@ -114,6 +114,7 @@ am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round0
     --refine AM_SEM_All_V01.pth
 am-seg show-training /path/to/runs/round02 --plot curves.png --classes gis lamella crack
 am-seg stop-training /path/to/runs/round02
+am-seg choose-best /path/to/runs/round02 --epoch 74
 ```
 
 `train` needs the `train` extra, and takes the manifest a training export
@@ -137,6 +138,10 @@ also reads what AM-model-training wrote, for a run started anywhere, without
 the training stack: the epochs so far, the validation epoch the run counts as
 best, and the checkpoints kept, `<name>_val_epochNNN.pth`. `--plot` draws one
 run's loss and per-class metric by epoch.
+
+`choose-best` marks the epoch you count as a run's best where it is not the one
+the run chose, or takes that back with `--clear`; `show-training` reports both,
+and `--plot` marks both.
 
 `stop-training` ends a run started on this computer. The epoch in progress is
 lost and every checkpoint already written is kept. A stopped run is not
@@ -226,6 +231,7 @@ labels.
 | `am-seg train` | Train a new model, or refine an existing one, on an exported training set |
 | `am-seg show-training` | Report how a training run is going or how it ended, and draw its curves |
 | `am-seg stop-training` | Stop a training run that am-seg started on this computer |
+| `am-seg choose-best` | Mark an epoch as a training run's best, in place of the one the run chose |
 
 ### Record what changes, and read it back
 

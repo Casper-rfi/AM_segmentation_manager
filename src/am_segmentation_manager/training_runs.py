@@ -238,6 +238,18 @@ def is_run_directory(path: Path) -> bool:
     return RUN_DIRECTORY_PATTERN.match(path.name) is not None and path.is_dir()
 
 
+def written_in(directory: Path) -> Path | None:
+    """Return the run directory AM-model-training wrote for *directory*, or None before it has.
+
+    *directory* is that directory itself, or a run am-seg prepared, which is
+    started once and so holds one at most.
+    """
+    if is_run_directory(directory):
+        return directory
+    found = find_training_runs(directory, depth=0)
+    return found[-1] if found else None
+
+
 def find_training_runs(path: Path, depth: int = SEARCH_DEPTH) -> list[Path]:
     """Return the run directories at *path* or up to *depth* levels below it, oldest first.
 

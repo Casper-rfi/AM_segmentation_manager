@@ -679,3 +679,43 @@ def test_a_class_left_out_stays_out_from_one_run_to_the_next(controller: Trainin
 
     assert controller.shown_classes(("background", "gis", "lamella")) == ("lamella",)
     assert controller.shown_classes(("lamella", "gis")) == ("lamella",)
+
+
+# -- the epoch marked as best -------------------------------------------------
+
+
+def test_a_run_carries_the_epoch_marked_as_its_best(controller: TrainingController):
+    run = _finished_with_checkpoints(controller)
+
+    marked = controller.choose_best(run, 2)
+
+    assert marked.chosen.epoch == 2 and marked.best.epoch == 3
+    assert marked.line().endswith("best 3 (0.300) · marked 2")
+    assert controller.clear_best(run).chosen is None
+
+
+def test_a_run_am_seg_did_not_start_can_have_an_epoch_marked(controller: TrainingController):
+    written = _bare_run(controller.training_directory, "wide_seed2")
+
+    assert controller.choose_best(written, 1).chosen.epoch == 1
+    assert (written / "am_training_choice.yaml").is_file()
+
+
+def test_the_epoch_marked_is_kept_whatever_else_is(controller: TrainingController):
+    run = _finished_with_checkpoints(controller)
+    controller.choose_best(run, 1)
+
+    controller.remove_other_checkpoints(run, keep={2})
+
+    assert _checkpoint_names(run) == ["round01_val_epoch001.pth", "round01_val_epoch002.pth"]
+
+
+def test_nothing_is_deleted_while_the_mark_cannot_be_read(controller: TrainingController):
+    run = _finished_with_checkpoints(controller)
+    (run / "am_training_choice.yaml").write_text("version: 1\nepoch: best\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="names no epoch"):
+        controller.remove_other_checkpoints(run, keep={2})
+
+    assert len(_checkpoint_names(run)) == 3
+    assert controller.summary(run).chosen is None

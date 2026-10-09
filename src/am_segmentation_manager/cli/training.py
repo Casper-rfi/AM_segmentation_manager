@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from ..operations.training_choice import choose_best, clear_chosen_best, read_chosen_best
 from ..operations.training_process import (
     LOG_FILENAME,
     TrainingNotStarted,
@@ -37,6 +38,7 @@ from ..training_runs import (
     TrainingRun,
     find_training_runs,
     read_training_run,
+    written_in,
 )
 from .scope import _add_overwrite_argument, _outputs_refused
 
@@ -202,6 +204,27 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     stop.add_argument("path", help="The run's directory")
 
+    choose = sub.add_parser(
+        "choose-best",
+        help="Mark an epoch as a training run's best, in place of the one the run chose",
+        description=(
+            "Record the epoch you count as the run's best, or take that back. The "
+            "run's own best is the validated epoch scoring highest, which is not "
+            "always the model wanted. Written as am_training_choice.yaml in the "
+            "run's directory, under the name --user gives; nothing the run wrote is "
+            "changed, and show-training reports both."
+        ),
+    )
+    choose.add_argument(
+        "path",
+        help="The run's directory: one am-seg prepared, or a training_<date>_<time> directory",
+    )
+    which = choose.add_mutually_exclusive_group(required=True)
+    which.add_argument(
+        "--epoch", type=int, metavar="N", help="The epoch to mark; it must have been validated",
+    )
+    which.add_argument("--clear", action="store_true", help="Take the mark back")
+
 
 def _cmd_train(args: argparse.Namespace) -> int:
     """Handle ``am-seg train``."""
@@ -273,6 +296,7 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
         return 2
 
     runs: list[TrainingRun] = []
+    marked: dict[Path, int | None] = {}
     for directory in prepared:
         try:
             record = read_run_record(directory)
@@ -283,12 +307,14 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
         print(f"{directory}  ({record.name if record else directory.name}: {status.describe()})")
         for written in find_training_runs(directory, depth=0):
             runs.append(read_training_run(written))
-            _print_run(runs[-1], args.metric)
+            marked[written] = _marked(directory)
+            _print_run(runs[-1], args.metric, marked[written])
     inside = {run.directory for run in runs}
     for directory in found:
         if directory not in inside:
             runs.append(read_training_run(directory))
-            _print_run(runs[-1], args.metric)
+            marked[directory] = _marked(directory)
+            _print_run(runs[-1], args.metric, marked[directory])
 
     if args.plot:
         if len(runs) != 1:
@@ -299,7 +325,8 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
             return 2
         try:
             plot_training_run(runs[0], Path(args.plot), metric=args.metric,
-                              classes=args.classes, overwrite=args.overwrite)
+                              classes=args.classes, chosen=marked[runs[0].directory],
+                              overwrite=args.overwrite)
         except (RuntimeError, ValueError) as error:
             logger.error("%s", error)
             return 2
@@ -322,8 +349,39 @@ def _cmd_stop_training(args: argparse.Namespace) -> int:
     return 0 if after.state == "stopped" else 1
 
 
-def _print_run(run: TrainingRun, metric: str) -> None:
-    """Print what one run's files say about it."""
+def _cmd_choose_best(args: argparse.Namespace) -> int:
+    """Handle ``am-seg choose-best``."""
+    directory = Path(args.path)
+    if args.clear:
+        print("Cleared" if clear_chosen_best(directory) else "No epoch was marked")
+        return 0
+    written = written_in(directory) if directory.is_dir() else None
+    if written is None:
+        logger.error("No training run has written results at %s", directory)
+        return 2
+    try:
+        chosen = choose_best(
+            directory, read_training_run(written), args.epoch, user=getattr(args, "user", None)
+        )
+    except ValueError as error:
+        logger.error("%s", error)
+        return 2
+    print(f"Epoch {chosen.epoch} is marked as the best of {directory}")
+    return 0
+
+
+def _marked(directory: Path) -> int | None:
+    """Return the epoch marked as best for the run in *directory*, one that cannot be read logged."""
+    try:
+        chosen = read_chosen_best(directory)
+    except ValueError as error:
+        logger.error("%s", error)
+        return None
+    return chosen.epoch if chosen else None
+
+
+def _print_run(run: TrainingRun, metric: str, marked: int | None = None) -> None:
+    """Print what one run's files say about it, and the epoch marked as its best."""
     print(f"{run.directory}  ({run.run_id or 'no files written yet'})")
 
     started = f"started {run.started:%Y-%m-%d %H:%M} UTC, " if run.started else ""
@@ -347,6 +405,10 @@ def _print_run(run: TrainingRun, metric: str) -> None:
             print(f"    {metric} per class: {classes}")
         kept = run.checkpoint_for(best.epoch)
         print(f"    weights: {kept.path if kept else 'not kept in this directory'}")
+    if marked is not None:
+        kept = run.checkpoint_for(marked)
+        print(f"  marked as best: epoch {marked}")
+        print(f"    weights: {kept.path if kept else 'not kept in this directory'}")
     if run.checkpoints:
         epochs = ", ".join(
             f"{kept.epoch}{'' if kept.whole() else ' (incomplete)'}" for kept in run.checkpoints
@@ -360,4 +422,5 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "train": _cmd_train,
     "show-training": _cmd_show_training,
     "stop-training": _cmd_stop_training,
+    "choose-best": _cmd_choose_best,
 }

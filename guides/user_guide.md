@@ -333,12 +333,19 @@ it wrote: point **Training directory...** at the folder holding such runs.
 
 - **Save a copy...** copies the selected epoch's weights to wherever you keep
   your models. To predict with it, choose that file as the model on Curate.
+- **Mark as best...** counts the selected epoch as the run's best where the
+  one the run chose is not the model you want; with none selected it asks
+  which epoch, so a run whose weights are elsewhere can be marked too. A
+  hollow star marks the run's own best and a filled one yours, and the curves
+  mark both. **Clear best** takes it back.
 - **Delete the others...** deletes that run's checkpoints except the ones you
-  selected, about 170 MB each. It asks first and cannot be undone.
+  selected, about 170 MB each. It asks first and cannot be undone. The epoch
+  you marked as best is always kept, and the run's own best too while **Keep
+  the run's best** is ticked.
 - **Stop** ends a run. The epoch in progress is lost, and a stopped run is not
   continued: start another, refining from one of its checkpoints.
 
-The same can be done with `am-seg train`, `show-training` and `stop-training`
+The same can be done with `am-seg train`, `show-training`, `choose-best` and `stop-training`
 ([Train](command_line.md#train)).
 
 ## Undo and history

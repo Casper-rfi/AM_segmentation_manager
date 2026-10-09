@@ -337,3 +337,28 @@ def test_the_saved_epochs_of_a_real_run_follow_its_metrics():
     assert improving_epochs(run.val, run.key_metrics) == (1, 2)
 
     assert run.saved_epochs(save_all=False) == (1, 2, 3)
+
+
+# -- marking an epoch as best from the command line ---------------------------
+
+
+def test_choose_best_marks_an_epoch_and_show_training_reports_it(tmp_path: Path, capsys):
+    directory = _run(tmp_path, train=_scored(0.1, 0.2), val=_scored(0.2, 0.1), checkpoints=(1,))
+
+    assert main(["--user", "Casper", "choose-best", str(directory), "--epoch", "2"]) == 0
+    capsys.readouterr()
+    main(["show-training", str(directory)])
+    said = capsys.readouterr().out
+
+    assert "best validation epoch 1" in said
+    assert "marked as best: epoch 2\n    weights: not kept in this directory" in said
+
+
+def test_choose_best_refuses_an_epoch_never_validated_and_clears_on_request(tmp_path: Path, capsys):
+    directory = _run(tmp_path, train=_scored(0.1), val=_scored(0.2))
+
+    assert main(["choose-best", str(directory), "--epoch", "5"]) == 2
+    assert main(["choose-best", str(directory), "--epoch", "1"]) == 0
+    assert main(["choose-best", str(directory), "--clear"]) == 0
+    assert "Cleared" in capsys.readouterr().out
+    assert main(["choose-best", str(tmp_path / "nowhere"), "--epoch", "1"]) == 2

@@ -287,7 +287,9 @@ def test_checkpoints_are_listed_with_the_best_marked(panel):
 
     listed = [panel.checkpoints_list.item(row).text() for row in range(3)]
 
-    assert listed == ["epoch 1 (incomplete)", "epoch 2 (incomplete)", "epoch 3 (best, incomplete)"]
+    assert listed == [
+        "epoch 1 (incomplete)", "epoch 2 (incomplete)", "epoch 3 (run's best, incomplete)",
+    ]
 
 
 def test_a_copy_is_offered_for_exactly_one_checkpoint(panel):
@@ -337,7 +339,8 @@ def test_deleting_the_others_says_how_many_and_asks_first(panel):
 
     title, said = panel.answers.asked[-1]
     assert title == "Delete the other checkpoints?"
-    assert "Delete 2 checkpoint(s)" in said and "keeping epoch(s) 2" in said
+    assert "Delete 1 checkpoint(s)" in said and "keeping epoch(s) 2" in said
+    assert "Epoch 3 (the run's best) is kept as well." in said
     assert "cannot be undone" in said
     assert len(list(run.rglob("*.pth"))) == 3
 
@@ -608,3 +611,97 @@ def test_nothing_is_named_while_panning(drawn, qt_app):
     chart.point_at(x, y)
 
     assert chart.hovered() == ""
+
+
+# -- the epoch marked as best -------------------------------------------------
+
+
+def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
+    from am_segmentation_manager.operations.training_choice import read_chosen_best
+
+    run = _with_checkpoints(panel)
+    _select(panel, 2)
+
+    panel.mark_best()
+
+    assert read_chosen_best(run).epoch == 2
+    assert panel.checkpoints_list.item(1).text() == "epoch 2 (marked best, incomplete)"
+    assert "Marked as best: epoch 2" in panel.status_label.text()
+    assert "marked 2" in panel.runs_tree.project_item(0).text(0)
+    assert panel.unmark_button.isEnabled()
+
+
+def test_with_no_epoch_selected_marking_asks_which(panel):
+    run = _with_checkpoints(panel)
+    asked: list[str] = []
+    panel._ask_epoch = lambda listed: asked.append(listed.name) or 1
+
+    panel.mark_best()
+
+    assert asked == [run.name]
+    assert panel.controller.summary(run).chosen.epoch == 1
+
+
+def test_cancelling_the_question_marks_nothing(panel):
+    run = _with_checkpoints(panel)
+    panel._ask_epoch = lambda listed: None
+
+    panel.mark_best()
+
+    assert panel.controller.summary(run).chosen is None
+
+
+def test_clearing_takes_the_mark_back_and_leaves_the_run_s_own_best(panel):
+    run = _with_checkpoints(panel)
+    _select(panel, 2)
+    panel.mark_best()
+
+    panel.clear_best()
+
+    assert panel.controller.summary(run).chosen is None
+    assert panel.checkpoints_list.item(2).text() == "epoch 3 (run's best, incomplete)"
+    assert not panel.unmark_button.isEnabled()
+
+
+def test_deleting_the_others_never_takes_the_epoch_marked_as_best(panel):
+    run = _with_checkpoints(panel)
+    _select(panel, 1)
+    panel.mark_best()
+    _select(panel, 2)
+    panel.keep_best_check.setChecked(False)
+
+    panel.delete_others()
+
+    assert "Epoch 1 (marked as best) is kept as well." in panel.answers.asked[-1][1]
+    assert sorted(path.name[-12:] for path in run.rglob("*.pth")) == ["epoch001.pth", "epoch002.pth"]
+
+
+def test_the_run_s_best_goes_with_the_others_only_when_its_box_is_unticked(panel):
+    run = _with_checkpoints(panel)
+    _select(panel, 1)
+
+    panel.delete_others()
+    assert sorted(path.name[-12:] for path in run.rglob("*.pth")) == ["epoch001.pth", "epoch003.pth"]
+
+    panel.keep_best_check.setChecked(False)
+    _select(panel, 1)
+    panel.delete_others()
+    assert sorted(path.name[-12:] for path in run.rglob("*.pth")) == ["epoch001.pth"]
+
+
+def test_the_curves_mark_the_epoch_marked_as_best(drawn):
+    run = drawn.controller.selected_run()
+    drawn.controller.choose_best(run.directory, 1)
+
+    drawn.refresh()
+
+    _, metric_axes = drawn.chart._figure.axes
+    assert "marked best (1)" in {line.get_label() for line in metric_axes.get_lines()}
+
+
+def test_the_key_list_says_what_the_stars_beside_a_checkpoint_mean(qt_app):
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN, _tab_marks
+
+    meanings = " ".join(meaning for _, _, meaning in _tab_marks(TAB_TRAIN))
+
+    assert "the run counts as its best" in meanings and "you marked as best" in meanings

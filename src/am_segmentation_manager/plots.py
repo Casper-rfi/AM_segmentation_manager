@@ -40,6 +40,7 @@ _WIDTH_PER_COLUMN = 1.15
 
 #: Bar fill, and the line drawn over it for the running share.
 _BAR_COLOUR = "#4c78c8"
+_CHOSEN_COLOUR = "#7a3fa0"
 _LINE_COLOUR = "#c44e52"
 
 #: How a grid can be shaded: by the count in each cell, or by the cell's share
@@ -430,7 +431,10 @@ def class_colour(index: int) -> str:
 
 
 def training_figure(
-    run: TrainingRun, metric: str = "iou", classes: Collection[str] | None = None
+    run: TrainingRun,
+    metric: str = "iou",
+    classes: Collection[str] | None = None,
+    chosen: int | None = None,
 ) -> Figure:
     """Draw a run's loss, and *metric* for each class, epoch by epoch.
 
@@ -443,6 +447,7 @@ def training_figure(
         metric: One of :data:`~am_segmentation_manager.training_runs.PER_CLASS_METRICS`.
         classes: The classes to draw a curve for; every one where omitted. The
             weighted averages are over every class whichever are drawn.
+        chosen: The epoch a person chose as best, marked beside the run's own.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
@@ -499,6 +504,9 @@ def training_figure(
         if best is not None:
             axes.axvline(best.epoch, color=_LINE_COLOUR, linestyle=":", linewidth=1.2,
                          label=f"best epoch ({best.epoch})")
+        if chosen is not None:
+            axes.axvline(chosen, color=_CHOSEN_COLOUR, linestyle="--", linewidth=1.2,
+                         label=f"marked best ({chosen})")
         if run.frozen_epochs:
             axes.axvline(run.frozen_epochs + 1, color="#888888", linestyle="-.", linewidth=1,
                          label="encoder unfrozen")
@@ -521,6 +529,7 @@ def plot_training_run(
     *,
     metric: str = "iou",
     classes: Collection[str] | None = None,
+    chosen: int | None = None,
     overwrite: bool = False,
 ) -> Path:
     """Draw a run's curves and write them to *output*.
@@ -530,4 +539,4 @@ def plot_training_run(
         ValueError: As :func:`training_figure`.
         FileExistsError: If *output* exists and *overwrite* is False.
     """
-    return _finish(training_figure(run, metric, classes), output, overwrite=overwrite)
+    return _finish(training_figure(run, metric, classes, chosen), output, overwrite=overwrite)
