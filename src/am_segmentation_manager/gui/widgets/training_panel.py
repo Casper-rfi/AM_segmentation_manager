@@ -88,6 +88,7 @@ from .paths import (
 from .project_panel import CELL_COLOURS
 from .report_dialog import ReportDialog
 from .theme import (
+    ERROR,
     MUTED,
     SWATCH_CELL,
     SWATCH_GAP,
@@ -107,6 +108,9 @@ COLOUR_REDRAW_MILLISECONDS = 120
 #: The least width of that slider: scores worth comparing lie a few hundredths
 #: apart, and two handles that close on a short track sit on each other.
 COLOUR_SLIDER_WIDTH = 240
+
+#: Which column of the list of runs holds how each stands.
+STATE_COLUMN = 1
 
 #: What the window says while a run or a validation is checked in full.
 CHECKING = "Checking the training set"
@@ -669,6 +673,11 @@ class TrainingPanel(QWidget):
                 directories.index(controller.selected) if controller.selected is not None else None
             ),
         )
+        # The one state that asks to be looked into, which hover and the log then explain.
+        for row, run in enumerate(runs):
+            item = self.runs_tree.project_item(row)
+            if item is not None and run.state == "failed":
+                item.setForeground(STATE_COLUMN, QColor(ERROR))
         self._show_selected()
 
     def _show_selected(self) -> None:

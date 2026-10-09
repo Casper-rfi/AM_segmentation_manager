@@ -360,7 +360,7 @@ def _validate(record: ValidationRecord, on_device: Callable[[str], None] | None 
 
     from ..ml.scoring import score_checkpoints
     from ..training_runs import read_training_run, written_in
-    from ..validation_scores import ImageScores, scores_filename, write_scores
+    from ..validation_scores import CLASS_WEIGHTS, ImageScores, scores_filename, write_scores
 
     written = written_in(record.run_directory)
     if written is None:
@@ -388,6 +388,7 @@ def _validate(record: ValidationRecord, on_device: Callable[[str], None] | None 
                 epoch, names,
                 tuple(tuple(tuple(row) for row in matrix) for matrix in matrices),
                 tuple(losses),
+                weights=CLASS_WEIGHTS,
             ),
         )
         logger.info("Scored epoch %d", epoch)

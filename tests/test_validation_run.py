@@ -211,6 +211,19 @@ def test_each_epoch_s_scores_are_kept_by_the_names_the_export_gave(tmp_path: Pat
     assert metrics_for(scores, {"b.tif"}).per_class["iou"] == (1.0, 1.0)
 
 
+def test_the_weights_a_scores_file_records_are_the_ones_the_loss_used(tmp_path: Path, monkeypatch):
+    from am_segmentation_manager.ml.scoring import evaluation_arguments
+    from am_segmentation_manager.validation_scores import CLASS_WEIGHTS
+
+    _stand_in(monkeypatch)
+    directory = apply_validation(_plan(tmp_path))
+    run_child(directory)
+
+    asked = evaluation_arguments(Path("set_epoch001.pth"), Path("list.csv"), True, 0, None)
+    assert asked["loss_kwargs"]["weights"] is CLASS_WEIGHTS
+    assert read_scores(find_scores(directory)[0]).weights == CLASS_WEIGHTS
+
+
 def test_a_validation_that_fails_part_way_keeps_the_epochs_it_finished(tmp_path: Path, monkeypatch):
     _stand_in(monkeypatch, fail_after=2)
     directory = apply_validation(_plan(tmp_path))

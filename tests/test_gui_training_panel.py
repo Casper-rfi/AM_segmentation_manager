@@ -1135,6 +1135,27 @@ def test_a_run_is_listed_a_column_to_each_thing_said_of_it(panel):
     assert "IoU and Dice" in tree.headerItem().toolTip(6), "the number says what it is of"
 
 
+def test_a_run_that_failed_says_so_in_red_and_one_that_finished_does_not(panel):
+    """Among a list of states in one colour, the one to look into was as quiet as the rest."""
+    from am_segmentation_manager.gui.widgets.theme import ERROR
+
+    _started(panel)
+    panel.how["training"] = "fail"
+    _started(panel)
+    panel.refresh()
+    tree = panel.runs_tree
+
+    colours = {
+        item.text(1): item.foreground(1).color().name()
+        for item in tree.project_items()
+    }
+
+    assert set(colours) == {"finished", "failed"}
+    assert colours["failed"] == ERROR and colours["finished"] != ERROR
+    failed = next(item for item in tree.project_items() if item.text(1) == "failed")
+    assert "out of GPU memory" in failed.toolTip(1), "and hover says why"
+
+
 def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(panel):
     """Held to the name's column, a reason would be cut to its first words."""
     _three_runs(panel)

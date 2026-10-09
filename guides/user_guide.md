@@ -339,6 +339,7 @@ run for the numbers and the disk space, and for what the columns leave out:
 which GPU a run in training is on, why one failed, who marked its best epoch,
 how each validation of it stands, and the settings it was started with. While
 a validation is scoring, the run's state says how many epochs it has scored.
+A run that failed says so in red.
 F1 says what the colours mean. A run
 AM-model-training was started on directly, here or on another machine, is
 listed too, from the files it wrote: point **Training directory...** at the

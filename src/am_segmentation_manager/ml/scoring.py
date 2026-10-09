@@ -11,17 +11,19 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
+from typing import Any
 
+from ..validation_scores import CLASS_WEIGHTS
 from .environment import numbered_device, require_training_stack, resolve_device
 from .trainer import trainable_device
 
 logger = logging.getLogger(__name__)
 
-#: What ``am_model_training.main.evaluate`` builds generation 1 with.
+#: What ``am_model_training.main.evaluate`` builds generation 1 with. Its loss
+#: weights are :data:`~..validation_scores.CLASS_WEIGHTS`, which a scores file records.
 MODEL_NAME = "smp_fpn"
 IMAGE_SIZE = 1536
 LOSS_NAME = "compound_loss"
-LOSS_WEIGHTS = (1.0, 4.0, 3.0, 6.0, 2.0)
 LOSS_ALPHA = 0.5
 
 
@@ -71,6 +73,31 @@ def score_checkpoint(
     return next(score_checkpoints([weights], list_file, device=device, workers=workers))
 
 
+def evaluation_arguments(
+    weights: Path, list_file: Path, cpu_only: bool, gpu_number: int, workers: int | None
+) -> dict[str, Any]:
+    """Return what ``am_model_training.run.setup_evaluation`` is called with."""
+    return {
+        "output_path": list_file.parent,
+        "weights_file": weights,
+        "run_id": weights.stem,
+        "model_name": MODEL_NAME,
+        "csv_path": list_file,
+        "image_size": IMAGE_SIZE,
+        "pad": False,
+        "rgb": True,
+        "loss_name": LOSS_NAME,
+        "cpu_only": cpu_only,
+        "model_kwargs": {"pretrained": False, "weights_file": weights},
+        "loss_kwargs": {"weights": CLASS_WEIGHTS, "alpha": LOSS_ALPHA},
+        "include_background": True,
+        "gpu_number": gpu_number,
+        # One image a step: a step's confusion matrix is then an image's.
+        "batch_size": 1,
+        "num_workers": workers,
+    }
+
+
 def _score(
     weights: Path, list_file: Path, cpu_only: bool, gpu_number: int, workers: int | None
 ) -> Scored:
@@ -83,23 +110,7 @@ def _score(
     from torch.amp import autocast
 
     objects, parameters = run.setup_evaluation(
-        output_path=list_file.parent,
-        weights_file=weights,
-        run_id=weights.stem,
-        model_name=MODEL_NAME,
-        csv_path=list_file,
-        image_size=IMAGE_SIZE,
-        pad=False,
-        rgb=True,
-        loss_name=LOSS_NAME,
-        cpu_only=cpu_only,
-        model_kwargs={"pretrained": False, "weights_file": weights},
-        loss_kwargs={"weights": LOSS_WEIGHTS, "alpha": LOSS_ALPHA},
-        include_background=True,
-        gpu_number=gpu_number,
-        # One image a step: a step's confusion matrix is then an image's.
-        batch_size=1,
-        num_workers=workers,
+        **evaluation_arguments(weights, list_file, cpu_only, gpu_number, workers)
     )
     classes = parameters.num_classes
     stage = objects.validation
