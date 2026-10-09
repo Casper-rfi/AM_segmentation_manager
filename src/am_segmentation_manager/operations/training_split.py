@@ -10,7 +10,7 @@ again, which holds only while this arithmetic does not.
 from __future__ import annotations
 
 import random
-from collections.abc import Callable, Hashable, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -107,17 +107,12 @@ def split_balanced(
     Returns:
         ``(training, validation)``.
     """
-    members: dict[str, list[T]] = {}
-    for item in items:
-        members.setdefault(key(item), []).append(item)
+    of = _strata(items, key, stratum)
     strata: dict[Hashable, list[T]] = {}
-    for group in members.values():
-        counts: dict[Hashable, int] = {}
-        for item in group:
-            counts[stratum(item)] = counts.get(stratum(item), 0) + 1
-        # The first of the commonest, so a tie is decided by the order the
-        # items came in and one seed gives one split.
-        strata.setdefault(max(counts, key=lambda value: counts[value]), []).extend(group)
+    for value in of.values():
+        strata.setdefault(value, [])
+    for item in items:
+        strata[of[key(item)]].append(item)
 
     training: list[T] = []
     validation: list[T] = []
@@ -130,6 +125,21 @@ def split_balanced(
         training.extend(train)
         validation.extend(validate)
     return training, validation
+
+
+def _strata(
+    items: Sequence[T], key: Callable[[T], str], stratum: Callable[[T], Hashable]
+) -> dict[str, Hashable]:
+    """Return the stratum of each group: the one most of its items are in."""
+    counts: dict[str, dict[Hashable, int]] = {}
+    for item in items:
+        within = counts.setdefault(key(item), {})
+        within[stratum(item)] = within.get(stratum(item), 0) + 1
+    # The first of the commonest, so a tie is decided by the order the items
+    # came in and one seed gives one split.
+    return {
+        group: max(within, key=lambda value: within[value]) for group, within in counts.items()
+    }
 
 
 def split_grouped(
@@ -238,13 +248,17 @@ def split_pinned(
     A group any of whose items was validated on validates again, with whatever
     of it *validates* accepts now; one that trained trains again. The groups the
     earlier split never saw are split among themselves, as
-    :func:`split_validating` splits them.
+    :func:`split_validating` splits them -- or, **balanced, by where each
+    stratum stands with the pinned groups counted**: a new group validates
+    where that leaves its stratum's validation share nearer the target, so a
+    kind arriving one group at a time is not sent to training every time.
 
     Args:
         pinned: Returns :data:`TRAINING` or :data:`VALIDATION` for an item the
             earlier split held, None for one it did not.
         validates: Whether an item may be scored on; every item where omitted.
-        stratum: What to balance the groups split anew by.
+        stratum: What to balance by, the pinned groups counting towards each
+            stratum's standing.
 
     Returns:
         ``(training, validation, left_out)``.
@@ -266,17 +280,73 @@ def split_pinned(
             f"starting with {divided[0]}"
         )
 
-    training, validation, left_out = split_validating(
-        [item for item in items if key(item) not in sides], key, accepts, train_ratio, seed,
-        stratum,
-    )
+    if stratum is None:
+        training, validation, left_out = split_validating(
+            [item for item in items if key(item) not in sides], key, accepts, train_ratio, seed
+        )
+        validating = {group for group, side in sides.items() if side == {VALIDATION}}
+    else:
+        training, validation, left_out = [], [], []
+        validating = {group for group, side in sides.items() if side == {VALIDATION}} | (
+            _new_groups_to_validate(
+                [item for item in items if accepts(item)], key, stratum, sides, train_ratio, seed
+            )
+        )
     for item in items:
-        side = sides.get(key(item))
-        if side == {TRAINING}:
-            training.append(item)
-        elif side == {VALIDATION}:
+        group = key(item)
+        if group in validating:
             (validation if accepts(item) else left_out).append(item)
+        elif stratum is not None or group in sides:
+            training.append(item)
     return training, validation, left_out
+
+
+def _new_groups_to_validate(
+    eligible: Sequence[T],
+    key: Callable[[T], str],
+    stratum: Callable[[T], Hashable],
+    sides: Mapping[str, set[str]],
+    train_ratio: float,
+    seed: int | None,
+) -> set[str]:
+    """Return the groups no earlier split held that should validate, stratum by stratum.
+
+    Each stratum's target is its share of *all* its items, pinned ones
+    included; new groups are dealt in shuffled order, each to validation where
+    that is the nearer side of the target. A stratum of two or more groups that
+    would validate on none gives up its last new one, as :func:`split_balanced` does.
+    """
+    of = _strata(eligible, key, stratum)
+    size: dict[str, int] = {}
+    for item in eligible:
+        size[key(item)] = size.get(key(item), 0) + 1
+    total: dict[Hashable, int] = {}
+    validated: dict[Hashable, int] = {}
+    groups: dict[Hashable, int] = {}
+    for group, value in of.items():
+        total[value] = total.get(value, 0) + size[group]
+        groups[value] = groups.get(value, 0) + 1
+        if sides.get(group) == {VALIDATION}:
+            validated[value] = validated.get(value, 0) + size[group]
+
+    new = [group for group in of if group not in sides]
+    if seed is not None:
+        random.Random(seed).shuffle(new)
+    chosen: set[str] = set()
+    if train_ratio >= 1.0:
+        return chosen
+    if train_ratio <= 0.0:
+        return set(new)
+    for group in new:
+        value = of[group]
+        if validated.get(value, 0) + size[group] / 2 <= total[value] * (1 - train_ratio):
+            chosen.add(group)
+            validated[value] = validated.get(value, 0) + size[group]
+    for value, count in groups.items():
+        last = [group for group in new if of[group] == value][-1:]
+        if count > 1 and not validated.get(value) and last:
+            chosen.add(last[0])
+    return chosen
 
 
 def split_pairs(

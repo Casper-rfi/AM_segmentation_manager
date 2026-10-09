@@ -366,7 +366,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "whatever --keep-together names) of each value are split among "
             "themselves, and a value held by two or more always validates on "
             "one. Several properties are crossed, which leaves small groups, "
-            "so name as few as will do. Not with --folds"
+            "so name as few as will do. With --validation-from, a lamella "
+            "that export did not hold goes to the side its value is short on, "
+            "counting what is already there. Not with --folds"
         ),
     )
     create_training_csv.add_argument(

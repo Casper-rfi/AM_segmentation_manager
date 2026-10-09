@@ -266,3 +266,51 @@ def test_balancing_applies_to_what_may_validate_and_to_nothing_else():
     assert {_kind(item) for item in validation} == {"common", "rare"}
     assert all(_proofread(item) for item in validation)
     assert {_group(item) for item in left_out} == {_group(item) for item in validation}
+
+
+def test_a_rare_kind_arriving_one_group_at_a_time_reaches_validation():
+    """Split among themselves, a kind's only new group trains every round."""
+    held = [item for item in KIND_ITEMS if _kind(item) == "common"]
+    training, validation = split_balanced(held, _group, _kind, 0.8, 42)
+    arrived: list[str] = []
+    kinds = dict(KINDS)
+
+    sides_seen = []
+    for round_number in range(6):
+        group = f"new{round_number}"
+        kinds[group] = "rare"
+        arrived += [f"{group}-0", f"{group}-1"]
+        items = [*held, *arrived]
+        training, validation, _ = split_pinned(
+            items, _group, _pin(training, validation), 0.8, round_number,
+            stratum=lambda item: kinds[_group(item)],
+        )
+        sides_seen.append("validation" if f"{group}-0" in validation else "train")
+        assert sorted(training + validation) == sorted(items)
+
+    assert sides_seen.count("validation") in (1, 2), sides_seen
+    assert sides_seen[1] == "validation", "the second of a kind, where the first trained"
+
+
+def test_a_pinned_group_stays_where_it_was_however_its_kind_stands():
+    earlier_train, earlier_val = split_grouped(KIND_ITEMS, _group, 0.8, 42)
+
+    training, validation, _ = split_pinned(
+        KIND_ITEMS, _group, _pin(earlier_train, earlier_val), 0.8, 7, stratum=_kind
+    )
+
+    assert sorted(training) == sorted(earlier_train)
+    assert sorted(validation) == sorted(earlier_val)
+
+
+def test_new_groups_fill_the_side_their_kind_is_short_on():
+    """A kind wholly in training before: its new groups validate until it has its share."""
+    common = [item for item in KIND_ITEMS if _kind(item) == "common"]
+    new = [f"n{n:02d}-{i}" for n in range(10) for i in range(2)]
+
+    training, validation, _ = split_pinned(
+        [*common, *new], _group, _pin(common, []), 0.8, 42, stratum=lambda item: "one kind"
+    )
+
+    assert set(common) <= set(training)
+    assert len(validation) == 20, "all ten new groups, a fifth of the hundred items"

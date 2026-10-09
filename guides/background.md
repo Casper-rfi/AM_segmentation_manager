@@ -208,7 +208,10 @@ each kind of lamella: the lamellae of each kind are split among themselves, so
 a rare kind is not left out of validation by chance, and a kind two or more
 lamellae hold always validates on one. A kind only one lamella holds trains.
 Balance before training for the first time: **Validation from...** keeps
-whatever the first split decided.
+whatever the first split decided. With both set, a lamella the earlier export
+did not hold goes to whichever side its kind is short on, counting what is
+already there, so a rare kind arriving one lamella at a time still reaches
+validation.
 
 To see what a split is made of before writing it, set **Breakdown** to
 *training split*, alone or against another property such as the lamella
