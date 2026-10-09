@@ -111,6 +111,7 @@ on corrected labels alone, on the list `--state corrected` gives with the same
 seed; a label in another state is left out where its lamella is validated on.
 `--validation-from first_manifest.yaml` keeps every lamella on the side an
 earlier export put it, and splits only the lamellae that export did not hold.
+`--balance lamella-type` gives validation its share of each kind of lamella.
 `--dry-run` says how the rows would divide and writes nothing; with
 `--by lamella-type` it counts each side by that property.
 

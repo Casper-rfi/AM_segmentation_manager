@@ -287,7 +287,8 @@ out. Its count is always what an export would cover.
    on everything the filters match; with the state filter on *corrected +
    selected* that is proofread and predicted labels together. *Validation
    from...* keeps to an earlier export's split, so each round of training is
-   scored on the same lamellae. Set **Breakdown** to *training split* to count
+   scored on the same lamellae. *Balance by* gives validation its share of
+   each kind of lamella, microscope or voltage. Set **Breakdown** to *training split* to count
    what each side holds, by microscope or kind of lamella.
 5. **Write CSVs**: **Training CSV...** writes the image and label paths of a
    training set. The two metadata CSVs write one row per image or per project,

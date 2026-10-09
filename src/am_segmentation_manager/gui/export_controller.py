@@ -32,6 +32,7 @@ from ..aggregate import (
     groups_of,
     project_lookup,
     resolve_breakdown,
+    split_balance,
     split_grouping,
     value_order,
 )
@@ -73,6 +74,7 @@ from ..operations.training_split import (
     LEFT_OUT,
     TRAINING,
     VALIDATION,
+    Balance,
     Grouping,
     assign_folds,
 )
@@ -87,6 +89,15 @@ LABELLED_STATES = "corrected + selected"
 
 #: Workflow states offered as a filter, plus "any" and the two a model trains on.
 STATES = ("all", "selected", "deselected", "corrected", LABELLED_STATES)
+
+#: What the window offers to balance a validation set by, as ``(breakdown, caption)``;
+#: the command line's ``--balance`` takes any, and several.
+BALANCE_BY: tuple[tuple[str, str], ...] = (
+    ("", "Nothing"),
+    ("lamella-type", "Lamella type"),
+    ("microscope", "Microscope"),
+    ("voltage", "Voltage"),
+)
 
 #: The state validated on where a training export validates on one alone.
 VALIDATED_STATE = "corrected"
@@ -376,6 +387,8 @@ class TrainingExport:
             training or left out as
             :func:`~am_segmentation_manager.operations.csv.divide_rows` says.
             Plays no part in folds.
+        balance: The breakdown the validation side is given its share of, a
+            key of :data:`BALANCE_BY`; empty for none. Plays no part in folds.
         validation_from: The manifest of an earlier export whose split to keep
             to, or None. Set through :meth:`ExportController.set_validation_from`.
         prefix: Filename stem, written as ``<prefix>_train.csv`` and
@@ -387,6 +400,7 @@ class TrainingExport:
     keep_together: str = DEFAULT_KEEP_TOGETHER
     folds: int | None = None
     validate_on_corrected: bool = False
+    balance: str = ""
     validation_from: Path | None = None
     prefix: str = DEFAULT_PREFIX
 
@@ -1010,6 +1024,14 @@ class ExportController:
         """Return the one state a single split validates on, or None for any."""
         return VALIDATED_STATE if self.training.validate_on_corrected else None
 
+    def balance(self) -> Balance | None:
+        """Return what the validation side is balanced by, reading headers where that needs them."""
+        if not self.training.balance:
+            return None
+        if self.training.balance in NEEDS_METADATA:
+            self.load_metadata()
+        return split_balance([self.training.balance], self._lookup, self._metadata)
+
     def set_validation_from(self, manifest: Path | None) -> None:
         """Keep to the split of the export *manifest* records, or to none.
 
@@ -1071,7 +1093,8 @@ class ExportController:
             return export_kfold_csv(folds=self.training.folds, **shared)
         return [export_training_csv(
             train_ratio=self.training.train_ratio, validate_on=self.validate_on,
-            validation_from=self.training.validation_from, **shared,
+            validation_from=self.training.validation_from, balance=self.balance(),
+            **shared,
         )]
 
     def export_image_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
@@ -1237,6 +1260,7 @@ class ExportController:
             seed=self.training.seed,
             validate_on=self.validate_on,
             earlier=self._earlier,
+            balance=self.balance(),
         )
 
     def breakdown(self, name: str) -> dict:

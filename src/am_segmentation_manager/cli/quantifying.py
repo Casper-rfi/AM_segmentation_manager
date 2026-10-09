@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..aggregate import (
+    BALANCEABLE,
     BREAKDOWNS,
     NEEDS_LABEL_STATES,
     NEEDS_MEASUREMENTS,
@@ -24,6 +25,7 @@ from ..aggregate import (
     cross_tabulate,
     project_lookup,
     resolve_breakdown,
+    split_balance,
     split_grouping,
     summarise_lamellae,
 )
@@ -350,6 +352,21 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "--keep-together names with the validation side: it is then left "
             "out and counted, since training on it would show the model what "
             "it is scored on. Not with --folds"
+        ),
+    )
+    create_training_csv.add_argument(
+        "--balance",
+        nargs="+",
+        choices=sorted(BALANCEABLE),
+        default=[],
+        metavar="PROPERTY",
+        help=(
+            "Give the validation side its share of each value of these "
+            "properties, as '--balance lamella-type': the lamellae (or "
+            "whatever --keep-together names) of each value are split among "
+            "themselves, and a value held by two or more always validates on "
+            "one. Several properties are crossed, which leaves small groups, "
+            "so name as few as will do. Not with --folds"
         ),
     )
     create_training_csv.add_argument(
@@ -760,10 +777,12 @@ def _fold_count(text: str) -> int:
 def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg create-training-csv``."""
 
-    if args.folds and (args.validate_on or args.validation_from or args.dry_run):
+    if args.folds and (
+        args.validate_on or args.validation_from or args.dry_run or args.balance
+    ):
         logger.error(
-            "--validate-on, --validation-from and --dry-run are for one split; "
-            "none can be given with --folds"
+            "--validate-on, --validation-from, --balance and --dry-run are for one "
+            "split; none can be given with --folds"
         )
         return 2
     if args.by and not args.dry_run:
@@ -821,6 +840,12 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         ),
     }
     validation_from = Path(args.validation_from) if args.validation_from else None
+    balance = split_balance(
+        args.balance,
+        project_lookup(_projects_in_scope(projects, start_path)),
+        read_records_metadata(records)
+        if any(name in NEEDS_METADATA for name in args.balance) else None,
+    )
     if args.dry_run:
         try:
             _, _, training, validation, left_out = divide_for_export(
@@ -828,6 +853,7 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
                 paired=shared["paired"], include_empty_labels=args.include_empty_labels,
                 grouping=shared["grouping"], train_ratio=args.split, seed=args.seed,
                 validate_on=args.validate_on, validation_from=validation_from,
+                balance=balance,
             )
         except ValueError as error:
             logger.error("Could not export: %s", error)
@@ -861,7 +887,7 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         else:
             written = [export_training_csv(
                 train_ratio=args.split, validate_on=args.validate_on,
-                validation_from=validation_from, **shared,
+                validation_from=validation_from, balance=balance, **shared,
             )]
     except LeftoverFolds as error:
         logger.error("Could not export: %s", error)

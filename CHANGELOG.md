@@ -74,6 +74,9 @@ The first public release, to be published as 0.1.0.
   (`--validation-from`, or *Validation from...*), so a model trained after
   more proofreading or with more data is scored on lamellae no earlier model
   trained on.
+- A training split can be balanced by a property (`--balance`, or *Balance
+  by*), so a rare kind of lamella, microscope or voltage is not left out of
+  validation by chance.
 - What each side of a training split holds can be counted before it is
   written, by any property: the *training split* breakdown on Export, or
   `create-training-csv --dry-run --by`.

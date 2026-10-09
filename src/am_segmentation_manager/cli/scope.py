@@ -331,6 +331,8 @@ def _describe_scope(args: argparse.Namespace) -> str:
         parts.extend(f"--{name} {item}" for item in chosen)
     if getattr(args, "validate_on", None):
         parts.append(f"--validate-on {args.validate_on}")
+    if getattr(args, "balance", None):
+        parts.append(f"--balance {' '.join(args.balance)}")
     if getattr(args, "validation_from", None):
         parts.append(f"--validation-from {Path(args.validation_from).name}")
     if getattr(args, "paths", None):

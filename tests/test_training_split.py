@@ -14,6 +14,7 @@ from am_segmentation_manager.operations.training_split import (
     assign_folds,
     fold_training,
     DividedGroup,
+    split_balanced,
     split_grouped,
     split_pinned,
     split_validating,
@@ -210,3 +211,58 @@ def test_what_is_proofread_since_in_a_validated_group_validates_too():
 def test_a_group_the_earlier_split_divided_is_refused():
     with pytest.raises(DividedGroup, match="g01"):
         split_pinned(ITEMS, _group, _pin(["g01-0"], ["g01-1"]))
+
+
+#: Forty common groups and three rare ones, two items each: what a random
+#: split by group leaves the rare kind out of more often than not.
+KINDS = {f"c{n:02d}": "common" for n in range(40)} | {f"r{n}": "rare" for n in range(3)}
+KIND_ITEMS = [f"{group}-{i}" for group in KINDS for i in range(2)]
+
+
+def _kind(item: str) -> str:
+    return KINDS[_group(item)]
+
+
+def test_every_kind_two_groups_hold_validates_whatever_the_seed():
+    for seed in range(30):
+        training, validation = split_balanced(KIND_ITEMS, _group, _kind, 0.8, seed)
+
+        assert {_kind(item) for item in validation} == {"common", "rare"}
+        assert not {_group(item) for item in training} & {_group(item) for item in validation}
+        assert sorted(training + validation) == sorted(KIND_ITEMS)
+        common = [item for item in validation if _kind(item) == "common"]
+        assert len(common) == 16, "a fifth of the eighty common items"
+
+
+def test_a_kind_one_group_holds_trains():
+    items = [*KIND_ITEMS, "only-0", "only-1"]
+    kinds = {**KINDS, "only": "single"}
+
+    training, validation = split_balanced(
+        items, _group, lambda item: kinds[_group(item)], 0.8, 42
+    )
+
+    assert {"only-0", "only-1"} <= set(training)
+    assert "single" not in {kinds[_group(item)] for item in validation}
+
+
+def test_a_group_of_two_kinds_counts_as_the_one_most_of_it_is():
+    mixed = {"m-0": "rare", "m-1": "common", "m-2": "common"}
+    items = [*KIND_ITEMS, *mixed]
+
+    training, validation = split_balanced(
+        items, _group, lambda item: mixed.get(item) or _kind(item), 0.8, 42
+    )
+
+    side = training if "m-0" in training else validation
+    assert set(mixed) <= set(side), "a group is never divided to balance it"
+
+
+def test_balancing_applies_to_what_may_validate_and_to_nothing_else():
+    training, validation, left_out = split_validating(
+        KIND_ITEMS, _group, _proofread, 0.8, 42, stratum=_kind
+    )
+
+    assert {_kind(item) for item in validation} == {"common", "rare"}
+    assert all(_proofread(item) for item in validation)
+    assert {_group(item) for item in left_out} == {_group(item) for item in validation}

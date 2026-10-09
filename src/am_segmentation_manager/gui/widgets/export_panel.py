@@ -40,6 +40,7 @@ from ...reporting import (
 )
 from ..export_controller import (
     ANY_LABEL,
+    BALANCE_BY,
     DEFAULT_PREFIX,
     DEFAULT_SERIES,
     GROUP_NOUNS,
@@ -1176,6 +1177,23 @@ class ExportPanel(QWidget):
         row.addWidget(self.folds, stretch=1)
         grid.addLayout(row)
 
+        row = QHBoxLayout()
+        self.balance = StepCombo()
+        for name, caption in BALANCE_BY:
+            self.balance.addItem(caption, name)
+        self.balance.currentIndexChanged.connect(self._controls_changed)
+        row.addWidget(
+            caption_for(
+                "Balance by",
+                self.balance,
+                "Give validation its share of each value: the lamellae of "
+                "each are split among themselves, and a value two or more "
+                "hold always validates on one.",
+            )
+        )
+        row.addWidget(self.balance, stretch=1)
+        grid.addLayout(row)
+
         self.validate_on_corrected = ToggleSwitch("Validate on corrected only")
         self.validate_on_corrected.setToolTip(
             "Score on proofread labels alone, and train on the rest as well. "
@@ -1269,6 +1287,7 @@ class ExportPanel(QWidget):
         self.train_share.setEnabled(folds < 2)
         self.validate_on_corrected.setEnabled(folds < 2)
         self.validation_from.setEnabled(folds < 2)
+        self.balance.setEnabled(folds < 2)
         self._controls_changed()
 
     def _seeding_toggled(self, seeded: bool) -> None:
@@ -1391,6 +1410,7 @@ class ExportPanel(QWidget):
         training.keep_together = self.keep_together.currentData()
         training.folds = self.folds.value() if self.folds.value() >= 2 else None
         training.validate_on_corrected = self.validate_on_corrected.isChecked()
+        training.balance = self.balance.currentData()
         training.prefix = self.prefix.text().strip() or DEFAULT_PREFIX
         self.refresh()
 

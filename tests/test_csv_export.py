@@ -9,7 +9,7 @@ import pytest
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.csv import export_training_csv, find_matching_label
-from am_segmentation_manager.operations.training_split import Grouping
+from am_segmentation_manager.operations.training_split import Balance, Grouping
 from am_segmentation_manager.state import read_state, write_state
 from conftest import write_label
 
@@ -737,3 +737,51 @@ def test_cli_counts_a_split_by_a_property_only_in_a_dry_run(tmp_path: Path):
 
     assert rc == 2
     assert not (tmp_path / "out").exists()
+
+
+#: Balances by the last digit of a lamella's number being zero: two of twenty.
+BY_RARITY = Balance(
+    ("rarity",),
+    lambda record: "rare" if record.image_path.parents[2].name[1] == "0" else "common",
+)
+
+
+def test_a_balanced_export_validates_on_the_rare_kind_and_says_what_it_balanced_by(
+    tmp_path: Path,
+):
+    records = _mixed_records(tmp_path / "data", lamellae=20)
+
+    for seed in range(5):
+        out = tmp_path / f"out{seed}"
+        export_training_csv(
+            records, tmp_path / "data", out, seed=seed,
+            grouping=BY_LAMELLA, validate_on="corrected", balance=BY_RARITY,
+        )
+        validated = {_lamella(row["image"]) for row in _rows(out / "dataset_val.csv")}
+        assert validated & {"00-lamella", "10-lamella"}, f"seed {seed} left the rare kind out"
+        assert validated - {"00-lamella", "10-lamella"}
+        assert _manifest(out)["split"]["balance"] == ["rarity"]
+
+
+def test_an_unbalanced_export_says_nothing_of_balance(tmp_path: Path):
+    export_training_csv(_labelled_records(tmp_path / "data"), tmp_path / "data", tmp_path / "out")
+
+    assert "balance" not in _manifest(tmp_path / "out")["split"]
+
+
+def test_cli_balances_the_validation_side_by_a_property(tmp_path: Path, capsys):
+    _mixed_project(tmp_path / "data")
+
+    rc = main([
+        *_training_arguments(tmp_path / "data", tmp_path / "out"),
+        "--state", "corrected", "--balance", "lamella", "--keep-together", "acquisition",
+        "--dry-run", "--by", "lamella",
+    ])
+
+    assert rc == 0
+    rows = [
+        line.split() for line in capsys.readouterr().out.splitlines() if "/ L" in line
+    ]
+    assert len(rows) == 10
+    # Two corrected images a lamella, kept apart: each lamella validates on one.
+    assert all("1" in row[-5:-1] for row in rows), rows

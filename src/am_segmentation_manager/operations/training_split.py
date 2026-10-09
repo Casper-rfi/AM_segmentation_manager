@@ -74,6 +74,64 @@ class Grouping:
             )
 
 
+@dataclass(frozen=True)
+class Balance:
+    """What the validation side holds a share of, by name and by record.
+
+    One value for the reason :class:`Grouping` is one: the properties a
+    manifest records cannot differ from those the rows were balanced by.
+
+    Attributes:
+        names: The properties balanced on, as an export's manifest lists them.
+        key: Returns a record's value of each, which is its stratum.
+    """
+
+    names: tuple[str, ...]
+    key: Callable[[ImageRecord], Hashable]
+
+
+def split_balanced(
+    items: Sequence[T],
+    key: Callable[[T], str],
+    stratum: Callable[[T], Hashable],
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
+    seed: int | None = 42,
+) -> tuple[list[T], list[T]]:
+    """Split *items* so each stratum gives the validation side its own share.
+
+    A group belongs to the stratum most of its items are in, and each stratum
+    is split by :func:`split_grouped`, in the order the strata are first met.
+    **A stratum of two or more groups always validates on one**, which the
+    ratio alone would deny a small one; a stratum of one group trains.
+
+    Returns:
+        ``(training, validation)``.
+    """
+    members: dict[str, list[T]] = {}
+    for item in items:
+        members.setdefault(key(item), []).append(item)
+    strata: dict[Hashable, list[T]] = {}
+    for group in members.values():
+        counts: dict[Hashable, int] = {}
+        for item in group:
+            counts[stratum(item)] = counts.get(stratum(item), 0) + 1
+        # The first of the commonest, so a tie is decided by the order the
+        # items came in and one seed gives one split.
+        strata.setdefault(max(counts, key=lambda value: counts[value]), []).extend(group)
+
+    training: list[T] = []
+    validation: list[T] = []
+    for held in strata.values():
+        train, validate = split_grouped(held, key, train_ratio, seed)
+        if not validate and 0.0 < train_ratio < 1.0 and len({key(item) for item in held}) > 1:
+            last = key(train[-1])
+            validate = [item for item in train if key(item) == last]
+            train = [item for item in train if key(item) != last]
+        training.extend(train)
+        validation.extend(validate)
+    return training, validation
+
+
 def split_grouped(
     items: Sequence[T],
     key: Callable[[T], str],
@@ -128,6 +186,7 @@ def split_validating(
     validates: Callable[[T], bool],
     train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
+    stratum: Callable[[T], Hashable] | None = None,
 ) -> tuple[list[T], list[T], list[T]]:
     """Split *items* so that only those *validates* accepts are scored on.
 
@@ -136,12 +195,18 @@ def split_validating(
     item then trains, **unless its group is on the validation side**: training
     on it would score a model on a group it has seen, so it is left out.
 
+    Args:
+        stratum: What to balance the validation side by, as
+            :func:`split_balanced` does; unbalanced where omitted.
+
     Returns:
         ``(training, validation, left_out)``.
     """
-    training, validation = split_grouped(
-        [item for item in items if validates(item)], key, train_ratio, seed
-    )
+    eligible = [item for item in items if validates(item)]
+    if stratum is None:
+        training, validation = split_grouped(eligible, key, train_ratio, seed)
+    else:
+        training, validation = split_balanced(eligible, key, stratum, train_ratio, seed)
     validated = {key(item) for item in validation}
     left_out: list[T] = []
     for item in items:
@@ -166,6 +231,7 @@ def split_pinned(
     train_ratio: float = DEFAULT_TRAIN_RATIO,
     seed: int | None = 42,
     validates: Callable[[T], bool] | None = None,
+    stratum: Callable[[T], Hashable] | None = None,
 ) -> tuple[list[T], list[T], list[T]]:
     """Split *items*, keeping every group on the side an earlier split put it.
 
@@ -178,6 +244,7 @@ def split_pinned(
         pinned: Returns :data:`TRAINING` or :data:`VALIDATION` for an item the
             earlier split held, None for one it did not.
         validates: Whether an item may be scored on; every item where omitted.
+        stratum: What to balance the groups split anew by.
 
     Returns:
         ``(training, validation, left_out)``.
@@ -200,7 +267,8 @@ def split_pinned(
         )
 
     training, validation, left_out = split_validating(
-        [item for item in items if key(item) not in sides], key, accepts, train_ratio, seed
+        [item for item in items if key(item) not in sides], key, accepts, train_ratio, seed,
+        stratum,
     )
     for item in items:
         side = sides.get(key(item))

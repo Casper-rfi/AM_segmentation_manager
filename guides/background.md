@@ -203,6 +203,13 @@ proofread since; one it trained on trains again; only lamellae it did not hold
 are split by **Training** and **Seed**. To compare an older model on the grown
 validation list, validate it on the new export in Train.
 
+**Balance by** gives validation its share of each value of a property, such as
+each kind of lamella: the lamellae of each kind are split among themselves, so
+a rare kind is not left out of validation by chance, and a kind two or more
+lamellae hold always validates on one. A kind only one lamella holds trains.
+Balance before training for the first time: **Validation from...** keeps
+whatever the first split decided.
+
 To see what a split is made of before writing it, set **Breakdown** to
 *training split*, alone or against another property such as the lamella
 preparation type, the microscope model or the accelerating voltage. The table

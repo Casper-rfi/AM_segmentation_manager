@@ -35,7 +35,14 @@ from .operations.label_measure import (
     measurement_status,
 )
 from .operations.selection import current_state
-from .operations.training_split import ACQUISITION, LEFT_OUT, TRAINING, VALIDATION, Grouping
+from .operations.training_split import (
+    ACQUISITION,
+    LEFT_OUT,
+    TRAINING,
+    VALIDATION,
+    Balance,
+    Grouping,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -866,6 +873,36 @@ def split_grouping(level: str, lookup: Mapping[Path, Project]) -> Grouping:
     if level == ACQUISITION:
         return Grouping()
     return Grouping(level, resolve_breakdown(SPLIT_BREAKDOWNS[level], lookup=lookup))
+
+
+#: The breakdowns a split can be balanced by: what an image is known to be
+#: without opening its label, and is one of.
+BALANCEABLE: tuple[str, ...] = tuple(
+    name for name, entry in BREAKDOWNS.items()
+    if entry.kind in ("record", "metadata", "project") and not entry.multi
+)
+
+
+def split_balance(
+    names: Sequence[str],
+    lookup: Mapping[Path, Project],
+    metadata: Mapping[Path, ImageMetadata] | None = None,
+) -> Balance | None:
+    """Return what a training split is balanced by, or None for no *names*.
+
+    Args:
+        metadata: The images' headers, needed by a name in :data:`NEEDS_METADATA`.
+
+    Raises:
+        ValueError: If a name is not in :data:`BALANCEABLE`.
+    """
+    if not names:
+        return None
+    unknown = [name for name in names if name not in BALANCEABLE]
+    if unknown:
+        raise ValueError(f"A split cannot be balanced by {', '.join(unknown)}")
+    keys = [resolve_breakdown(name, metadata, lookup) for name in names]
+    return Balance(tuple(names), lambda record: " / ".join(str(key(record)) for key in keys))
 
 
 def _slug(name: str) -> str:

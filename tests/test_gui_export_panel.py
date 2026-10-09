@@ -503,6 +503,7 @@ def test_the_filters_box_holds_every_control_that_narrows(panel: ExportPanel):
             # Decides the side too, and what it leaves out of both the split's
             # own line counts, so the table and the files are not two numbers.
             panel.validate_on_corrected,
+            panel.balance,   # a dropdown, but it only decides the side
         ), f"{widget} can narrow, and is in the Export box"
 
 
@@ -1165,6 +1166,32 @@ def test_counting_by_the_split_asks_for_the_labels_it_is_made_from(qt_app, tmp_p
     assert panel.controller.labels_pending(["split"]) > 0
 
 
+def test_balancing_gives_each_value_its_share_of_validation(qt_app, tmp_path):
+    """By lamella, with acquisitions kept together: each lamella validates on one of its two."""
+    panel = _loaded_panel(tmp_path)
+    panel.modality.setCurrentText("SEM")
+    panel.keep_together.setCurrentIndex(panel.keep_together.findData("acquisition"))
+    panel.train_share.setValue(50)
+    panel.controller.load_measurements()
+    panel.controller.training.balance = "lamella"
+
+    table = panel.controller.cross_tabulation("lamella", "split")
+
+    assert {side for _, side in table} == {"train", "validation"}
+    assert set(table.values()) == {1}
+
+
+def test_balance_opens_on_nothing_and_folds_do_not_take_it(panel: ExportPanel):
+    assert panel.balance.currentData() == ""
+    assert panel.controller.balance() is None
+
+    panel.balance.setCurrentIndex(panel.balance.findData("lamella-type"))
+    assert panel.controller.training.balance == "lamella-type"
+
+    panel.folds.setValue(3)
+    assert not panel.balance.isEnabled()
+
+
 def test_keeping_to_an_earlier_export_holds_the_split_whatever_the_seed(qt_app, tmp_path):
     panel = _half_proofread_panel(tmp_path / "data")
     panel.validate_on_corrected.setChecked(True)
@@ -1216,7 +1243,7 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
         panel.cross, panel.conditions, panel.measure_button,
         panel.keep_together, panel.train_share, panel.folds, panel.seeded,
         panel.seed, panel.prefix, panel.check_button, panel.validate_on_corrected,
-        panel.validation_from, panel.forget_validation_from,
+        panel.validation_from, panel.forget_validation_from, panel.balance,
     ):
         assert widget.toolTip(), f"{widget} explains nothing"
 

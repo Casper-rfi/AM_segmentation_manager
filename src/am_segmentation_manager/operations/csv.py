@@ -29,6 +29,7 @@ from .training_manifest import manifest_path, read_training_manifest, write_trai
 from .training_split import (
     ACQUISITION,
     DEFAULT_TRAIN_RATIO,
+    Balance,
     Grouping,
     assign_folds,
     fold_training,
@@ -322,6 +323,7 @@ def divide_rows(
     seed: int | None = 42,
     validate_on: str | None = None,
     earlier: Mapping[str, str] | None = None,
+    balance: Balance | None = None,
 ) -> tuple[list[TrainingRow], list[TrainingRow], list[TrainingRow]]:
     """Divide built rows as an export writes them, for the preview and the file alike.
 
@@ -331,6 +333,8 @@ def divide_rows(
             is left out where its group validates.
         earlier: The side each image of an earlier export was on, from
             :func:`earlier_sides`; a group is then kept on the side it was.
+        balance: What the validation side is given a share of, each row
+            counting as its first image does; unbalanced where omitted.
 
     Returns:
         ``(training, validation, left_out)``; nothing is left out without *validate_on*.
@@ -347,6 +351,8 @@ def divide_rows(
     def group(row: TrainingRow) -> str:
         return row.group
 
+    stratum = None if balance is None else (lambda row: balance.key(row.records[0]))
+
     if earlier is not None:
         def pinned(row: TrainingRow) -> str | None:
             # A paired row names an image in every other cell.
@@ -358,10 +364,10 @@ def divide_rows(
                 "The earlier export names none of these images; it was made from "
                 "another folder, or of other images"
             )
-        return split_pinned(rows, group, pinned, train_ratio, seed, validates)
-    if validate_on is None:
+        return split_pinned(rows, group, pinned, train_ratio, seed, validates, stratum)
+    if validate_on is None and stratum is None:
         return (*split_rows(rows, train_ratio, seed), [])
-    return split_validating(rows, group, validates, train_ratio, seed)
+    return split_validating(rows, group, validates, train_ratio, seed, stratum)
 
 
 class LeftoverFolds(FileExistsError):
@@ -538,6 +544,7 @@ def divide_for_export(
     seed: int | None = 42,
     validate_on: str | None = None,
     validation_from: Path | None = None,
+    balance: Balance | None = None,
 ) -> tuple[list[TrainingRow], dict[str, int], list[TrainingRow], list[TrainingRow], list[TrainingRow]]:
     """Return what :func:`export_training_csv` would write, writing nothing.
 
@@ -556,7 +563,20 @@ def divide_for_export(
         include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
     )
     earlier = earlier_sides(validation_from) if validation_from is not None else None
-    train_rows, val_rows, left_out = divide_rows(rows, train_ratio, seed, validate_on, earlier)
+    train_rows, val_rows, left_out = divide_rows(
+        rows, train_ratio, seed, validate_on, earlier, balance
+    )
+    if balance is not None:
+        validated = {balance.key(row.records[0]) for row in val_rows}
+        without = sorted(
+            {str(value) for row in train_rows if (value := balance.key(row.records[0])) not in validated}
+        )
+        logger.info("Balanced the validation side by %s", ", ".join(balance.names))
+        if without and train_ratio < 1.0:
+            logger.warning(
+                "Nothing validates for %s: each is in one %s that can be validated on, "
+                "or in none", "; ".join(without), grouping.level,
+            )
     if earlier is not None:
         logger.info(
             "Kept to the split of %s: %d training, %d validation",
@@ -606,6 +626,7 @@ def export_training_csv(
     grouping: Grouping = Grouping(),
     validate_on: str | None = None,
     validation_from: Path | None = None,
+    balance: Balance | None = None,
     overwrite: bool = False,
     scope: str = "",
     user: str | None = None,
@@ -654,6 +675,8 @@ def export_training_csv(
         validation_from: The manifest of an earlier export of this collection
             whose split to keep: what it validated on validates again, what
             it trained on trains again, and only the rest is split anew.
+        balance: What the validation side is given a share of, recorded in
+            the manifest; see :func:`~.training_split.split_balanced`.
         overwrite: Replace files an earlier export wrote under *prefix*.
         scope: What the records were narrowed to, recorded in the manifest.
         user: The name to record as writing it; see :func:`write_training_manifest`.
@@ -691,7 +714,7 @@ def export_training_csv(
         records, start_path, conditions=conditions, paired=paired,
         include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
         train_ratio=train_ratio, seed=seed, validate_on=validate_on,
-        validation_from=validation_from,
+        validation_from=validation_from, balance=balance,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     if counts["groups"] < len(rows) or grouping.level != ACQUISITION:
@@ -725,6 +748,7 @@ def export_training_csv(
         keep_together=grouping.level,
         validate_on=validate_on,
         validation_from=validation_from,
+        balance=balance.names if balance is not None else (),
         conditions=conditions,
         include_empty_labels=include_empty_labels,
         counts={
