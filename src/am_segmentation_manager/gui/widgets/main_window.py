@@ -39,7 +39,7 @@ from qtpy.QtWidgets import (
 from ... import __version__
 from ...history import clear_author, set_author
 from ...identity import PRODUCT_NAME, REPOSITORY_URL, VIEWER_NAME
-from ...installation import update_steps
+from ...installation import update_steps, version_date
 from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
@@ -783,7 +783,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.setWindowTitle(f"{self._name}{TITLE_SEPARATOR}{directory.name}")
 
     def _show_about(self) -> None:
-        """Say what this is, which version, where its log is going, and how to update it.
+        """Say what this is, which version and how recent, where its log is going, and how to update it.
 
         The version and the log path are the two things anybody reporting a
         problem is asked for first, and neither was anywhere on screen. The log
@@ -798,6 +798,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             f"Version {__version__}",
             f"Qt binding: {API_NAME} {QT_VERSION}",
         ]
+        dated = version_date()
+        if dated:
+            lines.insert(2, dated)
         log = _log_file_path()
         lines.append(f"Log: {log}" if log else "Not logging to a file")
         link = f'<a href="{REPOSITORY_URL}">{REPOSITORY_URL}</a>'

@@ -1,13 +1,16 @@
-"""How this copy was installed, and so how it is brought up to date.
+"""How this copy was installed, how old it is, and so how it is brought up to date.
 
 A surface outside the four layers, reading only the record the installer left
-beside the package. **Nothing here reaches the network**: it says where to look
-for a newer version and what to run, and looks for nothing itself.
+beside the package and, for a source checkout, its latest commit. **Nothing here
+reaches the network**: it says where to look for a newer version and what to
+run, and looks for nothing itself.
 """
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Mapping
+from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -22,6 +25,12 @@ InstallKind = Literal["checkout", "repository", "other"]
 
 #: The file an installer writes for a package that did not come from an index.
 DIRECT_URL_FILENAME: Final[str] = "direct_url.json"
+
+#: The file every installer writes, whose age is when the package was installed.
+METADATA_FILENAME: Final[str] = "METADATA"
+
+#: How long git is given to name a checkout's latest commit, About waiting on it.
+GIT_SECONDS: Final[float] = 5.0
 
 
 def install_record() -> Mapping[str, Any]:
@@ -52,6 +61,50 @@ def checkout_directory(record: Mapping[str, Any]) -> Path | None:
     if install_kind(record) != "checkout" or address.scheme != "file":
         return None
     return Path(url2pathname(address.path))
+
+
+def commit_date(directory: Path) -> date | None:
+    """Return the day of the latest commit in the checkout at *directory*, or None.
+
+    None wherever git is missing, fails, or answers in a form not understood.
+    """
+    try:
+        answered = subprocess.run(
+            ["git", "-C", str(directory), "log", "-1", "--format=%cI"],
+            capture_output=True, text=True, timeout=GIT_SECONDS,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return datetime.fromisoformat(answered.stdout.strip()).date()
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def install_date() -> date | None:
+    """Return the day this package was installed, or None where that cannot be read."""
+    try:
+        installed = distribution(APPLICATION_ID)
+        written = next(file for file in installed.files or () if file.name == METADATA_FILENAME)
+        return date.fromtimestamp(Path(str(installed.locate_file(written))).stat().st_mtime)
+    except (PackageNotFoundError, StopIteration, OSError):
+        return None
+
+
+def version_date(record: Mapping[str, Any] | None = None) -> str:
+    """Return how recent this copy is, as a line to show beside its version, or ``""``.
+
+    A checkout is dated by its latest commit. Any other install records no date
+    for its code, so is dated by when it was installed, and says that it is.
+
+    Args:
+        record: The install record, read from the installed package where omitted.
+    """
+    record = install_record() if record is None else record
+    directory = checkout_directory(record)
+    committed = commit_date(directory) if directory else None
+    if committed:
+        return f"Latest change: {committed.isoformat()}"
+    installed = install_date()
+    return f"Installed: {installed.isoformat()}" if installed else ""
 
 
 def update_steps(record: Mapping[str, Any] | None = None) -> tuple[str, ...]:

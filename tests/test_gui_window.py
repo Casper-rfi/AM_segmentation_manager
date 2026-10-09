@@ -4004,6 +4004,19 @@ def test_about_says_the_version_and_where_the_log_went(window, monkeypatch, tmp_
     assert "run.log" in shown["text"]
 
 
+def test_about_says_how_recent_this_version_is(window, monkeypatch):
+    """What tells a reader whether it is worth looking for a newer one."""
+    from am_segmentation_manager.gui.widgets import main_window
+
+    shown = {}
+    monkeypatch.setattr(QMessageBox, "exec_", lambda self: shown.update(text=self.text()) or 0, raising=False)
+    monkeypatch.setattr(main_window, "version_date", lambda: "Latest change: 2026-10-07")
+
+    window._show_about()
+
+    assert "Latest change: 2026-10-07" in shown["text"]
+
+
 def test_about_says_where_to_look_for_a_newer_version_and_how_to_take_it(window, monkeypatch):
     """A link the reader follows themselves, and the steps for this install."""
     from am_segmentation_manager.gui.widgets import main_window
