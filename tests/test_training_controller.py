@@ -84,7 +84,7 @@ def test_a_name_already_in_the_training_directory_is_refused(controller: Trainin
     assert "A run named round01 already exists" in controller.problems()
 
 
-def test_switching_mode_takes_that_mode_s_published_settings(controller: TrainingController):
+def test_switching_mode_takes_that_mode_s_default_settings(controller: TrainingController):
     controller.change(max_epochs=7)
 
     controller.set_mode("refine")
@@ -102,7 +102,7 @@ def test_choosing_the_mode_already_chosen_keeps_what_was_changed(controller: Tra
     assert controller.settings.max_epochs == 7
 
 
-def test_settings_can_be_put_back_to_the_published_ones(controller: TrainingController):
+def test_settings_can_be_put_back_to_the_default_ones(controller: TrainingController):
     controller.change(max_epochs=7, save_all=True)
 
     controller.reset_settings()

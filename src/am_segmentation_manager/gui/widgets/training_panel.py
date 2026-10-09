@@ -205,7 +205,11 @@ class TrainingPanel(QWidget):
         self.frozen_epochs = _spin(0, 10_000, "Epochs the encoder is held frozen for before it is trained.")
         self.initial_rate = _rate("Where the learning rate starts.")
         self.max_rate = _rate("The learning rate's peak.")
-        self.batch = _spin(1, 256, "Images per training step; fewer needs less GPU memory.")
+        self.batch = _spin(
+            1, 256,
+            "Images per training step. Lower it, to 1 if need be, where the GPU runs out of "
+            "memory; a smaller batch trains differently from the default.",
+        )
         self.validation_batch = _spin(1, 256, "Images per validation step.")
         self.seed = _spin(0, 2**31 - 1, "Fixes augmentation and shuffling.")
         self.save_all = QCheckBox(f"Keep every epoch (about {CHECKPOINT_MEGABYTES} MB each)")
@@ -228,8 +232,8 @@ class TrainingPanel(QWidget):
                 widget.editingFinished.connect(lambda widget=widget, field=field: self._rate_edited(field, widget))
         fields.addRow(self.save_all)
         self.save_all.toggled.connect(lambda kept: self._changed("save_all", kept))
-        self.reset_button = QPushButton("Published settings")
-        self.reset_button.setToolTip("Put every setting back to the one the models were published with.")
+        self.reset_button = QPushButton("Default settings")
+        self.reset_button.setToolTip("Put every setting back to its default, which is what the models were published with.")
         self.reset_button.clicked.connect(self._reset_settings)
         fields.addRow(self.reset_button)
         return advanced

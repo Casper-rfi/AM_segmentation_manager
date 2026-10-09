@@ -135,7 +135,7 @@ REFINE: Final = TrainingSettings(
 
 
 def default_settings(mode: Mode) -> TrainingSettings:
-    """Return the published settings for *mode*."""
+    """Return the default settings for *mode*, those the models were published with."""
     return REFINE if mode == "refine" else NEW_MODEL
 
 

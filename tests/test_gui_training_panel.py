@@ -163,12 +163,18 @@ def test_a_learning_rate_that_is_not_a_number_is_put_back(panel):
     assert panel.controller.settings.initial_learning_rate == 1e-5
 
 
-def test_published_settings_puts_every_setting_back(panel):
+def test_default_settings_puts_every_setting_back(panel):
     panel.max_epochs.setValue(12)
 
-    panel._reset_settings()
+    panel.reset_button.click()
 
+    assert panel.reset_button.text() == "Default settings"
     assert panel.max_epochs.value() == 100
+
+
+def test_the_training_batch_says_to_lower_it_when_memory_runs_out(panel):
+    assert panel.batch.value() == 6
+    assert "runs out of memory" in panel.batch.toolTip()
 
 
 # -- starting -----------------------------------------------------------------

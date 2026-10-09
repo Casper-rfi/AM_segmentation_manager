@@ -233,7 +233,7 @@ class TrainingController:
         return self.settings.mode
 
     def set_mode(self, mode: Mode) -> None:
-        """Switch between a new model and a refine, taking that mode's published settings."""
+        """Switch between a new model and a refine, taking that mode's default settings."""
         if mode != self.settings.mode:
             self.settings = default_settings(mode)
 
@@ -242,7 +242,7 @@ class TrainingController:
         self.settings = replace(self.settings, **settings)
 
     def reset_settings(self) -> None:
-        """Put every setting back to the published one for the mode."""
+        """Put every setting back to the default for the mode."""
         self.settings = default_settings(self.settings.mode)
 
     def suggest_name(self, today: datetime | None = None) -> str:

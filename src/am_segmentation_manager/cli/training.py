@@ -122,7 +122,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     train.add_argument(
         "--batch-size", type=int, default=None, metavar="N",
         help=(
-            "Images per training step; fewer needs less GPU memory "
+            "Images per training step; lower it, to 1 if need be, where the GPU runs "
+            "out of memory "
             f"(default: {NEW_MODEL.training_batch_size})"
         ),
     )
