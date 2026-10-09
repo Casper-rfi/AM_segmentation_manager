@@ -61,7 +61,7 @@ from ..operations.label_measure import (
     measure_records,
     measurement_is_empty,
 )
-from ..operations.metadata_csv import export_image_metadata_csv
+from ..operations.metadata_csv import describe_training_images, export_image_metadata_csv
 from ..operations.selection import current_state
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
@@ -1002,6 +1002,9 @@ class ExportController:
             "grouping": self.grouping(),
             "overwrite": overwrite,
             "scope": self.describe_filters(),
+            "describe_images": describe_training_images(
+                self.start_path or output_dir, project_lookup(self._projects)
+            ),
         }
         if self.training.folds:
             return export_kfold_csv(folds=self.training.folds, **shared)

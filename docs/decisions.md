@@ -458,6 +458,9 @@ rather than appending to it.
   (`test_the_manifest_counts_what_the_files_hold`), and naming no folder of the machine: an export
   is deposited and moved, so the collection is said from the manifest's own folder and a folder
   named when training is taken before it (`test_a_manifest_names_no_folder_of_this_machine`).
+  Each image's metadata is written with the lists, frozen at the export: a model is scored on parts
+  of a set after the collection has been corrected, and on a machine that does not hold it
+  (`test_every_image_is_listed_once_with_the_side_it_is_on`).
 
 ## History
 

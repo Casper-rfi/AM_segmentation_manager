@@ -166,6 +166,15 @@ def test_cli_create_training_csv_integration(tmp_path: Path):
     combined = content_train + content_val
     assert "projX/L1/stage1/sem/img0.tif" in combined
 
+    with (out_dir / "test_run_images.csv").open(newline="", encoding="utf-8") as handle:
+        listed = list(csv.DictReader(handle))
+    assert sorted(row["image"] for row in listed) == [
+        f"projX/L1/stage1/sem/img{i}.tif" for i in range(5)
+    ]
+    assert {row["split"] for row in listed} == {"train"}, "one stage is one lamella, kept together"
+    assert {"autolamella_project", "lamella", "modality"} <= set(listed[0])
+    assert _manifest(out_dir, "test_run")["files"]["images"] == "test_run_images.csv"
+
 
 def test_cli_create_training_csv_positional_scan_dir(tmp_path: Path):
     scan_dir = tmp_path / "20260728_CB_AM_bitmap_overnight"
@@ -297,7 +306,9 @@ def test_the_manifest_counts_what_the_files_hold(tmp_path: Path):
         "train": len(train.read_text().splitlines()) - 1,
         "validation": len(val.read_text().splitlines()) - 1,
     }
-    assert manifest["files"] == {"train": "run_train.csv", "validation": "run_val.csv"}
+    assert manifest["files"] == {
+        "train": "run_train.csv", "validation": "run_val.csv", "images": None,
+    }
     assert manifest["counts"]["train"] == rows["train"] == 8
     assert manifest["counts"]["validation"] == rows["validation"] == 2
     assert manifest["counts"]["rows"] == manifest["counts"]["images"] == 10
@@ -361,3 +372,91 @@ def test_cli_refuses_to_replace_a_training_set_without_overwrite(tmp_path: Path)
     manifest = _manifest(out_dir)
     assert manifest["split"]["seed"] == 7
     assert "--state corrected" in manifest["scope"]
+
+
+# -- the images file ----------------------------------------------------------
+
+
+def _describe(root: Path):
+    from am_segmentation_manager.operations.metadata_csv import describe_training_images
+
+    return describe_training_images(root)
+
+
+def _listed(path: Path) -> list[dict]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_every_image_is_listed_once_with_the_side_it_is_on(tmp_path: Path):
+    from am_segmentation_manager.operations.training_manifest import read_training_manifest
+
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+
+    train, val = export_training_csv(
+        _labelled_records(root), root, out_dir, train_ratio=0.8, describe_images=_describe(root)
+    )
+
+    manifest = read_training_manifest(out_dir / "dataset_manifest.yaml")
+    listed = _listed(manifest.images)
+    sides = {row["image"]: row["split"] for row in listed}
+    assert len(listed) == len(sides) == 10
+    assert {row["image"] for row in _listed(train)} == {i for i, side in sides.items() if side == "train"}
+    assert {row["image"] for row in _listed(val)} == {i for i, side in sides.items() if side == "validation"}
+    assert all(row["label"] and row["modality"] == "SEM" for row in listed)
+    assert str(tmp_path) not in manifest.images.read_text(encoding="utf-8")
+
+
+def test_an_export_asked_for_no_images_file_writes_none(tmp_path: Path):
+    from am_segmentation_manager.operations.training_manifest import read_training_manifest
+
+    root = tmp_path / "dataset"
+    export_training_csv(_labelled_records(root), root, tmp_path / "output")
+
+    assert not (tmp_path / "output" / "dataset_images.csv").exists()
+    assert read_training_manifest(tmp_path / "output" / "dataset_manifest.yaml").images is None
+
+
+def test_an_images_file_in_the_way_stops_the_export_before_anything_is_written(tmp_path: Path):
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    (out_dir / "dataset_images.csv").write_text("mine")
+
+    with pytest.raises(FileExistsError, match="dataset_images.csv"):
+        export_training_csv(_labelled_records(root), root, out_dir, describe_images=_describe(root))
+
+    assert [path.name for path in out_dir.iterdir()] == ["dataset_images.csv"]
+
+
+def test_images_that_cannot_be_described_stop_the_export_before_anything_is_written(tmp_path: Path):
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+
+    def describe(records):
+        raise ValueError("a project's metadata will not read")
+
+    with pytest.raises(ValueError, match="will not read"):
+        export_training_csv(_labelled_records(root), root, out_dir, describe_images=describe)
+
+    assert list(out_dir.iterdir()) == []
+
+
+def test_in_folds_an_image_s_side_is_the_fold_it_validates_in(tmp_path: Path):
+    from am_segmentation_manager.operations.csv import export_kfold_csv
+
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+
+    paths = export_kfold_csv(
+        _labelled_records(root), root, out_dir, folds=2, describe_images=_describe(root)
+    )
+
+    sides = {row["image"]: row["split"] for row in _listed(out_dir / "dataset_images.csv")}
+    assert len(sides) == 10
+    for number, (_, validation) in enumerate(paths, start=1):
+        assert {row["image"] for row in _listed(validation)} == {
+            image for image, side in sides.items() if side == f"fold{number}"
+        }
+    assert _manifest(out_dir)["files"]["images"] == "dataset_images.csv"

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,12 +45,29 @@ SINGLE_COLUMNS = ("image", "label")
 PAIRED_COLUMNS = ("sem_image", "sem_label", "fib_image", "fib_label")
 
 
+#: The column of an images file saying which side of the split an image is on.
+SPLIT_COLUMN = "split"
+
+#: Describes the images of an export for its images file: given them in order,
+#: returns the columns and a row for each. Passed in, the metadata export that
+#: knows how being built on this module.
+DescribeImages = Callable[
+    [Sequence[ImageRecord]], tuple[Sequence[str], Sequence[Mapping[str, object]]]
+]
+
+
+def images_path(output_dir: Path, prefix: str) -> Path:
+    """Return where the images file for *prefix* lives, existing or not."""
+    return output_dir / f"{prefix}_images.csv"
+
+
 @dataclass(frozen=True)
 class TrainingRow:
     """One row of a training CSV, and what it must not be split away from.
 
     Attributes:
         values: The cells, in the order of the header they are written under.
+        records: The images the row names, one per beam it has.
         group: What keeps related rows on one side of the train/validation
             split. Splitting near-identical images across the two would have
             the validation score measure how well the model recognises images
@@ -59,6 +76,7 @@ class TrainingRow:
 
     values: tuple[str, ...]
     group: str
+    records: tuple[ImageRecord, ...] = ()
 
 
 def find_matching_label(record: ImageRecord) -> Path | None:
@@ -203,6 +221,7 @@ def build_training_rows(
                 TrainingRow(
                     (_image_cell(record, start_path), label),
                     group=group_of(record, label),
+                    records=(record,),
                 )
             )
         return rows
@@ -224,7 +243,10 @@ def build_training_rows(
                     _label_cell(fib, start_path, include_empty_labels, is_empty),
                 )
                 if values[1] or values[3]:
-                    rows.append(TrainingRow(values, group=group))
+                    rows.append(TrainingRow(
+                        values, group=group,
+                        records=tuple(beam for beam in (sem, fib) if beam is not None),
+                    ))
     return rows
 
 
@@ -353,6 +375,43 @@ def _rows_to_write(
     }
 
 
+def _described(
+    describe: DescribeImages | None, sides: Sequence[tuple[str, Sequence[TrainingRow]]]
+) -> tuple[list[str], list[dict[str, object]]] | None:
+    """Return the images file's columns and rows, or None where no file is asked for.
+
+    An image is listed once, under the side its first row is on: every row
+    naming it is of one acquisition, which no split divides.
+
+    Args:
+        sides: Each side of the split by what it is called, with its rows.
+    """
+    if describe is None:
+        return None
+    seen: dict[Path, tuple[str, ImageRecord]] = {}
+    for side, rows in sides:
+        for row in rows:
+            for record in row.records:
+                seen.setdefault(record.image_path, (side, record))
+    columns, described = describe([record for _, record in seen.values()])
+    return (
+        [SPLIT_COLUMN, *columns],
+        [{SPLIT_COLUMN: side, **row} for (side, _), row in zip(seen.values(), described)],
+    )
+
+
+def _write_images(
+    path: Path, described: tuple[list[str], list[dict[str, object]]] | None, overwrite: bool
+) -> Path | None:
+    """Write the images file where one was described, and return it."""
+    if described is None:
+        return None
+    columns, rows = described
+    write_csv(path, columns, rows, overwrite=overwrite)
+    logger.info("Wrote %d image(s) to %s", len(rows), path)
+    return path
+
+
 def _write_rows(
     path: Path, columns: Sequence[str], rows: Sequence[TrainingRow], overwrite: bool
 ) -> Path:
@@ -377,12 +436,13 @@ def export_training_csv(
     overwrite: bool = False,
     scope: str = "",
     user: str | None = None,
+    describe_images: DescribeImages | None = None,
 ) -> tuple[Path, Path | None]:
     """Export image and label paths to CSV files for ML model training.
 
     Writes ``<output_dir>/<prefix>_train.csv``, ``<output_dir>/<prefix>_val.csv``
-    unless *train_ratio* is 1.0, and last ``<prefix>_manifest.yaml`` saying what
-    they were made from.
+    unless *train_ratio* is 1.0, ``<prefix>_images.csv`` where *describe_images*
+    is given, and last ``<prefix>_manifest.yaml`` saying what they were made from.
 
     Two shapes, decided by *paired*::
 
@@ -418,6 +478,10 @@ def export_training_csv(
         overwrite: Replace files an earlier export wrote under *prefix*.
         scope: What the records were narrowed to, recorded in the manifest.
         user: The name to record as writing it; see :func:`write_training_manifest`.
+        describe_images: Describes each image for the images file, which says
+            which side every image is on and what it is of, so a model can be
+            scored on a part of a set long after the collection has changed.
+            Called before anything is written; no file where omitted.
 
     Returns:
         ``(train_csv_path, val_csv_path)``. The second is None when
@@ -438,8 +502,9 @@ def export_training_csv(
     train_path = output_dir / f"{prefix}_train.csv"
     val_path = output_dir / f"{prefix}_val.csv" if train_ratio < 1.0 else None
     manifest = manifest_path(output_dir, prefix)
+    images = images_path(output_dir, prefix) if describe_images is not None else None
     _refuse_what_is_in_the_way(
-        output_dir, prefix, (train_path, val_path, manifest), folds=0, overwrite=overwrite
+        output_dir, prefix, (train_path, val_path, images, manifest), folds=0, overwrite=overwrite
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -461,15 +526,18 @@ def export_training_csv(
             "training" if train_rows else "validation",
         )
 
+    described = _described(describe_images, (("train", train_rows), ("validation", val_rows)))
     columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
     _write_rows(train_path, columns, train_rows, overwrite)
     if val_path is not None:
         _write_rows(val_path, columns, val_rows, overwrite)
+    if images is not None:
+        _write_images(images, described, overwrite)
     write_training_manifest(
         manifest,
         source=start_path,
         scope=scope,
-        files={"train": train_path, "validation": val_path},
+        files={"train": train_path, "validation": val_path, "images": images},
         columns=columns,
         train_ratio=train_ratio,
         seed=seed,
@@ -506,12 +574,14 @@ def export_kfold_csv(
     overwrite: bool = False,
     scope: str = "",
     user: str | None = None,
+    describe_images: DescribeImages | None = None,
 ) -> list[tuple[Path, Path]]:
     """Export image and label paths as *folds* train/validation pairs for cross-validation.
 
     Writes ``<prefix>_fold<k>_train.csv`` and ``<prefix>_fold<k>_val.csv`` for
-    each fold, in the columns :func:`export_training_csv` writes, and last the
-    manifest. Every row validates in exactly one fold, and trains in the rest;
+    each fold, in the columns :func:`export_training_csv` writes, the images
+    file where asked for, its ``split`` the fold an image validates in, and last
+    the manifest. Every row validates in exactly one fold, and trains in the rest;
     no group is in two folds. Arguments not listed are as for
     :func:`export_training_csv`.
 
@@ -534,8 +604,9 @@ def export_kfold_csv(
 
     paths = fold_paths(output_dir, prefix, folds)
     manifest = manifest_path(output_dir, prefix)
+    images = images_path(output_dir, prefix) if describe_images is not None else None
     _refuse_what_is_in_the_way(
-        output_dir, prefix, (*(path for pair in paths for path in pair), manifest),
+        output_dir, prefix, (*(path for pair in paths for path in pair), images, manifest),
         folds=folds, overwrite=overwrite,
     )
 
@@ -556,6 +627,10 @@ def export_kfold_csv(
         ", ".join(str(len(validation)) for validation in validation_sets),
     )
 
+    images_described = _described(
+        describe_images,
+        [(f"fold{index}", validation) for index, validation in enumerate(validation_sets, start=1)],
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
     described = []
@@ -576,14 +651,19 @@ def export_kfold_csv(
             fold["validates_on"] = groups
         described.append(fold)
 
+    if images is not None:
+        _write_images(images, images_described, overwrite)
     write_training_manifest(
         manifest,
         source=start_path,
         scope=scope,
         files={
-            f"fold{index}_{role}": path
-            for index, pair in enumerate(paths, start=1)
-            for role, path in zip(("train", "validation"), pair)
+            **{
+                f"fold{index}_{role}": path
+                for index, pair in enumerate(paths, start=1)
+                for role, path in zip(("train", "validation"), pair)
+            },
+            "images": images,
         },
         columns=columns,
         train_ratio=(folds - 1) / folds,

@@ -38,6 +38,9 @@ _HEADER: Final[str] = """\
 # moved apart, name the collection when training: scan it in the window, or
 # give `am-seg train --start-path`.
 #
+# `files.images`, where there is one, lists every image once with the side of
+# the split it is on (for folds, the fold it validates in) and what it is of.
+#
 # `scope` is what the export was narrowed to, in the words of whatever made it:
 # the Export tab's filters, or the command line's selectors. `split.keep_together`
 # is what the split never divided between training and validation: an
@@ -116,6 +119,8 @@ class TrainingManifest:
             recorded it in full. None where it does not say.
         train: The training list, or None if the export wrote none.
         validation: The validation list, or None if every row went to training.
+        images: The file saying which side each image is on and what it is of,
+            or None for an export that wrote none.
         columns: The lists' header.
         folds: How many folds a cross-validation export wrote; 0 for one split.
         include_empty_labels: Whether background-only labels were exported on purpose.
@@ -125,6 +130,7 @@ class TrainingManifest:
     collection: Path | None
     train: Path | None
     validation: Path | None
+    images: Path | None
     columns: tuple[str, ...]
     folds: int
     include_empty_labels: bool
@@ -157,6 +163,7 @@ def read_training_manifest(path: Path) -> TrainingManifest:
         collection=_collection(path, document),
         train=beside("train"),
         validation=beside("validation"),
+        images=beside("images"),
         columns=tuple(str(column) for column in document.get("columns") or ()),
         folds=int(split.get("folds") or 0) if isinstance(split, dict) else 0,
         include_empty_labels=bool(document.get("include_empty_labels")),

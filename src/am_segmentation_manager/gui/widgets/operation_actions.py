@@ -524,7 +524,7 @@ class OperationActions(_Window):
             self.training_controller.exported(
                 manifest_path(output, self.export_controller.training.prefix)
             )
-        self._flash(f"Wrote {written} and the manifest", 4000)
+        self._flash(f"Wrote {written}, the images file and the manifest", 4000)
         logger.info("Exported training CSV to %s", directory)
 
     def _confirm_overwriting(self, existing: FileExistsError) -> bool:

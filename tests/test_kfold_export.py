@@ -92,7 +92,8 @@ def test_the_manifest_says_what_each_fold_holds(collection, tmp_path):
         "keep_together": "project", "folds": 3,
     }
     assert manifest["files"]["fold2_validation"] == "dataset_fold2_val.csv"
-    assert len(manifest["files"]) == 6
+    assert manifest["files"]["images"] == "dataset_images.csv"
+    assert len(manifest["files"]) == 7
     assert [fold["fold"] for fold in manifest["folds"]] == [1, 2, 3]
     assert sorted(name for fold in manifest["folds"] for name in fold["validates_on"]) == [
         "alpha", "beta", "gamma",

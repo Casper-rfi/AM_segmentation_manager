@@ -36,12 +36,13 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import LeftoverFolds, export_kfold_csv, export_training_csv
+from ..operations.csv import LeftoverFolds, export_kfold_csv, export_training_csv, images_path
 from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
 from ..operations.metadata_csv import (
     UnreadableMetadataError,
+    describe_training_images,
     export_image_metadata_csv,
     export_label_measurements_csv,
     export_lamella_quantification_csv,
@@ -292,9 +293,11 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "model can be trained on either beam from one file, or on the two "
             "together. A cell is blank where that beam has no image, or no "
             "label worth pairing with one. --folds K writes K train/validation "
-            "pairs for cross-validation instead of one. A <prefix>_manifest.yaml "
-            "beside them records what they were made from, and nothing already "
-            "there is replaced without --overwrite."
+            "pairs for cross-validation instead of one. <prefix>_images.csv lists "
+            "each image with the side it is on and its metadata, and "
+            "<prefix>_manifest.yaml records what they were made from; none names a "
+            "folder of this computer, and nothing already there is replaced "
+            "without --overwrite."
         ),
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
@@ -726,6 +729,9 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         "overwrite": args.overwrite,
         "scope": scope,
         "user": getattr(args, "user", None),
+        "describe_images": describe_training_images(
+            start_path, project_lookup(_projects_in_scope(projects, start_path))
+        ),
     }
     written: Sequence[tuple[Path, Path | None]]
     try:
@@ -755,6 +761,10 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         logger.info("Exported training CSV: %s", make_path_relative(train_csv, start_path))
         if val_csv:
             logger.info("Exported validation CSV: %s", make_path_relative(val_csv, start_path))
+    logger.info(
+        "Each image's side and metadata: %s",
+        make_path_relative(images_path(output_dir, args.output_prefix), start_path),
+    )
     return 0
 
 

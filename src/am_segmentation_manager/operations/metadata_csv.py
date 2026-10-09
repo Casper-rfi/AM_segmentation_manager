@@ -10,7 +10,7 @@ unless the caller says to replace it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 
@@ -21,7 +21,7 @@ from ..io.path import exported_relative_path
 from ..io.tables import refuse_existing, write_csv
 from ..metadata import DESCRIPTIVE_FIELDS, format_field_value
 from ..models import ImageRecord, Project
-from .csv import find_matching_label
+from .csv import DescribeImages, find_matching_label
 from .label_io import label_state
 from .label_measure import LabelMeasurement, measurement_status
 from .selection import current_state
@@ -314,6 +314,34 @@ def export_image_metadata_csv(
             "empty", len(records) - len(metadata),
         )
     return output
+
+
+def describe_training_images(
+    start_path: Path, projects: Mapping[Path, Project] | None = None
+) -> DescribeImages:
+    """Return what describes a training export's images for its images file.
+
+    A row per image as :func:`export_image_metadata_csv` writes one, its header
+    read, so a set can be divided by instrument, voltage or kind of lamella
+    from the file alone.
+
+    Args:
+        start_path: Base directory paths are written relative to.
+        projects: Image path to project, as for :func:`export_image_metadata_csv`.
+
+    The function returned raises :class:`UnreadableMetadataError` as that export does.
+    """
+    def describe(
+        records: Sequence[ImageRecord],
+    ) -> tuple[Sequence[str], Sequence[Mapping[str, object]]]:
+        if projects is not None:
+            refuse_unreadable_metadata(
+                projects[record.image_path] for record in records if record.image_path in projects
+            )
+        rows = image_rows(records, start_path, read_records_metadata(records), projects)
+        return [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS], rows
+
+    return describe
 
 
 def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str, object]]:

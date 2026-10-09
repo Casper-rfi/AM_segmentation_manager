@@ -63,7 +63,8 @@ The first public release, to be published as 0.1.0.
   image and label paths as CSV for training a model, as one train/validation
   split or as K folds for cross-validation. An empty label is never exported
   as a training pair, and no split puts one lamella on both sides, or one
-  acquisition or one project where asked. Nothing a training export writes
+  acquisition or one project where asked. Each image's side of the split
+  and its metadata are written beside the lists. Nothing a training export writes
   names a folder of the computer it was made on.
 - `export-files` copies a selection of images and labels into a folder of
   its own, and `merge` brings the worked-on copy back.
