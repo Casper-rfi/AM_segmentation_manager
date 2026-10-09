@@ -396,7 +396,8 @@ def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, mon
 
     panel.refresh()
 
-    assert panel.runs_tree.project_item(0).text(0).startswith("wide_seed2 · finished")
+    listed = panel.runs_tree.project_item(0)
+    assert (listed.text(0), listed.text(1)) == ("wide_seed2", "finished")
     assert "Not started by am-seg" in panel.status_label.text()
     assert drawn == [1]
     assert not panel.stop_button.isEnabled()
@@ -425,7 +426,7 @@ def test_runs_are_gathered_under_the_folder_they_sit_in(panel):
 
     folder = _folder(panel, "step8")
 
-    assert [folder.child(row).text(0).split(" · ")[0] for row in range(2)] == ["fold1", "fold2"]
+    assert [folder.child(row).text(0) for row in range(2)] == ["fold1", "fold2"]
     assert panel.runs_tree.project_item(2).parent() is None
 
 
@@ -633,7 +634,7 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
     assert read_chosen_best(run).epoch == 2
     assert panel.checkpoints_list.item(1).text() == "epoch 2 (marked best, incomplete)"
     assert "Marked as best: epoch 2" in panel.status_label.text()
-    assert "marked 2" in panel.runs_tree.project_item(0).text(0)
+    assert panel.runs_tree.project_item(0).text(5) == "2"
     assert panel.unmark_button.isEnabled()
 
 
@@ -1101,4 +1102,48 @@ def test_the_strip_between_the_two_values_is_the_table_s_own_ramp(qt_app):
 
     assert image.pixelColor(1, 5).name() != image.pixelColor(image.width() - 2, 5).name()
     assert len(comparison_ramp(9)) == 9
+
+
+# -- the list of runs in columns ----------------------------------------------
+
+
+def test_a_run_is_listed_a_column_to_each_thing_said_of_it(panel):
+    """One line of them had to be read through to find the one wanted."""
+    from am_segmentation_manager.gui.training_controller import RUN_COLUMNS
+    from test_training_controller import _bare_run
+
+    _bare_run(panel.controller.training_directory, "wide_seed2")
+    panel.refresh()
+    tree = panel.runs_tree
+    row = tree.project_item(0)
+
+    assert not tree.isHeaderHidden()
+    assert [tree.headerItem().text(column) for column in range(tree.columnCount())] == [
+        caption for caption, _hint in RUN_COLUMNS
+    ]
+    assert [row.text(column) for column in range(tree.columnCount())] == [
+        "wide_seed2", "finished", "2/90", "2", "0.200", "",
+    ]
+    assert "IoU and Dice" in tree.headerItem().toolTip(4), "the number says what it is of"
+
+
+def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(panel):
+    """Held to the name's column, a reason would be cut to its first words."""
+    _three_runs(panel)
+    broken = panel.controller.training_directory / "broken"
+    broken.mkdir()
+    (broken / training_run.RUN_RECORD_FILENAME).write_text("version: 99\n", encoding="utf-8")
+    panel.refresh()
+    tree = panel.runs_tree
+
+    unread = next(item for item in tree.project_items() if "later version" in item.text(0))
+
+    try:
+        assert unread.isFirstColumnSpanned()
+        assert _folder(panel, "step8").isFirstColumnSpanned()
+        assert not _folder(panel, "step8").child(0).isFirstColumnSpanned()
+    finally:
+        # The panel stops every run when it is done with, and this one cannot be asked.
+        (broken / training_run.RUN_RECORD_FILENAME).unlink()
+        broken.rmdir()
 

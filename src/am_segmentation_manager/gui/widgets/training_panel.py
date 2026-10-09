@@ -64,7 +64,7 @@ from ...training_compare import (
     Comparison,
 )
 from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
-from ..training_controller import RunSummary, TrainingController
+from ..training_controller import RUN_COLUMNS, RunSummary, TrainingController
 from .chart_view import ChartView
 from .common import chip_icon
 from .controls import (
@@ -345,6 +345,7 @@ class TrainingPanel(QWidget):
         # The row looked at decides whose curves and checkpoints show; a tick
         # only puts a run in the set the controller holds.
         self.runs_tree = ProjectTree()
+        self.runs_tree.set_headers(RUN_COLUMNS)
         self.runs_tree.project_selected.connect(self._run_chosen)
         self.runs_tree.row_ticked.connect(self._run_ticked)
         add_path_menu(
@@ -627,7 +628,8 @@ class TrainingPanel(QWidget):
             controller.selected = directories[0] if directories else None
         self.runs_tree.set_projects(
             [run.folder for run in runs],
-            [run.line() for run in runs],
+            [f"{run.label}: {run.problem}" if run.problem else run.label for run in runs],
+            cells=[run.cells() for run in runs],
             ticked=[run.directory in controller.ticked for run in runs],
             icons=[run_chip(run) for run in runs],
             tooltips=[

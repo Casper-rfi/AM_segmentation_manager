@@ -85,6 +85,22 @@ LIVE_STATES = frozenset({"running", "unknown"})
 #: scores near 1 throughout, and says little about the model.
 BACKGROUND_CLASS = "background"
 
+#: The columns of the list of runs, each ``(caption, what it holds)``; the first
+#: is the run's name, and :meth:`RunSummary.cells` fills the rest.
+RUN_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Run", "What the run is called."),
+    ("State", "How the run stands: training, finished, stopped, failed."),
+    ("Epochs", "Epochs trained, of the most the run may train."),
+    ("Best epoch", "The epoch the run counts as its best, on its own validation list."),
+    (
+        "Best score",
+        "What the run ranks its epochs by, at its best: the mean of its key validation "
+        "metrics, the weighted-average IoU and Dice unless the run was told otherwise. "
+        "From 0 to 1, higher is better.",
+    ),
+    ("Marked", "The epoch you marked as best, where you marked one."),
+)
+
 #: How recently a run am-seg did not start must have written to count as still
 #: training. Nothing else says: it has no process here to ask. An epoch is
 #: minutes, so an hour of silence is a run that has stopped.
@@ -254,24 +270,27 @@ class RunSummary:
         }.get(self.state, "")
         return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
 
-    def line(self) -> str:
-        """Return the run in one line under its folder: what it is called, how it stands, how far it got."""
+    def cells(self) -> tuple[str, ...]:
+        """Return what the run holds under each of :data:`RUN_COLUMNS` after its name.
+
+        Empty for a run that could not be read, whose :attr:`problem` is all there is to say.
+        """
         if self.problem:
-            return f"{self.label}: {self.problem}"
-        parts = [self.label]
-        if self.state:
-            parts.append(self.state)
+            return ()
         most = self.most_epochs
         if most is not None and (self.epochs or self.training):
-            parts.append(f"epoch {self.epochs} of at most {most}")
-        elif self.epochs:
-            parts.append(f"{self.epochs} epoch(s)")
-        best = self.best
-        if best is not None and self.written is not None:
-            parts.append(f"best {best.epoch} ({best.score(self.written.key_metrics):.3f})")
-        if self.chosen is not None:
-            parts.append(f"marked {self.chosen.epoch}")
-        return " · ".join(parts)
+            epochs = f"{self.epochs}/{most}"
+        else:
+            epochs = str(self.epochs) if self.epochs else ""
+        best = self.best if self.written is not None else None
+        return (
+            self.state,
+            epochs,
+            str(best.epoch) if best is not None else "",
+            f"{best.score(self.written.key_metrics):.3f}"
+            if best is not None and self.written is not None else "",
+            str(self.chosen.epoch) if self.chosen is not None else "",
+        )
 
 
 class TrainingController:

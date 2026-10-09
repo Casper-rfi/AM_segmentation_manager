@@ -21,6 +21,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QGroupBox,
+    QHeaderView,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -227,11 +228,32 @@ class ProjectTree(QTreeWidget):
 
     # -- filling -----------------------------------------------------------
 
+    def set_headers(self, headers: Sequence[tuple[str, str]]) -> None:
+        """Give the tree a column per entry of *headers*, each ``(caption, hint)``, and show them.
+
+        The first is the row's own name and takes the room the others leave;
+        each of the others is as wide as what it holds.
+        """
+        self.setColumnCount(len(headers))
+        self.setHeaderLabels([caption for caption, _hint in headers])
+        self.setHeaderHidden(False)
+        header = self.header()
+        header.setStretchLastSection(False)
+        header.setSectionsMovable(False)
+        for column, (_caption, hint) in enumerate(headers):
+            self.headerItem().setToolTip(column, hint)
+            header.setSectionResizeMode(
+                column,
+                QHeaderView.ResizeMode.Stretch if column == 0
+                else QHeaderView.ResizeMode.ResizeToContents,
+            )
+
     def set_projects(
         self,
         folders: Sequence[str],
         labels: Sequence[str],
         *,
+        cells: Sequence[Sequence[str]] | None = None,
         ticked: Sequence[bool] = (),
         icons: Sequence[QIcon] | None = None,
         tooltips: Sequence[str] | None = None,
@@ -252,6 +274,11 @@ class ProjectTree(QTreeWidget):
 
         Reports nothing while it runs, for the reason
         :meth:`CheckList.set_values` gives.
+
+        Args:
+            cells: What each row holds in the columns after its name, where
+                :meth:`set_headers` gave the tree some. A row given none is
+                written across them all, as a folder is.
         """
         opened = self._opened()
         scrolled = self.verticalScrollBar().value()
@@ -274,11 +301,23 @@ class ProjectTree(QTreeWidget):
                     )
                 if icons is not None and row < len(icons):
                     item.setIcon(0, icons[row])
+                further = cells[row] if cells is not None and row < len(cells) else ()
+                for column, text in enumerate(further, start=1):
+                    item.setText(column, text)
+                    item.setTextAlignment(
+                        column, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
                 if tooltips is not None and row < len(tooltips):
-                    item.setToolTip(0, tooltips[row])
+                    for column in range(self.columnCount()):
+                        item.setToolTip(column, tooltips[row])
                 self._parent_for(folder, parents).addChild(item)
+                # Only once it is in the tree, which is what spanning is asked of.
+                if not further and self.columnCount() > 1:
+                    item.setFirstColumnSpanned(True)
 
             for folder, parent in parents.items():
+                if self.columnCount() > 1:
+                    parent.setFirstColumnSpanned(True)
                 parent.setExpanded(folder in opened)
             if current_folder is not None:
                 self._make_folder_current(current_folder, parents)

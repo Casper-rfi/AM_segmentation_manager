@@ -413,6 +413,12 @@ def stylesheet(accent: Accent) -> str:
     QListWidget::item:selected:!active, QTreeWidget::item:selected:!active {{
         background: {accent.selected}; color: {TEXT}; border-left-color: {accent.colour};
     }}
+    /* A row of several columns is one selection: the bar marks where it
+       begins, not every cell of it. */
+    QTreeWidget::item:selected:middle, QTreeWidget::item:selected:last,
+    QTreeWidget::item:selected:middle:!active, QTreeWidget::item:selected:last:!active {{
+        border-left-color: transparent;
+    }}
 
     /* Buttons, fields and segments share one corner radius, nearer the round
        ends of the switches beside them than a square box is. */
