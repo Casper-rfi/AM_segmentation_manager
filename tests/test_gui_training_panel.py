@@ -147,6 +147,8 @@ def test_without_the_training_stack_the_form_says_what_to_install(qt_app, tmp_pa
     try:
         assert not made.start_button.isEnabled()
         assert "--extra train" in made.problems_label.text()
+        assert "not installed" in made.start_button.toolTip()
+        assert "--extra train" not in made.start_button.toolTip(), "said once, where it can be read"
     finally:
         destroy(made)
 

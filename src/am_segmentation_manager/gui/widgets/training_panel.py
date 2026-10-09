@@ -678,11 +678,12 @@ class TrainingPanel(QWidget):
 
     def _show_problems(self) -> None:
         problems = self.controller.problems()
+        # How to install is said once, on the label: a tooltip holding it is too long to read.
+        self.start_button.setToolTip("\n".join(problems) or START_HINT)
         if problems and not self.controller.can_train():
             problems = [f"{problems[0]}. {self.controller.install_hint()}", *problems[1:]]
         self.problems_label.setText("\n".join(problems))
         self.start_button.setEnabled(not problems)
-        self.start_button.setToolTip("\n".join(problems) or START_HINT)
 
     def _show_runs(self, runs: list[RunSummary] | None = None) -> None:
         """List the runs, read now unless the caller has just read them."""

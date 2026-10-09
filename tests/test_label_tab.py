@@ -1561,7 +1561,8 @@ def shift_click(canvas, x, y):
     return picked, patches
 
 
-@pytest.mark.parametrize("tool", [TOOL_BRUSH, TOOL_FILL])
+# Named in full: the decorator is read where Qt, and so the canvas, is not installed.
+@pytest.mark.parametrize("tool", ["brush", "fill"])
 def test_shift_click_picks_the_class_under_the_pointer_and_paints_nothing(canvas, tool):
     canvas.set_tool(tool)
     canvas.set_paint_value(1)
