@@ -105,6 +105,20 @@ def validation_sets(
     return {value: _curve(named, images) for value, images in sorted(parts.items())}
 
 
+def offered_sets(validated_on: str, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
+    """Return the sets a table of runs holding *sets* can give a column to, the runs' own first.
+
+    The runs' own validation is offered unless one validation is asked for:
+    its parts are then the question, and a run's own list is another set of images.
+
+    Args:
+        validated_on: The validation asked for, ``""`` for the runs' own alone,
+            or :data:`EVERY_SET`.
+    """
+    own = (OWN_VALIDATION,) if validated_on in ("", EVERY_SET) else ()
+    return (*own, *dict.fromkeys(name for held in sets for name in held))
+
+
 def _curve(validation: ScoredValidation, images: set[str] | None) -> tuple[EpochMetrics, ...]:
     """Return the metrics of each epoch scored, over *images* or over every image."""
     return tuple(

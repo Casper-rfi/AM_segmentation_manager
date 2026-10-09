@@ -23,6 +23,7 @@ from ..io.atomic import write_atomically
 from ..operations.training_choice import (
     ChosenBest,
     choose_best,
+    chosen_best_or_none,
     clear_chosen_best,
     read_chosen_best,
 )
@@ -36,7 +37,6 @@ from ..operations.training_run import (
     TrainingSettings,
     apply_training_run,
     default_settings,
-    find_run_directories,
     plan_training_run,
     read_pairs,
     read_run_record,
@@ -54,7 +54,6 @@ from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
-    OWN_VALIDATION,
     ComparedRun,
     Comparison,
     ScoredValidation,
@@ -62,10 +61,11 @@ from ..training_compare import (
     compare_runs,
     dividing_columns,
     fitted_colour_range,
+    offered_sets,
     validation_sets,
 )
+from ..training_listing import list_runs, prepared_name, written_name
 from ..training_runs import (
-    SEARCH_DEPTH,
     Checkpoint,
     EpochMetrics,
     TrainingRun,
@@ -552,12 +552,7 @@ class TrainingController:
         """
         if self.training_directory is None or not self.training_directory.is_dir():
             return []
-        prepared = find_run_directories(self.training_directory, depth=SEARCH_DEPTH)
-        others = [
-            written for written in find_training_runs(self.training_directory)
-            if written.parent not in prepared
-        ]
-        summaries = [self.summary(directory) for directory in (*prepared, *others)]
+        summaries = [self.summary(run.home) for run in list_runs(self.training_directory)]
         return sorted(summaries, key=lambda run: (_when(run), run.name), reverse=True)
 
     def summary(self, directory: Path) -> RunSummary:
@@ -573,7 +568,7 @@ class TrainingController:
                 name=name,
                 folder=name.rpartition("/")[0],
                 written=self._steady(read_training_run(directory)),
-                chosen=_chosen(directory),
+                chosen=chosen_best_or_none(directory),
                 validations=self._validations(directory),
                 recent=_written_recently(directory),
             )
@@ -587,13 +582,13 @@ class TrainingController:
         written = find_training_runs(directory, depth=0)
         return RunSummary(
             directory=directory,
-            name=record.name if record else directory.name,
+            name=prepared_name(directory, record),
             folder=self._folder_of(directory),
             record=record,
             status=status,
             # A run directory is started once, so it holds one of these at most.
             written=self._steady(read_training_run(written[-1])) if written else None,
-            chosen=_chosen(directory),
+            chosen=chosen_best_or_none(directory),
             validations=self._validations(directory),
         )
 
@@ -764,13 +759,8 @@ class TrainingController:
         return self._curves[key]
 
     def set_names(self, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
-        """Return the sets a table of runs holding *sets* can give a column to, the runs' own first.
-
-        The runs' own validation is offered unless one validation is asked for:
-        its parts are then the question, and a run's own list is another set of images.
-        """
-        own = (OWN_VALIDATION,) if self.validated_on in ("", EVERY_SET) else ()
-        return (*own, *dict.fromkeys(name for held in sets for name in held))
+        """Return the sets a table of runs holding *sets* can give a column to, as :attr:`validated_on` asks."""
+        return offered_sets(self.validated_on, sets)
 
     def curve_run(self, run: RunSummary) -> tuple[TrainingRun | None, str]:
         """Return what to draw *run*'s curves from, and what its validation is called.
@@ -831,20 +821,8 @@ class TrainingController:
         return "" if folder == "." else folder
 
     def _name_of(self, written: Path) -> str:
-        """Return what to call a run am-seg did not start: the folder it was written into.
-
-        Its own directory's name is added where that folder holds several runs,
-        so that no two are called the same.
-        """
-        parent = written.parent
-        if self.training_directory is None or parent == self.training_directory:
-            return written.name
-        try:
-            name = parent.relative_to(self.training_directory).as_posix()
-        except ValueError:
-            name = parent.name
-        alone = sum(is_run_directory(child) for child in parent.iterdir()) == 1
-        return name if alone else f"{name}/{written.name}"
+        """Return what to call a run am-seg did not start, from the training directory."""
+        return written_name(written, self.training_directory)
 
     def stop(self, directory: Path, user: str | None = None) -> RunSummary:
         """Stop the run in *directory* if it is running, and return how it stands.
@@ -1005,15 +983,6 @@ class TrainingController:
         if run.train or run.val:
             self._whole[run.directory] = run
         return run
-
-
-def _chosen(directory: Path) -> ChosenBest | None:
-    """Return the epoch chosen as best for a listing, a choice that cannot be read logged as none."""
-    try:
-        return read_chosen_best(directory)
-    except ValueError as error:
-        logger.warning("%s", error)
-        return None
 
 
 def _when(run: RunSummary) -> str:

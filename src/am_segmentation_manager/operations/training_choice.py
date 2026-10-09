@@ -41,6 +41,19 @@ class ChosenBest:
     chosen_at: str = ""
 
 
+def chosen_best_or_none(directory: Path) -> ChosenBest | None:
+    """Return what :func:`read_chosen_best` does, a choice that cannot be read logged as none.
+
+    For a listing, which goes on to the next run; a change to a run asks
+    :func:`read_chosen_best`, and stops.
+    """
+    try:
+        return read_chosen_best(directory)
+    except ValueError as error:
+        logger.warning("%s", error)
+        return None
+
+
 def read_chosen_best(directory: Path) -> ChosenBest | None:
     """Return the epoch chosen as best for the run in *directory*, or None where none is.
 

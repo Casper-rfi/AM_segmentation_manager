@@ -16,7 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..io.tables import write_csv
-from ..operations.training_choice import choose_best, clear_chosen_best, read_chosen_best
+from ..operations.training_choice import choose_best, chosen_best_or_none, clear_chosen_best
 from ..operations.training_process import (
     LOG_FILENAME,
     TrainingNotStarted,
@@ -47,14 +47,15 @@ from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
-    OWN_VALIDATION,
     VALUE_CAPTIONS,
     ComparedRun,
     colour_range,
     compare_runs,
     fitted_colour_range,
+    offered_sets,
     validation_sets,
 )
+from ..training_listing import list_runs
 from ..training_runs import (
     PER_CLASS_METRICS,
     SEARCH_DEPTH,
@@ -581,37 +582,33 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
     if _outputs_refused([args.output, args.plot], args.overwrite):
         return 2
     compared: list[ComparedRun] = []
+    validated_on = EVERY_SET if args.validated_on == "all" else args.validated_on
     for path in map(Path, args.paths):
         if not path.is_dir():
             logger.error("Not a directory: %s", path)
             return 2
-        prepared = find_run_directories(path, depth=SEARCH_DEPTH)
-        homes = {written: home for home in prepared if (written := written_in(home)) is not None}
-        for written in find_training_runs(path):
-            homes.setdefault(written, written)
-        validated_on = EVERY_SET if args.validated_on == "all" else args.validated_on
-        for written, home in sorted(homes.items()):
-            name = home.name if home != written or written == path else written.parent.name
+        written = [run for run in list_runs(path) if run.written is not None]
+        for run in sorted(written, key=lambda run: run.written or run.home):
+            assert run.written is not None
             try:
-                scored = [read_scored_validation(found) for found in find_validations(home)]
+                scored = [read_scored_validation(found) for found in find_validations(run.home)]
             except ValueError as error:
                 logger.error("%s", error)
                 return 2
             compared.append(ComparedRun(
-                name, read_training_run(written), _marked(home),
+                run.name, read_training_run(run.written), _marked(run.home),
                 validation_sets(scored, validated_on, args.split_by),
             ))
-    if args.split_by and args.validated_on in ("", "all"):
+    if args.split_by and validated_on in ("", EVERY_SET):
         logger.error("--split-by divides one validation; name it with --validated-on")
         return 2
     if not compared:
         logger.error("No training run has written results at %s", ", ".join(args.paths))
         return 2
     try:
-        own = (OWN_VALIDATION,) if args.validated_on in ("", "all") else ()
         table = compare_runs(
             compared, metric=args.metric, classes=args.classes, value=args.value,
-            sets=(*own, *dict.fromkeys(name for run in compared for name in run.sets)),
+            sets=offered_sets(validated_on, [run.sets for run in compared]),
             epoch_range=(args.epochs[0], args.epochs[1]),
         )
         header, cells = table.header(), table.cells()
@@ -658,11 +655,7 @@ def _cmd_choose_best(args: argparse.Namespace) -> int:
 
 def _marked(directory: Path) -> int | None:
     """Return the epoch marked as best for the run in *directory*, one that cannot be read logged."""
-    try:
-        chosen = read_chosen_best(directory)
-    except ValueError as error:
-        logger.error("%s", error)
-        return None
+    chosen = chosen_best_or_none(directory)
     return chosen.epoch if chosen else None
 
 
