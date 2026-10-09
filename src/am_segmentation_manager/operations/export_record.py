@@ -18,7 +18,7 @@ from typing import Any, Final
 
 from .. import __version__
 from ..families import FamiliesFileError, document_of, families_from_document, read_families
-from ..history import declared_project_id, read_log, resolve_author
+from ..history import declared_project_id, read_log, resolve_author, utc_stamp
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..layout import NO_PROJECT_FAMILIES, ProjectFamilies
 from ..models import Project
@@ -140,8 +140,6 @@ def build_export_record(
         FamiliesFileError: If a project's families file will not read, since a
             copy whose ancestor is unknown could not be merged back exactly.
     """
-    from datetime import UTC, datetime
-
     by, _ = resolve_author(user)
     forks = {}
     for project in projects:
@@ -155,7 +153,7 @@ def build_export_record(
             families=read_families(project.path),
         )
     return ExportRecord(
-        exported_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        exported_at=utc_stamp(),
         exported_by=by or "",
         source=str(source),
         scope=scope,

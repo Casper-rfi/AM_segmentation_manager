@@ -20,12 +20,11 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from ..history import resolve_author
+from ..history import resolve_author, utc_stamp
 from ..io.atomic import try_lock
 from ..io.yaml import read_yaml, write_yaml
 from .training_run import RUN_RECORD_FILENAME, RunRecord, describe_weights, read_run_record
@@ -251,7 +250,7 @@ def stop_training(
         return status
 
     by, _ = resolve_author(user)
-    write_yaml(run_directory / STOP_FILENAME, {"requested_at": _now(), "requested_by": by or ""})
+    write_yaml(run_directory / STOP_FILENAME, {"requested_at": utc_stamp(), "requested_by": by or ""})
     _end(status.pid, signal.SIGTERM)
     if not _gone(run_directory, status.pid, grace) and sys.platform != "win32":
         logger.warning("Process %d did not stop within %.0f s; killing it", status.pid, grace)
@@ -288,7 +287,7 @@ def run_child(
         started: dict[str, Any] = {
             "pid": os.getpid(),
             "host": socket.gethostname(),
-            "started_at": _now(),
+            "started_at": utc_stamp(),
             "versions": _versions(),
         }
         write_yaml(run_directory / PROCESS_FILENAME, started)
@@ -397,7 +396,7 @@ def _validate(record: ValidationRecord, on_device: Callable[[str], None] | None 
 
 def _ended(run_directory: Path, started: Mapping[str, Any], **outcome: str) -> None:
     """Rewrite the process file with how the run ended."""
-    write_yaml(run_directory / PROCESS_FILENAME, {**started, "ended_at": _now(), **outcome})
+    write_yaml(run_directory / PROCESS_FILENAME, {**started, "ended_at": utc_stamp(), **outcome})
 
 
 def _versions() -> dict[str, str]:
@@ -411,11 +410,6 @@ def _versions() -> dict[str, str]:
         except PackageNotFoundError:
             continue
     return found
-
-
-def _now() -> str:
-    """Return the time in UTC, to the second."""
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _detached() -> dict[str, Any]:

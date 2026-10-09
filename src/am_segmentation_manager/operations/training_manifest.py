@@ -13,12 +13,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
 from .. import __version__
-from ..history import resolve_author
+from ..history import resolve_author, utc_stamp
 from ..io.path import NoRelativePath, exported_relative_path
 from ..io.yaml import read_yaml, version_problem, write_yaml
 
@@ -90,7 +89,7 @@ def write_training_manifest(
     body = {
         "version": FILE_VERSION,
         "am_seg_version": __version__,
-        "written_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "written_at": utc_stamp(),
         "written_by": by or "",
         "collection": _from(path.parent, source),
         "scope": scope,

@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
-from ..history import resolve_author
+from ..history import resolve_author, utc_stamp
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..training_runs import TrainingRun
 
@@ -99,7 +98,7 @@ def choose_best(
         )
     by, _ = resolve_author(user)
     chosen = ChosenBest(
-        epoch, by or "", datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        epoch, by or "", utc_stamp()
     )
     write_yaml(
         directory / CHOICE_FILENAME,

@@ -477,10 +477,14 @@ def new_batch() -> str:
 # Building
 # ---------------------------------------------------------------------------
 
+def utc_stamp(timespec: Literal["seconds", "milliseconds"] = "seconds") -> str:
+    """Return the time now in UTC as the package's files record one: ISO 8601, ending in ``Z``."""
+    return datetime.now(UTC).isoformat(timespec=timespec).replace("+00:00", "Z")
+
+
 def _now() -> str:
     """Return the current time as UTC to the millisecond."""
-    stamp = datetime.now(UTC).isoformat(timespec="milliseconds")
-    return stamp.replace("+00:00", "Z")
+    return utc_stamp("milliseconds")
 
 
 def build_event(

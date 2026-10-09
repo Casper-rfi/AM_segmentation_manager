@@ -15,12 +15,11 @@ import logging
 import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal
 
 from .. import __version__
-from ..history import resolve_author
+from ..history import resolve_author, utc_stamp
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..training_compare import ScoredValidation
@@ -291,7 +290,7 @@ def apply_validation(plan: ValidationPlan, user: str | None = None) -> Path:
     body = {
         "version": FILE_VERSION,
         "am_seg_version": __version__,
-        "created_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "created_at": utc_stamp(),
         "created_by": by or "",
         "name": plan.name,
         "device": plan.device,

@@ -555,3 +555,17 @@ def test_the_nearest_project_wins_over_one_further_up(tmp_path: Path):
     start_history(inner, kind="am_metadata")
 
     assert containing_project(inner / "sem_labels" / "img.tif") == inner.resolve()
+
+
+def test_a_stamp_is_utc_ends_in_z_and_is_to_the_second_unless_asked():
+    import re
+    from datetime import UTC, datetime
+
+    from am_segmentation_manager.history import utc_stamp
+
+    before = datetime.now(UTC).replace(microsecond=0)
+    stamp, fine = utc_stamp(), utc_stamp("milliseconds")
+
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", stamp)
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", fine)
+    assert datetime.fromisoformat(stamp) >= before
