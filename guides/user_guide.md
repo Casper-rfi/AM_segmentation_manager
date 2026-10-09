@@ -344,7 +344,9 @@ AM-model-training was started on directly, here or on another machine, is
 listed too, from the files it wrote: point **Training directory...** at the
 folder holding such runs.
 
-For the run selected, the tab shows its loss and a metric per
+The tab is in three boxes: **Runs**, with what is done to the run selected
+under the list; **Curves and table**; and **Checkpoints**, each listed by its
+epoch. For the run selected, the tab shows its loss and a metric per
 class by epoch, and its checkpoints. Untick a class beside **Metric per
 class** to take its curve out, and tick **background** to draw it, which is
 left out at first; the weighted averages stay over every class. Point at a
@@ -363,7 +365,7 @@ to the same.
 - **Delete the others...** deletes that run's checkpoints except the ones you
   selected, about 170 MB each. It asks first and cannot be undone. The epoch
   you marked as best is always kept, and the run's own best too while **Keep
-  the run's best** is ticked. Nothing is deleted while the run is training or
+  the run's best** is switched on. Nothing is deleted while the run is training or
   being validated.
 - **Stop** ends a run, which can take up to a minute. The epoch in progress is
   lost, and a stopped run is not continued: start another, refining from one

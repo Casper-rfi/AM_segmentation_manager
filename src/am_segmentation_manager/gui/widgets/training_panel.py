@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -73,6 +74,7 @@ from .controls import (
     FlowLayout,
     GripSplitter,
     SegmentedControl,
+    ToggleSwitch,
     WrappingLabel,
 )
 from .lists import FOLD_GAP, ProjectTree, add_check_all_buttons, add_fold_buttons
@@ -87,7 +89,6 @@ from .project_panel import CELL_COLOURS
 from .report_dialog import ReportDialog
 from .theme import (
     MUTED,
-    SECTION_HEADING,
     SWATCH_CELL,
     SWATCH_GAP,
     SWATCH_HEIGHT,
@@ -189,8 +190,13 @@ class TrainingPanel(QWidget):
 
     def _build_form(self) -> QWidget:
         form = QWidget()
-        column = QVBoxLayout(form)
-        column.addWidget(_heading("New run"))
+        outer = QVBoxLayout(form)
+        outer.setContentsMargins(0, 0, 0, 0)
+        box = QGroupBox("New run")
+        outer.addWidget(box)
+        # Under the box, so it is as tall as what it holds and no taller.
+        outer.addStretch(1)
+        column = QVBoxLayout(box)
 
         column.addWidget(_muted("Training set"))
         self.manifest_label = ElidingLabel()
@@ -270,7 +276,6 @@ class TrainingPanel(QWidget):
         )
         self.start_button.clicked.connect(self.start)
         column.addWidget(self.start_button, alignment=Qt.AlignmentFlag.AlignRight)
-        column.addStretch(1)
         return form
 
     def _build_advanced(self) -> QWidget:
@@ -326,11 +331,9 @@ class TrainingPanel(QWidget):
         return advanced
 
     def _build_runs(self) -> QWidget:
-        listed = QWidget()
+        listed = QGroupBox("Runs")
         column = QVBoxLayout(listed)
-        column.setContentsMargins(0, 0, 0, 0)
         top = QHBoxLayout()
-        top.addWidget(_heading("Runs"))
         self.directory_label = ElidingLabel()
         self.directory_button = QPushButton("Training directory...")
         self.directory_button.setToolTip(
@@ -358,11 +361,16 @@ class TrainingPanel(QWidget):
         acting.addSpacing(FOLD_GAP)
         add_fold_buttons(acting, self.runs_tree)
         acting.addStretch(1)
+        *watching, stop = self._build_run_actions()
+        for button in watching:
+            acting.addWidget(button)
+        # Apart from the rest, as what ends a run.
+        acting.addSpacing(FOLD_GAP)
+        acting.addWidget(stop)
         column.addLayout(acting)
 
-        shown = QWidget()
-        column = QVBoxLayout(shown)
-        column.setContentsMargins(0, 0, 0, 0)
+        self.plots_box = QGroupBox("Curves and table")
+        column = QVBoxLayout(self.plots_box)
 
         chart_row = QHBoxLayout()
         self.view_control = SegmentedControl(VIEW_SEGMENTS)
@@ -468,7 +476,8 @@ class TrainingPanel(QWidget):
         )
         column.addWidget(self.chart, stretch=1)
 
-        column.addWidget(_muted("Checkpoints"))
+        self.checkpoints_box = QGroupBox("Checkpoints")
+        column = QVBoxLayout(self.checkpoints_box)
         self.checkpoints_list = QListWidget()
         self.checkpoints_list.setFlow(QListWidget.Flow.LeftToRight)
         self.checkpoints_list.setWrapping(True)
@@ -492,11 +501,11 @@ class TrainingPanel(QWidget):
             "Asks first; no other run is touched."
         )
         self.delete_button.clicked.connect(self.delete_others)
-        self.keep_best_check = QCheckBox("Keep the run's best")
+        self.keep_best_check = ToggleSwitch("Keep the run's best")
         self.keep_best_check.setChecked(True)
         self.keep_best_check.setToolTip(
             "Delete the others... also keeps the epoch the run counts as best. The "
-            "epoch you marked as best is kept whatever is ticked here."
+            "epoch you marked as best is kept whatever is set here."
         )
         self.mark_button = QPushButton("Mark as best...")
         self.mark_button.setToolTip(
@@ -507,6 +516,30 @@ class TrainingPanel(QWidget):
         self.unmark_button = QPushButton("Clear best")
         self.unmark_button.setToolTip("Take back the epoch marked as best; the run's own stays.")
         self.unmark_button.clicked.connect(self.clear_best)
+        for button in (self.copy_button, self.mark_button, self.unmark_button):
+            buttons.addWidget(button)
+        # What cannot be undone, apart from what can.
+        buttons.addStretch(1)
+        buttons.addWidget(self.delete_button)
+        buttons.addWidget(self.keep_best_check)
+        column.addLayout(buttons)
+
+        shown = QWidget()
+        column = QVBoxLayout(shown)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(self.plots_box, stretch=1)
+        column.addWidget(self.checkpoints_box)
+
+        runs = GripSplitter(Qt.Orientation.Vertical)
+        runs.addWidget(listed)
+        runs.addWidget(shown)
+        runs.setStretchFactor(1, 1)
+        runs.setSizes([220, 600])
+        self.runs_box = listed
+        return runs
+
+    def _build_run_actions(self) -> tuple[QPushButton, ...]:
+        """Build what is done to the run looked at, in the order it sits under the list."""
         self.validate_button = QPushButton("Validate...")
         self.validate_button.setToolTip(
             "Score this run's checkpoints on the rows of another training export, an "
@@ -527,22 +560,7 @@ class TrainingPanel(QWidget):
             "End the run. The epoch in progress is lost; checkpoints already written are kept."
         )
         self.stop_button.clicked.connect(self.stop_selected)
-        for button in (
-            self.copy_button, self.delete_button, self.keep_best_check,
-            self.mark_button, self.unmark_button, self.validate_button,
-            self.stop_validating_button, self.log_button,
-        ):
-            buttons.addWidget(button)
-        buttons.addStretch(1)
-        buttons.addWidget(self.stop_button)
-        column.addLayout(buttons)
-
-        runs = GripSplitter(Qt.Orientation.Vertical)
-        runs.addWidget(listed)
-        runs.addWidget(shown)
-        runs.setStretchFactor(1, 1)
-        runs.setSizes([220, 600])
-        return runs
+        return (self.validate_button, self.stop_validating_button, self.log_button, self.stop_button)
 
     # -- showing --------------------------------------------------------------
 
@@ -662,10 +680,12 @@ class TrainingPanel(QWidget):
                 ("marked best", checkpoint.epoch == chosen),
                 ("incomplete", not checkpoint.whole()),
             ) if holds]
-            caption = f"epoch {checkpoint.epoch}" + (f" ({', '.join(notes)})" if notes else "")
+            # The stars say which is best; only what has no mark is written out.
+            caption = str(checkpoint.epoch) + ("" if checkpoint.whole() else " (incomplete)")
             item = QListWidgetItem(
                 best_marks(checkpoint.epoch == best, checkpoint.epoch == chosen), caption
             )
+            item.setToolTip(f"Epoch {checkpoint.epoch}" + (f": {', '.join(notes)}" if notes else ""))
             item.setData(Qt.ItemDataRole.UserRole, checkpoint.epoch)
             self.checkpoints_list.addItem(item)
             item.setSelected(checkpoint.epoch in kept)
@@ -1475,12 +1495,6 @@ def best_legend() -> list[tuple[QPixmap, str]]:
         (best_marks(True, False).pixmap(size), "The epoch the run counts as its best"),
         (best_marks(False, True).pixmap(size), "The epoch you marked as best with Mark as best..."),
     ]
-
-
-def _heading(text: str) -> QLabel:
-    label = QLabel(text)
-    label.setObjectName(SECTION_HEADING)
-    return label
 
 
 def _muted(text: str) -> QLabel:

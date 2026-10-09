@@ -293,9 +293,8 @@ def test_checkpoints_are_listed_with_the_best_marked(panel):
 
     listed = [panel.checkpoints_list.item(row).text() for row in range(3)]
 
-    assert listed == [
-        "epoch 1 (incomplete)", "epoch 2 (incomplete)", "epoch 3 (run's best, incomplete)",
-    ]
+    assert listed == ["1 (incomplete)", "2 (incomplete)", "3 (incomplete)"]
+    assert panel.checkpoints_list.item(2).toolTip() == "Epoch 3: run's best, incomplete"
 
 
 def test_a_copy_is_offered_for_exactly_one_checkpoint(panel):
@@ -633,7 +632,8 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
     panel.mark_best()
 
     assert read_chosen_best(run).epoch == 2
-    assert panel.checkpoints_list.item(1).text() == "epoch 2 (marked best, incomplete)"
+    assert panel.checkpoints_list.item(1).text() == "2 (incomplete)"
+    assert panel.checkpoints_list.item(1).toolTip() == "Epoch 2: marked best, incomplete"
     assert "Marked as best: epoch 2" in panel.runs_tree.project_item(0).toolTip(0)
     assert panel.runs_tree.project_item(0).text(7) == "2"
     assert panel.unmark_button.isEnabled()
@@ -667,7 +667,7 @@ def test_clearing_takes_the_mark_back_and_leaves_the_run_s_own_best(panel):
     panel.clear_best()
 
     assert panel.controller.summary(run).chosen is None
-    assert panel.checkpoints_list.item(2).text() == "epoch 3 (run's best, incomplete)"
+    assert panel.checkpoints_list.item(2).toolTip() == "Epoch 3: run's best, incomplete"
     assert not panel.unmark_button.isEnabled()
 
 
@@ -1148,3 +1148,27 @@ def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(p
         (broken / training_run.RUN_RECORD_FILENAME).unlink()
         broken.rmdir()
 
+
+# -- the sections ---------------------------------------------------------------
+
+
+def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
+    """Nine in one row under the checkpoints, four of them were about the run."""
+
+    from qtpy.QtWidgets import QWidget
+
+    def inside(box):
+        return {
+            name for name, widget in vars(panel).items()
+            if isinstance(widget, QWidget) and widget is not box and box.isAncestorOf(widget)
+        }
+
+    runs, plots, checkpoints = panel.runs_box, panel.plots_box, panel.checkpoints_box
+
+    assert [box.title() for box in (runs, plots, checkpoints)] == ["Runs", "Curves and table", "Checkpoints"]
+    assert {"runs_tree", "validate_button", "stop_validating_button", "log_button", "stop_button"} <= inside(runs)
+    assert {"chart", "metric_box", "validated_box", "value_box"} <= inside(plots)
+    assert inside(checkpoints) == {
+        "checkpoints_list", "copy_button", "mark_button", "unmark_button",
+        "delete_button", "keep_best_check",
+    }
