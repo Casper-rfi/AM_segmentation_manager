@@ -73,7 +73,8 @@ The first public release, to be published as 0.1.0.
   an exported training set, with AM-model-training and the settings its
   models were published with. The run is checked before anything is written,
   keeps the export's split, and goes on in a process of its own after the
-  window is closed. The tab follows every run in the training directory:
+  window is closed. The tab follows every run in the training directory,
+  gathered under the folders they are kept in:
   how it stands, its curves, and its checkpoints, one of which can be copied
   out and the rest deleted. `stop-training` ends a run.
 - `show-training` reports how a run stands, and for any AM-model-training

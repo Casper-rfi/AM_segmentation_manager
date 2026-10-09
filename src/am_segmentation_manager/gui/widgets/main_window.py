@@ -361,6 +361,12 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             "Checking the training set", work, done
         )
         self.training_panel.remembered.connect(self._remember_training)
+        self.training_panel.run_path_requested.connect(
+            lambda row: self._copy_path(self.training_panel.run_path(row), "Run")
+        )
+        self.training_panel.run_reveal_requested.connect(
+            lambda row: self._reveal_path(self.training_panel.run_path(row))
+        )
         self.label_panel = LabelPanel(
             self.label_controller, VersionController(self._attribution)
         )

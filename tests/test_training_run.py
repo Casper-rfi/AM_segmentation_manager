@@ -444,3 +444,11 @@ def test_a_prepared_run_is_found_as_itself_and_from_its_training_directory(expor
     assert find_run_directories(directory) == [directory]
     assert find_run_directories(directory.parent) == [directory]
     assert find_run_directories(export.parent) == []
+
+
+def test_prepared_runs_are_found_through_folders_only_as_deep_as_asked(export: Path):
+    directory = apply_training_run(_plan(export))
+    above = directory.parent.parent
+
+    assert find_run_directories(above) == []
+    assert find_run_directories(above, depth=1) == [directory]

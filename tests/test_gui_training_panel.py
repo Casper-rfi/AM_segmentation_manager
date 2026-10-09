@@ -188,7 +188,7 @@ def test_starting_says_what_will_be_done_and_asks(panel):
     assert "1 training and 1 validation pair(s)" in said
     assert "goes on after this window is closed" in said
     assert panel.controller.selected_run().status.state == "finished"
-    assert run.name in panel.runs_list.item(0).text()
+    assert run.name in panel.runs_tree.project_item(0).text(0)
 
 
 def test_declining_writes_and_starts_nothing(panel):
@@ -197,7 +197,7 @@ def test_declining_writes_and_starts_nothing(panel):
     panel.start()
 
     assert not panel.controller.training_directory.exists()
-    assert panel.runs_list.count() == 0
+    assert panel.runs_tree.project_items() == []
 
 
 def test_a_run_that_cannot_be_prepared_gives_its_reasons_and_writes_nothing(panel):
@@ -387,7 +387,94 @@ def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, mon
 
     panel.refresh()
 
-    assert panel.runs_list.item(0).text().startswith("wide_seed2 · finished")
+    assert panel.runs_tree.project_item(0).text(0).startswith("wide_seed2 · finished")
     assert "Not started by am-seg" in panel.status_label.text()
     assert drawn == [1]
     assert not panel.stop_button.isEnabled()
+
+
+# -- the runs as a tree -------------------------------------------------------
+
+
+def _three_runs(panel: TrainingPanel) -> None:
+    """List two runs under one folder and one beside it, the newest first."""
+    from test_training_controller import _bare_run
+
+    root = panel.controller.training_directory
+    _bare_run(root, "step8/fold1", "260103_000000")
+    _bare_run(root, "step8/fold2", "260102_000000")
+    _bare_run(root, "alone", "260101_000000")
+    panel.refresh()
+
+
+def _folder(panel: TrainingPanel, name: str):
+    return next(top for top in panel.runs_tree._top_items() if top.text(0) == name)
+
+
+def test_runs_are_gathered_under_the_folder_they_sit_in(panel):
+    _three_runs(panel)
+
+    folder = _folder(panel, "step8")
+
+    assert [folder.child(row).text(0).split(" · ")[0] for row in range(2)] == ["fold1", "fold2"]
+    assert panel.runs_tree.project_item(2).parent() is None
+
+
+def test_ticking_a_folder_ticks_the_runs_in_it(panel, qt_app):
+    from qtpy.QtCore import Qt
+
+    _three_runs(panel)
+
+    _folder(panel, "step8").setCheckState(0, Qt.CheckState.Checked)
+
+    assert sorted(run.label for run in panel.controller.ticked_runs()) == ["fold1", "fold2"]
+
+
+def test_tick_all_and_none_reach_every_run(panel):
+    _three_runs(panel)
+
+    panel._tick_all(True)
+    assert panel.runs_tree.ticked_rows() == [0, 1, 2]
+    assert len(panel.controller.ticked_runs()) == 3
+
+    panel._tick_all(False)
+    assert panel.runs_tree.ticked_rows() == []
+    assert panel.controller.ticked == set()
+
+
+def test_reading_the_runs_again_keeps_the_ticks_the_folds_and_the_run_looked_at(panel):
+    _three_runs(panel)
+    panel.runs_tree.setCurrentItem(panel.runs_tree.project_item(1))
+    panel.runs_tree.project_item(2).setCheckState(0, _checked())
+    _folder(panel, "step8").setExpanded(True)
+
+    panel.refresh()
+
+    assert panel.controller.selected_run().label == "fold2"
+    assert panel.runs_tree.currentItem() is panel.runs_tree.project_item(1)
+    assert panel.runs_tree.ticked_rows() == [2]
+    assert _folder(panel, "step8").isExpanded()
+
+
+def test_the_row_looked_at_decides_what_is_shown_and_a_tick_does_not(panel):
+    _three_runs(panel)
+    shown = panel.status_label.text()
+
+    panel.runs_tree.project_item(2).setCheckState(0, _checked())
+    assert panel.status_label.text() == shown
+
+    panel.runs_tree.setCurrentItem(panel.runs_tree.project_item(2))
+    assert panel.status_label.text().startswith("alone:")
+
+
+def test_a_run_s_row_gives_the_path_to_copy_or_reveal(panel):
+    _three_runs(panel)
+
+    assert panel.run_path(2) == panel.controller.training_directory / "alone" / "training_260101_000000"
+    assert panel.run_path(7) is None
+
+
+def _checked():
+    from qtpy.QtCore import Qt
+
+    return Qt.CheckState.Checked

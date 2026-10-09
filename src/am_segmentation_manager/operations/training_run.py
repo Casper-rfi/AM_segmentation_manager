@@ -4,8 +4,9 @@ A run directory holds the two lists with absolute paths, since AM-model-training
 resolves a relative one against the list's folder and an export writes it against
 the collection's; a copy of the export's manifest; and ``am_training_run.yaml``,
 saying what the run was asked to do. **Everything is checked before anything is
-written**, labels looked inside again, and an existing directory is never reused.
-Nothing here imports the training stack or starts a run.
+written**, labels looked inside again
+(``test_a_label_emptied_since_the_export_is_refused``), and an existing directory
+is never reused. Nothing here imports the training stack or starts a run.
 """
 from __future__ import annotations
 
@@ -470,16 +471,34 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
         raise ValueError(f"{path} is not a training run's record: {error!r}") from error
 
 
-def find_run_directories(path: Path) -> list[Path]:
-    """Return the prepared runs at *path*: itself if it is one, else those directly inside it."""
+def find_run_directories(path: Path, depth: int = 0) -> list[Path]:
+    """Return the prepared runs at *path*: itself if it is one, else those inside it.
+
+    Args:
+        depth: How many levels of folders between *path* and a run are looked
+            through; 0 finds only the runs directly inside it.
+
+    A run directory is not looked inside for further runs.
+    """
     if (path / RUN_RECORD_FILENAME).is_file():
         return [path]
-    try:
-        children = sorted(child for child in path.iterdir() if child.is_dir())
-    except OSError as error:
-        logger.warning("Could not look inside %s: %s", path, error)
-        return []
-    return [child for child in children if (child / RUN_RECORD_FILENAME).is_file()]
+    found: list[Path] = []
+    level = [path]
+    for _ in range(depth + 1):
+        below: list[Path] = []
+        for directory in level:
+            try:
+                children = sorted(
+                    child for child in directory.iterdir()
+                    if child.is_dir() and not child.name.startswith(".")
+                )
+            except OSError as error:
+                logger.warning("Could not look inside %s: %s", directory, error)
+                continue
+            for child in children:
+                (found if (child / RUN_RECORD_FILENAME).is_file() else below).append(child)
+        level = below
+    return sorted(found)
 
 
 def _source(manifest: TrainingManifest, start_path: Path | None) -> Path | None:

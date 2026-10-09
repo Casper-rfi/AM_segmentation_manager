@@ -568,3 +568,56 @@ def test_stopping_a_run_am_seg_did_not_start_leaves_it_as_it_is(controller: Trai
 
     assert controller.stop(written).state == "training"
     assert not any(path.name.startswith("am_training") for path in written.iterdir())
+
+
+# -- folders and ticks --------------------------------------------------------
+
+
+def test_a_run_says_which_folders_it_sits_in(controller: TrainingController):
+    _bare_run(controller.training_directory, "step8/fold1_wide")
+    _bare_run(controller.training_directory, "alone")
+
+    folders = {run.label: run.folder for run in controller.runs()}
+
+    assert folders == {"fold1_wide": "step8", "alone": ""}
+
+
+def test_a_prepared_run_is_found_in_a_folder_of_runs(controller: TrainingController):
+    controller.training_directory = controller.training_directory / "arctis"
+    controller.start(controller.plan())
+    _settled(controller.selected)
+    controller.training_directory = controller.training_directory.parent
+
+    (listed,) = controller.runs()
+
+    assert (listed.name, listed.folder) == ("round01", "arctis")
+    assert listed.status is not None and listed.status.state == "finished"
+
+
+def test_two_runs_written_into_one_folder_are_called_apart(controller: TrainingController):
+    _bare_run(controller.training_directory, "seeds", "260101_000000")
+    _bare_run(controller.training_directory, "seeds", "260102_000000")
+
+    listed = controller.runs()
+
+    assert [run.label for run in listed] == ["training_260102_000000", "training_260101_000000"]
+    assert {run.folder for run in listed} == {"seeds"}
+
+
+def test_ticked_runs_are_those_ticked_that_are_still_there(controller: TrainingController):
+    import shutil
+
+    older = _bare_run(controller.training_directory, "older", "250101_000000")
+    newer = _bare_run(controller.training_directory, "newer", "260101_000000")
+
+    controller.tick_all(True)
+    assert [run.name for run in controller.ticked_runs()] == ["newer", "older"]
+
+    controller.tick(newer, False)
+    assert [run.directory for run in controller.ticked_runs()] == [older]
+
+    shutil.rmtree(older.parent)
+    assert controller.ticked_runs() == []
+
+    controller.tick_all(False)
+    assert controller.ticked == set()

@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import shutil
 import time
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +36,7 @@ from ..operations.training_run import (
     read_run_record,
 )
 from ..training_runs import (
+    SEARCH_DEPTH,
     Checkpoint,
     EpochMetrics,
     TrainingRun,
@@ -63,7 +64,10 @@ class RunSummary:
     Attributes:
         directory: The run's directory; for a run am-seg did not start, the
             directory AM-model-training wrote.
-        name: What it is called.
+        name: What it is called; a run am-seg did not start is called by the
+            folders it sits in.
+        folder: The folders between the training directory and the run, or ""
+            for one directly in it.
         record: What it was asked to do; None for a run am-seg did not start,
             or where the record cannot be read.
         status: How it stands; None for a run am-seg did not start.
@@ -75,11 +79,17 @@ class RunSummary:
 
     directory: Path
     name: str
+    folder: str = ""
     record: RunRecord | None = None
     status: RunStatus | None = None
     written: TrainingRun | None = None
     problem: str = ""
     recent: bool = False
+
+    @property
+    def label(self) -> str:
+        """Return what the run is called under its folder."""
+        return self.name.rsplit("/", 1)[-1]
 
     @property
     def epochs(self) -> int:
@@ -123,10 +133,10 @@ class RunSummary:
         return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
 
     def line(self) -> str:
-        """Return the run in one line: its name, how it stands and how far it got."""
+        """Return the run in one line under its folder: what it is called, how it stands, how far it got."""
         if self.problem:
-            return f"{self.name}: {self.problem}"
-        parts = [self.name]
+            return f"{self.label}: {self.problem}"
+        parts = [self.label]
         if self.state:
             parts.append(self.state)
         most = (
@@ -175,6 +185,7 @@ class TrainingController:
         self.base_weights: Path | None = None
         self.device: str = "auto"
         self.selected: Path | None = None
+        self.ticked: set[Path] = set()
         self._whole: dict[Path, TrainingRun] = {}
 
     # -- what is installed ----------------------------------------------------
@@ -317,7 +328,7 @@ class TrainingController:
         """
         if self.training_directory is None or not self.training_directory.is_dir():
             return []
-        prepared = find_run_directories(self.training_directory)
+        prepared = find_run_directories(self.training_directory, depth=SEARCH_DEPTH)
         others = [
             written for written in find_training_runs(self.training_directory)
             if written.parent not in prepared
@@ -332,9 +343,11 @@ class TrainingController:
             directory: A run am-seg prepared, or a directory AM-model-training wrote.
         """
         if is_run_directory(directory):
+            name = self._name_of(directory)
             return RunSummary(
                 directory=directory,
-                name=self._name_of(directory),
+                name=name,
+                folder=name.rpartition("/")[0],
                 written=self._steady(read_training_run(directory)),
                 recent=_written_recently(directory),
             )
@@ -342,11 +355,14 @@ class TrainingController:
             record = read_run_record(directory)
             status = run_status(directory)
         except ValueError as error:
-            return RunSummary(directory, directory.name, problem=str(error))
+            return RunSummary(
+                directory, directory.name, folder=self._folder_of(directory), problem=str(error)
+            )
         written = find_training_runs(directory, depth=0)
         return RunSummary(
             directory=directory,
             name=record.name if record else directory.name,
+            folder=self._folder_of(directory),
             record=record,
             status=status,
             # A run directory is started once, so it holds one of these at most.
@@ -363,15 +379,54 @@ class TrainingController:
         """Return whether any run's files may still change, so the tab should keep reading."""
         return any(run.live for run in self.runs())
 
+    # -- the runs ticked ------------------------------------------------------
+
+    def tick(self, directory: Path, ticked: bool) -> None:
+        """Tick the run in *directory*, or clear its tick."""
+        if ticked:
+            self.ticked.add(directory)
+        else:
+            self.ticked.discard(directory)
+
+    def tick_all(self, ticked: bool, runs: Sequence[RunSummary] | None = None) -> None:
+        """Tick every run listed, or clear every tick.
+
+        Args:
+            runs: The runs listed, where they have just been read.
+        """
+        self.ticked = (
+            {run.directory for run in (self.runs() if runs is None else runs)} if ticked else set()
+        )
+
+    def ticked_runs(self) -> list[RunSummary]:
+        """Return the ticked runs still in the training directory, in the order listed."""
+        return [run for run in self.runs() if run.directory in self.ticked]
+
+    def _folder_of(self, directory: Path) -> str:
+        """Return the folders between the training directory and a prepared run, or ""."""
+        if self.training_directory is None:
+            return ""
+        try:
+            folder = directory.parent.relative_to(self.training_directory).as_posix()
+        except ValueError:
+            return ""
+        return "" if folder == "." else folder
+
     def _name_of(self, written: Path) -> str:
-        """Return what to call a run am-seg did not start: the folder it was written into."""
+        """Return what to call a run am-seg did not start: the folder it was written into.
+
+        Its own directory's name is added where that folder holds several runs,
+        so that no two are called the same.
+        """
         parent = written.parent
         if self.training_directory is None or parent == self.training_directory:
             return written.name
         try:
-            return parent.relative_to(self.training_directory).as_posix()
+            name = parent.relative_to(self.training_directory).as_posix()
         except ValueError:
-            return parent.name
+            name = parent.name
+        alone = sum(is_run_directory(child) for child in parent.iterdir()) == 1
+        return name if alone else f"{name}/{written.name}"
 
     def stop(self, directory: Path, user: str | None = None) -> RunSummary:
         """Stop the run in *directory* if it is running, and return how it stands.

@@ -151,7 +151,11 @@ class TrainingRun:
 
 
 def best_epoch(epochs: Sequence[EpochMetrics], keys: Sequence[str]) -> EpochMetrics | None:
-    """Return the epoch scoring highest on *keys*, the earliest of any tie, as the run decides."""
+    """Return the epoch scoring highest on *keys*, the earliest of any tie, as the run decides.
+
+    Computed, a run's files storing the metrics and not which epoch won
+    (``test_the_best_epoch_is_ranked_as_the_run_ranks_it``).
+    """
     best: EpochMetrics | None = None
     for epoch in epochs:
         if best is None or epoch.score(keys) > best.score(keys):

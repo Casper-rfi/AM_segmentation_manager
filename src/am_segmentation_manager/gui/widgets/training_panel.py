@@ -1,5 +1,7 @@
 """The Train tab: set a run up on the left, follow the runs there are on the right.
 
+The runs are a tree under the folders they are kept in, as Curate's projects are.
+
 A view of :class:`~am_segmentation_manager.gui.training_controller.TrainingController`
 and nothing more: it decides nothing a run does. Everything on the right is read
 from the training directory again while a run is live and the tab is showing, and
@@ -38,7 +40,14 @@ from ...training_runs import PER_CLASS_METRICS
 from ..training_controller import RunSummary, TrainingController
 from .chart_view import ChartView
 from .controls import ElidingLabel, GripSplitter, SegmentedControl, WrappingLabel
-from .paths import ALL_FILES_FILTER, choose_directory, choose_open_file, choose_save_file
+from .lists import FOLD_GAP, ProjectTree, add_check_all_buttons, add_fold_buttons
+from .paths import (
+    ALL_FILES_FILTER,
+    add_path_menu,
+    choose_directory,
+    choose_open_file,
+    choose_save_file,
+)
 from .report_dialog import ReportDialog
 from .theme import ERROR, MUTED, SECTION_HEADING
 
@@ -88,6 +97,9 @@ class TrainingPanel(QWidget):
 
     #: Emitted when something the window remembers between sessions has changed.
     remembered = Signal()
+    #: Emitted with a run's row when its path is asked for, to copy or to reveal.
+    run_path_requested = Signal(int)
+    run_reveal_requested = Signal(int)
 
     def __init__(self, controller: TrainingController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -95,6 +107,7 @@ class TrainingPanel(QWidget):
         self.run_in_background: Callable[[Callable[[], object], Callable[[object], None]], None]
         self.run_in_background = lambda work, done: done(work())
         self._drawn: tuple | None = None
+        self._listed: list[RunSummary] = []
 
         split = GripSplitter(Qt.Orientation.Horizontal)
         split.addWidget(self._build_form())
@@ -239,8 +252,9 @@ class TrainingPanel(QWidget):
         return advanced
 
     def _build_runs(self) -> QWidget:
-        runs = QWidget()
-        column = QVBoxLayout(runs)
+        listed = QWidget()
+        column = QVBoxLayout(listed)
+        column.setContentsMargins(0, 0, 0, 0)
         top = QHBoxLayout()
         top.addWidget(_heading("Runs"))
         self.directory_label = ElidingLabel()
@@ -253,11 +267,27 @@ class TrainingPanel(QWidget):
         top.addWidget(self.directory_button)
         column.addLayout(top)
 
-        self.runs_list = QListWidget()
-        self.runs_list.setMaximumHeight(150)
-        self.runs_list.currentItemChanged.connect(self._run_chosen)
-        column.addWidget(self.runs_list)
+        # The row looked at decides whose curves and checkpoints show; a tick
+        # only puts a run in the set the controller holds.
+        self.runs_tree = ProjectTree()
+        self.runs_tree.project_selected.connect(self._run_chosen)
+        self.runs_tree.row_ticked.connect(self._run_ticked)
+        add_path_menu(
+            self.runs_tree, "run", self.run_path_requested, self.run_reveal_requested,
+            row_of=self.runs_tree.project_of,
+        )
+        column.addWidget(self.runs_tree, stretch=1)
+        acting = QHBoxLayout()
+        acting.setSpacing(4)
+        add_check_all_buttons(acting, self._tick_all, "runs")
+        acting.addSpacing(FOLD_GAP)
+        add_fold_buttons(acting, self.runs_tree)
+        acting.addStretch(1)
+        column.addLayout(acting)
 
+        shown = QWidget()
+        column = QVBoxLayout(shown)
+        column.setContentsMargins(0, 0, 0, 0)
         self.status_label = WrappingLabel()
         column.addWidget(self.status_label)
         self.asked_label = WrappingLabel()
@@ -314,6 +344,12 @@ class TrainingPanel(QWidget):
         buttons.addStretch(1)
         buttons.addWidget(self.stop_button)
         column.addLayout(buttons)
+
+        runs = GripSplitter(Qt.Orientation.Vertical)
+        runs.addWidget(listed)
+        runs.addWidget(shown)
+        runs.setStretchFactor(1, 1)
+        runs.setSizes([220, 600])
         return runs
 
     # -- showing --------------------------------------------------------------
@@ -384,19 +420,17 @@ class TrainingPanel(QWidget):
         controller = self.controller
         directory = controller.training_directory
         self.directory_label.setText(str(directory) if directory else "No training directory chosen")
-        runs = controller.runs()
-        self.runs_list.blockSignals(True)
-        self.runs_list.clear()
-        for run in runs:
-            item = QListWidgetItem(run.line())
-            item.setData(Qt.ItemDataRole.UserRole, str(run.directory))
-            self.runs_list.addItem(item)
-            if run.directory == controller.selected:
-                self.runs_list.setCurrentItem(item)
-        if self.runs_list.currentItem() is None and runs:
-            controller.selected = runs[0].directory
-            self.runs_list.setCurrentRow(0)
-        self.runs_list.blockSignals(False)
+        runs = self._listed = controller.runs()
+        directories = [run.directory for run in runs]
+        if controller.selected not in directories:
+            controller.selected = directories[0] if directories else None
+        self.runs_tree.set_projects(
+            [run.folder for run in runs],
+            [run.line() for run in runs],
+            ticked=[run.directory in controller.ticked for run in runs],
+            tooltips=[str(run.directory) for run in runs],
+            current=directories.index(controller.selected) if directories else None,
+        )
         self._show_selected()
 
     def _show_selected(self) -> None:
@@ -670,10 +704,21 @@ class TrainingPanel(QWidget):
         if run is not None:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(run.directory / LOG_FILENAME)))
 
-    def _run_chosen(self, item: QListWidgetItem | None, _previous=None) -> None:
-        self.controller.selected = Path(item.data(Qt.ItemDataRole.UserRole)) if item else None
+    def _run_chosen(self, row: int) -> None:
+        self.controller.selected = self._listed[row].directory
         self.checkpoints_list.clear()
         self._show_selected()
+
+    def _run_ticked(self, row: int, ticked: bool) -> None:
+        self.controller.tick(self._listed[row].directory, ticked)
+
+    def _tick_all(self, ticked: bool) -> None:
+        self.controller.tick_all(ticked, self._listed)
+        self.runs_tree.show_ticks([ticked] * len(self._listed))
+
+    def run_path(self, row: int) -> Path | None:
+        """Return the directory of the run listed at *row*, or None if it is no longer listed."""
+        return self._listed[row].directory if 0 <= row < len(self._listed) else None
 
     # -- dialogs, each one place so a test can answer it -----------------------
 

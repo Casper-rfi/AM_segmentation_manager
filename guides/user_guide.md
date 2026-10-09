@@ -315,7 +315,11 @@ On the left, set the run up:
 
 Training runs on its own and goes on after you close the window. On the right,
 **Runs** lists every run in the training directory, which you choose once with
-**Training directory...**; keep it outside your collection. For the run
+**Training directory...**; keep it outside your collection. Runs kept in a
+folder of that directory are gathered under it, and **Expand** and **Collapse**
+open and close every folder. Right-click a run to copy its path or reveal it in
+the file manager. The tick boxes, with **Tick all** and **None**, choose a set
+of runs; nothing acts on that set yet. For the run
 selected, the tab shows how it stands, its loss and a metric per class by
 epoch, and its checkpoints, the best marked. A run AM-model-training was
 started on directly, here or on another machine, is listed too, from the files
